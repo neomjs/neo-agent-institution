@@ -1,5 +1,5 @@
-import BaseList   from '../../../../../src/list/Base.mjs';
-import NeoArray   from '../../../../../src/util/Array.mjs';
+import BaseList   from '../../../../../node_modules/neo.mjs/src/list/Base.mjs';
+import NeoArray   from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
 import ViewerTime from '../../../util/ViewerTime.mjs';
 
 /**

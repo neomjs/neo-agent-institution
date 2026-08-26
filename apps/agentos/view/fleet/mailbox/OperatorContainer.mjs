@@ -1,4 +1,4 @@
-import Container           from '../../../../../src/container/Base.mjs';
+import Container           from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import MailboxPane         from './Container.mjs';
 import OperatorComposeForm from './ComposeForm.mjs';
 

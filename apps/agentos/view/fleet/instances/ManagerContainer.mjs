@@ -1,8 +1,8 @@
-import Button        from '../../../../../src/button/Base.mjs';
-import Container     from '../../../../../src/container/Base.mjs';
-import Component     from '../../../../../src/component/Base.mjs';
-import PasswordField from '../../../../../src/form/field/Password.mjs';
-import TextField     from '../../../../../src/form/field/Text.mjs';
+import Button        from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container     from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import Component     from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import PasswordField from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
+import TextField     from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 import {stateClass}  from '../shared/StateDotComponent.mjs';
 
 /**

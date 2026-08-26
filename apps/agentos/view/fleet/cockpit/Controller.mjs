@@ -1,4 +1,4 @@
-import Controller                  from '../../../../../src/controller/Component.mjs';
+import Controller                  from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 
 import FleetStartPlan from '../../../util/FleetStartPlan.mjs';

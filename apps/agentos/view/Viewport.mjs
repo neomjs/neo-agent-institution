@@ -1,13 +1,13 @@
 import Accounts           from './accounts/Panel.mjs';
 import AgentDefinitions   from '../store/AgentDefinitions.mjs';
-import BaseViewport       from '../../../src/container/Viewport.mjs';
-import Dashboard          from '../../../src/dashboard/Container.mjs';
+import BaseViewport       from '../../../node_modules/neo.mjs/src/container/Viewport.mjs';
+import Dashboard          from '../../../node_modules/neo.mjs/src/dashboard/Container.mjs';
 import FleetCockpit       from './fleet/cockpit/Container.mjs';
 import FleetInstances     from '../store/FleetInstances.mjs';
 import FleetTenants       from '../store/FleetTenants.mjs';
 import InstanceSwitcher   from './fleet/instances/SwitcherButton.mjs';
-import StateProvider      from '../../../src/state/Provider.mjs';
-import TabContainer       from '../../../src/tab/Container.mjs';
+import StateProvider      from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import TabContainer       from '../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import ViewportController from './ViewportController.mjs';
 
 /**

@@ -1,12 +1,12 @@
 import ActivityStream         from '../activity/Container.mjs';
 import AddAgentForm           from '../instances/AddAgentForm.mjs';
 import AgentDetail            from '../detail/Container.mjs';
-import Button                 from '../../../../../src/button/Base.mjs';
+import Button                 from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import CatchUpPane            from '../catchup/Container.mjs';
-import DockPerspectiveStore   from '../../../../../src/dashboard/DockPerspectiveStore.mjs';
-import DockService            from '../../../../../src/ai/client/DockService.mjs';
-import DockWorkspace          from '../../../../../src/dashboard/DockWorkspace.mjs';
-import DockZoneModel          from '../../../../../src/dashboard/DockZoneModel.mjs';
+import DockPerspectiveStore   from '../../../../../node_modules/neo.mjs/src/dashboard/DockPerspectiveStore.mjs';
+import DockService            from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
+import DockWorkspace          from '../../../../../node_modules/neo.mjs/src/dashboard/DockWorkspace.mjs';
+import DockZoneModel          from '../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs';
 import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
 import FleetActivityEvents    from '../../../store/FleetActivityEvents.mjs';
@@ -16,14 +16,14 @@ import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
 import ViewerWakeFeed         from '../../../store/ViewerWakeFeed.mjs';
 import WakeRoutePane          from '../wake/Container.mjs';
-import StateProvider          from '../../../../../src/state/Provider.mjs';
+import StateProvider          from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import CockpitDockDocument    from '../../../util/CockpitDockDocument.mjs';
 import CockpitPresets         from '../../../util/CockpitPresets.mjs';
 import SourceHealth           from '../../../util/SourceHealth.mjs';
 import SpineBanner            from '../../../util/SpineBanner.mjs';
 import ViewerWakeTelltale     from '../../../util/ViewerWakeTelltale.mjs';
-import '../../../../../src/manager/Instance.mjs'; // binds Neo.get for the retained-component dock projection path
-import '../../../../../src/tab/Container.mjs'; // registers the `tab-container` ntype the dock projection emits for tab zones
+import '../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; // binds Neo.get for the retained-component dock projection path
+import '../../../../../node_modules/neo.mjs/src/tab/Container.mjs'; // registers the `tab-container` ntype the dock projection emits for tab zones
 
 /**
  * The liveness re-poll cadence (ms). Slow enough that the cockpit is not a load generator against

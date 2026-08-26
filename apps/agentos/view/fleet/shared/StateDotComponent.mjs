@@ -1,5 +1,5 @@
-import Component from '../../../../../src/component/Base.mjs';
-import NeoArray  from '../../../../../src/util/Array.mjs';
+import Component from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import NeoArray  from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
 
 /**
  * Maps a session-state key to its design token (the `--fm-state-*` values live in the theme skin,

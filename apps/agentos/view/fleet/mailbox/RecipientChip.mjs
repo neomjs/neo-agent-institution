@@ -1,4 +1,4 @@
-import ChipComponent from '../../../../../src/component/Chip.mjs';
+import ChipComponent from '../../../../../node_modules/neo.mjs/src/component/Chip.mjs';
 
 /**
  * One selected-recipient chip inside {@link AgentOS.view.fleet.mailbox.RecipientChipList}.

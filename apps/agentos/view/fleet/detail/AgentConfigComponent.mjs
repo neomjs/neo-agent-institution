@@ -1,4 +1,4 @@
-import Component                              from '../../../../../src/component/Base.mjs';
+import Component                              from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import {listHarnessTypes, resolveHarnessType} from '../../../config/harnessTypes.mjs';
 import {
     listMcpServers,

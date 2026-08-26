@@ -1,6 +1,6 @@
-import Button         from '../../../../../src/button/Base.mjs';
-import Component      from '../../../../../src/component/Base.mjs';
-import Container      from '../../../../../src/container/Base.mjs';
+import Button         from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Component      from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import Container      from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import CatchUpEntries from '../../../store/CatchUpEntries.mjs';
 import ViewerTime     from '../../../util/ViewerTime.mjs';
 

@@ -1,4 +1,4 @@
-import Controller from '../../../../../../src/controller/Component.mjs';
+import Controller from '../../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 
 /**
  * Controller for {@link AgentOS.view.fleet.roster.card.Container}: turns the card's start/stop/restart controls

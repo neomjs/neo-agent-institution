@@ -1,5 +1,5 @@
 import AgentCard      from './card/Container.mjs';
-import ComponentList  from '../../../../../src/list/Component.mjs';
+import ComponentList  from '../../../../../node_modules/neo.mjs/src/list/Component.mjs';
 import SelectionModel from './SelectionModel.mjs';
 
 /**

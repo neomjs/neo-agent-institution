@@ -1,5 +1,5 @@
 import FleetTenantModel from '../model/FleetTenant.mjs';
-import Store            from '../../../src/data/Store.mjs';
+import Store            from '../../../node_modules/neo.mjs/src/data/Store.mjs';
 
 /**
  * @class AgentOS.store.FleetTenants

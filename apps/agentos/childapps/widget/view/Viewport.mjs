@@ -1,4 +1,4 @@
-import BaseViewport from '../../../../../src/container/Viewport.mjs';
+import BaseViewport from '../../../../../node_modules/neo.mjs/src/container/Viewport.mjs';
 
 /**
  * @class AgentOSWidget.view.Viewport

@@ -1,6 +1,6 @@
 import AgentMailboxStore from '../../../store/AgentMailbox.mjs';
-import Button            from '../../../../../src/button/Base.mjs';
-import Container         from '../../../../../src/container/Base.mjs';
+import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container         from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import AgentFreshness    from '../../../util/AgentFreshness.mjs';
 
 /**

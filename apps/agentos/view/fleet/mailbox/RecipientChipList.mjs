@@ -1,4 +1,4 @@
-import ChipList      from '../../../../../src/list/Chip.mjs';
+import ChipList      from '../../../../../node_modules/neo.mjs/src/list/Chip.mjs';
 import RecipientChip from './RecipientChip.mjs';
 
 /**

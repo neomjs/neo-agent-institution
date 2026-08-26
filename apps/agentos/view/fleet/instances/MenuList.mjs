@@ -1,4 +1,4 @@
-import MenuList     from '../../../../../src/menu/List.mjs';
+import MenuList     from '../../../../../node_modules/neo.mjs/src/menu/List.mjs';
 import {stateClass} from '../shared/StateDotComponent.mjs';
 
 /**

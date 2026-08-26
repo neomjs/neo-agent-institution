@@ -1,4 +1,4 @@
-import Base from '../../../src/core/Base.mjs';
+import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
  * Maps a model-family key to its rail token (the `--fm-family-*` values live in the theme skin,

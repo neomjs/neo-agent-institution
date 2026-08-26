@@ -1,14 +1,14 @@
 import AgentConfigCard       from '../fleet/detail/AgentConfigComponent.mjs';
 import AddAgentFlow          from '../../util/AddAgentFlow.mjs';
 import ConfigIntentRoundTrip from '../../util/ConfigIntentRoundTrip.mjs';
-import Button                from '../../../../src/button/Base.mjs';
-import DashboardPanel        from '../../../../src/dashboard/Panel.mjs';
-import FormContainer         from '../../../../src/form/Container.mjs';
+import Button                from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import DashboardPanel        from '../../../../node_modules/neo.mjs/src/dashboard/Panel.mjs';
+import FormContainer         from '../../../../node_modules/neo.mjs/src/form/Container.mjs';
 import {listHarnessTypes}    from '../../config/harnessTypes.mjs';
-import PasswordField         from '../../../../src/form/field/Password.mjs';
-import Radio                 from '../../../../src/form/field/Radio.mjs';
-import TextField             from '../../../../src/form/field/Text.mjs';
-import Toolbar               from '../../../../src/toolbar/Base.mjs';
+import PasswordField         from '../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
+import Radio                 from '../../../../node_modules/neo.mjs/src/form/field/Radio.mjs';
+import TextField             from '../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import Toolbar               from '../../../../node_modules/neo.mjs/src/toolbar/Base.mjs';
 
 /**
  * @class AgentOS.view.accounts.Panel

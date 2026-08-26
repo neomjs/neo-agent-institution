@@ -10,7 +10,7 @@
         "url" : "https://github.com/neomjs/neo-agent-institution.git"
     },
     "scripts": {
-        "postinstall"          : "neo-agent-skills-materialize",
+        "postinstall"          : "node ./buildScripts/linkMarkedForWorkerScope.mjs && neo-agent-skills-materialize",
         "add-config"           : "node ./node_modules/neo.mjs/buildScripts/create/addConfig.mjs",
         "build-all"            : "node ./node_modules/neo.mjs/buildScripts/build/all.mjs -f -n",
         "build-all-questions"  : "node ./node_modules/neo.mjs/buildScripts/build/all.mjs -f",
@@ -27,7 +27,7 @@
         "create-class"         : "node ./node_modules/neo.mjs/buildScripts/create/class.mjs",
         "create-component"     : "node ./node_modules/neo.mjs/buildScripts/create/component.mjs",
         "server-start"         : "webpack serve -c ./node_modules/neo.mjs/buildScripts/webpack/webpack.server.config.mjs --open",
-        "generate-docs-json"   : "node ./node_modules/neo.mjs/buildScripts/docs/jsdocx.mjs",
+        "generate-docs-json"   : "node ./node_modules/neo.mjs/buildScripts/docs/generateDocsJson.mjs",
         "test-e2e"             : "playwright test -c test/playwright/playwright.config.e2e.mjs",
         "test-unit"            : "playwright test -c test/playwright/playwright.config.unit.mjs",
         "watch-themes"         : "node ./node_modules/neo.mjs/buildScripts/helpers/watchThemes.mjs"
@@ -38,7 +38,10 @@
     "devDependencies": {
         "@fortawesome/fontawesome-free": "^7.3.0",
         "@playwright/test"             : "^1.61.1",
+        "acorn"                        : "^8.17.0",
+        "astring"                      : "^1.9.0",
         "autoprefixer"                 : "^10.5.2",
+        "chalk"                        : "^6.0.0",
         "commander"                    : "^15.0.0",
         "cssnano"                      : "^7.1.9",
         "esbuild"                      : "^0.28.1",

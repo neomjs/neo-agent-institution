@@ -1,4 +1,4 @@
-import Controller                                      from '../../../src/controller/Component.mjs';
+import Controller                                      from '../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import InstanceManager                                 from './fleet/instances/ManagerContainer.mjs';
 import {createFleetProfile}                            from '../fleet/connectionProfiles.mjs';
 import {establishFleetSessionCustody, resolveFleetUrl} from '../fleet/fleetSessionCustody.mjs';

@@ -2,7 +2,7 @@ import Viewport                                           from './view/Viewport.
 import {establishFleetSessionCustody, resolveFleetUrl}    from './fleet/fleetSessionCustody.mjs';
 import {FLEET_LOCAL_TRANSPORT_ERRORS, installFleetBridge} from './fleet/installFleetBridge.mjs';
 import {redeemFleetBearerHandshakeUntilAvailable}         from './fleet/redeemFleetBearerHandshake.mjs';
-import WindowManager                                      from '../../src/manager/Window.mjs';
+import WindowManager                                      from '../../node_modules/neo.mjs/src/manager/Window.mjs';
 
 // The custody machine + endpoint authority moved VERBATIM to ./fleet/fleetSessionCustody.mjs —
 // the instance-switch owner needs them without an import cycle through this boot module; the

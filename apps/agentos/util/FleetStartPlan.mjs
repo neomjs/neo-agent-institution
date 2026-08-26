@@ -23,7 +23,7 @@
  * contract the per-card controls enforce via {@link module:apps/agentos/util/SourceHealth}.
  * @module apps/agentos/util/FleetStartPlan
  */
-import Base         from '../../../src/core/Base.mjs';
+import Base         from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import SourceHealth from './SourceHealth.mjs';
 
 /**

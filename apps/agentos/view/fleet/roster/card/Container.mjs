@@ -1,8 +1,8 @@
 import AgentCardController    from './Controller.mjs';
-import Button                 from '../../../../../../src/button/Base.mjs';
-import Container              from '../../../../../../src/container/Base.mjs';
+import Button                 from '../../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container              from '../../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import FamilyRail             from '../../shared/FamilyRailComponent.mjs';
-import Image                  from '../../../../../../src/component/Image.mjs';
+import Image                  from '../../../../../../node_modules/neo.mjs/src/component/Image.mjs';
 import StateDot, {stateLabel} from '../../shared/StateDotComponent.mjs';
 
 /**

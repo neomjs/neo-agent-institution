@@ -1,4 +1,4 @@
-import Store           from '../../../src/data/Store.mjs';
+import Store           from '../../../node_modules/neo.mjs/src/data/Store.mjs';
 import WakeSignalModel from '../model/WakeSignal.mjs';
 
 /**

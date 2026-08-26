@@ -1,4 +1,4 @@
-import ComponentController from '../../../../../src/controller/Component.mjs';
+import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 
 /**
  * Controller for the {@link AgentOS.view.fleet.tasks.Container tasks surface} (the controllers-own-business-logic law):

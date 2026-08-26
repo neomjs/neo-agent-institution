@@ -1,5 +1,5 @@
-import BaseContainer                                  from '../../../../../src/container/Base.mjs';
-import Button                                         from '../../../../../src/button/Base.mjs';
+import BaseContainer                                  from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import Button                                         from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import FleetTasks                                     from '../../../store/FleetTasks.mjs';
 import TasksController                                from './Controller.mjs';
 import TasksList, {SOURCE_LABELS, SOURCE_STATE_WORDS} from './List.mjs';

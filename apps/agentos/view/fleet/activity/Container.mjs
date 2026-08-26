@@ -1,7 +1,7 @@
-import BufferedList from '../../../../../src/list/Buffered.mjs';
-import Button       from '../../../../../src/button/Base.mjs';
-import Component    from '../../../../../src/component/Base.mjs';
-import Container    from '../../../../../src/container/Base.mjs';
+import BufferedList from '../../../../../node_modules/neo.mjs/src/list/Buffered.mjs';
+import Button       from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Component    from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import Container    from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import RowContainer from './RowContainer.mjs';
 
 const COUNT_SCOPES = new Set(['last24h', 'total']);

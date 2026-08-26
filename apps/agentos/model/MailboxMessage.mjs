@@ -1,4 +1,4 @@
-import Model from '../../../src/data/Model.mjs';
+import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
 
 /**
  * @class AgentOS.model.MailboxMessage

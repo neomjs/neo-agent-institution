@@ -1,13 +1,13 @@
-import FormContainer     from '../../../../../src/form/Container.mjs';
-import Button            from '../../../../../src/button/Base.mjs';
-import Label             from '../../../../../src/component/Label.mjs';
-import List              from '../../../../../src/list/Base.mjs';
-import Radio             from '../../../../../src/form/field/Radio.mjs';
+import FormContainer     from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
+import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Label             from '../../../../../node_modules/neo.mjs/src/component/Label.mjs';
+import List              from '../../../../../node_modules/neo.mjs/src/list/Base.mjs';
+import Radio             from '../../../../../node_modules/neo.mjs/src/form/field/Radio.mjs';
 import RecipientChipList from './RecipientChipList.mjs';
-import Store             from '../../../../../src/data/Store.mjs';
-import SwitchField       from '../../../../../src/form/field/Switch.mjs';
-import TextField         from '../../../../../src/form/field/Text.mjs';
-import TextAreaField     from '../../../../../src/form/field/TextArea.mjs';
+import Store             from '../../../../../node_modules/neo.mjs/src/data/Store.mjs';
+import SwitchField       from '../../../../../node_modules/neo.mjs/src/form/field/Switch.mjs';
+import TextField         from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import TextAreaField     from '../../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
 
 const BROADCAST_ID = 'AGENT:*';
 

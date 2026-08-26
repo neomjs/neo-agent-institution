@@ -1,4 +1,4 @@
-import ComponentController from '../../../../../src/controller/Component.mjs';
+import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 
 /**
  * The roster's sort modes as plain store-sorter sets — replacing the whole set keeps ONE ordering

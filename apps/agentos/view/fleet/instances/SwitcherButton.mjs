@@ -1,4 +1,4 @@
-import Button                                   from '../../../../../src/button/Base.mjs';
+import Button                                   from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import InstanceMenuList, {displayInstanceLabel} from './MenuList.mjs';
 import {stateClass}                             from '../shared/StateDotComponent.mjs';
 

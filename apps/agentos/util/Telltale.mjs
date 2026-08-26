@@ -1,4 +1,4 @@
-import Base from '../../../src/core/Base.mjs';
+import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
  * @summary The S2 telltale contract: two orthogonal observation axes, one compound chip.

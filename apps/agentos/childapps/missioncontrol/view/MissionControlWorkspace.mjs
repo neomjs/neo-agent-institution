@@ -1,12 +1,12 @@
-import Component                  from '../../../../../src/component/Base.mjs';
-import Container                  from '../../../../../src/container/Base.mjs';
+import Component                  from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import Container                  from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import FleetCockpit               from '../../../view/fleet/cockpit/Container.mjs';
-import TourRunner                 from '../../../../../src/ai/client/TourRunner.mjs';
+import TourRunner                 from '../../../../../node_modules/neo.mjs/src/ai/client/TourRunner.mjs';
 import CockpitDockDocument        from '../../../util/CockpitDockDocument.mjs';
 import {fusionTourScript}         from '../../../tour/fusionFlagship.mjs';
 import {missionControlTourScript} from '../../../tour/missionControlWalkthrough.mjs';
-import '../../../../../src/button/Base.mjs';  // registers the `button` ntype the tour bar composes
-import '../../../../../src/toolbar/Base.mjs'; // registers the `toolbar` ntype the tour bar uses
+import '../../../../../node_modules/neo.mjs/src/button/Base.mjs';  // registers the `button` ntype the tour bar composes
+import '../../../../../node_modules/neo.mjs/src/toolbar/Base.mjs'; // registers the `toolbar` ntype the tour bar uses
 
 /**
  * @summary The demo/witness host for the real AgentOS Fleet Manager: it COMPOSES the production

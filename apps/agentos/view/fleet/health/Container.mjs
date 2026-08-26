@@ -1,4 +1,4 @@
-import Container    from '../../../../../src/container/Base.mjs';
+import Container    from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import HealthSwatch from './SwatchComponent.mjs';
 import SourceHealth from '../../../util/SourceHealth.mjs';
 

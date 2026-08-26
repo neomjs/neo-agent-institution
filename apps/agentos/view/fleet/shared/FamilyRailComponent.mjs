@@ -1,5 +1,5 @@
-import Component from '../../../../../src/component/Base.mjs';
-import NeoArray  from '../../../../../src/util/Array.mjs';
+import Component from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import NeoArray  from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
 
 import FamilyTokens from '../../../util/FamilyTokens.mjs';
 

@@ -1,4 +1,4 @@
-import Base from '../../../src/core/Base.mjs';
+import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
  * @summary The cockpit's ONE human-facing instant formatter: viewer-local, `Intl`-driven, with the

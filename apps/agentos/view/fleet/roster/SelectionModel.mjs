@@ -1,4 +1,4 @@
-import ListModel from '../../../../../src/selection/ListModel.mjs';
+import ListModel from '../../../../../node_modules/neo.mjs/src/selection/ListModel.mjs';
 
 /**
  * The roster's selection semantics: single-select (one detail pane, one memories target — the

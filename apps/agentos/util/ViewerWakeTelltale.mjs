@@ -1,4 +1,4 @@
-import Base           from '../../../src/core/Base.mjs';
+import Base           from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import AgentFreshness from './AgentFreshness.mjs';
 
 /**

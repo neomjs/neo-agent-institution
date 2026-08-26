@@ -1,7 +1,7 @@
-import Button             from '../../../../../src/button/Base.mjs';
-import FormContainer      from '../../../../../src/form/Container.mjs';
-import PasswordField      from '../../../../../src/form/field/Password.mjs';
-import TextField          from '../../../../../src/form/field/Text.mjs';
+import Button             from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import FormContainer      from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
+import PasswordField      from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
+import TextField          from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 import {listHarnessTypes} from '../../../config/harnessTypes.mjs';
 import AddAgentFlow       from '../../../util/AddAgentFlow.mjs';
 

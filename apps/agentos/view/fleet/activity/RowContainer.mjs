@@ -1,6 +1,6 @@
 import ActorChip  from './ActorChipComponent.mjs';
-import Component  from '../../../../../src/component/Base.mjs';
-import Container  from '../../../../../src/container/Base.mjs';
+import Component  from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import Container  from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import EventChip  from './EventChipComponent.mjs';
 import ViewerTime from '../../../util/ViewerTime.mjs';
 

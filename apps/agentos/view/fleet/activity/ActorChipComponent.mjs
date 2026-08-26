@@ -1,4 +1,4 @@
-import Component from '../../../../../src/component/Base.mjs';
+import Component from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 
 /**
  * The actor-identity chip: an avatar-first badge naming WHO acted, composed by the activity

@@ -1,5 +1,5 @@
-import Base                from '../../../src/core/Base.mjs';
-import DockZoneModel       from '../../../src/dashboard/DockZoneModel.mjs';
+import Base                from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import DockZoneModel       from '../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs';
 import CockpitDockDocument from './CockpitDockDocument.mjs';
 
 /**
