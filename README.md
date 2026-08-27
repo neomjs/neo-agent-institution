@@ -47,8 +47,7 @@ story in [What Is Neo.mjs?](https://github.com/neomjs/neo/blob/dev/learn/benefit
   runtime Agent Institution is built on.
 - [`neomjs/neo-agent-brain`](https://github.com/neomjs/neo-agent-brain) — **Brain / Agent OS**:
   institutional memory, repository knowledge, coordination, and runtime services.
-- **You are here:** [`neomjs/neo-agent-institution`](https://github.com/neomjs/neo-agent-institution)
-  — **Agent Institution**: the operator-facing product.
+- [`neomjs/neo-agent-institution`](https://github.com/neomjs/neo-agent-institution) — **Agent Institution**: the operator-facing product. **← You are here**
 - [`neomjs/devindex`](https://github.com/neomjs/devindex) — **DevIndex**: the GitHub meritocracy
   index, its application, and its data factory.
 - [`neomjs/neo-agent-skills`](https://github.com/neomjs/neo-agent-skills) — **Skills**: the canonical
