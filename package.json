@@ -26,14 +26,17 @@
         "create-app-minimal"   : "node ./node_modules/neo.mjs/buildScripts/create/appMinimal.mjs",
         "create-class"         : "node ./node_modules/neo.mjs/buildScripts/create/class.mjs",
         "create-component"     : "node ./node_modules/neo.mjs/buildScripts/create/component.mjs",
-        "server-start"         : "webpack serve -c ./node_modules/neo.mjs/buildScripts/webpack/webpack.server.config.mjs --open",
+        "server-start"         : "webpack serve -c ./buildScripts/webpack/webpack.server.config.mjs --open",
+        "server-start-ci"      : "webpack serve -c ./buildScripts/webpack/webpack.server.config.mjs --no-open",
         "generate-docs-json"   : "node ./node_modules/neo.mjs/buildScripts/docs/generateDocsJson.mjs",
         "test-e2e"             : "playwright test -c test/playwright/playwright.config.e2e.mjs",
+        "test-components"      : "playwright test -c test/playwright/playwright.config.component.mjs",
         "test-unit"            : "playwright test -c test/playwright/playwright.config.unit.mjs",
+        "test-visual"          : "playwright test -c test/playwright/playwright.config.visual.mjs",
         "watch-themes"         : "node ./node_modules/neo.mjs/buildScripts/helpers/watchThemes.mjs"
     },
     "dependencies": {
-        "neo.mjs": "git+https://github.com/neomjs/neo.git#dev"
+        "neo.mjs": "git+https://github.com/neomjs/neo.git#915c1a01e71822574c4b0a68b6394ddcecd5fcda"
     },
     "devDependencies": {
         "@fortawesome/fontawesome-free": "^7.3.0",
@@ -51,6 +54,7 @@
         "html-minifier-terser"         : "^7.2.0",
         "inquirer"                     : "^13.4.3",
         "jsdoc-api"                    : "^9.3.6",
+        "js-yaml"                      : "^4.1.1",
         "marked"                       : "^18.0.5",
         "mermaid"                      : "^11.16.0",
         "monaco-editor"                : "0.50.0",

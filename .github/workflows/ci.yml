@@ -1,0 +1,98 @@
+name: Institution CI
+
+on:
+    push:
+        branches:
+            - dev
+    pull_request:
+        branches:
+            - dev
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    isolated:
+        name: Isolated Institution
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+
+        steps:
+            - name: Checkout Institution
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Install Chromium
+              run: npx playwright install --with-deps chromium
+
+            - name: Run isolated unit tests
+              run: npm run test-unit
+
+            - name: Run isolated component tests
+              run: npm run test-components
+
+            - name: Run isolated E2E tests
+              run: npm run test-e2e
+              env:
+                  CI: 1
+
+    cross-repository:
+        name: Explicit Brain contract
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+
+        steps:
+            - name: Checkout Institution
+              uses: actions/checkout@v4
+              with:
+                  path: institution
+
+            - name: Checkout Brain
+              uses: actions/checkout@v4
+              with:
+                  repository: neomjs/neo-agent-brain
+                  ref: dev
+                  path: brain
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+
+            - name: Install Institution dependencies
+              run: npm ci
+              working-directory: institution
+
+            - name: Install Brain dependencies
+              run: npm ci
+              working-directory: brain
+
+            - name: Share one physical Engine dependency
+              run: |
+                  mv brain/node_modules/neo.mjs brain/node_modules/neo.mjs.brain-owned
+                  ln -s "${GITHUB_WORKSPACE}/institution/node_modules/neo.mjs" brain/node_modules/neo.mjs
+
+            - name: Run the full unit contract
+              run: npm run test-unit
+              working-directory: institution
+              env:
+                  NEO_AGENTOS_RUNTIME_ROOT: ${{ github.workspace }}/brain
+
+            - name: Collect the full E2E contract
+              run: npm run test-e2e -- --list
+              working-directory: institution
+              env:
+                  CI: 1
+                  NEO_AGENTOS_RUNTIME_ROOT: ${{ github.workspace }}/brain
