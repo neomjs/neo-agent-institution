@@ -31,7 +31,7 @@ import {randomUUID}                    from 'node:crypto';
 import fs                              from 'node:fs';
 import net                             from 'node:net';
 import path                            from 'node:path';
-import {fileURLToPath, pathToFileURL}  from 'node:url';
+import {pathToFileURL}                 from 'node:url';
 
 export const ORCHESTRATOR_ENTRY = 'ai/daemons/orchestrator/daemon.mjs';
 export const FLEET_SERVER_ENTRY = 'ai/services/fleet/devFleetServer.mjs';
@@ -41,17 +41,36 @@ export const FLEET_SERVER_ENTRY = 'ai/services/fleet/devFleetServer.mjs';
 // writes that before config load and before start(), so it only proves the process exists.
 const ORCHESTRATOR_READY_MARKER = '[Orchestrator] Started.';
 
-const
-    DEFAULT_REPO_ROOT     = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
-    fleetRuntimeContracts = new Map();
+const fleetRuntimeContracts = new Map();
+
+/**
+ * @summary Resolves the separately installed Agent OS checkout for checkout-mode supervision.
+ *
+ * The product repository owns the UI and Electron shell; it never becomes a fallback Brain root.
+ * Packaged callers pass their assembled organism root explicitly.
+ * @param {Object} [env=process.env]
+ * @returns {String}
+ */
+export function resolveAgentOsRuntimeRoot(env = process.env) {
+    const runtimeRoot = env.NEO_AGENTOS_RUNTIME_ROOT;
+
+    if (typeof runtimeRoot !== 'string' || !path.isAbsolute(runtimeRoot)) {
+        throw new TypeError(
+            'Agent OS supervision requires NEO_AGENTOS_RUNTIME_ROOT to name an absolute ' +
+            'neo-agent-brain checkout; Institution cwd fallback is forbidden.'
+        )
+    }
+
+    return path.resolve(runtimeRoot)
+}
 
 /**
  * Loads Fleet trust primitives from the selected organism instead of the shell bundle.
  * @summary Keeps checkout and packaged launchers on one canonical Fleet contract implementation.
- * @param {String} [repoRoot=DEFAULT_REPO_ROOT] Authoritative checkout or packaged organism root.
+ * @param {String} [repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain checkout or packaged organism root.
  * @returns {Promise<Object>}
  */
-export function loadFleetRuntimeContracts(repoRoot = DEFAULT_REPO_ROOT) {
+export function loadFleetRuntimeContracts(repoRoot = resolveAgentOsRuntimeRoot()) {
     const absoluteRoot = path.resolve(repoRoot);
 
     let contract = fleetRuntimeContracts.get(absoluteRoot);
@@ -404,7 +423,7 @@ export function assertIsolatedProfile({resolved, isolationRoot, chromaPort}) {
  * @param {Number|String} options.port
  * @param {String} options.bearerToken Main-owned process bearer.
  * @param {String} options.agentIdentityNodeId Trusted launcher's expected viewer node id.
- * @param {String} [options.repoRoot=DEFAULT_REPO_ROOT] Authoritative organism root.
+ * @param {String} [options.repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain root.
  * @param {Number} [options.timeoutMs=2500]
  * @param {Function} [options.fetchFn=fetch] Injection seam for tests.
  * @returns {Promise<Object>} Canonical `{reusable, reason}` probe outcome.
@@ -413,7 +432,7 @@ export async function probeFleetServing({
     port,
     bearerToken,
     agentIdentityNodeId,
-    repoRoot = DEFAULT_REPO_ROOT,
+    repoRoot = resolveAgentOsRuntimeRoot(),
     timeoutMs = 2500,
     fetchFn = fetch
 }) {
@@ -644,7 +663,7 @@ export function awaitOrchestratorReady({child, timeoutMs = 30000}) {
  * @param {import('node:child_process').ChildProcess} options.child
  * @param {Number|String} options.port
  * @param {String} options.bearerToken Main-owned process bearer.
- * @param {String} [options.repoRoot=DEFAULT_REPO_ROOT] Authoritative organism carrying the wire contract.
+ * @param {String} [options.repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain root carrying the wire contract.
  * @param {Number} [options.timeoutMs=15000]
  * @param {Function} [options.fetchFn=fetch] Injection seam for tests.
  * @returns {Promise<void>}
@@ -653,7 +672,7 @@ export function awaitFleetReady({
     child,
     port,
     bearerToken,
-    repoRoot = DEFAULT_REPO_ROOT,
+    repoRoot = resolveAgentOsRuntimeRoot(),
     timeoutMs = 15000,
     fetchFn = fetch
 }) {
@@ -857,7 +876,7 @@ export function registerOwnedChild({children, entry, watch, onUnobservedExit = n
  * @param {String} options.bearerToken The shell-held process bearer the spawned/probed transport must match.
  * @param {Number} options.fleetPort Loopback fleet port.
  * @param {String|null} [options.agentIdentityNodeId] Viewer claim for the reuse probe.
- * @param {String} [options.repoRoot=DEFAULT_REPO_ROOT]
+ * @param {String} [options.repoRoot=resolveAgentOsRuntimeRoot()]
  * @param {Function} [options.probePortFn=probePort] Raw occupancy probe (cheap, first).
  * @param {Function} [options.probeServingFn=probeFleetServing] Canonical-identity reuse probe.
  * @param {Function} options.spawn `({fleetPort}) => child` — starts the owned transport.
@@ -870,7 +889,7 @@ export async function resolveUiFleetTransport({
     bearerToken,
     fleetPort,
     agentIdentityNodeId = null,
-    repoRoot = DEFAULT_REPO_ROOT,
+    repoRoot = resolveAgentOsRuntimeRoot(),
     probePortFn = probePort,
     probeServingFn = probeFleetServing,
     spawn,

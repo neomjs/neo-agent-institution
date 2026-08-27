@@ -1,0 +1,7 @@
+{
+    "appPath"    : "test/playwright/component/apps/empty-viewport/app.mjs",
+    "basePath"   : "../../../../../",
+    "environment": "development",
+    "mainPath"      : "./Main.mjs",
+    "workerBasePath": "../../../../../node_modules/neo.mjs/src/worker/"
+}
