@@ -4,7 +4,7 @@ import fs              from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path            from 'node:path';
 
-import {newestMtime} from '../buildScripts/util/developmentThemeAssets.mjs';
+import {newestMtime} from '../node_modules/neo.mjs/buildScripts/util/developmentThemeAssets.mjs';
 
 const
     harnessDir = path.dirname(fileURLToPath(import.meta.url)),

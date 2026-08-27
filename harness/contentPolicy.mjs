@@ -42,6 +42,7 @@ export const ALLOWED_PATH_PREFIXES = Object.freeze([
     '/apps/agentos/',
     '/dist/development/css/',
     '/node_modules/@fortawesome/fontawesome-free/webfonts/',
+    '/node_modules/neo.mjs/src/',
     '/src/'
 ]);
 
