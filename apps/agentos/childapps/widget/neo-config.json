@@ -1,8 +1,8 @@
 {
-    "appPath"         : "../../../../apps/agentos/childapps/widget/app.mjs",
+    "appPath"         : "../../apps/agentos/childapps/widget/app.mjs",
     "basePath"        : "../../../../",
     "environment"     : "development",
-    "mainPath"        : "../node_modules/neo.mjs/src/Main.mjs",
+    "mainPath"        : "../../../node_modules/neo.mjs/src/Main.mjs",
     "themes"          : ["neo-theme-neo-dark", "neo-theme-neo-light"],
     "useAiClient"     : true,
     "useSharedWorkers": true,

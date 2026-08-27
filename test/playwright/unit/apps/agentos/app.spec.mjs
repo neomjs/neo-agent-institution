@@ -3,10 +3,34 @@ import {setup} from '../../../setup.mjs';
 setup({appConfig: {name: 'AgentOSShellRouteTest'}});
 
 import {expect, test} from '@playwright/test';
+import {readFileSync} from 'node:fs';
 import Neo            from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
 test.describe('AgentOS packaged Fleet window routing', () => {
+    test('the widget childapp resolves product and Engine paths from their owning modules', () => {
+        const
+            config         = JSON.parse(readFileSync(
+                new URL('../../../../../apps/agentos/childapps/widget/neo-config.json', import.meta.url),
+                'utf8'
+            )),
+            documentUrl    = new URL('http://localhost/apps/agentos/childapps/widget/index.html'),
+            microLoaderUrl = new URL('http://localhost/node_modules/neo.mjs/src/MicroLoader.mjs'),
+            appWorkerUrl   = new URL('http://localhost/node_modules/neo.mjs/src/worker/App.mjs');
+
+        expect(config).toMatchObject({
+            appPath       : '../../apps/agentos/childapps/widget/app.mjs',
+            mainPath      : '../../../node_modules/neo.mjs/src/Main.mjs',
+            workerBasePath: '../../../../node_modules/neo.mjs/src/worker/'
+        });
+        expect(new URL(config.mainPath, microLoaderUrl).pathname)
+            .toBe('/node_modules/neo.mjs/src/Main.mjs');
+        expect(new URL(`../../${config.appPath.slice(0, -4)}.mjs`, appWorkerUrl).pathname)
+            .toBe('/apps/agentos/childapps/widget/app.mjs');
+        expect(new URL(config.workerBasePath, documentUrl).pathname)
+            .toBe('/node_modules/neo.mjs/src/worker/')
+    });
+
     test('resolves from live membership on every call and uses the boot id only before registration', async () => {
         const {resolveFleetWindowId} = await import('../../../../../apps/agentos/app.mjs');
         const windows                = [
