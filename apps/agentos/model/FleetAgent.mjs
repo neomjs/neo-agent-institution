@@ -84,10 +84,13 @@ class FleetAgent extends Model {
             defaultValue: null
         }, {
             // The presence axis, same passthrough contract as `wake`/`throttle`: the
-            // roster row's `{source, state, confidence, lastSeenAt, reason?}` observation, where
-            // `state` is the plane's who_is_online band embryo (`online | idle | dark | benched |
-            // neverConnected | unknown`). The THIRD independent signal — presence-fresh ≠
-            // wake-route-healthy ≠ identity-bound — and the view never re-derives or fuses it.
+            // roster row's `{source, state, confidence, lastSeenAt, reason?, validationState?,
+            // since?}` observation, where `state` is the plane's who_is_online band embryo
+            // (`online | idle | dark | benched | neverConnected | unknown`). The THIRD independent
+            // signal — presence-fresh ≠ wake-route-healthy ≠ identity-bound — and the view never
+            // re-derives or fuses it. `validationState`/`since` are the provider's validation
+            // provenance (`stale-validated` + its onset): passed through verbatim for the card to
+            // PROJECT — never inferred, latched, or mutated downstream (#2).
             name        : 'presence',
             defaultValue: null
         }, {
