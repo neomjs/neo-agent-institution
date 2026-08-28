@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Institution memories pane — information design (the #20 memories slice, §04-scored)</title>
+<style>
+  :root {
+    --ground:#0b0e13; --panel:#141a23; --panel-2:#1a212c;
+    --line:#262f3d; --line-soft:#1c242f;
+    --ink:#d6dce6; --ink-dim:#8b97a8; --ink-faint:#5a6575;
+    --signal:#5eead4;
+    --warn:#f5b544;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    /* §04 T1 role tokens, mirrored for the sketch (values = TOKENS.md) */
+    --t-display:600 14px/1.3 var(--sans);
+    --t-body:400 12px/1.45 var(--sans);
+    --t-detail:400 11px/1.4 var(--mono);
+    --t-micro:400 10px/1.3 var(--mono);
+    --t-chrome:400 11px/1 var(--mono);
+    /* §04 T2 chip geometry */
+    --chip-pad-y:2px; --chip-pad-x:8px; --chip-radius:4px; --chip-gap:8px; --chip-mark-w:3px;
+    /* §04 rhythm */
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:36px 24px 64px}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--signal);margin:0}
+  h1{font-size:26px;letter-spacing:-.01em;margin:10px 0 6px;font-weight:640}
+  .lede{font-size:14px;color:var(--ink-dim);max-width:76ch;margin:0 0 26px}
+  .lede b{color:var(--ink)}
+  /* §04 text-color contract: information-bearing text renders --ink-dim (5.90:1 on panel) or
+     --ink; --ink-faint (2.96:1) survives only on decorative marks and borders */
+  .col-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:26px 0 8px}
+  .note{font-size:12px;color:var(--ink-dim);max-width:76ch;margin:8px 0 0}
+  .note b{color:var(--ink);font-weight:600}
+  .falsifier{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:6px;max-width:86ch}
+  .divider{border-top:1px solid var(--line-soft);margin:34px 0 26px}
+
+  /* ── the pane stage (drawer-shell owns the real frame) ── */
+  .pane{background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;max-width:680px;overflow:hidden}
+  .pane-head{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
+  .pane-title{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
+  .pane-sub{font:var(--t-micro);color:var(--ink-dim)}
+
+  /* recency eyebrow: the scan skeleton — cards group under viewer-calendar bands */
+  .band{font:var(--t-chrome);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);
+        padding:var(--sp-2) var(--sp-3) var(--sp-1);border-bottom:1px solid var(--line-soft);background:var(--panel-2)}
+
+  /* ── the session card ─────────────────────────────────────────────────────
+     head:  [kind chip] [title ......................] [derived] [age]
+     meta:  quality · impact · N memories · co-author monograms
+     body:  summary, 2-line clamp        actions: turns · hint  */
+  .card{padding:var(--sp-2) var(--sp-3);display:grid;gap:var(--sp-1)}
+  .card + .card{border-top:1px solid var(--line-soft)}
+  .chead{display:flex;align-items:baseline;gap:var(--chip-gap);min-width:0}
+  .kind{font:var(--t-micro);border-radius:var(--chip-radius);padding:var(--chip-pad-y) var(--chip-pad-x);
+        border:1px solid var(--line);color:var(--ink-dim);flex:none;position:relative;
+        padding-left:calc(var(--chip-pad-x) + var(--chip-mark-w) + 3px)}
+  .kind::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--chip-mark-w);
+        border-radius:var(--chip-radius) 0 0 var(--chip-radius);background:var(--kind,var(--ink-faint))}
+  .kind.k-arch{--kind:var(--signal)}
+  .kind.k-incident{--kind:var(--warn)}
+  .ctitle{font:var(--t-body);font-weight:600;color:var(--ink);flex:1;min-width:0;overflow:hidden;
+          display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .ctitle.is-missing{font-weight:400;color:var(--ink-dim)}
+  .prov{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;
+        padding:1px 7px;flex:none}
+  .age{font:var(--t-micro);color:var(--ink-dim);flex:none;margin-left:var(--sp-1)}
+
+  .cmeta{display:flex;align-items:center;gap:var(--chip-gap);font:var(--t-micro);color:var(--ink-dim);flex-wrap:wrap}
+  .mono-row{display:flex;gap:3px}
+  .mm{width:18px;height:18px;border-radius:50%;background:var(--panel-2);border:1px solid var(--line);
+      display:grid;place-items:center;font:var(--t-micro);color:var(--ink-dim);text-transform:uppercase}
+
+  .cbody{font:var(--t-detail);font-family:var(--sans);color:var(--ink-dim);overflow:hidden;
+         display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:68ch}
+  .cbody.is-missing{font-style:normal}
+
+  .cactions{display:flex;gap:var(--sp-1)}
+  .abtn{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:var(--chip-radius);
+        padding:var(--chip-pad-y) var(--chip-pad-x);background:var(--panel-2);cursor:pointer}
+  .abtn:hover{border-color:var(--ink-dim);color:var(--ink)}
+
+  /* ── the drill (turn rows): AUTHORED provenance, visually distinct from DERIVED cards ── */
+  .drill-head{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);
+              border-bottom:1px solid var(--line-soft);background:var(--panel-2)}
+  .trow{display:grid;grid-template-columns:18px 1fr auto;gap:0 var(--chip-gap);padding:var(--sp-2) var(--sp-3);align-items:start}
+  .trow + .trow{border-top:1px solid var(--line-soft)}
+  .tresponse{font:var(--t-body);color:var(--ink);overflow:hidden;display:-webkit-box;
+             -webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:68ch}
+  .tprompt{font:var(--t-detail);font-family:var(--sans);color:var(--ink-dim);margin-top:2px;overflow:hidden;
+           display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;max-width:68ch}
+  .tmeta{font:var(--t-micro);color:var(--ink-dim);margin-top:3px}
+
+  .pfoot{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line-soft)}
+  .pbtn{font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;padding:2px 9px;background:var(--panel-2)}
+  .pbtn:disabled{opacity:.45;cursor:not-allowed}
+  .empty{padding:var(--sp-4) var(--sp-3);font:var(--t-body);color:var(--ink-dim)}
+
+  table{border-collapse:collapse;font-size:12px;color:var(--ink-dim);margin-top:10px}
+  th,td{border:1px solid var(--line-soft);padding:6px 10px;text-align:left;vertical-align:top}
+  th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-dim)}
+  td b{color:var(--ink)}
+  td .mono{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">institution pane information design · #20 · memories slice</p>
+  <h1>The memories pane — a memory browser, not a dump</h1>
+  <p class="lede">The pane's data honesty is landed (coherence gates, named-null guards, T5 receipts) — but every fact renders into <b>one joined meta string</b> and every card looks like every other card. This sketch is the scan pattern over the <b>existing</b> <span style="font-family:var(--mono)">SessionSummary</span> / <span style="font-family:var(--mono)">SessionTurn</span> records: kind and recency become the two scan axes, the DERIVED↔AUTHORED provenance distinction becomes visual grammar, and the ticket's retrieval-hint affordance appears — all view-derivable, no new data capability.</p>
+
+  <div class="col-label">the summary level, composed — recency bands + kind chips (the scan skeleton)</div>
+  <div class="pane">
+    <div class="pane-head">
+      <span class="pane-title">Memories</span>
+      <span class="pane-sub">@neo-fable-clio · corpus</span>
+    </div>
+
+    <div class="band">today</div>
+
+    <div class="card">
+      <div class="chead">
+        <span class="kind k-arch">architecture</span>
+        <span class="ctitle">The post-split re-entry day: five merges, the seat forensic, the equal-peers correction</span>
+        <span class="prov" title="derived by the Dream pipeline from the session's raw turns">derived</span>
+        <span class="age" title="2026-08-28T19:59:50.800Z">21:59</span>
+      </div>
+      <div class="cmeta">
+        <span>quality 87 · impact 72</span><span>·</span><span>41 memories</span><span>·</span>
+        <span class="mono-row" title="co-authored with @neo-gpt-emmy, @neo-gpt"><span class="mm">em</span><span class="mm">eu</span></span>
+      </div>
+      <div class="cbody">Recovered the post-split world, merged the extraction-debt trio closer, restored the frozen PR head through the operator's equal-peer authorization, and banked the Desktop config write-back law…</div>
+      <div class="cactions">
+        <button class="abtn" type="button">⇥ turns</button>
+        <button class="abtn" type="button" title="copy: query_raw_memories(&quot;post-split re-entry five merges seat forensic&quot;)">⎘ retrieval hint</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead">
+        <span class="kind k-incident">incident</span>
+        <span class="ctitle">Fleet harness crash — two outage classes, one silent config revert</span>
+        <span class="prov">derived</span>
+        <span class="age" title="2026-08-28T19:40:39.066Z">21:40</span>
+      </div>
+      <div class="cmeta"><span>quality 91 · impact 84</span><span>·</span><span>12 memories</span></div>
+      <div class="cbody">Claude Desktop persists its in-memory config on exit; an edit under a running instance silently reverts at the next quit or crash…</div>
+      <div class="cactions">
+        <button class="abtn" type="button">⇥ turns</button>
+        <button class="abtn" type="button" title="copy: query_raw_memories(&quot;fleet harness crash config write-back&quot;)">⎘ retrieval hint</button>
+      </div>
+    </div>
+
+    <div class="band">earlier</div>
+
+    <!-- the all-null card: every fallback is the pane's NAMED word (guarded-null contract, kept) -->
+    <div class="card">
+      <div class="chead">
+        <span class="kind">uncategorized</span>
+        <span class="ctitle is-missing">Title unavailable for this session.</span>
+        <span class="prov">derived</span>
+        <span class="age">—</span>
+      </div>
+      <div class="cbody is-missing">Summary unavailable for this session.</div>
+      <div class="cactions"><button class="abtn" type="button">⇥ turns</button></div>
+    </div>
+
+    <div class="pfoot">
+      <span style="font:var(--t-micro);color:var(--ink-dim)">3 sessions</span>
+      <button class="pbtn" type="button" style="margin-left:auto" disabled>newer</button>
+      <button class="pbtn" type="button">older</button>
+    </div>
+  </div>
+
+  <div class="col-label">the drill — authored turn rows under the derived card (provenance grammar, two levels)</div>
+  <div class="pane">
+    <div class="drill-head">
+      <button class="abtn" type="button">← summaries</button>
+      <span class="pane-sub" style="flex:1">session 4f07d934 · The post-split re-entry day</span>
+      <span class="prov" title="agent-authored records: the resident's own prompt/thought/response trail">authored</span>
+    </div>
+    <div class="trow">
+      <span class="mm">cl</span>
+      <div>
+        <div class="tresponse">Institution #2 claimed, implemented, tested (710 unit + 6/6 visual), PR #35 open with Emmy as reviewer — the extraction-debt trio closes.</div>
+        <div class="tprompt">Operator: "well, feel free to choose new lanes."</div>
+        <div class="tmeta">22 tool calls</div>
+      </div>
+      <span class="age" title="2026-08-28T15:42:20.608Z">17:42</span>
+    </div>
+    <div class="trow">
+      <span class="mm">cl</span>
+      <div>
+        <div class="tresponse">Brain #207 approved zero-RA with positive-controlled falsification; my #35 RA-1 addressed body-only at the same head.</div>
+        <div class="tprompt">Emmy's twin lifecycle events: review request on #207 + her Round-1 on my #35.</div>
+        <div class="tmeta">18 tool calls</div>
+      </div>
+      <span class="age" title="2026-08-28T16:07:12.282Z">18:07</span>
+    </div>
+    <div class="pfoot">
+      <span style="font:var(--t-micro);color:var(--ink-dim)">turns 1–2</span>
+      <button class="pbtn" type="button" style="margin-left:auto">more</button>
+    </div>
+  </div>
+
+  <div class="col-label">the cold pane, rendered — absence as absence (#20 AC: cold and full both read intentionally)</div>
+  <div class="pane"><div class="empty">No sessions in this corpus.</div></div>
+
+  <p class="note"><b>The hierarchy in one sentence:</b> the title is the only weighted line and the recency band is the outer skeleton; kind is a closed-set chip on the T2 kind axis (EventChip's <span style="font-family:var(--mono)">--fm-kind-*</span> mechanism — unknown kind renders the neutral chip, never a borrowed severity); quality/impact/count stay honest mono facts (no meters — a bar would decorate what the number already says); co-authors compress to monogram marks with the full identities on <span style="font-family:var(--mono)">title</span>.</p>
+  <p class="note"><b>Provenance grammar (the two-level distinction the models already carry):</b> summary cards wear <b>derived</b> (pill, quiet) — the Dream pipeline wrote them; drill rows wear <b>authored</b> once in the drill head — the resident wrote them. The response is the authored row's primary line (the pane's existing ruling, kept), prompt demotes to one detail line, <span style="font-family:var(--mono)">amountToolCalls</span> stays a micro fact.</p>
+  <p class="note"><b>The retrieval-hint affordance (#20's named element):</b> an affordance-class chip per card — activating it copies the card's <span style="font-family:var(--mono)">query_raw_memories("…")</span> form (derived view-locally from title/session — clipboard is a view capability, no adapter change) so an operator or agent can jump from the browser into Memory Core recall. The exact query rides the button <span style="font-family:var(--mono)">title</span>; a card with no derivable hint renders no chip (exception logic, T2).</p>
+  <p class="note"><b>Implementation destination + interaction (#24 law 0 · law 1):</b> the summary level is a custom-styled <span style="font-family:var(--mono)">Neo.grid.Container</span> (the primitive map names memories with the mailbox surfaces), law-1 name <span style="font-family:var(--mono)">AgentOS.view.fleet.memories.Grid</span>; recency bands are section rows, cards are the row design. Selection/focus/keyboard are grid-owned; the existing drill-in (open/back/more, INTENT-shaped) keeps its mechanics as row→detail — read-only throughout, nothing writes to the corpus from this surface.</p>
+
+  <div class="divider"></div>
+
+  <div class="col-label">field → element contract (every element maps to a shipped record field)</div>
+  <table>
+    <tr><th>record field</th><th>element</th><th>role token</th><th>rule</th></tr>
+    <tr><td class="mono">category</td><td>kind chip, closed set</td><td>micro</td><td>the kind scan axis; null → <b>uncategorized</b> neutral chip (named, never blank)</td></tr>
+    <tr><td class="mono">timestamp</td><td>right-pinned age + recency band</td><td>micro / chrome</td><td><b>T5:</b> ViewerTime (kept); bands break on the VIEWER's calendar (today / yesterday / earlier)</td></tr>
+    <tr><td class="mono">title</td><td>the one weighted line, 2-line clamp</td><td>body 600</td><td>guarded null → <b>Title unavailable for this session.</b> unweighted (the pane's word, kept)</td></tr>
+    <tr><td class="mono">summary</td><td>2-line clamped body, 68ch cap</td><td>detail (sans)</td><td>guarded null → <b>Summary unavailable for this session.</b></td></tr>
+    <tr><td class="mono">quality / impact / memoryCount</td><td>mono fact row</td><td>micro</td><td>numbers stay numbers; any null renders nothing (no fake zeros, no meters)</td></tr>
+    <tr><td class="mono">sourceAgentIdentities</td><td>co-author monogram row</td><td>micro</td><td>selected target excluded (existing rule); full identities on <span class="mono">title</span>; empty → nothing</td></tr>
+    <tr><td class="mono">sessionId</td><td>drill-head identity + hint derivation</td><td>micro</td><td>8-char form (existing); <b>unknown</b> when absent</td></tr>
+    <tr><td>drill: <span class="mono">response / prompt / thought</span></td><td>primary line / detail line / drill-only detail</td><td>body / detail</td><td>response stays primary (existing ruling); guarded nulls keep the pane's named words</td></tr>
+    <tr><td>drill: <span class="mono">agentIdentity / amountToolCalls</span></td><td>monogram / micro fact</td><td>micro</td><td>null identity → <b>?</b> monogram; null count → nothing</td></tr>
+  </table>
+
+  <p class="falsifier">falsifier drills: (1) gray-filter pass — kind chips must survive hue removal (the WORD carries the kind, the mark is accent: law-1); (2) the all-null card (rendered in the "earlier" band) resolves every absent field to the pane's NAMED word — no blank slot, no fake zero; (3) no text below --fm-text-micro anywhere; (4) the paging edge is a genuinely disabled native button.</p>
+  <p class="falsifier">implementation acceptance (the later sub, not this sketch): zero font-size literals in memories SCSS · zero toISOString-derived human strings · both themes via tokens · grid-owned keyboard path · shell-seam guard green (frame-free pane root) · the retrieval-hint copy is view-local (no adapter change).</p>
+</div>
+</body>
+</html>
