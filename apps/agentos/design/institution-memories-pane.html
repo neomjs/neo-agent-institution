@@ -228,12 +228,11 @@
   </div>
   <p class="note"><b>No paging chrome (operator direction, 2026-08-28):</b> paging buttons are an artifact of the hand-rolled offset windows — the buffered <span style="font-family:var(--mono)">grid.Container</span> destination scrolls, and the total ("3 sessions") belongs to the pane-head subtitle, not a footer strip. Precisely separated: <span style="font-family:var(--mono)">bufferRowRange</span> only bounds and recycles the MOUNTED rows over the locally loaded collection — it fetches nothing. Data acquisition is a controller-owned scroll-edge contract: one in-flight request at a time against the pane's target (session + page), page-echo validation before append, duplicate-request suppression, an honest loading tail while a page streams in (<span style="font-family:var(--mono)">Loading memories…</span>), an error state with retry when a page fails, and silence once the corpus end is reached. The engine-side generalization of that seam is neomjs/neo#17835 (scroll-edge on-demand loading for buffered grid + list); until it lands, the pane's controller owns the trigger.</p>
 
-  <div class="col-label">register 4 · drill — authored turn rows, short↔full toggle (the detail parameter)</div>
+  <div class="col-label">register 4 · drill — authored turn rows, full-only by design</div>
   <div class="pane">
     <div class="drill-head">
       <button class="abtn" type="button">← summaries</button>
       <span class="pane-sub" style="flex:1">session 4f07d934 · The post-split re-entry day · 41 turns</span>
-      <button class="abtn" type="button" title="detail: 'summary' ↔ 'full' — miniSummary from the graph vs the complete prompt/response join">full ⇄ short</button>
       <span class="prov" title="agent-authored records: the resident's own prompt/thought/response trail">authored</span>
     </div>
     <div class="trow">
@@ -285,7 +284,7 @@
     <tr><td class="mono">sessionId</td><td>drill-head identity + hint derivation, 8-char form</td><td>micro</td><td><b>auto-generated at write time</b> (crypto.randomUUID / SessionService.currentSessionId — MemoryService.mjs:578-582): every memory carries one, so the drill affordance is <b>always executable</b></td></tr>
     <tr><td>drill: <span class="mono">response / prompt / thought</span></td><td>primary line / labeled line / labeled line</td><td>body / body / body</td><td>all three are validated-required at <span class="mono">add_memory</span> (empty fields rejected — the corrupted-memory class) and <b>all three render</b> — the complete stored turn contract, nothing hidden: response primary (existing ruling), prompt + thought as labeled 1-line-clamped secondary lines; the drill's row→detail presents them un-clamped</td></tr>
     <tr><td>drill: <span class="mono">agent / model / amountToolCalls / toolsUsed</span></td><td>monogram / meta line facts</td><td>micro</td><td>the live <span class="mono">listMemories</span> pass-through shape (MemoryService.mjs:1349-1361 — the fleet sources forward it unchanged): <span class="mono">agent</span> feeds the monogram, <span class="mono">model</span> + tool-call count + <span class="mono">toolsUsed</span> (count, full list on <span class="mono">title</span>) form the meta line. The Institution model aligns to these field names in the implementation sub — declared, not silently deferred</td></tr>
-    <tr><td>drill: <span class="mono">miniSummary</span> (detail toggle)</td><td>the short↔full switch in the drill head</td><td>—</td><td>the API's own <span class="mono">detail: 'summary' | 'full'</span> parameter — short = graph-side miniSummary (backfill-generated), full = the complete prompt/response join; the toggle maps 1:1 to the parameter</td></tr>
+    <tr><td>drill scope</td><td><b>full-only by design</b></td><td>—</td><td>the session drill invokes <span class="mono">get_session_memories</span> / <span class="mono">listMemories(sessionId, limit, offset)</span>, which has no <span class="mono">detail</span> parameter — and the operator's session view shows the complete stored contract anyway. The short form (<span class="mono">detail:'summary'</span>, graph-side miniSummary) belongs to <span class="mono">query_recent_turns</span>: cross-session, identity-filtered, reverse-chronological, public projection (thought stripped) — the future recency-ticker register in the capability table, never a toggle on this drill</td></tr>
   </table>
 
   <div class="col-label">capability → register map (what the MC ships vs what the fleet server exposes today)</div>
@@ -294,7 +293,7 @@
     <tr><td class="mono">get_all_summaries / get_session_memories</td><td>browse cards + drill rows</td><td><b>exposed</b> — the existing pass-through sources</td></tr>
     <tr><td class="mono">query_summaries / query_raw_memories</td><td>register 1 · the search field (relevance-ranked results)</td><td><b>needs a fleet source op</b> (same S1 pattern + policy ladder) — named dependency</td></tr>
     <tr><td class="mono">explore_memory_history</td><td>register 2 · bird-view panorama (grain rail)</td><td><b>needs a fleet source op</b> — named dependency</td></tr>
-    <tr><td class="mono">detail: 'summary' | 'full' (miniSummary)</td><td>register 4 · the short↔full drill toggle</td><td><b>needs the parameter forwarded</b> through the existing session-memories source</td></tr>
+    <tr><td class="mono">query_recent_turns (detail: 'summary' | 'full')</td><td>a future cross-session <b>recency ticker</b> — identity-filtered, reverse-chrono, miniSummary short form, public projection (thought stripped)</td><td><b>needs a fleet source op</b>; the session drill stays full-only — <span class="mono">listMemories</span> carries no detail parameter</td></tr>
     <tr><td class="mono">query_hybrid_graph</td><td>graph-side recency + relations (feeds future cross-links)</td><td>out of this pane's first cut — recorded so nobody re-invents it</td></tr>
   </table>
   <p class="note"><b>Honesty rule for the gaps:</b> the three "needs a fleet source op" rows are DEPENDENCIES of the implementation sub, not fiction in the sketch — the MC operations exist and are exercised daily by the residents; the fleet server exposes them through the same source pattern the two pass-throughs already use. Until a source op lands, its register renders nothing (no placeholder chrome).</p>
