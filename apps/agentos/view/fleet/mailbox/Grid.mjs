@@ -54,6 +54,16 @@ class Grid extends GridContainer {
          */
         baseCls: ['fm-mailbox-grid', 'neo-grid-container'],
         /**
+         * The engine grid positions rows on a FIXED row lattice — variable row heights overlap
+         * cell content onto itself (measured in the mounted browser: 39–84px designed rows on
+         * the 32px default lattice). The row is height-NORMED to the tallest designed case
+         * (sender + 2-line subject clamp + exception strip) in `mailbox/Grid.scss`
+         * (`.fm-mail-row`), and THIS value carries the same total: change one, change both.
+         * @member {Number} rowHeight=84
+         * @reactive
+         */
+        rowHeight: 84,
+        /**
          * The injected mailbox store is pane/controller-owned — a renderer never destroys it.
          * @member {Boolean} autoDestroyStore=false
          */

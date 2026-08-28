@@ -25,6 +25,11 @@
         gap                  : 0 var(--fm-space-2);
         align-items          : start;
         width                : 100%;
+        /* height-NORMED to the tallest designed case for the engine's fixed row lattice —
+           = the grid's rowHeight config (mailbox/Grid.mjs); change one, change both. Quieter
+           rows keep the rhythm with whitespace; overflow clamps, never grows. */
+        height               : 84px;
+        overflow             : hidden;
         padding              : var(--fm-space-2) var(--fm-space-3);
         border-bottom        : 1px solid var(--fm-line-soft);
 
