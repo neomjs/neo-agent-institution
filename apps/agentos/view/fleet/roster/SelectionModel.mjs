@@ -88,9 +88,13 @@ class SelectionModel extends ListModel {
      * the list's own measured width on every resize — so vertical steps stay visually true through
      * every reflow; without the plugin (or at one column) the step degrades to the flat order.
      * Vertical edges are hard stops: a step that would leave the grid is a no-op, never a wrap and
-     * never a column jump (the Navigator's own horizontal pair owns wrap semantics). The move
-     * executes through the Navigator addon, so DOM focus, scroll-into-view and the `focusIndex`
-     * round-trip stay owned by the same authority the horizontal axis uses.
+     * never a column jump (the Navigator's own horizontal pair owns wrap semantics).
+     *
+     * The move DELEGATES to the list's own {@link Neo.list.Base#updateItemFocus}, which owns the
+     * complete Navigator envelope: the top-level `windowId` the remote layer routes multi-window
+     * calls by (a nested-only id would silently route a popped-out roster's focus to the main
+     * window), the enriched subscription data block, headerless index translation, and the
+     * not-yet-mounted replay.
      * @param {Number} step ±1 visual row.
      * @protected
      */
@@ -106,10 +110,7 @@ class SelectionModel extends ListModel {
             return
         }
 
-        Neo.main.addon.Navigator.navigateTo({
-            data  : {id: view.id, windowId: view.windowId},
-            target
-        })
+        view.updateItemFocus(target)
     }
 }
 
