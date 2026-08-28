@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FM mailbox pane — information design (the #20 mailbox slice, §04-scored)</title>
+<title>Institution mailbox pane — information design (the #20 mailbox slice, §04-scored)</title>
 <style>
   :root {
     --ground:#0b0e13; --panel:#141a23; --panel-2:#1a212c;
@@ -32,17 +32,19 @@
   h2{font-size:15px;margin:0 0 4px}
   .lede{font-size:14px;color:var(--ink-dim);max-width:76ch;margin:0 0 26px}
   .lede b{color:var(--ink)}
-  .col-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin:26px 0 8px}
+  /* §04 text-color contract: information-bearing text renders --ink-dim (5.90:1 on panel) or
+     --ink; --ink-faint (2.96:1) survives only on decorative marks, borders and monogram fill */
+  .col-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:26px 0 8px}
   .note{font-size:12px;color:var(--ink-dim);max-width:76ch;margin:8px 0 0}
   .note b{color:var(--ink);font-weight:600}
-  .falsifier{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:6px;max-width:86ch}
+  .falsifier{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:6px;max-width:86ch}
   .divider{border-top:1px solid var(--line-soft);margin:34px 0 26px}
 
   /* ── the pane frame (drawer-shell owns the real frame; this is the stage) ── */
   .pane{background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;max-width:640px;overflow:hidden}
   .pane-head{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
   .pane-title{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
-  .pane-sub{font:var(--t-micro);color:var(--ink-faint)}
+  .pane-sub{font:var(--t-micro);color:var(--ink-dim)}
   .compose{margin-left:auto;font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;
            padding:3px 10px;background:var(--panel-2);cursor:pointer}
   .compose:hover{border-color:var(--ink-dim);color:var(--ink)}
@@ -59,7 +61,6 @@
   .udot{width:7px;height:7px;border-radius:50%;margin-top:5px;background:transparent}
   .mrow.is-unread .udot{background:var(--signal)}
   .mrow.is-unread .subject{font-weight:600;color:var(--ink)}
-  .mrow.is-unread .sender{color:var(--ink-dim)}
 
   /* sender identity mark: a monogram derived from the @-handle (view-derivable today).
      Family hue joins ONLY if the adapter ever ships a family field — never handle-guessing. */
@@ -67,11 +68,11 @@
          display:grid;place-items:center;font:var(--t-micro);color:var(--ink-dim);text-transform:uppercase}
 
   .mcontent{min-width:0}
-  .sender{font:var(--t-detail);color:var(--ink-faint);display:flex;gap:var(--chip-gap);align-items:baseline}
+  .sender{font:var(--t-detail);color:var(--ink-dim);display:flex;gap:var(--chip-gap);align-items:baseline}
   .subject{font:var(--t-body);color:var(--ink-dim);margin-top:1px;overflow:hidden;display:-webkit-box;
            -webkit-line-clamp:2;-webkit-box-orient:vertical}
-  .mrow.status-retracted .subject{text-decoration:line-through;color:var(--ink-faint)}
-  .mrow.status-retracted .sender{color:var(--ink-faint)}
+  /* retracted: the strike is the state channel; the words keep readable ink (never faint) */
+  .mrow.status-retracted .subject{text-decoration:line-through}
 
   /* the exception strip: chips render ONLY for deviations/signals (T2 exception-only class):
      direct+normal+plain earns zero pixels here. */
@@ -82,11 +83,11 @@
                 border-radius:var(--chip-radius) 0 0 var(--chip-radius);background:var(--mark,var(--ink-faint))}
   .chip.prio-high{--mark:var(--warn);color:var(--ink)}
   .chip.task{--mark:var(--signal)}
-  .chip.bcast{--mark:var(--ink-faint)}
-  .tickets{font:var(--t-micro);color:var(--ink-faint)}
+  .chip.bcast{--mark:var(--ink-faint)} /* the MARK stays faint (decorative); the chip word is dim */
+  .tickets{font:var(--t-micro);color:var(--ink-dim)}
 
   /* age: T5 viewer-local — same-day = time only, older = compact date; exact ISO rides title */
-  .age{font:var(--t-micro);color:var(--ink-faint);white-space:nowrap;margin-top:3px;text-align:right}
+  .age{font:var(--t-micro);color:var(--ink-dim);white-space:nowrap;margin-top:3px;text-align:right}
 
   /* ── thread grouping: head + rail-indented members, collapse as the one affordance ── */
   .thread{border-top:1px solid var(--line-soft)}
@@ -99,22 +100,22 @@
 
   /* paging strip: chrome tier, disabled edges stay visible (the landed honesty semantics) */
   .pfoot{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line-soft)}
-  .pfoot .range{font:var(--t-micro);color:var(--ink-faint)}
+  .pfoot .range{font:var(--t-micro);color:var(--ink-dim)}
   .pbtn{font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;padding:2px 9px;background:var(--panel-2)}
-  .pbtn[aria-disabled="true"]{opacity:.45}
+  .pbtn:disabled{opacity:.45;cursor:not-allowed}
 
-  .empty{padding:var(--sp-4) var(--sp-3);font:var(--t-body);color:var(--ink-faint)}
+  .empty{padding:var(--sp-4) var(--sp-3);font:var(--t-body);color:var(--ink-dim)}
 
   table{border-collapse:collapse;font-size:12px;color:var(--ink-dim);margin-top:10px}
   th,td{border:1px solid var(--line-soft);padding:6px 10px;text-align:left;vertical-align:top}
-  th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
+  th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-dim)}
   td b{color:var(--ink)}
   td .mono{font-family:var(--mono)}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <p class="eyebrow">fm pane information design · #20 · mailbox slice</p>
+  <p class="eyebrow">institution pane information design · #20 · mailbox slice</p>
   <h1>The mailbox pane — a mail client, not a log</h1>
   <p class="lede">The south-pane mailbox renders correct data as <b>subject + one joined meta string</b> (raw ISO included — a T5 violation on its own). This sketch is the designed row anatomy over the <b>existing</b> <span style="font-family:var(--mono)">MailboxMessage</span> record — every element below maps to a field the adapter already ships; no new data capability is assumed. Store contracts, pagination honesty, thread mechanics, and the read-only MUST-NOT (no mark-read on this side of the seam) are untouched: this is view-layer typography over the landed truth.</p>
 
@@ -185,7 +186,9 @@
 
     <div class="pfoot">
       <span class="range">1–4</span>
-      <button class="pbtn" type="button" aria-disabled="true">newer</button>
+      <!-- genuinely disabled at the edge: the native attribute carries look, announcement and
+           refusal in one; the shipped pane adds aria-disabled where its button root differs -->
+      <button class="pbtn" type="button" disabled>newer</button>
       <button class="pbtn" type="button">older</button>
     </div>
   </div>
@@ -228,15 +231,29 @@
   </div>
   <p class="note"><b>Thread reading order:</b> the head stays the NEWEST message (the pane's newest-first order, unchanged mechanics); members follow beneath it on the rail. Members keep the full row anatomy minus the exception strip when they carry no exceptions — the rail, not repetition, says "same conversation".</p>
 
+  <div class="col-label">the all-null row, rendered — every fallback is a named word, never a blank</div>
+  <div class="pane">
+    <div class="mrow">
+      <span class="udot"></span>
+      <span class="smark">?</span>
+      <div class="mcontent">
+        <div class="sender">unknown sender</div>
+        <div class="subject">(no subject)</div>
+      </div>
+      <span class="age">—</span>
+    </div>
+  </div>
+  <p class="note"><b>The named fallbacks (surface-owned words, T5 miss-copy):</b> <span style="font-family:var(--mono)">from</span> null → <b>unknown sender</b> with the <b>?</b> monogram; <span style="font-family:var(--mono)">subject</span> null → <b>(no subject)</b> (the shipped pane's word, kept); <span style="font-family:var(--mono)">sentAt</span> null → <b>—</b> (the dense-row form) with no title. Status null renders the read presentation; every other null field renders nothing — the exception strip stays empty rather than inventing a chip.</p>
+
   <p class="note"><b>The hierarchy in one sentence:</b> the subject is the only body-tier line and read-state is its weight; sender + age frame it at the detail/micro tiers; everything else renders only as an exception chip. A direct, normal-priority, plain, read message is <b>two quiet lines and zero chips</b> — the T2 exception-only class applied to mail.</p>
-  <p class="falsifier">falsifier drills: (1) gray-filter pass — unread must survive hue removal (weight is the second channel, law-1); (2) a row with every field null renders sender + "(no subject)" + age and nothing else; (3) the 9px→10px micro migration (T1 disposition row names MailboxPane) means NO text below --fm-text-micro anywhere on this surface.</p>
+  <p class="falsifier">falsifier drills: (1) gray-filter pass — unread must survive hue removal (weight is the second channel, law-1); (2) the all-null row (rendered below the thread section) resolves every absent field to its NAMED word — unknown sender · (no subject) · — · empty exception strip — never a blank slot; (3) the 9px→10px micro migration (T1 disposition row names MailboxPane) means NO text below --fm-text-micro anywhere on this surface.</p>
 
   <div class="divider"></div>
 
   <div class="col-label">field → element contract (every element maps to a shipped record field)</div>
   <table>
     <tr><th>record field</th><th>element</th><th>role token</th><th>rule</th></tr>
-    <tr><td class="mono">status</td><td>unread dot + subject weight; <b>retracted</b> = line-through + faint</td><td>—</td><td>the SUBJECT agent's queue fact (never operator state — landed SCSS note survives verbatim); two channels per law-1</td></tr>
+    <tr><td class="mono">status</td><td>unread dot + subject weight; <b>retracted</b> = line-through (words keep readable ink)</td><td>—</td><td>the SUBJECT agent's queue fact (never operator state — landed SCSS note survives verbatim); two channels per law-1</td></tr>
     <tr><td class="mono">from</td><td>monogram mark + @-handle</td><td>detail</td><td>monogram derives from the handle in the view; family hue only if the adapter ever ships a family field — <b>no handle-guessing</b></td></tr>
     <tr><td class="mono">subject</td><td>the one body-tier line, 2-line clamp</td><td>body</td><td>escaped text, never markup (adapter redaction contract unchanged)</td></tr>
     <tr><td class="mono">sentAt</td><td>right-pinned age</td><td>micro</td><td><b>T5:</b> ViewerTime — same-day → time only, older → compact date + time, exact ISO on <span class="mono">title</span>; the raw-ISO meta string retires</td></tr>
@@ -247,6 +264,11 @@
     <tr><td class="mono">partOfThread / threadCollapsed</td><td>head + rail-indented members; <span class="mono">+N earlier</span> toggle</td><td>micro</td><td>mechanics unchanged (native button, aria-expanded); the toggle adopts T2 affordance-chip geometry</td></tr>
     <tr><td class="mono">wakeSuppressed</td><td>title-level detail only</td><td>—</td><td>suppression is delivery metadata, not scan-tier information — it rides the row title with the ISO instant</td></tr>
   </table>
+
+  <div class="col-label">implementation destination + interaction contract (#24 law 0 · law 1)</div>
+  <p class="note"><b>The destination is a custom-styled <span style="font-family:var(--mono)">Neo.grid.Container</span></b> — the #24 primitive map names it for every mailbox surface ("mailbox surfaces, memories and catch-up → grid.Container"), and law 1 names the class <span style="font-family:var(--mono)">AgentOS.view.fleet.mailbox.Grid</span>. The rows above are the grid's row design, not a hand-rolled container tree: buffered rendering, store-driven sorting (newest-first stays the binding sort) and row lifecycle come from the primitive.</p>
+  <p class="note"><b>Interaction is grid-owned:</b> Up/Down move row focus and click/Enter select through the grid's own selection model — no bespoke key handling. <b>Row → detail:</b> the selected row opens a READ-ONLY detail presentation of its summary facts (full un-clamped subject, every chip spelled out, both exact ISO instants, the complete ticket list, the wakeSuppressed delivery fact). Opening a row NEVER writes: the mirror's read-only MUST-NOT stands — no mark-read from this surface, on selection, expansion or detail. The thread toggle stays a row-level native button inside the grid row (unchanged mechanics, T2 affordance geometry).</p>
+  <p class="note"><b>Named dependency — the message body:</b> the mirror row is body-free by adapter design (summary facts only), so the detail presentation renders summary facts until the Fleet mailbox read adapter ships a body/preview field. That adapter extension is a data-capability decision outside #20 (the real-data sibling owns wiring); the design states the dependency instead of silently dropping the affordance.</p>
 
   <p class="note"><b>Compose placement:</b> the pane header carries the compose affordance (affordance-class chip, right-pinned — reachable without scroll). The operator direction leaves a second option open: compose as its OWN south tab. The header affordance works in both worlds — if compose becomes a tab, the button routes there instead of opening the inline form; the row anatomy above is placement-independent. <b>Decision slot (operator/team):</b> inline reveal vs south tab — the sketch does not pre-decide it.</p>
   <p class="note"><b>Two scopes, one pane (the #30 design note):</b> the anatomy above is scope-blind by construction — operator inbox and (post-S5) a selected resident's mirror render the same rows; only the pane-head subtitle (<span class="mono">operator inbox</span> ↔ <span class="mono">@agent mirror</span>) names the scope. Nothing in this sketch assumes S5.</p>
