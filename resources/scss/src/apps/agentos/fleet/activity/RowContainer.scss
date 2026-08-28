@@ -8,7 +8,7 @@
     column-gap           : 10px;
     display              : grid;
     grid-template-columns: auto auto auto auto minmax(0, 1fr);
-    padding              : var(--fm-space-2) 0;
+    padding              : var(--fm-space-1) 0;
 
     .fm-ev-time,
     .fm-ev-recipient {
@@ -42,12 +42,18 @@
         align-content        : center;
         column-gap           : var(--fm-space-2);
         grid-template-columns: auto auto minmax(0, 1fr) auto;
-        grid-template-rows   : 18px 18px;
-        padding              : 5px 0;
+        /* Two lines inside the SAME 32px pool height as the wide grammar: 1px row border +
+           2px vertical padding leave 27px of content, so 13px lines are the ceiling. */
+        grid-template-rows   : 13px 13px;
+        padding              : 2px 0;
 
         .fm-ev-object {
             grid-column: 1 / -1;
             grid-row   : 2;
+        }
+
+        .fm-event-chip {
+            padding-block: 0;
         }
     }
 }

@@ -287,10 +287,23 @@
         }
     }
 
-    /* the honest control round-trip surface — hidden until a pending intent / terminal reason */
+    /* the honest control round-trip surface — hidden until a pending intent / terminal reason.
+       ONE line by contract: it borrows the lane's second work line (see .fm-control-live), so a
+       wrapping reason would re-grow the card past the roster's uniform row height — the full
+       reason stays reachable via the title receipt the component sets. */
     .fm-card-control-status {
-        font : var(--fm-text-micro);
-        color: var(--fm-ink-dim);
+        font         : var(--fm-text-micro);
+        color        : var(--fm-ink-dim);
+        white-space  : nowrap;
+        overflow     : hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* While a control round-trip is live (root cls from the card component), the second work line
+       belongs to the status row: the lane clamps to ONE line so a reason-carrying card keeps the
+       roster's uniform row height at every width — including the 44px-touch narrow head. */
+    &.fm-control-live .fm-card-lane {
+        -webkit-line-clamp: 1;
     }
 
     /* ══ card-owned width modes (ADR 0029): the card responds to ITS OWN width, not the viewport ══ */
@@ -319,6 +332,34 @@
             width    : 44px;
             height   : 44px;
             font-size: 16px;   /* §04 recorded exception (#17265): glyph scale for the 44px narrow touch target — #17211's deliberate move, never a role migration */
+        }
+    }
+
+    /* sub-narrow (≤240px CONTENT ≈ ≤270px outer): the vessel-window band the width matrix never
+       priced — a one-column roster inside a 314px cockpit hands each card ~161px of content, where
+       the narrow band's 44px touch pair (94px with its gap) leaves the identity column 15px and
+       the resident's NAME collapses to two letters. A touch target that erases WHO it operates
+       fails its own accessibility purpose, so this band trades the 44px exception back for the
+       regular 32px verbs and a smaller avatar: the name keeps ≥ ~50px and stays the card's
+       subject. The 44px direction continues to own the 240–289px narrow band unchanged. */
+    @container (max-width: 240px) {
+        .fm-card-head {
+            gap: var(--fm-space-2);
+        }
+
+        .fm-card-avatar {
+            width : 24px;
+            height: 24px;
+        }
+
+        .fm-card-action {
+            width    : 32px;
+            height   : 32px;
+            font-size: 13px;
+        }
+
+        .fm-card-control-verbs {
+            gap: var(--fm-space-1);
         }
     }
 }

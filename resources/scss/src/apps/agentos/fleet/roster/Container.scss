@@ -42,20 +42,34 @@
         white-space  : nowrap;
     }
 
-    /* the sort/filter cluster: quiet ghost verbs; the pressed state carries the choice */
+    /* the sort/filter cluster: quiet ghost verbs; the pressed state carries the choice.
+       Wrap-capable: at vessel widths the cluster exceeds the zone and hard-clipped at both
+       edges — wrapping engages only when space runs out, so the wide single-line form is
+       untouched. */
     .fm-fleet-controls {
-        gap: var(--fm-space-1);
+        flex-wrap: wrap;
+        gap      : var(--fm-space-1);
 
         .fm-roster-sort,
         .fm-roster-filter,
         .fm-roster-fold {
+            /* These are real Neo Buttons since the list conversion: the engine sizes them through
+               the --button-height token (48px chrome tier) and renders the label inside
+               .neo-button-text with its own type rule — both must be re-bound here or the quiet
+               ghost-verb contract silently loses to the component defaults. */
+            --button-height: auto;
+
             border       : 1px solid transparent;
             border-radius: 999px;
             color        : var(--fm-ink-dim);
             font         : var(--fm-text-micro);
             padding      : 2px var(--fm-space-2);
 
-            &.neo-pressed {
+            .neo-button-text {
+                font: inherit;
+            }
+
+            &.pressed {
                 border-color: var(--fm-line-soft);
                 color       : var(--fm-ink);
             }

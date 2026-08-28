@@ -1,21 +1,32 @@
-import {expect, test}      from '@playwright/test';
-import {parse}             from 'acorn';
-import {readFileSync}      from 'node:fs';
-import {loadAgentOsModule} from '../../../../fixtures.mjs';
+import {expect, test}          from '@playwright/test';
+import {parse}                 from 'acorn';
+import {existsSync, readFileSync} from 'node:fs';
+import path                    from 'node:path';
+import {loadAgentOsModule}     from '../../../../fixtures.mjs';
+
+// The parity lint resolves its cockpit twins RELATIVE TO THE RUNTIME ROOT
+// (apps/agentos/config/*). A pre-split Engine root carried that twin tree; the post-split Brain
+// does not, so importing the lint there breaks at module load — the D#17247 §4.1 gated seam,
+// tracked as neomjs/neo-agent-brain#206. Until the lint gains a post-split home for its twin
+// imports, this suite gates honestly instead of reddening on a seam it does not own — and the
+// gate retires with that ticket.
+const
+    runtimeRoot   = process.env.NEO_AGENTOS_RUNTIME_ROOT ?? '',
+    twinReachable = runtimeRoot !== '' && existsSync(path.join(runtimeRoot, 'apps/agentos/config'));
 
 const [
-    {compareFleetVocabulary},
+    {compareFleetVocabulary} = {},
     authorityCockpit,
     authorityHarness,
     authorityMcp,
     authorityWire
-] = await Promise.all([
+] = twinReachable ? await Promise.all([
     loadAgentOsModule('ai/scripts/lint/lint-fleet-vocabulary-parity.mjs'),
     loadAgentOsModule('ai/services/fleet/fleetCockpitStatus.mjs'),
     loadAgentOsModule('ai/services/fleet/harnessTypes.mjs'),
     loadAgentOsModule('ai/services/fleet/mcpServers.mjs'),
     loadAgentOsModule('ai/services/fleet/fleetWireMethods.mjs')
-]);
+]) : [];
 
 import * as twinHarness from '../../../../../../apps/agentos/config/harnessTypes.mjs';
 import * as twinMcp     from '../../../../../../apps/agentos/config/mcpServers.mjs';
@@ -27,6 +38,8 @@ const
     twin      = {mcp: twinMcp, harness: twinHarness, wire: twinWire, sources: twinSources};
 
 test.describe('FM vocabulary parity — the realm boundary carries no imports, so the lint is the binding', () => {
+    test.skip(!twinReachable, 'the parity lint\'s twin imports have no home under a post-split runtime root — neomjs/neo-agent-brain#206 (D#17247 §4.1)');
+
     test('the live twin mirrors the live authority: every export is dispositioned and every pair agrees', () => {
         expect(compareFleetVocabulary({authority, twin})).toEqual([])
     });

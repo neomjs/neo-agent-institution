@@ -82,6 +82,11 @@ export default defineConfig({
 
     use: {
         baseURL: `http://localhost:${port}`,
+        // ViewerTime renders in the viewer's locale and zone — unpinned, every human-facing time
+        // assertion inherits the capture machine's environment (the retired '04:08 PM' expectation
+        // encoded its author's UTC-4 clock). Same declared environment as the visual config.
+        locale    : 'en-GB',
+        timezoneId: 'UTC',
         trace  : 'on'
     },
 

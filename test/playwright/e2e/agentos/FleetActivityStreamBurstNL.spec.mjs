@@ -193,7 +193,13 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
 
         await expect(firstObject).toHaveText('event 499');
-        await expect(firstTime).toHaveText('04:08 PM');
+        // Binding-level assertion by design: the row must render THIS record's instant, but the
+        // human-facing format is ViewerTime's locale/zone ladder — its exact strings are pinned in
+        // ViewerTime's own unit coverage via injected options, while the Neural Link fixture owns a
+        // browser context the config's locale/timezone emulation does not reach (the retired exact
+        // expectation '04:08 PM' silently encoded its author's machine clock). The wire instant
+        // stays exact via the title receipt.
+        await expect(firstTime).toHaveText(/\d{2}:\d{2}/);
         await expect(firstTime).toHaveAttribute('title', '2026-08-22T20:08:19.000Z');
 
         const
@@ -287,7 +293,9 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
                 }
             });
 
-            expect(paint.height).toBeCloseTo(52, 0);
+            // 32 is the stream's density contract: ActivityStream#itemHeight — the wide one-line
+            // grammar and the narrow two-line grammar both fit inside this fixed pool height.
+            expect(paint.height).toBeCloseTo(32, 0);
             expect(paint.borderColor).not.toBe('rgba(0, 0, 0, 0)');
             expect(paint.streamBackground).not.toBe('rgba(0, 0, 0, 0)');
             await expect(firstObject).toHaveText('event 501');
