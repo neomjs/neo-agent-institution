@@ -34,7 +34,10 @@ test.describe('AgentOS.view.fleet.AddAgentForm — mounted credential boundary (
         page.on('console', message => consoleLines.push(message.text()));
 
         const result = await page.evaluate(config => Neo.worker.App.createNeoInstance(config), {
-            importPath: '../../apps/agentos/view/fleet/instances/AddAgentForm.mjs',
+            // Resolved by the app worker relative to node_modules/neo.mjs/src/worker/ — the repo
+            // root is four levels up. The retired two-up path reached the engine package's
+            // pre-removal apps/agentos twin and broke the moment the pin advanced past it.
+            importPath: '../../../../apps/agentos/view/fleet/instances/AddAgentForm.mjs',
             ntype     : 'fm-add-agent-form',
             parentId  : 'component-test-viewport'
         });
