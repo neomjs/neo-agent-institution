@@ -98,12 +98,7 @@
        padding:var(--chip-pad-y) var(--chip-pad-x);background:var(--panel-2);cursor:pointer}
   .tog:hover{border-color:var(--ink-dim);color:var(--ink)}
 
-  /* paging strip: chrome tier, disabled edges stay visible (the landed honesty semantics) */
-  .pfoot{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line-soft)}
-  .pfoot .range{font:var(--t-micro);color:var(--ink-dim)}
-  .pbtn{font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;padding:2px 9px;background:var(--panel-2)}
-  .pbtn:disabled{opacity:.45;cursor:not-allowed}
-
+  /* no paging chrome: buffered surfaces scroll (operator direction 2026-08-28) */
   .empty{padding:var(--sp-4) var(--sp-3);font:var(--t-body);color:var(--ink-dim)}
 
   table{border-collapse:collapse;font-size:12px;color:var(--ink-dim);margin-top:10px}
@@ -117,7 +112,7 @@
 <div class="wrap">
   <p class="eyebrow">institution pane information design · #20 · mailbox slice</p>
   <h1>The mailbox pane — a mail client, not a log</h1>
-  <p class="lede">The south-pane mailbox renders correct data as <b>subject + one joined meta string</b> (raw ISO included — a T5 violation on its own). This sketch is the designed row anatomy over the <b>existing</b> <span style="font-family:var(--mono)">MailboxMessage</span> record — every element below maps to a field the adapter already ships; no new data capability is assumed. Store contracts, pagination honesty, thread mechanics, and the read-only MUST-NOT (no mark-read on this side of the seam) are untouched: this is view-layer typography over the landed truth.</p>
+  <p class="lede">The south-pane mailbox renders correct data as <b>subject + one joined meta string</b> (raw ISO included — a T5 violation on its own). This sketch is the designed row anatomy over the <b>existing</b> <span style="font-family:var(--mono)">MailboxMessage</span> record — every element below maps to a field the adapter already ships; no new data capability is assumed. Store contracts, thread mechanics, and the read-only MUST-NOT (no mark-read on this side of the seam) are untouched: this is view-layer typography over the landed truth — with one deliberate retirement: the offset-paging chrome goes, because the buffered destination scrolls.</p>
 
   <div class="col-label">the pane, composed — operator inbox, mixed states</div>
   <div class="pane">
@@ -184,14 +179,8 @@
       <span class="age" title="2026-08-27T08:16:33.667Z">27 Aug, 10:16</span>
     </div>
 
-    <div class="pfoot">
-      <span class="range">1–4</span>
-      <!-- genuinely disabled at the edge: the native attribute carries look, announcement and
-           refusal in one; the shipped pane adds aria-disabled where its button root differs -->
-      <button class="pbtn" type="button" disabled>newer</button>
-      <button class="pbtn" type="button">older</button>
-    </div>
   </div>
+  <p class="note"><b>No paging chrome (operator direction, 2026-08-28):</b> the shipped pane's offset window (<span style="font-family:var(--mono)">newer/older</span>, range strip) retires with the hand-rolled rows — the buffered <span style="font-family:var(--mono)">grid.Container</span> destination scrolls, and the positive-offset-empty-window trap the old strip guarded against cannot exist on a surface with no offset windows. Precisely separated: <span style="font-family:var(--mono)">bufferRowRange</span> only bounds and recycles the MOUNTED rows over the locally loaded collection — it fetches nothing. Data acquisition is a controller-owned scroll-edge contract: one in-flight request at a time against the pane's subject scope, page-echo validation before append, duplicate-request suppression, an honest loading tail while a page streams in, an error state with retry when a page fails, and silence at the corpus end. The engine-side generalization of that seam is neomjs/neo#17835; until it lands, the pane's controller owns the trigger.</p>
 
   <div class="col-label">the same thread, expanded — the indent rail carries membership, the head keeps the one affordance</div>
   <div class="pane">
@@ -231,22 +220,10 @@
   </div>
   <p class="note"><b>Thread reading order:</b> the head stays the NEWEST message (the pane's newest-first order, unchanged mechanics); members follow beneath it on the rail. Members keep the full row anatomy minus the exception strip when they carry no exceptions — the rail, not repetition, says "same conversation".</p>
 
-  <div class="col-label">the all-null row, rendered — every fallback is a named word, never a blank</div>
-  <div class="pane">
-    <div class="mrow">
-      <span class="udot"></span>
-      <span class="smark">?</span>
-      <div class="mcontent">
-        <div class="sender">unknown sender</div>
-        <div class="subject">(no subject)</div>
-      </div>
-      <span class="age">—</span>
-    </div>
-  </div>
-  <p class="note"><b>The named fallbacks (surface-owned words, T5 miss-copy):</b> <span style="font-family:var(--mono)">from</span> null → <b>unknown sender</b> with the <b>?</b> monogram; <span style="font-family:var(--mono)">subject</span> null → <b>(no subject)</b> (the shipped pane's word, kept); <span style="font-family:var(--mono)">sentAt</span> null → <b>—</b> (the dense-row form) with no title. Status null renders the read presentation; every other null field renders nothing — the exception strip stays empty rather than inventing a chip.</p>
+  <p class="note"><b>Writer guarantees, not fallback design:</b> every mirror row descends from a real A2A message the Memory Core wrote — <span style="font-family:var(--mono)">sentAt</span> is server-generated, <span style="font-family:var(--mono)">from</span> is the authenticated sender identity, and delivery requires a non-empty target (MailboxService). The surface designs no "unknown sender / missing date" states because the pipeline forbids them; the adapter's redaction bounds and the model's string-converts stay as render guards against schema drift, never as designed states. The pane has exactly two states: populated, or genuinely empty.</p>
 
   <p class="note"><b>The hierarchy in one sentence:</b> the subject is the only body-tier line and read-state is its weight; sender + age frame it at the detail/micro tiers; everything else renders only as an exception chip. A direct, normal-priority, plain, read message is <b>two quiet lines and zero chips</b> — the T2 exception-only class applied to mail.</p>
-  <p class="falsifier">falsifier drills: (1) gray-filter pass — unread must survive hue removal (weight is the second channel, law-1); (2) the all-null row (rendered below the thread section) resolves every absent field to its NAMED word — unknown sender · (no subject) · — · empty exception strip — never a blank slot; (3) the 9px→10px micro migration (T1 disposition row names MailboxPane) means NO text below --fm-text-micro anywhere on this surface.</p>
+  <p class="falsifier">falsifier drills: (1) gray-filter pass — unread must survive hue removal (weight is the second channel, law-1); (2) the writer contract IS the absence falsifier: sentAt is server-generated, from is the authenticated sender, delivery requires a target (MailboxService) — the surface designs no unknown/absent states because the pipeline forbids them; (3) the 9px→10px micro migration (T1 disposition row names MailboxPane) means NO text below --fm-text-micro anywhere on this surface.</p>
 
   <div class="divider"></div>
 
@@ -254,9 +231,9 @@
   <table>
     <tr><th>record field</th><th>element</th><th>role token</th><th>rule</th></tr>
     <tr><td class="mono">status</td><td>unread dot + subject weight; <b>retracted</b> = line-through (words keep readable ink)</td><td>—</td><td>the SUBJECT agent's queue fact (never operator state — landed SCSS note survives verbatim); two channels per law-1</td></tr>
-    <tr><td class="mono">from</td><td>monogram mark + @-handle</td><td>detail</td><td>monogram derives from the handle in the view; family hue only if the adapter ever ships a family field — <b>no handle-guessing</b></td></tr>
+    <tr><td class="mono">from</td><td>monogram mark + @-handle</td><td>detail</td><td><b>authenticated sender identity, always present</b> (adapter normalization); monogram derives from the handle in the view; family hue only if the adapter ever ships a family field — <b>no handle-guessing</b></td></tr>
     <tr><td class="mono">subject</td><td>the one body-tier line, 2-line clamp</td><td>body</td><td>escaped text, never markup (adapter redaction contract unchanged)</td></tr>
-    <tr><td class="mono">sentAt</td><td>right-pinned age</td><td>micro</td><td><b>T5:</b> ViewerTime — same-day → time only, older → compact date + time, exact ISO on <span class="mono">title</span>; the raw-ISO meta string retires</td></tr>
+    <tr><td class="mono">sentAt</td><td>right-pinned age</td><td>micro</td><td><b>server-generated at send time, always present</b>; <b>T5:</b> ViewerTime — same-day → time only, older → compact date + time, exact ISO on <span class="mono">title</span>; the raw-ISO meta string retires</td></tr>
     <tr><td class="mono">priority</td><td>chip, warn mark</td><td>micro</td><td>exception-only: renders for <span class="mono">high</span> (and a future <span class="mono">low</span>); normal earns zero pixels</td></tr>
     <tr><td class="mono">taskState</td><td>chip, signal mark: <span class="mono">task · Working</span></td><td>micro</td><td>renders when the A2A envelope exists; null = no chip</td></tr>
     <tr><td class="mono">recipientClass</td><td>chip, neutral mark: <span class="mono">broadcast</span></td><td>micro</td><td>direct (<span class="mono">agent</span>) is the default and earns zero pixels; broadcast/unknown/other render the class word</td></tr>
@@ -272,7 +249,7 @@
 
   <p class="note"><b>Compose placement:</b> the pane header carries the compose affordance (affordance-class chip, right-pinned — reachable without scroll). The operator direction leaves a second option open: compose as its OWN south tab. The header affordance works in both worlds — if compose becomes a tab, the button routes there instead of opening the inline form; the row anatomy above is placement-independent. <b>Decision slot (operator/team):</b> inline reveal vs south tab — the sketch does not pre-decide it.</p>
   <p class="note"><b>Two scopes, one pane (the #30 design note):</b> the anatomy above is scope-blind by construction — operator inbox and (post-S5) a selected resident's mirror render the same rows; only the pane-head subtitle (<span class="mono">operator inbox</span> ↔ <span class="mono">@agent mirror</span>) names the scope. Nothing in this sketch assumes S5.</p>
-  <p class="note"><b>Empty words (T5 miss-copy):</b> cold pane → <span class="mono">no messages in this window</span>; a positive-offset empty window keeps the paging strip (the landed no-trap rule) — design changes neither.</p>
+  <p class="note"><b>Empty words (T5 miss-copy):</b> cold pane → <span class="mono">no messages in this window</span> — the one empty state a buffered surface has; the offset-window edge cases (and their guard chrome) retire with the pagination itself.</p>
   <p class="falsifier">implementation acceptance (the later sub, not this sketch): zero font-size literals in mailbox SCSS (all five roles via tokens) · zero toISOString-derived human strings (T5 greppable) · gray-filter legibility for unread/priority/task · both themes via tokens · shell-seam guard stays green (frame-free pane root).</p>
 </div>
 </body>
