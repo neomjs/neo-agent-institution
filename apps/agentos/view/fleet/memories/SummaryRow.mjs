@@ -69,14 +69,18 @@ class SummaryRow extends Component {
             session  = typeof data.sessionId === 'string' && data.sessionId ? data.sessionId.slice(0, 8) : 'unknown',
             stamp    = ViewerTime.formatViewerTime(data.timestamp)?.text ?? 'unknown time',
             iso      = ViewerTime.viewerTimeTitle(data.timestamp),
+            coAuthors = (data.sourceAgentIdentities || []).filter(identity => identity !== data.target),
             metaBits = [
                 stamp,
                 `session ${session}`,
+                // attribution rides the meta line (the cell is height-NORMED for the grid's fixed
+                // row lattice — no per-card extra line), ahead of the counters: who else authored
+                // outranks the quality figure when the one-line clamp has to cut
+                coAuthors.length > 0 ? `with ${coAuthors.join(', ')}` : null,
                 data.category || null,
                 Number.isFinite(data.memoryCount) ? `${data.memoryCount} memories` : null,
                 Number.isFinite(data.quality) ? `quality ${data.quality}` : null
             ].filter(Boolean),
-            coAuthors = (data.sourceAgentIdentities || []).filter(identity => identity !== data.target),
             cardChildren = [{
                 cls: ['fm-memories-card-head'],
                 cn : [{
@@ -98,22 +102,17 @@ class SummaryRow extends Component {
                 ...(iso ? {title: iso} : {})
             }];
 
-        if (coAuthors.length > 0) {
-            cardChildren.push({
-                cls : ['fm-memories-card-attribution'],
-                text: `with ${coAuthors.join(', ')}`
-            })
-        }
-
         cardChildren.push({
             cls : ['fm-memories-card-body'],
             text: data.summary ?? 'Summary unavailable for this session.'
         });
 
         me.vdom.cn = [
-            // the band eyebrow renders ONLY on the first card of each viewer-calendar band —
-            // a stamped display fact, so the grid filter/cells can never disagree about grouping
-            ...(band ? [{cls: ['fm-memories-band'], text: band}] : []),
+            // the band SLOT renders on EVERY card (empty text off a band boundary): the cell is
+            // height-normed for the grid's fixed row lattice, so the eyebrow may never add a
+            // per-card line — only the first card of each viewer-calendar band carries the label
+            // (a stamped display fact, so grouping is decided exactly once, at bag time)
+            {cls: ['fm-memories-band'], text: band ?? ''},
             {cls: ['fm-memories-card'], cn: cardChildren}
         ];
 

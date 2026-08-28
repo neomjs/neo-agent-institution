@@ -88,8 +88,9 @@ test.describe('AgentOS.view.fleet.memories — the mounted grid registers seam',
         await expect(page.locator('.fm-memories-card-cell:visible .fm-memories-card-title').nth(0)).toHaveText('Mailbox grid conversion');
         await expect(page.locator('.fm-memories-card-cell:visible .fm-memories-card-title').nth(1)).toHaveText('Design sketch arc');
         // the stamped band facts reached the pooled cells: far-past stamps fall in the ONE
-        // 'earlier' viewer-calendar band under ANY live clock → exactly one eyebrow, first card
-        await expect(page.locator('.fm-memories-band:visible')).toHaveCount(1);
+        // 'earlier' viewer-calendar band under ANY live clock → the SLOT exists on every cell
+        // (height-norm), and exactly one carries the label, on the first card
+        await expect(page.locator('.fm-memories-band:visible').filter({hasText: 'earlier'})).toHaveCount(1);
 
         // 2. RECYCLE: a new snapshot re-seats the SAME mounted surface — titles swap in place
         await page.evaluate(([id, snap]) => Neo.worker.App.setConfigs({id, snapshot: snap}), [paneId, envelope([

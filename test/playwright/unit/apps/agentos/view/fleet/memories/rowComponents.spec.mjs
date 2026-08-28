@@ -85,8 +85,9 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
         expect(meta.title).toBe('2026-08-28T15:54:27.998Z');
 
         expect(nodeBy(row, 'fm-memories-card-body').text).toBe('The mailbox surface renders through a real buffered grid.');
-        // no band fact → no eyebrow node at all
-        expect(nodeBy(row, 'fm-memories-band')).toBeNull();
+        // the band SLOT exists on every cell (height-norm — no per-card extra line); off a band
+        // boundary it renders empty
+        expect(nodeBy(row, 'fm-memories-band').text).toBe('');
 
         row.destroy()
     });
@@ -101,7 +102,9 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
         }});
 
         expect(nodeBy(row, 'fm-memories-band').text).toBe('yesterday');
-        expect(nodeBy(row, 'fm-memories-card-attribution').text).toBe('with @neo-gpt-emmy');
+        // attribution rides the ONE meta line (height-norm), ahead of the counters
+        expect(nodeBy(row, 'fm-memories-card-meta').text).toContain('with @neo-gpt-emmy');
+        expect(nodeBy(row, 'fm-memories-card-attribution')).toBeNull();
         expect(nodeBy(row, 'fm-memories-card-title').text).toBe('Title unavailable for this session.');
         expect(nodeBy(row, 'fm-memories-card-body').text).toBe('Summary unavailable for this session.');
 
@@ -115,7 +118,7 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
 
         row.rowData = {...baseSummary, sessionId: 'feedbeef-0000-4000-8000-000000000000', title: 'A different session'};
 
-        expect(nodeBy(row, 'fm-memories-band')).toBeNull();
+        expect(nodeBy(row, 'fm-memories-band').text).toBe('');
         expect(nodeBy(row, 'fm-memories-card-title').text).toBe('A different session');
         expect(nodeBy(row, 'fm-memories-card-meta').text).toContain('session feedbeef');
 
