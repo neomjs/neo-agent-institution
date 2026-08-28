@@ -260,7 +260,8 @@ class AgentDetail extends Container {
             // the drill-in's tabbed body: Status panes + the Configuration card — the a11y region
             // + identity header stay above. Mail is NOT a detail concern: the south pane is the
             // cockpit's one mailbox surface, and a per-agent subject scope re-enters THERE when
-            // authenticated viewer ingress lands.
+            // the S5 Fleet grants/admission layer lands (viewer ingress is already live; the
+            // policy ledger holds the mirror read at awaiting-s5).
             module     : TabContainer,
             cls        : ['fm-detail-tabs'],
             flex       : 1,

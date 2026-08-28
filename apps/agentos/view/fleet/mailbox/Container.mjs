@@ -48,7 +48,8 @@ function isRecognizedPage(page) {
  * ACTIVE A2A inbox, rendered from one Fleet mailbox-mirror adapter snapshot. Subject-generic by
  * construction: today its one host is the south pane's {@link AgentOS.view.fleet.mailbox.OperatorContainer}
  * (the operator's own inbox); a selection-scoped per-agent subject mode re-enters through the same
- * host when authenticated viewer ingress lands.
+ * host when the S5 Fleet grants/admission layer lands (viewer ingress is already live; the policy
+ * ledger holds the mirror read at awaiting-s5).
  *
  * **Read-only is structural.** The pane renders zero mutation affordances — no mark-read, no
  * archive, no reply (the graduated record's MUST-NOT: operator-side mark-read would mutate the

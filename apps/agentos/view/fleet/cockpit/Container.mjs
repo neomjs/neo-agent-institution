@@ -3003,7 +3003,8 @@ class FleetCockpit extends DockWorkspace {
     /**
      * @summary READ-OBSERVE: re-read the OPERATOR's own mailbox mirror at `offset` and route the snapshot
      * to the operator-mailbox pane — the cockpit's ONE mailbox surface (a selection-scoped per-agent
-     * subject mode re-enters here when authenticated viewer ingress lands).
+     * subject mode re-enters here when the S5 Fleet grants/admission layer lands — viewer ingress
+     * is already live; the policy ledger holds the mirror read at awaiting-s5).
      * Generation-fenced (older news never overwrites newer) and fail-closed (the pane stays honestly
      * unobserved rather than inventing a snapshot). The viewer is server-resolved from the ingress request
      * context; the subject is the operator's own identity, held owner-side.
