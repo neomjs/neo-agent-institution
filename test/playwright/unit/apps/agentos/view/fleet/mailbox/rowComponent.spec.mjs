@@ -144,6 +144,23 @@ test.describe('Fleet mailbox RowComponent — the sketch\'s row grammar from one
         row.destroy()
     });
 
+    test('hostile content renders as text-only leaves — no node anywhere carries html', () => {
+        // layer 2 of the mailbox double defense (layer 1, the record String convert, is pinned in
+        // container.spec.mjs): whatever string reaches this cell renders as escaped text, never markup
+        const row = makeRow({subject: 'deploy <img src=x onerror=alert(1)> done', from: '@evil<script>'});
+
+        const walk = node => {
+            if (!node || typeof node !== 'object') return;
+            expect(node.html).toBe(undefined);
+            (node.cn || []).forEach(walk)
+        };
+        walk(row.vdom);
+
+        expect(nodeBy(row, 'fm-mail-subject').text).toBe('deploy <img src=x onerror=alert(1)> done');
+
+        row.destroy()
+    });
+
     test('the monogram derivation is deterministic over handle shapes', () => {
         expect(RowComponent.monogram('@neo-gpt-emmy')).toBe('em');
         expect(RowComponent.monogram('@neo-opus-vega')).toBe('ve');

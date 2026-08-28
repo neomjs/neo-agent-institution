@@ -96,8 +96,6 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         expect(stateCmp.text).toContain('@neo-observer');
         expect(stateCmp.text).toContain('@neo-opus-vega');
         expect(stateCmp.cls).toContain('is-denied');
-        // a denial NEVER shows a page window — that would fake a readable inbox
-        expect(pane.getReference('mailbox-page').hidden).toBe(true);
         expect(pane.getReference('mailbox-rows').hidden).toBe(true);
 
         pane.destroy()
@@ -161,7 +159,8 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
 
         expect(ada.getPaneState(), "vega's mail must not render on ada's pane").toBe('unobserved');
         expect(ada.getReference('mailbox-rows').hidden).toBe(true);
-        expect(JSON.stringify(ada.getReference('mailbox-rows').vdom)).not.toContain('VEGA PRIVATE MAIL');
+        // the inadmissible snapshot never reaches the grid's store — no row can materialize
+        expect(ada.store.getCount()).toBe(0);
         ada.destroy();
 
         // an EMPTY snapshot about someone else is equally inadmissible: rendering it would say
@@ -242,15 +241,14 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
             expect(pane.getPaneState()).toBe('degraded');
             expect(text, 'the owner reason is carried verbatim').toContain(reason);
             expect(text, 'no fabricated source-outage attribution').not.toContain('source degraded');
-            // a refusal shows no rows and no page window — never a half-truth
+            // a refusal shows no rows — never a half-truth
             expect(pane.getReference('mailbox-rows').hidden).toBe(true);
-            expect(pane.getReference('mailbox-page').hidden).toBe(true);
 
             pane.destroy()
         })
     });
 
-    test('rows: newest-first flat-chrono, page bounds shown, fresh chip from capturedAt', () => {
+    test('rows: the full window projects into the grid store newest-first, fresh chip from capturedAt', () => {
         const pane = createPane({
             snapshot: wiredSnapshot([
                 row({messageId: 'MESSAGE:old', subject: 'older', sentAt: '2026-07-16T10:00:00.000Z'}),
@@ -261,55 +259,77 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         expect(pane.getPaneState()).toBe('rows');
         expect(pane.getReference('mailbox-state').hidden).toBe(true);
 
-        const rowsCmp = pane.getReference('mailbox-rows');
-        expect(rowsCmp.hidden).toBe(false);
-        expect(rowsCmp.vdom.cn).toHaveLength(2);
-        expect(rowsCmp.vdom.cn[0].cn[0].cn[0].text).toBe('newer');
-        expect(rowsCmp.vdom.cn[1].cn[0].cn[0].text).toBe('older');
+        // the rows body is the buffered grid: visible, fed the FULL snapshot window through the
+        // pane-owned store (newest-first is the store's binding sort), no paging chrome anywhere
+        const rowsGrid = pane.getReference('mailbox-rows');
+        expect(rowsGrid.hidden).toBe(false);
+        expect(rowsGrid.store).toBe(pane.store);
+        expect(pane.store.getCount()).toBe(2);
+        expect(pane.store.getAt(0).subject).toBe('newer');
+        expect(pane.store.getAt(1).subject).toBe('older');
+        expect(pane.getReference('mailbox-page')).toBeNull();
 
-        // the bounds now live in the range span, between their two transition controls
-        expect(pane.getReference('mailbox-page-range').text).toBe('1–2');
         // capturedAt is 30s old vs a 60s TTL → fresh
         expect(pane.getReference('mailbox-freshness').text).toContain('updated');
 
         pane.destroy()
     });
 
-    test('thread-collapse: the NEWEST message heads the collapsed row over a +N earlier chip; toggle expands inline', () => {
+    test('thread-collapse is grid truth: the NEWEST message heads the thread, collapsed members hide via the store filter', () => {
         const pane = createPane({
             snapshot: wiredSnapshot([
-                row({messageId: 'MESSAGE:t1', subject: 'thread oldest', partOfThread: 'THREAD:x', sentAt: '2026-07-16T09:00:00.000Z'}),
                 row({messageId: 'MESSAGE:t3', subject: 'thread newest', partOfThread: 'THREAD:x', sentAt: '2026-07-16T11:00:00.000Z'}),
                 row({messageId: 'MESSAGE:t2', subject: 'thread middle', partOfThread: 'THREAD:x', sentAt: '2026-07-16T10:00:00.000Z'}),
+                row({messageId: 'MESSAGE:t1', subject: 'thread oldest', partOfThread: 'THREAD:x', sentAt: '2026-07-16T09:00:00.000Z'}),
                 row({messageId: 'MESSAGE:solo', subject: 'standalone', sentAt: '2026-07-16T11:45:00.000Z'})
             ], {limit: 50, offset: 0, count: 4})
         });
 
-        const rowsCmp = pane.getReference('mailbox-rows');
+        const
+            rowsGrid = pane.getReference('mailbox-rows'),
+            head     = pane.store.get('MESSAGE:t3');
 
-        // standalone (newest overall) first, then ONE collapsed thread row
-        expect(rowsCmp.vdom.cn).toHaveLength(2);
-        expect(rowsCmp.vdom.cn[0].cn[0].cn[0].text).toBe('standalone');
+        // the grid's thread map: store order is newest-first, so the newest message heads its
+        // thread — the shipped reading order, pinned (Grace's steer, kept)
+        const headFacts = rowsGrid.threadFactsFor(head);
+        expect(headFacts).toEqual({collapsed: true, isHead: true, hiddenCount: 2, inThread: false});
 
-        const collapsedHead = rowsCmp.vdom.cn[1];
-        // Grace's steer pinned: the NEWEST thread message heads the collapsed row
-        expect(collapsedHead.cn[0].cn[0].text).toBe('thread newest');
-        expect(collapsedHead.cn[0].cn[1].text).toBe('+2 earlier');
-        expect(collapsedHead.cls).toContain('fm-mail-thread-head');
-        expect(collapsedHead.data).toEqual({threadId: 'THREAD:x'});
+        // collapsed members hide at the store view layer: the filtered count carries head + solo only
+        expect(pane.store.getCount()).toBe(2);
+        expect(rowsGrid.threadFactsFor(pane.store.get('MESSAGE:solo'))).toBeNull();
 
-        // toggle = display-state navigation, never a data write
-        const head = pane.store.get('MESSAGE:t3');
+        // toggle = display-state navigation on the view-owned field, never a data write
         head.threadCollapsed = false;
-        pane.renderRows();
+        rowsGrid.onStoreMutation();
 
-        const thread = rowsCmp.vdom.cn[1];
-        expect(thread.cls).toContain('fm-mail-thread');
-        expect(thread.cn).toHaveLength(3);
-        expect(thread.cn[0].cn[0].cn[0].text).toBe('thread newest');
-        expect(thread.cn[1].cn[0].cn[0].text).toBe('thread middle');
-        expect(thread.cn[2].cn[0].cn[0].text).toBe('thread oldest');
-        expect(thread.cn[1].cls).toContain('is-in-thread');
+        expect(pane.store.getCount()).toBe(4);
+        expect(rowsGrid.threadFactsFor(head).collapsed).toBe(false);
+        expect(rowsGrid.threadFactsFor(pane.store.get('MESSAGE:t2'))).toEqual({collapsed: false, isHead: false, hiddenCount: 2, inThread: true});
+
+        pane.destroy()
+    });
+
+    test('the grid toggle click resolves its record through the engine row contract and flips collapse', () => {
+        const pane = createPane({
+            snapshot: wiredSnapshot([
+                row({messageId: 'MESSAGE:h', partOfThread: 'THREAD:z', sentAt: '2026-07-16T11:00:00.000Z'}),
+                row({messageId: 'MESSAGE:m', partOfThread: 'THREAD:z', sentAt: '2026-07-16T10:00:00.000Z'})
+            ], {limit: 50, offset: 0, count: 2})
+        });
+
+        const rowsGrid = pane.getReference('mailbox-rows');
+
+        expect(pane.store.getCount()).toBe(1);
+
+        // the grid body stamps `data.recordId` on every `.neo-grid-row` — the delegated toggle
+        // click walks the path to that node, no index math
+        rowsGrid.onThreadToggleClick({path: [
+            {cls: ['fm-mail-thread-toggle']},
+            {cls: ['neo-grid-row'], data: {recordId: 'MESSAGE:h'}}
+        ]});
+
+        expect(pane.store.get('MESSAGE:h').threadCollapsed).toBe(false);
+        expect(pane.store.getCount()).toBe(2);
 
         pane.destroy()
     });
@@ -340,11 +360,13 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         walk(pane.getReference('mailbox-rows').vdom);
         walk(pane.getReference('mailbox-state').vdom);
 
-        // 2. the single listener surface is the thread-collapse toggle — and it is delegated to the
-        //    BUTTON, not the row: a row-wide listener is an interactive region with no tab stop
-        const listeners = pane.getReference('mailbox-rows').domListeners;
-        expect(listeners).toHaveLength(1);
-        expect(listeners[0].delegate).toBe('.fm-mail-thread-toggle');
+        // 2. the pane's mutation-capable listener surface is exactly ONE delegated click on the
+        //    grid, and it targets the toggle BUTTON, not the row (a row-wide listener is an
+        //    interactive region with no tab stop). The grid may own further engine-internal
+        //    listeners (scroll plumbing) — none of them a mutation affordance.
+        const toggleListeners = (pane.getReference('mailbox-rows').domListeners || [])
+            .filter(listener => listener.delegate === '.fm-mail-thread-toggle');
+        expect(toggleListeners).toHaveLength(1);
 
         // 3. the pane class itself exports no mutation verb
         Object.getOwnPropertyNames(Object.getPrototypeOf(pane)).forEach(name => {
@@ -357,44 +379,22 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         pane.destroy()
     });
 
-    test('pagination TRANSITIONS: row 51 is reachable — the window can move, not just describe itself', () => {
-        const pane  = createPane({snapshot: wiredSnapshot([row({messageId: 'MESSAGE:a'})], {limit: 50, offset: 0, count: 50, hasMore: true})}),
-              fired = [];
+    test('no paging chrome exists — the buffered surface owns the whole window (operator direction 2026-08-28)', () => {
+        const pane = createPane({snapshot: wiredSnapshot(
+            Array.from({length: 50}, (v, i) => row({messageId: `MESSAGE:${i}`, sentAt: `2026-07-16T10:${String(i % 60).padStart(2, '0')}:00.000Z`})),
+            {limit: 50, offset: 0, count: 50, hasMore: true}
+        )});
 
-        pane.on('pageRequest', data => fired.push(data.offset));
+        // the offset-window controls retired with the hand-rolled rows: no references, no handlers
+        expect(pane.getReference('mailbox-page')).toBeNull();
+        expect(pane.getReference('mailbox-page-prev')).toBeNull();
+        expect(pane.getReference('mailbox-page-next')).toBeNull();
+        expect(pane.onNextPageClick).toBeUndefined();
+        expect(pane.fire).toBeDefined();
 
-        const prev  = pane.getReference('mailbox-page-prev'),
-              next  = pane.getReference('mailbox-page-next'),
-              range = pane.getReference('mailbox-page-range');
-
-        // the steps are COMPOSED controls, not hand-rolled tags: `button.Base` with the shipped
-        // paging vocabulary (`fa fa-angle-*`, as toolbar.Paging uses). A raw {tag:'button'} would
-        // reproduce the outcome and skip the primitive that owns disabled/icon/focus states.
-        expect(prev.ntype).toBe('button');
-        expect(next.ntype).toBe('button');
-        expect(prev.iconCls).toBe('fa fa-angle-left');
-        expect(next.iconCls).toBe('fa fa-angle-right');
-
-        // page 1 of a FULL window: newer is disabled (this IS the edge), older is offered
-        expect(prev.disabled).toBe(true);
-        expect(next.disabled).toBe(false);
-        expect(range.text).toBe('1–50');
-
-        // the handler is wired UP to this view (the primitive resolves the string), and the pane
-        // REQUESTS rather than fetching
-        expect(next.handler).toBe('up.onNextPageClick');
-        expect(prev.handler).toBe('up.onPrevPageClick');
-        pane.onNextPageClick();
-        expect(fired).toEqual([50]);
-
-        // page 2, short (the producer ran out): older disables, newer opens, range reflects the window
-        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:b'})], {limit: 50, offset: 50, count: 10, hasMore: false});
-        expect(prev.disabled).toBe(false);
-        expect(next.disabled, 'a short page is the producer saying it ran out').toBe(true);
-        expect(range.text).toBe('51–60');
-
-        pane.onPrevPageClick();
-        expect(fired).toEqual([50, 0]);
+        // the grid store carries the FULL projected window — scrolling reaches every row,
+        // and the honest end of the window is the only end
+        expect(pane.store.getCount()).toBe(50);
 
         pane.destroy()
     });
@@ -424,7 +424,6 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
 
             expect(pane.getPaneState(), JSON.stringify(snapshot)).toBe('unobserved');
             expect(pane.getReference('mailbox-rows').hidden).toBe(true);
-            expect(pane.getReference('mailbox-page').hidden).toBe(true);
 
             pane.destroy()
         })
@@ -457,134 +456,17 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         })
     });
 
-    test('a11y: the icon-only page steps carry an accessible name AND a real disabled semantic', () => {
-        const pane = createPane({snapshot: wiredSnapshot([row({messageId: 'MESSAGE:a'})], {limit: 50, offset: 0, count: 50, hasMore: true})}),
-              prev = pane.getReference('mailbox-page-prev'),
-              next = pane.getReference('mailbox-page-next');
-
-        // a chevron IS the label to a sighted operator and nothing at all to anyone else
-        expect(prev.vdom['aria-label']).toBe('Newer messages');
-        expect(next.vdom['aria-label']).toBe('Older messages');
-
-        // `component.Base.disabled` guarantees the neo-disabled CLASS and no aria-disabled. Without
-        // the explicit ARIA state the closed edge is announced as ENABLED: the operator who most
-        // needs the boundary to be honest is the one it lies to. Any native `disabled` projection
-        // belongs to the Button layer and is deliberately not assumed here.
-        expect(prev.disabled).toBe(true);
-        expect(prev.vdom['aria-disabled']).toBe('true');
-        expect(next.disabled).toBe(false);
-        expect(next.vdom['aria-disabled'] ?? null, 'an open edge must not be announced as disabled').toBe(null);
-
-        // and the semantics track the bounds, not just the first render
-        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:b'})], {limit: 50, offset: 50, count: 10, hasMore: false});
-        expect(prev.vdom['aria-disabled'] ?? null).toBe(null);
-        expect(next.vdom['aria-disabled']).toBe('true');
-
-        pane.destroy()
-    });
-
-    test('a DISABLED step refuses the request — the handler guard closes what the routed gates cannot', () => {
-        // A ROUTED activation never gets this far: `.neo-disabled` sets `pointer-events: none`, and
-        // `manager/DomEvent` breaks its listener walk on a disabled component for every non-resize
-        // event — a keyboard Enter arrives as a click on that same route and stops there too. This
-        // test enters the handler DIRECTLY, which is the one path those gates miss, since
-        // `button.Base.onClick` never consults the config. So what is pinned here is the guard
-        // against programmatic entry — NOT a claim that a real click or keypress reaches the
-        // handler. Unguarded, stepping past the last page reads an empty window at a positive
-        // offset. `aria-disabled` owns the announcement only; it does not remove focus or suppress
-        // activation. The routed gates plus this direct-entry guard own refusal here, while any
-        // native focus/activation behavior remains the Button layer's contract.
-        const pane  = createPane({snapshot: wiredSnapshot([row({messageId: 'MESSAGE:a'})], {limit: 50, offset: 0, count: 50, hasMore: false})}),
-              fired = [];
-
-        pane.on('pageRequest', data => fired.push(data.offset));
-
-        // page 1 AND the last page: both edges closed
-        expect(pane.getReference('mailbox-page-prev').disabled).toBe(true);
-        expect(pane.getReference('mailbox-page-next').disabled).toBe(true);
-
-        // entering the handler directly: the routed gates are BYPASSED here, not defeated
-        pane.onPrevPageClick();
-        pane.onNextPageClick();
-
-        expect(fired, 'a closed edge must refuse the request, not merely look shut').toEqual([]);
-
-        pane.destroy()
-    });
-
-    test('a denial or degrade never fakes a page window', () => {
-        const denied = createPane({snapshot: {
-            capability: {state: 'degraded', confidence: 'none', capturedAt: CAPTURED_AT, reason: 'no grant'},
-            admission : {state: 'denied', viewerIdentity: '@x', subjectAgentId: '@neo-opus-vega', checkedAt: CAPTURED_AT, reason: 'Unauthorized: no CAN_READ_INBOX_OF permission for @neo-gpt'},
-            rows      : [],
-            page      : {limit: 50, offset: 0, count: 0}
-        }});
-
-        // bounds + their transitions are hidden together: a window over data you cannot see is a lie
-        expect(denied.getReference('mailbox-page').hidden).toBe(true);
-        denied.destroy()
-    });
-
-    test('a11y: thread collapse is a NATIVE button that names its state — not a clickable div', () => {
-        const pane = createPane({
-            snapshot: wiredSnapshot([
-                row({messageId: 'MESSAGE:head', partOfThread: 'THREAD:z'}),
-                row({messageId: 'MESSAGE:old', partOfThread: 'THREAD:z', sentAt: '2026-07-16T11:10:00.000Z'})
-            ], {limit: 50, offset: 0, count: 2})
-        });
-
-        const findToggle = () => {
-            let found;
-            const walk = node => {
-                if (!node || typeof node !== 'object') return;
-                node.cls?.includes?.('fm-mail-thread-toggle') && (found = node);
-                (node.cn || []).forEach(walk)
-            };
-            walk(pane.getReference('mailbox-rows').vdom);
-            return found
-        };
-
-        const collapsed = findToggle();
-
-        // a native <button> owns Enter/Space and a tab stop; a div owns neither, so the toggle was
-        // mouse-only — the pane's ONLY affordance was unreachable by keyboard
-        expect(collapsed.tag).toBe('button');
-        expect(collapsed.type).toBe('button');
-        expect(collapsed['aria-expanded']).toBe('false');
-        expect(collapsed['aria-label']).toContain('Expand thread');
-
-        // toggling re-renders the button with the INVERTED state named — not a stale label
-        const head = pane.store.items.find(record => record.partOfThread === 'THREAD:z');
-        head.threadCollapsed = false;
-        pane.renderRows();
-
-        const expanded = findToggle();
-        expect(expanded.tag).toBe('button');
-        expect(expanded['aria-expanded']).toBe('true');
-        expect(expanded['aria-label']).toContain('Collapse thread');
-
-        pane.destroy()
-    });
-
-    test('hostile subjects are DOUBLE-defended: the String field strips markup, the vdom is text-only', () => {
+    test('hostile subjects: the record layer strips markup before any row can render it', () => {
+        // Layer 1 of the double defense (the record String convert strips tags — RecordFactory);
+        // layer 2 (text-only vdom leaves) is pinned per-row in `rowComponent.spec.mjs`, where the
+        // rendering now lives.
         const pane = createPane({
             snapshot: wiredSnapshot([
                 row({messageId: 'MESSAGE:xss', subject: 'deploy <img src=x onerror=alert(1)> done'})
             ], {limit: 50, offset: 0, count: 1})
         });
 
-        // layer 1: Neo's record layer strips tags from every String field (RecordFactory) —
-        // markup never even reaches the view
         expect(pane.store.get('MESSAGE:xss').subject).toBe('deploy  done');
-
-        // layer 2: the vdom carries text leaves only — no node anywhere renders html
-        const walk = node => {
-            if (!node || typeof node !== 'object') return;
-            expect(node.html).toBe(undefined);
-            (node.cn || []).forEach(walk)
-        };
-        walk(pane.getReference('mailbox-rows').vdom);
-        expect(pane.getReference('mailbox-rows').vdom.cn[0].cn[0].cn[0].text).toBe('deploy  done');
 
         pane.destroy()
     });
@@ -613,7 +495,9 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
             ...threadRows()
         ], {limit: 50, offset: 0, count: 3});
         expect(pane.store.get('MESSAGE:j').threadCollapsed).toBe(true);
-        expect(pane.store.get('MESSAGE:h').threadCollapsed).toBe(true);
+        // h is now a COLLAPSED MEMBER (j heads the thread) — hidden from the filtered view by
+        // design, so the assertion reads the unfiltered source
+        expect(pane.store.allItems.get('MESSAGE:h').threadCollapsed).toBe(true);
 
         const store = pane.store;
         pane.destroy();

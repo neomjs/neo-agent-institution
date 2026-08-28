@@ -103,18 +103,18 @@ class Grid extends GridContainer {
         if (value) {
             me.buildThreadMap();
 
-            value.on({
-                load : me.onStoreMutation,
-                scope: me
-            });
-
             // collapsed thread members hide at the store view layer — the one filter this surface
-            // owns; heads and standalone rows always pass
+            // owns; heads and standalone rows always pass. `filterBy` follows the collection
+            // Filter contract: returning TRUE filters the item OUT. NOTE: the grid body reacts to
+            // the store's `filter` / `load` / `recordChange` events ONLY — a wholesale projection
+            // (`applySnapshotRows` → the data setter → clear+add) fires none of them, so the
+            // OWNING PANE drives {@link #onStoreMutation} after every projection; `store.filter()`
+            // inside it is what re-renders the body deterministically.
             value.filters = [...(value.filters || []), {
                 filterBy({item}) {
                     const facts = me.threadFactsFor(item);
 
-                    return !(facts && !facts.isHead && facts.collapsed)
+                    return !!(facts && !facts.isHead && facts.collapsed)
                 }
             }]
         }
@@ -128,9 +128,14 @@ class Grid extends GridContainer {
     buildThreadMap() {
         const
             me  = this,
-            map = new Map();
+            map = new Map(),
+            // the map derives from the UNFILTERED corpus: once the collapse filter has run, a
+            // hidden member is gone from `items`, and a map built over the filtered view would
+            // undercount threads (the collection exposes the unfiltered source as `allItems`
+            // after its first filter run)
+            source = me.store?.allItems?.items ?? me.store?.items;
 
-        me.store?.items?.forEach(record => {
+        source?.forEach(record => {
             const threadId = record.partOfThread;
 
             if (!threadId) {
