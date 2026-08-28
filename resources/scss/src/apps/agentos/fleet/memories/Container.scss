@@ -30,11 +30,12 @@
     /* the former agent-chip picker is GONE: the roster selection (one cockpit picker) writes the
        target through — the meta line names it, and the null state points at the card click */
 
-    /* the session cards own the scroll — the chrome above stays put */
-    .fm-memories-rows {
+    /* the grid registers own the scroll — the chrome above stays put (the cell structure
+       lives in Grid.scss; the card/turn vocabulary below is shared with it) */
+    .fm-memories-summary-grid,
+    .fm-memories-turn-grid {
         overflow  : auto;
         min-height: 0;
-        gap       : 10px;
     }
 
     .fm-memories-card {
@@ -89,9 +90,7 @@
         gap: var(--fm-space-2);
     }
 
-    .neo-button.fm-memories-card-open,
-    .neo-button.fm-memories-drill-back,
-    .neo-button.fm-memories-drill-more {
+    .neo-button.fm-memories-drill-back {
         background : none;
         box-shadow : none;
         color      : var(--fm-ink-dim);

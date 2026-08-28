@@ -26,6 +26,16 @@ class SessionSummary extends Model {
          * @member {Object[]} fields
          */
         fields: [{
+            /**
+             * View-owned display facts: the viewer-calendar band grouping stamped by
+             * {@link AgentOS.view.fleet.memories.SummaryGrid#stampFacts} into the plain projection
+             * bags before they become records ({label} on the first card of each band, null
+             * otherwise). Rides the record because the pooled grid cells render from record fields;
+             * never wire data — the owner seam strips display state off the wire.
+             * @field
+             */
+            name: 'bandFacts'
+        }, {
             name: 'id',
             type: 'String'
         }, {

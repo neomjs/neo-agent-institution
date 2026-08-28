@@ -37,6 +37,18 @@ class SessionTurn extends Model {
             name: 'timestamp',
             type: 'String'
         }, {
+            /**
+             * The tweet-size per-turn summary — the turn's TITLE line once the wire carries it
+             * (producer-side exposure: neomjs/neo-agent-brain#210; the merged memories sketch's
+             * measured law). Until then the field arrives null and the row falls back to the
+             * bounded response head — forward-compatible, never a phantom.
+             * @field
+             */
+            name        : 'miniSummary',
+            type        : 'String',
+            convert     : value => typeof value === 'string' ? value : null,
+            defaultValue: null
+        }, {
             name        : 'prompt',
             type        : 'String',
             convert     : value => typeof value === 'string' ? value : null,
