@@ -4,8 +4,10 @@ import ListModel from '../../../../../node_modules/neo.mjs/src/selection/ListMod
  * The roster's selection semantics: single-select (one detail pane, one memories target — the
  * product contract), with the lifecycle-control carve-out — a click that lands inside a card's
  * control cluster (start/stop/restart) operates the agent and MUST NOT re-target the cockpit's
- * selection-driven panes, so those clicks never reach the base selection path. Keyboard: the
- * Navigator addon moves item focus (the base list contract); Enter selects the focused row.
+ * selection-driven panes, so those clicks never reach the base selection path. Keyboard: all four
+ * arrows move item focus across the grid — Left/Right through the list's Navigator subscription
+ * (the row-major flat order), Up/Down through this model's row hooks (±columns, live plugin
+ * truth) — and Enter selects the focused row.
  *
  * @class AgentOS.view.fleet.roster.SelectionModel
  * @extends Neo.selection.ListModel
@@ -60,6 +62,54 @@ class SelectionModel extends ListModel {
         const {focusIndex} = this.view;
 
         Neo.isNumber(focusIndex) && focusIndex > -1 && this.selectAt(focusIndex)
+    }
+
+    /**
+     * @summary ArrowDown moves item focus one visual ROW down (+columns in the row-major flat
+     * order) — the grid's vertical axis, complementing the Navigator's horizontal pair.
+     * @param {Object} data The key event.
+     */
+    onKeyDownDown(data) {
+        this.navigateRow(1)
+    }
+
+    /**
+     * @summary ArrowUp moves item focus one visual ROW up (−columns).
+     * @param {Object} data The key event.
+     */
+    onKeyDownUp(data) {
+        this.navigateRow(-1)
+    }
+
+    /**
+     * @summary Move item focus by whole visual rows, through the ONE focus authority.
+     *
+     * The column count is live plugin truth — {@link Neo.list.plugin.Animate} re-derives it from
+     * the list's own measured width on every resize — so vertical steps stay visually true through
+     * every reflow; without the plugin (or at one column) the step degrades to the flat order.
+     * Vertical edges are hard stops: a step that would leave the grid is a no-op, never a wrap and
+     * never a column jump (the Navigator's own horizontal pair owns wrap semantics). The move
+     * executes through the Navigator addon, so DOM focus, scroll-into-view and the `focusIndex`
+     * round-trip stay owned by the same authority the horizontal axis uses.
+     * @param {Number} step ±1 visual row.
+     * @protected
+     */
+    navigateRow(step) {
+        const
+            {view}  = this,
+            columns = view.getPlugin('plugin-list-animate')?.columns || 1,
+            count   = view.store?.getCount() ?? 0,
+            current = Neo.isNumber(view.focusIndex) ? view.focusIndex : -1,
+            target  = current === -1 ? 0 : current + step * columns;
+
+        if (count < 1 || (current !== -1 && (target < 0 || target >= count))) {
+            return
+        }
+
+        Neo.main.addon.Navigator.navigateTo({
+            data  : {id: view.id, windowId: view.windowId},
+            target
+        })
     }
 }
 
