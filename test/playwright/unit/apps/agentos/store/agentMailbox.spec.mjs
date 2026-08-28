@@ -57,11 +57,13 @@ test.describe('AgentOS.store.AgentMailbox — the mailbox mirror data plane', ()
         })])
     }
 
-    test('applySnapshotRows accepts the frozen adapter rows verbatim, keyed by messageId, newest first', () => {
+    test('the data setter accepts the frozen adapter rows verbatim, keyed by messageId, newest first', () => {
         const store = Neo.create(AgentMailboxStore);
         const rows  = frozenAdapterRows();
 
-        store.applySnapshotRows(rows);
+        // the pane projects plain bags straight into the data setter (the grid's one data path);
+        // the store layer's own contract is sorter + key + model conversion
+        store.data = rows.map(row => ({...row}));
 
         expect(store.getCount()).toBe(2);
         // the sorter renders flat-chrono newest-first regardless of input order
@@ -77,7 +79,7 @@ test.describe('AgentOS.store.AgentMailbox — the mailbox mirror data plane', ()
         expect(record.status).toBe('unread');
         expect(record.taskState).toBe('Submitted');
         expect(record.readAt).toBe(null);
-        // the frozen input array was cloned, never mutated
+        // the frozen adapter rows were never mutated (the projection spreads per bag)
         expect(Object.isFrozen(rows)).toBe(true);
         expect(rows[0].threadCollapsed).toBe(undefined);
 
@@ -87,24 +89,24 @@ test.describe('AgentOS.store.AgentMailbox — the mailbox mirror data plane', ()
     test('a new snapshot replaces wholesale — rows are timestamped facts, not merge targets', () => {
         const store = Neo.create(AgentMailboxStore);
 
-        store.applySnapshotRows(frozenAdapterRows());
+        store.data = frozenAdapterRows().map(row => ({...row}));
         expect(store.getCount()).toBe(2);
 
-        store.applySnapshotRows([{
+        store.data = [{
             messageId     : 'MESSAGE:third',
             subject       : 'fresh snapshot',
             from          : '@neo-fable',
             recipientClass: 'agent',
             status        : 'unread',
             sentAt        : '2026-07-16T13:00:00.000Z'
-        }]);
+        }];
 
         expect(store.getCount()).toBe(1);
         expect(store.items[0].messageId).toBe('MESSAGE:third');
         // display state initializes fresh: thread heads start collapsed by model default
         expect(store.items[0].threadCollapsed).toBe(true);
 
-        store.applySnapshotRows(null);
+        store.data = [];
         expect(store.getCount()).toBe(0);
 
         store.destroy()
@@ -115,14 +117,14 @@ test.describe('AgentOS.store.AgentMailbox — the mailbox mirror data plane', ()
 
         const store = Neo.create(AgentMailboxStore);
 
-        store.applySnapshotRows([{
+        store.data = [{
             messageId     : 'MESSAGE:bare',
             subject       : 'minimal row',
             from          : '@neo-gpt',
             recipientClass: 'agent',
             status        : 'unread',
             sentAt        : '2026-07-16T09:00:00.000Z'
-        }]);
+        }];
 
         const record = store.get('MESSAGE:bare');
 

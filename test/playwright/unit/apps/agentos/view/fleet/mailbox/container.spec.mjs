@@ -285,26 +285,32 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
             ], {limit: 50, offset: 0, count: 4})
         });
 
-        const
-            rowsGrid = pane.getReference('mailbox-rows'),
-            head     = pane.store.get('MESSAGE:t3');
+        const rowsGrid = pane.getReference('mailbox-rows');
 
-        // the grid's thread map: store order is newest-first, so the newest message heads its
-        // thread — the shipped reading order, pinned (Grace's steer, kept)
-        const headFacts = rowsGrid.threadFactsFor(head);
-        expect(headFacts).toEqual({collapsed: true, isHead: true, hiddenCount: 2, inThread: false});
+        // the stamped record truth (the one data path stamps facts into the bags before they
+        // become records): store order is newest-first, so the newest message heads its thread —
+        // the shipped reading order, pinned (Grace's steer, kept)
+        expect(pane.store.get('MESSAGE:t3').threadFacts)
+            .toEqual({collapsed: true, isHead: true, hiddenCount: 2, inThread: false});
 
-        // collapsed members hide at the store view layer: the filtered count carries head + solo only
+        // collapsed members hide at the store view layer: the filtered count carries head + solo
+        // only — and the hidden members survive in the unfiltered source, facts stamped
         expect(pane.store.getCount()).toBe(2);
-        expect(rowsGrid.threadFactsFor(pane.store.get('MESSAGE:solo'))).toBeNull();
+        expect(pane.store.get('MESSAGE:solo').threadFacts).toBe(null);
+        expect(pane.store.allItems.get('MESSAGE:t2').threadFacts)
+            .toEqual({collapsed: true, isHead: false, hiddenCount: 2, inThread: true});
 
-        // toggle = display-state navigation on the view-owned field, never a data write
-        head.threadCollapsed = false;
-        rowsGrid.onStoreMutation();
+        // toggle = display-state navigation on the view-owned field, never a data write; the flip
+        // re-projects through the one data path, so records carry FRESH identities + facts
+        rowsGrid.onThreadToggleClick({path: [
+            {cls: ['fm-mail-thread-toggle']},
+            {cls: ['neo-grid-row'], data: {recordId: 'MESSAGE:t3'}}
+        ]});
 
         expect(pane.store.getCount()).toBe(4);
-        expect(rowsGrid.threadFactsFor(head).collapsed).toBe(false);
-        expect(rowsGrid.threadFactsFor(pane.store.get('MESSAGE:t2'))).toEqual({collapsed: false, isHead: false, hiddenCount: 2, inThread: true});
+        expect(pane.store.get('MESSAGE:t3').threadFacts.collapsed).toBe(false);
+        expect(pane.store.get('MESSAGE:t2').threadFacts)
+            .toEqual({collapsed: false, isHead: false, hiddenCount: 2, inThread: true});
 
         pane.destroy()
     });
@@ -395,6 +401,42 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         // the grid store carries the FULL projected window — scrolling reaches every row,
         // and the honest end of the window is the only end
         expect(pane.store.getCount()).toBe(50);
+
+        pane.destroy()
+    });
+
+    test('the drain: row 51+ stays reachable — hasMore requests the next window, appends it, and stops at the honest end', () => {
+        const
+            fired    = [],
+            firstWin = Array.from({length: 50}, (v, i) => row({
+                messageId: `MESSAGE:${i}`, subject: `subject ${i}`,
+                sentAt   : `2026-07-16T10:${String(59 - (i % 60)).padStart(2, '0')}:00.000Z`
+            })),
+            pane = createPane({
+                snapshot : wiredSnapshot(firstWin, {limit: 50, offset: 0, count: 50, hasMore: true}),
+                listeners: {pageRequest: data => fired.push(data.offset)}
+            });
+
+        // the construction-time snapshot already carried hasMore — exactly ONE drain request for
+        // the next window, no chrome involved
+        expect(fired).toEqual([50]);
+        expect(pane.store.getCount()).toBe(50);
+
+        // a freshness re-render must NOT re-request (the drain arms per SNAPSHOT, not per render)
+        pane.now = NOW + 1000;
+        expect(fired).toEqual([50]);
+
+        // the follow-up window APPENDS — row 51+ is now genuinely present, not stranded
+        pane.snapshot = wiredSnapshot(
+            Array.from({length: 10}, (v, i) => row({messageId: `MESSAGE:5${i}`, subject: `late ${i}`, sentAt: `2026-07-16T09:0${i % 10}:00.000Z`})),
+            {limit: 50, offset: 50, count: 10, hasMore: false}
+        );
+
+        expect(pane.store.getCount()).toBe(60);
+        expect(pane.store.allItems.get('MESSAGE:55')).toBeTruthy();
+
+        // hasMore: false is the honest end — no further request fired
+        expect(fired).toEqual([50]);
 
         pane.destroy()
     });

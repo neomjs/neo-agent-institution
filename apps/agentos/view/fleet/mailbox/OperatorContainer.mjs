@@ -145,6 +145,9 @@ class OperatorMailbox extends Container {
             inbox = me.getReference('operator-inbox-pane'),
             form  = me.getReference('operator-compose-form');
 
+        // the pane's drain requests (the next window while `page.hasMore`) relay through the same
+        // read intent the construction fire uses — one event, one cockpit handler, no chrome
+        inbox?.on('pageRequest', me.onInboxPageRequest, me);
         form?.on('compose', me.onCompose, me);
 
         if (inbox) {
@@ -240,9 +243,10 @@ class OperatorMailbox extends Container {
 
     /**
      * @summary Fire the inbox read intent to the owner — the cockpit holds the read seam and reads
-     * the operator mirror. Since the paging chrome retired (the buffered grid scrolls), the offset
-     * is always 0 and the ONLY triggers are construction and an identity bind; the event name and
-     * payload shape stay stable for the cockpit's existing wiring.
+     * the operator mirror at the requested offset. Two callers, one event: the construction /
+     * identity-bind fire (offset 0) and the pane's snapshot-driven DRAIN (the next window while
+     * `page.hasMore` — one request per received snapshot, so row 51+ assembles without chrome).
+     * The event name and payload shape stay stable for the cockpit's existing wiring.
      * @param {Object} data The read payload (`{offset}`).
      * @protected
      */

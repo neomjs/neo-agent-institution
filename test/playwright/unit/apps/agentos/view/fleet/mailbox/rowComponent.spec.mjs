@@ -41,7 +41,7 @@ test.describe('Fleet mailbox RowComponent — the sketch\'s row grammar from one
     };
 
     const makeRow = (fields = {}, config = {}) =>
-        Neo.create(RowComponent, {appName, record: {...baseRecord, ...fields}, ...config});
+        Neo.create(RowComponent, {appName, rowData: {...baseRecord, ...fields}, ...config});
 
     const nodeBy = (row, cls) => {
         const walk = nodes => {
@@ -104,14 +104,16 @@ test.describe('Fleet mailbox RowComponent — the sketch\'s row grammar from one
     });
 
     test('a collapsed thread head renders the native toggle with its count and aria state', () => {
-        const row = makeRow({partOfThread: 'T1'}, {threadFacts: {isHead: true, collapsed: true, hiddenCount: 3, inThread: false}});
+        // the facts ride ON the record (the grid stamps them — the record version is what
+        // survives the pooled cell's short-circuit)
+        const row = makeRow({partOfThread: 'T1', threadFacts: {isHead: true, collapsed: true, hiddenCount: 3, inThread: false}});
 
         const toggle = nodeBy(row, 'fm-mail-thread-toggle');
         expect(toggle.tag).toBe('button');
         expect(toggle.text).toBe('+3 earlier');
         expect(toggle['aria-expanded']).toBe('false');
 
-        row.threadFacts = {isHead: true, collapsed: false, hiddenCount: 3, inThread: false};
+        row.rowData = {...row.rowData, threadFacts: {isHead: true, collapsed: false, hiddenCount: 3, inThread: false}};
 
         const expanded = nodeBy(row, 'fm-mail-thread-toggle');
         expect(expanded.text).toBe('collapse thread');
@@ -121,7 +123,7 @@ test.describe('Fleet mailbox RowComponent — the sketch\'s row grammar from one
     });
 
     test('a thread member indents on the rail and renders no toggle', () => {
-        const row = makeRow({partOfThread: 'T1'}, {threadFacts: {isHead: false, collapsed: false, hiddenCount: 3, inThread: true}});
+        const row = makeRow({partOfThread: 'T1', threadFacts: {isHead: false, collapsed: false, hiddenCount: 3, inThread: true}});
 
         expect(row.cls).toContain('is-in-thread');
         expect(nodeBy(row, 'fm-mail-thread-toggle')).toBeNull();
@@ -134,7 +136,7 @@ test.describe('Fleet mailbox RowComponent — the sketch\'s row grammar from one
 
         expect(row.cls).toContain('is-unread');
 
-        row.record = {...baseRecord, from: '@neo-opus-vega', subject: '[assignment triage DONE]'};
+        row.rowData = {...baseRecord, from: '@neo-opus-vega', subject: '[assignment triage DONE]'};
 
         expect(row.cls).not.toContain('is-unread');
         expect(nodeBy(row, 'fm-mail-smark').text).toBe('ve');

@@ -172,6 +172,22 @@ class MailboxPane extends Container {
      * @member {AgentOS.store.AgentMailbox|null} store=null
      */
     store = null
+    /**
+     * Armed by {@link #afterSetSnapshot} and consumed by ONE {@link #applySnapshot} run: the drain
+     * request (the next window beyond `page.hasMore`) fires only for a freshly landed snapshot —
+     * a freshness re-render (`now`) or a record swap re-projects without re-requesting.
+     * @member {Boolean} drainArmed=false
+     * @protected
+     */
+    drainArmed = false
+    /**
+     * The last projected window's identity (`[offset, rows]` fingerprint) — the explicit
+     * identical-poll gate: a refresh carrying the same rows skips the projection, so view-owned
+     * display state (an expanded thread) survives it.
+     * @member {String|null} projectedFingerprint=null
+     * @protected
+     */
+    projectedFingerprint = null
 
     /**
      * @summary Create the pane-owned store, then render the initial (honest) state.
@@ -201,13 +217,14 @@ class MailboxPane extends Container {
     }
 
     /**
-     * Triggered after the snapshot config changed — a new adapter read replaces the rows wholesale
-     * (rows are immutable timestamped facts; the new snapshot IS the new truth).
+     * Triggered after the snapshot config changed — a new adapter read projects (the first window
+     * replaces wholesale; a follow-up window appends), and arms exactly one drain request.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
      */
     afterSetSnapshot(value, oldValue) {
+        this.drainArmed = true;
         this.isConstructed && this.applySnapshot()
     }
 
@@ -347,10 +364,36 @@ class MailboxPane extends Container {
 
         rowsGrid.hidden = !rows;
 
-        // wholesale projection fires none of the store events the grid body listens to (the data
-        // setter is clear+add) — the pane drives the grid's deterministic refresh instead
-        me.store.applySnapshotRows(rows ? snapshot.rows : []);
-        rowsGrid.onStoreMutation()
+        // Projection: the FIRST window replaces wholesale; a follow-up window (offset > 0) extends
+        // the held corpus — the accumulation half of the no-paging contract (the buffered surface
+        // owns the whole corpus; the old offset chrome moved windows, the drain below fetches
+        // them). An identical-rows poll (only capture time advanced) skips the projection
+        // entirely, so the operator's expansion state survives a refresh with nothing new — the
+        // gate is explicit and pane-owned. Both branches ride the grid's ONE data path
+        // (`applyBags`): fresh windows arrive collapsed, an extension re-projects the held rows
+        // (their live `threadCollapsed` state included) plus the new window in one set.
+        const fingerprint = rows ? JSON.stringify([snapshot.page?.offset ?? 0, snapshot.rows]) : null;
+
+        if (fingerprint !== me.projectedFingerprint) {
+            const
+                extend    = rows && snapshot.page?.offset > 0,
+                projected = rows ? snapshot.rows.map(row => ({...row, threadCollapsed: true})) : [];
+
+            rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected);
+            me.projectedFingerprint = fingerprint
+        }
+
+        // The drain: while the producer says more exists beyond this window, request the next one —
+        // exactly ONE request per received snapshot (sequential by construction, no in-flight
+        // stacking), fired only when a NEW snapshot landed (afterSetSnapshot arms it) so freshness
+        // re-renders and record swaps never re-request. Row 51+ stays reachable without any chrome:
+        // the corpus assembles itself at the pane's own pace, and the honest end (hasMore: false)
+        // is the only stop.
+        if (rows && me.drainArmed && snapshot.page?.hasMore) {
+            me.fire('pageRequest', {offset: snapshot.page.offset + snapshot.page.limit, source: me})
+        }
+
+        me.drainArmed = false
     }
 
     /**

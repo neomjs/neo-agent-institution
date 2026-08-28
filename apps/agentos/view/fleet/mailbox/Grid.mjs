@@ -14,12 +14,20 @@ import RowComponent  from './RowComponent.mjs';
  * acquisition stays the owning controller's scroll-edge contract until neomjs/neo#17835 lands the
  * engine seam.
  *
- * **Threads are store truth + view-owned display state.** The thread map (head row, member count)
- * derives from store order per `partOfThread` — newest-first, so the newest message heads its
- * thread (the shipped pane's reading order, kept). Collapse state lives on the head record's
- * view-owned `threadCollapsed` field (the model's ONE display-state exception); collapsed members
- * hide via the grid's store filter, and the head's toggle — a native button inside the row cell —
- * is delegated HERE (one listener, the cell stays passive).
+ * **ONE data path.** Every mutation of this surface — wholesale projection, window append, thread
+ * toggle — flows through {@link #applyBags}: plain row bags get their thread facts stamped
+ * ({@link #stampThreadFacts}) and become the store's data in a single set. The grid body renders
+ * once per mutation from records that already carry their facts, and every mutation produces NEW
+ * record identities (which is what re-seats the pooled cells — no version choreography, no
+ * recordChange/filter event overlap; two overlapping vdom transactions double-mounted cell content
+ * into its own row, measured, not theorized).
+ *
+ * **Threads are store truth + view-owned display state.** The first row seen per `partOfThread` is
+ * the head (newest-first store order — the newest message heads its thread, the shipped pane's
+ * reading order). Collapse state lives on the head's view-owned `threadCollapsed` field (the
+ * model's ONE display-state exception); collapsed members hide via the grid's store filter, and
+ * the head's toggle — a native button inside the row cell — is delegated HERE (one listener, the
+ * cell stays passive).
  *
  * The mirror's read-only MUST-NOT stands unchanged: nothing on this surface writes — selection,
  * expansion and scrolling never mark-read.
@@ -53,18 +61,12 @@ class Grid extends GridContainer {
     }
 
     /**
-     * The store-derived thread map: `partOfThread` → `{headId, count}`. Rebuilt on every store
-     * load/change (cheap: one pass over the loaded window); read by the column factory to hand
-     * each cell its display facts.
-     * @member {Map|null} threadMap=null
-     * @protected
-     */
-    threadMap = null
-
-    /**
-     * @summary One headerless component column: the designed row IS the cell. The factory hands the
-     * pooled {@link AgentOS.view.fleet.mailbox.RowComponent} its record plus the thread display
-     * facts a lone cell cannot derive (a cell sees one record; the thread's shape is store truth).
+     * @summary One headerless component column: the designed row IS the cell. The factory builds a
+     * FRESH `rowData` bag per call — the engine's component-column contract in both directions:
+     * the pool short-circuits on an unchanged record (every {@link #applyBags} run creates new
+     * record identities, so re-seats always fire), and a re-seat applies configs via `set()` (so
+     * the render surface must be a new-reference value, never the same record instance, or
+     * afterSet never re-fires).
      */
     onConstructed() {
         let me = this;
@@ -73,9 +75,18 @@ class Grid extends GridContainer {
             dataField: 'subject',
             flex     : 1,
             component: ({record}) => ({
-                module     : RowComponent,
-                record,
-                threadFacts: me.threadFactsFor(record)
+                module : RowComponent,
+                rowData: {
+                    from          : record.from,
+                    priority      : record.priority,
+                    recipientClass: record.recipientClass,
+                    relatedTickets: record.relatedTickets,
+                    sentAt        : record.sentAt,
+                    status        : record.status,
+                    subject       : record.subject,
+                    taskState     : record.taskState,
+                    threadFacts   : record.threadFacts
+                }
             })
         }];
 
@@ -89,8 +100,7 @@ class Grid extends GridContainer {
     }
 
     /**
-     * Triggered after the store config got changed: rebuild the thread map and arm the collapse
-     * filter over the new store.
+     * Triggered after the store config got changed: arm the collapse filter over the new store.
      * @param {Neo.data.Store|null} value
      * @param {Neo.data.Store|null} oldValue
      * @protected
@@ -98,21 +108,16 @@ class Grid extends GridContainer {
     afterSetStore(value, oldValue) {
         super.afterSetStore?.(value, oldValue);
 
-        let me = this;
-
         if (value) {
-            me.buildThreadMap();
-
             // collapsed thread members hide at the store view layer — the one filter this surface
             // owns; heads and standalone rows always pass. `filterBy` follows the collection
-            // Filter contract: returning TRUE filters the item OUT. NOTE: the grid body reacts to
-            // the store's `filter` / `load` / `recordChange` events ONLY — a wholesale projection
-            // (`applySnapshotRows` → the data setter → clear+add) fires none of them, so the
-            // OWNING PANE drives {@link #onStoreMutation} after every projection; `store.filter()`
-            // inside it is what re-renders the body deterministically.
+            // Filter contract: returning TRUE filters the item OUT. It reads the facts stamped at
+            // bag time ({@link #applyBags}), never a live re-derivation, so the filter and the
+            // rendered cells can never disagree — and the facts exist BEFORE the data path's
+            // filter-during-add renders the first cells.
             value.filters = [...(value.filters || []), {
                 filterBy({item}) {
-                    const facts = me.threadFactsFor(item);
+                    const facts = item.threadFacts;
 
                     return !!(facts && !facts.isHead && facts.collapsed)
                 }
@@ -121,81 +126,91 @@ class Grid extends GridContainer {
     }
 
     /**
-     * @summary One pass over the loaded window: first record seen per `partOfThread` is the head
-     * (store order is newest-first — the newest message heads its thread), every further one counts.
-     * @protected
+     * @summary THE one mutation entry: stamp thread facts into the plain bags, then hand them to
+     * the store as its full data set. The data path (clear + add) re-runs the collapse filter and
+     * renders the body exactly once, from records that already carry their facts as fields — and
+     * because every run creates new record identities, the pooled cells re-seat without any
+     * version choreography.
+     * @param {Object[]} bags Plain row objects (already carrying `threadCollapsed` view state).
      */
-    buildThreadMap() {
-        const
-            me  = this,
-            map = new Map(),
-            // the map derives from the UNFILTERED corpus: once the collapse filter has run, a
-            // hidden member is gone from `items`, and a map built over the filtered view would
-            // undercount threads (the collection exposes the unfiltered source as `allItems`
-            // after its first filter run)
-            source = me.store?.allItems?.items ?? me.store?.items;
+    applyBags(bags) {
+        this.stampThreadFacts(bags);
+        this.store.data = bags
+    }
 
-        source?.forEach(record => {
-            const threadId = record.partOfThread;
+    /**
+     * @summary The store's current corpus back as plain bags — the read half of the one data path
+     * (mutations re-project through {@link #applyBags}). Reads the UNFILTERED source (`allItems`
+     * once the collapse filter has run — hidden members must survive a re-projection) and strips
+     * the derived `threadFacts` (re-stamped on the way back in).
+     * @returns {Object[]}
+     */
+    extractBags() {
+        const
+            me         = this,
+            fieldNames = me.store.model.fields.map(field => field.name).filter(name => name !== 'threadFacts');
+
+        return (me.store.allItems?.items ?? me.store.items).map(record => {
+            const bag = {};
+
+            fieldNames.forEach(name => bag[name] = record[name]);
+
+            return bag
+        })
+    }
+
+    /**
+     * @summary Stamp thread display facts into PLAIN projection bags BEFORE they become records —
+     * facts that arrive only after the store set would miss the data path's immediate
+     * filter-during-add render (measured: cells seated with `facts: null`). Bags are mutated
+     * in place; the first bag seen per `partOfThread` is the head (newest-first order), and
+     * collapse truth reads from the head's view-owned `threadCollapsed` field, so a member knows
+     * to hide without carrying its own copy of the state.
+     * @param {Object[]} bags The projection rows (already carrying `threadCollapsed`).
+     * @returns {Object[]} The same array, facts stamped.
+     */
+    stampThreadFacts(bags) {
+        const map = new Map();
+
+        bags.forEach(bag => {
+            const threadId = bag.partOfThread;
 
             if (!threadId) {
                 return
             }
 
             if (!map.has(threadId)) {
-                map.set(threadId, {headId: record[me.store.keyProperty], count: 0})
+                map.set(threadId, {head: bag, count: 0})
             } else {
                 map.get(threadId).count++
             }
         });
 
-        me.threadMap = map
-    }
+        bags.forEach(bag => {
+            const entry = bag.partOfThread ? map.get(bag.partOfThread) : null;
 
-    /**
-     * @summary The display facts for one record — `null` for standalone rows. Collapse truth reads
-     * from the HEAD record's view-owned `threadCollapsed` field, so a member knows to hide without
-     * carrying its own copy of the state.
-     * @param {Object} record
-     * @returns {Object|null}
-     */
-    threadFactsFor(record) {
-        const
-            me       = this,
-            threadId = record?.partOfThread,
-            entry    = threadId ? me.threadMap?.get(threadId) : null;
+            if (entry) {
+                const isHead = entry.head === bag;
 
-        if (!entry) {
-            return null
-        }
+                bag.threadFacts = {
+                    collapsed  : entry.head.threadCollapsed !== false,
+                    isHead,
+                    hiddenCount: entry.count,
+                    inThread   : !isHead
+                }
+            }
+        });
 
-        const
-            isHead    = record[me.store.keyProperty] === entry.headId,
-            head      = isHead ? record : me.store.get(entry.headId),
-            collapsed = head ? head.threadCollapsed !== false : true;
-
-        return {
-            collapsed,
-            isHead,
-            hiddenCount: entry.count,
-            inThread   : !isHead
-        }
-    }
-
-    /**
-     * @summary Store content changed: the thread shape may have too — rebuild the map, re-run the
-     * collapse filter, and let the buffered rows re-seat.
-     * @protected
-     */
-    onStoreMutation() {
-        this.buildThreadMap();
-        this.store.filter()
+        return bags
     }
 
     /**
      * @summary The one interaction this surface owns: toggling a thread head's view-owned
      * `threadCollapsed` display state. Pure navigation — expanding a thread reads nothing and
-     * writes nothing beyond the display field (the read-only MUST-NOT stands).
+     * writes nothing beyond the display field (the read-only MUST-NOT stands). The flip rides the
+     * one data path: extract the corpus, flip the head's bag, re-apply — never a record mutation
+     * (mutating live records fires recordChange against the filter re-render, and the two
+     * overlapping vdom transactions double-mount the head cell's content).
      *
      * Record resolution walks the delegated click path up to the `.neo-grid-row` node, which the
      * grid body stamps with `data.recordId` — the engine's own event→record contract, no index math.
@@ -209,8 +224,12 @@ class Grid extends GridContainer {
             record   = recordId != null ? me.store.get(recordId) : null;
 
         if (record?.partOfThread) {
-            record.threadCollapsed = record.threadCollapsed === false;
-            me.onStoreMutation()
+            const
+                bags = me.extractBags(),
+                head = bags.find(bag => bag[me.store.keyProperty] === record[me.store.keyProperty]);
+
+            head.threadCollapsed = head.threadCollapsed === false;
+            me.applyBags(bags)
         }
     }
 }

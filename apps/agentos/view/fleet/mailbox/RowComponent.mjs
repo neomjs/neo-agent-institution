@@ -46,21 +46,16 @@ class RowComponent extends Component {
          */
         baseCls: ['fm-mail-row'],
         /**
-         * The row's data surface: one {@link AgentOS.model.MailboxMessage} record (or a plain field
-         * bag with the same keys). Re-assigned on every pool recycle by the column's `component`
-         * factory; `afterSetRecord` rebuilds the vdom in place.
-         * @member {Object|null} record_=null
+         * The row's render surface: a PLAIN bag of the record-derived values (subject, from,
+         * status, priority, taskState, recipientClass, relatedTickets, sentAt, threadFacts),
+         * assembled fresh by the column factory on every pool recycle. Deliberately NOT the record
+         * instance: the engine's component-column contract re-seats pooled cells via `set()`, and
+         * a same-instance record never re-fires its afterSet — a freshly built bag always does
+         * (the bigData example's `text: record.firstname` pattern, generalized to one config).
+         * @member {Object|null} rowData_=null
          * @reactive
          */
-        record_: null,
-        /**
-         * Thread display facts for THIS row, derived by the owning grid from its store-wide thread
-         * map (a cell sees one record and cannot know its thread's shape): `null` for a standalone
-         * row, else `{isHead: Boolean, collapsed: Boolean, hiddenCount: Number, inThread: Boolean}`.
-         * @member {Object|null} threadFacts_=null
-         * @reactive
-         */
-        threadFacts_: null
+        rowData_: null
     }
 
     /**
@@ -80,15 +75,7 @@ class RowComponent extends Component {
      * @param {Object|null} value
      * @param {Object|null} oldValue
      */
-    afterSetRecord(value, oldValue) {
-        this.buildRow()
-    }
-
-    /**
-     * @param {Object|null} value
-     * @param {Object|null} oldValue
-     */
-    afterSetThreadFacts(value, oldValue) {
+    afterSetRowData(value, oldValue) {
         this.buildRow()
     }
 
@@ -102,8 +89,8 @@ class RowComponent extends Component {
     buildRow() {
         const
             me           = this,
-            record       = me.record,
-            facts        = me.threadFacts,
+            record       = me.rowData,
+            facts        = record?.threadFacts,
             {cls, vdom}  = me;
 
         if (!record) {

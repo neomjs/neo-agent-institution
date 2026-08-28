@@ -6,9 +6,16 @@
 .fm-mailbox-grid {
 
     /* a headerless designed list, not a data table: the single component column needs no header
-       row — hidden at the skin layer (the engine offers no headerless config today; recorded) */
+       row — COLLAPSED at the skin layer, never display:none: the header toolbar is the engine's
+       measuring instrument for flex-sized columns ("only the DOM can answer", grid/header/Toolbar),
+       so it must keep its WIDTH in the layout while costing zero height. (No headerless grid
+       config exists engine-side today; recorded.) */
     .neo-grid-header-toolbar {
-        display: none;
+        height    : 0;
+        min-height: 0;
+        overflow  : hidden;
+        border    : 0;
+        padding   : 0;
     }
 
     /* ── the designed row: [unread mark] [monogram] [content] [age] ── */
