@@ -108,10 +108,13 @@ class ActivityStream extends Container {
          */
         counts_: [],
         /**
-         * Fixed pooled-row height in both wide and narrow grammar.
-         * @member {Number} itemHeight=52
+         * Fixed pooled-row height in both wide and narrow grammar. 32 is the density contract the
+         * stream's goldens pin: one line in the wide grammar, two 13px lines in the narrow one —
+         * both grammars must fit INSIDE this pool height, since the buffered pool cannot vary
+         * per-breakpoint without a resize-driven itemHeight update.
+         * @member {Number} itemHeight=32
          */
-        itemHeight: 52,
+        itemHeight: 32,
         /**
          * Provider-owned activity Store shared across pane projections.
          * @member {AgentOS.store.FleetActivityEvents|null} store_=null
@@ -141,6 +144,10 @@ class ActivityStream extends Container {
             module   : Container,
             cls      : ['fm-stream-head'],
             flex     : 'none',
+            // Without an explicit layout the container default (vbox) stamps neo-flex-direction-column
+            // onto the element, which outranks the stylesheet's initial row direction — the header is
+            // a single chrome BAR by contract: label left, counts/retention/state trailing.
+            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             reference: 'header',
             items    : [{
                 module   : Component,

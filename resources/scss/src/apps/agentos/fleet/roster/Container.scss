@@ -49,13 +49,23 @@
         .fm-roster-sort,
         .fm-roster-filter,
         .fm-roster-fold {
+            /* These are real Neo Buttons since the list conversion: the engine sizes them through
+               the --button-height token (48px chrome tier) and renders the label inside
+               .neo-button-text with its own type rule — both must be re-bound here or the quiet
+               ghost-verb contract silently loses to the component defaults. */
+            --button-height: auto;
+
             border       : 1px solid transparent;
             border-radius: 999px;
             color        : var(--fm-ink-dim);
             font         : var(--fm-text-micro);
             padding      : 2px var(--fm-space-2);
 
-            &.neo-pressed {
+            .neo-button-text {
+                font: inherit;
+            }
+
+            &.pressed {
                 border-color: var(--fm-line-soft);
                 color       : var(--fm-ink);
             }

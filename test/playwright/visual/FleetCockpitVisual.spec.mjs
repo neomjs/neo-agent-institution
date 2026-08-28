@@ -33,6 +33,12 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      * @param {Object} page
      */
     const bootSettledCockpit = async page => {
+        // The determinism stack's clock layer, resolved WITHOUT freezing the clock: ViewerTime's
+        // same-day ladder runs in the APP WORKER, which `page.clock` cannot reach — but the ladder's
+        // older-day form carries no year, so the fixed 2026-07-05 fixture instants render the same
+        // date-prefixed string on EVERY capture day except the fixture day itself. The pinned
+        // context locale/zone (config `use`) do bind worker-side Intl, which closes the remaining
+        // environment dependency.
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 30000});

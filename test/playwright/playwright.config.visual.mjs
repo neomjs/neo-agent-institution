@@ -8,6 +8,12 @@ import {resolveFreePortSync}   from '../../node_modules/neo.mjs/test/playwright/
 // explicit NEO_E2E_PORT pin still wins for deliberate isolation.
 const PORT = resolveFreePortSync(process.env.NEO_E2E_PORT);
 
+// Pin the resolved port for every config re-evaluation: Playwright loads this file once in the
+// runner (which spawns the webServer) and again in each worker — without the pin each process
+// probes its OWN free port and the workers navigate to a server that never existed (the e2e
+// config carries the same line for the same reason).
+process.env.NEO_E2E_PORT = String(PORT);
+
 /**
  * The visual-regression baseline config — pixel-level goldens for the design-led surfaces,
  * captured under a forced-deterministic environment:
@@ -54,6 +60,12 @@ export default defineConfig({
 
     use: {
         baseURL      : `http://localhost:${PORT}`,
+        // The viewer-time layer renders in the VIEWER's locale and zone (ViewerTime.mjs), so an
+        // unpinned capture bakes the capture machine's environment into the golden — the original
+        // baselines carried exactly that artifact. en-GB pins the dense 24h form; UTC makes the
+        // rendered instant equal the wire instant.
+        locale       : 'en-GB',
+        timezoneId   : 'UTC',
         reducedMotion: 'reduce',
         trace        : 'on-first-retry'
     },
