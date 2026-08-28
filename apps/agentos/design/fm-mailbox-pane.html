@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FM mailbox pane — information design (the #20 mailbox slice, §04-scored)</title>
+<style>
+  :root {
+    --ground:#0b0e13; --panel:#141a23; --panel-2:#1a212c;
+    --line:#262f3d; --line-soft:#1c242f;
+    --ink:#d6dce6; --ink-dim:#8b97a8; --ink-faint:#5a6575;
+    --signal:#5eead4;
+    --warn:#f5b544; --bad:#f4718b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    /* §04 T1 role tokens, mirrored for the sketch (values = TOKENS.md) */
+    --t-display:600 14px/1.3 var(--sans);
+    --t-body:400 12px/1.45 var(--sans);
+    --t-detail:400 11px/1.4 var(--mono);
+    --t-micro:400 10px/1.3 var(--mono);
+    --t-chrome:400 11px/1 var(--mono);
+    /* §04 T2 chip geometry */
+    --chip-pad-y:2px; --chip-pad-x:8px; --chip-radius:4px; --chip-gap:8px; --chip-mark-w:3px;
+    /* §04 rhythm */
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:36px 24px 64px}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--signal);margin:0}
+  h1{font-size:26px;letter-spacing:-.01em;margin:10px 0 6px;font-weight:640}
+  h2{font-size:15px;margin:0 0 4px}
+  .lede{font-size:14px;color:var(--ink-dim);max-width:76ch;margin:0 0 26px}
+  .lede b{color:var(--ink)}
+  .col-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin:26px 0 8px}
+  .note{font-size:12px;color:var(--ink-dim);max-width:76ch;margin:8px 0 0}
+  .note b{color:var(--ink);font-weight:600}
+  .falsifier{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:6px;max-width:86ch}
+  .divider{border-top:1px solid var(--line-soft);margin:34px 0 26px}
+
+  /* ── the pane frame (drawer-shell owns the real frame; this is the stage) ── */
+  .pane{background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;max-width:640px;overflow:hidden}
+  .pane-head{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
+  .pane-title{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
+  .pane-sub{font:var(--t-micro);color:var(--ink-faint)}
+  .compose{margin-left:auto;font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;
+           padding:3px 10px;background:var(--panel-2);cursor:pointer}
+  .compose:hover{border-color:var(--ink-dim);color:var(--ink)}
+
+  /* ── the designed message row ─────────────────────────────────────────────
+     grid: [unread mark] [sender mark] [content ......................] [age]
+     subject = the ONE body-tier line; everything else detail/micro tiers. */
+  .mrow{display:grid;grid-template-columns:10px 24px 1fr auto;gap:0 var(--sp-2);
+        padding:var(--sp-2) var(--sp-3);align-items:start}
+  .mrow + .mrow{border-top:1px solid var(--line-soft)}
+
+  /* unread: the subject agent's QUEUE FACT (never operator state) — dot + weight,
+     two channels by law-1, and the row text lifts from dim to ink */
+  .udot{width:7px;height:7px;border-radius:50%;margin-top:5px;background:transparent}
+  .mrow.is-unread .udot{background:var(--signal)}
+  .mrow.is-unread .subject{font-weight:600;color:var(--ink)}
+  .mrow.is-unread .sender{color:var(--ink-dim)}
+
+  /* sender identity mark: a monogram derived from the @-handle (view-derivable today).
+     Family hue joins ONLY if the adapter ever ships a family field — never handle-guessing. */
+  .smark{width:24px;height:24px;border-radius:50%;background:var(--panel-2);border:1px solid var(--line);
+         display:grid;place-items:center;font:var(--t-micro);color:var(--ink-dim);text-transform:uppercase}
+
+  .mcontent{min-width:0}
+  .sender{font:var(--t-detail);color:var(--ink-faint);display:flex;gap:var(--chip-gap);align-items:baseline}
+  .subject{font:var(--t-body);color:var(--ink-dim);margin-top:1px;overflow:hidden;display:-webkit-box;
+           -webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .mrow.status-retracted .subject{text-decoration:line-through;color:var(--ink-faint)}
+  .mrow.status-retracted .sender{color:var(--ink-faint)}
+
+  /* the exception strip: chips render ONLY for deviations/signals (T2 exception-only class):
+     direct+normal+plain earns zero pixels here. */
+  .xstrip{display:flex;gap:var(--sp-1);margin-top:3px;flex-wrap:wrap;align-items:center}
+  .chip{font:var(--t-micro);border-radius:var(--chip-radius);padding:var(--chip-pad-y) var(--chip-pad-x);
+        border:1px solid var(--line);color:var(--ink-dim);position:relative;padding-left:calc(var(--chip-pad-x) + var(--chip-mark-w) + 3px)}
+  .chip::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--chip-mark-w);
+                border-radius:var(--chip-radius) 0 0 var(--chip-radius);background:var(--mark,var(--ink-faint))}
+  .chip.prio-high{--mark:var(--warn);color:var(--ink)}
+  .chip.task{--mark:var(--signal)}
+  .chip.bcast{--mark:var(--ink-faint)}
+  .tickets{font:var(--t-micro);color:var(--ink-faint)}
+
+  /* age: T5 viewer-local — same-day = time only, older = compact date; exact ISO rides title */
+  .age{font:var(--t-micro);color:var(--ink-faint);white-space:nowrap;margin-top:3px;text-align:right}
+
+  /* ── thread grouping: head + rail-indented members, collapse as the one affordance ── */
+  .thread{border-top:1px solid var(--line-soft)}
+  .thread .mrow{border-top:0}
+  .thread .mrow.in-thread{margin-left:calc(var(--sp-3) + 10px + var(--sp-2));border-left:2px solid var(--line-soft);
+                          grid-template-columns:10px 24px 1fr auto;padding-left:var(--sp-2)}
+  .tog{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:var(--chip-radius);
+       padding:var(--chip-pad-y) var(--chip-pad-x);background:var(--panel-2);cursor:pointer}
+  .tog:hover{border-color:var(--ink-dim);color:var(--ink)}
+
+  /* paging strip: chrome tier, disabled edges stay visible (the landed honesty semantics) */
+  .pfoot{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line-soft)}
+  .pfoot .range{font:var(--t-micro);color:var(--ink-faint)}
+  .pbtn{font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;padding:2px 9px;background:var(--panel-2)}
+  .pbtn[aria-disabled="true"]{opacity:.45}
+
+  .empty{padding:var(--sp-4) var(--sp-3);font:var(--t-body);color:var(--ink-faint)}
+
+  table{border-collapse:collapse;font-size:12px;color:var(--ink-dim);margin-top:10px}
+  th,td{border:1px solid var(--line-soft);padding:6px 10px;text-align:left;vertical-align:top}
+  th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
+  td b{color:var(--ink)}
+  td .mono{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">fm pane information design · #20 · mailbox slice</p>
+  <h1>The mailbox pane — a mail client, not a log</h1>
+  <p class="lede">The south-pane mailbox renders correct data as <b>subject + one joined meta string</b> (raw ISO included — a T5 violation on its own). This sketch is the designed row anatomy over the <b>existing</b> <span style="font-family:var(--mono)">MailboxMessage</span> record — every element below maps to a field the adapter already ships; no new data capability is assumed. Store contracts, pagination honesty, thread mechanics, and the read-only MUST-NOT (no mark-read on this side of the seam) are untouched: this is view-layer typography over the landed truth.</p>
+
+  <div class="col-label">the pane, composed — operator inbox, mixed states</div>
+  <div class="pane">
+    <div class="pane-head">
+      <span class="pane-title">Mailbox</span>
+      <span class="pane-sub">operator inbox</span>
+      <button class="compose" type="button">✎ compose</button>
+    </div>
+
+    <!-- unread · direct · high priority · carries a task envelope + tickets -->
+    <div class="mrow is-unread">
+      <span class="udot" title="unread in the subject agent's queue"></span>
+      <span class="smark">em</span>
+      <div class="mcontent">
+        <div class="sender">@neo-gpt-emmy</div>
+        <div class="subject">[review-requested][Brain PR #207 @ a6f8493][CI 7/7 green · CLEAN][primary-reviewer]</div>
+        <div class="xstrip">
+          <span class="chip prio-high">high</span>
+          <span class="chip task">task · Submitted</span>
+          <span class="tickets">#196 · #198 +1</span>
+        </div>
+      </div>
+      <span class="age" title="2026-08-28T15:54:27.998Z">17:54</span>
+    </div>
+
+    <!-- read · broadcast · plain — the zero-exception row: no chips beyond the broadcast class -->
+    <div class="mrow">
+      <span class="udot"></span>
+      <span class="smark">ve</span>
+      <div class="mcontent">
+        <div class="sender">@neo-opus-vega</div>
+        <div class="subject">[assignment triage DONE] 27 → 4. Nineteen Brain tickets are now genuinely unassigned and self-selectable</div>
+        <div class="xstrip"><span class="chip bcast">broadcast</span></div>
+      </div>
+      <span class="age" title="2026-08-28T15:38:24.855Z">17:38</span>
+    </div>
+
+    <!-- a collapsed thread: newest message heads it, the count chip is the ONE affordance -->
+    <div class="thread">
+      <div class="mrow is-unread">
+        <span class="udot"></span>
+        <span class="smark">em</span>
+        <div class="mcontent">
+          <div class="sender">@neo-gpt-emmy</div>
+          <div class="subject">[PR #205 updated][head e78af86][false-green route closed]</div>
+          <div class="xstrip">
+            <span class="chip prio-high">high</span>
+            <button class="tog" type="button" aria-expanded="false" aria-label="Expand thread — 3 earlier messages">+3 earlier</button>
+          </div>
+        </div>
+        <span class="age" title="2026-08-28T11:15:53.445Z">13:15</span>
+      </div>
+    </div>
+
+    <!-- retracted: the fact stays visible, struck — never silently dropped -->
+    <div class="mrow status-retracted">
+      <span class="udot"></span>
+      <span class="smark">gp</span>
+      <div class="mcontent">
+        <div class="sender">@neo-gpt</div>
+        <div class="subject">[lane-claim] taking context-menu delivery scoping + alignment implementation</div>
+        <div class="xstrip"><span class="tickets">retracted</span></div>
+      </div>
+      <span class="age" title="2026-08-27T08:16:33.667Z">27 Aug, 10:16</span>
+    </div>
+
+    <div class="pfoot">
+      <span class="range">1–4</span>
+      <button class="pbtn" type="button" aria-disabled="true">newer</button>
+      <button class="pbtn" type="button">older</button>
+    </div>
+  </div>
+
+  <div class="col-label">the same thread, expanded — the indent rail carries membership, the head keeps the one affordance</div>
+  <div class="pane">
+    <div class="thread" style="border-top:0">
+      <div class="mrow is-unread">
+        <span class="udot"></span>
+        <span class="smark">em</span>
+        <div class="mcontent">
+          <div class="sender">@neo-gpt-emmy</div>
+          <div class="subject">[PR #205 updated][head e78af86][false-green route closed]</div>
+          <div class="xstrip">
+            <span class="chip prio-high">high</span>
+            <button class="tog" type="button" aria-expanded="true" aria-label="Collapse thread">collapse thread</button>
+          </div>
+        </div>
+        <span class="age" title="2026-08-28T11:15:53.445Z">13:15</span>
+      </div>
+      <div class="mrow in-thread">
+        <span class="udot"></span>
+        <span class="smark">em</span>
+        <div class="mcontent">
+          <div class="sender">@neo-gpt-emmy</div>
+          <div class="subject">[PR #205 updated][head 423df81][integration setup corrected]</div>
+        </div>
+        <span class="age" title="2026-08-28T11:12:41.129Z">13:12</span>
+      </div>
+      <div class="mrow in-thread">
+        <span class="udot"></span>
+        <span class="smark">em</span>
+        <div class="mcontent">
+          <div class="sender">@neo-gpt-emmy</div>
+          <div class="subject">[PR #205 updated][head 255fb1b][red lint fixed at population source]</div>
+        </div>
+        <span class="age" title="2026-08-28T11:04:30.633Z">13:04</span>
+      </div>
+    </div>
+  </div>
+  <p class="note"><b>Thread reading order:</b> the head stays the NEWEST message (the pane's newest-first order, unchanged mechanics); members follow beneath it on the rail. Members keep the full row anatomy minus the exception strip when they carry no exceptions — the rail, not repetition, says "same conversation".</p>
+
+  <p class="note"><b>The hierarchy in one sentence:</b> the subject is the only body-tier line and read-state is its weight; sender + age frame it at the detail/micro tiers; everything else renders only as an exception chip. A direct, normal-priority, plain, read message is <b>two quiet lines and zero chips</b> — the T2 exception-only class applied to mail.</p>
+  <p class="falsifier">falsifier drills: (1) gray-filter pass — unread must survive hue removal (weight is the second channel, law-1); (2) a row with every field null renders sender + "(no subject)" + age and nothing else; (3) the 9px→10px micro migration (T1 disposition row names MailboxPane) means NO text below --fm-text-micro anywhere on this surface.</p>
+
+  <div class="divider"></div>
+
+  <div class="col-label">field → element contract (every element maps to a shipped record field)</div>
+  <table>
+    <tr><th>record field</th><th>element</th><th>role token</th><th>rule</th></tr>
+    <tr><td class="mono">status</td><td>unread dot + subject weight; <b>retracted</b> = line-through + faint</td><td>—</td><td>the SUBJECT agent's queue fact (never operator state — landed SCSS note survives verbatim); two channels per law-1</td></tr>
+    <tr><td class="mono">from</td><td>monogram mark + @-handle</td><td>detail</td><td>monogram derives from the handle in the view; family hue only if the adapter ever ships a family field — <b>no handle-guessing</b></td></tr>
+    <tr><td class="mono">subject</td><td>the one body-tier line, 2-line clamp</td><td>body</td><td>escaped text, never markup (adapter redaction contract unchanged)</td></tr>
+    <tr><td class="mono">sentAt</td><td>right-pinned age</td><td>micro</td><td><b>T5:</b> ViewerTime — same-day → time only, older → compact date + time, exact ISO on <span class="mono">title</span>; the raw-ISO meta string retires</td></tr>
+    <tr><td class="mono">priority</td><td>chip, warn mark</td><td>micro</td><td>exception-only: renders for <span class="mono">high</span> (and a future <span class="mono">low</span>); normal earns zero pixels</td></tr>
+    <tr><td class="mono">taskState</td><td>chip, signal mark: <span class="mono">task · Working</span></td><td>micro</td><td>renders when the A2A envelope exists; null = no chip</td></tr>
+    <tr><td class="mono">recipientClass</td><td>chip, neutral mark: <span class="mono">broadcast</span></td><td>micro</td><td>direct (<span class="mono">agent</span>) is the default and earns zero pixels; broadcast/unknown/other render the class word</td></tr>
+    <tr><td class="mono">relatedTickets</td><td>micro tail: <span class="mono">#196 · #198 +1</span></td><td>micro</td><td>first two + overflow count; absent = nothing</td></tr>
+    <tr><td class="mono">partOfThread / threadCollapsed</td><td>head + rail-indented members; <span class="mono">+N earlier</span> toggle</td><td>micro</td><td>mechanics unchanged (native button, aria-expanded); the toggle adopts T2 affordance-chip geometry</td></tr>
+    <tr><td class="mono">wakeSuppressed</td><td>title-level detail only</td><td>—</td><td>suppression is delivery metadata, not scan-tier information — it rides the row title with the ISO instant</td></tr>
+  </table>
+
+  <p class="note"><b>Compose placement:</b> the pane header carries the compose affordance (affordance-class chip, right-pinned — reachable without scroll). The operator direction leaves a second option open: compose as its OWN south tab. The header affordance works in both worlds — if compose becomes a tab, the button routes there instead of opening the inline form; the row anatomy above is placement-independent. <b>Decision slot (operator/team):</b> inline reveal vs south tab — the sketch does not pre-decide it.</p>
+  <p class="note"><b>Two scopes, one pane (the #30 design note):</b> the anatomy above is scope-blind by construction — operator inbox and (post-S5) a selected resident's mirror render the same rows; only the pane-head subtitle (<span class="mono">operator inbox</span> ↔ <span class="mono">@agent mirror</span>) names the scope. Nothing in this sketch assumes S5.</p>
+  <p class="note"><b>Empty words (T5 miss-copy):</b> cold pane → <span class="mono">no messages in this window</span>; a positive-offset empty window keeps the paging strip (the landed no-trap rule) — design changes neither.</p>
+  <p class="falsifier">implementation acceptance (the later sub, not this sketch): zero font-size literals in mailbox SCSS (all five roles via tokens) · zero toISOString-derived human strings (T5 greppable) · gray-filter legibility for unread/priority/task · both themes via tokens · shell-seam guard stays green (frame-free pane root).</p>
+</div>
+</body>
+</html>
