@@ -1,0 +1,151 @@
+/* The mailbox grid — the designed row anatomy from the merged sketch
+   (apps/agentos/design/institution-mailbox-pane.html, #36/#38) over Neo.grid.Container.
+   §04 contracts: T1 role tokens only (zero font-size literals — the pass's greppable acceptance),
+   T2 chip geometry via the family tokens, information-bearing text floors at --fm-ink-dim
+   (5.90:1 on panel; --fm-ink-faint is decorative-only), no paging chrome anywhere. */
+.fm-mailbox-grid {
+
+    /* a headerless designed list, not a data table: the single component column needs no header
+       row — hidden at the skin layer (the engine offers no headerless config today; recorded) */
+    .neo-grid-header-toolbar {
+        display: none;
+    }
+
+    /* ── the designed row: [unread mark] [monogram] [content] [age] ── */
+    .fm-mail-row {
+        display              : grid;
+        grid-template-columns: 10px 24px 1fr auto;
+        gap                  : 0 var(--fm-space-2);
+        align-items          : start;
+        width                : 100%;
+        padding              : var(--fm-space-2) var(--fm-space-3);
+        border-bottom        : 1px solid var(--fm-line-soft);
+
+        /* unread: the subject agent's QUEUE FACT (never operator state) — dot + weight,
+           two channels per WCAG 1.4.1 */
+        &.is-unread {
+            .fm-mail-udot    { background: var(--fm-signal); }
+            .fm-mail-subject { font-weight: 600; color: var(--fm-ink); }
+        }
+
+        /* retracted: the strike is the state channel; the words keep readable ink */
+        &.status-retracted .fm-mail-subject {
+            text-decoration: line-through;
+        }
+
+        /* thread members indent on the rail — the rail, not repetition, says "same conversation" */
+        &.is-in-thread {
+            margin-left: calc(var(--fm-space-3) + 10px + var(--fm-space-2));
+            border-left: 2px solid var(--fm-line-soft);
+            padding-left: var(--fm-space-2);
+        }
+    }
+
+    .fm-mail-udot {
+        width        : 7px;
+        height       : 7px;
+        margin-top   : 5px;
+        border-radius: 50%;
+        background   : transparent;
+    }
+
+    /* sender monogram — deterministic view derivation from the handle; the fill may stay faint
+       (decorative), the letters ride dim */
+    .fm-mail-smark {
+        display       : grid;
+        place-items   : center;
+        width         : 24px;
+        height        : 24px;
+        border-radius : 50%;
+        background    : var(--fm-panel-2, color-mix(in srgb, var(--fm-ink-dim) 10%, transparent));
+        border        : 1px solid var(--fm-line);
+        font          : var(--fm-text-micro);
+        color         : var(--fm-ink-dim);
+        text-transform: uppercase;
+    }
+
+    .fm-mail-content {
+        min-width: 0;
+    }
+
+    .fm-mail-sender {
+        font : var(--fm-text-detail);
+        color: var(--fm-ink-dim);
+    }
+
+    /* the ONE body-tier line, 2-line clamp — escaped text only */
+    .fm-mail-subject {
+        font              : var(--fm-text-body);
+        color             : var(--fm-ink-dim);
+        margin-top        : 1px;
+        overflow          : hidden;
+        display           : -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+    }
+
+    /* the exception strip: chips render ONLY for deviations (T2 exception-only) */
+    .fm-mail-xstrip {
+        display    : flex;
+        flex-wrap  : wrap;
+        align-items: center;
+        gap        : var(--fm-space-1);
+        margin-top : 3px;
+    }
+
+    .fm-mail-chip {
+        position     : relative;
+        font         : var(--fm-text-micro);
+        color        : var(--fm-ink-dim);
+        border       : 1px solid var(--fm-line);
+        border-radius: var(--fm-chip-radius, 4px);
+        padding      : var(--fm-chip-pad-y, 2px) var(--fm-chip-pad-x, 8px);
+        padding-left : calc(var(--fm-chip-pad-x, 8px) + var(--fm-chip-mark-w, 3px) + 3px);
+
+        /* the T2 mark: severity/kind rides ONE custom property; the word carries the message */
+        &::before {
+            content      : "";
+            position     : absolute;
+            left         : 0;
+            top          : 0;
+            bottom       : 0;
+            width        : var(--fm-chip-mark-w, 3px);
+            border-radius: var(--fm-chip-radius, 4px) 0 0 var(--fm-chip-radius, 4px);
+            background   : var(--fm-mail-chip-mark, var(--fm-ink-faint));
+        }
+    }
+
+    .fm-mail-prio-high { --fm-mail-chip-mark: var(--fm-state-limited); color: var(--fm-ink); }
+    .fm-mail-task      { --fm-mail-chip-mark: var(--fm-signal); }
+    /* the broadcast/other class chip keeps the neutral decorative mark */
+
+    .fm-mail-tickets {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink-dim);
+    }
+
+    /* the thread toggle — the row's ONE affordance, a native button (keyboard-operable) */
+    .fm-mail-thread-toggle {
+        font         : var(--fm-text-micro);
+        color        : var(--fm-ink-dim);
+        border       : 1px solid var(--fm-line);
+        border-radius: var(--fm-chip-radius, 4px);
+        padding      : var(--fm-chip-pad-y, 2px) var(--fm-chip-pad-x, 8px);
+        background   : transparent;
+        cursor       : pointer;
+
+        &:hover {
+            border-color: var(--fm-ink-dim);
+            color       : var(--fm-ink);
+        }
+    }
+
+    /* age: T5 viewer-local — same-day time-only, older compact date; exact ISO on title */
+    .fm-mail-age {
+        font       : var(--fm-text-micro);
+        color      : var(--fm-ink-dim);
+        margin-top : 3px;
+        white-space: nowrap;
+        text-align : right;
+    }
+}
