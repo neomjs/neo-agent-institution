@@ -377,12 +377,26 @@ class AgentCard extends Container {
         const
             presence         = record.presence ?? null,
             presenceObserved = presence?.confidence === 'observed' &&
-                Object.hasOwn(PRESENCE_BAND_LABEL, presence?.state);
+                Object.hasOwn(PRESENCE_BAND_LABEL, presence?.state),
+            // the provider-owned validation provenance, projected verbatim (#2): the card renders
+            // the exception, never infers, latches, or mutates it
+            staleValidation  = presenceObserved && presence.validationState === 'stale-validated',
+            bandLabel        = presenceObserved ? PRESENCE_BAND_LABEL[presence.state] : '',
+            presenceBand     = me.getReference('card-presence');
 
-        me.getReference('card-presence').set({
+        presenceBand.set({
             hidden: !presenceObserved,
-            text  : presenceObserved ? `◉ ${PRESENCE_BAND_LABEL[presence.state]}` : ''
+            text  : presenceObserved ? `◉ ${bandLabel}${staleValidation ? ' · validation stale' : ''}` : ''
         });
+
+        // colour alone cannot carry the exception (WCAG 1.4.1): the words render it, the aria pair
+        // speaks it, and a fresh observation without the provenance clears every residue — class,
+        // text, aria-label, title — in the same pass. `since` is optional provenance: absent means
+        // no title, never a fabricated timestamp.
+        presenceBand[staleValidation ? 'addCls' : 'removeCls']('fm-card-presence-stale');
+        presenceBand.changeVdomRootKey('aria-label', staleValidation ? `Presence: ${bandLabel}. Provider validation stale.` : null);
+        presenceBand.changeVdomRootKey('title', staleValidation && presence.since != null ?
+            `Provider validation stale since ${new Date(presence.since).toISOString()}` : null);
 
         // the name slot: the folded display name as MUTABLE DISPLAY STATE over the durable id
         const

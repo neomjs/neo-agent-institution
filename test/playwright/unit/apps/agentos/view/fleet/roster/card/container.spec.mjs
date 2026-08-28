@@ -115,8 +115,9 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    // Expected red after the custody move; neo-agent-institution#2 owns the view/SCSS repair.
-    test.fail('stale validation is a visible presence exception and clears without residue', () => {
+    // the provider-owned validation provenance, projected on the band: words + aria pair, and a
+    // fresh observation clears class, text, aria-label AND title in one pass (#2)
+    test('stale validation is a visible presence exception and clears without residue', () => {
         const since = Date.parse('2026-08-09T10:55:00.000Z'),
               card  = createCard({
                   agentId : 'clio',
