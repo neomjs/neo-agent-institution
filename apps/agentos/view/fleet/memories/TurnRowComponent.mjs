@@ -17,16 +17,16 @@ import ViewerTime from '../../../util/ViewerTime.mjs';
  * {@link AgentOS.view.fleet.memories.SummaryRow}); all content is escaped `text`, and
  * guarded-null prose is NAMED, never coerced.
  *
- * @class AgentOS.view.fleet.memories.TurnRow
+ * @class AgentOS.view.fleet.memories.TurnRowComponent
  * @extends Neo.component.Base
  */
-class TurnRow extends Component {
+class TurnRowComponent extends Component {
     static config = {
         /**
-         * @member {String} className='AgentOS.view.fleet.memories.TurnRow'
+         * @member {String} className='AgentOS.view.fleet.memories.TurnRowComponent'
          * @protected
          */
-        className: 'AgentOS.view.fleet.memories.TurnRow',
+        className: 'AgentOS.view.fleet.memories.TurnRowComponent',
         /**
          * @member {String} ntype='fm-memories-turn-row'
          * @protected
@@ -76,10 +76,10 @@ class TurnRow extends Component {
         const
             me       = this,
             data     = me.rowData,
-            bound    = TurnRow.boundProse(data.response),
+            bound    = TurnRowComponent.boundProse(data.response),
             mini     = typeof data.miniSummary === 'string' && data.miniSummary.trim() ? data.miniSummary.trim() : null,
             iso      = ViewerTime.viewerTimeTitle(data.timestamp),
-            prompt   = TurnRow.boundProse(data.prompt, 240),
+            prompt   = TurnRowComponent.boundProse(data.prompt, 240),
             metaBits = [
                 ViewerTime.formatViewerTime(data.timestamp)?.text ?? 'unknown time',
                 data.agentIdentity || null,
@@ -111,4 +111,4 @@ class TurnRow extends Component {
     }
 }
 
-export default Neo.setupClass(TurnRow);
+export default Neo.setupClass(TurnRowComponent);

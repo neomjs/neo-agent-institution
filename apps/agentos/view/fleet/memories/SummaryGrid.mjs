@@ -1,12 +1,12 @@
 import RowsGrid   from './RowsGrid.mjs';
-import SummaryRow from './SummaryRow.mjs';
+import SummaryRowComponent from './SummaryRowComponent.mjs';
 
 /**
  * The browse register: one agent's session-summary cards through the buffered grid — the second
  * scored #20-arc surface (#44), on the #40/#41 pattern.
  *
  * @summary A headerless single-component-column grid of pooled
- * {@link AgentOS.view.fleet.memories.SummaryRow} cells. Owns two derivations and one delegation:
+ * {@link AgentOS.view.fleet.memories.SummaryRowComponent} cells. Owns two derivations and one delegation:
  * the viewer-calendar band facts ({@link #stampFacts} — the first card of each band carries the
  * band eyebrow; a stamped bag fact, so grouping is decided exactly once, before records exist),
  * and the drill-open click (a native button inside the pooled cell, delegated HERE — the cell
@@ -68,7 +68,7 @@ class SummaryGrid extends RowsGrid {
     /**
      * @summary One headerless component column: the designed card IS the cell. The factory
      * builds a FRESH `rowData` bag per call (the pooled-cell contract — see
-     * {@link AgentOS.view.fleet.memories.SummaryRow}).
+     * {@link AgentOS.view.fleet.memories.SummaryRowComponent}).
      */
     onConstructed() {
         let me = this;
@@ -77,7 +77,7 @@ class SummaryGrid extends RowsGrid {
             dataField: 'title',
             flex     : 1,
             component: ({record}) => ({
-                module : SummaryRow,
+                module : SummaryRowComponent,
                 rowData: {
                     bandFacts            : record.bandFacts,
                     category             : record.category,

@@ -25,8 +25,8 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
  * with the exact ISO on `title`, and the pool-recycle contract (a new bag on the SAME instance
  * re-renders every channel). All layers escape text — hostile strings never become markup.
  */
-test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar from one bag', () => {
-    let SummaryRow, TurnRow;
+test.describe('Fleet memories SummaryRowComponent + TurnRowComponent — the sketch\'s row grammar from one bag', () => {
+    let SummaryRowComponent, TurnRowComponent;
 
     const baseSummary = {
         bandFacts            : null,
@@ -63,12 +63,12 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
     };
 
     test.beforeAll(async () => {
-        SummaryRow = (await import('../../../../../../../../apps/agentos/view/fleet/memories/SummaryRow.mjs')).default;
-        TurnRow    = (await import('../../../../../../../../apps/agentos/view/fleet/memories/TurnRow.mjs')).default
+        SummaryRowComponent = (await import('../../../../../../../../apps/agentos/view/fleet/memories/SummaryRowComponent.mjs')).default;
+        TurnRowComponent    = (await import('../../../../../../../../apps/agentos/view/fleet/memories/TurnRowComponent.mjs')).default
     });
 
     test('the summary card: head anatomy, DERIVED chip, native open button, T5 meta, body', () => {
-        const row = Neo.create(SummaryRow, {appName, rowData: {...baseSummary}});
+        const row = Neo.create(SummaryRowComponent, {appName, rowData: {...baseSummary}});
 
         expect(nodeBy(row, 'fm-memories-card-title').text).toBe('Mailbox grid conversion');
         expect(nodeBy(row, 'fm-memories-provenance').cls).toContain('is-derived');
@@ -93,7 +93,7 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
     });
 
     test('the band eyebrow renders ONLY from a stamped fact; co-authors exclude the target; null prose is NAMED', () => {
-        const row = Neo.create(SummaryRow, {appName, rowData: {
+        const row = Neo.create(SummaryRowComponent, {appName, rowData: {
             ...baseSummary,
             bandFacts            : {label: 'yesterday'},
             sourceAgentIdentities: ['@neo-fable-clio', '@neo-gpt-emmy'],
@@ -112,7 +112,7 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
     });
 
     test('the pool recycle contract: a new bag on the SAME instance re-renders every channel', () => {
-        const row = Neo.create(SummaryRow, {appName, rowData: {...baseSummary, bandFacts: {label: 'today'}}});
+        const row = Neo.create(SummaryRowComponent, {appName, rowData: {...baseSummary, bandFacts: {label: 'today'}}});
 
         expect(nodeBy(row, 'fm-memories-band').text).toBe('today');
 
@@ -126,7 +126,7 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
     });
 
     test('the turn row without miniSummary: bounded response head IS the line, prompt secondary, T5 meta', () => {
-        const row = Neo.create(TurnRow, {appName, rowData: {...baseTurn}});
+        const row = Neo.create(TurnRowComponent, {appName, rowData: {...baseTurn}});
 
         const meta = nodeBy(row, 'fm-memories-turn-meta');
         expect(meta.text).toContain('@neo-fable-clio');
@@ -141,7 +141,7 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
     });
 
     test('the turn row WITH miniSummary: the tweet-size title takes the line, response drops to prose (the #210 forward contract)', () => {
-        const row = Neo.create(TurnRow, {appName, rowData: {
+        const row = Neo.create(TurnRowComponent, {appName, rowData: {
             ...baseTurn,
             miniSummary: 'One data path lands; batteries green.'
         }});
@@ -154,7 +154,7 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
 
     test('prose bounds are presentation with an honest ellipsis; absent prose is NAMED', () => {
         const long = 'x'.repeat(700);
-        const row  = Neo.create(TurnRow, {appName, rowData: {...baseTurn, response: long, prompt: null}});
+        const row  = Neo.create(TurnRowComponent, {appName, rowData: {...baseTurn, response: long, prompt: null}});
 
         const response = nodeBy(row, 'fm-memories-turn-response').text;
         expect(response.length).toBe(601);
@@ -175,12 +175,12 @@ test.describe('Fleet memories SummaryRow + TurnRow — the sketch\'s row grammar
             (node.cn || []).forEach(walk)
         };
 
-        const card = Neo.create(SummaryRow, {appName, rowData: {...baseSummary, title: hostile, summary: hostile}});
+        const card = Neo.create(SummaryRowComponent, {appName, rowData: {...baseSummary, title: hostile, summary: hostile}});
         walk(card.vdom);
         expect(nodeBy(card, 'fm-memories-card-title').text).toBe(hostile);
         card.destroy();
 
-        const turnRow = Neo.create(TurnRow, {appName, rowData: {...baseTurn, response: hostile, miniSummary: hostile, prompt: hostile}});
+        const turnRow = Neo.create(TurnRowComponent, {appName, rowData: {...baseTurn, response: hostile, miniSummary: hostile, prompt: hostile}});
         walk(turnRow.vdom);
         expect(nodeBy(turnRow, 'fm-memories-turn-title').text).toBe(hostile);
         turnRow.destroy()

@@ -354,7 +354,7 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
     });
 
     test('provenance vocabulary: the drill head carries the authored tag — never while the derived register shows', () => {
-        // the summary cards' `is-derived` chip lives inside the pooled SummaryRow cells now —
+        // the summary cards' `is-derived` chip lives inside the pooled SummaryRowComponent cells now —
         // pinned in summaryRow.spec.mjs; the pane owns the drill head's AUTHORED half
         const {pane} = createDrillPane({
             snapshot: envelope({target: '@neo-opus-ada', sessions: [row('a1')], total: 1})

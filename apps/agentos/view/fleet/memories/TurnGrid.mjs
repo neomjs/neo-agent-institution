@@ -1,12 +1,12 @@
 import RowsGrid from './RowsGrid.mjs';
-import TurnRow  from './TurnRow.mjs';
+import TurnRowComponent from './TurnRowComponent.mjs';
 
 /**
  * The drill register: one session's authored turn records through the buffered grid — the depth
  * below {@link AgentOS.view.fleet.memories.SummaryGrid}, same #40/#41 pattern (#44).
  *
  * @summary A headerless single-component-column grid of pooled
- * {@link AgentOS.view.fleet.memories.TurnRow} cells. Derives nothing (turn rows carry no
+ * {@link AgentOS.view.fleet.memories.TurnRowComponent} cells. Derives nothing (turn rows carry no
  * grouping facts) and delegates nothing (the drill's back affordance is pane chrome, not a cell
  * control) — the base's one data path is the whole contract here.
  *
@@ -43,14 +43,14 @@ class TurnGrid extends RowsGrid {
     /**
      * @summary One headerless component column: the designed turn row IS the cell. The factory
      * builds a FRESH `rowData` bag per call (the pooled-cell contract — see
-     * {@link AgentOS.view.fleet.memories.TurnRow}).
+     * {@link AgentOS.view.fleet.memories.TurnRowComponent}).
      */
     onConstructed() {
         this.columns = [{
             dataField: 'response',
             flex     : 1,
             component: ({record}) => ({
-                module : TurnRow,
+                module : TurnRowComponent,
                 rowData: {
                     agentIdentity  : record.agentIdentity,
                     amountToolCalls: record.amountToolCalls,

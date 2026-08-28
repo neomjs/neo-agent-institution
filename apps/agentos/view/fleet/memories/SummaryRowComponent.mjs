@@ -19,16 +19,16 @@ import ViewerTime from '../../../util/ViewerTime.mjs';
  * All content renders as escaped `text` — record-derived strings never become markup. Guarded-null
  * titles/summaries are NAMED (the model's convert guards feed this cell), never coerced.
  *
- * @class AgentOS.view.fleet.memories.SummaryRow
+ * @class AgentOS.view.fleet.memories.SummaryRowComponent
  * @extends Neo.component.Base
  */
-class SummaryRow extends Component {
+class SummaryRowComponent extends Component {
     static config = {
         /**
-         * @member {String} className='AgentOS.view.fleet.memories.SummaryRow'
+         * @member {String} className='AgentOS.view.fleet.memories.SummaryRowComponent'
          * @protected
          */
-        className: 'AgentOS.view.fleet.memories.SummaryRow',
+        className: 'AgentOS.view.fleet.memories.SummaryRowComponent',
         /**
          * @member {String} ntype='fm-memories-summary-row'
          * @protected
@@ -120,4 +120,4 @@ class SummaryRow extends Component {
     }
 }
 
-export default Neo.setupClass(SummaryRow);
+export default Neo.setupClass(SummaryRowComponent);

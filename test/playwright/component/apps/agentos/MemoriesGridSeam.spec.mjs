@@ -4,7 +4,7 @@ let paneId;
 
 /**
  * @summary The mounted memories seam witness (#44): the pane rendering through the REAL pipeline —
- * `Neo.grid.Container` → `grid.column.Component` → the pooled SummaryRow/TurnRow cells — in a
+ * `Neo.grid.Container` → `grid.column.Component` → the pooled SummaryRowComponent/TurnRowComponent cells — in a
  * browser, across the worker boundary (the MailboxGridSeam pattern, applied from day one).
  *
  * What only this layer can prove (the Node unit specs assert instances and direct calls):
