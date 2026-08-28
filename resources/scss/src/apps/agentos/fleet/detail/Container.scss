@@ -181,8 +181,8 @@
         }
     }
 
-    /* the Status/Mailbox tab body — the object-permanence seat: geometry only, the tab strip
-       inherits the framework tab theme; content panes keep the detail's spacing rhythm */
+    /* the Status/Configuration tab body — the object-permanence seat: geometry only, the tab
+       strip inherits the framework tab theme; content panes keep the detail's spacing rhythm */
     .fm-detail-tabs {
         min-height: 0;
         min-width : 0;
@@ -190,7 +190,7 @@
         /* The tab BODY is the containment seat, and it is a DIFFERENT box from .fm-detail-tabs
            above — which is why the min-height already there did not hold the shell (#17313).
            A flex item's automatic minimum size is its CONTENT size on the main axis, so the body
-           container grew to the mailbox's full 2454px and carried the whole detail rail with it,
+           container once grew to a hosted pane's full 2454px and carried the whole detail rail,
            pushing the fleet activity stream's top edge to y=1695.8 in a 1084px viewport: present,
            mounted, unhidden, and entirely below the fold. Both axes are pinned because the pane
            overran horizontally too (1081.64px inside a 256px slot) — a height-only fix restores
@@ -201,11 +201,11 @@
             min-width : 0;
         }
 
-        /* The header row carried 309.4px of buttons in a 256px bar, so "Configuration" rendered
-           as "Configurat" (operator-reported). Tightened padding lets all three fit at the rail's
-           shipped width; the scroll is the guarantee rather than the mechanism — the rail is
-           resizable, so a padding tune alone would only move the clipping width rather than
-           retire it. No label is ever unreachable, and none is ellipsized at the shipped size. */
+        /* The header row once carried 309.4px of buttons in a 256px bar, so "Configuration"
+           rendered as "Configurat" (operator-reported). Tightened padding lets every label fit at
+           the rail's shipped width; the scroll is the guarantee rather than the mechanism — the
+           rail is resizable, so a padding tune alone would only move the clipping width rather
+           than retire it. No label is ever unreachable, and none is ellipsized at the shipped size. */
         .neo-tab-header-toolbar {
             min-width : 0;
             overflow-x: auto;
@@ -225,14 +225,6 @@
         .neo-tab-header-button.neo-button {
             --tab-button-padding: 0 var(--fm-space-2);
         }
-    }
-
-    /* ── the Mailbox tab (S1 view half): the pane's own rules moved to MailboxPane.scss (#17209 —
-       it also mounts in the operator drawer, so they are mount-agnostic now); only the tab-context
-       frame tune lives here. The chip vocabulary stays ONE: MailboxPane.scss carries .fm-freshness
-       verbatim from the block above. */
-    .fm-mailbox-pane {
-        padding: var(--fm-space-2) 2px 2px;
     }
 }
 

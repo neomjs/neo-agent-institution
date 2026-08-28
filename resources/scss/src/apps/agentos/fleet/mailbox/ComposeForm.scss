@@ -1,7 +1,7 @@
 /* AgentOS.view.fleet.OperatorComposeForm — the operator write surface (#15377, D#15372 slice).
    Layout + the actions rail only; every color reads from the --fm-* token layer (no hardcoded
    colors, no CSS-in-JS — the fields inherit the theme's form-field styling). Sibling of
-   AgentDetail.scss (the read-half mailbox pane); same token vocabulary so the cockpit speaks one
+   Container.scss (the read-half mirror pane); same token vocabulary so the cockpit speaks one
    language across read and write. */
 /* the parent pane's root frame lives in OperatorMailbox.scss (#17209) — this file owns the form only */
 /* §04 rhythm record (#17265): off-rhythm survivors — root gap 10, list-item pad 6/10, outcome

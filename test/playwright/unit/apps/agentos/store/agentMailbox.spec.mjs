@@ -20,12 +20,12 @@ import MailboxMessage    from '../../../../../../apps/agentos/model/MailboxMessa
 import AgentMailboxStore from '../../../../../../apps/agentos/store/AgentMailbox.mjs';
 
 /**
- * The mailbox tab's data plane: a pane-owned Store of adapter-contract rows. These specs pin the
- * store against the FROZEN row shape the Fleet mailbox read adapter emits — the store must accept
- * those rows verbatim (frozen inputs cloned, never mutated), key by the durable messageId, and
- * render-order newest-first. Read-only discipline: replacing wholesale is the ONLY write idiom.
+ * The mailbox mirror pane's data plane: a pane-owned Store of adapter-contract rows. These specs
+ * pin the store against the FROZEN row shape the Fleet mailbox read adapter emits — the store must
+ * accept those rows verbatim (frozen inputs cloned, never mutated), key by the durable messageId,
+ * and render-order newest-first. Read-only discipline: replacing wholesale is the ONLY write idiom.
  */
-test.describe('AgentOS.store.AgentMailbox — the mailbox tab data plane', () => {
+test.describe('AgentOS.store.AgentMailbox — the mailbox mirror data plane', () => {
     function frozenAdapterRows() {
         // exactly the adapter's createMirrorRow shape, frozen like the real snapshot
         return Object.freeze([Object.freeze({

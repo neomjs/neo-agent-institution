@@ -41,9 +41,9 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
     // mirrors FleetRoster's keyProperty (the collection default 'id' would shadow the model's).
     const makeRecord = data => {
         const row = {
-                  // mirrors production: the roster DTO carries the mailbox identity authority beside
-                  // the registry key. A fixture without it is a resident the mailbox cannot verify —
-                  // valid, but not the default case, so tests opt INTO that by passing null.
+                  // mirrors production: the roster DTO carries the mailbox IDENTITY authority
+                  // (@githubUsername) beside the registry key — consumed by the south mailbox
+                  // surfaces (recipient picker, subject scoping), so the fixture keeps both fields.
                   githubUsername: data.githubUsername === undefined ? `neo-${data.agentId}` : data.githubUsername,
                   ...data,
                   sources: data.sources === undefined ? observedSources : data.sources

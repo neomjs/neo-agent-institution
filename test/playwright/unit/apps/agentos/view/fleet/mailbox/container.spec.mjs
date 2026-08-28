@@ -65,7 +65,7 @@ function createPane(config = {}) {
     })
 }
 
-test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox tab', () => {
+test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox mirror pane', () => {
     test('unobserved: no snapshot renders the honest not-wired state, never rows', () => {
         const pane = createPane();
 

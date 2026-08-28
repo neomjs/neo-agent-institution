@@ -2744,7 +2744,8 @@ test.describe('Fleet cockpit — the tasks read (loadTasks)', () => {
  * - `buildOperatorRecipientOptions` — the pure roster→picker mapping: the mailbox IDENTITY
  *   (`@githubUsername`), never the Fleet `agentId` key. The fixture makes the two fields DIFFER so a
  *   read of the wrong one fails the test rather than passing by coincidence.
- * - `loadOperatorInbox` — the READ-OBSERVE own-inbox twin of `AgentDetail.loadMailboxMirror`: the
+ * - `loadOperatorInbox` — the READ-OBSERVE own-inbox mirror read (the cockpit's one mailbox
+ *   surface): the
  *   fail-closed matrix (no identity / no verb → honestly unobserved) plus BOTH fences (a superseded
  *   generation and a destroyed owner never write). The runtime source of `operatorRecord` is wired
  *   separately; the method's routing is fully pinned here by setting the identity owner-side.

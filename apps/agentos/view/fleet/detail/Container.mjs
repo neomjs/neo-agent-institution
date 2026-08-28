@@ -257,8 +257,10 @@ class AgentDetail extends Container {
                 }]
             }]
         }, {
-            // object permanence: the mailbox belongs to the agent object, so it rides the detail
-            // as a TAB beside the status panes — the a11y region + identity header stay above
+            // the drill-in's tabbed body: Status panes + the Configuration card — the a11y region
+            // + identity header stay above. Mail is NOT a detail concern: the south pane is the
+            // cockpit's one mailbox surface, and a per-agent subject scope re-enters THERE when
+            // authenticated viewer ingress lands.
             module     : TabContainer,
             cls        : ['fm-detail-tabs'],
             flex       : 1,
@@ -275,8 +277,7 @@ class AgentDetail extends Container {
                 items    : PANES.map(paneConfig)
             }, {
                 // object permanence (the S5 fork-1 ruling): per-agent CONFIGURATION belongs to the
-                // agent object, so it rides the detail as a tab — the mailbox precedent applied to
-                // the config card. The card fires `configIntent`; THIS view owns the bridge
+                // agent object, so it rides the detail as a tab. The card fires `configIntent`; THIS view owns the bridge
                 // round-trip through the shared runner (which arbitrates supersession per shared
                 // record, across every owner), with the card as this owner's status sink.
                 module   : AgentConfigCard,
