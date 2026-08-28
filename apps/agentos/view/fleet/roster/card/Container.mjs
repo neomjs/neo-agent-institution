@@ -480,20 +480,32 @@ class AgentCard extends Container {
         toggle.changeVdomRootKey('aria-label', `${recordState === 'off' ? 'Start' : 'Stop'} ${nameSlot.text}`);
         restart.changeVdomRootKey('aria-label', `Restart ${nameSlot.text}`);
 
+        // While a control round-trip is live, the second work line belongs to the status row: the
+        // lane clamps to ONE line (SCSS keys off this root cls), so a reason-carrying card still
+        // fits the roster's uniform row height at every card width — the lane stays reachable via
+        // line one, its middle elision and the title.
+        me[(pendingAction || controlReason) ? 'addCls' : 'removeCls']('fm-control-live');
+
         // the control round-trip only — the runtime-source gating is already shown by the disabled
         // controls + the source strip ("RUN not nominal"), so the status line never duplicates it
-        me.getReference('control-status').set({
-            hidden: !pendingAction && !controlReason,
+        const
+            controlStatus     = me.getReference('control-status'),
             // pending takes visual priority over a prior reason, so a new attempt never shows a stale
             // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠"
-            text  : pendingAction
+            controlStatusText = pendingAction
                 ? `${pendingAction}…`
                 : !controlReason
                     ? ''
                     : controlReason.kind === 'timeout'
                         ? `${controlReason.action}… stale — no response`
-                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`
+                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
+
+        controlStatus.set({
+            hidden: !pendingAction && !controlReason,
+            text  : controlStatusText
         });
+        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full reason
+        controlStatus.changeVdomRootKey('title', controlStatusText || null);
 
         me.update()
     }

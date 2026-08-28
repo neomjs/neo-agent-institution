@@ -13,6 +13,7 @@
         "DragDrop",
         "LocalStorage",
         "Navigator",
+        "ResizeObserver",
         "Stylesheet"
     ]
 }

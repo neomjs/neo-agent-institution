@@ -20,6 +20,8 @@
         "build-threads": "node ./node_modules/neo.mjs/buildScripts/webpack/buildThreads.mjs -f",
         "bundle-parse5": "node ./node_modules/neo.mjs/buildScripts/build/parse5.mjs",
         "check-data-tracking": "node ./buildScripts/checkDataTracking.mjs",
+        "check-visual-baselines": "node ./buildScripts/checkVisualBaselines.mjs",
+        "stamp-visual-baselines": "node ./buildScripts/checkVisualBaselines.mjs --stamp",
         "check-reactive-tags": "node ./node_modules/neo.mjs/buildScripts/helpers/checkReactiveTags.mjs",
         "convert-design-tokens": "node ./node_modules/neo.mjs/buildScripts/helpers/convertDesignTokens.mjs",
         "create-app": "node ./node_modules/neo.mjs/buildScripts/create/app.mjs",

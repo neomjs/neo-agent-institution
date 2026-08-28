@@ -78,9 +78,10 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         const {list} = await createStream();
 
         expect(store.count).toBe(500);
-        expect(list.availableRows).toBe(3);
-        expect(list.items.filter(Boolean)).toHaveLength(11);
-        expect(list.vdom.cn.slice(1, -1)).toHaveLength(11);
+        // 156px viewport over the 32px density-contract rows: 5 visible + 2×4 buffer = 13 pooled
+        expect(list.availableRows).toBe(5);
+        expect(list.items.filter(Boolean)).toHaveLength(13);
+        expect(list.vdom.cn.slice(1, -1)).toHaveLength(13);
         expect(stream.down({cls: 'fm-stream-fold'})).toBeNull();
         expect(stream.vdom.role).toBe('log');
         expect(list.vdom['aria-live']).toBe('off');

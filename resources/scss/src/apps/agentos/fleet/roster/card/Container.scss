@@ -287,10 +287,23 @@
         }
     }
 
-    /* the honest control round-trip surface — hidden until a pending intent / terminal reason */
+    /* the honest control round-trip surface — hidden until a pending intent / terminal reason.
+       ONE line by contract: it borrows the lane's second work line (see .fm-control-live), so a
+       wrapping reason would re-grow the card past the roster's uniform row height — the full
+       reason stays reachable via the title receipt the component sets. */
     .fm-card-control-status {
-        font : var(--fm-text-micro);
-        color: var(--fm-ink-dim);
+        font         : var(--fm-text-micro);
+        color        : var(--fm-ink-dim);
+        white-space  : nowrap;
+        overflow     : hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* While a control round-trip is live (root cls from the card component), the second work line
+       belongs to the status row: the lane clamps to ONE line so a reason-carrying card keeps the
+       roster's uniform row height at every width — including the 44px-touch narrow head. */
+    &.fm-control-live .fm-card-lane {
+        -webkit-line-clamp: 1;
     }
 
     /* ══ card-owned width modes (ADR 0029): the card responds to ITS OWN width, not the viewport ══ */

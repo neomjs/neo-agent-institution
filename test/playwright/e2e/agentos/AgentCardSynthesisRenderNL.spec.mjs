@@ -114,9 +114,18 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         await app.callMethod(storeId, 'clear');
         await app.callMethod(storeId, 'add', [PATHOLOGICAL_ROSTER]);
 
-        await expect.poll(async () => (await app.queryComponent({className: 'AgentOS.view.fleet.roster.card.Container'}, ['id'])).length, {
-            message: 'the grid re-renders one card per pathological resident', timeout: 15000, intervals: [250]
+        // RENDERED cards, not instances: since the animated-list conversion the roster POOLS one
+        // AgentCard instance per index (create on first use, re-seat via `record` on reuse — the
+        // roster List's documented contract), so shrinking the store leaves surplus pooled
+        // instances alive by design and an instance census would over-count forever. The rendered
+        // surface is the contract under test; the store count is the engine-truth half.
+        await expect.poll(async () => page.locator('.fm-agent-card').count(), {
+            message: 'the grid renders one card per pathological resident', timeout: 15000, intervals: [250]
         }).toBe(PATHOLOGICAL_ROSTER.length);
+
+        const storeCount = await app.callMethod(storeId, 'getCount');
+
+        expect(storeCount, 'the store carries exactly the pathological fleet').toBe(PATHOLOGICAL_ROSTER.length);
 
         // the avatar keeper must be painted before capture (data-URI decode is async)
         await expect.poll(async () => page.evaluate(() => {
@@ -151,14 +160,20 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                     list.style.maxHeight = 'none'
                 }, {count: PATHOLOGICAL_ROSTER.length, width});
 
-                await expect.poll(async () => page.evaluate(() => {
-                    const card = document.querySelector('.fm-agent-card');
-                    return card ? Math.round(card.getBoundingClientRect().width) : null
-                }), {
-                    message  : `[${scope}] Animate re-seats the card from the list's measured width`,
+                // In-band poll, not one-sided: a lower bound alone reads an untouched too-wide card
+                // (e.g. the previous mode's width) as settled and green — the plugin must have
+                // re-derived INTO the requested band before the precise receipts below run.
+                await expect.poll(async () => {
+                    const measured = await page.evaluate(() => {
+                        const card = document.querySelector('.fm-agent-card');
+                        return card ? Math.round(card.getBoundingClientRect().width) : 0
+                    });
+                    return measured >= width - 4 && measured <= width + 4
+                }, {
+                    message  : `[${scope}] Animate re-seats the card into the ~${width}px band`,
                     timeout  : 15000,
                     intervals: [100, 250]
-                }).toBeGreaterThanOrEqual(width - 4);
+                }).toBe(true);
 
                 const settledWidth = await page.evaluate(() => Math.round(document.querySelector('.fm-agent-card').getBoundingClientRect().width));
 
