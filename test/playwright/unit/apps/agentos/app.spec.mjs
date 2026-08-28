@@ -20,7 +20,10 @@ test.describe('AgentOS packaged Fleet window routing', () => {
 
         expect(config).toMatchObject({
             appPath       : '../../apps/agentos/childapps/widget/app.mjs',
-            mainPath      : '../../../node_modules/neo.mjs/src/Main.mjs',
+            // the canonical loader-relative shape (#46): Main.mjs sits BESIDE the engine
+            // MicroLoader, and import(d.mainPath) resolves relative to the loader MODULE —
+            // the resolution witness below is the executable proof
+            mainPath      : './Main.mjs',
             workerBasePath: '../../../../node_modules/neo.mjs/src/worker/'
         });
         expect(new URL(config.mainPath, microLoaderUrl).pathname)

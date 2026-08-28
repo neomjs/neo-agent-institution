@@ -2,7 +2,7 @@
     "appPath"         : "../../apps/agentos/app.mjs",
     "basePath"        : "../../",
     "environment"     : "development",
-    "mainPath"        : "../node_modules/neo.mjs/src/Main.mjs",
+    "mainPath"        : "./Main.mjs",
     "themes"          : ["neo-theme-neo-dark", "neo-theme-neo-light"],
     "useAiClient"     : true,
     "useSharedWorkers": true,
