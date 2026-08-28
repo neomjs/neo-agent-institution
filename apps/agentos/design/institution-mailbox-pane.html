@@ -98,12 +98,7 @@
        padding:var(--chip-pad-y) var(--chip-pad-x);background:var(--panel-2);cursor:pointer}
   .tog:hover{border-color:var(--ink-dim);color:var(--ink)}
 
-  /* paging strip: chrome tier, disabled edges stay visible (the landed honesty semantics) */
-  .pfoot{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line-soft)}
-  .pfoot .range{font:var(--t-micro);color:var(--ink-dim)}
-  .pbtn{font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;padding:2px 9px;background:var(--panel-2)}
-  .pbtn:disabled{opacity:.45;cursor:not-allowed}
-
+  /* no paging chrome: buffered surfaces scroll (operator direction 2026-08-28) */
   .empty{padding:var(--sp-4) var(--sp-3);font:var(--t-body);color:var(--ink-dim)}
 
   table{border-collapse:collapse;font-size:12px;color:var(--ink-dim);margin-top:10px}
@@ -117,7 +112,7 @@
 <div class="wrap">
   <p class="eyebrow">institution pane information design · #20 · mailbox slice</p>
   <h1>The mailbox pane — a mail client, not a log</h1>
-  <p class="lede">The south-pane mailbox renders correct data as <b>subject + one joined meta string</b> (raw ISO included — a T5 violation on its own). This sketch is the designed row anatomy over the <b>existing</b> <span style="font-family:var(--mono)">MailboxMessage</span> record — every element below maps to a field the adapter already ships; no new data capability is assumed. Store contracts, pagination honesty, thread mechanics, and the read-only MUST-NOT (no mark-read on this side of the seam) are untouched: this is view-layer typography over the landed truth.</p>
+  <p class="lede">The south-pane mailbox renders correct data as <b>subject + one joined meta string</b> (raw ISO included — a T5 violation on its own). This sketch is the designed row anatomy over the <b>existing</b> <span style="font-family:var(--mono)">MailboxMessage</span> record — every element below maps to a field the adapter already ships; no new data capability is assumed. Store contracts, thread mechanics, and the read-only MUST-NOT (no mark-read on this side of the seam) are untouched: this is view-layer typography over the landed truth — with one deliberate retirement: the offset-paging chrome goes, because the buffered destination scrolls.</p>
 
   <div class="col-label">the pane, composed — operator inbox, mixed states</div>
   <div class="pane">
@@ -184,14 +179,8 @@
       <span class="age" title="2026-08-27T08:16:33.667Z">27 Aug, 10:16</span>
     </div>
 
-    <div class="pfoot">
-      <span class="range">1–4</span>
-      <!-- genuinely disabled at the edge: the native attribute carries look, announcement and
-           refusal in one; the shipped pane adds aria-disabled where its button root differs -->
-      <button class="pbtn" type="button" disabled>newer</button>
-      <button class="pbtn" type="button">older</button>
-    </div>
   </div>
+  <p class="note"><b>No paging chrome (operator direction, 2026-08-28):</b> the shipped pane's offset window (<span style="font-family:var(--mono)">newer/older</span>, range strip) retires with the hand-rolled rows — the buffered <span style="font-family:var(--mono)">grid.Container</span> destination scrolls. <span style="font-family:var(--mono)">bufferRowRange</span> keeps the DOM window small while the mailbox reads as one continuous queue; the window edge extends by scrolling (loads fold in without a seam), and the honest end of the corpus is the only end. The positive-offset-empty-window trap the old strip guarded against cannot exist on a surface with no offset windows.</p>
 
   <div class="col-label">the same thread, expanded — the indent rail carries membership, the head keeps the one affordance</div>
   <div class="pane">
@@ -272,7 +261,7 @@
 
   <p class="note"><b>Compose placement:</b> the pane header carries the compose affordance (affordance-class chip, right-pinned — reachable without scroll). The operator direction leaves a second option open: compose as its OWN south tab. The header affordance works in both worlds — if compose becomes a tab, the button routes there instead of opening the inline form; the row anatomy above is placement-independent. <b>Decision slot (operator/team):</b> inline reveal vs south tab — the sketch does not pre-decide it.</p>
   <p class="note"><b>Two scopes, one pane (the #30 design note):</b> the anatomy above is scope-blind by construction — operator inbox and (post-S5) a selected resident's mirror render the same rows; only the pane-head subtitle (<span class="mono">operator inbox</span> ↔ <span class="mono">@agent mirror</span>) names the scope. Nothing in this sketch assumes S5.</p>
-  <p class="note"><b>Empty words (T5 miss-copy):</b> cold pane → <span class="mono">no messages in this window</span>; a positive-offset empty window keeps the paging strip (the landed no-trap rule) — design changes neither.</p>
+  <p class="note"><b>Empty words (T5 miss-copy):</b> cold pane → <span class="mono">no messages in this window</span> — the one empty state a buffered surface has; the offset-window edge cases (and their guard chrome) retire with the pagination itself.</p>
   <p class="falsifier">implementation acceptance (the later sub, not this sketch): zero font-size literals in mailbox SCSS (all five roles via tokens) · zero toISOString-derived human strings (T5 greppable) · gray-filter legibility for unread/priority/task · both themes via tokens · shell-seam guard stays green (frame-free pane root).</p>
 </div>
 </body>
