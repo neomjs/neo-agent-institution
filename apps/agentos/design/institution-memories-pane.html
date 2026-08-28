@@ -91,9 +91,14 @@
   .trow{display:grid;grid-template-columns:18px 1fr auto;gap:0 var(--chip-gap);padding:var(--sp-2) var(--sp-3);align-items:start}
   .trow + .trow{border-top:1px solid var(--line-soft)}
   .tresponse{font:var(--t-body);color:var(--ink);overflow:hidden;display:-webkit-box;
-             -webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:68ch}
-  /* the complete stored turn contract renders: response primary, prompt + thought as labeled
-     secondary lines (label = micro mono, text = body dim) — nothing stored is hidden */
+             -webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:68ch;min-width:0}
+  /* MEASURED (this design session, 11 turns): responses 150-260 chars only under one agent's
+     discipline — the contract has NO upper bound; thoughts already run 900-2,100 chars. A raw
+     prose field can never be the headline. The per-turn miniSummary (backfill-generated,
+     measured 120-250 chars ≈ tweet) IS the turn title; the three stored prose fields render
+     beneath it, ALL LABELED and clamped, un-clamped in row→detail. */
+  .ttitle{font:var(--t-body);font-weight:600;color:var(--ink);overflow:hidden;display:-webkit-box;
+          -webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:68ch;min-width:0}
   .tline{display:flex;gap:var(--chip-gap);margin-top:2px;max-width:68ch;align-items:baseline}
   .tlabel{font:var(--t-micro);color:var(--ink-dim);flex:none;width:44px}
   .ttext{font:var(--t-body);color:var(--ink-dim);overflow:hidden;display:-webkit-box;
@@ -233,12 +238,13 @@
     <div class="drill-head">
       <button class="abtn" type="button">← summaries</button>
       <span class="pane-sub" style="flex:1">session 4f07d934 · The post-split re-entry day · 41 turns</span>
-      <span class="prov" title="agent-authored records: the resident's own prompt/thought/response trail">authored</span>
+      <span class="prov" title="applies to the stored prose fields (response / prompt / thought) — the resident's own trail; each turn's summary line is separately marked derived">authored</span>
     </div>
     <div class="trow">
       <span class="mm">cl</span>
       <div>
-        <div class="tresponse">Institution #2 claimed, implemented, tested (710 unit + 6/6 visual), PR #35 open with Emmy as reviewer — the extraction-debt trio closes.</div>
+        <div class="tline" style="margin-top:0"><span class="tlabel">summary</span><span class="ttitle">The agent claimed and shipped Institution #2, closing the extraction-debt trio with full test coverage.</span><span class="prov" title="derived by the miniSummary backfill pipeline — not authored by the resident">derived</span></div>
+        <div class="tline"><span class="tlabel">response</span><span class="ttext">Institution #2 claimed, implemented, tested (710 unit + 6/6 visual), PR #35 open with Emmy as reviewer — the extraction-debt trio closes.</span></div>
         <div class="tline"><span class="tlabel">prompt</span><span class="ttext">Operator: "well, feel free to choose new lanes."</span></div>
         <div class="tline"><span class="tlabel">thought</span><span class="ttext">Lane candidates from the banked ledger: #2 closes the extraction-debt trio and I know the card surface intimately after today…</span></div>
         <div class="tmeta">claude-fable-5 · 22 tool calls <span title="toolsUsed: Bash, Read, Edit, Write, add_message, add_memory…">· 8 tools</span></div>
@@ -248,7 +254,8 @@
     <div class="trow">
       <span class="mm">cl</span>
       <div>
-        <div class="tresponse">Brain #207 approved zero-RA with positive-controlled falsification; my #35 RA-1 addressed body-only at the same head.</div>
+        <div class="tline" style="margin-top:0"><span class="tlabel">summary</span><span class="ttitle">A reciprocal review cycle: Brain #207 approved with zero required actions while the agent's own PR closed its round.</span><span class="prov" title="derived by the miniSummary backfill pipeline — not authored by the resident">derived</span></div>
+        <div class="tline"><span class="tlabel">response</span><span class="ttext">Brain #207 approved zero-RA with positive-controlled falsification; my #35 RA-1 addressed body-only at the same head.</span></div>
         <div class="tline"><span class="tlabel">prompt</span><span class="ttext">Emmy's twin lifecycle events: review request on #207 + her Round-1 on my #35.</span></div>
         <div class="tline"><span class="tlabel">thought</span><span class="ttext">Reciprocal review cycle: her ticket's own falsifiers become my review instruments — positive controls on the caller-analysis grep…</span></div>
         <div class="tmeta">claude-fable-5 · 18 tool calls <span title="toolsUsed: Bash, Read, validate_pr_review_body, add_message…">· 6 tools</span></div>
@@ -282,7 +289,7 @@
     <tr><td class="mono">technologies</td><td>micro tail: <span class="mono">neo.mjs · playwright +2</span></td><td>micro</td><td>live payload array; first two + overflow count, full list on <span class="mono">title</span>; empty → nothing</td></tr>
     <tr><td class="mono">sourceAgentIdentities</td><td>co-author monogram row</td><td>micro</td><td>selected target excluded (existing rule); full identities on <span class="mono">title</span>; empty → nothing</td></tr>
     <tr><td class="mono">sessionId</td><td>drill-head identity + hint derivation, 8-char form</td><td>micro</td><td><b>auto-generated at write time</b> (crypto.randomUUID / SessionService.currentSessionId — MemoryService.mjs:578-582): every memory carries one, so the drill affordance is <b>always executable</b></td></tr>
-    <tr><td>drill: <span class="mono">response / prompt / thought</span></td><td>primary line / labeled line / labeled line</td><td>body / body / body</td><td>all three are validated-required at <span class="mono">add_memory</span> (empty fields rejected — the corrupted-memory class) and <b>all three render</b> — the complete stored turn contract, nothing hidden: response primary (existing ruling), prompt + thought as labeled 1-line-clamped secondary lines; the drill's row→detail presents them un-clamped</td></tr>
+    <tr><td>drill: <span class="mono">miniSummary</span> + <span class="mono">response / prompt / thought</span></td><td>miniSummary = the weighted turn TITLE; the three prose fields labeled + clamped beneath</td><td>body 600 / body</td><td><b>measured:</b> prose fields have no upper bound (thoughts already 900–2,100 chars this session) — raw prose can never be the headline. The tweet-size <span class="mono">miniSummary</span> (backfill-generated, 120–250 chars measured) is the turn title, and its <b>provenance renders on the line</b>: labeled <span class="mono">summary</span> with a <span class="mono">derived</span> pill — the drill-head's <span class="mono">authored</span> pill covers only response/prompt/thought. While a turn awaits backfill (<span class="mono">summaryFallback: true</span>), the pill reads <span class="mono">raw excerpt</span> and the line renders dim — the DETERMINISTIC service-side truncation (the existing MC fallback helper builds it from the raw content; the view generates nothing), never dressed as a derived summary. All three stored fields render labeled + 1-line-clamped, un-clamped in row→detail. <b>Named dependency:</b> the session-scoped read ships neither field yet — neomjs/neo-agent-brain#210 joins <span class="mono">miniSummary</span> + <span class="mono">summaryFallback</span> into the drill payload</td></tr>
     <tr><td>drill: <span class="mono">agent / model / amountToolCalls / toolsUsed</span></td><td>monogram / meta line facts</td><td>micro</td><td>the live <span class="mono">listMemories</span> pass-through shape (MemoryService.mjs:1349-1361 — the fleet sources forward it unchanged): <span class="mono">agent</span> feeds the monogram, <span class="mono">model</span> + tool-call count + <span class="mono">toolsUsed</span> (count, full list on <span class="mono">title</span>) form the meta line. The Institution model aligns to these field names in the implementation sub — declared, not silently deferred</td></tr>
     <tr><td>drill scope</td><td><b>full-only by design</b></td><td>—</td><td>the session drill invokes <span class="mono">get_session_memories</span> / <span class="mono">listMemories(sessionId, limit, offset)</span>, which has no <span class="mono">detail</span> parameter — and the operator's session view shows the complete stored contract anyway. The short form (<span class="mono">detail:'summary'</span>, graph-side miniSummary) belongs to <span class="mono">query_recent_turns</span>: cross-session, identity-filtered, reverse-chronological, public projection (thought stripped) — the future recency-ticker register in the capability table, never a toggle on this drill</td></tr>
   </table>
