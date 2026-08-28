@@ -4,7 +4,7 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  * @class AgentOS.model.MailboxMessage
  * @extends Neo.data.Model
  *
- * @summary One immutable A2A mailbox mirror row for the AgentDetail mailbox tab — the record
+ * @summary One immutable A2A mailbox mirror row for the mailbox mirror pane — the record
  * contract IS the Fleet mailbox read adapter's frozen row shape, field for field (the S1 Brain
  * half's `createMirrorRow` projection): body-free summary facts only, keyed by the durable
  * `messageId`. Rows are timestamped facts, never live views — the store replaces them wholesale on

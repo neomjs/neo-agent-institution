@@ -44,14 +44,18 @@ function isRecognizedPage(page) {
 }
 
 /**
- * The AgentDetail **Mailbox tab** — the S1 view half: a read-only, viewer-admitted mirror of the
- * drilled-in resident's ACTIVE A2A inbox, rendered from one Fleet mailbox-mirror adapter snapshot.
+ * The mailbox mirror pane — the S1 view half: a read-only, viewer-admitted mirror of ONE subject's
+ * ACTIVE A2A inbox, rendered from one Fleet mailbox-mirror adapter snapshot. Subject-generic by
+ * construction: today its one host is the south pane's {@link AgentOS.view.fleet.mailbox.OperatorContainer}
+ * (the operator's own inbox); a selection-scoped per-agent subject mode re-enters through the same
+ * host when the S5 Fleet grants/admission layer lands (viewer ingress is already live; the policy
+ * ledger holds the mirror read at awaiting-s5).
  *
  * **Read-only is structural.** The pane renders zero mutation affordances — no mark-read, no
  * archive, no reply (the graduated record's MUST-NOT: operator-side mark-read would mutate the
  * agent's own turn-start signal and swallow peer handoffs). The single interaction is
  * thread-collapse toggling — pure display-state navigation on the view-owned `threadCollapsed`
- * record field, never a data write. The Mailbox tab title stays COUNTLESS by design: an
+ * record field, never a data write. The pane's host label stays COUNTLESS by design: an
  * unread-count badge would imply operator-side read tracking that deliberately does not exist
  * (the no-markRead MUST-NOT's quiet sibling); per-row `status` is the honest fact instead.
  *
@@ -71,9 +75,8 @@ function isRecognizedPage(page) {
  * `capability.capturedAt`, so the cockpit speaks ONE freshness language.
  *
  * The pane owns its {@link AgentOS.store.AgentMailbox} instance (created with the pane, destroyed
- * with it) — `AgentDetail` deliberately has no per-view `state.Provider`, and a leaf list owns a
- * local store. The wiring injects adapter snapshots via the reactive `snapshot_` config; the pane
- * renders, never fetches.
+ * with it) — a leaf list owns a local store; no per-view `state.Provider`. The hosting wiring
+ * injects adapter snapshots via the reactive `snapshot_` config; the pane renders, never fetches.
  *
  * @class AgentOS.view.fleet.mailbox.Container
  * @extends Neo.container.Base

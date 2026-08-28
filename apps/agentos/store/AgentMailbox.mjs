@@ -5,12 +5,11 @@ import Store               from '../../../node_modules/neo.mjs/src/data/Store.mj
  * @class AgentOS.store.AgentMailbox
  * @extends Neo.data.Store
  *
- * @summary The AgentDetail mailbox tab's row layer — a Store of
+ * @summary The mailbox mirror pane's row layer — a Store of
  * {@link AgentOS.model.MailboxMessage} records holding ONE adapter snapshot's frozen rows for the
- * drilled-in resident. **Not a singleton and not provider-hosted**: `AgentDetail` deliberately has
- * no per-view `state.Provider` (the cockpit roster Store is the reactive layer for records), so the
- * mailbox pane owns its store instance directly — created with the pane, replaced wholesale on
- * each snapshot via {@link #applySnapshotRows}, destroyed with the pane.
+ * pane's current subject. **Not a singleton and not provider-hosted**: the mailbox pane owns its
+ * store instance directly — created with the pane, replaced wholesale on each snapshot via
+ * {@link #applySnapshotRows}, destroyed with the pane.
  *
  * No `url`: this store is NEVER fetched. The Fleet mailbox read adapter (the S1 Brain half) is the
  * only data source, and its viewer-admission + read-only + active-inbox boundaries live on that
