@@ -76,6 +76,15 @@ class List extends ComponentList {
     }
 
     /**
+     * The grid is row-major, so DOM-order ±1 IS the horizontal neighbour: the Navigator's bound
+     * axis pair is pinned to Left/Right explicitly — its layout auto-detection would fall back to
+     * Up/Down (absolute-positioned items read as a vertical stack), which is exactly the one-axis
+     * feel this grid outgrew. The vertical axis (±columns) lives in the SelectionModel's key hooks.
+     * @member {Object} navigator={previousKey:'ArrowLeft',nextKey:'ArrowRight'}
+     */
+    navigator = {previousKey: 'ArrowLeft', nextKey: 'ArrowRight'}
+
+    /**
      * @summary One pooled AgentCard per rendered row (create on first use, re-seat via `record` on
      * reuse) — instance identity is what survives a sort, so the plugin can MOVE the same rendered
      * card instead of flashing a rebuilt one. The `lifecycleIntent` listener stays a string: it
