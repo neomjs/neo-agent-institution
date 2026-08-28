@@ -160,20 +160,18 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                     list.style.maxHeight = 'none'
                 }, {count: PATHOLOGICAL_ROSTER.length, width});
 
-                // In-band poll, not one-sided: a lower bound alone reads an untouched too-wide card
-                // (e.g. the previous mode's width) as settled and green — the plugin must have
-                // re-derived INTO the requested band before the precise receipts below run.
-                await expect.poll(async () => {
-                    const measured = await page.evaluate(() => {
-                        const card = document.querySelector('.fm-agent-card');
-                        return card ? Math.round(card.getBoundingClientRect().width) : 0
-                    });
-                    return measured >= width - 4 && measured <= width + 4
-                }, {
-                    message  : `[${scope}] Animate re-seats the card into the ~${width}px band`,
+                // EXACT poll, no tolerance: one-column plugin math is deterministic (item = pinned
+                // list width − 20px margins), and the matrix's neighbouring modes sit 1px apart —
+                // any band wide enough to be useful contains the PREVIOUS mode's width, turning the
+                // poll into a no-op that asserts before Animate re-derives (the 319/320 falsifier).
+                await expect.poll(async () => page.evaluate(() => {
+                    const card = document.querySelector('.fm-agent-card');
+                    return card ? Math.round(card.getBoundingClientRect().width) : 0
+                }), {
+                    message  : `[${scope}] Animate re-seats the card at exactly ${width}px`,
                     timeout  : 15000,
                     intervals: [100, 250]
-                }).toBe(true);
+                }).toBe(width);
 
                 const settledWidth = await page.evaluate(() => Math.round(document.querySelector('.fm-agent-card').getBoundingClientRect().width));
 

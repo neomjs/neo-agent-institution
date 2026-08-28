@@ -3,8 +3,10 @@
     "engine": "93d2cc9ec69ead450587e0bbca1c89dc385eafb30e3be745257e8ea5827a5ece",
     "inputs": {
         "apps/agentos": "b1bade549624b26e7d5501d3f91869e4e357788fd13932b7872d04ffd3bbdc9d",
-        "resources/scss": "7c4c17992bdfe1c86ac586800ba9a77f03a6c73e4cb322a434410d3bcd78f1ee",
-        "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs": "04e53e8c347337232c03cad447943c4562a7361cef134498a59a2516b9ad78a5",
-        "test/playwright/visual/FleetCockpitVisual.spec.mjs": "d32b4df875c609c30eeabd41fd253e4fe6355271252cbef4d3ed180b681d357f"
+        "resources/scss": "e42c56a9492c4ea340d342780ff67e099a3e8039bb89d072bf3a157c041d38c4",
+        "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs": "1cb24d86fc36bddbc25ed53848977dc0462684718aaab635dc14b1b8b2ff03d4",
+        "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots": "076e640d42b8a201e7e3fdbcaea3f9b062252cbaa77a96e98dc42f032de21d1a",
+        "test/playwright/visual/FleetCockpitVisual.spec.mjs": "b740b2536f9994ab4346e0ee02db6400bd4ecb784e4345b3ff3ffb8b751e7adf",
+        "test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs": "bde4a62bbc51031cf37249b68f1e7c6c072547b34e9fdb3566aa837e574dd69f"
     }
 }

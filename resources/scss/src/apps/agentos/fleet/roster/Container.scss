@@ -42,9 +42,13 @@
         white-space  : nowrap;
     }
 
-    /* the sort/filter cluster: quiet ghost verbs; the pressed state carries the choice */
+    /* the sort/filter cluster: quiet ghost verbs; the pressed state carries the choice.
+       Wrap-capable: at vessel widths the cluster exceeds the zone and hard-clipped at both
+       edges — wrapping engages only when space runs out, so the wide single-line form is
+       untouched. */
     .fm-fleet-controls {
-        gap: var(--fm-space-1);
+        flex-wrap: wrap;
+        gap      : var(--fm-space-1);
 
         .fm-roster-sort,
         .fm-roster-filter,

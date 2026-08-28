@@ -334,4 +334,32 @@
             font-size: 16px;   /* §04 recorded exception (#17265): glyph scale for the 44px narrow touch target — #17211's deliberate move, never a role migration */
         }
     }
+
+    /* sub-narrow (≤240px CONTENT ≈ ≤270px outer): the vessel-window band the width matrix never
+       priced — a one-column roster inside a 314px cockpit hands each card ~161px of content, where
+       the narrow band's 44px touch pair (94px with its gap) leaves the identity column 15px and
+       the resident's NAME collapses to two letters. A touch target that erases WHO it operates
+       fails its own accessibility purpose, so this band trades the 44px exception back for the
+       regular 32px verbs and a smaller avatar: the name keeps ≥ ~50px and stays the card's
+       subject. The 44px direction continues to own the 240–289px narrow band unchanged. */
+    @container (max-width: 240px) {
+        .fm-card-head {
+            gap: var(--fm-space-2);
+        }
+
+        .fm-card-avatar {
+            width : 24px;
+            height: 24px;
+        }
+
+        .fm-card-action {
+            width    : 32px;
+            height   : 32px;
+            font-size: 13px;
+        }
+
+        .fm-card-control-verbs {
+            gap: var(--fm-space-1);
+        }
+    }
 }

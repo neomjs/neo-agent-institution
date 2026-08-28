@@ -97,14 +97,19 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         const geometry = await page.evaluate(() => {
             const cockpit = document.querySelector('.fm-fleet-cockpit'),
-                  start   = document.querySelector('.fm-fleet-start');
+                  start   = document.querySelector('.fm-fleet-start'),
+                  // the sub-narrow card grammar's semantic floor: at vessel width every card must
+                  // still name its resident — identity may ellipsize, never collapse
+                  idents  = [...document.querySelectorAll('.fm-agent-card .fm-card-identity')]
+                      .map(el => Math.round(el.getBoundingClientRect().width));
 
             return {
                 viewport      : window.innerWidth,
                 clientWidth   : Math.round(cockpit.clientWidth),
                 scrollWidth   : Math.round(cockpit.scrollWidth),
                 startRect     : start ? start.getBoundingClientRect().toJSON() : null,
-                docScrollWidth: Math.round(document.documentElement.scrollWidth)
+                docScrollWidth: Math.round(document.documentElement.scrollWidth),
+                minIdentity   : idents.length ? Math.min(...idents) : 0
             }
         });
 
@@ -114,6 +119,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(geometry.startRect, 'the Start fleet button is rendered').not.toBeNull();
         expect(geometry.startRect.right, 'the Start fleet button sits inside the vessel window — the interactive core is reachable').toBeLessThanOrEqual(geometry.viewport);
         expect(geometry.startRect.left, 'the Start fleet button is not clipped at the left edge either').toBeGreaterThanOrEqual(0);
+        // The RA-1 regression class: the narrow band's 44px touch pair once starved the identity
+        // column to 15px and every resident's name collapsed to two letters. The sub-narrow card
+        // mode exists to prevent exactly that — this floor keeps it honest.
+        expect(geometry.minIdentity, 'every card still NAMES its resident at vessel width — the identity column never collapses').toBeGreaterThanOrEqual(44);
 
         await expect(page).toHaveScreenshot('cockpit-vessel-314.png')
     });

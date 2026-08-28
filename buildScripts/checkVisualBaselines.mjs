@@ -1,7 +1,8 @@
-import {execSync} from 'node:child_process';
-import crypto     from 'node:crypto';
-import fs         from 'node:fs';
-import path       from 'node:path';
+import {execSync}      from 'node:child_process';
+import crypto          from 'node:crypto';
+import fs              from 'node:fs';
+import path            from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 /**
  * @summary The Darwin-golden drift signal: a render-free freshness gate over the visual baselines.
@@ -31,26 +32,55 @@ import path       from 'node:path';
 const
     cwd       = process.cwd(),
     stampFile = 'test/playwright/visual/__screenshots__/baseline-inputs.json',
-    // The style-owning inputs of the rendered surfaces the goldens pin. Scope deliberately: theme
-    // sources + the app's own view code + the two capture specs. Engine version moves are visible
-    // through package-lock.json's neo.mjs entry, captured below as its own axis.
+    // The style-owning inputs of the rendered surfaces the goldens pin PLUS the golden sets
+    // themselves: the golden dirs make the stamp cover the exact FILE SET and blob identity of
+    // every baseline, so a removed, renamed, or rewritten golden breaks the digest instead of
+    // vanishing silently (the input-only scope false-greened on a deleted golden). Engine version
+    // moves are visible through package-lock.json's neo.mjs entry, captured below as its own axis.
     inputPaths = [
         'apps/agentos',
         'resources/scss',
         'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs',
-        'test/playwright/visual/FleetCockpitVisual.spec.mjs'
+        'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots',
+        'test/playwright/visual/FleetCockpitVisual.spec.mjs',
+        'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs'
     ];
+
+/**
+ * @summary The pure digest half: sha256 over a sorted `git ls-files -s` listing.
+ *
+ * Exported for the negative unit coverage — sensitivity to a REMOVED line (a deleted golden) is
+ * part of the checker's contract, not an accident of the git plumbing.
+ * @param {String} listing Raw `git ls-files -s` output for one scope.
+ * @returns {String}
+ */
+export function digestListing(listing) {
+    const normalized = listing.split('\n').filter(Boolean).sort().join('\n');
+
+    return crypto.createHash('sha256').update(normalized).digest('hex')
+}
+
+/**
+ * @summary The pure verdict half: which stamped scopes drifted against the current digests.
+ * @param {Object}   stamp   `{engine, inputs}` as stored in the stamp file.
+ * @param {Object}   current Same shape, freshly computed.
+ * @param {String[]} paths   The scope list both maps are keyed by.
+ * @returns {String[]} Human-readable drifted-scope names; empty = fresh.
+ */
+export function diffStamp(stamp, current, paths) {
+    return [
+        ...(stamp.engine !== current.engine ? ['package-lock.json → node_modules/neo.mjs (engine version)'] : []),
+        ...paths.filter(p => stamp.inputs?.[p] !== current.inputs[p])
+    ]
+}
 
 /**
  * @summary One digest per input scope from the staged blob ids — index-exact, platform-free.
  * @param {String} scope A path passed to `git ls-files -s`.
- * @returns {String} sha256 over the sorted staged-object listing.
+ * @returns {String}
  */
 function scopeDigest(scope) {
-    const listing = execSync(`git ls-files -s -- "${scope}"`, {cwd, encoding: 'utf8'})
-        .split('\n').filter(Boolean).sort().join('\n');
-
-    return crypto.createHash('sha256').update(listing).digest('hex')
+    return digestListing(execSync(`git ls-files -s -- "${scope}"`, {cwd, encoding: 'utf8'}))
 }
 
 /**
@@ -64,6 +94,15 @@ function engineDigest() {
         .update(JSON.stringify(lock.packages?.['node_modules/neo.mjs'] ?? null))
         .digest('hex')
 }
+
+// Import-safe by construction: the pure halves above are unit-testable, and the git-touching main
+// flow runs ONLY when this file is the entry script — an importing spec must never probe the index
+// or exit the process.
+const isEntryScript = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (!isEntryScript) {
+    /* exports only */
+} else {
 
 const current = {
     engine: engineDigest(),
@@ -92,10 +131,7 @@ if (!fs.existsSync(path.join(cwd, stampFile))) {
 
 const
     stamp   = JSON.parse(fs.readFileSync(path.join(cwd, stampFile), 'utf8')),
-    drifted = [
-        ...(stamp.engine !== current.engine ? ['package-lock.json → node_modules/neo.mjs (engine version)'] : []),
-        ...inputPaths.filter(p => stamp.inputs?.[p] !== current.inputs[p])
-    ];
+    drifted = diffStamp(stamp, current, inputPaths);
 
 if (drifted.length > 0) {
     console.error(
@@ -112,3 +148,5 @@ if (drifted.length > 0) {
 
 console.log('visual-baselines: input identity matches the golden stamp.');
 process.exit(0)
+
+}
