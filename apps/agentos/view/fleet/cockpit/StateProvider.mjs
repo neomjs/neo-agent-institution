@@ -35,9 +35,10 @@ const bannerSourceKeys = [
  *   `daemonFault` (the grid header's fold) and `viewerWakeTelltale` (the wake chip). Declared
  *   as data and kept live by {@link #onDataPropertyChange} — the official provider hook — so
  *   the derivation OWNER stays this class and consumers just bind. (Two engine constraints,
- *   both verified live 2026-08-29, shape this: `formulas` on a CHILD provider never re-run
- *   after boot, and only ENGINE-config binds — `text`/`cls`/`hidden` — deliver reliably, so
- *   the components stay presentation-thin.) No imperative sync path exists.
+ *   both verified in source and live 2026-08-29, shape this: `formulas` on a CHILD provider
+ *   never re-run after boot, and `setData` drills object values into LEAF paths, so derived
+ *   truths are declared leaf-complete and consumers bind leaves.) The components stay
+ *   presentation-thin; no imperative sync path exists.
  *
  * @class AgentOS.view.fleet.cockpit.StateProvider
  * @extends Neo.state.Provider
@@ -133,22 +134,16 @@ class StateProvider extends Provider {
                 signals: []
             },
             /* ── the DERIVED truths (written only by this class's own re-derivation hook) ──
-               Declared here, never first-created at runtime: a data key that only appears via a
-               later setData never reaches consumers already bound one provider level below
-               (engine behavior verified live 2026-08-29) — declaration is what makes the
-               dependency trackable from the first bind. */
+               Declared here when the COCKPIT is their owner; a truth the Viewport provider
+               already declares (`instanceState`) is deliberately NOT re-declared — a child
+               redeclaration SHADOWS the parent authority instead of feeding it, and setData
+               reaches the closest existing owner on its own. */
             /**
              * DERIVED — the header's aggregate daemon-fault fold; the SAME fault set the banner
              * ranks, plumbed as a boolean. The grid derives nothing about daemons itself.
              * @member {Boolean} daemonFault=false
              */
             daemonFault: false,
-            /**
-             * DERIVED — the chrome switcher's dot mirrors the banner verdict — one truth, two
-             * renderers: live→ok · degraded→limited · cold→off.
-             * @member {String} instanceState='off'
-             */
-            instanceState: 'off',
             /**
              * DERIVED — the one banner verdict; the banner and the reconnect affordance bind its
              * LEAVES (`setData` drills object values into leaf paths — an object-valued key never
@@ -229,9 +224,12 @@ class StateProvider extends Provider {
             });
 
         me.setData({
-            daemonFault  : SpineBanner.DAEMON_FAULT_STATES.includes(data.daemonState),
-            instanceState: verdict.hidden ? 'ok' : (verdict.kind === 'degraded' ? 'limited' : 'off'),
-            spineBanner  : verdict
+            daemonFault: SpineBanner.DAEMON_FAULT_STATES.includes(data.daemonState),
+            spineBanner: verdict,
+            // NOT declared locally: `instanceState` is Viewport-provider data (the instance
+            // switcher binds it there) — setData walks to the closest existing OWNER, so this
+            // write updates the PARENT truth instead of shadowing it with a child twin
+            instanceState: verdict.hidden ? 'ok' : (verdict.kind === 'degraded' ? 'limited' : 'off')
         })
     }
 
@@ -241,14 +239,27 @@ class StateProvider extends Provider {
      * @protected
      */
     deriveViewerWakeTelltale() {
+        // LEAF reads on purpose: a stamp's per-leaf writes fire this hook BEFORE the engine
+        // re-bubbles the parent objects, so an object-path read inside the hook still sees the
+        // previous composite — the leaves are already current, and the stamp's LAST leaf write
+        // makes this derivation the one that sticks
         const
-            stream  = this.getData('viewerWake.stream'),
-            catchUp = this.getData('viewerWake.catchUp'),
-            signals = this.getData('viewerWake.signals');
+            me      = this,
+            stream  = {
+                alive     : me.getData('viewerWake.stream.alive'),
+                reason    : me.getData('viewerWake.stream.reason'),
+                capturedAt: me.getData('viewerWake.stream.capturedAt')
+            },
+            catchUp = {
+                state  : me.getData('viewerWake.catchUp.state'),
+                at     : me.getData('viewerWake.catchUp.at'),
+                pending: me.getData('viewerWake.catchUp.pending')
+            },
+            signals = me.getData('viewerWake.signals');
 
-        this.setData('viewerWakeTelltale', TelltaleDeriver.describeViewerWakeTelltale({
-            stream : stream ?? null,
-            catchUp: catchUp?.state ? catchUp : null,
+        me.setData('viewerWakeTelltale', TelltaleDeriver.describeViewerWakeTelltale({
+            stream,
+            catchUp: catchUp.state ? catchUp : null,
             signals: signals ?? []
         }))
     }

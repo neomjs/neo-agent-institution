@@ -693,7 +693,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — memories click po
             // The REAL one-picker path: roster selection writes through the cockpit owner. Its
             // phase-blind accessor reaches the vesseled pane; that reactive target change fires
             // the pane's scoped memoriesRequest intent back to the owning controller.
-            cockpit.applySelection({agentId: 'grace', githubUsername: 'neo-opus-grace'});
+            cockpit.getController().applySelection({agentId: 'grace', githubUsername: 'neo-opus-grace'});
 
             await expect.poll(() => bridgeCalls.length, {timeout: 2000}).toBe(1);
             expect(bridgeCalls[0].agentIdentity).toBe('@neo-opus-grace');
@@ -802,7 +802,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — memories click po
         try {
             // Roster selection writes through the owner to the vesseled pane; its scoped intent
             // performs the summary read before the session drill begins.
-            cockpit.applySelection({agentId: 'clio', githubUsername: 'neo-fable-clio'});
+            cockpit.getController().applySelection({agentId: 'clio', githubUsername: 'neo-fable-clio'});
             await expect.poll(() => pane.summaryStore.count, {timeout: 2000}).toBe(1);
 
             pane.onCardOpen(pane.summaryStore.first());

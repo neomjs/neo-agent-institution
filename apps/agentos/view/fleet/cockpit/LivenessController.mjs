@@ -83,6 +83,15 @@ class LivenessController extends ComponentController {
      */
     lastLiveRows = null
     /**
+     * Re-entrancy latch for {@link #onRosterStoreLoad}: the store fires `load` for its own
+     * mutations, so the guard's reconciliation adds/removals re-trigger the very listener that
+     * issued them — unlatched, that recursion is a real stack overflow (~524 frames on a 5k-row
+     * snapshot).
+     * @member {Boolean} reconcilingRoster=false
+     * @protected
+     */
+    reconcilingRoster = false
+    /**
      * The liveness re-poll interval id; `null` = not started.
      * @member {Number|null} livenessTimerId=null
      * @protected
@@ -564,6 +573,49 @@ class LivenessController extends ComponentController {
     }
 
     /**
+     * @summary Source-precedence guard: the provider-hosted roster store `autoLoad`s the JSON
+     * sample seed while {@link #loadRoster} races the bridge. When the bridge wins, the sample's
+     * later `load` would silently replace live rows (the grid still claiming `live`). Any store
+     * load landing AFTER live truth re-applies the last authoritative snapshot — idempotent,
+     * fail-closed toward live. A load before live truth is the normal seed path and passes through.
+     * Latched via {@link #reconcilingRoster}: the reconciliation's own mutations fire `load` back
+     * into this listener.
+     * @protected
+     */
+    onRosterStoreLoad() {
+        const me = this;
+
+        if (!me.reconcilingRoster && me.rosterWired && me.lastLiveRows) {
+            me.reconcilingRoster = true;
+
+            try {
+                me.reconcileRoster(me.resolveFleetRosterStore(), me.lastLiveRows)
+            } finally {
+                me.reconcilingRoster = false
+            }
+        }
+    }
+
+    /**
+     * @summary Keep the open detail inspector truthful over time — route the roster store's
+     * `recordChange` to the live {@link AgentOS.view.fleet.detail.Container} when the changed
+     * record is the one being inspected (mirrors how the grid routes `recordChange` to its
+     * cards). A roster re-poll mutating the selected resident (state, lane, sources) thus
+     * re-renders the detail in place — reactive to record MUTATION, not only to a re-seat.
+     * Routed through the view's phase-blind accessor so a popped-out inspector updates exactly
+     * like a docked one.
+     * @param {Object} data The store `recordChange` event `{record, ...}`.
+     * @protected
+     */
+    onDetailRecordChange({record}) {
+        const cockpit = this.component;
+
+        if (record === cockpit.detailRecord) {
+            cockpit.getAgentDetailPane()?.applyRecord()
+        }
+    }
+
+    /**
      * @summary Re-seat (or clear) the owner-held selection after a membership change — the
      * removal fires no recordChange, so the selection must reconcile explicitly.
      * @protected
@@ -578,7 +630,7 @@ class LivenessController extends ComponentController {
         const current = this.resolveFleetRosterStore()?.get(cockpit.detailRecord.agentId) ?? null;
 
         if (current !== cockpit.detailRecord) {
-            cockpit.applySelection(current)
+            this.applySelection(current)
         }
     }
 

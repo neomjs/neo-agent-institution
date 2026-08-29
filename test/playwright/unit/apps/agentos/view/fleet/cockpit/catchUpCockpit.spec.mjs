@@ -100,7 +100,12 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
         expect(FleetCockpitController.prototype.buildCatchUpPartitionOptions.call({resolveFleetRosterStore: () => ({items: rows})})).toEqual([
             {id: 'catch-up-ada', label: 'Ada', partition: '@neo-opus-ada'}
         ]);
-        await expect(FleetCockpit.prototype.openCatchUpLiveSurface.call(cockpit, {target: 'activity-stream'}))
+        const controller = Object.assign(Object.create(FleetCockpitController.prototype), {
+            component   : cockpit,
+            getReference: cockpit.getReference
+        });
+
+        await expect(controller.openCatchUpLiveSurface({target: 'activity-stream'}))
             .resolves.toEqual({opened: true, target: 'activity-stream'});
         expect(strip.activeIndex, 'the stream tab is active again').toBe(0);
         expect(focused).toEqual([['stream-1', false, true]])

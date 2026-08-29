@@ -27,7 +27,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
  * docking design's pane contract, and owner-held pane state surviving re-projection.
  */
 test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)', () => {
-    let ActivityStream, AgentDetail, CatchUpPane, DockProjectionReconciler, DockWorkspace, DockZoneModel, FleetCockpit, FleetGrid, MemoriesPane, OperatorMailbox, CockpitDockDocument;
+    let ActivityStream, AgentDetail, CatchUpPane, DockProjectionReconciler, DockWorkspace, DockZoneModel, FleetCockpit, FleetCockpitController, FleetGrid, MemoriesPane, OperatorMailbox, CockpitDockDocument;
 
     // a projection-capable spy owner: the REAL prototype methods over controlled state, without
     // provider/store/bridge wiring (their routing has its own suite in fleetCockpit.spec.mjs)
@@ -55,9 +55,17 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 tasksSnapshot          : null,
                 wakeRoutesSnapshot     : null
             },
+            // the REAL selection-write site runs over this host (the controller owns it now)
+            _wireSelection = (() => {
+                controllerStub.component      = host;
+                controllerStub.memoriesTarget = null;
+                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                return true
+            })(),
             values = {
                 getController        : () => controllerStub,
                 getReference         : () => null,
+                getMemoriesPane      : () => null,
                 // OWN value: the inherited engine accessor walks real config state a bare fake
                 // does not carry (the #configs private-member throw)
                 getStateProvider     : () => null,
@@ -104,6 +112,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         DockWorkspace       = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockWorkspace.mjs')).default;
         DockZoneModel       = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs')).default;
         FleetCockpit        = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
         FleetGrid           = (await import('../../../../../../../../apps/agentos/view/fleet/roster/Container.mjs')).default;
         CockpitDockDocument = (await import('../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default
     });
@@ -380,7 +389,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
  * control bar derives from store state.
  */
 test.describe('Fleet cockpit — perspective presets (the switch through the commit loop)', () => {
-    let DockPerspectiveStore, DockZoneModel, FleetCockpit, CockpitPresets, Neo;
+    let DockPerspectiveStore, DockZoneModel, FleetCockpit, FleetCockpitController, CockpitPresets, Neo;
 
     const makePresetHost = async (overrides = {}) => {
         const
@@ -405,9 +414,17 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
                 tasksSnapshot          : null,
                 wakeRoutesSnapshot     : null
             },
+            // same wiring for the preset host
+            _wireSelection = (() => {
+                controllerStub.component      = host;
+                controllerStub.memoriesTarget = null;
+                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                return true
+            })(),
             values = {
                 getController   : () => controllerStub,
                 getReference    : () => null,
+                getMemoriesPane : () => null,
                 // OWN value — same #configs guard as makeHost
                 getStateProvider: () => null,
                 detailRecord    : null,
@@ -441,6 +458,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         DockPerspectiveStore    = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockPerspectiveStore.mjs')).default;
         DockZoneModel           = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs')).default;
         FleetCockpit            = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController  = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
         CockpitPresets = (await import('../../../../../../../../apps/agentos/util/CockpitPresets.mjs')).default
     });
 

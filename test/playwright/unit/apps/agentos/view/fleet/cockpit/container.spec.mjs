@@ -693,7 +693,6 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             // the REAL View selection surface: applySelection, the phase-blind pane accessors and
             // the store-load guard run as production code over this fake — no stub drift
             view         = wireDetailRecord({
-                applySelection        : FleetCockpit.prototype.applySelection,
                 detachedDetailPane    : null,
                 detailRecord          : null,
                 getAgentDetailPane    : FleetCockpit.prototype.getAgentDetailPane,
@@ -704,8 +703,6 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                 getStateProvider      : () => provider,
                 id                    : `fake-fleet-cockpit-${index}`,
                 livenessReadTimeout   : 4000,
-                onRosterStoreLoad     : FleetCockpit.prototype.onRosterStoreLoad,
-                reconcilingRoster     : false,
                 rosterSourceMode      : 'sample',
                 selectionState        : {},
                 setState(values) { Object.assign(this.selectionState, values) }
@@ -715,6 +712,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                 getReference,
                 lastLiveRows           : null,
                 memoriesTarget         : null,
+                reconcilingRoster      : false,
                 // the provider-owned roster authority — the SAME store the grid fake binds, so the
                 // write path, the listener latch and the selection re-seat all read one truth
                 resolveFleetRosterStore: () => store
@@ -722,7 +720,12 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         view.getController = () => controller;
 
-        store.on({load: view.onRosterStoreLoad, scope: view});
+        // Observable.fire's scope-liveness probe reads `scope.id` — a config GETTER on the real
+        // prototype; the fake shadows it with an own data property (assignment would run the
+        // setter into unconstructed private config state)
+        Object.defineProperty(controller, 'id', {configurable: true, enumerable: true, value: `fake-cockpit-controller-${index}`, writable: true});
+
+        store.on({load: controller.onRosterStoreLoad, scope: controller});
 
         return {controller, grid, provider, view}
     };
@@ -888,20 +891,20 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             host    = Object.create(FleetCockpit.prototype);
 
         Object.defineProperty(host, 'detailRecord', {configurable: true, value: record, writable: true});
-        host.getReference = name => name === 'agent-detail' ? detail : null;
+        host.getAgentDetailPane = () => detail;
 
         // a recordChange for the INSPECTED record re-renders the detail in place — a roster re-poll
         // mutating state/lane/sources on the open agent must never leave a stale inspector
-        FleetCockpit.prototype.onDetailRecordChange.call(host, {record});
+        FleetCockpitController.prototype.onDetailRecordChange.call({component: host}, {record});
         expect(applied).toEqual([true]);
 
         // a recordChange for a DIFFERENT record is ignored — no needless re-render
-        FleetCockpit.prototype.onDetailRecordChange.call(host, {record: {agentId: 'ada'}});
+        FleetCockpitController.prototype.onDetailRecordChange.call({component: host}, {record: {agentId: 'ada'}});
         expect(applied).toEqual([true]);
 
         // detail not mounted (auto-hidden, not yet revealed) → the optional chain no-ops safely
-        host.getReference = () => null;
-        FleetCockpit.prototype.onDetailRecordChange.call(host, {record});
+        host.getAgentDetailPane = () => null;
+        FleetCockpitController.prototype.onDetailRecordChange.call({component: host}, {record});
         expect(applied).toEqual([true])
     });
 
@@ -911,7 +914,6 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             detail   = {set(config) { setCalls.push(config) }},
             makeHost = (detailRecord, storeGet) => {
                 const view = wireDetailRecord({
-                          applySelection    : FleetCockpit.prototype.applySelection,
                           detachedDetailPane: null,
                           detailRecord,
                           getAgentDetailPane: FleetCockpit.prototype.getAgentDetailPane,
@@ -1318,7 +1320,6 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
                 detailRecord  : null,
                 dockModel     : {items: {detail: {autoHidden: true}}},
                 selectionState: {},
-                applySelection: FleetCockpit.prototype.applySelection,
                 applyDockZoneOperation(op) { applied.push(op); return {document: {revealed: true}, errors: []} },
                 // the controller drill routes through the OWNER accessor (docked pane here;
                 // the vessel-held handle while detached — the pop-out suite covers that phase)
@@ -1360,7 +1361,6 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
                 detailRecord  : null,
                 dockModel     : {items: {detail: {autoHidden: false}}},   // already revealed
                 selectionState: {},
-                applySelection: FleetCockpit.prototype.applySelection,
                 applyDockZoneOperation(op) { applied.push(op); return {document: {}, errors: []} },
                 getAgentDetailPane() { return detail },
                 getMemoriesPane() { return null },

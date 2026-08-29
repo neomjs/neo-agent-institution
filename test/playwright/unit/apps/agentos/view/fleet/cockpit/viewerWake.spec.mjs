@@ -96,10 +96,9 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         const writes = {};
 
         CockpitStateProvider.prototype.deriveViewerWakeTelltale.call({
-            getData: path => {
-                const [root, leaf] = path.split('.');
-                return cockpit.provider.getData(root)?.[leaf]
-            },
+            // dotted-path walk over the fake's stored objects (the real provider resolves leaf
+            // configs; the fake stores whole stamps under their root key)
+            getData: path => path.split('.').reduce((node, key) => node?.[key], {viewerWake: cockpit.provider.getData('viewerWake')}),
             setData: (key, value) => { writes[key] = value }
         });
 

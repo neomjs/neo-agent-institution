@@ -187,7 +187,7 @@ class Controller extends LivenessController {
             return
         }
 
-        cockpit.applySelection(record);
+        this.applySelection(record);
 
         if (cockpit.dockModel?.items?.detail?.autoHidden) {
             const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden: false});
@@ -261,7 +261,7 @@ class Controller extends LivenessController {
      * @returns {Promise<Object>}
      */
     onCatchUpLiveSurfaceRequest(data) {
-        return this.component.openCatchUpLiveSurface({target: data.target})
+        return this.openCatchUpLiveSurface({target: data.target})
     }
 
     /**
@@ -340,6 +340,73 @@ class Controller extends LivenessController {
      */
     onDetailWindowToggle(data) {
         this.component.onDetailWindowToggle(data)
+    }
+
+    /**
+     * @summary The ONE selection-write site: seat a resident record (or null) as the cockpit's
+     * selection truth everywhere it lives — the view-owned {@link AgentOS.view.fleet.cockpit.Container#detailRecord}
+     * reactive config (its afterSet hook pushes the live pane; dock rematerialization reads it),
+     * the provider pair (`selectedAgentId` / `selectedAgentIdentity`), and the memories
+     * write-through (the one-picker contract: a selected resident with a verifiable mailbox
+     * identity re-targets the pane through the view's phase-blind accessor, so a vesseled pane
+     * re-targets exactly like a docked one).
+     *
+     * A null identity keeps the pane's LAST target: the summary corpus outlives the seat, so a
+     * resident without identity authority (or a cleared selection) never blanks a valid read —
+     * the provider pair still reports the honest null.
+     * @param {Object|null} record The selected {@link AgentOS.model.FleetAgent} record, or null.
+     */
+    applySelection(record) {
+        const
+            me       = this,
+            cockpit  = me.component,
+            identity = record?.githubUsername ? `@${record.githubUsername}` : null;
+
+        cockpit.detailRecord = record ?? null;   // afterSetDetailRecord pushes the live pane
+
+        cockpit.setState({
+            selectedAgentId      : record?.agentId ?? null,
+            selectedAgentIdentity: identity
+        });
+
+        if (identity && identity !== me.memoriesTarget) {
+            me.memoriesTarget = identity;
+            cockpit.getMemoriesPane()?.set({activeAgent: identity})
+        }
+    }
+
+    /**
+     * @summary Focus the existing bounded live Activity surface as adjacency. No history citation
+     * is injected into it and no alternate historical authority is implied.
+     *
+     * The stream is a resident south tab, so adjacency ACTIVATES its tab first: the jump usually
+     * originates from a sibling reading surface (catch-up) whose tab is active, and focusing the
+     * inactive card's unmounted DOM would be a silent no-op.
+     * @param {Object} request `{target}`
+     * @returns {Promise<{opened: Boolean, target: String}>}
+     */
+    async openCatchUpLiveSurface({target} = {}) {
+        const
+            me      = this,
+            cockpit = me.component,
+            stream  = target === 'activity-stream' ? me.getReference('activity-stream') : null;
+
+        if (!stream) {
+            return {opened: false, target: target || 'unknown'}
+        }
+
+        const strip = cockpit.down({dockNodeId: 'stream-tabs'}),
+              index = cockpit.dockModel?.nodes?.['stream-tabs']?.items?.indexOf('stream') ?? -1;
+
+        if (strip && index > -1 && strip.activeIndex !== index) {
+            strip.activeIndex = index;
+            // the card layout mounts the newly active item asynchronously; focus needs the DOM
+            await cockpit.timeout(50)
+        }
+
+        stream.focus(stream.id, false, true);
+
+        return {opened: true, target}
     }
 
     /* ── the fleet-start batch ── */

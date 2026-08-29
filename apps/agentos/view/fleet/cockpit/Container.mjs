@@ -1,5 +1,4 @@
 import ActivityStream         from '../activity/Container.mjs';
-import AddAgentForm           from '../instances/AddAgentForm.mjs';
 import AgentDetail            from '../detail/Container.mjs';
 import Button                 from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 // NAMED registration import: the engine's DockLayoutAdapter emits `ntype: 'tab-container'` for tab
@@ -20,7 +19,6 @@ import WakeRoutePane          from '../wake/Container.mjs';
 import CockpitStateProvider   from './StateProvider.mjs';
 import CockpitDockDocument    from '../../../util/CockpitDockDocument.mjs';
 import CockpitPresets         from '../../../util/CockpitPresets.mjs';
-import SourceHealth           from '../../../util/SourceHealth.mjs';
 import SpineBannerComponent   from './SpineBannerComponent.mjs';
 import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
 
@@ -45,100 +43,6 @@ const livenessReadTimeoutDefault = 10000;
 
 
 
-
-/**
- * The persistent chrome, DECLARED as one config factory: every slot the cockpit always owns — the
- * banner and telltale are real component classes that bind provider truth and render themselves;
- * handlers are controller-resolved strings. Added at construct through the add() path because
- * bind configs on the STATIC items of the provider-carrying component itself never get their
- * binding effects created (engine gap, verified live 2026-08-29: the colors reference app binds
- * one level BELOW a parent provider and works; the carrier's own declared subtree misses the
- * createBindings pass). Runtime injection stays limited to the two genuinely dynamic members:
- * the preset switcher (store-derived, `syncPresetButtons`) and the dock projection shell
- * (document-derived).
- * @returns {Object}
- */
-const chromeBar = () => ({
-        ntype    : 'toolbar',
-        cls      : ['fm-cockpit-bar'],
-        flex     : 'none',
-        reference: 'fleet-control-bar',
-        items    : [{
-            ntype    : 'component',
-            cls      : ['fm-preset-error'],
-            hidden   : true,
-            reference: 'fleet-preset-error'
-        }, {
-            // the per-SPINE honesty line — the spineBanner FORMULA binds here at the
-            // consumption site, ENGINE configs only (custom-config binds never receive their
-            // effects at this engine head — see the provider class doc)
-            module   : SpineBannerComponent,
-            bind     : {
-                cls   : data => [`fm-spine-banner-${data.spineBanner.kind}`],
-                hidden: data => data.spineBanner.hidden,
-                text  : data => data.spineBanner.text
-            },
-            reference: 'fleet-spine-banner'
-        }, {
-            // the banner's manual recovery affordance: one click re-drives every liveness
-            // seam through the existing authenticated bridge — no reload, no new transport.
-            // Visibility IS the banner verdict, bound from the same formula.
-            module   : Button,
-            bind     : {hidden: data => data.spineBanner.hidden},
-            cls      : ['fm-reconnect-button'],
-            handler  : 'reconnectFleet',
-            iconCls  : 'fa-solid fa-rotate',
-            reference: 'fleet-reconnect-button',
-            text     : 'Reconnect'
-        },
-        '->',
-        {
-            // the per-viewer wake-push telltale — the viewerWakeTelltale FORMULA binds here,
-            // ENGINE configs only (same engine-head constraint as the banner)
-            module   : ViewerWakeTelltaleComponent,
-            bind     : {
-                cls : data => data.viewerWakeTelltale.cls.slice(1),
-                text: data => data.viewerWakeTelltale.text
-            },
-            reference: 'viewer-wake-telltale'
-        }, {
-            // The fleet-start outcome summary — written by the controller after the staged
-            // bring-up settles ("N started · U UNKNOWN · M rejected · K excluded"; per-member
-            // reasons ride the title). Empty + hidden until a start ran.
-            ntype    : 'component',
-            cls      : ['fm-fleet-start-summary'],
-            hidden   : true,
-            reference: 'fleet-start-summary'
-        }, {
-            // exception-only chrome (the banner's class): each recall verb renders ONLY
-            // while its pane is away in a vessel — the pane carries its own toggle, but a
-            // windowed pane leaves the main view with no way home without this. Nominal
-            // state costs zero pixels; `removeDom` keeps the class-based selectors honest.
-            module   : Button,
-            cls      : ['fm-memories-window-toggle'],
-            handler  : 'onMemoriesWindowToggle',
-            hidden   : true,
-            hideMode : 'removeDom',
-            iconCls  : 'fa-solid fa-arrow-down-left',
-            reference: 'memories-recall-chrome',
-            text     : 'Return memories'
-        }, {
-            module   : Button,
-            cls      : ['fm-detail-window-toggle'],
-            handler  : 'onDetailWindowToggle',
-            hidden   : true,
-            hideMode : 'removeDom',
-            iconCls  : 'fa-solid fa-arrow-down-left',
-            reference: 'detail-recall-chrome',
-            text     : 'Reattach detail'
-        }, {
-            module : Button,
-            cls    : ['fm-fleet-start'],
-            handler: 'onStartFleet',
-            iconCls: 'fa-solid fa-play',
-            text   : 'Start fleet'
-        }]
-});
 
 /**
  * @summary The Fleet keeper-view — the FM cockpit's default mission-control surface (design SSOT §01),
@@ -248,6 +152,101 @@ class FleetCockpit extends VesselContainer {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
+         * The persistent chrome, DECLARED: every slot the cockpit always owns — the banner and
+         * telltale are real component classes whose slots bind provider truth (each channel a
+         * first-class config); handlers are controller-resolved strings. Static child items bind
+         * under the child provider (reviewer positive control + live re-measurement, 2026-08-29
+         * — the earlier add()-path workaround rested on a misattributed root cause). Runtime
+         * injection stays limited to the two genuinely dynamic members: the preset switcher
+         * (store-derived, {@link #syncPresetButtons}) and the dock projection shell
+         * (document-derived, instance-bound callbacks).
+         * @member {Object[]} items
+         */
+        items: [{
+            ntype    : 'toolbar',
+            cls      : ['fm-cockpit-bar'],
+            flex     : 'none',
+            reference: 'fleet-control-bar',
+            items    : [{
+                ntype    : 'component',
+                cls      : ['fm-preset-error'],
+                hidden   : true,
+                reference: 'fleet-preset-error'
+            }, {
+                // the per-SPINE honesty line — the derived spineBanner leaves bind here at
+                // the consumption site; the component renders itself
+                module   : SpineBannerComponent,
+                bind     : {
+                    cls        : data => [`fm-spine-banner-${data.spineBanner.kind}`],
+                    hidden     : data => data.spineBanner.hidden,
+                    probeDetail: data => 'detail:' + data.viewerWakeTelltale.title.length,
+                    text       : data => data.spineBanner.text
+                },
+                reference: 'fleet-spine-banner'
+            }, {
+                // the banner's manual recovery affordance: one click re-drives every liveness
+                // seam through the existing authenticated bridge — no reload, no new transport.
+                // Visibility IS the banner verdict, bound from the same formula.
+                module   : Button,
+                bind     : {hidden: data => data.spineBanner.hidden},
+                cls      : ['fm-reconnect-button'],
+                handler  : 'reconnectFleet',
+                iconCls  : 'fa-solid fa-rotate',
+                reference: 'fleet-reconnect-button',
+                text     : 'Reconnect'
+            },
+            '->',
+            {
+                // the per-viewer wake-push telltale — every channel of the derived chip binds
+                // here as its own first-class config (text, cls, title, aria — independently
+                // reactive; see the component class)
+                module   : ViewerWakeTelltaleComponent,
+                bind     : {
+                    chipAriaLabel: data => data.viewerWakeTelltale.ariaLabel,
+                    chipTitle    : data => data.viewerWakeTelltale.title,
+                    cls          : data => data.viewerWakeTelltale.cls.slice(1),
+                    text         : data => data.viewerWakeTelltale.text
+                },
+                reference: 'viewer-wake-telltale'
+            }, {
+                // The fleet-start outcome summary — written by the controller after the staged
+                // bring-up settles ("N started · U UNKNOWN · M rejected · K excluded"; per-member
+                // reasons ride the title). Empty + hidden until a start ran.
+                ntype    : 'component',
+                cls      : ['fm-fleet-start-summary'],
+                hidden   : true,
+                reference: 'fleet-start-summary'
+            }, {
+                // exception-only chrome (the banner's class): each recall verb renders ONLY
+                // while its pane is away in a vessel — the pane carries its own toggle, but a
+                // windowed pane leaves the main view with no way home without this. Nominal
+                // state costs zero pixels; `removeDom` keeps the class-based selectors honest.
+                module   : Button,
+                cls      : ['fm-memories-window-toggle'],
+                handler  : 'onMemoriesWindowToggle',
+                hidden   : true,
+                hideMode : 'removeDom',
+                iconCls  : 'fa-solid fa-arrow-down-left',
+                reference: 'memories-recall-chrome',
+                text     : 'Return memories'
+            }, {
+                module   : Button,
+                cls      : ['fm-detail-window-toggle'],
+                handler  : 'onDetailWindowToggle',
+                hidden   : true,
+                hideMode : 'removeDom',
+                iconCls  : 'fa-solid fa-arrow-down-left',
+                reference: 'detail-recall-chrome',
+                text     : 'Reattach detail'
+            }, {
+                module : Button,
+                cls    : ['fm-fleet-start'],
+                handler: 'onStartFleet',
+                iconCls: 'fa-solid fa-play',
+                text   : 'Start fleet'
+            }]
+        }],
+        /**
          * The persistent control bar sits at index 0; the inherited projected shell follows it.
          * @member {Number} dockShellIndex=1
          */
@@ -315,15 +314,6 @@ class FleetCockpit extends VesselContainer {
      */
     wakePollDigest = null
     /**
-     * Re-entrancy latch for {@link #onRosterStoreLoad}: the store fires `load` for its own
-     * mutations (mutate → onCollectionMutate → load), so the guard's reconciliation adds/removals
-     * re-trigger the very listener that issued them — unlatched, that recursion is a real stack
-     * overflow (~524 frames on a 5k-row snapshot).
-     * @member {Boolean} reconcilingRoster=false
-     * @protected
-     */
-    reconcilingRoster = false
-    /**
      * The cockpit-owned dock seam instance — the SAME `execute_dock_operation` path a live
      * agent drives, injected into the tour runner so scripted ops and agent ops are one code
      * path (this holder already implements the full contract: `getDockZoneDocument` /
@@ -357,7 +347,7 @@ class FleetCockpit extends VesselContainer {
         me.perspectiveStore    = Neo.create(DockPerspectiveStore, {collection: CockpitPresets.create()});
         me.dockModel           = me.dockModel || CockpitDockDocument.create();
 
-        me.add([chromeBar(), Object.assign(me.projectDockModel(), {flex: 1})]);
+        me.add(Object.assign(me.projectDockModel(), {flex: 1}));
         me.syncPresetButtons()
     }
 
@@ -457,7 +447,7 @@ class FleetCockpit extends VesselContainer {
         if (revealsInspector && !me.detailRecord) {
             // seat through the ONE selection-write site so the provider pair + memories
             // write-through follow the cold default exactly like an operator click would
-            me.applySelection(me.getController().resolveFleetRosterStore()?.first() ?? null)
+            me.getController().applySelection(me.getController().resolveFleetRosterStore()?.first() ?? null)
         }
 
         me.presetError = null;
@@ -548,7 +538,9 @@ class FleetCockpit extends VesselContainer {
 
         // the listener authority is the provider-owned Store, same as every roster read/write —
         // it exists (and keeps reconciling) whether or not the grid projection currently does
-        me.getController().resolveFleetRosterStore()?.on({load: me.onRosterStoreLoad, recordChange: me.onDetailRecordChange, scope: me});
+        const controller0 = me.getController();
+
+        controller0.resolveFleetRosterStore()?.on({load: controller0.onRosterStoreLoad, recordChange: controller0.onDetailRecordChange, scope: controller0});
 
         const controller = me.getController();
 
@@ -722,6 +714,10 @@ class FleetCockpit extends VesselContainer {
                 // SHELL-owned config placed through the pane's `shellTools` slot (pane verbs are
                 // pane-scoped per the navigation model; a windowed pane carries its return verb).
                 return {
+                    // EAGER by contract, not by accident: the vessel state machine adopts and
+                    // re-adopts THIS live instance synchronously (park → window → reattach), and
+                    // a lazy module resolves through an async placeholder the vessel flow cannot
+                    // hold — the define-agent zone below is the lazy reference case
                     module   : AgentDetail,
                     // the configuration tab's data surface, resolved imperatively at composition
                     // time (the store instance is app-stable) so the view stays provider-agnostic:
@@ -739,7 +735,8 @@ class FleetCockpit extends VesselContainer {
                 // `agentDefinitionAccepted` walks up the component chain to the Viewport's roster
                 // seam — the same consumer Accounts feeds, so both entry points write one truth.
                 return {
-                    module   : AddAgentForm,
+                    // LAZY: the define-agent zone opens on explicit intent only
+                    module   : () => import('../instances/AddAgentForm.mjs'),
                     cls      : [marker],
                     listeners: {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'},
                     reference: 'add-agent-form'
@@ -848,82 +845,6 @@ class FleetCockpit extends VesselContainer {
         }
     }
 
-    /**
-     * @summary Source-precedence guard: the provider-hosted roster store `autoLoad`s the JSON
-     * sample seed while {@link #loadRoster} races the bridge. When the bridge wins, the sample's
-     * later `load` would silently replace live rows (the grid still claiming `live`). Any store
-     * load landing AFTER live truth re-applies the last authoritative snapshot — idempotent,
-     * fail-closed toward live. A load before live truth is the normal seed path and passes through.
-     * Latched via {@link #reconcilingRoster}: the reconciliation's own mutations fire `load` back
-     * into this listener.
-     * @protected
-     */
-    onRosterStoreLoad() {
-        let me         = this,
-            controller = me.getController();
-
-        if (!me.reconcilingRoster && controller.rosterWired && controller.lastLiveRows) {
-            me.reconcilingRoster = true;
-
-            try {
-                controller.reconcileRoster(controller.resolveFleetRosterStore(), controller.lastLiveRows)
-            } finally {
-                me.reconcilingRoster = false
-            }
-        }
-    }
-
-    /**
-     * @summary Keep the open detail inspector truthful over time — route the roster store's
-     * `recordChange` to the live {@link AgentOS.view.fleet.detail.Container} when the changed record
-     * is the one being inspected (mirrors how the grid routes `recordChange` to its cards). A roster
-     * re-poll mutating the selected resident (state, lane, sources) thus re-renders the detail in
-     * place — the view is reactive to record MUTATION, not only to a re-seat onto a new record.
-     * Routed through {@link #getAgentDetailPane} so a popped-out inspector updates exactly like a
-     * docked one.
-     * @param {Object} data The store `recordChange` event `{record, ...}`.
-     * @protected
-     */
-    onDetailRecordChange({record}) {
-        if (record === this.detailRecord) {
-            this.getAgentDetailPane()?.applyRecord()
-        }
-    }
-
-
-    /**
-     * @summary The ONE selection-write site: seat a resident record (or null) as the cockpit's
-     * selection truth everywhere it lives — the owner-held {@link #detailRecord} (dock
-     * rematerialization), the provider pair (`selectedAgentId` for record-keyed consumers,
-     * `selectedAgentIdentity` for identity-keyed ones), the live detail pane, and the memories
-     * write-through (the one-picker contract: a selected resident with a verifiable mailbox
-     * identity re-targets the pane through the owner accessor, so a vesseled pane re-targets
-     * exactly like a docked one).
-     *
-     * A null identity keeps the pane's LAST target: the summary corpus outlives the seat, so a
-     * resident without identity authority (or a cleared selection) never blanks a valid read —
-     * the provider pair still reports the honest null.
-     * @param {Object|null} record The selected {@link AgentOS.model.FleetAgent} record, or null.
-     * @protected
-     */
-    applySelection(record) {
-        let me       = this,
-            identity = record?.githubUsername ? `@${record.githubUsername}` : null;
-
-        me.detailRecord = record ?? null;   // afterSetDetailRecord pushes the live pane
-
-        me.setState({
-            selectedAgentId      : record?.agentId ?? null,
-            selectedAgentIdentity: identity
-        });
-
-        const controller = me.getController();
-
-        if (identity && identity !== controller.memoriesTarget) {
-            controller.memoriesTarget = identity;
-            me.getMemoriesPane()?.set({activeAgent: identity})
-        }
-    }
 
     /**
      * @summary Detach Fleet-owned feeds and layout services; the inherited vessel layer retires
@@ -934,7 +855,9 @@ class FleetCockpit extends VesselContainer {
     destroy(...args) {
         let me = this;
 
-        me.getController().resolveFleetRosterStore()?.un({load: me.onRosterStoreLoad, recordChange: me.onDetailRecordChange, scope: me});
+        const controller = me.getController();
+
+        controller.resolveFleetRosterStore()?.un({load: controller.onRosterStoreLoad, recordChange: controller.onDetailRecordChange, scope: controller});
 
         me.dockService?.destroy();
         me.dockService = null;
@@ -951,38 +874,6 @@ class FleetCockpit extends VesselContainer {
 
 
 
-
-    /**
-     * @summary Focus the existing bounded live Activity surface as adjacency. No history citation is
-     * injected into it and no alternate historical authority is implied.
-     *
-     * The stream is a resident south tab, so adjacency ACTIVATES its tab first: the jump usually
-     * originates from a sibling reading surface (catch-up) whose tab is active, and focusing the
-     * inactive card's unmounted DOM would be a silent no-op.
-     * @param {Object} request `{target}`
-     * @returns {Promise<{opened: Boolean, target: String}>}
-     */
-    async openCatchUpLiveSurface({target} = {}) {
-        const me     = this,
-              stream = target === 'activity-stream' ? me.getReference('activity-stream') : null;
-
-        if (!stream) {
-            return {opened: false, target: target || 'unknown'}
-        }
-
-        const strip = me.down({dockNodeId: 'stream-tabs'}),
-              index = me.dockModel?.nodes?.['stream-tabs']?.items?.indexOf('stream') ?? -1;
-
-        if (strip && index > -1 && strip.activeIndex !== index) {
-            strip.activeIndex = index;
-            // the card layout mounts the newly active item asynchronously; focus needs the DOM
-            await me.timeout(50)
-        }
-
-        stream.focus(stream.id, false, true);
-
-        return {opened: true, target}
-    }
 
 
 

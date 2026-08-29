@@ -4,12 +4,11 @@ import Component from '../../../../../node_modules/neo.mjs/src/component/Base.mj
  * @summary The per-spine honesty line — names WHY a surface shows sample/last-known data
  * (cold/degraded); a fully live spine renders nothing (zero nominal pixels).
  *
- * Presentation-thin BY NECESSITY and by design: the full verdict derives on
- * {@link AgentOS.view.fleet.cockpit.StateProvider}'s `spineBanner` formula, and the chrome slot
- * binds the ENGINE configs (`text`, `cls`, `hidden`) — custom-config binds never receive their
- * effects at this engine head (verified live 2026-08-29), and engine-config binds are all this
- * component needs. The one local behavior: the full sentence rides the `title` attribute as the
- * drill-free detail (the visible line may ellipsis under bar pressure).
+ * Presentation-thin by design: the full verdict derives on
+ * {@link AgentOS.view.fleet.cockpit.StateProvider}'s `spineBanner` derived data, and the chrome
+ * slot binds its leaves (`text`, `cls`, `hidden`) — everything this line needs. The one local
+ * behavior: the full sentence rides the `title` attribute as the drill-free detail (the visible
+ * line may ellipsis under bar pressure).
  *
  * `text`, never `html`: the line interpolates RETAINED TRANSPORT STRINGS (the adapter's own
  * `capability.reason`, arriving over the fleet wire), and `html` is an innerHTML sink — hostile
@@ -49,7 +48,10 @@ class SpineBannerComponent extends Component {
 
     /**
      * Triggered after the text config got changed — mirror the full sentence onto `title` (the
-     * drill-free detail; the visible line may truncate) in the SAME beat.
+     * drill-free detail; the visible line may truncate under bar pressure). This is the SAME
+     * datum on two attributes, not a change proxy: the banner's title IS its text, so the text
+     * beat is definitionally the title beat (the wake telltale, whose title diverges from its
+     * text, binds its channels independently instead).
      * @param {String|null} value
      * @param {String|null} oldValue
      * @protected
