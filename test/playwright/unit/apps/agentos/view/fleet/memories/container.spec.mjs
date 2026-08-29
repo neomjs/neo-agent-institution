@@ -58,69 +58,93 @@ function createPane(config = {}) {
 }
 
 test.describe('MemoriesPane — target-state coherence (selected target is part of the snapshot key)', () => {
-    test('a target switch invalidates old cards and continuation IMMEDIATELY — no stale-depth offset request can be emitted', () => {
+    test('a target switch invalidates old cards and the drain chain IMMEDIATELY — no stale-depth offset request can be emitted', () => {
         const {pane, requests} = createPane();
 
         pane.activeAgent = '@neo-opus-ada';
         expect(requests).toEqual([{agentIdentity: '@neo-opus-ada'}]);
 
+        // page zero of 3 arrives: the pane renders it AND drains — one follow-up intent at the
+        // rendered depth (the paging chrome's replacement; no button anywhere)
         pane.snapshot = envelope({target: '@neo-opus-ada', sessions: [row('a1'), row('a2')], total: 3});
         expect(pane.summaryStore.count).toBe(2);
-        expect(pane.getReference('memories-more').hidden).toBe(false);
+        expect(requests).toEqual([
+            {agentIdentity: '@neo-opus-ada'},
+            {agentIdentity: '@neo-opus-ada', offset: 2}
+        ]);
 
-        // the switch: old target's cards and continuation die NOW, before any response
+        // the switch: old target's cards die NOW, before any response — and the ONLY new intent
+        // is the new target's page zero, never a continuation off Ada's stale depth (the exact
+        // failure class the old more-button guard pinned; the drain inherits the guard)
         pane.activeAgent = '@neo-fable-clio';
-        expect(requests).toEqual([{agentIdentity: '@neo-opus-ada'}, {agentIdentity: '@neo-fable-clio'}]);
+        expect(requests.at(-1)).toEqual({agentIdentity: '@neo-fable-clio'});
+        expect(requests).toHaveLength(3);
         expect(pane.summaryStore.count).toBe(0);
         expect(pane.renderedTarget).toBe(null);
         expect(pane.getReference('memories-meta').text).toBe('Reading @neo-fable-clio…');
-        expect(pane.getReference('memories-more').hidden).toBe(true);
 
-        // the reviewer's exact-head probe, replayed: a continuation click in the pending window
-        // must be a NO-OP — never `{agentIdentity: '@neo-fable-clio', offset: 2}` off Ada's depth
-        pane.onLoadMoreClick();
-        expect(requests).toHaveLength(2)
+        pane.destroy()
     });
 
-    test('a late foreign-target envelope is NOT adopted; the selected target\'s page zero is', () => {
+    test('a late foreign-target envelope is NOT adopted and never drains; the selected target\'s page zero is and does', () => {
         const {pane, requests} = createPane();
 
         pane.activeAgent = '@neo-opus-ada';
         pane.snapshot = envelope({target: '@neo-opus-ada', sessions: [row('a1'), row('a2')], total: 3});
         pane.activeAgent = '@neo-fable-clio';
 
-        // the stale Ada page lands AFTER the switch — it must not resurrect cards or actions
+        const baseline = requests.length;
+
+        // the stale Ada page lands AFTER the switch — it must not resurrect cards, and it must
+        // not fire a drain request either (a foreign envelope re-opening the chain would leak
+        // the old target's corpus into the new selection's wire traffic)
         pane.snapshot = envelope({target: '@neo-opus-ada', sessions: [row('a1'), row('a2')], total: 3});
         expect(pane.summaryStore.count).toBe(0);
         expect(pane.renderedTarget).toBe(null);
         expect(pane.getReference('memories-meta').text).toBe('Reading @neo-fable-clio…');
-        expect(pane.getReference('memories-more').hidden).toBe(true);
+        expect(requests).toHaveLength(baseline);
 
-        // the selected target's page zero arrives — NOW the pane adopts
+        // the selected target's page zero arrives — NOW the pane adopts AND the drain anchors on
+        // the ACCEPTED page's depth
         pane.snapshot = envelope({target: '@neo-fable-clio', sessions: [row('c1')], total: 2});
         expect(pane.summaryStore.count).toBe(1);
         expect(pane.renderedTarget).toBe('@neo-fable-clio');
-        expect(pane.getReference('memories-more').hidden).toBe(false);
+        expect(requests.at(-1)).toEqual({agentIdentity: '@neo-fable-clio', offset: 1});
 
-        // and only then may a continuation fire, anchored on the ACCEPTED page's depth
-        pane.onLoadMoreClick();
-        expect(requests.at(-1)).toEqual({agentIdentity: '@neo-fable-clio', offset: 1})
+        pane.destroy()
     });
 
-    test('a same-target offset continuation appends onto the accepted page zero', () => {
-        const {pane} = createPane();
+    test('a same-target offset continuation extends the corpus; the honest end stops the drain; a repeated envelope cannot loop it', () => {
+        const {pane, requests} = createPane();
 
         pane.activeAgent = '@neo-opus-ada';
         pane.snapshot = envelope({target: '@neo-opus-ada', sessions: [row('a1'), row('a2')], total: 3});
+        expect(requests.at(-1)).toEqual({agentIdentity: '@neo-opus-ada', offset: 2});
+
         pane.snapshot = envelope({target: '@neo-opus-ada', offset: 2, sessions: [row('a0', '2026-08-01T10:00:00.000Z')], total: 3});
 
         expect(pane.summaryStore.count).toBe(3);
         expect(pane.renderedTarget).toBe('@neo-opus-ada');
         expect(pane.getReference('memories-meta').text).toContain('3 of 3 sessions');
-        expect(pane.getReference('memories-more').hidden).toBe(true)
+
+        // corpus complete: the drain stopped — the last intent is still the offset-2 request
+        const settled = requests.length;
+        expect(requests.at(-1)).toEqual({agentIdentity: '@neo-opus-ada', offset: 2});
+
+        // an echo-less repeat (same continuation again — no new depth) must NOT re-fire: the
+        // floor makes a stuck producer cost one render, never an infinite request loop
+        pane.snapshot = envelope({target: '@neo-opus-ada', offset: 2, sessions: [row('a0', '2026-08-01T10:00:00.000Z')], total: 4});
+        expect(pane.summaryStore.count).toBe(3);
+        expect(requests.length).toBe(settled + 1);
+        expect(requests.at(-1)).toEqual({agentIdentity: '@neo-opus-ada', offset: 3});
+
+        pane.snapshot = envelope({target: '@neo-opus-ada', offset: 3, sessions: [], total: 4});
+        expect(requests.length).toBe(settled + 1);
+
+        pane.destroy()
     });
 
-    test('rematerializing from an owner-held snapshot derives the selection — no cards without a selection pointing at them', () => {
+    test('rematerializing from an owner-held PARTIAL snapshot derives the selection and resumes the drain — a complete one fires nothing', () => {
         const {pane, requests} = createPane({
             snapshot: envelope({target: '@neo-opus-ada', sessions: [row('a1'), row('a2')], total: 3})
         });
@@ -128,9 +152,21 @@ test.describe('MemoriesPane — target-state coherence (selected target is part 
         expect(pane.activeAgent).toBe('@neo-opus-ada');
         expect(pane.summaryStore.count).toBe(2);
         expect(pane.renderedTarget).toBe('@neo-opus-ada');
-        expect(pane.getReference('memories-more').hidden).toBe(false);
         expect(pane.getReference('memories-refresh').hidden).toBe(false);
-        expect(requests).toEqual([])
+        // the held corpus is INCOMPLETE (2 of 3): the drain resumes assembling it — the no-chrome
+        // contract's remat consequence (never a page-zero re-read, which stays owner truth)
+        expect(requests).toEqual([{agentIdentity: '@neo-opus-ada', offset: 2}]);
+
+        pane.destroy();
+
+        const complete = createPane({
+            snapshot: envelope({target: '@neo-opus-ada', sessions: [row('a1'), row('a2')], total: 2})
+        });
+
+        expect(complete.pane.summaryStore.count).toBe(2);
+        expect(complete.requests).toEqual([]);
+
+        complete.pane.destroy()
     });
 
     test('rematerializing with no held snapshot renders the explicit-choice state and fires nothing', () => {
@@ -139,9 +175,45 @@ test.describe('MemoriesPane — target-state coherence (selected target is part 
         expect(pane.activeAgent).toBe(null);
         expect(pane.summaryStore.count).toBe(0);
         expect(pane.getReference('memories-meta').text).toBe('Select an agent card in the roster to read their recent sessions.');
-        expect(pane.getReference('memories-more').hidden).toBe(true);
+        expect(pane.getReference('memories-state').text).toBe('Session summaries render here once an agent is chosen.');
+        expect(pane.getReference('memories-state').hidden).toBeFalsy();
+        expect(pane.getReference('memories-summary-grid').hidden).toBe(true);
         expect(pane.getReference('memories-refresh').hidden).toBe(true);
-        expect(requests).toEqual([])
+        expect(requests).toEqual([]);
+
+        pane.destroy()
+    });
+
+    test('NO paging chrome exists; the grids ride the pane stores; band facts are stamped record truth', () => {
+        const {pane} = createPane();
+
+        pane.activeAgent = '@neo-opus-ada';
+        pane.snapshot = envelope({target: '@neo-opus-ada', sessions: [
+            row('a1', '2026-08-02T20:00:00.000Z'),
+            row('a2', '2026-08-02T08:00:00.000Z'),
+            row('a3', '2026-07-20T10:00:00.000Z')
+        ], total: 3});
+
+        // the retired chrome is GONE, not hidden
+        expect(pane.getReference('memories-more')).toBeNull();
+        expect(pane.getReference('memories-drill-more')).toBeNull();
+
+        const summaryGrid = pane.getReference('memories-summary-grid');
+
+        expect(summaryGrid.store).toBe(pane.summaryStore);
+        expect(pane.getReference('memories-turn-grid').store).toBe(pane.turnStore);
+        expect(summaryGrid.hidden).toBe(false);
+
+        // band facts stamped into the bags before they became records (the one-data-path
+        // contract): first card of each viewer-calendar band carries the label, the rest null.
+        // With a live clock all three 2026 stamps fall in ONE 'earlier' band → exactly one label.
+        const facts = pane.summaryStore.items.map(record => record.bandFacts);
+
+        expect(facts[0]).toEqual({label: 'earlier'});
+        expect(facts[1]).toBe(null);
+        expect(facts[2]).toBe(null);
+
+        pane.destroy()
     });
 });
 
@@ -208,60 +280,55 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
         expect(drills).toEqual([{sessionId: 'a1-session', title: 'Title a1'}]);
         expect(pane.drillSession).toEqual({sessionId: 'a1-session', title: 'Title a1'});
 
-        // the rows zone now renders the drill head + pending copy; summary actions hide
-        const rows = pane.getReference('memories-rows');
-
-        expect(rows.items.some(item => item.cls?.includes('fm-memories-drill-head'))).toBe(true);
+        // the drill chrome takes the zone: head visible, summary grid + actions hide, the honest
+        // pending copy stands until the session's own envelope answers
+        expect(pane.getReference('memories-drill-head').hidden).toBe(false);
+        expect(pane.getReference('memories-drill-title').text).toBe('Title a1');
+        expect(pane.getReference('memories-summary-grid').hidden).toBe(true);
+        expect(pane.getReference('memories-turn-grid').hidden).toBe(true);
+        expect(pane.getReference('memories-state').text).toContain('Reading this session’s turns');
         expect(pane.getReference('memories-refresh').hidden).toBe(true);
-        expect(pane.getReference('memories-more').hidden).toBe(true);
 
         // re-opening the SAME session is a no-op — no duplicate wire intent
         pane.onCardOpen(record);
-        expect(drills).toHaveLength(1)
+        expect(drills).toHaveLength(1);
+
+        pane.destroy()
     });
 
-    test('drill coherence: a foreign-session envelope is NOT adopted; the matching one renders authored rows', () => {
-        const {pane} = createDrillPane({
-            snapshot: envelope({target: '@neo-opus-ada', sessions: [row('a1')], total: 1})
-        });
-
-        pane.onCardOpen(pane.summaryStore.first());
-
-        // late foreign-session page: rejected — no rows resurrect, drill stays pending
-        pane.drillSnapshot = drillEnvelope({sessionId: 'other-session-id', turns: [turn('x1', 'other-session-id')], total: 1});
-        expect(pane.turnStore.count).toBe(0);
-        expect(pane.renderedDrillSession).toBe(null);
-
-        // the matching page adopts: turn rows render with the authored provenance vocabulary
-        pane.drillSnapshot = drillEnvelope({sessionId: 'a1-session', turns: [turn('t1', 'a1-session'), turn('t2', 'a1-session')], total: 5});
-        expect(pane.turnStore.count).toBe(2);
-        expect(pane.renderedDrillSession).toBe('a1-session');
-
-        const rows = pane.getReference('memories-rows');
-
-        expect(rows.items.some(item => item.cls?.includes('fm-memories-turn'))).toBe(true);
-        expect(rows.items.some(item => item.cls?.includes('fm-memories-drill-more'))).toBe(true)
-    });
-
-    test('drill paging guards on accepted page zero and appends by the drill store depth', () => {
+    test('drill coherence: a foreign-session envelope is NOT adopted and never drains; the matching one renders and drains', () => {
         const {pane, drills} = createDrillPane({
             snapshot: envelope({target: '@neo-opus-ada', sessions: [row('a1')], total: 1})
         });
 
         pane.onCardOpen(pane.summaryStore.first());
 
-        // premature continuation: page zero not accepted yet — a no-op, never a stale-depth offset
-        pane.onDrillMoreClick();
+        // late foreign-session page: rejected — no rows resurrect, no drain fires off its depth
+        pane.drillSnapshot = drillEnvelope({sessionId: 'other-session-id', turns: [turn('x1', 'other-session-id')], total: 1});
+        expect(pane.turnStore.count).toBe(0);
+        expect(pane.renderedDrillSession).toBe(null);
         expect(drills).toHaveLength(1);
 
+        // the matching page adopts: turn rows render, and the drill drain anchors on the accepted
+        // depth (2 of 5 → one offset-2 intent; the "older turns" button's replacement)
         pane.drillSnapshot = drillEnvelope({sessionId: 'a1-session', turns: [turn('t1', 'a1-session'), turn('t2', 'a1-session')], total: 5});
-
-        pane.onDrillMoreClick();
+        expect(pane.turnStore.count).toBe(2);
+        expect(pane.renderedDrillSession).toBe('a1-session');
+        expect(pane.getReference('memories-turn-grid').hidden).toBe(false);
         expect(drills.at(-1)).toEqual({sessionId: 'a1-session', title: 'Title a1', offset: 2});
 
-        // the continuation appends — replace stays the default for page zero only
+        // the continuation extends — and the chain walks on from the NEW depth
         pane.drillSnapshot = drillEnvelope({sessionId: 'a1-session', offset: 2, turns: [turn('t3', 'a1-session')], total: 5});
-        expect(pane.turnStore.count).toBe(3)
+        expect(pane.turnStore.count).toBe(3);
+        expect(drills.at(-1)).toEqual({sessionId: 'a1-session', title: 'Title a1', offset: 3});
+
+        // honest end: a final short page stops the chain
+        pane.drillSnapshot = drillEnvelope({sessionId: 'a1-session', offset: 3, turns: [turn('t4', 'a1-session'), turn('t5', 'a1-session')], total: 5});
+        const settled = drills.length;
+        pane.drillSnapshot = drillEnvelope({sessionId: 'a1-session', offset: 3, turns: [turn('t4', 'a1-session'), turn('t5', 'a1-session')], total: 5});
+        expect(drills).toHaveLength(settled);
+
+        pane.destroy()
     });
 
     test('back fires the close intent and restores the summary list with its store intact', () => {
@@ -278,33 +345,38 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
         expect(pane.drillSession).toBe(null);
         expect(pane.turnStore.count).toBe(0);
         expect(pane.summaryStore.count).toBe(2);
+        expect(pane.getReference('memories-drill-head').hidden).toBe(true);
+        expect(pane.getReference('memories-turn-grid').hidden).toBe(true);
+        expect(pane.getReference('memories-summary-grid').hidden).toBe(false);
+        expect(pane.getReference('memories-refresh').hidden).toBe(false);
 
-        const rows = pane.getReference('memories-rows');
-
-        expect(rows.items.some(item => item.cls?.includes('fm-memories-card'))).toBe(true);
-        expect(pane.getReference('memories-refresh').hidden).toBe(false)
+        pane.destroy()
     });
 
-    test('provenance vocabulary: summary cards carry the derived tag, the drill head the authored tag', () => {
+    test('provenance vocabulary: the drill head carries the authored tag — never while the derived register shows', () => {
+        // the summary cards' `is-derived` chip lives inside the pooled SummaryRowComponent cells now —
+        // pinned in summaryRow.spec.mjs; the pane owns the drill head's AUTHORED half
         const {pane} = createDrillPane({
             snapshot: envelope({target: '@neo-opus-ada', sessions: [row('a1')], total: 1})
         });
 
-        const findDeep = (root, cls) => {
-            const walk = item => item.cls?.includes(cls) || (item.items || []).some(walk);
+        const authoredChip = () => {
+            const walk = item =>
+                (item.cls?.includes('is-authored')) || (item.items || []).some(walk);
 
-            return root.items.some(walk)
+            return walk(pane.getReference('memories-drill-head'))
         };
 
-        const rows = pane.getReference('memories-rows');
-
-        expect(findDeep(rows, 'is-derived')).toBe(true);
+        expect(authoredChip()).toBe(true);
+        expect(pane.getReference('memories-drill-head').hidden).toBe(true);
 
         pane.onCardOpen(pane.summaryStore.first());
         pane.drillSnapshot = drillEnvelope({sessionId: 'a1-session', turns: [turn('t1', 'a1-session')], total: 1});
 
-        expect(findDeep(rows, 'is-authored')).toBe(true);
-        expect(findDeep(rows, 'is-derived')).toBe(false)
+        expect(pane.getReference('memories-drill-head').hidden).toBe(false);
+        expect(pane.getReference('memories-summary-grid').hidden).toBe(true);
+
+        pane.destroy()
     });
 
     test('rematerializing with an owner-held open drill reopens at that depth and fires nothing', () => {
@@ -316,11 +388,11 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
 
         expect(pane.turnStore.count).toBe(1);
         expect(pane.renderedDrillSession).toBe('a1-session');
+        expect(pane.getReference('memories-drill-head').hidden).toBe(false);
+        expect(pane.getReference('memories-turn-grid').hidden).toBe(false);
+        expect(drills).toEqual([]);
 
-        const rows = pane.getReference('memories-rows');
-
-        expect(rows.items.some(item => item.cls?.includes('fm-memories-drill-head'))).toBe(true);
-        expect(drills).toEqual([])
+        pane.destroy()
     });
 
     test('an unavailable drill envelope renders the honest unanswered state with its detail', () => {
@@ -342,10 +414,13 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
         expect(pane.turnStore.count).toBe(0);
         expect(pane.renderedDrillSession).toBe(null);
 
-        const rows  = pane.getReference('memories-rows'),
-              empty = rows.items.find(item => item.cls?.includes('fm-memories-empty'));
+        const stateEl = pane.getReference('memories-state');
 
-        expect(empty?.text).toContain('did not answer');
-        expect(empty?.text).toContain('wire timeout')
+        expect(stateEl.hidden).toBeFalsy();
+        expect(stateEl.text).toContain('did not answer');
+        expect(stateEl.text).toContain('wire timeout');
+        expect(pane.getReference('memories-turn-grid').hidden).toBe(true);
+
+        pane.destroy()
     })
 });
