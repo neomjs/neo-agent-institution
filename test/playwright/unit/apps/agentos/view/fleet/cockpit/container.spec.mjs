@@ -20,6 +20,9 @@ import path                 from 'path';
 import {fileURLToPath}      from 'url';
 import Neo                  from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core            from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+// the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
+// the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
+import                           '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 
 const seedPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../../../../apps/agentos/resources/data/fleetRoster.json');
 
@@ -44,21 +47,71 @@ const makeActivityStoreHarness = () => {
                   return {added: events.length, dropped: 0, retained: events.length, newEventIds: events.map(event => event.eventId)}
               }
           },
-          activityProvider = {
-              data: {},
-              getData(key) { return this.data[key] },
-              getStore() { return null },
-              setData(key, value) { this.data[key] = value }
-          };
+          activityProvider = makeProviderFake();
 
     return {
         activityProvider,
         activityStore,
         activityWired                  : false,
-        getStateProvider               : () => activityProvider,
         resolveFleetActivityEventsStore: () => activityStore
     }
 };
+
+/**
+ * The provider fake mirrors `state.Provider`'s write surface (both `setData` forms) and seeds the
+ * REAL config defaults — the load guards read `streamAdapterState`/`gridAdapterState`, so a fake
+ * missing the 'sample' seed would let a pre-wired throw claim last-known data that never existed.
+ */
+const makeProviderFake = (data = {}) => ({
+    data: {
+        daemonDegradedReason: null, daemonState: null,
+        gridAdapterState: 'sample', gridDegradedReason: null, shellTransport: null,
+        streamAdapterState: 'sample', streamDegradedReason: null, ...data
+    },
+    getData(key) { return this.data[key] },
+    getStore() { return null },
+    setData(key, value) {
+        if (typeof key === 'object') { Object.assign(this.data, key) } else { this.data[key] = value }
+    }
+});
+
+/**
+ * Wires the REAL `detailRecord` reactive semantics onto a plain view fake: assignment runs the
+ * class's afterSetDetailRecord hook (the pane push), exactly like the config system does on a
+ * real instance. Returns the fake for chaining.
+ */
+const wireDetailRecord = (view, ViewClass) => {
+    let record = view.detailRecord ?? null;
+
+    Object.defineProperty(view, 'detailRecord', {
+        configurable: true,
+        get() { return record },
+        set(value) {
+            const oldValue = record;
+            record = value;
+            ViewClass.prototype.afterSetDetailRecord.call(view, value, oldValue)
+        }
+    });
+
+    return view
+};
+
+/**
+ * A prototype-host controller fake: `Object.create` inherits every REAL method (the `bridge`
+ * getter included — production code, no stub drift); the overrides pin only the seams the case
+ * under test owns. `component` carries the configs the controller reads from its view.
+ */
+const makeControllerFake = (Controller, overrides = {}) => Object.assign(Object.create(Controller.prototype), {
+    activityWired       : false,
+    component           : null,
+    gridReadGeneration  : 0,
+    gridReadInFlight    : 0,
+    isDestroyed         : false,
+    rosterWired         : false,
+    streamReadGeneration: 0,
+    streamReadInFlight  : 0,
+    ...overrides
+});
 
 /**
  * Covers the fail-closed matrix for `FleetCockpit.loadActivity()` — the app-side consumption of the
@@ -71,7 +124,7 @@ const makeActivityStoreHarness = () => {
  * covered by `activityStream.spec.mjs`; here we prove `loadActivity` chooses the right one.
  */
 test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', () => {
-    let FleetCockpit;
+    let FleetCockpitController;
 
     // scope the mock to the `fleet` subkey ONLY: `globalThis.AgentOS` is the app's Neo NAMESPACE
     // root — replacing or deleting it wipes every `AgentOS.*` class registration for all later
@@ -95,50 +148,42 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
     const routeLoadActivity = async bridge => {
         bridge ? ((globalThis.AgentOS ??= {}).fleet = {registryBridge: bridge}) : clearBridge();
 
-        const stream = makeStream(),
-              // the real banner sync runs against this fake: its getReference returns null for
-              // the banner slot, so the guard no-ops — production code, no stub drift. The loss
-              // edge + recovery clear are wired from the prototype for the same reason, and
-              // `streamAdapterState` mirrors the class field default because the never-wired
-              // guard reads it: a fake missing it would let a pre-wired throw claim last-known
-              // data that never existed.
-              cockpit = {
-                  ...makeActivityStoreHarness(),
-                  clearDegradedReason : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface : FleetCockpit.prototype.degradeWiredSurface,
-                  getReference        : reference => reference === 'activity-stream' ? stream : null,
-                  streamAdapterState  : 'sample',
-                  streamDegradedReason: null,
-                  streamReadInFlight  : 0,
-                  streamReadGeneration: 0,
-                  syncSpineBanner     : FleetCockpit.prototype.syncSpineBanner
-              };
+        const stream  = makeStream(),
+              harness = makeActivityStoreHarness(),
+              // all state writes land on the provider (the banner derives itself there via
+              // formula); the controller fake inherits the real loss edge + redaction from the
+              // prototype and pins only the view seams.
+              controller = makeControllerFake(FleetCockpitController, {
+                  ...harness,
+                  component   : {getStateProvider: () => harness.activityProvider, livenessReadTimeout: 4000},
+                  getReference: reference => reference === 'activity-stream' ? stream : null
+              });
 
-        await FleetCockpit.prototype.loadActivity.call(cockpit);
+        await controller.loadActivity();
 
-        return {stream, cockpit, store: cockpit.activityStore, provider: cockpit.activityProvider}
+        return {stream, controller, store: harness.activityStore, provider: harness.activityProvider}
     };
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     test.afterEach(() => clearBridge());
 
     test('no bridge → keeps the honestly-labelled sample seed (fail-closed, no crash)', async () => {
-        const {stream, cockpit} = await routeLoadActivity(null);
+        const {stream, provider} = await routeLoadActivity(null);
 
         expect(stream.adapterState).toBe('sample');
         // SILENCE: the owner learned nothing, so it retains no cause. This is what lets the banner
         // fall back to "server offline" honestly — it is the only state that implies one.
-        expect(cockpit.streamDegradedReason ?? null).toBe(null)
+        expect(provider.data.streamDegradedReason ?? null).toBe(null)
     });
 
     test('a bridge without fleetActivity → keeps the sample seed', async () => {
-        const {stream, cockpit} = await routeLoadActivity({});
+        const {stream, provider} = await routeLoadActivity({});
 
         expect(stream.adapterState).toBe('sample');
-        expect(cockpit.streamDegradedReason ?? null).toBe(null)
+        expect(provider.data.streamDegradedReason ?? null).toBe(null)
     });
 
     test('not-wired capability → keeps the sample seed AND retains the producer’s reason', async () => {
@@ -149,22 +194,22 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
         //
         // This is the verbatim string the live devFleetServer returns, not one I invented to agree
         // with myself: `{state:'not-wired', reason:'fleet activity source not wired'}`.
-        const {stream, cockpit} = await routeLoadActivity({fleetActivity: async () => ({
+        const {stream, provider} = await routeLoadActivity({fleetActivity: async () => ({
             capability: {state: 'not-wired', reason: 'fleet activity source not wired'},
             events    : []
         })});
 
         expect(stream.adapterState).toBe('sample');
-        expect(cockpit.streamAdapterState).toBe('sample');
-        expect(cockpit.streamDegradedReason).toBe('fleet activity source not wired')
+        expect(provider.data.streamAdapterState).toBe('sample');
+        expect(provider.data.streamDegradedReason).toBe('fleet activity source not wired')
     });
 
     test('not-wired WITHOUT a reason retains none — the producer said nothing to relay', async () => {
         // The guard against over-correcting: a bare not-wired teaches the owner no cause, so it must
         // not manufacture one. Falls back to the generic offline copy, which is correct here.
-        const {cockpit} = await routeLoadActivity({fleetActivity: async () => ({capability: {state: 'not-wired'}, events: []})});
+        const {provider} = await routeLoadActivity({fleetActivity: async () => ({capability: {state: 'not-wired'}, events: []})});
 
-        expect(cockpit.streamDegradedReason ?? null).toBe(null)
+        expect(provider.data.streamDegradedReason ?? null).toBe(null)
     });
 
     test('degraded capability → the stale banner', async () => {
@@ -199,12 +244,12 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
     });
 
     test('wired + empty → live (streaming but quiet), never the sample — a wired source is live', async () => {
-        const {stream, cockpit, store} = await routeLoadActivity({fleetActivity: async () => ({capability: {state: 'wired'}, events: []})});
+        const {stream, provider, store} = await routeLoadActivity({fleetActivity: async () => ({capability: {state: 'wired'}, events: []})});
 
         expect(stream.adapterState).toBe('live');
         expect(store.pages).toEqual([{events: [], options: {replace: true}}]);
         // recovery clears the retained cause — a stale reason on a live feed would outlive its truth
-        expect(cockpit.streamDegradedReason ?? null).toBe(null)
+        expect(provider.data.streamDegradedReason ?? null).toBe(null)
     });
 });
 
@@ -215,7 +260,7 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
  * the grid + store are collaborators, mocked with spies that record what `loadRoster` does to them.
  */
 test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
-    let FleetAgent, FleetCockpit, FleetRoster;
+    let FleetAgent, FleetCockpit, FleetCockpitController, FleetRoster;
 
     // reason: null on every fact — the fixture doubles as DTO input AND expected normalized
     // output, and normalization now carries the producer's retained cause (null when absent)
@@ -247,49 +292,48 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         return {adapterState: 'sample', store}
     };
 
-    const makeCockpit = (grid, rosterWired = false, gridAdapterState = 'sample', rosterSourceMode = 'sample') => ({
-        clearDegradedReason: FleetCockpit.prototype.clearDegradedReason,
-        degradeWiredSurface: FleetCockpit.prototype.degradeWiredSurface,
-        // the resident-pane owner pushes route through the phase-blind accessors; an
-        // unmaterialized pane resolves null — the same silence contract as getReference
-        getCatchUpPane        : () => null,
-        getMemoriesPane       : () => null,
-        getOperatorMailboxPane: () => null,
-        getReference          : reference => reference === 'fleet-grid' ? grid : null,
-        // the provider-owned roster authority: in this fixture the grid's bound store IS the
-        // provider store, so the builders read the same truth the reconcile writes
-        resolveFleetRosterStore: () => grid?.store ?? null,
-        // mirrors the class field default — the loss edge reads it to keep a never-wired surface
-        // on its honest sample seed instead of claiming last-known data
-        gridAdapterState,
-        // …and the async-ingress fence reads this one. Omitting it is not a benign gap: `++undefined`
-        // is NaN, `NaN !== NaN`, so the read's generation never matches the owner's and EVERY read
-        // drops itself — silently, with a green suite full of unwritten state.
-        gridReadGeneration: 0,
-        mapRosterRow      : FleetCockpit.prototype.mapRosterRow,
-        reconcileRoster   : FleetCockpit.prototype.reconcileRoster,
-        reconcileSelection: FleetCockpit.prototype.reconcileSelection,
-        rosterSourceMode,
-        rosterWired,
-        // the real banner sync: null getReference for the slot → guarded no-op, no stub drift
-        syncSpineBanner    : FleetCockpit.prototype.syncSpineBanner
-    });
+    // the controller drives; the slim view fake carries only what loadRoster READS from its
+    // component: the resident-pane accessors (unmaterialized → null, the same silence contract
+    // as getReference), the provider seat and the source-mode config
+    const makeRosterHost = (grid, {rosterWired = false, rosterSourceMode = 'sample'} = {}) => {
+        const provider = makeProviderFake(),
+              view     = {
+                  detailRecord          : null,
+                  getCatchUpPane        : () => null,
+                  getMemoriesPane       : () => null,
+                  getOperatorMailboxPane: () => null,
+                  getStateProvider      : () => provider,
+                  livenessReadTimeout   : 4000,
+                  rosterSourceMode
+              },
+              controller = makeControllerFake(FleetCockpitController, {
+                  component              : view,
+                  getReference           : reference => reference === 'fleet-grid' ? grid : null,
+                  lastLiveRows           : null,
+                  // the provider-owned roster authority: in this fixture the grid's bound store IS
+                  // the provider store, so the write path and the selection re-seat read one truth
+                  resolveFleetRosterStore: () => grid?.store ?? null,
+                  rosterWired
+              });
+
+        return {controller, grid, provider, view}
+    };
 
     const routeLoadRoster = async (bridge, {known, items, rosterSourceMode, rosterWired} = {}) => {
         bridge ? ((globalThis.AgentOS ??= {}).fleet = {registryBridge: bridge}) : clearBridge();
 
-        const grid    = makeGrid(known, items),
-              cockpit = makeCockpit(grid, rosterWired, 'sample', rosterSourceMode);
+        const host = makeRosterHost(makeGrid(known, items), {rosterSourceMode, rosterWired});
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await host.controller.loadRoster();
 
-        return {cockpit, grid}
+        return host
     };
 
     test.beforeAll(async () => {
-        FleetAgent   = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
-        FleetRoster  = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default
+        FleetAgent            = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
+        FleetCockpit          = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
+        FleetRoster           = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default
     });
 
     test.afterEach(() => clearBridge());
@@ -348,9 +392,10 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             {fleetRoster: async () => ({rows: null})},
             {fleetRoster: async () => { throw new Error('bridge boom') }}
         ]) {
-            const {grid} = await routeLoadRoster(bridge);
+            const {grid, provider} = await routeLoadRoster(bridge);
 
             expect(grid.adapterState).toBe('sample');
+            expect(provider.data.gridAdapterState).toBe('sample');
             expect(grid.store.cleared).toBe(0);
             expect(grid.store.added).toEqual([])
         }
@@ -369,50 +414,50 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             reason    : 'plane who_is_online read failed'
         };
 
-        const {grid} = await routeLoadRoster({fleetRoster: async () => ({
+        const {provider} = await routeLoadRoster({fleetRoster: async () => ({
             capabilities: {presence: degraded},
             rows        : [{id: 'a1', displayName: 'A1'}]
         })});
 
-        expect(grid.presenceCapability).toEqual(degraded);
+        expect(provider.data.presenceCapability).toEqual(degraded);
 
         // a recovered producer (or an assembler omitting the envelope) plumbs null — the chip
         // must claim nothing on the next poll
-        const {grid: recovered} = await routeLoadRoster({fleetRoster: async () => ({
+        const {provider: recovered} = await routeLoadRoster({fleetRoster: async () => ({
             rows: [{id: 'a1', displayName: 'A1'}]
         })});
 
-        expect(recovered.presenceCapability).toBeNull()
+        expect(recovered.data.presenceCapability).toBeNull()
     });
 
     test('a resolved EMPTY first snapshot preserves the zero-call sample until a source is selected', async () => {
-        const {cockpit, grid} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
+        const {controller, grid, provider, view} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
 
         expect(FleetCockpit.config.rosterSourceMode).toBe('sample');
         expect(grid.store.cleared).toBe(0);   // a fresh empty registry cannot erase first-run truth
         expect(grid.store.added).toEqual([]);
         expect(grid.adapterState).toBe('sample');
-        expect(cockpit.rosterSourceMode).toBe('sample');
-        expect(cockpit.rosterWired).toBe(false);
+        expect(view.rosterSourceMode).toBe('sample');
+        expect(controller.rosterWired).toBe(false);
         // the ANSWERED-empty retention: the sample stays, but the cause is on record — the banner
         // names "connected · registry empty" instead of claiming "server offline" against a
         // transport that just replied
-        expect(cockpit.gridDegradedReason).toBe('server connected · fleet registry empty — define agents to go live')
+        expect(provider.data.gridDegradedReason).toBe('server connected · fleet registry empty — define agents to go live')
     });
 
     test('the answered-empty reason is RETRACTED on silence — the claim must not outlive the connection', async () => {
         // empty answer retains the cause…
-        const {cockpit} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
+        const {controller, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
 
-        expect(cockpit.gridDegradedReason).toContain('registry empty');
+        expect(provider.data.gridDegradedReason).toContain('registry empty');
 
         // …then the transport dies: back on silence, the generic cold copy is the honest line
         // again, so the never-wired loss edge must drop the retained answered-state cause.
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => { throw new Error('transport lost') }}};
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await controller.loadRoster();
 
-        expect(cockpit.gridAdapterState).toBe('sample');
-        expect(cockpit.gridDegradedReason).toBe(null)
+        expect(provider.data.gridAdapterState).toBe('sample');
+        expect(provider.data.gridDegradedReason).toBe(null)
     });
 
     test('answered-empty → bridge ABSENT also retracts — absence is its own transition, not a thrown-call proxy', async () => {
@@ -420,31 +465,31 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         // no-bridge early return while the surface stayed sample — "server connected" rendering
         // against NO bridge at all. Absence must withdraw the answered cause exactly like a
         // thrown call does.
-        const {cockpit} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
+        const {controller, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
 
-        expect(cockpit.gridDegradedReason).toContain('registry empty');
+        expect(provider.data.gridDegradedReason).toContain('registry empty');
 
         clearBridge();
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await controller.loadRoster();
 
-        expect(cockpit.gridAdapterState).toBe('sample');
-        expect(cockpit.gridDegradedReason).toBe(null)
+        expect(provider.data.gridAdapterState).toBe('sample');
+        expect(provider.data.gridDegradedReason).toBe(null)
     });
 
     test('answered-empty → verb ABSENT retracts too — a bridge without the verb is the same cold truth', async () => {
-        const {cockpit} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
+        const {controller, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
 
-        expect(cockpit.gridDegradedReason).toContain('registry empty');
+        expect(provider.data.gridDegradedReason).toContain('registry empty');
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {}};
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await controller.loadRoster();
 
-        expect(cockpit.gridAdapterState).toBe('sample');
-        expect(cockpit.gridDegradedReason).toBe(null)
+        expect(provider.data.gridAdapterState).toBe('sample');
+        expect(provider.data.gridDegradedReason).toBe(null)
     });
 
     test('a resolved EMPTY first snapshot is authoritative after explicit source selection', async () => {
-        const {cockpit, grid} = await routeLoadRoster(
+        const {controller, grid} = await routeLoadRoster(
             {fleetRoster: async () => ({rows: []})},
             {rosterSourceMode: 'selected'}
         );
@@ -452,8 +497,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(grid.store.cleared).toBe(1);
         expect(grid.store.added).toEqual([]);
         expect(grid.adapterState).toBe('live');
-        expect(cockpit.rosterSourceMode).toBe('selected');
-        expect(cockpit.rosterWired).toBe(true)
+        expect(controller.rosterWired).toBe(true)
     });
 
     test('density: openLaneCount survives the FIRST authoritative load — a stamped live count is stored, a missing stamp degrades to null, the sample number never outlives the replacement (#14598)', async () => {
@@ -473,7 +517,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('mapRosterRow maps a DTO row onto the FleetAgent contract — durable id, identity facts, honest state vocabulary', () => {
-        const mapped = FleetCockpit.prototype.mapRosterRow({
+        const mapped = FleetCockpitController.prototype.mapRosterRow({
             id         : 'neo-gpt',
             displayName: 'Neo GPT',
             avatarUrl  : 'https://github.com/neo-gpt.png?size=80',
@@ -517,7 +561,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         const
             wake     = {source: 'fleet:wakeState', state: 'suppressed', confidence: 'observed'},
             throttle = {source: 'fleet:throttleState', state: 'rate-limited', confidence: 'observed', reason: 'session cap'},
-            mapped   = FleetCockpit.prototype.mapRosterRow({
+            mapped   = FleetCockpitController.prototype.mapRosterRow({
                 id       : 'neo-gpt',
                 lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
                 sources  : liveSources(),
@@ -537,7 +581,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('mapRosterRow state vocabulary — running is healthy only behind wired runtime provenance', () => {
-        const map = (state, sources = liveSources(), confidence = 'observed') => FleetCockpit.prototype.mapRosterRow({
+        const map = (state, sources = liveSources(), confidence = 'observed') => FleetCockpitController.prototype.mapRosterRow({
             id       : 'x',
             lifecycle: {source: 'fleet:runtimeStatus', state, confidence},
             sources
@@ -553,12 +597,12 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(map('running', liveSources('inferred'), 'observed')).toBe('off');
 
         const
-            contradictory = FleetCockpit.prototype.mapRosterRow({
+            contradictory = FleetCockpitController.prototype.mapRosterRow({
                 id       : 'x',
                 lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'inferred'},
                 sources  : liveSources()
             }),
-            stopped       = FleetCockpit.prototype.mapRosterRow({
+            stopped       = FleetCockpitController.prototype.mapRosterRow({
                 id       : 'x',
                 lifecycle: {source: 'fleet:runtimeStatus', state: 'stopped', confidence: 'observed'},
                 sources  : liveSources()
@@ -576,13 +620,13 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         });
 
         // un-enriched identity facts flow as nulls (unclassified / tagless)
-        const bare = FleetCockpit.prototype.mapRosterRow({id: 'x'});
+        const bare = FleetCockpitController.prototype.mapRosterRow({id: 'x'});
         expect(bare.family).toBeNull();
         expect(bare.engineTag).toBeNull()
     });
 
     test('the FIRST non-empty snapshot populates the Store (replaces the sample seed) and goes live — rows without a durable id are dropped', async () => {
-        const {cockpit, grid} = await routeLoadRoster({fleetRoster: async () => ({rows: [
+        const {controller, grid, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: [
             {id: 'vega', lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'}, sources: liveSources()},
             {noId: true},
             {id: 'ada', lifecycle: {state: 'stopped'}}
@@ -592,8 +636,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         // rows arrive MAPPED onto the record contract — durable id → agentId, runtime → session state
         expect(grid.store.added.map(row => [row.agentId, row.state])).toEqual([['vega', 'ok'], ['ada', 'off']]);
         expect(grid.adapterState).toBe('live');
-        expect(cockpit.rosterSourceMode).toBe('selected');
-        expect(cockpit.rosterWired).toBe(true)
+        expect(provider.data.gridAdapterState).toBe('live');
+        expect(controller.rosterWired).toBe(true)
     });
 
     test('later snapshots RECONCILE — record.set per known agentId, add for a joiner, REMOVE for a resident absent from the snapshot (no ghost card)', async () => {
@@ -641,57 +685,51 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     // listener attached (the store fires `load` for its own mutations, so the guard's recursion
     // behavior is only observable through the live listener path — a manual handler call is a
     // mock-hole).
-    const makeLiveCockpit = (store, index, detail = null) => {
-        const grid = {adapterState: 'sample', store};
+    const makeLiveHost = (store, index, detail = null) => {
+        const
+            grid         = {adapterState: 'sample', store},
+            provider     = makeProviderFake(),
+            getReference = reference => reference === 'fleet-grid' ? grid : reference === 'agent-detail' ? detail : null,
+            // the REAL View selection surface: applySelection, the phase-blind pane accessors and
+            // the store-load guard run as production code over this fake — no stub drift
+            view         = wireDetailRecord({
+                applySelection        : FleetCockpit.prototype.applySelection,
+                detachedDetailPane    : null,
+                detailRecord          : null,
+                getAgentDetailPane    : FleetCockpit.prototype.getAgentDetailPane,
+                getCatchUpPane        : () => null,
+                getMemoriesPane       : FleetCockpit.prototype.getMemoriesPane,
+                getOperatorMailboxPane: () => null,
+                getReference,
+                getStateProvider      : () => provider,
+                id                    : `fake-fleet-cockpit-${index}`,
+                livenessReadTimeout   : 4000,
+                onRosterStoreLoad     : FleetCockpit.prototype.onRosterStoreLoad,
+                reconcilingRoster     : false,
+                rosterSourceMode      : 'sample',
+                selectionState        : {},
+                setState(values) { Object.assign(this.selectionState, values) }
+            }, FleetCockpit),
+            controller = makeControllerFake(FleetCockpitController, {
+                component              : view,
+                getReference,
+                lastLiveRows           : null,
+                memoriesTarget         : null,
+                // the provider-owned roster authority — the SAME store the grid fake binds, so the
+                // write path, the listener latch and the selection re-seat all read one truth
+                resolveFleetRosterStore: () => store
+            });
 
-        const cockpit = {
-            // the real accessor runs against this fake's getReference — the detail consumers
-            // route through it (docked: projected pane; detached: the owner-held handle)
-            detachedDetailPane: null,
-            getAgentDetailPane: FleetCockpit.prototype.getAgentDetailPane,
-            // the REAL phase-blind memories accessor over this fake's surface: no
-            // tear-out maps here → safe-nav falls through to getReference, same as the detail twin
-            getMemoriesPane    : FleetCockpit.prototype.getMemoriesPane,
-            applySelection     : FleetCockpit.prototype.applySelection,
-            clearDegradedReason: FleetCockpit.prototype.clearDegradedReason,
-            degradeWiredSurface: FleetCockpit.prototype.degradeWiredSurface,
-            getReference       : reference => reference === 'fleet-grid' ? grid : reference === 'agent-detail' ? detail : null,
-            grid,
-            // mirrors the class field defaults the loss edge reads
-            gridAdapterState  : 'sample',
-            // …and the async-ingress fence: omit it and `++undefined` is NaN, so the read's own
-            // generation never equals the owner's and EVERY read silently drops itself
-            gridReadGeneration: 0,
-            id                : `fake-fleet-cockpit-${index}`,
-            lastLiveRows      : null,
-            mapRosterRow      : FleetCockpit.prototype.mapRosterRow,
-            onRosterStoreLoad : FleetCockpit.prototype.onRosterStoreLoad,
-            reconcileRoster   : FleetCockpit.prototype.reconcileRoster,
-            reconcileSelection: FleetCockpit.prototype.reconcileSelection,
-            reconcilingRoster : false,
-            // the provider-owned roster authority — the SAME store the grid fake binds, so the
-            // write path, the listener latch and the selection re-seat all read one truth
-            resolveFleetRosterStore: () => store,
-            // resident-pane accessors: unmaterialized here — the same silence contract as getReference
-            getCatchUpPane        : () => null,
-            getOperatorMailboxPane: () => null,
-            rosterWired           : false,
-            selectionState        : {},
-            setState(values) {
-                Object.assign(this.selectionState, values)
-            },
-            // the real banner sync: null getReference for the slot → guarded no-op, no stub drift
-            syncSpineBanner    : FleetCockpit.prototype.syncSpineBanner
-        };
+        view.getController = () => controller;
 
-        store.on({load: cockpit.onRosterStoreLoad, scope: cockpit});
+        store.on({load: view.onRosterStoreLoad, scope: view});
 
-        return cockpit
+        return {controller, grid, provider, view}
     };
 
     test('a sample seed landing AFTER live truth cannot overwrite the roster (fail-closed toward live)', async () => {
-        const store   = Neo.create(FleetRoster, {data: []}),
-              cockpit = makeLiveCockpit(store, 1);
+        const store        = Neo.create(FleetRoster, {data: []}),
+              {controller} = makeLiveHost(store, 1);
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: [
             {id: 'ada',  family: 'claude', lifecycle: {state: 'running'}},
@@ -699,10 +737,10 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         ]})}};
 
         // the bridge wins the race: live truth lands first
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await controller.loadRoster();
 
-        expect(cockpit.rosterWired).toBe(true);
-        expect(cockpit.lastLiveRows.map(row => row.agentId)).toEqual(['ada', 'vega']);
+        expect(controller.rosterWired).toBe(true);
+        expect(controller.lastLiveRows.map(row => row.agentId)).toEqual(['ada', 'vega']);
         expect(store.getCount()).toBe(2);
 
         // now the slower JSON seed lands: replace the items — the store fires `load` itself,
@@ -720,8 +758,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('a seed load BEFORE live truth passes through untouched (the normal boot path)', () => {
-        const store   = Neo.create(FleetRoster, {data: []}),
-              cockpit = makeLiveCockpit(store, 2);
+        const store = Neo.create(FleetRoster, {data: []});
+
+        makeLiveHost(store, 2);
 
         // the seed lands while nothing live exists yet — the store's own load fires the guard
         store.add([{agentId: 'sample-1'}, {agentId: 'sample-2'}]);
@@ -733,8 +772,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('guard re-entry is latched: reconciling a large snapshot through the live listener cannot overflow the stack', async () => {
-        const store   = Neo.create(FleetRoster, {data: []}),
-              cockpit = makeLiveCockpit(store, 3);
+        const store        = Neo.create(FleetRoster, {data: []}),
+              {controller} = makeLiveHost(store, 3);
 
         // 1,000 authoritative rows — the unlatched recursion overflowed at ~524 nested frames
         const rows = Array.from({length: 1000}, (item, index) => ({
@@ -743,9 +782,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows})}};
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await controller.loadRoster();
 
-        expect(cockpit.rosterWired).toBe(true);
+        expect(controller.rosterWired).toBe(true);
         expect(store.getCount()).toBe(1000);
 
         // a late seed load now triggers reconciliation of all 1,000 rows THROUGH the listener:
@@ -762,75 +801,80 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('reconcileSelection (real Store): first-live clear/add re-seats a surviving selection onto the new instance', async () => {
-        const store    = Neo.create(FleetRoster, {data: []}),
-              setCalls = [],
-              detail   = {set(config) { setCalls.push(config) }},
-              cockpit  = makeLiveCockpit(store, 4, detail);
+        const store              = Neo.create(FleetRoster, {data: []}),
+              setCalls           = [],
+              detail             = {set(config) { setCalls.push(config) }},
+              {controller, view} = makeLiveHost(store, 4, detail);
 
         // a sample 'vega' is open in the inspector before live truth resolves
         store.add([{agentId: 'vega'}, {agentId: 'sample-x'}]);
-        cockpit.detailRecord = store.get('vega');
-        const sampleInstance = cockpit.detailRecord;
+        view.detailRecord = store.get('vega');
+        const sampleInstance = view.detailRecord;
+
+        setCalls.length = 0;   // the SETUP write ran the hook too — the assertion owns the re-seat only
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: [
             {id: 'vega', family: 'claude', lifecycle: {state: 'running'}},
             {id: 'ada',  family: 'claude', lifecycle: {state: 'stopped'}}
         ]})}};
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);   // first-live clear+add replaces the seed
+        await controller.loadRoster();                           // first-live clear+add replaces the seed
 
         const liveInstance = store.get('vega');
         expect(liveInstance).toBeTruthy();
         expect(liveInstance).not.toBe(sampleInstance);           // a genuinely new record instance
-        expect(cockpit.detailRecord).toBe(liveInstance);         // re-seated onto the live instance
-        expect(cockpit.selectionState).toEqual({selectedAgentId: 'vega', selectedAgentIdentity: null});
+        expect(view.detailRecord).toBe(liveInstance);            // re-seated onto the live instance
+        expect(view.selectionState).toEqual({selectedAgentId: 'vega', selectedAgentIdentity: null});
         expect(setCalls).toEqual([{record: liveInstance}]);      // the inspector re-rendered
 
         store.destroy()
     });
 
     test('reconcileSelection (real Store): a later empty snapshot clears a removed resident to the honest empty state', async () => {
-        const store    = Neo.create(FleetRoster, {data: []}),
-              setCalls = [],
-              detail   = {set(config) { setCalls.push(config) }},
-              cockpit  = makeLiveCockpit(store, 5, detail);
+        const store              = Neo.create(FleetRoster, {data: []}),
+              setCalls           = [],
+              detail             = {set(config) { setCalls.push(config) }},
+              {controller, view} = makeLiveHost(store, 5, detail);
 
-        cockpit.rosterWired = true;                              // past the first-live replacement
+        controller.rosterWired = true;                           // past the first-live replacement
         store.add([{agentId: 'vega'}, {agentId: 'ada'}]);
-        cockpit.detailRecord = store.get('vega');
+        view.detailRecord = store.get('vega');
+        setCalls.length = 0;   // the SETUP write ran the hook too
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: []})}};
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);   // authoritative empty snapshot → real Store.remove
+        await controller.loadRoster();                           // authoritative empty snapshot → real Store.remove
 
         expect(store.get('vega')).toBeFalsy();                   // removed via the real Store path
-        expect(cockpit.detailRecord).toBeNull();                // selection cleared
-        expect(cockpit.selectionState).toEqual({selectedAgentId: null, selectedAgentIdentity: null});
+        expect(view.detailRecord).toBeNull();                   // selection cleared
+        expect(view.selectionState).toEqual({selectedAgentId: null, selectedAgentIdentity: null});
         expect(setCalls).toEqual([{record: null}]);             // AgentDetail → honest empty state
 
         store.destroy()
     });
 
     test('reconcileSelection (real Store): a surviving same-instance reconcile is a no-op (mutation path owns it)', async () => {
-        const store    = Neo.create(FleetRoster, {data: []}),
-              setCalls = [],
-              detail   = {set(config) { setCalls.push(config) }},
-              cockpit  = makeLiveCockpit(store, 6, detail);
+        const store              = Neo.create(FleetRoster, {data: []}),
+              setCalls           = [],
+              detail             = {set(config) { setCalls.push(config) }},
+              {controller, view} = makeLiveHost(store, 6, detail);
 
-        cockpit.rosterWired = true;
+        controller.rosterWired = true;
         store.add([{agentId: 'vega'}, {agentId: 'ada'}]);
-        cockpit.detailRecord = store.get('vega');
-        const instance = cockpit.detailRecord;
+        view.detailRecord = store.get('vega');
+        const instance = view.detailRecord;
+
+        setCalls.length = 0;   // the SETUP write ran the hook too
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: [
             {id: 'vega', family: 'claude', lifecycle: {state: 'running'}},
             {id: 'ada',  family: 'claude', lifecycle: {state: 'stopped'}}
         ]})}};
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);   // reconcile: record.set mutates in place (same object)
+        await controller.loadRoster();                           // reconcile: record.set mutates in place (same object)
 
         expect(store.get('vega')).toBe(instance);               // same instance, mutated in place
-        expect(cockpit.detailRecord).toBe(instance);            // selection unchanged
+        expect(view.detailRecord).toBe(instance);               // selection unchanged
         expect(setCalls).toEqual([]);                           // no re-seat — recordChange owns mutation
 
         store.destroy()
@@ -843,7 +887,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             detail  = {applyRecord() { applied.push(true) }},
             host    = Object.create(FleetCockpit.prototype);
 
-        host.detailRecord = record;
+        Object.defineProperty(host, 'detailRecord', {configurable: true, value: record, writable: true});
         host.getReference = name => name === 'agent-detail' ? detail : null;
 
         // a recordChange for the INSPECTED record re-renders the detail in place — a roster re-poll
@@ -866,16 +910,24 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             setCalls = [],
             detail   = {set(config) { setCalls.push(config) }},
             makeHost = (detailRecord, storeGet) => {
-                const host = Object.create(FleetCockpit.prototype);
+                const view = wireDetailRecord({
+                          applySelection    : FleetCockpit.prototype.applySelection,
+                          detachedDetailPane: null,
+                          detailRecord,
+                          getAgentDetailPane: FleetCockpit.prototype.getAgentDetailPane,
+                          getMemoriesPane   : () => null,
+                          getReference      : name => name === 'agent-detail' ? detail : null,
+                          selectionState    : {},
+                          setState(values) { Object.assign(this.selectionState, values) }
+                      }, FleetCockpit),
+                      host = makeControllerFake(FleetCockpitController, {
+                          component              : view,
+                          memoriesTarget         : null,
+                          resolveFleetRosterStore: () => ({get: storeGet})
+                      });
 
-                host.detailRecord            = detailRecord;
-                host.applySelection          = FleetCockpit.prototype.applySelection;
-                host.resolveFleetRosterStore = () => ({get: storeGet});
-                host.getReference            = name => name === 'agent-detail' ? detail : null;
-                host.getAgentDetailPane      = FleetCockpit.prototype.getAgentDetailPane;
-                host.getMemoriesPane         = () => null;
-                host.selectionState          = {};
-                host.setState                = values => Object.assign(host.selectionState, values);
+                view.getController = () => host;
+                host.view          = view;
 
                 return host
             };
@@ -884,9 +936,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         //     snapshot) → clear the selection to the honest empty state (Store.remove fires no recordChange)
         setCalls.length = 0;
         const removedHost = makeHost({agentId: 'vega'}, () => undefined);
-        FleetCockpit.prototype.reconcileSelection.call(removedHost);
-        expect(removedHost.detailRecord).toBeNull();
-        expect(removedHost.selectionState).toEqual({selectedAgentId: null, selectedAgentIdentity: null});
+        removedHost.reconcileSelection();
+        expect(removedHost.view.detailRecord).toBeNull();
+        expect(removedHost.view.selectionState).toEqual({selectedAgentId: null, selectedAgentIdentity: null});
         expect(setCalls).toEqual([{record: null}]);
 
         // (2) the resident survives as the SAME instance (in-place record.set reconcile) → no re-seat;
@@ -894,8 +946,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         setCalls.length = 0;
         const same     = {agentId: 'vega'};
         const sameHost = makeHost(same, id => id === 'vega' ? same : undefined);
-        FleetCockpit.prototype.reconcileSelection.call(sameHost);
-        expect(sameHost.detailRecord).toBe(same);
+        sameHost.reconcileSelection();
+        expect(sameHost.view.detailRecord).toBe(same);
         expect(setCalls).toEqual([]);
 
         // (3) the durable agentId survives as a NEW instance (first-live clear+add replace of the sample
@@ -903,15 +955,15 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         setCalls.length = 0;
         const stale      = {agentId: 'vega'}, fresh = {agentId: 'vega'};
         const reseatHost = makeHost(stale, id => id === 'vega' ? fresh : undefined);
-        FleetCockpit.prototype.reconcileSelection.call(reseatHost);
-        expect(reseatHost.detailRecord).toBe(fresh);
-        expect(reseatHost.selectionState).toEqual({selectedAgentId: 'vega', selectedAgentIdentity: null});
+        reseatHost.reconcileSelection();
+        expect(reseatHost.view.detailRecord).toBe(fresh);
+        expect(reseatHost.view.selectionState).toEqual({selectedAgentId: 'vega', selectedAgentIdentity: null});
         expect(setCalls).toEqual([{record: fresh}]);
 
         // (4) nothing selected → no-op, and the Store is never touched
         setCalls.length = 0;
         const noneHost = makeHost(null, () => { throw new Error('store must not be touched when nothing is selected') });
-        FleetCockpit.prototype.reconcileSelection.call(noneHost);
+        noneHost.reconcileSelection();
         expect(setCalls).toEqual([])
     });
 });
@@ -1121,11 +1173,13 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         expect(summary.rejected).toHaveLength(1);
         expect(summary.excluded.map(entry => entry.agentId)).toEqual(['ada', 'native', null, 'gemini', 'flaky', 'silent']);
 
-        // the chrome slot rendered: cleared at action start, then the outcome line + reasons title
-        expect(slot.sets[0]).toEqual({hidden: true, html: ''});
+        // the chrome slot rendered: cleared at action start, then the outcome line + reasons title.
+        // `text`, never `html`: the line interpolates wire-carried reasons — an innerHTML sink here
+        // would execute markup a reason carried (the rebuild moved the sink; this pins it).
+        expect(slot.sets[0]).toEqual({hidden: true, text: ''});
         expect(slot.sets[1].hidden).toBe(false);
-        expect(slot.sets[1].html).toContain('rejected');
-        expect(slot.sets[1].html).toContain('6 excluded');
+        expect(slot.sets[1].text).toContain('rejected');
+        expect(slot.sets[1].text).toContain('6 excluded');
         expect(slot.vdom.title).toContain('native: not launchable');
         expect(slot.vdom.title).toContain("ada: already up — session state 'ok'");
         expect(slot.vdom.title).toContain("gemini: not active — authoritative participation status 'operator_benched'");
@@ -1175,7 +1229,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
     // a controller with a spied loadRoster — count the re-polls without a real Store/grid.
     const makeController = calls => {
         const controller = Object.create(FleetCockpitController.prototype);
-        controller.component = {loadRoster: () => { calls.push(1) }};
+        controller.loadRoster = () => { calls.push(1) };
         return controller
     };
 
@@ -1276,7 +1330,11 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
             },
             controller = Object.create(FleetCockpitController.prototype);
 
-        controller.component = cockpit;
+        wireDetailRecord(cockpit, FleetCockpit);
+
+        controller.component               = cockpit;
+        controller.resolveFleetRosterStore = () => cockpit.resolveFleetRosterStore();
+        cockpit.getController              = () => controller;
 
         controller.onAgentSelect({agentId: 'vega'});
 
@@ -1312,7 +1370,11 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
             },
             controller = Object.create(FleetCockpitController.prototype);
 
-        controller.component = cockpit;
+        wireDetailRecord(cockpit, FleetCockpit);
+
+        controller.component               = cockpit;
+        controller.resolveFleetRosterStore = () => cockpit.resolveFleetRosterStore();
+        cockpit.getController              = () => controller;
 
         controller.onAgentSelect({agentId: 'ada'});
         expect(cockpit.detailRecord).toBe(record);
@@ -1358,42 +1420,36 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         // `gridReadGeneration` mirrors the class default because the async-ingress fence reads it: a
         // fake omitting it makes `++undefined` NaN, so the read's generation never matches the
         // owner's and EVERY read silently drops itself — a green suite over state nobody wrote.
-        const cockpit = {
-            clearDegradedReason: FleetCockpit.prototype.clearDegradedReason,
-            degradeWiredSurface: FleetCockpit.prototype.degradeWiredSurface,
-            // the resident-pane owner pushes route through the phase-blind accessors; an
-            // unmaterialized pane resolves null — the same silence contract as getReference
-            getCatchUpPane        : () => null,
-            getMemoriesPane       : () => null,
-            getOperatorMailboxPane: () => null,
-            getReference          : reference => reference === 'fleet-grid' ? {adapterState: 'sample', store} : null,
-            // the provider-owned roster authority — the same REAL store the grid binds
-            resolveFleetRosterStore: () => store,
-            gridAdapterState       : 'sample',
-            gridReadGeneration     : 0,
-            mapRosterRow           : FleetCockpit.prototype.mapRosterRow,
-            reconcileRoster        : FleetCockpit.prototype.reconcileRoster,
-            reconcileSelection     : FleetCockpit.prototype.reconcileSelection,
-            loadRoster             : FleetCockpit.prototype.loadRoster,
-            rosterWired            : false,
-            // the real banner sync: null getReference for the slot → guarded no-op, no stub drift
-            syncSpineBanner    : FleetCockpit.prototype.syncSpineBanner
-        };
+        const provider = makeProviderFake(),
+              view     = {
+                  detailRecord          : null,
+                  getCatchUpPane        : () => null,
+                  getMemoriesPane       : () => null,
+                  getOperatorMailboxPane: () => null,
+                  getStateProvider      : () => provider,
+                  livenessReadTimeout   : 4000,
+                  rosterSourceMode      : 'sample'
+              },
+              controller = makeControllerFake(FleetCockpitController, {
+                  component              : view,
+                  getReference           : reference => reference === 'fleet-grid' ? {adapterState: 'sample', store} : null,
+                  lastLiveRows           : null,
+                  // the provider-owned roster authority — the same REAL store the grid binds
+                  resolveFleetRosterStore: () => store
+              });
 
         // boot: the real loadRoster reads the bridge — the agent is stopped, so the record resolves to 'off'
-        await cockpit.loadRoster();
+        await controller.loadRoster();
         expect(store.get('vega').state).toBe('off');
-        // success-state proof: the load COMPLETED (reached the post-reconcile adapter-state assignment), not
+        // success-state proof: the load COMPLETED (reached the post-reconcile provider write), not
         // merely mutated the record before a swallowed missing-reconcileSelection error (Euclid's falsifier)
-        expect(cockpit.gridAdapterState).toBe('live');
+        expect(provider.data.gridAdapterState).toBe('live');
 
         // drive the REAL controller path for that record — real onAgentLifecycleIntent -> real adapter ->
         // bridge.startAgent -> refreshRosterOnSettle -> real loadRoster -> reconcile
-        const controller = Object.create(FleetCockpitController.prototype),
-              origGet    = Neo.getComponent;
+        const origGet = Neo.getComponent;
 
-        controller.component = cockpit;
-        Neo.getComponent     = id => id === 'card-vega' ? {record: store.get('vega')} : null;
+        Neo.getComponent = id => id === 'card-vega' ? {record: store.get('vega')} : null;
 
         try {
             await controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'card-vega'})
@@ -1404,7 +1460,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         // the binding witness: the SAME real record advanced off -> ok through reconciliation, no reload/rebuild
         expect(store.get('vega').state).toBe('ok');
         // and the re-poll load COMPLETED too (reconcile phase reached success state, not a swallowed error)
-        expect(cockpit.gridAdapterState).toBe('live');
+        expect(provider.data.gridAdapterState).toBe('live');
 
         store.destroy()
     })
@@ -1417,271 +1473,233 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
  * only real if it reaches the slot: a state that moves without the banner moving is the same silent
  * failure as never moving at all.
  */
-test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', () => {
-    let FleetCockpit;
+test.describe('Fleet cockpit — the spine-banner pipeline (formula → component)', () => {
+    let CockpitStateProvider, FleetCockpitController, SpineBannerComponent;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        CockpitStateProvider   = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
+        SpineBannerComponent   = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs')).default
     });
 
-    const makeBanner = () => {
-        const calls = [];
+    const clearBridge = () => { delete globalThis.AgentOS?.fleet };
 
-        // `vdom` mirrors the real component: the sync writes the full-text `title` there
-        // (the drill-free detail) before flushing the same pass through set()
-        return {calls, vdom: {}, set(config) { calls.push(config) }}
+    test.afterEach(() => clearBridge());
+
+    // The full provider data surface with honest defaults — the formulas run against exactly the
+    // shape the provider declares, so a formula reading a key the provider never declared fails
+    // here instead of silently reading undefined in production.
+    const provData = (over = {}) => ({
+        activityCounts: [], boundProfileId: null, daemonDegradedReason: null, daemonState: null,
+        gridAdapterState: 'sample', gridDegradedReason: null, presenceCapability: null,
+        selectedAgentId: null, selectedAgentIdentity: null, shellTransport: null,
+        streamAdapterState: 'sample', streamDegradedReason: null, ...over
+    });
+
+    // the REAL derivation pass — CockpitStateProvider.deriveBannerTruths over a provider fake;
+    // returns every derived write ({daemonFault, instanceState, spineBanner})
+    const deriveTruths = data => {
+        const writes = {};
+
+        CockpitStateProvider.prototype.deriveBannerTruths.call({
+            getHierarchyData: () => provData(data),
+            setData         : patch => Object.assign(writes, patch)
+        });
+
+        return writes
     };
 
-    // A cockpit with no provider in its chain is the DEFAULT fixture: the banner speaks its verdict
-    // unlabeled, and the instance mirror writes nowhere. Every existing case below asserts the
-    // verdict itself, so provider-less is exactly the shape that keeps them about the verdict.
-    const makeHost = (gridAdapterState, streamAdapterState, banner) => ({
-        getReference    : reference => reference === 'fleet-spine-banner' ? banner : null,
-        getStateProvider: () => null,
-        gridAdapterState,
-        streamAdapterState,
-        syncSpineBanner : FleetCockpit.prototype.syncSpineBanner
-    });
+    const verdictOf = data => deriveTruths(data).spineBanner;
 
-    // ⭐ The daemon surface reaching the REAL slot. The derivation being correct is a separate suite;
-    // this asserts the cockpit actually FEEDS it, because a derivation nothing feeds is indistinguishable
-    // from an absent feature — and the wiring is the half that makes the shell spec's banner exist.
-    test('⭐ a dead daemon reaches the slot with the diagnosis, outranking a stale feed', () => {
-        const banner = makeBanner(),
-              host   = {
-                  ...makeHost('live', 'stale', banner),
-                  daemonDegradedReason: 'orchestrator exited',
-                  daemonState         : 'stopped'
-              };
+    // …and the render half that remains component-local: the title mirror. The banner is
+    // presentation-thin — the slot binds text/cls/hidden from the derived data, and afterSetText
+    // carries the full sentence onto the vdom `title` (the drill-free detail).
+    const titleAfterText = text => {
+        const fake = Object.create(SpineBannerComponent.prototype);
 
-        host.syncSpineBanner();
+        Object.defineProperty(fake, 'vdom',    {configurable: true, enumerable: true, value: {}, writable: true});
+        Object.defineProperty(fake, 'mounted', {configurable: true, enumerable: true, value: false, writable: true});
 
-        const {cls, hidden, text} = banner.calls[0];
+        fake.afterSetText(text, null);
 
-        expect(cls).toEqual(['fm-spine-banner', 'fm-spine-banner-degraded']);
-        expect(hidden).toBe(false);
-        expect(text).toContain('stopped');
-        expect(text).toContain('orchestrator exited');
+        return fake.vdom.title
+    };
+
+    // ⭐ The daemon surface reaching the REAL render. The derivation being correct is a separate
+    // suite (spineBanner.spec); this asserts the pipeline actually FEEDS it — formula in, component
+    // write out — because a derivation nothing feeds is indistinguishable from an absent feature.
+    test('⭐ a dead daemon reaches the derived truth with the diagnosis, outranking a stale feed', () => {
+        const verdict = verdictOf({
+            daemonDegradedReason: 'orchestrator exited',
+            daemonState         : 'stopped',
+            gridAdapterState    : 'live',
+            streamAdapterState  : 'stale'
+        });
+
+        expect(SpineBannerComponent.config.baseCls).toEqual(['fm-spine-banner']);
+        expect(verdict.kind).toBe('degraded');
+        expect(verdict.hidden).toBe(false);
+        expect(verdict.text).toContain('stopped');
+        expect(verdict.text).toContain('orchestrator exited');
         // The stale feed is the symptom; it must not be the sentence.
-        expect(text).not.toContain('last-known data')
+        expect(verdict.text).not.toContain('last-known data');
+        // the full sentence rides the title as the drill-free detail
+        expect(titleAfterText(verdict.text)).toBe(verdict.text)
     });
 
-    test('the bound instance NAMES itself on every spoken line, and the chrome dot mirrors the same verdict', () => {
-        // The scope rule: the switcher and this banner are the only two places in the main window
-        // that speak the instance name. The banner composes it HERE (the pure derivation stays
-        // label-free), and the SAME verdict is mirrored into provider data so the chrome dot cannot
-        // disagree with the sentence beside it — one truth, two renderers.
-        const
-            banner       = makeBanner(),
-            written      = [],
-            record       = {canonicalEndpoint: 'https://fleet.example.io/fleet', label: 'cloud-eu', profileId: 'p1'},
-            withProvider = (data, storeHit) => ({
-                ...makeHost('live', 'stale', banner),
-                getStateProvider: () => ({
-                    getData : key => data[key],
-                    getStore: name => name === 'fleetInstances' ? {get: id => (storeHit && id === 'p1' ? record : null)} : null,
-                    setData : patch => written.push(patch)
-                }),
-                daemonDegradedReason: 'orchestrator exited',
-                daemonState         : 'stopped'
-            });
+    test('the chrome dot mirrors the banner verdict — one truth, two renderers', () => {
+        // The instance NAME lives on the switcher beside this banner (the one name authority in
+        // the chrome); the banner speaks the verdict scope-free, and the dot derives from the
+        // SAME verdict in the SAME pass — no sync path that could let them disagree.
+        const data = {
+            daemonDegradedReason: 'orchestrator exited',
+            daemonState         : 'stopped',
+            gridAdapterState    : 'live',
+            streamAdapterState  : 'stale'
+        };
 
-        withProvider({boundProfileId: 'p1'}, true).syncSpineBanner();
+        const truths = deriveTruths(data);
 
-        // the label PREFIXES the verdict; the verdict itself is untouched
-        expect(banner.calls[0].text).toMatch(/^cloud-eu — /);
-        expect(banner.calls[0].text).toContain('orchestrator exited');
-        // a degraded verdict mirrors as the limited dot state — never as ok
-        expect(written.at(-1)).toEqual({instanceState: 'limited'});
-
-        // honest absence, both halves: a bound id the roster does not hold names NOTHING (the row
-        // may be retired or not yet hydrated), and the mirror still writes the verdict
-        banner.calls.length = 0;
-        withProvider({boundProfileId: 'p1'}, false).syncSpineBanner();
-        expect(banner.calls[0].text).not.toContain('cloud-eu');
-        expect(banner.calls[0].text).toContain('orchestrator exited');
-        expect(written.at(-1)).toEqual({instanceState: 'limited'})
+        expect(truths.spineBanner.text).toContain('orchestrator exited');
+        expect(truths.instanceState).toBe('limited');
+        expect(truths.daemonFault).toBe(true)
     });
 
-    test('a LIVE spine mirrors ok and stays label-free — a hidden banner speaks no scope', () => {
-        // The label rides SPOKEN lines only: a fully live spine renders zero pixels, so prefixing a
-        // hidden empty string would put an instance name into a sentence nobody sees.
-        const
-            banner  = makeBanner(),
-            written = [],
-            host    = {
-                ...makeHost('live', 'live', banner),
-                getStateProvider: () => ({
-                    getData : () => 'p1',
-                    getStore: () => ({get: () => ({canonicalEndpoint: 'http://127.0.0.1:8083/fleet', label: 'local'})}),
-                    setData : patch => written.push(patch)
-                })
-            };
+    test('a LIVE spine hides the line and mirrors ok on the dot', () => {
+        const data   = {gridAdapterState: 'live', streamAdapterState: 'live'},
+              truths = deriveTruths(data);
 
-        host.syncSpineBanner();
-
-        expect(banner.calls[0].hidden).toBe(true);
-        expect(banner.calls[0].text).toBe('');
-        expect(written.at(-1)).toEqual({instanceState: 'ok'})
+        expect(truths.spineBanner.hidden).toBe(true);
+        expect(truths.spineBanner.text).toBe('');
+        expect(truths.instanceState).toBe('ok')
     });
 
     test('⭐ an unfed daemon surface stays SILENT on a live owner — absence claims nothing', () => {
         // `daemonState` is null until the runtime pull lands. This asserts the default is honest
         // silence rather than an implicit "the organism is fine", which is what defaulting to
         // `'running'` would have asserted on the strength of never having asked.
-        const banner = makeBanner();
+        const verdict = verdictOf({gridAdapterState: 'live', streamAdapterState: 'live'});
 
-        makeHost('live', 'live', banner).syncSpineBanner();
-
-        expect(banner.calls[0].hidden).toBe(true);
-        expect(banner.calls[0].text).toBe('')
+        expect(verdict.hidden).toBe(true);
+        expect(verdict.text).toBe('')
     });
 
-    // ⭐ The producer→cockpit→slot witness the predecessor lacked: the SHELL transition drives the
-    // banner. A test that hand-assigns `daemonState` witnesses only a pass-through — that misreading
-    // is what made the closed predecessor PR look delivered while its fields had no writer at all.
-    test('⭐ a SHELL transition drives the banner: lifecycle owner → wire payload → feed → slot', () => {
+    test('the daemonFault fold derives from the SAME fault set the banner ranks', () => {
+        expect(deriveTruths({daemonState: 'stopped'}).daemonFault).toBe(true);
+        expect(deriveTruths({daemonState: 'degraded'}).daemonFault).toBe(true);
+        expect(deriveTruths({daemonState: 'running'}).daemonFault).toBe(false);
+        // silence is not a fault — the header must not dim on the strength of never having asked
+        expect(deriveTruths({daemonState: null}).daemonFault).toBe(false)
+    });
+
+    // the apply-side witness: a controller fake with the REAL applyBrainHealth writing the provider
+    const makeDaemonHost = () => {
+        const provider = makeProviderFake({gridAdapterState: 'live', streamAdapterState: 'live'}),
+              host     = makeControllerFake(FleetCockpitController, {
+                  component: {getStateProvider: () => provider}
+              });
+
+        return {host, provider}
+    };
+
+    // ⭐ The producer→controller→provider witness the predecessor lacked: the SHELL transition
+    // drives the surface. A test that hand-assigns `daemonState` witnesses only a pass-through.
+    test('⭐ a SHELL transition drives the surface: lifecycle owner → wire payload → provider truth', () => {
         const
             child     = new EventEmitter(),
             lifecycle = createAppLifecycle({
                 app          : Object.assign(new EventEmitter(), {exit() {}, quit() {}}),
                 teardownBrain: async () => ({})
             }),
-            banner    = makeBanner(),
-            cockpit   = {
-                ...makeHost('live', 'live', banner),
-                applyBrainHealth       : FleetCockpit.prototype.applyBrainHealth,
-                brainHealthReadInFlight: false,
-                daemonDegradedReason   : null,
-                daemonState            : null
-            };
+            {host, provider} = makeDaemonHost();
 
         lifecycle.setBrainState('running');
         lifecycle.watchBrainChild(child, 'orchestrator');
         child.emit('error', new Error('spawn ENOENT'));
 
         // The payload is the producer's own wire truth, never test-fabricated consumer state.
-        cockpit.applyBrainHealth(lifecycle.brainHealth);
+        host.applyBrainHealth(lifecycle.brainHealth);
 
-        expect(cockpit.daemonState).toBe('degraded');
-        expect(banner.calls[0].hidden).toBe(false);
-        expect(banner.calls[0].text).toContain('degraded');
-        expect(banner.calls[0].text).toContain('orchestrator: error spawn ENOENT');
+        expect(provider.data.daemonState).toBe('degraded');
 
-        // Recovery is ALSO the shell's transition — the owner's `running` write, which is the
-        // terminal step any future restart machinery performs. Restart machinery itself (a second
-        // boot-settle after an owned-child fault) is lifecycle-service scope, not this leaf's.
+        let verdict = verdictOf(provider.data);
+        expect(verdict.hidden).toBe(false);
+        expect(verdict.text).toContain('degraded');
+        expect(verdict.text).toContain('orchestrator: error spawn ENOENT');
+
+        // Recovery is ALSO the shell's transition — the owner's `running` write.
         lifecycle.setBrainState('running');
-        cockpit.applyBrainHealth(lifecycle.brainHealth);
+        host.applyBrainHealth(lifecycle.brainHealth);
 
-        expect(cockpit.daemonState).toBe('running');
-        expect(cockpit.daemonDegradedReason).toBeNull();
-        expect(banner.calls[1].hidden).toBe(true)
+        expect(provider.data.daemonState).toBe('running');
+        expect(provider.data.daemonDegradedReason).toBeNull();
+        expect(verdictOf(provider.data).hidden).toBe(true)
     });
 
     test('⭐ transport failure never impersonates recovery: fault → dead transport → retained; only running clears', () => {
-        const banner  = makeBanner(),
-              cockpit = {
-                  ...makeHost('live', 'live', banner),
-                  applyBrainHealth    : FleetCockpit.prototype.applyBrainHealth,
-                  daemonDegradedReason: null,
-                  daemonState         : null
-              };
+        const {host, provider} = makeDaemonHost();
 
         // a real fault from the lifecycle owner
-        cockpit.applyBrainHealth({cause: {detail: 'orchestrator: exit code 1', observedAt: 1, source: 'owned-child-termination'}, state: 'degraded'});
+        host.applyBrainHealth({cause: {detail: 'orchestrator: exit code 1', observedAt: 1, source: 'owned-child-termination'}, state: 'degraded'});
 
-        expect(cockpit.daemonState).toBe('degraded');
-        expect(banner.calls[0].hidden).toBe(false);
-        expect(banner.calls[0].text).toContain('orchestrator: exit code 1');
+        expect(provider.data.daemonState).toBe('degraded');
+        expect(verdictOf(provider.data).text).toContain('orchestrator: exit code 1');
 
         // the transport dies: an unavailable envelope AND a rejection-mapped null. A dead transport
         // is not a recovered organism — the KNOWN fault must stay visible, not be erased.
-        cockpit.applyBrainHealth({error: 'brain: shell health capability unavailable', ok: false});
-        cockpit.applyBrainHealth(null);
+        host.applyBrainHealth({error: 'brain: shell health capability unavailable', ok: false});
+        host.applyBrainHealth(null);
 
-        expect(cockpit.daemonState).toBe('degraded');
-        expect(cockpit.daemonDegradedReason).toBe('orchestrator: exit code 1');
-        expect(banner.calls, 'transport answers repaint nothing').toHaveLength(1);
+        expect(provider.data.daemonState).toBe('degraded');
+        expect(provider.data.daemonDegradedReason).toBe('orchestrator: exit code 1');
 
         // ONLY the owner's own running answer clears the fault
-        cockpit.applyBrainHealth({cause: null, state: 'running'});
+        host.applyBrainHealth({cause: null, state: 'running'});
 
-        expect(cockpit.daemonState).toBe('running');
-        expect(cockpit.daemonDegradedReason).toBeNull();
-        expect(banner.calls[1].hidden).toBe(true)
+        expect(provider.data.daemonState).toBe('running');
+        expect(provider.data.daemonDegradedReason).toBeNull();
+        expect(verdictOf(provider.data).hidden).toBe(true)
     });
 
     test('dev-server mode stays silent: transport-only answers on a never-fed surface write nothing', () => {
-        const banner  = makeBanner(),
-              cockpit = {
-                  ...makeHost('live', 'live', banner),
-                  applyBrainHealth    : FleetCockpit.prototype.applyBrainHealth,
-                  daemonDegradedReason: null,
-                  daemonState         : null
-              };
+        const {host, provider} = makeDaemonHost();
 
-        cockpit.applyBrainHealth({error: 'brain: shell health capability unavailable', ok: false});
-        cockpit.applyBrainHealth(null);
+        host.applyBrainHealth({error: 'brain: shell health capability unavailable', ok: false});
+        host.applyBrainHealth(null);
 
-        // never fed → still null/null, and no banner write at all: silence claims nothing
-        expect(cockpit.daemonState).toBeNull();
-        expect(cockpit.daemonDegradedReason).toBeNull();
-        expect(banner.calls).toEqual([])
+        // never fed → still null/null: silence claims nothing (the formula renders the honest
+        // cold copy from the surface states alone)
+        expect(provider.data.daemonState).toBeNull();
+        expect(provider.data.daemonDegradedReason).toBeNull()
     });
 
-    test('a cold owner writes the REAL slot: cold class hook, visible, cause + shipped remedy', () => {
-        const banner = makeBanner();
+    test('a cold owner derives the cold hook, visible, cause + shipped remedy', () => {
+        const verdict = verdictOf({});
 
-        makeHost('sample', 'sample', banner).syncSpineBanner();
-
-        expect(banner.calls).toHaveLength(1);
-
-        const {cls, hidden, text} = banner.calls[0];
-
-        expect(cls).toEqual(['fm-spine-banner', 'fm-spine-banner-cold']);
-        expect(hidden).toBe(false);
-        expect(text).toContain('Fleet server offline');
-        expect(text).toContain('neo-agent-brain checkout')
+        expect(verdict.kind).toBe('cold');
+        expect(verdict.hidden).toBe(false);
+        expect(verdict.text).toContain('Fleet server offline');
+        expect(verdict.text).toContain('neo-agent-brain checkout')
     });
 
-    test('a degraded owner writes the degraded hook + last-known copy', () => {
-        const banner = makeBanner();
+    test('a degraded owner derives the degraded hook + last-known copy', () => {
+        const verdict = verdictOf({gridAdapterState: 'live', streamAdapterState: 'stale'});
 
-        makeHost('live', 'stale', banner).syncSpineBanner();
-
-        const {cls, hidden, text} = banner.calls[0];
-
-        expect(cls).toEqual(['fm-spine-banner', 'fm-spine-banner-degraded']);
-        expect(hidden).toBe(false);
-        expect(text).toContain('last-known')
+        expect(verdict.kind).toBe('degraded');
+        expect(verdict.hidden).toBe(false);
+        expect(verdict.text).toContain('last-known')
     });
 
-    test('a fully live owner hides the REAL slot with empty copy — zero nominal pixels', () => {
-        const banner = makeBanner();
-
-        makeHost('live', 'live', banner).syncSpineBanner();
-
-        expect(banner.calls[0]).toEqual({cls: ['fm-spine-banner', 'fm-spine-banner-live'], hidden: true, text: ''})
+    test('a fully live owner hides the banner with empty copy — zero nominal pixels', () => {
+        expect(verdictOf({gridAdapterState: 'live', streamAdapterState: 'live'}))
+            .toEqual({hidden: true, kind: 'live', text: ''})
     });
 
     test('the Reconnect affordance shares the banner verdict: visible on any spoken line, hidden on live', () => {
-        const banner    = makeBanner(),
-              reconnect = makeBanner(),
-              host      = {
-                  ...makeHost('sample', 'sample', banner),
-                  getReference: reference =>
-                      reference === 'fleet-spine-banner'     ? banner :
-                      reference === 'fleet-reconnect-button' ? reconnect : null
-              };
-
-        host.syncSpineBanner();
-        expect(reconnect.calls[0]).toEqual({hidden: false});
-
-        host.gridAdapterState   = 'live';
-        host.streamAdapterState = 'live';
-        host.syncSpineBanner();
-        expect(reconnect.calls[1]).toEqual({hidden: true})
+        // the affordance binds `data => data.spineBanner.hidden` — the SAME formula output the
+        // banner renders, so the two cannot disagree; this pins the verdict both ways
+        expect(verdictOf({}).hidden).toBe(false);
+        expect(verdictOf({gridAdapterState: 'live', streamAdapterState: 'live'}).hidden).toBe(true)
     });
 
     test('reconnectFleet re-drives every liveness seam immediately — the one-click recovery', () => {
@@ -1691,23 +1709,25 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
                 'catch-up'  : {onRefreshClick: () => driven.push('catchUpHistory')},
                 'memories'  : {onRefreshClick: () => driven.push('memoriesHistory')},
                 'wakeRoutes': {onRefreshClick: () => driven.push('wakeRoutesHistory')}
-            };
+            },
+            host = makeControllerFake(FleetCockpitController, {
+                loadActivity          : () => driven.push('activity'),
+                loadBrainHealth       : () => driven.push('brainHealth'),
+                loadRoster            : () => driven.push('roster'),
+                // fleet-wide and owner-held: re-driven directly, not through a pane accessor, so a
+                // not-yet-materialized Tasks tab still reopens on post-reconnect truth
+                loadTasks             : () => driven.push('tasks'),
+                ensureViewerWakeStream: () => driven.push('viewerWake'),
+                // the resident-pane re-drives route through the view's phase-blind accessors: a
+                // vesseled pane must receive the reconnect re-drive too
+                component: {
+                    getCatchUpPane   : () => panes['catch-up'],
+                    getMemoriesPane  : () => panes.memories,
+                    getWakeRoutesPane: () => panes.wakeRoutes ?? null
+                }
+            });
 
-        FleetCockpit.prototype.reconnectFleet.call({
-            loadActivity   : () => driven.push('activity'),
-            loadBrainHealth: () => driven.push('brainHealth'),
-            loadRoster     : () => driven.push('roster'),
-            // fleet-wide and owner-held: re-driven directly, not through a pane accessor, so a
-            // not-yet-materialized Tasks tab still reopens on post-reconnect truth
-            loadTasks             : () => driven.push('tasks'),
-            ensureViewerWakeStream: () => driven.push('viewerWake'),
-            // the resident-pane re-drives route through the phase-blind accessors: a vesseled
-            // pane must receive the reconnect re-drive too, so the seam is the accessor, not the raw reference
-            getCatchUpPane   : () => panes['catch-up'],
-            getMemoriesPane  : () => panes.memories,
-            getWakeRoutesPane: () => panes.wakeRoutes ?? null,
-            getReference     : reference => panes[reference] ?? null
-        });
+        host.reconnectFleet();
 
         expect(driven.sort()).toEqual([
             'activity', 'brainHealth', 'catchUpHistory', 'memoriesHistory', 'roster', 'tasks', 'viewerWake', 'wakeRoutesHistory'
@@ -1715,74 +1735,69 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
     });
 
     test('reconnectFleet tolerates unmounted panes — a missing reference is silence, never a throw', () => {
-        const driven = [];
+        const driven = [],
+              host   = makeControllerFake(FleetCockpitController, {
+                  loadActivity          : () => driven.push('activity'),
+                  loadBrainHealth       : () => driven.push('brainHealth'),
+                  loadRoster            : () => driven.push('roster'),
+                  loadTasks             : () => driven.push('tasks'),
+                  ensureViewerWakeStream: () => driven.push('viewerWake'),
+                  component             : {
+                      getCatchUpPane   : () => null,
+                      getMemoriesPane  : () => null,
+                      getWakeRoutesPane: () => null
+                  }
+              });
 
-        FleetCockpit.prototype.reconnectFleet.call({
-            loadActivity          : () => driven.push('activity'),
-            loadBrainHealth       : () => driven.push('brainHealth'),
-            loadRoster            : () => driven.push('roster'),
-            loadTasks             : () => driven.push('tasks'),
-            ensureViewerWakeStream: () => driven.push('viewerWake'),
-            getCatchUpPane        : () => null,
-            getMemoriesPane       : () => null,
-            getWakeRoutesPane     : () => null,
-            getReference          : () => null
-        });
+        host.reconnectFleet();
 
         expect(driven.sort()).toEqual(['activity', 'brainHealth', 'roster', 'tasks', 'viewerWake'])
     });
 
     test('⭐ the shell transport fact reaches the cold copy through the health pull — daemon truth untouched', () => {
-        const banner  = makeBanner(),
-              cockpit = {
-                  ...makeHost('sample', 'live', banner),
-                  applyBrainHealth    : FleetCockpit.prototype.applyBrainHealth,
-                  daemonDegradedReason: null,
-                  daemonState         : null
-              };
+        const {host, provider} = makeDaemonHost();
+
+        // the roster surface sits on its cold seed — the transport fact speaks through the COLD copy
+        provider.data.gridAdapterState = 'sample';
 
         // a state-less payload carrying only the fact: the daemon surface stays unfed (absence
         // claims nothing), while the cold copy moves to the shell's honest line
-        cockpit.applyBrainHealth({state: null, transport: {phase: 'starting'}});
+        host.applyBrainHealth({state: null, transport: {phase: 'starting'}});
 
-        expect(cockpit.daemonState).toBeNull();
-        expect(cockpit.shellTransport).toEqual({phase: 'starting'});
-        expect(banner.calls.at(-1).text).toContain('Fleet transport starting');
+        expect(provider.data.daemonState).toBeNull();
+        expect(provider.data.shellTransport).toEqual({phase: 'starting'});
+        expect(verdictOf(provider.data).text).toContain('Fleet transport starting');
 
         // the boot settles foreign — the SAME wire moves the copy to the named case
-        cockpit.applyBrainHealth({state: null, transport: {fleetPort: 8083, mode: 'foreign-listener', phase: 'settled', reason: 'viewer mismatch', up: false}});
+        const fact = {fleetPort: 8083, mode: 'foreign-listener', phase: 'settled', reason: 'viewer mismatch', up: false};
+        host.applyBrainHealth({state: null, transport: fact});
 
-        expect(banner.calls.at(-1).text).toContain('another fleet server holds port 8083');
+        expect(verdictOf(provider.data).text).toContain('another fleet server holds port 8083');
 
-        // an UNCHANGED fact repaints nothing — the same no-visible-change discipline the daemon
-        // surface holds for transport-failure answers
-        const paints = banner.calls.length;
-
-        cockpit.applyBrainHealth({state: null, transport: {fleetPort: 8083, mode: 'foreign-listener', phase: 'settled', reason: 'viewer mismatch', up: false}});
-        expect(banner.calls.length).toBe(paints)
+        // an UNCHANGED fact keeps the provider truth deep-equal — the engine provider\'s equality
+        // gate is what turns "no data change" into "no repaint"; the input-side invariant is ours
+        host.applyBrainHealth({state: null, transport: {...fact}});
+        expect(provider.data.shellTransport).toEqual(fact)
     });
 
     /**
-     * @summary Builds a live host driving the REAL loadActivity through the REAL loss edge.
+     * @summary Builds a controller host driving the REAL loadActivity through the REAL loss edge,
+     * with both surfaces starting live on the provider.
      */
-    const makeLivenessHost = banner => {
-        const stream = {adapterState: 'live', set() {}};
+    const makeLivenessHost = () => {
+        const
+            harness = makeActivityStoreHarness(),
+            stream  = {adapterState: 'live', set() {}},
+            host    = makeControllerFake(FleetCockpitController, {
+                ...harness,
+                component   : {getStateProvider: () => harness.activityProvider, livenessReadTimeout: 4000},
+                getReference: reference => reference === 'activity-stream' ? stream : null
+            });
 
-        return {
-            ...makeActivityStoreHarness(),
-            clearDegradedReason: FleetCockpit.prototype.clearDegradedReason,
-            degradeWiredSurface: FleetCockpit.prototype.degradeWiredSurface,
-            getReference       : reference =>
-                reference === 'fleet-spine-banner' ? banner :
-                reference === 'activity-stream'    ? stream : null,
-            gridAdapterState    : 'live',
-            gridDegradedReason  : null,
-            loadActivity        : FleetCockpit.prototype.loadActivity,
-            streamAdapterState  : 'live',
-            streamDegradedReason: null,
-            streamReadGeneration: 0,
-            syncSpineBanner     : FleetCockpit.prototype.syncSpineBanner
-        }
+        harness.activityProvider.data.gridAdapterState   = 'live';
+        harness.activityProvider.data.streamAdapterState = 'live';
+
+        return {host, provider: harness.activityProvider}
     };
 
     const withBridge = async (fleetActivity, host) => {
@@ -1795,167 +1810,146 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
         }
     };
 
-    test('owner-truth MOBILITY: once live, a thrown load advances to stale and the slot NAMES the loss', async () => {
-        // This inverts the immobility pin that previously stood here. That spec recorded the gap on
-        // purpose — "the loss/recovery transition is the dedicated liveness owner's contract" — and
-        // this leaf IS that owner, so the pin is discharged, not broken. `live` must stop meaning
-        // "was live once": a transport death the operator can't see is the dishonest state.
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+    test('owner-truth MOBILITY: once live, a thrown load advances to stale and the verdict NAMES the loss', async () => {
+        // `live` must stop meaning "was live once": a transport death the operator can\'t see is
+        // the dishonest state.
+        const {host, provider} = makeLivenessHost();
 
         await withBridge(async () => { throw new Error('transport lost') }, host);
 
-        expect(host.streamAdapterState).toBe('stale');
-        expect(host.streamDegradedReason).toBe('transport lost');
-        expect(banner.calls[0].hidden).toBe(false);
-        expect(banner.calls[0].cls).toContain('fm-spine-banner-degraded');
+        expect(provider.data.streamAdapterState).toBe('stale');
+        expect(provider.data.streamDegradedReason).toBe('transport lost');
+
+        const verdict = verdictOf(provider.data);
+        expect(verdict.hidden).toBe(false);
+        expect(verdict.kind).toBe('degraded');
         // the retained reason is NAMED, not generic copy
-        expect(banner.calls[0].text).toContain('transport lost');
-        expect(banner.calls[0].text).toContain('last-known')
+        expect(verdict.text).toContain('transport lost');
+        expect(verdict.text).toContain('last-known')
     });
 
-    test('recovery: a later successful poll returns live, clears the reason, and re-hides the slot', async () => {
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+    test('recovery: a later successful poll returns live, clears the reason, and re-hides the banner', async () => {
+        const {host, provider} = makeLivenessHost();
 
         await withBridge(async () => { throw new Error('transport lost') }, host);
-        expect(host.streamAdapterState).toBe('stale');
+        expect(provider.data.streamAdapterState).toBe('stale');
 
         await withBridge(async () => ({capability: {state: 'wired'}, events: []}), host);
 
-        expect(host.streamAdapterState).toBe('live');
-        expect(host.streamDegradedReason, 'a stale cause must never outlive the degrade it explained').toBe(null);
-        expect(banner.calls.at(-1).hidden).toBe(true)
+        expect(provider.data.streamAdapterState).toBe('live');
+        expect(provider.data.streamDegradedReason, 'a stale cause must never outlive the degrade it explained').toBe(null);
+        expect(verdictOf(provider.data).hidden).toBe(true)
     });
 
     test('the retained reason survives while the OTHER surface is still degraded', async () => {
         // clearing on the first recovery would strand the banner on generic copy while a real,
         // named degrade is still live on the sibling surface
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        const {host, provider} = makeLivenessHost();
 
-        host.gridAdapterState = 'stale';
-        host.gridDegradedReason = 'roster bridge unreachable';
+        provider.data.gridAdapterState   = 'stale';
+        provider.data.gridDegradedReason = 'roster bridge unreachable';
 
         await withBridge(async () => ({capability: {state: 'wired'}, events: []}), host);
 
-        expect(host.streamAdapterState).toBe('live');
-        expect(host.gridDegradedReason).toBe('roster bridge unreachable');
-        expect(banner.calls.at(-1).hidden).toBe(false);
-        expect(banner.calls.at(-1).text).toContain('roster bridge unreachable')
+        expect(provider.data.streamAdapterState).toBe('live');
+        expect(provider.data.gridDegradedReason).toBe('roster bridge unreachable');
+
+        const verdict = verdictOf(provider.data);
+        expect(verdict.hidden).toBe(false);
+        expect(verdict.text).toContain('roster bridge unreachable')
     });
 
     test('a never-wired surface stays cold-honest: a pre-live throw never claims last-known data', async () => {
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        const {host, provider} = makeLivenessHost();
 
-        host.streamAdapterState = 'sample';
+        provider.data.streamAdapterState = 'sample';
 
         await withBridge(async () => { throw new Error('transport lost') }, host);
 
         // 'stale' would tell the operator we are showing last-known data that never existed
-        expect(host.streamAdapterState).toBe('sample');
-        expect(host.streamDegradedReason).toBe(null)
+        expect(provider.data.streamAdapterState).toBe('sample');
+        expect(provider.data.streamDegradedReason).toBe(null)
     });
 
     test('not-wired → bridge ABSENT retracts the activity cause — the answer must not outlive its producer', async () => {
         // the activity half of the reviewer falsifier: the producer ANSWERED not-wired (reason
         // retained, honest sample), then the bridge vanished — the retained cause must go with it.
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        const {host, provider} = makeLivenessHost();
 
-        host.streamAdapterState = 'sample';
+        provider.data.streamAdapterState = 'sample';
 
         await withBridge(async () => ({capability: {state: 'not-wired', reason: 'activity source not wired'}, events: []}), host);
-        expect(host.streamDegradedReason).toBe('activity source not wired');
-        expect(host.streamAdapterState).toBe('sample');
+        expect(provider.data.streamDegradedReason).toBe('activity source not wired');
+        expect(provider.data.streamAdapterState).toBe('sample');
 
         // withBridge already removed the bridge in its finally — this drive hits the absence exit
         await host.loadActivity();
 
-        expect(host.streamAdapterState).toBe('sample');
-        expect(host.streamDegradedReason).toBe(null)
+        expect(provider.data.streamAdapterState).toBe('sample');
+        expect(provider.data.streamDegradedReason).toBe(null)
     });
 
     test('CONTROL — a wired surface keeps its stale reason through bridge absence (last-known truth survives)', async () => {
         // the retraction is scoped to never-wired ANSWERED causes; a surface that reached live and
         // degraded holds last-known data, and its cause explains exactly that — absence must not
-        // erase it (the per-surface-reason doctrine's other half).
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        // erase it (the per-surface-reason doctrine\'s other half).
+        const {host, provider} = makeLivenessHost();
 
         await withBridge(async () => { throw new Error('transport lost') }, host);
-        expect(host.streamAdapterState).toBe('stale');
-        expect(host.streamDegradedReason).toBe('transport lost');
+        expect(provider.data.streamAdapterState).toBe('stale');
+        expect(provider.data.streamDegradedReason).toBe('transport lost');
 
         await host.loadActivity();
 
-        expect(host.streamAdapterState).toBe('stale');
-        expect(host.streamDegradedReason).toBe('transport lost')
+        expect(provider.data.streamAdapterState).toBe('stale');
+        expect(provider.data.streamDegradedReason).toBe('transport lost')
     });
 
     test('the degraded reason is redacted + bounded before it reaches operator-visible chrome', async () => {
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        const {host, provider} = makeLivenessHost();
 
         await withBridge(async () => { throw new Error('502 from bridge (Authorization: Bearer super-secret)') }, host);
 
-        expect(host.streamDegradedReason).not.toContain('super-secret');
-        expect(host.streamDegradedReason).toContain('502 from bridge');
-        expect(banner.calls[0].text).not.toContain('super-secret');
+        expect(provider.data.streamDegradedReason).not.toContain('super-secret');
+        expect(provider.data.streamDegradedReason).toContain('502 from bridge');
+        expect(verdictOf(provider.data).text).not.toContain('super-secret');
 
-        const long = makeLivenessHost(makeBanner());
-        await withBridge(async () => { throw new Error('x'.repeat(400)) }, long);
-        expect(long.streamDegradedReason.length).toBeLessThanOrEqual(120)
+        const long = makeLivenessHost();
+        await withBridge(async () => { throw new Error('x'.repeat(400)) }, long.host);
+        expect(long.provider.data.streamDegradedReason.length).toBeLessThanOrEqual(120)
     });
 
     test('a healthy SIBLING never erases this surface\'s retained reason — @neo-gpt\'s red proof', async () => {
-        // His exact falsifier, and it defeated the cold-line fix completely. One shared
-        // `degradedReason` for two independently-answering surfaces cannot know whose cause it holds:
-        //
-        //   1. loadActivity resolves first: {state:'not-wired', reason:'…'} → reason retained
-        //   2. the healthy roster resolves {rows:[]} → clearDegradedReason() ran, saw grid=live and
-        //      stream=SAMPLE (not stale, so the guard never noticed it), and erased the activity's
-        //      cause → banner regressed to "Fleet server offline" while the server was answering.
-        //
-        // The guard was not too weak — the FIELD was shared, and no guard on a shared field can tell
-        // whose cause it holds. Per-surface ownership makes the race unrepresentable rather than
-        // guarded, which is why this is a field split and not another condition.
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        // One shared `degradedReason` for two independently-answering surfaces cannot know whose
+        // cause it holds. Per-surface provider fields make the race unrepresentable rather than
+        // guarded — this pins the field split at the provider seat.
+        const {host, provider} = makeLivenessHost();
 
-        // the stream sits on its SEED, which is the real state when a not-wired answer arrives — the
-        // not-wired branch deliberately leaves the state alone (the feed really is showing sample
-        // events), so a host starting at 'live' would stay 'live' and never reach the cold line at
-        // all. My first version of this witness did exactly that and passed for the wrong reason.
-        host.streamAdapterState = 'sample';
+        // the stream sits on its SEED, which is the real state when a not-wired answer arrives
+        provider.data.streamAdapterState = 'sample';
 
         // 1. the activity surface answers not-wired and retains its own cause
         await withBridge(async () => ({capability: {state: 'not-wired', reason: 'fleet activity source not wired'}, events: []}), host);
 
-        expect(host.streamDegradedReason).toBe('fleet activity source not wired');
+        expect(provider.data.streamDegradedReason).toBe('fleet activity source not wired');
 
-        // 2. the roster surface recovers cleanly — it may only clear ITS OWN reason
-        host.clearDegradedReason('grid');
-        host.gridAdapterState = 'live';
-        host.syncSpineBanner();
+        // 2. the roster surface recovers cleanly — its recovery clears ITS OWN reason only (the
+        //    exact write loadRoster\'s success path performs)
+        provider.setData({gridAdapterState: 'live', gridDegradedReason: null});
 
-        expect(host.streamDegradedReason, 'a sibling has no standing to retract this cause').toBe('fleet activity source not wired');
+        expect(provider.data.streamDegradedReason, 'a sibling has no standing to retract this cause').toBe('fleet activity source not wired');
 
-        const text = banner.calls.at(-1).text;
+        const {text} = verdictOf(provider.data);
 
         expect(text).toContain('fleet activity source not wired');
         expect(text, 'the lie the retained reason exists to prevent').not.toContain('Fleet server offline')
     });
 
     test('an OLDER failed completion never overwrites a NEWER success — @neo-gpt\'s second probe', async () => {
-        // The interval re-drives both seams, so two reads of the SAME surface are in flight at once
-        // and complete in any order. Without a fence the LOSER writes last: a slow failure landing
-        // after a fast success regresses live → stale on strictly older news, and the banner names a
-        // degrade that already recovered. The catch is not exempt from ordering just because it is
-        // the sad path — that is the branch this pins.
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        // Two reads of the SAME surface in flight at once, completing in any order: without a fence
+        // the LOSER writes last. The catch is not exempt from ordering just because it is the sad
+        // path — that is the branch this pins.
+        const {host, provider} = makeLivenessHost();
 
         let releaseSlow;
         const slow = new Promise((resolve, reject) => { releaseSlow = () => reject(new Error('stale transport lost')) });
@@ -1968,66 +1962,54 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
         globalThis.AgentOS.fleet.registryBridge.fleetActivity = async () => ({capability: {state: 'wired'}, events: []});
         await host.loadActivity();
 
-        expect(host.streamAdapterState).toBe('live');
+        expect(provider.data.streamAdapterState).toBe('live');
 
         releaseSlow();                              // read 1 finally fails, LATE
         await slowRead;
 
-        expect(host.streamAdapterState, 'older news must not unseat newer truth').toBe('live');
-        expect(host.streamDegradedReason ?? null, 'a superseded read may not name a degrade').toBe(null);
-        expect(banner.calls.at(-1).hidden, 'nor repaint the banner it was not allowed to write').toBe(true);
+        expect(provider.data.streamAdapterState, 'older news must not unseat newer truth').toBe('live');
+        expect(provider.data.streamDegradedReason ?? null, 'a superseded read may not name a degrade').toBe(null);
+        expect(verdictOf(provider.data).hidden, 'nor move the verdict it was not allowed to write').toBe(true);
 
         delete globalThis.AgentOS.fleet
     });
 
     test('an OLDER SUCCESS never unseats a NEWER loss — the inverse he also named', async () => {
-        // His case 1, and the one my first fence witness missed: I pinned "older FAILURE after newer
-        // success" and stopped, because that was the direction that felt dangerous. The fence is
-        // symmetric and the ordering rule has no favourite outcome — a stale SUCCESS overwriting a
-        // fresh loss is the same defect wearing good news, and it is arguably worse: it paints the
-        // spine live while the transport is down.
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        // The fence is symmetric and the ordering rule has no favourite outcome — a stale SUCCESS
+        // overwriting a fresh loss is the same defect wearing good news, and arguably worse: it
+        // paints the spine live while the transport is down.
+        const {host, provider} = makeLivenessHost();
 
         let releaseSlow;
         const slow = new Promise(resolve => { releaseSlow = () => resolve({capability: {state: 'wired'}, events: []}) });
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetActivity: () => slow}};
         const slowRead = host.loadActivity();       // read 1 — in flight, will SUCCEED
-        // the bridge is invoked a microtask in, so read 1 must actually REACH it before the swap —
-        // otherwise read 1 silently picks up read 2's method and the test proves nothing
+        // the bridge is invoked a microtask in, so read 1 must actually REACH it before the swap
         await new Promise(resolve => setTimeout(resolve, 0));
 
         // read 2 starts and loses the transport while read 1 still hangs
         globalThis.AgentOS.fleet.registryBridge.fleetActivity = async () => { throw new Error('transport lost') };
         await host.loadActivity();
 
-        expect(host.streamAdapterState).toBe('stale');
+        expect(provider.data.streamAdapterState).toBe('stale');
 
         releaseSlow();                              // read 1 finally succeeds, LATE
         await slowRead;
 
-        expect(host.streamAdapterState, 'stale good news must not claim the spine is live').toBe('stale');
-        expect(host.streamDegradedReason).toBe('transport lost');
+        expect(provider.data.streamAdapterState, 'stale good news must not claim the spine is live').toBe('stale');
+        expect(provider.data.streamDegradedReason).toBe('transport lost');
 
         delete globalThis.AgentOS.fleet
     });
 
     test('a newer ABSENCE invalidates an older pending success — @neo-gpt\'s early-return clause', async () => {
-        // His second clause. The generation bump used to sit AFTER the no-bridge guard, so a tick
-        // that found the bridge gone returned silently without claiming a generation — and an
-        // in-flight read from when the bridge was still there came back and wrote. Absence is newer
-        // knowledge; an early return is still a read attempt and must invalidate its predecessor.
-        //
-        // The guard order was the bug, not the guard: I had put the cheap check first out of habit,
-        // which is exactly where it costs the most.
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        // Absence is newer knowledge; an early return is still a read attempt and must invalidate
+        // its predecessor — the generation bump sits BEFORE the no-bridge guard.
+        const {host, provider} = makeLivenessHost();
 
-        // seeded to the SEED so the dropped write is observable: the host defaults to 'live', where
-        // "must not become live" cannot discriminate — it was never anything else. Read 1 would set
-        // live; the fence must leave this at 'sample'.
-        host.streamAdapterState = 'sample';
+        // seeded to the SEED so the dropped write is observable
+        provider.data.streamAdapterState = 'sample';
 
         let releaseSlow;
         const slow = new Promise(resolve => { releaseSlow = () => resolve({capability: {state: 'wired'}, events: []}) });
@@ -2042,12 +2024,11 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
         releaseSlow();                              // read 1 lands, LATE, with news from a vanished bridge
         await slowRead;
 
-        expect(host.streamAdapterState, 'a read from a bridge that no longer exists must not claim live').toBe('sample')
+        expect(provider.data.streamAdapterState, 'a read from a bridge that no longer exists must not claim live').toBe('sample')
     });
 
     test('a read completing after destroy mutates NOTHING — no post-destroy writes', async () => {
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner);
+        const {host, provider} = makeLivenessHost();
 
         let releaseSlow;
         const slow = new Promise(resolve => { releaseSlow = () => resolve({capability: {state: 'degraded', reason: 'late'}, events: []}) });
@@ -2060,41 +2041,31 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
         await inFlight;
 
         // a timer that outlives its owner is a liar with no one left to correct it — and so is a read
-        expect(host.streamAdapterState).toBe('live');
-        expect(host.streamDegradedReason ?? null).toBe(null);
-        expect(banner.calls, 'a dead surface renders nothing').toHaveLength(0);
+        expect(provider.data.streamAdapterState).toBe('live');
+        expect(provider.data.streamDegradedReason ?? null).toBe(null);
 
         delete globalThis.AgentOS.fleet
     });
 
     test('hostile markup in a reason renders INERT — the sink is text, never html', async () => {
-        // The reason is a RETAINED TRANSPORT STRING: it arrives over the fleet wire from the
-        // adapter, so it is attacker-adjacent input, not our copy. `syncSpineBanner` used to write
-        // it with `html:` — an innerHTML sink — which would execute markup a reason carried.
-        //
-        // `toSafeDegradedReason` does NOT save you here and that is the trap worth pinning: it
-        // redacts SECRETS (bearer tokens, credentials). It is a redactor, not a markup escaper, and
-        // mistaking one for the other is how a reason becomes a script tag. The fix is the sink, not
-        // more regex: `text` routes to `textContent` — data, never code.
-        const banner = makeBanner(),
-              host   = makeLivenessHost(banner),
-              markup = '<img src=x onerror="alert(1)">';
+        // The reason is a RETAINED TRANSPORT STRING: attacker-adjacent input, not our copy.
+        // `toSafeDegradedReason` redacts SECRETS; it is a redactor, not a markup escaper. The fix
+        // is the sink: the component writes `text` (→ textContent) — data, never code.
+        const {host, provider} = makeLivenessHost(),
+              markup           = '<img src=x onerror="alert(1)">';
 
         await withBridge(async () => { throw new Error(`transport lost ${markup}`) }, host);
 
-        const call = banner.calls.at(-1);
+        const verdict = verdictOf(provider.data);
 
-        // the sink itself is the assertion: an `html` key here is the defect, whatever it contains
-        expect(call.html, 'the banner must never write an innerHTML sink').toBeUndefined();
-        expect(call.text).toContain('transport lost');
-        // the reason is relayed VERBATIM as text — not stripped. Escaping is the sink's job, and
-        // stripping would quietly corrupt a legitimate reason that happens to contain a bracket.
-        expect(call.text).toContain(markup)
+        // the derived line carries the markup VERBATIM as data — not stripped. Escaping is the
+        // sink's job, and stripping would quietly corrupt a legitimate reason with a bracket.
+        expect(verdict.text).toContain('transport lost');
+        expect(verdict.text).toContain(markup);
+        // the sink itself is the assertion: the slot binds the TEXT config (textContent), and the
+        // component's one vdom write is the title ATTRIBUTE — no html path exists
+        expect(titleAfterText(verdict.text)).toBe(verdict.text)
     });
-
-    test('a missing slot is a guarded no-op — never a throw', () => {
-        expect(() => makeHost('sample', 'sample', null).syncSpineBanner()).not.toThrow()
-    })
 });
 
 /**
@@ -2110,10 +2081,10 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
  * start on a live cockpit would silently double the poll rate against the bridge.
  */
 test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #15293)', () => {
-    let FleetCockpit;
+    let FleetCockpitController;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     /**
@@ -2127,29 +2098,35 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         // `loadActivity` / `loadRoster` return PROMISES because the real ones are `async` and
         // `startLiveness` chains `.finally()` to release the overlap latch — a void fake would throw
         // on the first tick. The `*ReadInFlight` pair mirrors the class defaults the latch reads.
-        return {
+        return Object.assign(Object.create(FleetCockpitController.prototype), {
             cleared,
             polls                  : 0,
             brainReads             : 0,
+            brainHealthReadGeneration: 0,
             brainHealthReadInFlight: 0,
+            // the view-owned cadence configs live on the component seat now
+            component              : {livenessPollInterval: 50, maxReadsInFlight: 2, getStateProvider: () => null},
+            gridReadGeneration     : 0,
             gridReadInFlight       : 0,
-            livenessPollInterval   : 50,
+            isDestroyed            : false,
             livenessTimerId        : null,
-            maxReadsInFlight       : 2,
+            streamReadGeneration   : 0,
             streamReadInFlight     : 0,
+            tasksReadGeneration    : 0,
+            tasksReadInFlight      : 0,
             loadActivity() { this.polls++; return Promise.resolve() },
             // the third seam counts separately: the wire-read expectations stay untouched by it
             loadBrainHealth() { this.brainReads++; return Promise.resolve() },
             loadRoster()   { this.polls++; return Promise.resolve() },
-            // the fourth tick seam (viewer wake rebind) launches no wire read — modeled as a
-            // plain no-op so the wire-read balance assertions stay exact
+            // the tasks seam launches no counted wire read in these balance fixtures
+            loadTasks()    { return Promise.resolve() },
+            // the wake rebind seam launches no wire read — modeled as a plain no-op so the
+            // wire-read balance assertions stay exact
             ensureViewerWakeStream() {},
-            startLiveness: FleetCockpit.prototype.startLiveness,
-            stopLiveness : FleetCockpit.prototype.stopLiveness,
             // counting stand-ins: the real ones are globals, and the assertion is about balance
             _setInterval  : () => ++nextId,
             _clearInterval: id => cleared.push(id)
-        }
+        })
     };
 
     test('start is idempotent: a second call never stacks a second timer', () => {
@@ -2181,26 +2158,22 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         // His numbers at 2313675141: wireReads 2 (expected 3), streamReadInFlight 2 (expected 0).
         // The repair invokes INSIDE the chain, so a sync throw rejects the tracked promise and the
         // reject path owns the release.
-        const stream = {adapterState: 'live', set() {}},
-              host   = {
-                  ...makeTimerHost(),
-                  ...makeActivityStoreHarness(),
-                  clearDegradedReason : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface : FleetCockpit.prototype.degradeWiredSurface,
-                  getReference        : reference => reference === 'activity-stream' ? stream : null,
-                  maxReadsInFlight    : 2,
-                  streamAdapterState  : 'live',
-                  streamDegradedReason: null,
-                  streamReadGeneration: 0,
-                  streamReadInFlight  : 0,
-                  syncSpineBanner     : FleetCockpit.prototype.syncSpineBanner
-              };
+        const stream  = {adapterState: 'live', set() {}},
+              harness = makeActivityStoreHarness(),
+              host    = Object.assign(makeTimerHost(), harness, {
+                  getReference: reference => reference === 'activity-stream' ? stream : null
+              });
+
+        // the provider seat carries this surface's live starting truth; the REAL loss edge and
+        // redaction run inherited from the prototype
+        host.component.getStateProvider = () => harness.activityProvider;
+        harness.activityProvider.data.streamAdapterState = 'live';
 
         let tick, wireReads = 0;
 
-        host.livenessReadTimeout = 5;
-        host.loadActivity        = FleetCockpit.prototype.loadActivity;
-        host.loadRoster          = () => Promise.resolve();
+        host.component.livenessReadTimeout = 5;
+        delete host.loadActivity;                    // the REAL inherited read drives the wire
+        host.loadRoster = () => Promise.resolve();
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetActivity() {
             wireReads++;
@@ -2220,7 +2193,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
 
             expect(host.streamReadInFlight, 'a sync throw must not strand its slot').toBe(0);
             expect(wireReads, 'and the surface must keep probing, not seize after two throws').toBe(3);
-            expect(host.streamAdapterState, 'the throw still degrades honestly').toBe('stale')
+            expect(harness.activityProvider.data.streamAdapterState, 'the throw still degrades honestly').toBe('stale')
         } finally {
             globalThis.setInterval = originalSetInterval;
             delete globalThis.AgentOS.fleet
@@ -2237,26 +2210,22 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         // The count now tracks the WIRE (`onWireSettled`), so a timed-out wrapper does not pretend
         // the socket came back. Capped above 1 because with no abort seam a single slot cannot both
         // bound accumulation AND survive a permanent hang: one hang would hold the only slot forever.
-        const stream = {adapterState: 'live', set() {}},
-              host   = {
-                  ...makeTimerHost(),
-                  ...makeActivityStoreHarness(),
-                  clearDegradedReason : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface : FleetCockpit.prototype.degradeWiredSurface,
-                  getReference        : reference => reference === 'activity-stream' ? stream : null,
-                  maxReadsInFlight    : 2,
-                  streamAdapterState  : 'live',
-                  streamDegradedReason: null,
-                  streamReadGeneration: 0,
-                  streamReadInFlight  : 0,
-                  syncSpineBanner     : FleetCockpit.prototype.syncSpineBanner
-              };
+        const stream  = {adapterState: 'live', set() {}},
+              harness = makeActivityStoreHarness(),
+              host    = Object.assign(makeTimerHost(), harness, {
+                  getReference: reference => reference === 'activity-stream' ? stream : null
+              });
+
+        // the provider seat carries this surface's live starting truth; the REAL loss edge and
+        // redaction run inherited from the prototype
+        host.component.getStateProvider = () => harness.activityProvider;
+        harness.activityProvider.data.streamAdapterState = 'live';
 
         let tick, wireReads = 0;   // 5-tick
 
-        host.livenessReadTimeout = 5;
-        host.loadActivity        = FleetCockpit.prototype.loadActivity;
-        host.loadRoster          = () => Promise.resolve();
+        host.component.livenessReadTimeout = 5;
+        delete host.loadActivity;                    // the REAL inherited read drives the wire
+        host.loadRoster = () => Promise.resolve();
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetActivity: () => {
             wireReads++;
@@ -2275,10 +2244,10 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             }
 
             // the wrapper timing out must NOT be mistaken for the wire returning
-            expect(wireReads, 'five ticks against a hung wire must not launch five reads').toBeLessThanOrEqual(host.maxReadsInFlight);
-            expect(host.streamReadInFlight, 'the cap must never grow').toBeLessThanOrEqual(host.maxReadsInFlight);
+            expect(wireReads, 'five ticks against a hung wire must not launch five reads').toBeLessThanOrEqual(host.component.maxReadsInFlight);
+            expect(host.streamReadInFlight, 'the cap must never grow').toBeLessThanOrEqual(host.component.maxReadsInFlight);
             // and the surface still told the truth while the wire hung
-            expect(host.streamAdapterState).toBe('stale')
+            expect(harness.activityProvider.data.streamAdapterState).toBe('stale')
         } finally {
             globalThis.setInterval = originalSetInterval;
             delete globalThis.AgentOS.fleet
@@ -2298,25 +2267,22 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         // same contract `detailVesselConnectWindowMs` already states for the vessel admission.
         // drives the REAL loadActivity against a REAL hanging bridge — the fake read of an earlier
         // draft would have replaced the very `boundedRead` under test with a stub of my own optimism
-        const stream = {adapterState: 'live', set() {}},
-              host   = {
-                  ...makeTimerHost(),
-                  ...makeActivityStoreHarness(),
-                  clearDegradedReason : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface : FleetCockpit.prototype.degradeWiredSurface,
-                  getReference        : reference => reference === 'activity-stream' ? stream : null,
-                  streamAdapterState  : 'live',
-                  streamDegradedReason: null,
-                  streamReadGeneration: 0,
-                  streamReadInFlight  : 0,
-                  syncSpineBanner     : FleetCockpit.prototype.syncSpineBanner
-              };
+        const stream  = {adapterState: 'live', set() {}},
+              harness = makeActivityStoreHarness(),
+              host    = Object.assign(makeTimerHost(), harness, {
+                  getReference: reference => reference === 'activity-stream' ? stream : null
+              });
+
+        // the provider seat carries this surface's live starting truth; the REAL loss edge and
+        // redaction run inherited from the prototype
+        host.component.getStateProvider = () => harness.activityProvider;
+        harness.activityProvider.data.streamAdapterState = 'live';
 
         let tick, calls = 0;
 
-        host.livenessReadTimeout = 5;                 // short window; the spec pins it, never sleeps on prod
-        host.loadActivity        = FleetCockpit.prototype.loadActivity;
-        host.loadRoster          = () => Promise.resolve();
+        host.component.livenessReadTimeout = 5;       // short window; the spec pins it, never sleeps on prod
+        delete host.loadActivity;                     // the REAL inherited read drives the wire
+        host.loadRoster = () => Promise.resolve();
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetActivity: () => {
             calls++;
@@ -2368,7 +2334,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         // pinned at 1 so the cap's edge is the assertion. Production runs 2 — a single slot cannot
         // both bound accumulation and survive a permanent hang, which is the whole reason the cap
         // exists rather than a boolean. The RULE is the cap; this pins its boundary at its tightest.
-        host.maxReadsInFlight = 1;
+        host.component.maxReadsInFlight = 1;
         host.loadActivity     = function() {
             this.polls++;
             this.streamReadInFlight++;                                     // the launcher counts the WIRE
@@ -2439,7 +2405,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
     test('the owner actually re-drives the real seams on the cadence', async () => {
         const host = makeTimerHost();
 
-        host.livenessPollInterval = 10;
+        host.component.livenessPollInterval = 10;
         host.startLiveness();
 
         try {
@@ -2469,17 +2435,15 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         const
             applied = [],
             wires   = [],
-            host    = {
+            host    = Object.assign(Object.create(FleetCockpitController.prototype), {
                 applied,
                 wires,
                 brainHealthReadGeneration: 0,
                 brainHealthReadInFlight  : 0,
+                component                : {livenessReadTimeout: timeout, maxReadsInFlight: 2},
                 isDestroyed              : false,
-                livenessReadTimeout      : timeout,
-                maxReadsInFlight         : 2,
-                applyBrainHealth(response) { applied.push(response) },
-                loadBrainHealth: FleetCockpit.prototype.loadBrainHealth
-            };
+                applyBrainHealth(response) { applied.push(response) }
+            });
 
         return host
     };
@@ -2564,22 +2528,20 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
  * `fleet` subkey only, per the loadActivity block's discipline.
  */
 test.describe('Fleet cockpit — the wake-routes read (loadWakeRoutes)', () => {
-    let FleetCockpit;
+    let FleetCockpitController;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     const clearFleetBridge = () => { delete globalThis.AgentOS?.fleet };
     const setFleetBridge   = bridge => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: bridge} };
 
-    const makeHost = pane => ({
+    const makeHost = pane => Object.assign(Object.create(FleetCockpitController.prototype), {
+        component               : {getWakeRoutesPane: () => pane},
         isDestroyed             : false,
         wakeRoutesReadGeneration: 0,
-        wakeRoutesSnapshot      : null,
-        getWakeRoutesPane       : () => pane,
-        getReference            : reference => reference === 'wakeRoutes' ? pane : null,
-        loadWakeRoutes          : FleetCockpit.prototype.loadWakeRoutes
+        wakeRoutesSnapshot      : null
     });
 
     test('an unwired verb lands as a typed unavailable envelope on the owner AND the live pane', async () => {
@@ -2648,23 +2610,21 @@ test.describe('Fleet cockpit — the wake-routes read (loadWakeRoutes)', () => {
  * releases an older one's slot. Prototype-call harness, bridge mock scoped to the `fleet` subkey.
  */
 test.describe('Fleet cockpit — the tasks read (loadTasks)', () => {
-    let FleetCockpit;
+    let FleetCockpitController;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     const clearFleetBridge = () => { delete globalThis.AgentOS?.fleet };
     const setFleetBridge   = bridge => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: bridge} };
 
-    const makeHost = pane => ({
+    const makeHost = pane => Object.assign(Object.create(FleetCockpitController.prototype), {
+        component          : {getTasksPane: () => pane},
         isDestroyed        : false,
         tasksReadGeneration: 0,
         tasksReadInFlight  : 0,
-        tasksSnapshot      : null,
-        getTasksPane       : () => pane,
-        getReference       : reference => reference === 'tasks' ? pane : null,
-        loadTasks          : FleetCockpit.prototype.loadTasks
+        tasksSnapshot      : null
     });
 
     test('an unwired verb lands as a typed unavailable envelope on the owner AND the live pane', async () => {
@@ -2763,7 +2723,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
     // a fake owner for the compose seam: it records what `loadOperatorInbox` is (or is not) called with,
     // so the re-poll decision is assertable without dragging in the real read's pane/subject/bridge machinery.
-    const makeComposeOwner = () => ({
+    const makeComposeOwner = () => Object.assign(Object.create(FleetCockpitController.prototype), {
         inboxReloads: [],
         loadOperatorInbox(params) { this.inboxReloads.push(params); return Promise.resolve() }
     });
@@ -2772,13 +2732,13 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
     // last-known snapshot — exactly the surface `loadOperatorInbox` reads and writes.
     const makeReadOwner = ({subject = 'NODE:operator', priorSnapshot = null, generation = 0, isDestroyed = false} = {}) => {
         const pane    = {snapshot: priorSnapshot},
-              cockpit = {
-                  getOperatorMailboxPane     : () => pane,
+              cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
+                  component                  : {getOperatorMailboxPane: () => pane},
                   operatorRecord             : subject ? {agentIdentityNodeId: subject} : null,
                   operatorSnapshot           : priorSnapshot,
                   operatorInboxReadGeneration: generation,
                   isDestroyed
-              };
+              });
 
         return {pane, cockpit}
     };
@@ -2796,7 +2756,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         clearBridge();
 
         const owner   = makeComposeOwner(),
-              outcome = await FleetCockpit.prototype.composeOperatorMessage.call(owner, {to: 'AGENT:*', body: 'hi'});
+              outcome = await owner.composeOperatorMessage({to: 'AGENT:*', body: 'hi'});
 
         // one result per target, each an honest not-wired refusal — the surface renders each recipient's state
         expect(outcome).toEqual({results: [{to: 'AGENT:*', outcome: {status: 'not-wired', reason: 'fleet: operator compose verb not wired'}}]});
@@ -2807,7 +2767,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         setBridge({});
 
         const owner   = makeComposeOwner(),
-              outcome = await FleetCockpit.prototype.composeOperatorMessage.call(owner, {to: 'AGENT:*', body: 'hi'});
+              outcome = await owner.composeOperatorMessage({to: 'AGENT:*', body: 'hi'});
 
         expect(outcome).toEqual({results: [{to: 'AGENT:*', outcome: {status: 'not-wired', reason: 'fleet: operator compose verb not wired'}}]});
         expect(owner.inboxReloads).toHaveLength(0)
@@ -2822,7 +2782,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         setBridge({composeOperatorMessage: async payload => { seen.push(payload); return {messageId: 'M:42', status: 'sent'} }});
 
         const owner   = makeComposeOwner(),
-              outcome = await FleetCockpit.prototype.composeOperatorMessage.call(owner, message);
+              outcome = await owner.composeOperatorMessage(message);
 
         // asserted against a fresh literal, not `message` itself, so an added/changed field would be caught;
         // the single target passes through with `to` set to that one recipient (never the list)
@@ -2836,7 +2796,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         setBridge({composeOperatorMessage: async () => ({status: 'rejected', reason: 'recipient unknown'})});
 
         const owner   = makeComposeOwner(),
-              outcome = await FleetCockpit.prototype.composeOperatorMessage.call(owner, {to: '@ghost', body: 'b'});
+              outcome = await owner.composeOperatorMessage({to: '@ghost', body: 'b'});
 
         expect(outcome).toEqual({results: [{to: '@ghost', outcome: {status: 'rejected', reason: 'recipient unknown'}}]});
         expect(owner.inboxReloads, 'nothing was sent, so nothing changed to re-read').toHaveLength(0)
@@ -2851,7 +2811,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         }});
 
         const owner   = makeComposeOwner(),
-              outcome = await FleetCockpit.prototype.composeOperatorMessage.call(owner, {to: ['@neo-fable-vega', '@ghost'], subject: 's', body: 'b', priority: 'high'});
+              outcome = await owner.composeOperatorMessage({to: ['@neo-fable-vega', '@ghost'], subject: 's', body: 'b', priority: 'high'});
 
         // one authenticated call per named target, in order — the verb is one-target, the fan-out is the cockpit's
         expect(seen).toEqual(['@neo-fable-vega', '@ghost']);
@@ -2871,10 +2831,8 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         const mailbox    = {},
               controller = Object.create(FleetCockpitController.prototype);
 
-        controller.component = {
-            composeOperatorMessage: async () => ({results: [{to: '@a', outcome: {messageId: 'M', status: 'sent'}}]}),
-            getReference          : ref => ref === 'operator-mailbox' ? mailbox : null
-        };
+        controller.composeOperatorMessage = async () => ({results: [{to: '@a', outcome: {messageId: 'M', status: 'sent'}}]});
+        controller.getReference           = ref => ref === 'operator-mailbox' ? mailbox : null;
 
         await controller.onOperatorCompose({message: {to: ['@a']}, source: 'operator-mailbox'});
 
@@ -2886,7 +2844,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
     test('recipients · no provider roster yet → only the broadcast sentinel', () => {
         const owner = {resolveFleetRosterStore: () => null};
 
-        expect(FleetCockpit.prototype.buildOperatorRecipientOptions.call(owner)).toEqual([
+        expect(FleetCockpitController.prototype.buildOperatorRecipientOptions.call(owner)).toEqual([
             {id: 'AGENT:*', name: 'All agents (broadcast)'}
         ])
     });
@@ -2901,7 +2859,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         ];
         const owner = {resolveFleetRosterStore: () => ({items})};
 
-        expect(FleetCockpit.prototype.buildOperatorRecipientOptions.call(owner)).toEqual([
+        expect(FleetCockpitController.prototype.buildOperatorRecipientOptions.call(owner)).toEqual([
             {id: 'AGENT:*',          name: 'All agents (broadcast)'},
             {id: '@neo-fable-vega',  name: 'neo-fable-vega'},
             {id: '@neo-claude-opus', name: 'neo-claude-opus'}
@@ -2916,7 +2874,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const {pane, cockpit} = makeReadOwner({subject: null});
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await cockpit.loadOperatorInbox({offset: 0});
 
         expect(pane.snapshot, 'no subject → the pane must not receive a fabricated snapshot').toBe(null);
         expect(cockpit.operatorSnapshot).toBe(null);
@@ -2929,7 +2887,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const {pane, cockpit} = makeReadOwner();
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await cockpit.loadOperatorInbox({offset: 0});
 
         expect(pane.snapshot).toBe(null)
     });
@@ -2942,7 +2900,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const {pane, cockpit} = makeReadOwner();
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 20});
+        await cockpit.loadOperatorInbox({offset: 20});
 
         // the subject is the operator's OWN identity, held owner-side; the offset threads through unchanged
         expect(seen).toEqual([{subjectAgentId: 'NODE:operator', offset: 20}]);
@@ -2971,7 +2929,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         // finished while this one was in flight; when this stale read resumes, its captured generation no longer matches
         setBridge({fleetMailboxMirror: async () => { cockpit.operatorInboxReadGeneration++; return stale }});
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await cockpit.loadOperatorInbox({offset: 0});
 
         expect(pane.snapshot, 'the loser of the race must not write staler news over newer').toBe(fresh);
         expect(cockpit.operatorSnapshot).toBe(fresh)
@@ -2984,7 +2942,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         setBridge({fleetMailboxMirror: async () => ({rows: ['late']})});
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await cockpit.loadOperatorInbox({offset: 0});
 
         expect(pane.snapshot).toBe(prior);
         expect(cockpit.operatorSnapshot).toBe(prior)
@@ -2997,7 +2955,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         setBridge({fleetMailboxMirror: async () => { throw new Error('ingress down') }});
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await cockpit.loadOperatorInbox({offset: 0});
 
         // fail-closed: the pane never renders "no mail" for a read that did not happen
         expect(pane.snapshot).toBe(prior);
@@ -3009,9 +2967,11 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
     test('identity · no resolveViewerIdentity verb → fail-closed, no operatorRecord seeded', async () => {
         setBridge({});
 
-        const cockpit = {operatorRecord: null, getReference: () => ({set() {}})};
+        const cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
+            component: {getOperatorMailboxPane: () => ({set() {}})}, operatorRecord: null
+        });
 
-        await FleetCockpit.prototype.loadOperatorIdentity.call(cockpit);
+        await cockpit.loadOperatorIdentity();
 
         expect(cockpit.operatorRecord).toBe(null)
     });
@@ -3022,15 +2982,14 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const paneSets = [],
               pane     = {set(cfg) { paneSets.push(cfg) }},
-              cockpit  = {
-                  operatorRecord               : null,
-                  deriveOperatorIdentityPosture: FleetCockpit.prototype.deriveOperatorIdentityPosture,
-                  getReference                 : () => null,
-                  getOperatorMailboxPane       : () => pane,
-                  resolveFleetRosterStore      : () => null
-              };
+              cockpit  = Object.assign(Object.create(FleetCockpitController.prototype), {
+                  component              : {getOperatorMailboxPane: () => pane},
+                  isDestroyed            : false,
+                  operatorRecord         : null,
+                  resolveFleetRosterStore: () => null
+              });
 
-        await FleetCockpit.prototype.loadOperatorIdentity.call(cockpit);
+        await cockpit.loadOperatorIdentity();
 
         // the record MUST carry `githubUsername` — MailboxPane's possession guard canonicalizes it to
         // `@<username>` and matches the admission's subjectAgentId; seeding only the node id fails
@@ -3045,9 +3004,11 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
     test('identity · a refusal (ok:false — unbound / source-not-wired) never seeds a wrong subject', async () => {
         setBridge({resolveViewerIdentity: async () => ({ok: false, error: 'viewer identity unbound — authenticated ingress required'})});
 
-        const cockpit = {operatorRecord: null, getReference: () => ({set() {}})};
+        const cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
+            component: {getOperatorMailboxPane: () => ({set() {}})}, isDestroyed: false, operatorRecord: null
+        });
 
-        await FleetCockpit.prototype.loadOperatorIdentity.call(cockpit);
+        await cockpit.loadOperatorIdentity();
 
         expect(cockpit.operatorRecord, 'a refusal leaves the pane honestly unobserved, never a fallback identity').toBe(null)
     });
@@ -3060,15 +3021,14 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         // `?.set` no-ops but the record is held owner-side (with the possession authority), so the
         // next projection materializes the pane and reads. The posture derive rides the same
         // resolution over the cockpit surface (an empty provider roster → null posture).
-        const cockpit = {
-            operatorRecord               : null,
-            deriveOperatorIdentityPosture: FleetCockpit.prototype.deriveOperatorIdentityPosture,
-            getReference                 : () => null,
-            getOperatorMailboxPane       : () => null,
-            resolveFleetRosterStore      : () => null
-        };
+        const cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
+            component              : {getOperatorMailboxPane: () => null},
+            isDestroyed            : false,
+            operatorRecord         : null,
+            resolveFleetRosterStore: () => null
+        });
 
-        await FleetCockpit.prototype.loadOperatorIdentity.call(cockpit);
+        await cockpit.loadOperatorIdentity();
 
         expect(cockpit.operatorRecord).toEqual({agentIdentityNodeId: '@neo-opus-grace', githubUsername: 'neo-opus-grace'})
     });
@@ -3076,13 +3036,13 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
 
 test.describe('Fleet cockpit — operator-seat identity posture (the conflation honesty half)', () => {
-    let FleetCockpit;
+    let FleetCockpitController;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
-    const derive = (viewerIdentity, rows) => FleetCockpit.prototype.deriveOperatorIdentityPosture.call(
+    const derive = (viewerIdentity, rows) => FleetCockpitController.prototype.deriveOperatorIdentityPosture.call(
         {resolveFleetRosterStore: () => ({items: rows})},
         viewerIdentity
     );
@@ -3102,12 +3062,11 @@ test.describe('Fleet cockpit — operator-seat identity posture (the conflation 
 
     test('loadOperatorIdentity holds the posture owner-side and pushes record + posture through the accessor', async () => {
         const pushes = [],
-              me     = {
-                  isDestroyed                  : false,
-                  deriveOperatorIdentityPosture: FleetCockpit.prototype.deriveOperatorIdentityPosture,
-                  resolveFleetRosterStore      : () => ({items: ROWS}),
-                  getOperatorMailboxPane       : () => ({set: config => pushes.push(config)})
-              },
+              me     = Object.assign(Object.create(FleetCockpitController.prototype), {
+                  component              : {getOperatorMailboxPane: () => ({set: config => pushes.push(config)})},
+                  isDestroyed            : false,
+                  resolveFleetRosterStore: () => ({items: ROWS})
+              }),
               previousNs = globalThis.AgentOS;
 
         globalThis.AgentOS = {fleet: {registryBridge: {
@@ -3115,7 +3074,7 @@ test.describe('Fleet cockpit — operator-seat identity posture (the conflation 
         }}};
 
         try {
-            await FleetCockpit.prototype.loadOperatorIdentity.call(me);
+            await me.loadOperatorIdentity();
 
             expect(me.operatorRecord).toEqual({agentIdentityNodeId: '@neo-fable-clio', githubUsername: 'neo-fable-clio'});
             expect(me.operatorIdentityPosture).toEqual({conflated: true, seatIdentity: '@neo-fable-clio'});

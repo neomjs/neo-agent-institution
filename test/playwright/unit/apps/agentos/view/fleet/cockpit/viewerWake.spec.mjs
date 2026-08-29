@@ -27,7 +27,7 @@ import ViewerWakeFeed from '../../../../../../../../apps/agentos/store/ViewerWak
  * stamp). The consumer itself is pinned by `fleetWakeStreamConsumer.spec.mjs`; here it is a spy.
  */
 test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () => {
-    let FleetCockpit;
+    let CockpitStateProvider, FleetCockpitController;
 
     // scope the mock to the `fleet` subkey ONLY — `globalThis.AgentOS` is the app's Neo namespace
     // root; replacing it wipes class registrations for later spec files (cross-file bleed).
@@ -60,12 +60,11 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         return factory
     };
 
-    /** A minimal owner carrying exactly the fields + prototype methods the wiring touches. */
+    /** A controller host carrying exactly the fields + component seams the wiring touches. */
     const makeCockpit = () => {
         const
             feed = Neo.create(ViewerWakeFeed, {}),
-            data = {},
-            slot = {cls: null, text: null, vdom: {}, updates: 0, set(config) { Object.assign(this, config) }, update() { this.updates++ }};
+            data = {};
 
         const provider = {
             setDataCalls: [],
@@ -77,28 +76,41 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
             getStore: name => name === 'viewerWakeFeed' ? feed : null
         };
 
-        const cockpit = {
+        const cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
+            component         : {getStateProvider: () => provider, wakePollDigest: null},
             feed,
-            isDestroyed           : false,
+            isDestroyed       : false,
             provider,
-            slot,
-            viewerWakeBridge      : null,
-            viewerWakeConsumer    : null,
-            wakePollDigest        : null,
-            ensureViewerWakeStream: FleetCockpit.prototype.ensureViewerWakeStream,
-            getReference          : reference => reference === 'viewer-wake-telltale' ? slot : null,
-            getStateProvider      : () => provider,
-            getViewerWakeFeed     : FleetCockpit.prototype.getViewerWakeFeed,
-            onViewerWakeSignal    : FleetCockpit.prototype.onViewerWakeSignal,
-            stampViewerWake       : FleetCockpit.prototype.stampViewerWake,
-            syncViewerWakeTelltale: FleetCockpit.prototype.syncViewerWakeTelltale
-        };
+            viewerWakeBridge  : null,
+            viewerWakeConsumer: null
+        });
 
         return cockpit
     };
 
+    // the chip over the stamped truth: the REAL provider derivation (the same
+    // `deriveViewerWakeTelltale` the hook keeps live) over the fake provider's stamped
+    // `viewerWake` — the chip surface is `{ariaLabel, cls, text, title}`, with `title` living
+    // on `vdom.title` in production via the component's afterSetText pull.
+    const renderSlot = cockpit => {
+        const writes = {};
+
+        CockpitStateProvider.prototype.deriveViewerWakeTelltale.call({
+            getData: path => {
+                const [root, leaf] = path.split('.');
+                return cockpit.provider.getData(root)?.[leaf]
+            },
+            setData: (key, value) => { writes[key] = value }
+        });
+
+        const chip = writes.viewerWakeTelltale;
+
+        return {text: chip.text, vdom: {title: chip.title, 'aria-label': chip.ariaLabel}}
+    };
+
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        CockpitStateProvider   = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     test.afterEach(() => clearBridge());
@@ -117,7 +129,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         expect(stamped.stream.alive).toBe('unknown');
         expect(stamped.stream.reason).toContain('wake push not wired');
         expect(stamped.catchUp).toEqual({state: null, at: null, pending: null});
-        expect(cockpit.slot.text).toContain('wake push not wired');
+        expect(renderSlot(cockpit).text).toContain('wake push not wired');
 
         cockpit.feed.destroy()
     });
@@ -154,8 +166,9 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
         expect(stamped.stream.alive).toBe(true);
         expect(stamped.stream.reason).toBe('composed wake stream connected · armed for this viewer');
-        expect(cockpit.slot.text).toContain('wake: live');
-        expect(cockpit.slot.vdom.title).toContain('wake push live');
+        const slot = renderSlot(cockpit);
+        expect(slot.text).toContain('wake: live');
+        expect(slot.vdom.title).toContain('wake push live');
 
         cockpit.feed.destroy()
     });
@@ -178,7 +191,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         expect(cockpit.feed.getCount()).toBe(2);
         expect(cockpit.feed.items.map(record => record.eventId)).toEqual(['01H-2', '01H-1']);
         expect(cockpit.feed.getAt(0).kind).toBe('wake/digest');
-        expect(cockpit.slot.vdom.title).toContain('last signals: wake/digest');
+        expect(renderSlot(cockpit).vdom.title).toContain('last signals: wake/digest');
 
         cockpit.feed.destroy()
     });
@@ -235,7 +248,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
         const cockpit = makeCockpit();
 
-        cockpit.wakePollDigest = seam;
+        cockpit.component.wakePollDigest = seam;
         cockpit.ensureViewerWakeStream();
 
         expect(factory.created[0].opts.pollDigest).toBe(seam);
@@ -256,7 +269,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         cockpit.stampViewerWake();
 
         expect(cockpit.provider.getData('viewerWake').catchUp).toEqual({state: 'fresh', at: 5000, pending: 3});
-        expect(cockpit.slot.vdom.title).toContain('catch-up: fresh (3 pending drained)');
+        expect(renderSlot(cockpit).vdom.title).toContain('catch-up: fresh (3 pending drained)');
 
         cockpit.feed.destroy()
     })

@@ -15,7 +15,8 @@ import DockZoneModel       from '../../../../../../../../node_modules/neo.mjs/sr
 import FleetActivityEvents from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit        from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetRoster         from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
-import StateProvider       from '../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
+import ViewerWakeFeed      from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
 
 /**
  * @summary Installs deterministic popup-vessel seams — the same call grammar the pop-out suite
@@ -113,10 +114,11 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — gesture tear-out 
     test.beforeEach(() => {
         cockpit = Neo.create(FleetCockpit, {
             stateProvider: {
-                module: StateProvider,
+                module: CockpitStateProvider,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false}
+                    fleetRoster        : {module: FleetRoster, autoLoad: false},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
         })

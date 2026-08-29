@@ -2,29 +2,27 @@ import ActivityStream         from '../activity/Container.mjs';
 import AddAgentForm           from '../instances/AddAgentForm.mjs';
 import AgentDetail            from '../detail/Container.mjs';
 import Button                 from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+// NAMED registration import: the engine's DockLayoutAdapter emits `ntype: 'tab-container'` for tab
+// zones without importing the class itself (engine gap) — until it does, the dock consumer owns
+// the registration, and the named binding keeps the dependency visible.
+import TabContainer           from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import CatchUpPane            from '../catchup/Container.mjs';
 import DockPerspectiveStore   from '../../../../../node_modules/neo.mjs/src/dashboard/DockPerspectiveStore.mjs';
 import DockService            from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
-import DockWorkspace          from '../../../../../node_modules/neo.mjs/src/dashboard/DockWorkspace.mjs';
+import VesselContainer        from './VesselContainer.mjs';
 import DockZoneModel          from '../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs';
 import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
-import FleetActivityEvents    from '../../../store/FleetActivityEvents.mjs';
-import FleetRoster            from '../../../store/FleetRoster.mjs';
 import MemoriesPane           from '../memories/Container.mjs';
 import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
-import ViewerWakeFeed         from '../../../store/ViewerWakeFeed.mjs';
 import WakeRoutePane          from '../wake/Container.mjs';
-import StateProvider          from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import CockpitStateProvider   from './StateProvider.mjs';
 import CockpitDockDocument    from '../../../util/CockpitDockDocument.mjs';
-import CockpitSourceReads     from '../../../util/CockpitSourceReads.mjs';
 import CockpitPresets         from '../../../util/CockpitPresets.mjs';
 import SourceHealth           from '../../../util/SourceHealth.mjs';
-import SpineBanner            from '../../../util/SpineBanner.mjs';
-import ViewerWakeTelltale     from '../../../util/ViewerWakeTelltale.mjs';
-import '../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; // binds Neo.get for the retained-component dock projection path
-import '../../../../../node_modules/neo.mjs/src/tab/Container.mjs'; // registers the `tab-container` ntype the dock projection emits for tab zones
+import SpineBannerComponent   from './SpineBannerComponent.mjs';
+import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
 
 /**
  * The liveness re-poll cadence (ms). Slow enough that the cockpit is not a load generator against
@@ -32,110 +30,115 @@ import '../../../../../node_modules/neo.mjs/src/tab/Container.mjs'; // registers
  * at the surface that died.
  * @type {Number}
  */
-/**
- * Brain daemon states the shell lifecycle owner can report. Mirrors `BRAIN_STATES` in
- * `harness/appLifecycle.mjs` — the hemisphere boundary forbids importing it (apps code stays
- * shell-agnostic), so the vocabulary is duplicated here and anything outside it is unknown → silent.
- * @type {String[]}
- */
-const BRAIN_HEALTH_STATES = Object.freeze(['degraded', 'running', 'stopped']);
 
-const LIVENESS_POLL_INTERVAL = 15000;
+const livenessPollDefault = 15000;
 
 /**
  * The bounded window (ms) a single liveness read gets before it is treated as a degrade.
  *
- * Deliberately shorter than {@link LIVENESS_POLL_INTERVAL}: the window must close before the next
+ * Deliberately shorter than {@link livenessPollDefault}: the window must close before the next
  * tick, or a hung read would still be holding its surface's slot when the cadence comes round.
  * @type {Number}
  */
-const LIVENESS_READ_TIMEOUT = 10000;
+const livenessReadTimeoutDefault = 10000;
+
+
+
+
 
 /**
- * Longest safe reason rendered on the spine banner — a transport error can carry an entire response
- * body, and this line is one row of shell chrome, not a log viewer.
- * @type {Number}
+ * The persistent chrome, DECLARED as one config factory: every slot the cockpit always owns — the
+ * banner and telltale are real component classes that bind provider truth and render themselves;
+ * handlers are controller-resolved strings. Added at construct through the add() path because
+ * bind configs on the STATIC items of the provider-carrying component itself never get their
+ * binding effects created (engine gap, verified live 2026-08-29: the colors reference app binds
+ * one level BELOW a parent provider and works; the carrier's own declared subtree misses the
+ * createBindings pass). Runtime injection stays limited to the two genuinely dynamic members:
+ * the preset switcher (store-derived, `syncPresetButtons`) and the dock projection shell
+ * (document-derived).
+ * @returns {Object}
  */
-const MAX_DEGRADED_REASON_LENGTH = 120;
-
-/**
- * @summary Reduces an untrusted transport failure to one safe, operator-readable clause.
- *
- * A transport error is peer/network-authored text this shell republishes into operator-visible
- * chrome, so it is redacted and bounded before it can ever render: credential-bearing forms are the
- * realistic payload of a failing authenticated request (a bearer header or PAT echoed back in an
- * error body), and the scheme rule must precede the `key: value` rule or `Authorization: Bearer x`
- * matches `authorization`, stops at the space, and republishes the secret intact.
- * @param {*} error Untrusted failure — an Error, a string reason, or anything else.
- * @returns {String|null} A safe single-line clause, or `null` when the cause is unknowable (the
- *     banner then renders its generic copy rather than inventing a cause).
- * @private
- */
-function toSafeDegradedReason(error) {
-    const raw = typeof error === 'string' ? error : error?.message;
-
-    if (typeof raw !== 'string' || !raw.trim()) return null;
-
-    const safe = raw
-        .replace(/\b(?:authorization\s*[:=]\s*)?bearer\s+[^\s,;)]+/gi, 'authorization=[redacted]')
-        .replace(/\b(authorization|token|secret|password|pat|credential)\s*[:=]\s*[^\s,;)]+/gi, '$1=[redacted]')
-        .replace(/\bgh[pousr]_[A-Za-z0-9_]+/g, '[redacted-token]')
-        .replace(/\bglpat-[A-Za-z0-9_-]+/g, '[redacted-token]')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    return safe ? safe.slice(0, MAX_DEGRADED_REASON_LENGTH) : null
-}
-
-/**
- * @summary Bounds one liveness read: it may fail, it may never hang.
- *
- * A hung read is not a slow read — it is a read that never answers, and an unbounded one poisons
- * every mechanism built on top of it. The in-flight latch releases in a `.finally()`, so a promise
- * that never settles holds its surface's slot **forever**: every later tick is suppressed, the
- * surface stays last-known-live, and the liveness owner silently stops being live — the original
- * defect, rebuilt from the other side. Bounding the read is what makes the latch safe to hold.
- *
- * The loser of the race is not aborted (the wire has no abort seam yet). It does not need to be:
- * the generation fence already makes a late arrival unable to write. This only guarantees the
- * SLOT comes back.
- * @param {Promise} read
- * @param {Number} timeout ms
- * @returns {Promise} settles with the read, or rejects with a timeout error inside `timeout` ms
- * @private
- */
-function boundedRead(read, timeout, onWireSettled) {
-    let timerId;
-
-    // the WIRE's own settle — independent of who wins the race. The accumulation bound counts this,
-    // because a timed-out wrapper does not free the socket the read is still holding.
-    read.then(onWireSettled, onWireSettled);
-
-    return Promise.race([
-        read.finally(() => clearTimeout(timerId)),
-        new Promise((resolve, reject) => {
-            timerId = setTimeout(() => reject(new Error(`fleet read exceeded ${timeout}ms`)), timeout)
-        })
-    ])
-}
-
-/**
- * Recent fleet activity for the fixture-fed stream — the live A2A / PR / lane adapters
- * are the sibling leaves; this seeds the §01 activity zone with representative events (newest last;
- * ActivityStream reverses to newest-first).
- * @type {Object[]}
- */
-const FIXTURE_ACTIVITY = [
-    // Payload texts carry the WHAT only: the row anatomy renders WHO in the actor cell and TO in
-    // the recipient cell (RowContainer's five-cell contract), so an actor name inside the text
-    // would read twice on every row.
-    {eventId: 'fixture:lane-activity:1',   type: 'lane-activity',   agentId: 'neo-fable-clio',occurredAt: '2026-07-05T07:15:00.000Z', payload: {text: 'CrossWindowDragTarget docking, awaiting cross-family'}},
-    {eventId: 'fixture:a2a-activity:1',    type: 'a2a-activity',    agentId: 'neo-opus-ada',  occurredAt: '2026-07-05T08:30:00.000Z', payload: {recipientClass: 'broadcast', text: 'control-plane restart actuator merged'}},
-    {eventId: 'fixture:pr-activity:1',     type: 'pr-activity',     agentId: 'neo-opus-vega', occurredAt: '2026-07-05T09:40:00.000Z', payload: {text: 'merged — FM fleet grid + health bar'}},
-    {eventId: 'fixture:pr-activity:2',     type: 'pr-activity',     agentId: 'neo-gpt',       occurredAt: '2026-07-05T10:11:00.000Z', payload: {text: 'opened a PR — roadmap cornerstone-4 hygiene'}},
-    {eventId: 'fixture:review-activity:1', type: 'review-activity', agentId: 'neo-opus-vega', occurredAt: '2026-07-05T10:26:00.000Z', payload: {text: 'APPROVED — transaction archive Architectural Pillar'}},
-    {eventId: 'fixture:a2a-activity:2',    type: 'a2a-activity',    agentId: 'neo-opus-vega', occurredAt: '2026-07-05T10:52:00.000Z', payload: {recipientClass: 'broadcast', text: '[lane-claim] harness-UI shell + nav'}}
-];
+const chromeBar = () => ({
+        ntype    : 'toolbar',
+        cls      : ['fm-cockpit-bar'],
+        flex     : 'none',
+        reference: 'fleet-control-bar',
+        items    : [{
+            ntype    : 'component',
+            cls      : ['fm-preset-error'],
+            hidden   : true,
+            reference: 'fleet-preset-error'
+        }, {
+            // the per-SPINE honesty line — the spineBanner FORMULA binds here at the
+            // consumption site, ENGINE configs only (custom-config binds never receive their
+            // effects at this engine head — see the provider class doc)
+            module   : SpineBannerComponent,
+            bind     : {
+                cls   : data => [`fm-spine-banner-${data.spineBanner.kind}`],
+                hidden: data => data.spineBanner.hidden,
+                text  : data => data.spineBanner.text
+            },
+            reference: 'fleet-spine-banner'
+        }, {
+            // the banner's manual recovery affordance: one click re-drives every liveness
+            // seam through the existing authenticated bridge — no reload, no new transport.
+            // Visibility IS the banner verdict, bound from the same formula.
+            module   : Button,
+            bind     : {hidden: data => data.spineBanner.hidden},
+            cls      : ['fm-reconnect-button'],
+            handler  : 'reconnectFleet',
+            iconCls  : 'fa-solid fa-rotate',
+            reference: 'fleet-reconnect-button',
+            text     : 'Reconnect'
+        },
+        '->',
+        {
+            // the per-viewer wake-push telltale — the viewerWakeTelltale FORMULA binds here,
+            // ENGINE configs only (same engine-head constraint as the banner)
+            module   : ViewerWakeTelltaleComponent,
+            bind     : {
+                cls : data => data.viewerWakeTelltale.cls.slice(1),
+                text: data => data.viewerWakeTelltale.text
+            },
+            reference: 'viewer-wake-telltale'
+        }, {
+            // The fleet-start outcome summary — written by the controller after the staged
+            // bring-up settles ("N started · U UNKNOWN · M rejected · K excluded"; per-member
+            // reasons ride the title). Empty + hidden until a start ran.
+            ntype    : 'component',
+            cls      : ['fm-fleet-start-summary'],
+            hidden   : true,
+            reference: 'fleet-start-summary'
+        }, {
+            // exception-only chrome (the banner's class): each recall verb renders ONLY
+            // while its pane is away in a vessel — the pane carries its own toggle, but a
+            // windowed pane leaves the main view with no way home without this. Nominal
+            // state costs zero pixels; `removeDom` keeps the class-based selectors honest.
+            module   : Button,
+            cls      : ['fm-memories-window-toggle'],
+            handler  : 'onMemoriesWindowToggle',
+            hidden   : true,
+            hideMode : 'removeDom',
+            iconCls  : 'fa-solid fa-arrow-down-left',
+            reference: 'memories-recall-chrome',
+            text     : 'Return memories'
+        }, {
+            module   : Button,
+            cls      : ['fm-detail-window-toggle'],
+            handler  : 'onDetailWindowToggle',
+            hidden   : true,
+            hideMode : 'removeDom',
+            iconCls  : 'fa-solid fa-arrow-down-left',
+            reference: 'detail-recall-chrome',
+            text     : 'Reattach detail'
+        }, {
+            module : Button,
+            cls    : ['fm-fleet-start'],
+            handler: 'onStartFleet',
+            iconCls: 'fa-solid fa-play',
+            text   : 'Start fleet'
+        }]
+});
 
 /**
  * @summary The Fleet keeper-view — the FM cockpit's default mission-control surface (design SSOT §01),
@@ -174,9 +177,9 @@ const FIXTURE_ACTIVITY = [
  * activity zone composes {@link ActivityStream} → EventChip the same way ({@link #loadActivity}).
  *
  * @class AgentOS.view.fleet.cockpit.Container
- * @extends Neo.dashboard.DockWorkspace
+ * @extends AgentOS.view.fleet.cockpit.VesselContainer
  */
-class FleetCockpit extends DockWorkspace {
+class FleetCockpit extends VesselContainer {
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.cockpit.Container'
@@ -188,21 +191,6 @@ class FleetCockpit extends DockWorkspace {
          * @protected
          */
         ntype: 'fm-fleet-cockpit',
-        /**
-         * The dock motion/token contract (`--dock-transition-*`, reveal keyframes, splitter
-         * cursors) lives in the `Neo.dashboard.Container` theme file — the projected dock tree is
-         * plain containers, so per-class loading never fetches it; the consuming workspace
-         * declares the dependency (the projection root carries the matching `.neo-dashboard`
-         * scope class itself).
-         * Theme files this view needs that its own namespace does not pull in. `SpineBanner` and
-         * `ViewerWakeTelltale` are here because both are plain component slots
-         * (`fleet-spine-banner`, `viewer-wake-telltale`) rather than their own classes — nothing
-         * requests their namespaces, so without these entries the stylesheets are built and never
-         * loaded, and the chrome renders unstyled. Any future class-less slot with its own SCSS
-         * needs the same registration.
-         * @member {String[]} additionalThemeFiles=['Neo.dashboard.Container','AgentOS.view.fleet.cockpit.SpineBanner','AgentOS.view.fleet.cockpit.ViewerWakeTelltale']
-         */
-        additionalThemeFiles: ['Neo.dashboard.Container', 'AgentOS.view.fleet.cockpit.SpineBanner', 'AgentOS.view.fleet.cockpit.ViewerWakeTelltale'],
         /**
          * Consumer identity supplements the inherited `neo-dock-workspace` override anchor.
          * @member {String[]} cls=['fm-fleet-cockpit']
@@ -221,6 +209,24 @@ class FleetCockpit extends DockWorkspace {
          */
         rosterSourceMode: 'sample',
         /**
+         * The drill-in inspector's selected resident — OWN reactive state the view genuinely
+         * holds: a genuinely absent {@link AgentOS.view.fleet.detail.Container} pane
+         * rematerializes at this value (`null` = the honest "select an agent" empty state), and
+         * {@link #afterSetDetailRecord} pushes a LIVE pane in place. Written only through
+         * {@link #applySelection} (the one selection-write site).
+         * @member {Object|null} detailRecord_=null
+         * @reactive
+         */
+        detailRecord_: null,
+        /**
+         * The preset switcher's refusal line (fail-closed VISIBLY: a refused restore must never
+         * look like a no-op) — OWN reactive state: {@link #afterSetPresetError} renders it in
+         * place, and the next successful switch clears it.
+         * @member {String|null} presetError_=null
+         * @reactive
+         */
+        presetError_: null,
+        /**
          * The B4÷C2 composition root: catches each card's `lifecycleIntent` and the whole-fleet
          * "▶ Start fleet" click, driving both through the C2 adapter to honest per-card
          * round-trip state. See {@link AgentOS.view.fleet.cockpit.Controller}.
@@ -228,67 +234,12 @@ class FleetCockpit extends DockWorkspace {
          */
         controller: FleetCockpitController,
         /**
-         * The bounded connect window (ms) an opened detail vessel gets before the
-         * `failed-timeout` edge fires and the admission rolls back to docked. Boundedness is the
-         * contract — an admission may fail, it may never hang. Non-reactive class-config default:
-         * `Neo.overwrites`-eligible and instance-configurable (witnesses pass a short window at
-         * creation).
-         *
-         * Calibration: a healthy heap-join measures ~1.3s born→windowed, but a loaded/cold seat
-         * legitimately exceeds 10s — twice-observed live: a 10s window flapped the same pop-out
-         * a 20s window let survive, minutes apart on one seat. 20s ≈ 15x healthy headroom — the
-         * cold-provider-beats-default class, the same widening shape as the Memory Core
-         * embed-write canary. A genuinely dead connect still rolls back at the bound.
-         * @member {Number} detailVesselConnectWindowMs=20000
+         * The cockpit's state scope — shared render truths + formulas + the provider-owned
+         * stores; see {@link AgentOS.view.fleet.cockpit.StateProvider}.
+         * @member {Neo.state.Provider} stateProvider=CockpitStateProvider
+         * @reactive
          */
-        detailVesselConnectWindowMs: 20000,
-        /**
-         * The cockpit-level roster host — ONE provider-owned {@link AgentOS.store.FleetRoster}
-         * instance (autoLoaded from the JSON sample seed) that the grid + health bar bind; the
-         * provider is the sharing scope, never a store singleton.
-         * @member {Object} stateProvider
-         */
-        stateProvider: {
-            module: StateProvider,
-            data  : {
-                /**
-                 * The per-viewer wake-push truths, stamped by the composition root from the
-                 * stream consumer's OWN observations. `stream` carries the
-                 * consumer's liveness vocabulary verbatim (`alive: true|'unknown'` + reason);
-                 * `catchUp` keeps failed ≠ empty ≠ fresh as three states by construction, with
-                 * `state: null` as the honest absence of any observation.
-                 */
-                viewerWake: {
-                    stream : {alive: 'unknown', reason: 'wake stream not started', capturedAt: null},
-                    catchUp: {state: null, at: null, pending: null}
-                },
-                activityCounts: [],
-                /**
-                 * The cockpit's ONE selection truth, written by the roster's selection seam
-                 * ({@link AgentOS.view.fleet.roster.Controller#onRosterSelect} via
-                 * {@link #applySelection}): the durable registry key for record-keyed consumers,
-                 * and the canonical `@github` mailbox identity for identity-keyed consumers (the
-                 * memories read). `selectedAgentIdentity` is null when the selected resident has
-                 * no verifiable identity authority — an honest "cannot address", never derived
-                 * from the registry key.
-                 */
-                selectedAgentId      : null,
-                selectedAgentIdentity: null
-            },
-            stores: {
-                fleetActivityEvents: {
-                    data  : FIXTURE_ACTIVITY,
-                    module: FleetActivityEvents
-                },
-                fleetRoster: {
-                    autoLoad: true,
-                    module  : FleetRoster
-                },
-                viewerWakeFeed: {
-                    module: ViewerWakeFeed
-                }
-            }
-        },
+        stateProvider: CockpitStateProvider,
         /**
          * Vertical stack: the control bar over the dock projection (which owns the fleet-over-
          * activity split per the committed document).
@@ -331,141 +282,6 @@ class FleetCockpit extends DockWorkspace {
      */
     perspectiveStore = null
     /**
-     * The last refused preset switch, rendered in the control bar (fail-closed VISIBLY: a
-     * refused restore must never look like a no-op). Cleared by the next successful switch.
-     * @member {String|null} presetError=null
-     * @protected
-     */
-    presetError = null
-    /**
-     * Monotonic read-fence for the Brain-health pulls — an immediate first read, an interval tick,
-     * and a timed-out-but-still-pending read can coexist; only the newest generation may write, so
-     * a late answer can never overwrite newer truth.
-     * @member {Number} brainHealthReadGeneration=0
-     * @protected
-     */
-    brainHealthReadGeneration = 0
-    /**
-     * Unsettled Brain-health reads on the wire — counted like {@link #streamReadInFlight}, capped at
-     * {@link #maxReadsInFlight} by the liveness tick, and released only on the read's OWN settle
-     * (never on the bounded-race timeout), so hung pulls can never accumulate unboundedly while a
-     * timed-out slot still frees the surface to keep re-reading.
-     * @member {Number} brainHealthReadInFlight=0
-     * @protected
-     */
-    brainHealthReadInFlight = 0
-    /**
-     * The retained diagnosis pointer for the DAEMON surface — the "why" the spine banner names
-     * instead of generic copy. Per-surface like {@link #gridDegradedReason}: a transport sibling
-     * must never be able to supply or silence this cause. Written only by {@link #applyBrainHealth},
-     * from the lifecycle owner's retained cause (its detail, falling back to its source key).
-     * @member {String|null} daemonDegradedReason=null
-     * @protected
-     */
-    daemonDegradedReason = null
-    /**
-     * Brain daemon health for the spine banner's third surface — `'running'|'degraded'|'stopped'`,
-     * mirroring the shell lifecycle owner's state vocabulary.
-     *
-     * **`null` by default, and that silence is deliberate rather than a placeholder.** Defaulting to
-     * `'running'` would have the banner assert "the organism is fine" on the strength of never
-     * having asked — the fabrication this cockpit's render discipline exists to prevent. `null`
-     * renders nothing and claims nothing; `deriveSpineBanner` treats absence as UNKNOWN.
-     *
-     * Fed by {@link #loadBrainHealth}: a pull on the shell's named health capability riding the
-     * liveness cadence — deliberately NOT a main→renderer push channel, and deliberately NOT the
-     * per-agent fleet wire, whose process rows answer "which agents run", never "is the organism
-     * impaired".
-     * @member {String|null} daemonState=null
-     * @protected
-     */
-    daemonState = null
-    /**
-     * The shell's transport-boot fact for the spine banner's cold-case guidance — the
-     * `{phase, mode, up, fleetPort, reason, error}` snapshot the lifecycle owner attaches to the
-     * brain-health wire payload (`transport`), or `null` where no shell fact exists (the plain
-     * browser, or a shell the pull could not reach — an unreachable shell has no standing to keep
-     * asserting one). `null` deliberately renders the browser copy: absence of a shell is not a
-     * shell fault. Written only by {@link #applyBrainHealth}; render-only truth like its daemon
-     * siblings.
-     * @member {Object|null} shellTransport=null
-     * @protected
-     */
-    shellTransport = null
-    /**
-     * The grid's held `adapterState` — absent-item materialization reads from HERE, so a committed
-     * layout change can never reset a live grid back to its sample badge.
-     * @member {String} gridAdapterState='sample'
-     * @protected
-     */
-    gridAdapterState = 'sample'
-    /**
-     * The retained safe reason for the ROSTER surface's current degrade — the honest "why" the spine
-     * banner names instead of generic copy. `null` = this surface is either fine, or degraded for a
-     * cause the owner never learned (the banner then falls back to generic copy rather than
-     * inventing one).
-     *
-     * PER-SURFACE, not shared, and that is the whole point. One `degradedReason` for two
-     * independently-answering surfaces cannot know whose cause it holds: a healthy roster completing
-     * after a not-wired activity would clear the ACTIVITY's reason and drop the banner back to
-     * "Fleet server offline" — the exact lie the retained reason exists to prevent. Splitting the
-     * field makes that unrepresentable instead of merely guarded.
-     * @member {String|null} gridDegradedReason=null
-     * @protected
-     */
-    gridDegradedReason = null
-    /**
-     * Monotonic read counter for the ROSTER surface — the async-ingress fence.
-     *
-     * {@link #startLiveness} re-drives both seams on a cadence, so two reads of the SAME surface can
-     * be in flight at once and complete in any order. Without a fence the LOSER writes last: a slow
-     * poll that failed lands after a fast one that succeeded, and the surface regresses `live` →
-     * `stale` on strictly older news. Every read captures its generation and drops itself if a newer
-     * read started meanwhile — the same latch {@link AgentOS.view.fleet.detail.Container} uses for the
-     * mailbox mirror, which this owner needed and did not have.
-     * @member {Number} gridReadGeneration=0
-     * @protected
-     */
-    gridReadGeneration = 0
-    /**
-     * Count of UNDERLYING roster reads still unresolved on the wire — the accumulation bound.
-     *
-     * Counts the WIRE, not the wrapper, and that distinction is the whole fix. `boundedRead` settles
-     * its own promise on timeout, so releasing the slot there bounded nothing: the underlying read
-     * kept hanging while every tick launched another. Five ticks, five hung reads, zero settled.
-     * Decremented only when the real read settles, so the cap counts what is actually outstanding.
-     *
-     * Capped at {@link #maxReadsInFlight} rather than one, because with no abort seam on the wire a
-     * single slot cannot both bound accumulation AND survive a permanent hang — one hung read would
-     * hold the only slot forever and liveness would stop. A cap above one keeps a recovery probe
-     * alive through N-1 hangs while proving the cap never grows.
-     *
-     * Only {@link #startLiveness} honours it: a direct call (boot, an explicit refresh) is
-     * operator-meant and never suppressed.
-     * @member {Number} gridReadInFlight=0
-     * @protected
-     */
-    gridReadInFlight = 0
-    /**
-     * The retained safe reason for the ACTIVITY surface's current degrade. See
-     * {@link #gridDegradedReason} for why these are per-surface rather than one shared field.
-     * @member {String|null} streamDegradedReason=null
-     * @protected
-     */
-    streamDegradedReason = null
-    /**
-     * Monotonic read counter for the ACTIVITY surface. See {@link #gridReadGeneration}.
-     * @member {Number} streamReadGeneration=0
-     * @protected
-     */
-    streamReadGeneration = 0
-    /**
-     * Count of UNDERLYING activity reads still unresolved on the wire. See {@link #gridReadInFlight}.
-     * @member {Number} streamReadInFlight=0
-     * @protected
-     */
-    streamReadInFlight = 0
-    /**
      * The cap on concurrent UNDERLYING reads per surface. Above one so a permanently hung read cannot
      * consume the last slot and stop liveness; small so a hung wire cannot accumulate. Injectable so
      * witnesses pin it instead of inferring it.
@@ -474,55 +290,21 @@ class FleetCockpit extends DockWorkspace {
      */
     maxReadsInFlight = 2
     /**
-     * The last authoritative (bridge-sourced) roster snapshot, kept so a slower store load — the
-     * JSON sample seed racing {@link #loadRoster} — can never overwrite live truth
-     * (see {@link #onRosterStoreLoad}).
-     * @member {Object[]|null} lastLiveRows=null
-     * @protected
-     */
-    lastLiveRows = null
-    /**
      * The liveness re-poll cadence (ms). Injectable so specs pin a deterministic cadence instead of
      * sleeping on the production one.
-     * @member {Number} livenessPollInterval=LIVENESS_POLL_INTERVAL
+     * @member {Number} livenessPollInterval=livenessPollDefault
      * @protected
      */
-    livenessPollInterval = LIVENESS_POLL_INTERVAL
+    livenessPollInterval = livenessPollDefault
     /**
      * The bounded window (ms) ONE liveness read gets before it is treated as a degrade. Boundedness
      * is the contract — a read may fail, it may never hang — the same shape and the same reason as
      * {@link #detailVesselConnectWindowMs}. Injectable so specs pin a short window instead of
      * sleeping on the production one.
-     * @member {Number} livenessReadTimeout=LIVENESS_READ_TIMEOUT
+     * @member {Number} livenessReadTimeout=livenessReadTimeoutDefault
      * @protected
      */
-    livenessReadTimeout = LIVENESS_READ_TIMEOUT
-    /**
-     * The liveness re-poll timer id, owned for exact-once teardown. `null` = not running — the
-     * cockpit is pre-start or destroyed. It dies with {@link #destroy}; it deliberately SURVIVES
-     * pop-out and reattach, because those reparent the AgentDetail and leave this cockpit alive as
-     * its holder — a timer stopped there would strand the surface it still speaks for.
-     * @member {Number|null} livenessTimerId=null
-     * @protected
-     */
-    livenessTimerId = null
-    /**
-     * The live per-viewer wake-stream consumer, opened through the bridge's `openWakeStream`
-     * capability (direct-browser topology only). `null` is the honest not-wired state — the
-     * packaged shell carries no such capability, and a bearer-less bridge's stream is refused
-     * server-side and observed as such.
-     * @member {Object|null} viewerWakeConsumer=null
-     * @protected
-     */
-    viewerWakeConsumer = null
-    /**
-     * The exact bridge object {@link #viewerWakeConsumer} was opened from. Custody heals by
-     * REPLACING the published bridge (verify-then-promote), so identity comparison per liveness
-     * tick is the rebuild trigger — a consumer must never outlive the closure custody it rode.
-     * @member {Object|null} viewerWakeBridge=null
-     * @protected
-     */
-    viewerWakeBridge = null
+    livenessReadTimeout = livenessReadTimeoutDefault
     /**
      * Injectable connection catch-up seam, passed through to the stream consumer's `pollDigest`
      * option when supplied. The browser page holds no plane credential BY DESIGN (mints live in
@@ -541,205 +323,6 @@ class FleetCockpit extends DockWorkspace {
      * @protected
      */
     reconcilingRoster = false
-    /**
-     * Set once {@link #loadRoster} has replaced the sample seed with a wired roster payload —
-     * subsequent wired payloads MERGE onto the existing records (runtime status refresh) instead of
-     * re-seeding the store.
-     * @member {Boolean} rosterWired=false
-     * @protected
-     */
-    rosterWired = false
-    /**
-     * The stream's held `adapterState` — the absent-item source of truth, like
-     * {@link #gridAdapterState}.
-     * @member {String} streamAdapterState='sample'
-     * @protected
-     */
-    streamAdapterState = 'sample'
-    /**
-     * Whether the provider Store has admitted its first authoritative live page. Before this edge,
-     * that first page atomically replaces the honestly-labelled sample; later bounded pages append/
-     * reconcile without treating omission as deletion.
-     * @member {Boolean} activityWired=false
-     * @protected
-     */
-    activityWired = false
-    /**
-     * The drill-in inspector's selected resident — OWNER-held so a genuinely absent
-     * {@link AgentOS.view.fleet.detail.Container} pane materializes at the current selection (`null` =
-     * the honest "select an agent" empty state). The card→detail selection wiring writes it.
-     * @member {Object|null} detailRecord=null
-     * @protected
-     */
-    detailRecord = null
-    /**
-     * The operator's own identity — OWNER-held, resolved from the viewer the ingress boundary binds
-     * and feeds the operator-mailbox `record` and the own-inbox mirror `subjectAgentId`. `null` =
-     * the pane's honest unwired state until it resolves.
-     * @member {Object|null} operatorRecord=null
-     * @protected
-     */
-    operatorRecord = null
-    /**
-     * Owner-held operator-seat identity posture — `{conflated, seatIdentity}` once the resolved
-     * viewer identity has been compared against the roster's registered agent identities, `null`
-     * while unresolved or while the roster holds no rows to judge against (unknown renders as
-     * unknown, never as a clean bill). A conflated posture means every send through this
-     * transport is attributed to an AGENT seat — the pane renders that truth beside the compose
-     * surface instead of letting the operator send unknowingly.
-     * @member {Object|null} operatorIdentityPosture=null
-     * @protected
-     */
-    operatorIdentityPosture = null
-    /**
-     * The last operator-inbox mailbox-mirror snapshot — OWNER-held so a re-projected operator-mailbox pane
-     * re-materializes at current truth (written by {@link #loadOperatorInbox}). `null` = `unobserved`.
-     * @member {Object|null} operatorSnapshot=null
-     * @protected
-     */
-    operatorSnapshot = null
-    /**
-     * Monotonic read-fence for the operator-inbox mirror reads — a page-request read, a post-compose
-     * re-poll, and an interval tick can be in flight at once; only the newest generation may write.
-     * @member {Number} operatorInboxReadGeneration=0
-     * @protected
-     */
-    operatorInboxReadGeneration = 0
-    /**
-     * Latest catch-up response, owner-held so rail re-projection rematerializes from current truth.
-     * @member {Object|null} catchUpSnapshot=null
-     */
-    catchUpSnapshot = null
-    /**
-     * Latest explicit mark outcome returned by the runtime-only Brain seam.
-     * @member {Object|null} catchUpMarkOutcome=null
-     */
-    catchUpMarkOutcome = null
-    /**
-     * Monotonic fence: an older source response never overwrites a newer partition/window request.
-     * @member {Number} catchUpReadGeneration=0
-     */
-    catchUpReadGeneration = 0
-    /**
-     * Latest memories envelope, owner-held so rail re-projection rematerializes from current truth.
-     * @member {Object|null} memoriesSnapshot=null
-     */
-    memoriesSnapshot = null
-    /**
-     * Read-generation fence for {@link #loadMemories} — a slow older read never overwrites a newer one.
-     * @member {Number} memoriesReadGeneration=0
-     */
-    memoriesReadGeneration = 0
-    /**
-     * Owner-held CURRENT memories selection — set at REQUEST time, before any await, so the
-     * selection survives pane removal/rematerialization while page zero is still pending. The
-     * snapshot records the last ACCEPTED truth; this records the requested target. A
-     * rematerialized pane receives this as `activeAgent` and therefore reopens on the pending
-     * selection (honest "Reading X…" state), never on a stale snapshot's target and never null
-     * while a response is in flight.
-     * @member {String|null} memoriesTarget=null
-     */
-    memoriesTarget = null
-    /**
-     * Owner-held OPEN memories drill-in — `{sessionId, title}` set at REQUEST time, before any
-     * await (the {@link #memoriesTarget} discipline one level down), cleared by the pane's close
-     * intent. A rematerialized pane receives this as `drillSession` and reopens at the depth the
-     * operator was reading — and never a drill they already left.
-     * @member {Object|null} memoriesDrillSession=null
-     */
-    memoriesDrillSession = null
-    /**
-     * Latest session-memories (drill-in) envelope, owner-held so rail re-projection
-     * rematerializes from current truth.
-     * @member {Object|null} memoriesDrillSnapshot=null
-     */
-    memoriesDrillSnapshot = null
-    /**
-     * Read-generation fence for {@link #loadSessionMemories} — a slow older read never overwrites
-     * a newer one.
-     * @member {Number} memoriesDrillReadGeneration=0
-     */
-    memoriesDrillReadGeneration = 0
-    /**
-     * Latest wake-routes envelope, owner-held so rail re-projection rematerializes from current truth.
-     * @member {Object|null} wakeRoutesSnapshot=null
-     */
-    wakeRoutesSnapshot = null
-    /**
-     * Read-generation fence for {@link #loadWakeRoutes} — a slow older read never overwrites a newer one.
-     * @member {Number} wakeRoutesReadGeneration=0
-     */
-    wakeRoutesReadGeneration = 0
-    /**
-     * Latest tasks envelope (running / queued / recent), owner-held so a re-projected or vesseled
-     * Tasks pane rematerializes from the last ACCEPTED truth, never a blank claim.
-     * @member {Object|null} tasksSnapshot=null
-     */
-    tasksSnapshot = null
-    /**
-     * Read-generation fence for {@link #loadTasks} — a slow older read never overwrites a newer one.
-     * @member {Number} tasksReadGeneration=0
-     */
-    tasksReadGeneration = 0
-    /**
-     * In-flight count for {@link #loadTasks} — the liveness tick's overlap suppression, so a slow
-     * snapshot read is never stacked by the next tick.
-     * @member {Number} tasksReadInFlight=0
-     */
-    tasksReadInFlight = 0
-    /**
-     * Detached-detail bookkeeping — `null` while the inspector is docked. While detached it holds
-     * `{homeTabsNodeId, homeTabIndex, windowId, windowName, connectTimer}`: the tabs node + EXACT
-     * index the reattach restores (`addTab` APPENDS by default — the stored index is the only
-     * placement truth), the vessel's `windowId` once it connects (`null` until then), the window
-     * name for the close call, and the bounded connect-window timer id. Cleared BEFORE the
-     * reattach's async vessel close — the cleared entry is the {@link #onWindowDisconnect}
-     * re-entrancy guard.
-     * @member {Object|null} detachedDetail=null
-     * @protected
-     */
-    detachedDetail = null
-    /**
-     * The live {@link AgentOS.view.fleet.detail.Container} instance handle while it is OUT of this
-     * cockpit's projected tree (parked mid-flight or mounted in its vessel window). A
-     * popup-mounted pane lives in the vessel's view tree — out of this cockpit's `down()` /
-     * `getReference` reach — so every detail consumer routes through {@link #getAgentDetailPane}.
-     * `null` while docked (the projection owns the pane); survives one projection cycle past
-     * reattach so {@link #resolveDockComponentRef} re-adopts the SAME instance, never a recreation.
-     * @member {Neo.container.Base|null} detachedDetailPane=null
-     * @protected
-     */
-    detachedDetailPane = null
-    /**
-     * The vessel admission state machine's observable state — one word of truth for witnesses,
-     * Neural Link reads and the shell affordance:
-     * `docked → opening → connected → windowed → reattaching → docked`, with the two terminal
-     * failure edges `failed-blocked` (`Neo.Main.windowOpen` returned `false` — the blocked-popup
-     * PRIMARY failure path; it never throws) and `failed-timeout` (the bounded connect window
-     * expired before the vessel joined the heap). Both failure states roll back through the
-     * standard reattach and settle at `docked`; {@link #lastDetailVesselFailure} keeps the
-     * post-rollback trace.
-     * @member {String} detailVesselState='docked'
-     * @protected
-     */
-    detailVesselState = 'docked'
-    /**
-     * Generation counter for async-boundary revalidation: incremented at every pop-out start,
-     * reattach start and destroy. Every awaited continuation (vessel open, connect URL read,
-     * connect timer) re-checks its captured generation and goes inert on mismatch — a reattach or
-     * teardown racing an in-flight admission can never act on stale state.
-     * @member {Number} detailVesselGeneration=0
-     * @protected
-     */
-    detailVesselGeneration = 0
-    /**
-     * The last vessel admission failure (`'blocked'` / `'timeout'`), kept after the rollback
-     * settles so the failure stays observable once {@link #detailVesselState} returns to
-     * `docked`. `null` after a clean detach/reattach cycle.
-     * @member {String|null} lastDetailVesselFailure=null
-     * @protected
-     */
-    lastDetailVesselFailure = null
     /**
      * The cockpit-owned dock seam instance — the SAME `execute_dock_operation` path a live
      * agent drives, injected into the tour runner so scripted ops and agent ops are one code
@@ -774,7 +357,71 @@ class FleetCockpit extends DockWorkspace {
         me.perspectiveStore    = Neo.create(DockPerspectiveStore, {collection: CockpitPresets.create()});
         me.dockModel           = me.dockModel || CockpitDockDocument.create();
 
-        me.add(me.buildWorkspaceItems())
+        me.add([chromeBar(), Object.assign(me.projectDockModel(), {flex: 1})]);
+        me.syncPresetButtons()
+    }
+
+    /**
+     * Triggered after the detailRecord config got changed — push the LIVE detail pane in place
+     * (docked or vesseled, through the phase-blind accessor). Dock rematerialization reads the
+     * config directly at projection time.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetDetailRecord(value, oldValue) {
+        oldValue !== undefined && this.getAgentDetailPane()?.set({record: value ?? null})
+    }
+
+    /**
+     * Triggered after the presetError config got changed — render the refusal line in place.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetPresetError(value, oldValue) {
+        this.getReference('fleet-preset-error')?.set({
+            hidden: !value,
+            text  : value || ''
+        })
+    }
+
+    /**
+     * @summary Reconcile the preset switcher — the one store-derived chrome member — into the
+     * DECLARED control bar: existing buttons update `pressed` in place, missing ones are inserted
+     * ahead of the static slots. `presetName` rides each button so the controller relay activates
+     * the right perspective without a per-button closure.
+     * @protected
+     */
+    syncPresetButtons() {
+        let me             = this,
+            bar            = me.items[0],
+            activeLayoutId = me.perspectiveStore?.collection?.activeLayoutId;
+
+        (me.perspectiveStore?.list?.() || []).forEach((preset, index) => {
+            const
+                reference = `fleet-preset-${preset.layoutId}`,
+                // resolved against the BAR's items, not getReference: the reconcile must find a
+                // button whose projection has not registered yet (and never a same-named button
+                // in a foreign tree)
+                existing  = bar.items?.find?.(item => item.reference === reference);
+
+            if (existing?.set) {
+                existing.set({pressed: preset.layoutId === activeLayoutId})
+            } else if (!existing) {
+                const config = {
+                    module    : Button,
+                    cls       : ['fm-preset-button'],
+                    handler   : 'onPresetSelect',
+                    presetName: preset.perspectiveName ?? preset.layoutId,
+                    pressed   : preset.layoutId === activeLayoutId,
+                    reference,
+                    text      : preset.perspectiveName ?? preset.layoutId
+                };
+
+                bar.insert ? bar.insert(index, config) : bar.items.splice(index, 0, config)
+            }
+        })
     }
 
     /**
@@ -810,7 +457,7 @@ class FleetCockpit extends DockWorkspace {
         if (revealsInspector && !me.detailRecord) {
             // seat through the ONE selection-write site so the provider pair + memories
             // write-through follow the cold default exactly like an operator click would
-            me.applySelection(me.resolveFleetRosterStore()?.first() ?? null)
+            me.applySelection(me.getController().resolveFleetRosterStore()?.first() ?? null)
         }
 
         me.presetError = null;
@@ -901,14 +548,16 @@ class FleetCockpit extends DockWorkspace {
 
         // the listener authority is the provider-owned Store, same as every roster read/write —
         // it exists (and keeps reconciling) whether or not the grid projection currently does
-        me.resolveFleetRosterStore()?.on({load: me.onRosterStoreLoad, recordChange: me.onDetailRecordChange, scope: me});
+        me.getController().resolveFleetRosterStore()?.on({load: me.onRosterStoreLoad, recordChange: me.onDetailRecordChange, scope: me});
 
-        me.loadActivity();
-        me.loadRoster();
-        me.loadTasks();
-        me.loadOperatorIdentity();
-        me.startLiveness();
-        me.ensureViewerWakeStream()
+        const controller = me.getController();
+
+        controller.loadActivity();
+        controller.loadRoster();
+        controller.loadTasks();
+        controller.loadOperatorIdentity();
+        controller.startLiveness();
+        controller.ensureViewerWakeStream()
     }
 
     /**
@@ -919,15 +568,6 @@ class FleetCockpit extends DockWorkspace {
      */
     beforeRefreshDockWorkspace(document, refreshOptions) {
         this.syncControlBar()
-    }
-
-    /**
-     * Owner-held panes that survive while their dock items are absent from the projection.
-     * @returns {String[]}
-     * @protected
-     */
-    getPreservedItemIds() {
-        return this.detachedDetailPane ? ['detail'] : []
     }
 
     /**
@@ -951,260 +591,16 @@ class FleetCockpit extends DockWorkspace {
     }
 
     /**
-     * Resolves the live pane handle a connected tear-out vessel embodies.
-     * @param {String} itemId
-     * @returns {Neo.component.Base|null}
-     * @protected
-     */
-    resolveTearOutPane(itemId) {
-        return this.tearOutPaneHandles[itemId] || this.findProjectedDockPane(itemId)
-    }
-
-    /**
-     * Keeps Fleet's vessel affordances truthful after the engine records post-commit ownership.
-     * @param {Object} data
-     * @protected
-     */
-    afterTearOutPaneAdopt(data) {
-        this.syncControlBar()
-    }
-
-    /**
-     * Projects the current instance title into a newly admitted Fleet tear-out window.
-     * @param {Object} data
-     * @protected
-     */
-    afterTearOutWindowConnect({connection}) {
-        this.pushInstanceTitle(connection.windowId)
-    }
-
-    /**
-     * Captures the click-detail generation before the engine's async URL read.
-     * @returns {Number}
-     * @protected
-     */
-    captureWindowConnectContext() {
-        return this.detailVesselGeneration
-    }
-
-    /**
-     * Re-syncs pane toggles after physical vessel retirement.
-     * @param {Object} data
-     * @protected
-     */
-    afterTearOutWindowDisconnect(data) {
-        this.syncControlBar()
-    }
-
-    /**
      * @summary Synchronizes the persistent control bar from the perspective store and refusal state.
      */
     syncControlBar() {
-        let me             = this,
-            activeLayoutId = me.perspectiveStore?.collection?.activeLayoutId,
-            error          = me.getReference('fleet-preset-error');
+        let me = this;
 
-        me.items[0]?.items.forEach(item => {
-            const layoutId = item.reference?.startsWith('fleet-preset-')
-                ? item.reference.slice('fleet-preset-'.length)
-                : null;
-
-            layoutId && item.set({pressed: layoutId === activeLayoutId})
-        });
-
-        if (error) {
-            error.set({
-                hidden: !me.presetError,
-                html  : me.presetError || ''
-            })
-        }
-
-        // the window verbs live in their panes' chrome now — a windowed/torn pane sits OUTSIDE
-        // this cockpit's getReference reach, so the sync routes through the phase-blind accessors
-        let toggle = me.getAgentDetailPane()?.getReference('detail-window-toggle'),
-            state  = me.detailVesselState,
-            out    = state === 'opening' || state === 'connected' || state === 'windowed',
-            // convergence-by-guard: while a GESTURE tear-out owns the detail pane, the click
-            // toggle is inert — one vessel pathway at a time (G4 owns richer convergence)
-            torn        = Boolean(me.tearOutPanes?.detail || me.tearOutPaneHandles?.detail);
-
-        toggle?.set({
-            disabled: state === 'reattaching' || torn,
-            text    : torn ? 'Detail torn out' : (out ? 'Reattach detail' : 'Pop out detail')
-        });
-
-        // the exception-only recall verb: visible ONLY while the pane is away — the main view
-        // must always hold a way home, and the traveling pane-side toggle cannot provide it here.
-        // An ADOPTED gesture vessel recalls (returnDetail); mid-gesture disables instead of racing.
-        me.getReference('detail-recall-chrome')?.set({
-            disabled: state === 'reattaching' || (torn && !me.tearOutPanes?.detail),
-            hidden  : !(out || torn),
-            text    : torn ? 'Recall detail' : 'Reattach detail'
-        });
-
-        let memoriesToggle = me.getMemoriesPane()?.getReference('memories-window-toggle'),
-            // click pop-out and gesture tear-out are ONE pathway for this pane, so an adopted
-            // vessel honestly offers the return action either way; only the mid-gesture window
-            // (captured handle, no adopted vessel yet) disables instead of racing the gesture
-            adopted    = Boolean(me.tearOutPanes?.memories),
-            midGesture = !adopted && Boolean(me.tearOutPaneHandles?.memories);
-
-        memoriesToggle?.set({
-            disabled: midGesture,
-            text    : adopted ? 'Return memories' : 'Pop out memories'
-        });
-
-        me.getReference('memories-recall-chrome')?.set({
-            disabled: midGesture,
-            hidden  : !(adopted || midGesture)
-        })
-    }
-
-    /**
-     * Creates the persistent top-level control bar plus the initial dock projection. The preset
-     * switcher derives from the stored collection; subsequent refreshes update it in place while
-     * the shared reconciler owns only the projection shell at index 1.
-     * @returns {Object[]}
-     */
-    buildWorkspaceItems() {
-        let me             = this,
-            dockConfig     = me.projectDockModel(),
-            activeLayoutId = me.perspectiveStore?.collection?.activeLayoutId,
-            presetButtons  = (me.perspectiveStore?.list() || []).map(preset => ({
-                module   : Button,
-                cls      : ['fm-preset-button'],
-                handler  : () => me.activatePerspective(preset.perspectiveName ?? preset.layoutId),
-                pressed  : preset.layoutId === activeLayoutId,
-                reference: `fleet-preset-${preset.layoutId}`,
-                text     : preset.perspectiveName ?? preset.layoutId
-            }));
-
-        dockConfig.flex = 1;
-
-        return [{
-            ntype: 'toolbar',
-            cls  : ['fm-cockpit-bar'],
-            flex : 'none',
-            items: [
-                ...presetButtons,
-                {
-                    ntype    : 'component',
-                    cls      : ['fm-preset-error'],
-                    hidden   : !me.presetError,
-                    html     : me.presetError || '',
-                    reference: 'fleet-preset-error'
-                }, {
-                    // the per-SPINE honesty line: names WHY the surface shows sample/last-known
-                    // data (cold/degraded); a fully live spine renders nothing — zero nominal
-                    // pixels. Derived from the owner-held adapter states by syncSpineBanner.
-                    ntype    : 'component',
-                    cls      : ['fm-spine-banner'],
-                    hidden   : true,
-                    reference: 'fleet-spine-banner',
-                    role     : 'status'
-                }, {
-                    // the banner's manual recovery affordance: one click re-drives every liveness
-                    // seam through the existing authenticated bridge — no reload, no new transport.
-                    // Visibility is the banner's verdict (synced by syncSpineBanner); a live spine
-                    // hides both.
-                    module   : Button,
-                    cls      : ['fm-reconnect-button'],
-                    handler  : me.reconnectFleet.bind(me),
-                    hidden   : true,
-                    iconCls  : 'fa-solid fa-rotate',
-                    reference: 'fleet-reconnect-button',
-                    text     : 'Reconnect'
-                },
-                '->', {
-                    // The per-viewer wake-push telltale — MY push lane's health, a different axis
-                    // from the spine banner (fleet transport) and the per-agent telltales (each
-                    // resident's route). Always rendered, quietly: live is one token wide, and a
-                    // degraded push carries the consumer's reason verbatim. Synced by
-                    // syncViewerWakeTelltale from the provider-held viewerWake truths; the feed's
-                    // last signals ride the title as the drill-free detail.
-                    ntype    : 'component',
-                    cls      : ['fm-viewer-wake'],
-                    reference: 'viewer-wake-telltale',
-                    role     : 'status',
-                    text     : 'wake: not started'
-                }, {
-                    // The fleet-start outcome summary — written by the controller after the
-                    // staged bring-up settles ("N started · U UNKNOWN · M rejected · K excluded";
-                    // per-member reasons ride the title). Empty + hidden until a start ran; hover
-                    // reaches the reasons — the honest summary state, no separate progress modal (the health
-                    // bar stays the live progression surface).
-                    ntype    : 'component',
-                    cls      : ['fm-fleet-start-summary'],
-                    hidden   : true,
-                    reference: 'fleet-start-summary'
-                }, {
-                    // exception-only chrome (the banner's class): each recall verb renders ONLY
-                    // while its pane is away in a vessel — the pane carries its own toggle, but a
-                    // windowed pane leaves the main view with no way home without this. Nominal
-                    // state costs zero pixels; `removeDom` keeps the class-based selectors honest
-                    // (exactly one .fm-*-window-toggle exists per phase).
-                    module   : Button,
-                    cls      : ['fm-memories-window-toggle'],
-                    handler  : me.onMemoriesWindowToggle.bind(me),
-                    hidden   : true,
-                    hideMode : 'removeDom',
-                    iconCls  : 'fa-solid fa-arrow-down-left',
-                    reference: 'memories-recall-chrome',
-                    text     : 'Return memories'
-                }, {
-                    module   : Button,
-                    cls      : ['fm-detail-window-toggle'],
-                    handler  : me.onDetailWindowToggle.bind(me),
-                    hidden   : true,
-                    hideMode : 'removeDom',
-                    iconCls  : 'fa-solid fa-arrow-down-left',
-                    reference: 'detail-recall-chrome',
-                    text     : 'Reattach detail'
-                }, {
-                    module : Button,
-                    cls    : ['fm-fleet-start'],
-                    iconCls: 'fa-solid fa-play',
-                    text   : 'Start fleet',
-                    handler: 'onStartFleet'
-                }
-            ]
-        }, dockConfig]
-    }
-
-    /**
-     * @summary SHELL-owned pop-out affordance config for the Memories pane — the detail toggle's
-     * grammar on the tear-out pathway. Lives in the PANE's chrome per the navigation model (pane
-     * verbs are pane-scoped, the bar seats instance-wide tenants only); ownership, handler and
-     * label sync stay here — the pane merely places it through its layout-blind `shellTools` slot,
-     * so a vesseled pane carries its own return verb with it.
-     * @returns {Object}
-     */
-    buildMemoriesWindowToggle() {
-        return {
-            module   : Button,
-            cls      : ['fm-memories-window-toggle'],
-            handler  : this.onMemoriesWindowToggle.bind(this),
-            iconCls  : 'fa-solid fa-arrow-up-right-from-square',
-            reference: 'memories-window-toggle',
-            text     : 'Pop out memories'
-        }
-    }
-
-    /**
-     * @summary SHELL-owned pop-out affordance config for the inspector — routes by the vessel
-     * state machine; {@link #syncControlBar} keeps the label naming the action it will take.
-     * Same pane-chrome placement contract as {@link #buildMemoriesWindowToggle}.
-     * @returns {Object}
-     */
-    buildDetailWindowToggle() {
-        return {
-            module   : Button,
-            cls      : ['fm-detail-window-toggle'],
-            handler  : this.onDetailWindowToggle.bind(this),
-            iconCls  : 'fa-solid fa-arrow-up-right-from-square',
-            reference: 'detail-window-toggle',
-            text     : 'Pop out detail'
-        }
+        me.syncPresetButtons();
+        // re-assert the refusal line onto a freshly projected error slot (the afterSet hook owns
+        // CHANGES; a re-projection needs the standing value re-rendered)
+        me.afterSetPresetError(me.presetError, null);
+        me.syncVesselChrome()
     }
 
     /**
@@ -1235,34 +631,7 @@ class FleetCockpit extends DockWorkspace {
         }
     }
 
-    /**
-     * @summary Resolve the provider-hosted `fleetRoster` Store — the sanctioned
-     * `getStateProvider().getStore()` access ({@link #resolveAgentDefinitionsStore}'s pattern).
-     * The roster's value authority is the root provider, never the projected grid child: resident
-     * panes resolve BEFORE the grid exists in the projection order, and the inspector must be able
-     * to default a selection while the grid is torn out or absent. Bare unit mounts degrade to
-     * `null` — consumers render their honest empty options.
-     * @returns {Neo.data.Store|null}
-     */
-    resolveFleetRosterStore() {
-        try {
-            return this.getStateProvider()?.getStore('fleetRoster') ?? null
-        } catch {
-            return null
-        }
-    }
 
-    /**
-     * @summary Resolve the provider-hosted activity Store independently of the projected pane.
-     * @returns {AgentOS.store.FleetActivityEvents|null}
-     */
-    resolveFleetActivityEventsStore() {
-        try {
-            return this.getStateProvider()?.getStore('fleetActivityEvents') ?? null
-        } catch {
-            return null
-        }
-    }
 
     /**
      * @summary Resolves a dock item's `componentRef` to its pane config — the cockpit's keeper
@@ -1300,8 +669,12 @@ class FleetCockpit extends DockWorkspace {
             case 'fleet-grid':
                 return {
                     module      : FleetGrid,
-                    adapterState: me.gridAdapterState,
-                    bind        : {store: 'stores.fleetRoster'},
+                    bind: {
+                        adapterState      : data => data.gridAdapterState,
+                        daemonFault       : data => data.daemonFault,
+                        presenceCapability: data => data.presenceCapability,
+                        store             : 'stores.fleetRoster'
+                    },
                     cls         : [marker],
                     // two roster intents: the bootstrap CTA (an empty fleet's one path to its
                     // first agent — the controller opens the S5 define-agent zone) and the
@@ -1313,11 +686,11 @@ class FleetCockpit extends DockWorkspace {
             case 'activity-stream':
                 return {
                     module        : ActivityStream,
-                    adapterState  : me.streamAdapterState,
-                    actorDirectory: me.buildActivityActorDirectory(),
+                    actorDirectory: me.getController().buildActivityActorDirectory(),
                     bind          : {
-                        counts: 'activityCounts',
-                        store : 'stores.fleetActivityEvents'
+                        adapterState: data => data.streamAdapterState,
+                        counts      : data => data.activityCounts,
+                        store       : 'stores.fleetActivityEvents'
                     },
                     cls      : [marker],
                     reference: 'activity-stream'
@@ -1380,10 +753,10 @@ class FleetCockpit extends DockWorkspace {
                 return {
                     module          : OperatorMailbox,
                     cls             : [marker],
-                    record          : me.operatorRecord,
-                    snapshot        : me.operatorSnapshot,
-                    recipientOptions: me.buildOperatorRecipientOptions(),
-                    identityPosture : me.operatorIdentityPosture,
+                    record          : me.getController().operatorRecord,
+                    snapshot        : me.getController().operatorSnapshot,
+                    recipientOptions: me.getController().buildOperatorRecipientOptions(),
+                    identityPosture : me.getController().operatorIdentityPosture,
                     listeners       : {
                         compose         : 'onOperatorCompose',
                         inboxPageRequest: 'onOperatorInboxPageRequest',
@@ -1398,9 +771,9 @@ class FleetCockpit extends DockWorkspace {
                 return {
                     module          : CatchUpPane,
                     cls             : [marker],
-                    snapshot        : me.catchUpSnapshot,
-                    markOutcome     : me.catchUpMarkOutcome,
-                    partitionOptions: me.buildCatchUpPartitionOptions(),
+                    snapshot        : me.getController().catchUpSnapshot,
+                    markOutcome     : me.getController().catchUpMarkOutcome,
+                    partitionOptions: me.getController().buildCatchUpPartitionOptions(),
                     listeners       : {
                         historyRequest     : 'onCatchUpHistoryRequest',
                         markCaughtUpRequest: 'onCatchUpMarkRequest',
@@ -1424,10 +797,10 @@ class FleetCockpit extends DockWorkspace {
                 return {
                     module       : MemoriesPane,
                     cls          : [marker],
-                    activeAgent  : me.memoriesTarget ?? me.memoriesSnapshot?.target ?? null,
-                    snapshot     : me.memoriesSnapshot,
-                    drillSession : me.memoriesDrillSession,
-                    drillSnapshot: me.memoriesDrillSnapshot,
+                    activeAgent  : me.getController().memoriesTarget ?? me.getController().memoriesSnapshot?.target ?? null,
+                    snapshot     : me.getController().memoriesSnapshot,
+                    drillSession : me.getController().memoriesDrillSession,
+                    drillSnapshot: me.getController().memoriesDrillSnapshot,
                     shellTools   : [me.buildMemoriesWindowToggle()],
                     listeners    : {
                         memoriesRequest     : 'onMemoriesRequest',
@@ -1443,7 +816,7 @@ class FleetCockpit extends DockWorkspace {
                 return {
                     module   : WakeRoutePane,
                     cls      : [marker],
-                    snapshot : me.wakeRoutesSnapshot,
+                    snapshot : me.getController().wakeRoutesSnapshot,
                     listeners: {
                         wakeRoutesRequest: 'onWakeRoutesRequest',
                         scope            : me.getController()
@@ -1457,7 +830,7 @@ class FleetCockpit extends DockWorkspace {
                 return {
                     module   : TasksPane,
                     cls      : [marker],
-                    snapshot : me.tasksSnapshot,
+                    snapshot : me.getController().tasksSnapshot,
                     listeners: {
                         tasksRequest: 'onTasksRequest',
                         scope       : me.getController()
@@ -1486,620 +859,17 @@ class FleetCockpit extends DockWorkspace {
      * @protected
      */
     onRosterStoreLoad() {
-        let me = this;
+        let me         = this,
+            controller = me.getController();
 
-        if (!me.reconcilingRoster && me.rosterWired && me.lastLiveRows) {
+        if (!me.reconcilingRoster && controller.rosterWired && controller.lastLiveRows) {
             me.reconcilingRoster = true;
 
             try {
-                me.reconcileRoster(me.resolveFleetRosterStore(), me.lastLiveRows)
+                controller.reconcileRoster(controller.resolveFleetRosterStore(), controller.lastLiveRows)
             } finally {
                 me.reconcilingRoster = false
             }
-        }
-    }
-
-    /**
-     * @summary Resolve the live {@link AgentOS.view.fleet.detail.Container} instance wherever it
-     * currently renders — the projected tree while docked, the owner-held handle while detached
-     * (click pop-out OR gesture tear-out). A vessel-mounted pane lives in the popup's view tree,
-     * out of this cockpit's `down()` / `getReference` reach, so every detail consumer (record
-     * mutation, selection reconciliation, the card→detail drill) routes through this accessor —
-     * the windowed inspector stays as live as the docked one on either vessel pathway.
-     * @returns {Neo.container.Base|null} The detail pane, or `null` before its first materialization.
-     */
-    getAgentDetailPane() {
-        return this.detachedDetailPane || this.tearOutPaneHandles?.detail || this.getReference('agent-detail')
-    }
-
-    /**
-     * @summary Resolve the live {@link AgentOS.view.fleet.mailbox.OperatorContainer} instance whether it is
-     * docked, gesture-torn into a vessel, or parked in the vessel-death returning window. A torn
-     * pane lives outside this cockpit's projected tree, so owner-side identity and inbox refreshes
-     * must use the captured handle instead of stopping at `getReference()` — and a push landing in
-     * the returning window must still reach the LIVE instance ({@link #getMemoriesPane} contract).
-     * @returns {Neo.container.Base|null} The operator mailbox, or `null` before materialization.
-     */
-    getOperatorMailboxPane() {
-        return this.tearOutPaneHandles?.operator || this.returningTearOutPanes?.operator || this.getReference('operator-mailbox')
-    }
-
-    /**
-     * @summary Resolve the live {@link AgentOS.view.fleet.catchup.Container} instance whether it is
-     * docked, gesture-torn into a vessel, or parked in the vessel-death returning window — the
-     * {@link #getOperatorMailboxPane} contract for the catch-up reading surface, so roster-driven
-     * option refreshes and the bridge-arrival history re-drive reach a torn or returning pane too.
-     * @returns {Neo.container.Base|null} The catch-up pane, or `null` before materialization.
-     */
-    getCatchUpPane() {
-        return this.tearOutPaneHandles?.catchUp || this.returningTearOutPanes?.catchUp || this.getReference('catch-up')
-    }
-
-    /**
-     * @summary Resolve the live {@link AgentOS.view.fleet.memories.Container} instance whether it is
-     * docked, revealed, or vesseled — the click pop-out ({@link #popOutMemories}) and the gesture
-     * tear-out share one pathway, so one handle map answers both. Owner-side pushes (snapshot
-     * writes, roster option refreshes, reconnect re-drives) must route through this accessor
-     * instead of stopping at `getReference()`: a vesseled pane lives outside this cockpit's
-     * projected tree.
-     * @returns {Neo.container.Base|null} The memories pane, or `null` before materialization.
-     */
-    getMemoriesPane() {
-        // returningTearOutPanes covers the vessel-death parking window: the next projection may
-        // not adopt the returning pane for a while, and an owner push landing in that window must
-        // still reach the LIVE instance — otherwise the eventual adoption renders a stale snapshot.
-        return this.tearOutPaneHandles?.memories || this.returningTearOutPanes?.memories || this.getReference('memories')
-    }
-
-    /**
-     * @summary Resolve the live {@link AgentOS.view.fleet.wake.Container} instance whether it is
-     * docked, gesture-torn into a vessel, or parked in the vessel-death returning window — the
-     * {@link #getMemoriesPane} contract for the wake-routes surface, so snapshot writes and the
-     * reconnect re-drive reach the pane in every phase.
-     * @returns {Neo.container.Base|null} The wake-routes pane, or `null` before materialization.
-     */
-    getWakeRoutesPane() {
-        return this.tearOutPaneHandles?.wakeRoutes || this.returningTearOutPanes?.wakeRoutes || this.getReference('wakeRoutes')
-    }
-
-    /**
-     * @summary Resolve the live {@link AgentOS.view.fleet.tasks.Container} instance whether it is docked,
-     * gesture-torn into a vessel, or parked in the vessel-death returning window — the
-     * {@link #getMemoriesPane} contract for the tasks surface, so the liveness tick's snapshot
-     * writes reach the pane in every phase.
-     * @returns {Neo.container.Base|null} The tasks pane, or `null` before materialization.
-     */
-    getTasksPane() {
-        return this.tearOutPaneHandles?.tasks || this.returningTearOutPanes?.tasks || this.getReference('tasks')
-    }
-
-    /**
-     * The tear-out admission seam: opens the vessel window for a mid-gesture boundary exit,
-     * reusing the SAME widget-childapp shell the click pop-out proves (an empty pane host — the
-     * cockpit reparents on connect). Fail-closed per the admission contract: `Neo.Main.windowOpen`
-     * resolves **Boolean** (a blocked popup never throws), and any refused precondition — an
-     * unresolvable live pane (placeholder items), an item already vessel-owned on EITHER pathway —
-     * or falsy/throwing acquisition returns `null`, degrading the gesture to its in-window
-     * fallback with zero vessel state.
-     * @param {Object} request
-     * @param {String} request.itemId
-     * @param {Object} request.proxyRect
-     * @param {Boolean} [request.requireProjectedPane=true] The gesture needs a LIVE projected pane
-     *     (you tear what you can see); the click pop-out ({@link #popOutMemories}) can materialize
-     *     a not-yet-projected pane from owner-held state itself (rail-lazy chrome, or a resident
-     *     item a custom document dropped), so it opts out of this precondition only.
-     * @returns {Promise<{popupHeight: Number, popupWidth: Number, windowName: String}|null>}
-     * @protected
-     */
-    async openTearOutVessel({admissionToken, itemId, proxyRect, requireProjectedPane = true}) {
-        let me         = this,
-            windowName = `fm-tearout-${itemId}-${me.id}`,
-            gesture    = Number.isFinite(admissionToken);
-
-        // fail-closed preconditions: only a live, projected, singly-owned pane may embody
-        if (
-            me.tearOutPanes?.[itemId] || me.tearOutPaneHandles?.[itemId] ||
-            (itemId === 'detail' && me.detachedDetail) ||
-            (requireProjectedPane && !me.findProjectedDockPane(itemId))
-        ) {
-            return null
-        }
-
-        try {
-            let {windowConfigs} = Neo,
-                firstWindowId   = Object.keys(windowConfigs)[0],
-                {basePath}      = windowConfigs[firstWindowId],
-                winData         = await Neo.Main.getWindowData({windowId: me.windowId}),
-                width           = Math.max(Math.round(proxyRect?.width  || 480), 320),
-                height          = Math.max(Math.round(proxyRect?.height || 360), 240),
-                left            = Math.round((proxyRect?.x ?? 120) + winData.screenLeft),
-                top             = Math.round((proxyRect?.y ?? 120) + (winData.outerHeight - winData.innerHeight) + winData.screenTop),
-                opened          = await Neo.Main.windowOpen({
-                    url           : `${basePath}apps/agentos/childapps/widget/index.html?tearout=${itemId}&cockpitId=${me.id}` +
-                        (gesture ? `&vesselFlow=tear-out&vesselAdmission=${admissionToken}` : ''),
-                    windowFeatures: `height=${height},left=${left},top=${top},width=${width}`,
-                    windowId      : me.windowId,
-                    windowName
-                });
-
-            if (opened === false) return null;
-
-            return {popupHeight: height, popupWidth: width, windowName}
-        } catch (error) {
-            return null
-        }
-    }
-
-    /**
-     * Platform retirement hook: closes a vessel the gesture no longer needs (re-entry, cancel,
-     * timeout or refused model commit). The engine releases admission/connection records only
-     * after this hook settles non-false; Fleet's void success preserves the existing best-effort
-     * window-close contract.
-     * @param {Object} vessel
-     * @param {String} vessel.itemId
-     * @param {String} vessel.windowName
-     * @returns {Promise<void>}
-     * @protected
-     */
-    async closeTearOutVessel({windowName}) {
-        try {
-            await Neo.Main.windowClose({names: [windowName], windowId: this.windowId})
-        } catch (error) {
-            // best-effort retirement
-        }
-    }
-
-    /**
-     * Resolves a dock item's LIVE pane instance from the projected tree by the stable reference
-     * names {@link #resolveDockComponentRef} assigns. Items whose resolver yields an unreferenced
-     * placeholder (sibling-leaf panes) resolve `null` — which is exactly the admission refusal:
-     * a placeholder cannot embody into a vessel.
-     * @param {String} itemId
-     * @returns {Neo.component.Base|null}
-     * @protected
-     */
-    findProjectedDockPane(itemId) {
-        let componentRef = this.dockModel?.items?.[itemId]?.componentRef,
-            reference    = componentRef === 'define-agent' ? 'add-agent-form' : componentRef;
-
-        return reference ? (this.getReference(reference) || null) : null
-    }
-
-    /**
-     * @summary Detach the agent-detail inspector into its own OS window on the shared heap —
-     * the `docked → opening` edge of the vessel admission state machine.
-     *
-     * The dock document stays the layout SSOT: `detachItem` prunes the `detail` item from the
-     * tree while preserving its catalog record, and the tabs node + EXACT index are stored FIRST
-     * (`addTab` appends by default — the stored index is the only placement truth the reattach
-     * has). The LIVE pane parks via the reconciler's `preserveItemIds` (awaited, so the vessel's
-     * connect can never race a pane the old shell still holds), then the widget-childapp vessel
-     * opens. `Neo.Main.windowOpen` resolves **Boolean** — `false` IS the blocked-popup failure
-     * (it never throws), taking the `failed-blocked` edge and rolling back through the standard
-     * reattach. A vessel that opens but never joins the heap inside the bounded connect window
-     * takes the `failed-timeout` edge the same way. Every awaited continuation revalidates
-     * {@link #detailVesselGeneration}.
-     * @returns {Promise<{detached: Boolean, errors: String[]}>}
-     */
-    async popOutAgentDetail() {
-        let me   = this,
-            pane = me.getReference('agent-detail'),
-            home = DockZoneModel.findContainingTabsId(me.dockModel, 'detail');
-
-        if (me.detachedDetail || !pane || !home) {
-            return {detached: false, errors: ['agent-detail is not a docked, projected pane']}
-        }
-
-        let generation = ++me.detailVesselGeneration,
-            homeIndex  = me.dockModel.nodes[home].items.indexOf('detail'),
-            result     = me.applyDockZoneOperation({operation: 'detachItem', itemId: 'detail'});
-
-        if (result.errors.length) {
-            return {detached: false, errors: result.errors}
-        }
-
-        // the window name stays an IMMUTABLE local across every await below: a raced reattach
-        // nulls the bookkeeping entry, but a stale-open cleanup still needs the name to close by
-        let windowName = `fm-agent-detail-${me.id}`;
-
-        me.detachedDetail = {
-            connectTimer  : null,
-            homeTabIndex  : homeIndex,
-            homeTabsNodeId: home,
-            windowId      : null,
-            windowName
-        };
-        me.detachedDetailPane   = pane;
-        me.detailVesselState    = 'opening';
-        me.lastDetailVesselFailure = null;
-
-        // the re-projection parks the preserved pane (alive on the shared heap, out of every
-        // parent) and retires its tab button — awaited before the vessel opens
-        me.onDockZoneDocumentChange(result.document);
-        await me.refreshPromise;
-
-        if (generation !== me.detailVesselGeneration) {
-            return {detached: false, errors: ['superseded by a newer vessel operation']}
-        }
-
-        let {windowConfigs} = Neo,
-            firstWindowId   = Object.keys(windowConfigs)[0],
-            {basePath}      = windowConfigs[firstWindowId],
-            winData         = await Neo.Main.getWindowData({windowId: me.windowId});
-
-        if (generation !== me.detailVesselGeneration) {
-            return {detached: false, errors: ['superseded by a newer vessel operation']}
-        }
-
-        let opened = await Neo.Main.windowOpen({
-            url           : `${basePath}apps/agentos/childapps/widget/index.html?detail=agent-detail&cockpitId=${me.id}`,
-            windowFeatures: `height=640,width=480,left=${winData.screenLeft + 160},top=${winData.screenTop + 120}`,
-            windowId      : me.windowId,
-            windowName
-        });
-
-        if (generation !== me.detailVesselGeneration) {
-            // the generation died DURING the open (a raced reattach/teardown already restored the
-            // dock state) — but a `true` completion means the vessel MATERIALIZED under the dead
-            // generation: stale continuations own the cleanup of resources they acquired, so close
-            // the orphan by its immutable name (fire-and-forget; nothing else may be touched)
-            opened && Neo.Main.windowClose({names: [windowName], windowId: me.windowId}).catch(() => {});
-
-            return {detached: false, errors: ['superseded by a newer vessel operation']}
-        }
-
-        if (!opened) {
-            // the PRIMARY real-world failure: the browser blocked the popup. Boolean grammar —
-            // no exception ever fires here. Restore the docked state commit-or-neither.
-            me.detailVesselState       = 'failed-blocked';
-            me.lastDetailVesselFailure = 'blocked';
-
-            me.warnVesselAdmissionFailure('blocked', {windowName});
-
-            await me.reattachAgentDetail({windowAlreadyClosed: true});
-
-            return {detached: false, errors: ['popup blocked: the vessel window did not open']}
-        }
-
-        // bounded connect window: a vessel that opened but never joins the heap rolls back
-        me.detachedDetail.connectTimer = setTimeout(() => {
-            if (generation === me.detailVesselGeneration && me.detailVesselState === 'opening') {
-                me.detailVesselState       = 'failed-timeout';
-                me.lastDetailVesselFailure = 'timeout';
-                me.warnVesselAdmissionFailure('timeout', {boundMs: me.detailVesselConnectWindowMs, windowName});
-                me.reattachAgentDetail()
-            }
-        }, me.detailVesselConnectWindowMs);
-
-        me.syncControlBar();
-
-        return {detached: true, errors: []}
-    }
-
-    /**
-     * @summary Bring the detached inspector home — the `* → reattaching → docked` edge.
-     *
-     * `addTab` returns the `detail` item into its remembered tabs node at its remembered EXACT
-     * index (first-tabs fallback with honest append when a preset retired the node); the parked
-     * instance is re-adopted by the projection ({@link #resolveDockComponentRef} hands back the
-     * SAME instance), and the vessel closes unless it already closed itself. Bookkeeping clears
-     * BEFORE the async close — the cleared entry is the {@link #onWindowDisconnect} re-entrancy
-     * guard. Increments {@link #detailVesselGeneration} first, so every in-flight admission
-     * continuation (open, URL read, connect timer) goes inert — and its OWN post-projection
-     * continuation revalidates the same way: a destroy (or newer operation) landing during the
-     * await limits this path to the vessel cleanup it still owns, never a cockpit-field write.
-     * @param {Object} [options={}]
-     * @param {Boolean} [options.windowAlreadyClosed=false] `true` when the disconnect path runs
-     *     the reattach (the vessel is already gone — do not close it again).
-     * @returns {Promise<{reattached: Boolean, errors: String[]}>}
-     */
-    async reattachAgentDetail({windowAlreadyClosed=false}={}) {
-        let me    = this,
-            entry = me.detachedDetail,
-            pane  = me.detachedDetailPane;
-
-        if (!entry || !pane) {
-            return {errors: ['agent-detail is not detached'], reattached: false}
-        }
-
-        let generation = ++me.detailVesselGeneration;
-
-        entry.connectTimer && clearTimeout(entry.connectTimer);
-
-        let failure = me.lastDetailVesselFailure;
-
-        me.detailVesselState = 'reattaching';
-
-        let homeLive = me.dockModel.nodes[entry.homeTabsNodeId]?.type === 'tabs',
-            home     = homeLive
-                ? entry.homeTabsNodeId
-                : Object.keys(me.dockModel.nodes).find(id => me.dockModel.nodes[id].type === 'tabs'),
-            result   = me.applyDockZoneOperation({
-                operation : 'addTab',
-                itemId    : 'detail',
-                tabsNodeId: home,
-                index     : homeLive ? entry.homeTabIndex : undefined
-            });
-
-        if (result.errors.length) {
-            return {errors: result.errors, reattached: false}
-        }
-
-        me.detachedDetail = null;
-
-        // the re-projection re-adopts the instance: the resolver hands it back and the
-        // container insert performs the atomic move out of the vessel viewport (core contract)
-        me.onDockZoneDocumentChange(result.document);
-
-        await me.refreshPromise;
-
-        if (me.isDestroyed || generation !== me.detailVesselGeneration) {
-            // a destroy (or a newer vessel operation) landed during the projection await: this
-            // continuation may perform ONLY the vessel cleanup it still owns — teardown skipped
-            // the close because this reattach had already cleared the bookkeeping entry — and
-            // must never resurrect cockpit fields (the pane is the newer owner's, or destroyed)
-            windowAlreadyClosed || Neo.Main.windowClose({names: [entry.windowName], windowId: me.windowId}).catch(() => {});
-
-            return {errors: ['superseded by teardown or a newer vessel operation'], reattached: false}
-        }
-
-        // an external re-tree while detached left a stand-in occupying the slot, and the
-        // reconciler keeps tree-live occupants — swap it for the live instance, same position
-        let standin = me.getReference('agent-detail-standin');
-
-        if (standin) {
-            let parent = standin.parent,
-                index  = parent.items.indexOf(standin);
-
-            parent.remove(standin, true);
-            parent.insert(index, pane)
-        }
-
-        me.detachedDetailPane      = null;
-        me.detailVesselState       = 'docked';
-        me.lastDetailVesselFailure = failure;
-
-        me.syncControlBar();
-
-        if (!windowAlreadyClosed) {
-            try {
-                await Neo.Main.windowClose({names: [entry.windowName], windowId: me.windowId})
-            } catch (error) {
-                return {errors: [`popup close failed: ${error?.message || error}`], reattached: true}
-            }
-        }
-
-        return {errors: [], reattached: true}
-    }
-
-    /**
-     * @summary One self-describing line per silent-rollback admission edge — the flap witness.
-     *
-     * Both failure edges (`failed-blocked`, `failed-timeout`) roll the dock back so cleanly that
-     * a flap is visually identical to a user-initiated reattach. {@link #lastDetailVesselFailure}
-     * carries the state half of the observability contract; this warn carries the log half — the
-     * App-Worker console bridges into the Neural Link console stream, so harnesses and agents can
-     * distinguish an admission failure from a deliberate return without polling cockpit state.
-     * @param {String} kind The failure edge: 'blocked' or 'timeout'.
-     * @param {Object} meta Window name + bound context, so the line stands alone in a log;
-     *     `meta.itemId` names the vessel's item (absent → the click-detail pathway's 'detail').
-     * @protected
-     */
-    warnVesselAdmissionFailure(kind, meta) {
-        console.warn(`[FleetCockpit] ${meta?.itemId ?? 'detail'}-vessel admission failed (${kind}):`, meta)
-    }
-
-    /**
-     * @summary The SHELL-owned window-toggle affordance routes by the state machine: docked →
-     * {@link #popOutAgentDetail}; opening/connected/windowed → {@link #reattachAgentDetail};
-     * a reattach already in flight is a guarded no-op. The pane itself carries no dock semantics —
-     * panes stay layout-blind; the shell owns docking behavior.
-     * @returns {Promise<Object>} The routed operation's result.
-     */
-    onDetailWindowToggle() {
-        let me                         = this,
-            {detailVesselState: state} = me;
-
-        if (state === 'reattaching') {
-            return Promise.resolve({errors: ['reattach in flight'], reattached: false})
-        }
-
-        // the memories twin's gesture grammar: an ADOPTED gesture vessel returns home through
-        // this same verb (the main view's recall chrome routes here), while the mid-gesture
-        // window (captured handle, no adopted vessel yet) refuses instead of racing the gesture
-        if (me.tearOutPanes?.detail) {
-            return me.returnDetail()
-        }
-        if (me.tearOutPaneHandles?.detail) {
-            return Promise.resolve({errors: ['a gesture tear-out owns the pane'], detached: false})
-        }
-
-        return me.detachedDetail ? me.reattachAgentDetail() : me.popOutAgentDetail()
-    }
-
-    /**
-     * @summary Bring the gesture-torn inspector home by closing its OS window: vessel death IS
-     * the return path — {@link #onWindowDisconnect}'s tear-out branch correlates the close and
-     * {@link #reintegrateTearOutItem} restores the same live instance at its stored home
-     * position ({@link #returnMemories}' contract, mirrored for the detail pane).
-     * @returns {Promise<{returned: Boolean, errors: String[]}>}
-     */
-    async returnDetail() {
-        let me    = this,
-            entry = me.tearOutPanes?.detail;
-
-        if (!entry) {
-            return {returned: false, errors: ['detail is not in a gesture vessel']}
-        }
-
-        try {
-            await Neo.Main.windowClose({names: [entry.windowName], windowId: me.windowId})
-        } catch (error) {
-            // best-effort: an already-gone window still fires (or already fired) the disconnect
-        }
-
-        return {returned: true, errors: []}
-    }
-
-    /**
-     * @summary Detach the Memories pane into its own OS window on the shared heap — the click
-     * pop-out riding the GENERIC tear-out substrate, never a second vessel state machine.
-     *
-     * The vessel URL rides the established tear-out param shape —
-     * `?tearout=memories&cockpitId=<id>` — the same widget childapp the click pop-out's
-     * `?detail=agent-detail` shape loads; {@link #onWindowConnect}'s tear-out branch adopts it.
-     * The dock document stays the layout SSOT: {@link #applyTearOutOperation} captures the exact
-     * `{tabsNodeId, index}` placement before the `detachItem` commit, so the vessel-death return
-     * ({@link #reintegrateTearOutItem}) restores the item at its stored home position.
-     *
-     * Selection travel is BY IDENTITY: the vessel hosts the LIVE pane instance (or one
-     * materialized from the owner-held `memoriesTarget`/`memoriesSnapshot` when a custom
-     * document dropped it from the tree — resident tabs otherwise always project), so the active
-     * agent and cards move with the window — stronger
-     * than a URL parameter, and exactly the rematerialization contract the memories source
-     * documents. A blocked popup (`windowOpen` resolves `false`, it never throws) refuses before
-     * any document mutation — commit-or-neither.
-     * @returns {Promise<{detached: Boolean, errors: String[]}>}
-     */
-    async popOutMemories() {
-        let me     = this,
-            itemId = 'memories';
-
-        if (me.tearOutPanes?.[itemId] || me.tearOutPaneHandles?.[itemId]) {
-            return {detached: false, errors: ['memories is already in a vessel']}
-        }
-
-        if (!DockZoneModel.findContainingTabsId(me.dockModel, itemId)) {
-            return {detached: false, errors: ['memories is not a docked item']}
-        }
-
-        let vessel = await me.acquireTearOutVessel({itemId, proxyRect: null, requireProjectedPane: false});
-
-        if (!vessel) {
-            // the silent-refusal witness (the detail pathway's observability contract): the click
-            // mutates nothing on this edge, so without this line a blocked popup is visually
-            // indistinguishable from a dead button
-            me.warnVesselAdmissionFailure('blocked', {itemId, windowName: `fm-tearout-${itemId}-${me.id}`});
-
-            return {detached: false, errors: ['popup blocked: the vessel window did not open']}
-        }
-
-        if (me.isDestroyed) {
-            await me.retireTearOutVessel(vessel);
-            return {detached: false, errors: ['cockpit destroyed during vessel open']}
-        }
-
-        // the item record is read BEFORE the commit prunes the tree entry (the catalog record
-        // survives a detach, so this is belt-and-braces ordering, not a correctness dependency)
-        let item       = me.dockModel.items[itemId],
-            descriptor = {operation: 'detachItem', itemId},
-            result     = me.applyTearOutOperation(descriptor);
-
-        if (result.errors.length) {
-            await me.retireTearOutVessel(vessel);
-            return {detached: false, errors: result.errors}
-        }
-
-        // capture the live pane synchronously before the commit's re-projection can destroy it
-        // (the gesture order); a pane that was never projected (rail-lazy chrome — resident tabs
-        // always project) materializes from owner-held state instead — same resolver,
-        // vessel-bound rather than projection-bound
-        if (!me.findProjectedDockPane(itemId)) {
-            me.tearOutPaneHandles[itemId] = Neo.create(me.resolveDockComponentRef(item?.componentRef, item, itemId))
-        }
-
-        me.onTearOutDocumentChange(result.document, descriptor, vessel);
-
-        return {detached: true, errors: []}
-    }
-
-    /**
-     * @summary Bring the vesseled Memories pane home by closing its OS window: vessel death IS
-     * the return path — {@link #onWindowDisconnect}'s tear-out branch correlates the close and
-     * {@link #reintegrateTearOutItem} restores the same live instance at its stored home
-     * position. Closing by the immutable window NAME covers the not-yet-connected window too.
-     * @returns {Promise<{returned: Boolean, errors: String[]}>}
-     */
-    async returnMemories() {
-        let me    = this,
-            entry = me.tearOutPanes?.memories;
-
-        if (!entry) {
-            return {returned: false, errors: ['memories is not in a vessel']}
-        }
-
-        try {
-            await Neo.Main.windowClose({names: [entry.windowName], windowId: me.windowId})
-        } catch (error) {
-            // best-effort: a already-gone window still fires (or already fired) the disconnect
-        }
-
-        return {returned: true, errors: []}
-    }
-
-    /**
-     * @summary SHELL-owned toggle routing for the Memories pane vessel — the
-     * {@link #onDetailWindowToggle} grammar on the tear-out pathway. Mid-gesture ownership
-     * (captured handle without an adopted vessel) refuses instead of racing the gesture.
-     * @returns {Promise<Object>} The routed operation's result.
-     */
-    onMemoriesWindowToggle() {
-        let me = this;
-
-        if (!me.tearOutPanes?.memories && me.tearOutPaneHandles?.memories) {
-            return Promise.resolve({errors: ['a gesture tear-out owns the pane'], detached: false})
-        }
-
-        return me.tearOutPanes?.memories ? me.returnMemories() : me.popOutMemories()
-    }
-
-    /**
-     * @summary Continues the product-owned click-detail connect after the engine has read and
-     * admitted the owner URL as a non-tear-out route. The generation was captured synchronously
-     * before that URL read, so a raced reattach still makes this continuation inert.
-     * @param {Object} data `{appName, windowId}`
-     * @param {Object} context Engine-owned route context.
-     * @param {Object} context.app Connected popup application.
-     * @param {Number} context.consumerContext Captured detail-vessel generation.
-     * @param {URLSearchParams} context.params Admitted owner URL params.
-     * @protected
-     */
-    onUnhandledWindowConnect(data, {app, consumerContext: generation, params}) {
-        let me         = this,
-            {windowId} = data;
-
-        if (
-            !me.detachedDetail || !me.detachedDetailPane ||
-            generation !== me.detailVesselGeneration     ||
-            me.detailVesselState !== 'opening'           ||
-            params.get('detail') !== 'agent-detail'
-        ) {
-            return
-        }
-
-        let {connectTimer} = me.detachedDetail;
-
-        connectTimer && clearTimeout(connectTimer);
-
-        me.detachedDetail.connectTimer = null;
-        me.detachedDetail.windowId     = windowId;
-        me.detailVesselState           = 'connected';
-
-        app.mainView.add(me.detachedDetailPane);
-
-        me.detailVesselState = 'windowed';
-        me.syncControlBar()
-    }
-
-    /**
-     * @summary Continues a non-tear-out disconnect for the click-detail vessel. Engine-owned
-     * gesture vessels are already reconciled before this hook can run.
-     * @param {Object} data `{appName, windowId}`
-     * @protected
-     */
-    onUnhandledWindowDisconnect(data) {
-        if (this.detachedDetail?.windowId === data.windowId) {
-            this.reattachAgentDetail({windowAlreadyClosed: true})
         }
     }
 
@@ -2120,37 +890,6 @@ class FleetCockpit extends DockWorkspace {
         }
     }
 
-    /**
-     * @summary Keep the owner-held selection truthful across authoritative roster transitions —
-     * membership reactivity, distinct from the mutation reactivity {@link #onDetailRecordChange} covers.
-     *
-     * `recordChange` fires when the inspected resident MUTATES, but a membership change is a different
-     * Store edge: {@link Neo.data.Store#remove} drops a record WITHOUT firing `recordChange` on it, and
-     * the first-live replacement (`clear` + `add`) swaps the sample instance for a fresh one. Either
-     * leaves `detailRecord` pointing at a record the roster no longer holds — the inspector then
-     * presents a resident the authority says is absent, which is user-visible misinformation. So after
-     * every authoritative reconcile/replace: if the selected durable `agentId` still exists, re-seat
-     * `detailRecord` onto the Store's CURRENT instance (a re-seat only when the object actually changed —
-     * an in-place `record.set` reconcile keeps the same instance, already covered by `recordChange`); if
-     * it is gone (including an empty snapshot), clear the selection so {@link AgentOS.view.fleet.detail.Container}
-     * renders its honest empty state rather than a ghost resident.
-     * @protected
-     */
-    reconcileSelection() {
-        let me = this;
-
-        if (!me.detailRecord) {
-            return
-        }
-
-        const
-            store   = me.resolveFleetRosterStore(),
-            current = store?.get(me.detailRecord.agentId) ?? null;
-
-        if (current !== me.detailRecord) {
-            me.applySelection(current)
-        }
-    }
 
     /**
      * @summary The ONE selection-write site: seat a resident record (or null) as the cockpit's
@@ -2171,53 +910,31 @@ class FleetCockpit extends DockWorkspace {
         let me       = this,
             identity = record?.githubUsername ? `@${record.githubUsername}` : null;
 
-        me.detailRecord = record ?? null;
+        me.detailRecord = record ?? null;   // afterSetDetailRecord pushes the live pane
 
         me.setState({
             selectedAgentId      : record?.agentId ?? null,
             selectedAgentIdentity: identity
         });
 
-        me.getAgentDetailPane()?.set({record: record ?? null});
+        const controller = me.getController();
 
-        if (identity && identity !== me.memoriesTarget) {
-            me.memoriesTarget = identity;
+        if (identity && identity !== controller.memoriesTarget) {
+            controller.memoriesTarget = identity;
             me.getMemoriesPane()?.set({activeAgent: identity})
         }
     }
 
     /**
-     * @summary Detach Fleet-owned feeds and click-detail state; the inherited workspace retires
-     * its worker listeners, gesture vessels, captured panes and drop producer exactly once. A still-detached inspector is
-     * OWNED state outside any projection: bump the generation (in-flight admission continuations
-     * go inert), clear the connect timer, close its vessel (fire-and-forget — the guard in
-     * {@link #onWindowDisconnect} keeps a late event inert) and destroy the instance. Live
-     * tear-out vessels and their owner-held panes retire through {@link #retireTearOutState}.
+     * @summary Detach Fleet-owned feeds and layout services; the inherited vessel layer retires
+     * detached/torn panes and their windows, and the engine workspace retires its worker
+     * listeners, gesture vessels, captured panes and drop producer exactly once.
      * @param {...*} args
      */
     destroy(...args) {
         let me = this;
 
-        me.stopLiveness();
-
-        // the wake stream dies with its composition root — a consumer that outlives the cockpit
-        // would keep a credentialed connection open on behalf of a surface that no longer exists
-        me.viewerWakeConsumer?.stop();
-        me.viewerWakeConsumer = null;
-        me.viewerWakeBridge   = null;
-
-        me.resolveFleetRosterStore()?.un({load: me.onRosterStoreLoad, recordChange: me.onDetailRecordChange, scope: me});
-
-        me.detailVesselGeneration++;
-
-        if (me.detachedDetail) {
-            me.detachedDetail.connectTimer && clearTimeout(me.detachedDetail.connectTimer);
-            Neo.Main.windowClose({names: [me.detachedDetail.windowName], windowId: me.windowId}).catch(() => {});
-            me.detachedDetail = null
-        }
-
-        me.detachedDetailPane?.destroy();
-        me.detachedDetailPane = null;
+        me.getController().resolveFleetRosterStore()?.un({load: me.onRosterStoreLoad, recordChange: me.onDetailRecordChange, scope: me});
 
         me.dockService?.destroy();
         me.dockService = null;
@@ -2226,402 +943,14 @@ class FleetCockpit extends DockWorkspace {
         super.destroy(...args)
     }
 
-    /**
-     * @summary Bind the activity stream to the live fleet feed: poll the read-observe `fleetActivity`
-     * verb on the injected registry bridge and route its honest capability state to the stream:
-     * - `wired` → **live** (the feed is newest-first; the stream renders chronological, so reverse). A
-     *   wired source is live even when momentarily empty — it is streaming, just quiet — so an empty
-     *   wired feed stays `live` (empty), never the sample: falling back to the sample would falsely
-     *   imply the source is not wired.
-     * - `degraded` → the **stale** banner.
-     * - not-wired / absent bridge / a thrown source → leave the representative **sample** in place
-     *   (honestly labelled by the stream header); fail closed rather than blanking the surface.
-     * The routed state also lands on the OWNER and its provider Store, so a pane returning from
-     * true absence materializes at current truth.
-     * @protected
-     */
-    async loadActivity() {
-        let me     = this,
-            store  = me.resolveFleetActivityEventsStore(),
-            stream = me.getReference('activity-stream'),
-            bridge = globalThis.AgentOS?.fleet?.registryBridge;
 
-        // BEFORE the early return, not after. Absence is newer knowledge, and an older pending read
-        // must not outlive it: without the bump, a tick that finds the bridge gone returns silently
-        // and an in-flight read from when it was present still lands and writes.
-        const generation = ++me.streamReadGeneration;
 
-        if (!store || typeof bridge?.fleetActivity !== 'function') {
-            // no bridge/verb IS the cold truth — the spine banner must say so. Same retraction
-            // duty as the roster twin's absence exit: a never-wired surface's retained
-            // producer-answered cause ("activity source not wired") must not outlive the bridge
-            // that answered it; wired surfaces keep their stale/live semantics.
-            if (me.streamAdapterState === 'sample') {
-                me.streamDegradedReason = null
-            }
 
-            me.syncSpineBanner();
-            return
-        }
 
-        try {
-            me.streamReadInFlight++;
 
-            // `Promise.resolve().then(() => …)` — NOT `Promise.resolve(bridge.fleetActivity())`.
-            // The argument form evaluates the CALL first, so a SYNCHRONOUS throw lands in this
-            // method's catch before `boundedRead` ever attaches its settle hook, and the counter
-            // never comes back. Two sync throws consume the cap and suppress this surface forever —
-            // the leak, rebuilt inside the fix for the leak. Invoking INSIDE the chain turns a sync
-            // throw into a rejection of the tracked promise, so the reject path owns the release.
-            const {capability, counts, events} = await boundedRead(
-                Promise.resolve().then(() => bridge.fleetActivity()),
-                me.livenessReadTimeout,
-                () => { me.streamReadInFlight-- }
-            ) ?? {};
 
-            // The fence. Older news must never overwrite newer: an interval re-poll means two reads
-            // of THIS surface can be in flight at once, and without this the LOSER writes last —
-            // a slow failed poll landing after a fast successful one regresses live → stale on
-            // strictly staler information. `isDestroyed` is the same question at the other end: a
-            // read that outlives its owner has no surface left to speak for.
-            if (generation !== me.streamReadGeneration || me.isDestroyed) {
-                return
-            }
 
-            if (capability?.state === 'wired') {
-                me.streamAdapterState = 'live';
-                store.ingestSnapshot(Array.isArray(events) ? events : [], {replace: !me.activityWired});
-                me.activityWired = true;
-                me.getStateProvider()?.setData('activityCounts', Array.isArray(counts) ? counts : []);
-                stream && (stream.adapterState = me.streamAdapterState);
-                me.clearDegradedReason('stream')
-            } else if (capability?.state === 'degraded') {
-                me.streamAdapterState = 'stale';
-                stream && (stream.adapterState = 'stale');
-                // the adapter's OWN reason outranks a guess — it saw the failure, we only saw the answer
-                me.streamDegradedReason = toSafeDegradedReason(capability.reason)
-            } else if (capability) {
-                // The producer ANSWERED and said it is not wired (`not-wired`). The seed stays — the
-                // stream really is showing sample events, so its own state is honestly 'sample' — but
-                // an answer is not silence, and the difference is the whole point: a reachable server
-                // whose activity source is unconfigured is NOT an unreachable server. Retaining the
-                // reason is what lets the banner say which one it is instead of guessing the loudest.
-                me.streamDegradedReason = toSafeDegradedReason(capability.reason)
-            }
-            // NO capability at all (a torn/absent answer) → keep the 'sample' seed AND no reason:
-            // we learned nothing, so the banner falls back to its generic copy rather than inventing
-            // a cause. That is the genuine cold case.
-        } catch (error) {
-            // fenced too, and this is the branch that actually bit: a slow FAILURE landing after a
-            // fast success would regress live → stale on older news. The catch is not exempt from
-            // ordering just because it is the sad path.
-            if (generation === me.streamReadGeneration && !me.isDestroyed) {
-                // fail-closed: the last-known feed STAYS rather than blanking it — only the state advances
-                me.degradeWiredSurface('stream', error, stream)
-            }
-        } finally {
-            // a superseded or post-destroy read renders nothing: syncing here would let a dropped
-            // read still repaint the banner from state it was not allowed to write
-            if (generation === me.streamReadGeneration && !me.isDestroyed) {
-                me.syncSpineBanner()
-            }
-        }
-    }
 
-    /**
-     * @summary Bind the fleet roster to the running fleet: poll the read-observe `fleetRoster` verb
-     * on the injected registry bridge — the Brain-side assembler DTO (`{sources, capabilities, rows,
-     * events}`, identity-enriched per the `resolveIdentityDisplay` join) — map its rows onto the
-     * FleetAgent record contract, and route honestly into the Store the grid renders from:
-     * - a populated resolved snapshot is **authoritative**: the first one replaces the sample seed
-     *   and promotes {@link #rosterSourceMode} to `selected`; every later one **reconciles** the
-     *   Store — `record.set(row)` per known `agentId`, `store.add` for a joiner, `store.remove` for
-     *   a resident absent from the snapshot (a `removeAgent` must never leave a ghost card).
-     * - an EMPTY first snapshot preserves the bundled sample while the source mode is `sample` — a
-     *   fresh private registry must not blank the zero-setup first paint. It becomes authoritative
-     *   when the source was explicitly `selected`, or after any live snapshot established
-     *   {@link #rosterWired}; a genuinely selected/drained fleet therefore still renders its TRUE
-     *   zero state rather than resurrecting sample residents.
-     *   Every admitted snapshot makes the grid `live` (instance + owner-held fallback state).
-     * - absent bridge / no verb / a MALFORMED answer (`rows` not an Array) / a thrown source →
-     *   keep the last-known roster; fail closed rather than blanking the fleet. A resolved call is
-     *   mechanically distinguishable from a failed one — only failures preserve last-known state.
-     *   Absence and thrown calls are DISTINCT transitions with one shared retraction duty: a
-     *   never-wired surface's retained answered cause is withdrawn on either (the claim must not
-     *   outlive its producer), while a wired surface keeps its stale/live semantics. (The grid's
-     *   `stale` render remains reserved for a real degraded signal once a producer emits one.)
-     * @protected
-     */
-    async loadRoster() {
-        let me = this,
-            // the WRITE authority is the provider-owned Store — a torn/absent grid must not stop
-            // live ingest (round-2 RA-1: the projected child renders, it never owns the roster)
-            store  = me.resolveFleetRosterStore(),
-            grid   = me.getReference('fleet-grid'),
-            bridge = globalThis.AgentOS?.fleet?.registryBridge;
-
-        // BEFORE the early return — absence is newer knowledge and must invalidate an older pending
-        // read. See {@link #gridReadGeneration}.
-        const generation = ++me.gridReadGeneration;
-
-        if (!store || typeof bridge?.fleetRoster !== 'function') {
-            // no bridge/verb IS the cold truth — the spine banner must say so. Absence is a
-            // DISTINCT transition from a thrown call, and it owns the same retraction duty: a
-            // never-wired surface's retained ANSWERED cause ("server connected · registry
-            // empty") must not outlive the bridge that said it. A wired surface keeps its
-            // stale/live semantics — this exit only speaks for cold truth.
-            if (me.gridAdapterState === 'sample') {
-                me.gridDegradedReason = null
-            }
-
-            me.syncSpineBanner();
-            return
-        }
-
-        try {
-            me.gridReadInFlight++;
-
-            // invoked INSIDE the chain so a synchronous throw rejects the tracked promise rather
-            // than escaping before the settle hook attaches — see the activity twin
-            const {capabilities, rows} = await boundedRead(
-                Promise.resolve().then(() => bridge.fleetRoster()),
-                me.livenessReadTimeout,
-                () => { me.gridReadInFlight-- }
-            ) ?? {};
-
-            // the fence: a newer read started while this one was in flight, or the owner is gone.
-            // Either way this answer is no longer this surface's truth to write.
-            if (generation !== me.gridReadGeneration || me.isDestroyed) {
-                return
-            }
-
-            if (!Array.isArray(rows)) {
-                return // malformed answer → keep the last-known roster
-            }
-
-            const mapped = rows.filter(row => row?.id).map(row => me.mapRosterRow(row));
-
-            // The shipped sample is the cold-first-run authority. A reachable but fresh/empty
-            // private registry has answered, but it has not supplied a working fleet and no source
-            // was selected — replacing the sample here would turn successful boot into an empty
-            // flagship. An explicitly wired bridge (the injector marks it `selected`) IS a source
-            // selection, so its empty registry renders the true zero state; once any populated
-            // snapshot made the surface live, empty regains its ordinary authoritative meaning
-            // (the real fleet may genuinely drain).
-            if (!me.rosterWired && mapped.length === 0 && !bridge?.selected && me.rosterSourceMode !== 'selected') {
-                // The server ANSWERED — but an answer is not silence (the activity twin's not-wired
-                // discipline): retain the cause so the spine banner names "connected · registry
-                // empty" instead of falling back to "server offline · start it" — advice to restart
-                // a process that just replied, and the exact reachable-server case the spineBanner
-                // module documents as needing a retained reason. Cleared by the ordinary paths: a
-                // populated snapshot clears it below; a transport failure retracts it in
-                // {@link #degradeWiredSurface} (the claim must not outlive the connection).
-                me.gridDegradedReason = 'server connected · fleet registry empty — define agents to go live';
-                return
-            }
-
-            me.lastLiveRows = mapped;
-            me.rosterSourceMode = 'selected';
-
-            if (me.rosterWired) {
-                me.reconcileRoster(store, mapped)
-            } else {
-                store.clear();
-                mapped.length > 0 && store.add(mapped);
-                me.rosterWired = true;
-                // the first live snapshot replaces the sample seed wholesale — re-seat or clear a
-                // selection made against a now-removed sample record (reconcileRoster owns the later reconciles)
-                me.reconcileSelection()
-            }
-
-            me.gridAdapterState = 'live';
-            // rendering-only writes: the grid is a PROJECTION of the store's truth — torn/absent,
-            // it simply has nothing to paint, and the ingest above happened regardless
-            grid && (grid.adapterState = 'live');
-            // the presence-CAPABILITY envelope rides every admitted snapshot onto the grid's chip:
-            // a degraded producer gets NAMED at roster level (every band correctly vanished — the
-            // "no one is online" operator falsifier), and a recovered producer clears it on the
-            // next poll. Absent/malformed envelopes plumb null — the chip claims nothing.
-            grid && (grid.presenceCapability = capabilities?.presence ?? null);
-            me.getCatchUpPane()?.set({partitionOptions: me.buildCatchUpPartitionOptions()});
-            // the activity rows' actor chips join the same roster truth (avatar + display name)
-            me.getReference('activity-stream')?.set({actorDirectory: me.buildActivityActorDirectory()});
-            // resident panes snapshot their roster-derived options at projection time, which can
-            // precede this first live answer — every consumer refreshes here, the mailbox included
-            // (recipients grow beyond the boot-time AGENT:* sentinel), and the seat-conflation
-            // posture re-derives against the roster that can now actually judge it.
-            me.getOperatorMailboxPane()?.set({recipientOptions: me.buildOperatorRecipientOptions()});
-            if (me.operatorRecord) {
-                me.operatorIdentityPosture = me.deriveOperatorIdentityPosture(me.operatorRecord.agentIdentityNodeId);
-                me.getOperatorMailboxPane()?.set({identityPosture: me.operatorIdentityPosture})
-            }
-            // a resident CatchUp can emit its construction-time history request BEFORE the bridge
-            // wires (the cold-before-bridge ordering); that one-shot miss recovers the moment the
-            // bridge answers, through the pane's own guarded refresh path — the Reconnect
-            // affordance's documented re-drive, fired automatically at bridge arrival.
-            me.catchUpSnapshot?.capability?.state === 'unavailable' && me.getCatchUpPane()?.onRefreshClick();
-            me.clearDegradedReason('grid')
-        } catch (error) {
-            // fenced: a slow failure must not overwrite a newer success (see the stream twin)
-            if (generation === me.gridReadGeneration && !me.isDestroyed) {
-                // fail-closed: the last-known roster STAYS rather than blanking the fleet — only the
-                // state advances. A wired surface that stops answering is degraded, not cold: it is
-                // showing last-known LIVE rows, so claiming 'sample' would tell the operator they are
-                // looking at fixture data. Pre-wired failures keep the honest 'sample' seed.
-                me.degradeWiredSurface('grid', error, grid)
-            }
-        } finally {
-            if (generation === me.gridReadGeneration && !me.isDestroyed) {
-                me.syncSpineBanner()
-            }
-        }
-    }
-
-    /**
-     * @summary Roster-joined actor facts for the activity stream's chips — `agentId →
-     * {avatarUrl, displayName}` from the SAME provider-owned roster every other surface reads
-     * (no second resident list). Rows without the facts contribute nothing: the stream renders a
-     * missing entry handle-only, per its honest-absence contract.
-     * @returns {Object}
-     */
-    buildActivityActorDirectory() {
-        const rows = this.resolveFleetRosterStore()?.items ?? [];
-
-        return Object.fromEntries(rows
-            .filter(row => row.agentId)
-            .map(row => [row.agentId, {
-                ...(row.avatarUrl   ? {avatarUrl: row.avatarUrl}     : {}),
-                ...(row.displayName ? {displayName: row.displayName} : {})
-            }])
-        )
-    }
-
-    /**
-     * @summary Build the operator-compose recipient options from the LIVE roster — `{id, name}` records
-     * the picker's ChipField store renders. The `id` is the mailbox IDENTITY (`@githubUsername`), NOT the
-     * roster `agentId` (a Fleet key like `vega`), plus the `AGENT:*` broadcast sentinel. Empty until the
-     * roster resolves — the pane picks recipients from a real current fleet, never a hand-mapped list.
-     * @returns {Object[]}
-     */
-    buildOperatorRecipientOptions() {
-        const rows = this.resolveFleetRosterStore()?.items ?? [];
-
-        return [
-            {id: 'AGENT:*', name: 'All agents (broadcast)'},
-            ...rows
-                .filter(row => row.githubUsername)
-                .map(row => ({id: `@${row.githubUsername}`, name: row.githubUsername}))
-        ]
-    }
-
-    /**
-     * @summary Build canonical Fleet/agent Memory partitions from the live roster Store. PR history
-     * remains Fleet-wide; these choices alter only the Memory operation in the Brain adapter.
-     * @returns {Object[]}
-     */
-    buildCatchUpPartitionOptions() {
-        const rows = this.resolveFleetRosterStore()?.items ?? [];
-
-        return rows
-            .filter(row => row.githubUsername)
-            .map(row => ({
-                id       : `catch-up-${row.agentId}`,
-                label    : row.displayName || row.githubUsername,
-                partition: `@${row.githubUsername}`
-            }))
-    }
-
-    /**
-     * @summary READ-OBSERVE: one pane history intent through the fenced source-read discipline.
-     * @param {Object} [params]
-     * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    async loadCatchUp(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.catchUp, params)
-    }
-
-    /**
-     * @summary RUNTIME-WRITE: advance the authenticated viewer's lastSeen only through the pane's
-     * rendered window end, then write the honest outcome back to the pane.
-     * @param {Object} params `{windowEnd}`
-     * @returns {Promise<Object>}
-     */
-    async markCatchUp(params) {
-        const me     = this,
-              bridge = globalThis.AgentOS?.fleet?.registryBridge;
-
-        let outcome;
-
-        try {
-            outcome = typeof bridge?.markFleetCaughtUp === 'function'
-                ? await bridge.markFleetCaughtUp(params)
-                : {status: 'not-wired', reason: 'fleet catch-up mark verb not wired'}
-        } catch (error) {
-            outcome = {status: 'error', reason: 'fleet catch-up mark failed'}
-        }
-
-        if (!me.isDestroyed) {
-            me.catchUpMarkOutcome = outcome;
-
-            const pane = me.getCatchUpPane();
-
-            pane && (pane.markOutcome = outcome)
-        }
-
-        return outcome
-    }
-
-    /**
-     * @summary READ-OBSERVE: one pane memories intent through the fenced source-read discipline
-     * (pre-await owner-held target included).
-     * @param {Object} [params] `{agentIdentity, offset?, limit?}`
-     * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    async loadMemories(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.memories, params)
-    }
-
-    /**
-     * @summary The memories drill-in through the fenced source-read discipline (pre-await drill
-     * hold; display-only `title` never rides the wire).
-     * @param {Object} params `{sessionId, title?, offset?, limit?}`
-     * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    async loadSessionMemories(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.sessionMemories, params)
-    }
-
-    /**
-     * @summary Clear the owner-held memories drill-in — the close is TERMINAL for in-flight reads.
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    clearSessionMemoriesDrill() {
-        CockpitSourceReads.clearSessionMemoriesDrill(this)
-    }
-
-    /**
-     * @summary The per-seat wake-route envelope through the fenced source-read discipline.
-     * @param {Object} [params]
-     * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    async loadWakeRoutes(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.wakeRoutes, params)
-    }
-
-    /**
-     * @summary The deployment's task picture through the fenced source-read discipline — plus the
-     * liveness tick's in-flight accounting (released on this read's OWN settle).
-     * @param {Object} [params] Reserved; the verb takes no caller input today.
-     * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    async loadTasks(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.tasks, params)
-    }
 
     /**
      * @summary Focus the existing bounded live Activity surface as adjacency. No history citation is
@@ -2655,685 +984,24 @@ class FleetCockpit extends DockWorkspace {
         return {opened: true, target}
     }
 
-    /**
-     * @summary WRITE: route one operator-composed message to the authenticated `composeOperatorMessage`
-     * verb — one, several, or the `AGENT:*` broadcast — then re-poll the operator inbox so the sent
-     * rows land at CANONICAL truth, never an optimistic insert. The cockpit is the composition root
-     * that knows the bridge; the sender is server-stamped from the bound viewer at the authenticated
-     * ingress, never carried in this payload.
-     *
-     * **The verb is one-target, so SEVERAL named recipients fan out.** The compose surface emits `to`
-     * as a list; the authenticated verb accepts one `@login` or the `AGENT:*` sentinel per call, so
-     * each named recipient is a separate authenticated call and carries its OWN outcome — an operator
-     * steering three peers learns each landed (or refused) independently, never one aggregate verdict.
-     * `AGENT:*` stays a single call (the server expands the broadcast from the one sentinel target); a
-     * scalar `to` stays one call (back-compatible).
-     *
-     * Fail-closed: no bridge / no verb → an honest per-recipient `not-wired` refusal, nothing attempted;
-     * a thrown bridge promise is caught as that recipient's `error` outcome, never a detached rejection.
-     * The inbox re-polls exactly ONCE for the batch, and only when a real send landed (a `messageId`
-     * came back) — not-wired / rejected / error changed nothing.
-     * @param {Object} message `{to, subject, body, priority?, wakeSuppressed?, relatedTickets?}` — `to`
-     *     is one `@login` / `AGENT:*`, or a list of them.
-     * @returns {Promise<Object>} `{results: [{to, outcome}]}` — one entry per target, in order, each
-     *     outcome the verb's own (`{messageId, …}` sent | `{status:'not-wired'|'rejected'|'error', …}`).
-     */
-    async composeOperatorMessage(message) {
-        const
-            me      = this,
-            bridge  = globalThis.AgentOS?.fleet?.registryBridge,
-            targets = Array.isArray(message.to) ? message.to : (message.to == null ? [] : [message.to]),
-            wired   = typeof bridge?.composeOperatorMessage === 'function',
-            results = [];
 
-        for (const to of targets) {
-            if (!wired) {
-                results.push({to, outcome: {status: 'not-wired', reason: 'fleet: operator compose verb not wired'}});
-                continue
-            }
 
-            let outcome;
 
-            try {
-                // one target per call; the spread never mutates the caller's payload and never carries
-                // the list — and the sender is server-stamped, never a field here
-                outcome = await bridge.composeOperatorMessage({...message, to})
-            } catch (error) {
-                outcome = {status: 'error', reason: error?.message || 'compose failed'}
-            }
 
-            results.push({to, outcome})
-        }
 
-        // a real send anywhere (a messageId came back) re-polls the inbox ONCE so the sent rows land at
-        // canonical truth; not-wired / rejected / error changed nothing, so there is nothing to re-read
-        if (results.some(result => result.outcome?.messageId)) {
-            await me.loadOperatorInbox({offset: 0})
-        }
 
-        return {results}
-    }
 
-    /**
-     * @summary BOOT: resolve and owner-hold the operator's own identity + seat posture.
-     * @protected
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    async loadOperatorIdentity() {
-        return CockpitSourceReads.loadOperatorIdentity(this)
-    }
 
-    /**
-     * @summary The seat-conflation honesty check against the provider-owned roster.
-     * @param {String} viewerIdentity The resolved `@`-form viewer identity.
-     * @returns {{conflated: Boolean, seatIdentity: String}|null}
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    deriveOperatorIdentityPosture(viewerIdentity) {
-        return CockpitSourceReads.deriveOperatorIdentityPosture(this, viewerIdentity)
-    }
 
-    /**
-     * @summary READ-OBSERVE: the operator's own mailbox mirror through the fenced source-read
-     * discipline (gate = the honest unobserved outcome; a throwing bridge keeps the last truth).
-     * @param {Object} [params]
-     * @param {Number} [params.offset=0]
-     * @protected
-     * @see AgentOS.util.CockpitSourceReads
-     */
-    async loadOperatorInbox(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.operatorInbox, params)
-    }
 
-    /**
-     * @summary Starts the ongoing liveness owner — the mechanism that makes `live` mean live.
-     *
-     * Without it the cockpit polls once at construction (plus after settled lifecycle intents) and
-     * every failure exit fail-closed PRESERVES the last-known state, so once a surface reaches
-     * `live` a mid-session transport death never advances it: `live` silently decays into "was live
-     * once", which is the dishonest state this owner exists to kill.
-     *
-     * **Mechanism (Tier-2 decision, recorded here):** an interval re-poll of the EXISTING read verbs,
-     * not a separate ping. The contract requires the routing matrices in {@link #loadRoster} /
-     * {@link #loadActivity} to remain the state-writing seams — a ping would need its own
-     * failure→state mapping, i.e. a second writer that can disagree with the first. Re-driving the
-     * real verbs keeps exactly one truth path and inherits their fail-closed data semantics for
-     * free; the cost is a full roster payload per cadence, which {@link #reconcileRoster} already
-     * absorbs idempotently. Revisit if the payload cost ever outgrows the honesty it buys.
-     *
-     * Idempotent: a second call never stacks a timer.
-     * @protected
-     */
-    startLiveness() {
-        let me = this;
 
-        if (me.livenessTimerId !== null) return;
 
-        // Per-surface overlap suppression, NOT just the generation fence. The fence makes a late read
-        // HARMLESS; it does not make it ABSENT. A transport slower than the cadence would have each
-        // tick launch another pair regardless of the unresolved prior one — unbounded in-flight reads
-        // against a bridge already failing to answer, which is precisely when piling on is worst.
-        // Skipping a tick loses nothing: the next one reads the same live truth, only later.
-        me.livenessTimerId = setInterval(() => {
-            if (me.streamReadInFlight      < me.maxReadsInFlight) me.loadActivity();
-            if (me.gridReadInFlight        < me.maxReadsInFlight) me.loadRoster();
-            if (me.brainHealthReadInFlight < me.maxReadsInFlight) me.loadBrainHealth();
-            if (me.tasksReadInFlight       < me.maxReadsInFlight) me.loadTasks();
 
-            // no in-flight cap: this launches no wire read — it compares bridge identity (the
-            // custody-heal rebuild trigger) and copies the consumer's local observations
-            me.ensureViewerWakeStream()
-        }, me.livenessPollInterval);
 
-        // The daemon surface has no other first read: unlike roster/activity (seeded then wired
-        // elsewhere), waiting a full cadence would leave a boot-time fault invisible for it.
-        me.loadBrainHealth()
-    }
 
-    /**
-     * @summary Stops the liveness owner — exact-once, and safe to call on a never-started cockpit.
-     *
-     * Bound to {@link #destroy} so the timer cannot outlive the surface it speaks for: a leaked
-     * interval would keep re-polling the bridge on behalf of a destroyed cockpit and write states
-     * onto detached children — a timer that outlives its owner is a liar with no one left to
-     * correct it.
-     *
-     * NOT because of pop-out: {@link #popOutAgentDetail} reparents the AgentDetail into a vessel
-     * and this cockpit stays alive as its holder — reparent-never-recreate, which is the whole
-     * point of that path. The destroy that matters is the ordinary one (the shell tearing this view
-     * down), and it is the only one this needs to survive.
-     * @protected
-     */
-    stopLiveness() {
-        let me = this;
 
-        if (me.livenessTimerId !== null) {
-            clearInterval(me.livenessTimerId);
-            me.livenessTimerId = null
-        }
-    }
 
-    /**
-     * @summary Keeps the per-viewer wake stream bound to the CURRENT bridge's capability —
-     * called at construct and on every liveness tick.
-     *
-     * Three honest outcomes, none of them a wire read:
-     * - **capability present, bridge unchanged:** the running consumer stands; only the
-     *   observation stamp refreshes.
-     * - **bridge replaced (custody heal / explicit re-wire):** the old consumer is stopped and a
-     *   fresh one opens through the NEW closure — a consumer must never outlive the credential
-     *   custody it was built from, and `installFleetBridge` publishing a new object is exactly
-     *   that boundary.
-     * - **no capability (packaged shell, or no bridge yet):** any running consumer stops and the
-     *   provider carries the honest not-wired state — absence of signal, never a fabricated
-     *   stream.
-     * @protected
-     */
-    ensureViewerWakeStream() {
-        let me     = this,
-            bridge = globalThis.AgentOS?.fleet?.registryBridge;
 
-        if (!bridge?.openWakeStream) {
-            if (me.viewerWakeConsumer) {
-                me.viewerWakeConsumer.stop();
-                me.viewerWakeConsumer = null;
-                me.viewerWakeBridge   = null
-            }
-
-            me.stampViewerWake({
-                stream: {
-                    alive     : 'unknown',
-                    reason    : 'wake push not wired — this composition carries no direct-browser wake capability',
-                    capturedAt: Date.now()
-                }
-            });
-            return
-        }
-
-        if (me.viewerWakeConsumer && me.viewerWakeBridge === bridge) {
-            me.stampViewerWake();
-            return
-        }
-
-        me.viewerWakeConsumer?.stop();
-
-        me.viewerWakeConsumer = bridge.openWakeStream({
-            onWake: signal => me.onViewerWakeSignal(signal),
-            ...(me.wakePollDigest ? {pollDigest: me.wakePollDigest} : {})
-        });
-        me.viewerWakeBridge = bridge;
-
-        me.viewerWakeConsumer.start();
-        me.stampViewerWake()
-    }
-
-    /**
-     * @summary Resolves the provider-owned viewer wake feed, tolerating compositions whose
-     * provider config replaced the class default without the store: `Provider.getStore` walks the
-     * parent chain and throws at the root for an unknown key, and a cockpit hosted under an
-     * overridden provider must degrade the feed honestly (no signals to show) rather than crash
-     * the whole surface.
-     * @returns {Object|null}
-     * @protected
-     */
-    getViewerWakeFeed() {
-        try {
-            return this.getStateProvider()?.getStore('viewerWakeFeed') ?? null
-        } catch {
-            return null
-        }
-    }
-
-    /**
-     * @summary One observed wake frame → the bounded feed + an immediate stamp. The record stores
-     * the envelope's own field names verbatim ({@link AgentOS.model.WakeSignal}); a frame carrying
-     * no envelope is still a receipt (the stream moved) but yields no feed row to fabricate.
-     * @param {Object} signal `{subscriptionId, envelope, receivedAt}` from the consumer's `onWake`.
-     * @protected
-     */
-    onViewerWakeSignal({subscriptionId, envelope, receivedAt}) {
-        let me = this;
-
-        if (me.isDestroyed) return;
-
-        if (envelope?.eventId) {
-            me.getViewerWakeFeed()?.addSignal({
-                eventId  : envelope.eventId,
-                kind     : envelope.eventType ?? 'wake',
-                logId    : envelope.logId ?? null,
-                emittedAt: envelope.emittedAt ?? null,
-                receivedAt,
-                subscriptionId
-            })
-        }
-
-        me.stampViewerWake()
-    }
-
-    /**
-     * @summary Writes the consumer's OWN observations into the provider (`viewerWake.stream` /
-     * `viewerWake.catchUp` — the contract's data path) and re-renders the chrome telltale from
-     * the same truth. One writer, two surfaces, zero re-judging: liveness vocabulary and catch-up
-     * states pass through verbatim.
-     * @param {Object} [override] `{stream}` for the not-wired stamp, when no consumer exists to ask.
-     * @protected
-     */
-    stampViewerWake(override = null) {
-        let me       = this,
-            provider = me.getStateProvider(),
-            consumer = me.viewerWakeConsumer;
-
-        if (!provider) return;
-
-        const
-            stream  = override?.stream ?? (consumer
-                ? {...consumer.resolveDeliveryLiveness(), capturedAt: Date.now()}
-                : {alive: 'unknown', reason: 'wake stream not started', capturedAt: Date.now()}),
-            catchUp = consumer?.describe().lastCatchUp ?? {state: null, at: null, pending: null};
-
-        provider.setData('viewerWake', {stream, catchUp});
-        me.syncViewerWakeTelltale()
-    }
-
-    /**
-     * @summary Renders the chrome telltale chip from the provider-held viewer-wake truths plus the
-     * feed's newest rows — pure derivation in, `text`/`title` out. `text`, never `html`: the chip
-     * interpolates the consumer's reason strings, which arrive over the wire; data, not markup.
-     * @protected
-     */
-    syncViewerWakeTelltale() {
-        let me   = this,
-            slot = me.getReference('viewer-wake-telltale');
-
-        if (!slot) return;
-
-        const
-            provider   = me.getStateProvider(),
-            viewerWake = provider?.getData('viewerWake') ?? {},
-            signals    = (me.getViewerWakeFeed()?.items ?? []).slice(0, 5).map(record => ({
-                kind      : record.kind,
-                emittedAt : record.emittedAt,
-                receivedAt: record.receivedAt
-            })),
-            {ariaLabel, cls, text, title} = ViewerWakeTelltale.describeViewerWakeTelltale({
-                stream : viewerWake.stream ?? null,
-                catchUp: viewerWake.catchUp?.state ? viewerWake.catchUp : null,
-                signals
-            });
-
-        // vdom attributes FIRST, then the config set, then one explicit flush: `set()` batches its
-        // own update asynchronously, so an update flushed BEFORE the text config lands pushes a
-        // vdom without the chip's text — a blank frame on every stamp cadence (the race the wake
-        // e2e caught as an empty telltale). Ordered this way, every flush carries text + title.
-        slot.vdom.title         = title;
-        slot.vdom['aria-label'] = ariaLabel;
-        slot.set({cls, text});
-        slot.update()
-    }
-
-    /**
-     * @summary The Reconnect affordance's one-click re-drive: every liveness seam, immediately.
-     *
-     * Deliberately NOT gated on {@link #maxReadsInFlight} — per that cap's contract, only the
-     * cadence honours it; a direct call is operator-meant and never suppressed. Recovery needs no
-     * new machinery beyond this: the reads route through the same authenticated bridge, the same
-     * generation fences drop stale answers, and the same routing matrices write the state — the
-     * button only collapses the up-to-one-cadence wait into "now". Works identically in both
-     * topologies (the browser flow has the same stale-offline problem after a late server start).
-     *
-     * The pane histories (memories / catch-up / wake routes) ride this re-drive for a stronger
-     * reason: they have NO cadence at all — request-driven only — so a failed first read would
-     * otherwise sit as its unavailable envelope forever. Re-driving goes THROUGH each pane's own
-     * refresh handler, whose guards (active agent, partition) decide whether there is a request
-     * to make; a pane with no selection stays silent rather than fabricating one.
-     */
-    reconnectFleet() {
-        let me = this;
-
-        me.loadActivity();
-        me.loadRoster();
-        me.loadBrainHealth();
-        me.ensureViewerWakeStream();
-
-        // The pane histories are liveness seams too: a failed first read pins its unavailable
-        // envelope until SOME re-request happens, and before this line the only such request was a
-        // manual pane action — the dead-pane gap. Each pane's own refresh handler carries its
-        // guards (active agent / partition), so re-driving through it is exactly the button's path.
-        me.getMemoriesPane()?.onRefreshClick();
-        me.getCatchUpPane()?.onRefreshClick();
-        me.getWakeRoutesPane()?.onRefreshClick();
-
-        // fleet-wide and owner-held: re-driven directly, so a not-yet-materialized Tasks tab still
-        // reopens on post-reconnect truth
-        me.loadTasks()
-    }
-
-    /**
-     * @summary Applies one Brain-health wire answer onto the owner-held daemon surface, then re-syncs.
-     *
-     * The vocabulary check keeps the documented member contract honest: anything that is not a
-     * recognized Brain state — a transport envelope (`{ok: false}`), a rejection mapped to `null`,
-     * a malformed payload — lands as `null`/`null`, which renders NOTHING. Transport trouble is the
-     * transport surface's story; this surface only ever speaks with the lifecycle owner's voice.
-     * @param {Object|null} response The lifecycle owner's `{state, cause}` payload, or anything else.
-     * @protected
-     */
-    applyBrainHealth(response) {
-        let me    = this,
-            state = BRAIN_HEALTH_STATES.includes(response?.state) ? response.state : null;
-
-        if (me.isDestroyed) return;
-
-        // The shell transport fact rides the same wire but is ITS OWN truth, valid on a payload
-        // whose daemon state never validates — and dropped back to `null` when the pull failed
-        // (an unreachable shell has no standing to keep asserting a boot fact). The banner's cold
-        // fallback is the only consumer.
-        const transport        = Neo.isObject(response?.transport) ? response.transport : null,
-              transportChanged = !Neo.isEqual(transport, me.shellTransport ?? null);
-
-        me.shellTransport = transport;
-
-        if (!state) {
-            // Transport truth is not daemon truth in EITHER direction: a rejection, timeout,
-            // unavailable envelope, or malformed payload must not fabricate a fault — and it must
-            // not ERASE a last-known one. A visible fault stays visible until the lifecycle owner
-            // itself answers otherwise; only a valid answer moves this surface. A CHANGED transport
-            // fact still re-renders (it moved independently of the daemon verdict — e.g. the boot
-            // settling, or the fact dropping with a dead shell); an unchanged one repaints nothing.
-            transportChanged && me.syncSpineBanner();
-            return
-        }
-
-        me.daemonState          = state;
-        me.daemonDegradedReason = state !== 'running' && response.cause
-            ? (response.cause.detail || response.cause.source || null)
-            : null;
-
-        // the header's aggregate fold reads the SAME fault set the banner renders from — one
-        // lifecycle authority, plumbed as a boolean; the grid derives nothing about daemons
-        const grid = me.getReference('fleet-grid');
-        grid && (grid.daemonFault = SpineBanner.DAEMON_FAULT_STATES.includes(state));
-
-        me.syncSpineBanner()
-    }
-
-    /**
-     * @summary Pulls whole-Brain health from the shell's lifecycle owner — the re-read obligation.
-     *
-     * Pull, never push: rides the liveness cadence for as long as the cockpit renders, so a fault
-     * arriving after mount still surfaces and a recovery still clears. The read follows the same
-     * bounded discipline as the wire reads — `boundedRead` frees the surface on a hung pull
-     * while the wire-settle release plus the {@link #maxReadsInFlight} cap bound accumulation, and
-     * the generation fence discards any late answer. Transport failure (absent shell, rejection,
-     * timeout) reaches {@link #applyBrainHealth} as `null` and moves nothing.
-     * @protected
-     */
-    async loadBrainHealth() {
-        let me = this;
-
-        // BEFORE any early exit: absence is newer knowledge, and an older pending read must not
-        // outlive it (the same rule the wire reads follow).
-        const generation = ++me.brainHealthReadGeneration;
-
-        try {
-            me.brainHealthReadInFlight++;
-
-            // Invoke INSIDE the chain: a synchronous throw becomes a rejection of the tracked
-            // promise, so the reject path owns the slot release (the sync-throw falsifier class).
-            const response = await boundedRead(
-                Promise.resolve().then(() => Neo.Main.brainHealth()),
-                me.livenessReadTimeout,
-                () => { me.brainHealthReadInFlight-- }
-            );
-
-            if (generation !== me.brainHealthReadGeneration || me.isDestroyed) return;
-
-            me.applyBrainHealth(response)
-        } catch (error) {
-            if (generation !== me.brainHealthReadGeneration || me.isDestroyed) return;
-
-            me.applyBrainHealth(null)
-        }
-    }
-
-    /**
-     * @summary Advances ONE wired surface to the degraded truth and retains the safe reason.
-     *
-     * The state-writing seams stay {@link #loadRoster} / {@link #loadActivity}; this is their shared
-     * loss edge, not a second writer. A surface that never reached `live` is left on its honest
-     * `sample` seed — advancing it to `stale` would claim last-known data that never existed.
-     * @param {String} surface `'grid'|'stream'`.
-     * @param {*} error The transport failure (untrusted — never rendered raw).
-     * @param {Neo.component.Base|null} [consumer] The held child whose badge mirrors the owner state.
-     * @protected
-     */
-    degradeWiredSurface(surface, error, consumer = null) {
-        let me     = this,
-            field  = surface === 'grid' ? 'gridAdapterState' : 'streamAdapterState',
-            reason = surface === 'grid' ? 'gridDegradedReason' : 'streamDegradedReason';
-
-        // never-wired stays cold-honest: 'sample' already says "this is fixture data" — and a
-        // transport failure RETRACTS any answered-state cause this surface retained (the
-        // "connected · registry empty" claim must not outlive the connection it describes; back
-        // on silence, the banner's generic cold copy is the honest line again).
-        if (me[field] === 'sample') {
-            me[reason] = null;
-            return
-        }
-
-        me[field]  = 'stale';
-        // this surface's cause, on this surface's field — never a shared slot a sibling can clear
-        me[reason] = toSafeDegradedReason(error);
-
-        if (consumer) consumer.adapterState = 'stale'
-    }
-
-    /**
-     * @summary Clears ONE surface's retained degrade reason, once THAT surface answers cleanly.
-     *
-     * Scoped to the caller's own surface, because a reason is a fact about the surface that produced
-     * it and no other surface has standing to retract it. The shared-field version read both states
-     * and cleared when neither was `stale` — which meant a healthy roster erased a not-wired
-     * ACTIVITY's cause (the activity is `sample`, not `stale`, so the guard never saw it) and the
-     * banner regressed to "Fleet server offline" while the server was answering. The guard was not
-     * too weak; the field was shared, and no guard on a shared field can tell whose cause it holds.
-     * @param {String} surface `'grid'` | `'stream'` — the caller's own surface.
-     * @protected
-     */
-    clearDegradedReason(surface) {
-        this[surface === 'grid' ? 'gridDegradedReason' : 'streamDegradedReason'] = null
-    }
-
-    /**
-     * @summary Renders the per-SPINE honesty line from the owner-held adapter states — the
-     * surface names WHY it shows sample (cold) or last-known (degraded) data; a fully live
-     * spine renders nothing. Render-only over existing truth: the routing matrices in
-     * {@link #loadRoster} / {@link #loadActivity} stay the sole state writers, and every one
-     * of their exits (including the no-bridge guards — absence IS the cold truth) CALLS this.
-     * A call is not a truth transition: {@link #startLiveness} re-drives those same seams on a
-     * cadence, their loss edge ({@link #degradeWiredSurface}) advances a wired surface to `stale`
-     * with a retained safe reason, and recovery clears it — so the truth this renders now tracks
-     * the transport instead of freezing at the first `live`.
-     * @protected
-     */
-    syncSpineBanner() {
-        let me        = this,
-            banner    = me.getReference('fleet-spine-banner'),
-            reconnect = me.getReference('fleet-reconnect-button');
-
-        if (banner) {
-            // each state travels WITH its own cause: the derivation reports the reason of the
-            // surface that decided the verdict, and no sibling can supply or silence it
-            let {hidden, kind, text} = SpineBanner.deriveSpineBanner({
-                // Daemon health ranks above a stale feed: a dead daemon is usually what MADE the feed
-                // stale, so the transport line alone would name the symptom and drop the diagnosis.
-                // Silent while `daemonState` is null — absence is unknown, never nominal.
-                daemon: {state: me.daemonState,        reason: me.daemonDegradedReason},
-                grid  : {state: me.gridAdapterState,   reason: me.gridDegradedReason},
-                stream: {state: me.streamAdapterState, reason: me.streamDegradedReason},
-                // the shell's boot fact (null outside the shell) — only the cold fallback reads it
-                transport: me.shellTransport
-            });
-
-            // the banner is the main window's SECOND scope-speaking place — every visible
-            // verdict carries the bound instance's label, composed HERE where provider truth lives
-            // so the pure derivation (and its spec matrix) stays label-free. The chrome switcher's
-            // dot mirrors the SAME verdict (one truth, two renderers): live→ok · degraded→limited
-            // · cold→off.
-            const
-                provider      = me.getStateProvider(),
-                boundId       = provider?.getData('boundProfileId'),
-                boundRecord   = boundId ? provider.getStore('fleetInstances')?.get(boundId) : null,
-                instanceLabel = boundRecord ? (boundRecord.label || String(boundRecord.canonicalEndpoint).replace(/^https?:\/\//, '')) : null;
-
-            text = instanceLabel && !hidden ? `${instanceLabel} — ${text}` : text;
-
-            provider?.setData({instanceState: hidden ? 'ok' : (kind === 'degraded' ? 'limited' : 'off')});
-
-            // The manual recovery affordance shares the banner's visibility verdict: a fully live
-            // spine earns zero pixels from BOTH; any visible verdict (cold or degraded) offers the
-            // one-click re-drive. Same control in both topologies — the browser flow has the
-            // identical stale-offline problem after a late server start.
-            reconnect?.set({hidden});
-
-            // `text`, never `html`. The line now interpolates a RETAINED TRANSPORT STRING — the
-            // adapter's own `capability.reason`, which arrives over the fleet wire — and `html`
-            // is an innerHTML sink, so hostile markup in a reason would execute. `toSafeDegradedReason`
-            // redacts SECRETS; it was never a markup escaper, and treating a redactor as a sanitiser
-            // is how a reason becomes a script tag. `text` routes to `textContent`: data, not code,
-            // which is the boundary the whole VDom pipeline is built on. The banner renders one
-            // sentence and needs no markup, so `html` bought nothing and risked everything.
-            // the drill-free detail: the honesty line may ellipsis under bar pressure, so the
-            // FULL cause-and-remedy sentence rides the title (an attribute, not an HTML sink);
-            // the set() below flushes the same update pass
-            banner.vdom.title = text || null;
-
-            banner.set({
-                cls : ['fm-spine-banner', `fm-spine-banner-${kind}`],
-                hidden,
-                text
-            })
-        }
-    }
-
-    /**
-     * @summary Pushes the bound instance's label into one torn-out window's `document.title` —
-     * the scope rule made mechanical: a torn-out window has no chrome switcher and no spine
-     * banner, so its OS title is the one place its scope can live. Reads the SAME provider truth
-     * the banner composes from (bound profileId → roster row → label-or-endpoint); a missing
-     * roster row pushes nothing — absence stays absence, never an invented name. Rides the
-     * DocumentHead addon per target window; deliberately NOT the torn-out pane's controller chain,
-     * so the known torn-out handler-loss class (a vessel's controller resolving to a cached null)
-     * cannot reach it.
-     * @param {String} windowId The torn-out window to title.
-     */
-    pushInstanceTitle(windowId) {
-        let provider = this.getStateProvider(),
-            boundId  = provider?.getData('boundProfileId'),
-            record   = boundId ? provider.getStore('fleetInstances')?.get(boundId) : null,
-            label    = record ? (record.label || String(record.canonicalEndpoint).replace(/^https?:\/\//, '')) : null;
-
-        label && windowId && Neo.main.addon.DocumentHead.setTitle({
-            value: `${label} — Agent OS`,
-            windowId
-        })
-    }
-
-    /**
-     * @summary Map one assembler DTO row onto the FleetAgent record contract. The durable `id`
-     * becomes `agentId`; identity facts (`family` / `engineTag` / the authoritative
-     * `participationStatus`) flow through (null = unclassified / tagless / no identity root,
-     * never guessed); the launch-derived truths (`launchable` / `authMode`, stamped Brain-side by
-     * the roster assembler) flow through tri-state so the fleet-start eligibility partition
-     * reads the wire, never a cockpit guess; the runtime `lifecycle.state` maps onto the
-     * cockpit's session-state vocabulary only when `sources.runtime` is usable; missing /
-     * not-wired / malformed source truth forces `off`, so placeholder can never render as fact.
-     * The normalized three-source object remains on the record for the card markers AND the
-     * eligibility partition (an unusable runtime source must fail a fleet start closed).
-     * `openLaneCount` rides the same tri-state passthrough — the roster DTO OWNS it end-to-end
-     * (assembler → record → badge), so the FIRST authoritative load carries live truth and a
-     * missing stamp degrades to null (no badge), never to the sample seed's number. `laneLine`
-     * is deliberately OMITTED (not nulled): the activity capability owns it, and a merge must
-     * never wipe what another producer wrote.
-     * @param {Object} row One cockpit DTO row (`fleetCockpitStatus` shape).
-     * @returns {Object} FleetAgent record field values.
-     */
-    mapRosterRow(row) {
-        const sessionHealth = SourceHealth.mapFleetSessionHealth(row.lifecycle, row.sources);
-
-        return {
-            agentId    : row.id,
-            authMode   : row.authMode ?? null,
-            avatarUrl  : row.avatarUrl ?? null,
-            displayName: row.displayName ?? null,
-            // The resident's MAILBOX identity authority, preserved from the DTO rather than derived
-            // from `agentId`: the registry id is a Fleet key (`vega`), while a mailbox subject is an
-            // AgentIdentity node id (`@neo-opus-vega`), and for custom / multi-instance residents the
-            // two need not correspond at all. Any surface that must decide "is this snapshot about
-            // THIS resident" has to compare compatible ids — comparing the registry key would either
-            // never match or, worse, match the wrong resident. `null` = no identity authority, which
-            // is an honest "cannot verify", never an implicit pass.
-            githubUsername: row.githubUsername ?? null,
-            engineTag     : row.engineTag ?? null,
-            family        : row.family ?? null,
-            launchable    : row.launchable ?? null,
-            openLaneCount : row.openLaneCount ?? null,
-            // the newest attributable activity instant, stamped by the assembler (activity-event
-            // fold merged with presence recency) and passed through whole — the roster's
-            // latest-activity sort axis; null = not stamped, and the sorter's native null
-            // handling places such rows last (never a fabricated age)
-            lastActivityAt: row.lastActivityAt ?? null,
-            // the authoritative identity-root participation fact (tri-state null = no root) —
-            // the eligibility partition excludes any KNOWN non-active status before a lifecycle
-            // write; null stays eligible (open-set honesty for forks/custom residents)
-            participationStatus: row.participationStatus ?? null,
-            sources            : sessionHealth.sources,
-            state              : sessionHealth.state,
-            // The S2 telltale axes, passed through whole rather than re-derived: the assembler
-            // already stamps `{source, state, confidence, reason?}` per axis, and `unknown` there is
-            // a PRODUCED fact (null resolver, unreadable source, unwired producer). Re-deriving it
-            // here would make "we looked and cannot see" indistinguishable from "we never asked" —
-            // the DTO's own discipline, the same reason `openLaneCount` is a passthrough.
-            presence: row.presence ?? null,
-            throttle: row.throttle ?? null,
-            wake    : row.wake ?? null
-        }
-    }
-
-    /**
-     * @summary Reconcile an authoritative roster snapshot onto the Store's records: a known
-     * `agentId` updates its record in place (`record.set(row)` — the store's `recordChange`
-     * re-renders just that card, and fields the roster producer does not own — e.g. `laneLine` —
-     * survive because {@link #mapRosterRow} omits them), a new one joins the roster, and a resident
-     * ABSENT from the snapshot is removed (the snapshot is the full fleet: a deregistered agent
-     * must not linger as a ghost card).
-     * @param {Neo.data.Store} store The bound roster store.
-     * @param {Object[]} rows Mapped snapshot rows keyed by `agentId`.
-     * @protected
-     */
-    reconcileRoster(store, rows) {
-        const
-            snapshotIds = new Set(rows.map(row => row.agentId)),
-            joiners     = [];
-
-        rows.forEach(row => {
-            const record = store.get(row.agentId);
-
-            record ? record.set(row) : joiners.push(row)
-        });
-
-        // one batched add — every store mutation fires `load`, so per-row adds would fan out
-        joiners.length > 0 && store.add(joiners);
-
-        store.items
-            .filter(record => !snapshotIds.has(record.agentId))
-            .map(record => record.agentId)
-            .forEach(agentId => store.remove(agentId));
-
-        // membership may have removed/re-instanced the inspected resident — the removal fires no
-        // recordChange, so reconcile the owner-held selection here (both reconcile callers pass through).
-        this.reconcileSelection()
-    }
 }
 
 export default Neo.setupClass(FleetCockpit);

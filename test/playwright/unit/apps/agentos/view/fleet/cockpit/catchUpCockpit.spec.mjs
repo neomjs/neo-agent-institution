@@ -8,7 +8,18 @@ setup({
 import {expect, test} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import FleetCockpit   from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpit           from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
+
+// the catch-up loads are CONTROLLER methods now — a prototype host with the pane accessor on the
+// component seat drives them as production code
+const makeCatchUpHost = pane => Object.assign(Object.create(FleetCockpitController.prototype), {
+    catchUpMarkOutcome   : null,
+    catchUpReadGeneration: 0,
+    catchUpSnapshot      : null,
+    component            : {getCatchUpPane: () => pane},
+    isDestroyed          : false
+});
 
 const clearBridge = () => { delete globalThis.AgentOS?.fleet };
 
@@ -19,17 +30,11 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
         const snapshot = {capability: {state: 'wired'}, partition: '@neo-opus-ada', window: {}, sources: {}},
               pane     = {},
               calls    = [],
-              cockpit  = {
-                  catchUpReadGeneration: 0,
-                  catchUpSnapshot      : null,
-                  isDestroyed          : false,
-                  getCatchUpPane       : () => pane,
-                  getReference         : ref => ref === 'catch-up' ? pane : null
-              };
+              cockpit  = makeCatchUpHost(pane);
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetHistory: async params => { calls.push(params); return snapshot; }}};
 
-        await expect(FleetCockpit.prototype.loadCatchUp.call(cockpit, {partition: '@neo-opus-ada'})).resolves.toBe(snapshot);
+        await expect(cockpit.loadCatchUp({partition: '@neo-opus-ada'})).resolves.toBe(snapshot);
         expect(calls).toEqual([{partition: '@neo-opus-ada'}]);
         expect(cockpit.catchUpSnapshot).toBe(snapshot);
         expect(pane.snapshot).toBe(snapshot)
@@ -37,48 +42,35 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
 
     test('unwired/throw read and unwired/throw mark remain explicit, never empty or advanced', async () => {
         const pane = {},
-              make = () => ({
-                  catchUpReadGeneration: 0,
-                  catchUpSnapshot      : null,
-                  catchUpMarkOutcome   : null,
-                  isDestroyed          : false,
-                  getCatchUpPane       : () => pane,
-                  getReference         : ref => ref === 'catch-up' ? pane : null
-              });
+              make = () => makeCatchUpHost(pane);
 
         clearBridge();
-        await expect(FleetCockpit.prototype.loadCatchUp.call(make(), {partition: 'unified'}))
+        await expect(make().loadCatchUp({partition: 'unified'}))
             .resolves.toMatchObject({capability: {state: 'unavailable'}, sources: null});
-        await expect(FleetCockpit.prototype.markCatchUp.call(make(), {windowEnd: '2026-07-18T12:00:00.000Z'}))
+        await expect(make().markCatchUp({windowEnd: '2026-07-18T12:00:00.000Z'}))
             .resolves.toEqual({status: 'not-wired', reason: 'fleet catch-up mark verb not wired'});
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {
             fleetHistory     : async () => { throw new Error('secret read detail') },
             markFleetCaughtUp: async () => { throw new Error('secret write detail') }
         }};
-        await expect(FleetCockpit.prototype.loadCatchUp.call(make()))
+        await expect(make().loadCatchUp())
             .resolves.toMatchObject({capability: {state: 'unavailable', reason: 'fleet history read failed'}, sources: null});
-        await expect(FleetCockpit.prototype.markCatchUp.call(make(), {windowEnd: '2026-07-18T12:00:00.000Z'}))
+        await expect(make().markCatchUp({windowEnd: '2026-07-18T12:00:00.000Z'}))
             .resolves.toEqual({status: 'error', reason: 'fleet catch-up mark failed'})
     });
 
     test('an older read loses the generation race', async () => {
         let resolveOld;
         const pane    = {},
-              cockpit = {
-                  catchUpReadGeneration: 0,
-                  catchUpSnapshot      : null,
-                  isDestroyed          : false,
-                  getCatchUpPane       : () => pane,
-                  getReference         : ref => ref === 'catch-up' ? pane : null
-              },
-              old = new Promise(resolve => { resolveOld = resolve });
+              cockpit = makeCatchUpHost(pane),
+              old     = new Promise(resolve => { resolveOld = resolve });
 
         let reads = 0;
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetHistory: () => ++reads === 1 ? old : Promise.resolve({id: 'new'})}};
 
-        const first  = FleetCockpit.prototype.loadCatchUp.call(cockpit),
-              second = FleetCockpit.prototype.loadCatchUp.call(cockpit);
+        const first  = cockpit.loadCatchUp(),
+              second = cockpit.loadCatchUp();
 
         await second;
         resolveOld({id: 'old'});
@@ -99,14 +91,13 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
               // adjacency must re-activate the stream's tab before focus can reach mounted DOM
               strip   = {activeIndex: 3},
               cockpit = {
-                  dockModel              : {nodes: {'stream-tabs': {items: ['stream', 'memories', 'operator', 'catchUp']}}},
-                  down                   : config => config.dockNodeId === 'stream-tabs' ? strip : null,
-                  getReference           : ref => ref === 'activity-stream' ? stream : null,
-                  resolveFleetRosterStore: () => ({items: rows}),
-                  timeout                : () => Promise.resolve()
+                  dockModel    : {nodes: {'stream-tabs': {items: ['stream', 'memories', 'operator', 'catchUp']}}},
+                  down         : config => config.dockNodeId === 'stream-tabs' ? strip : null,
+                  getReference : ref => ref === 'activity-stream' ? stream : null,
+                  timeout      : () => Promise.resolve()
               };
 
-        expect(FleetCockpit.prototype.buildCatchUpPartitionOptions.call(cockpit)).toEqual([
+        expect(FleetCockpitController.prototype.buildCatchUpPartitionOptions.call({resolveFleetRosterStore: () => ({items: rows})})).toEqual([
             {id: 'catch-up-ada', label: 'Ada', partition: '@neo-opus-ada'}
         ]);
         await expect(FleetCockpit.prototype.openCatchUpLiveSurface.call(cockpit, {target: 'activity-stream'}))

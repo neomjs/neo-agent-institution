@@ -1,40 +1,348 @@
-import Controller                  from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import LivenessController          from './LivenessController.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
-
-import FleetStartPlan from '../../../util/FleetStartPlan.mjs';
+import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
+import SourceHealth                from '../../../util/SourceHealth.mjs';
 
 /**
- * Controller for {@link AgentOS.view.fleet.cockpit.Container} — the cockpit is the **composition root** of
- * the B4÷C2 seam: the one place that knows both the resident cards and the fleet bridge, so the wire
- * lives here (the cards themselves stay intent-only and never touch transport).
+ * @summary The cockpit's intent + command layer — the surface-fired intent relays, the per-pane
+ * snapshot reads and the fleet-start batch, per the #50 architecture ruling: view logic lives on
+ * the controller (lifecycle-bound, first-class `this.component` access), never on a util a view
+ * object gets passed into. The wire-liveness half (roster/activity/Brain-health loads, cadence,
+ * reconnect, viewer-wake custody) is the inherited
+ * {@link AgentOS.view.fleet.cockpit.LivenessController} layer.
  *
- * Two entry points, both driving the C2 adapter (`FleetLifecycleIntentAdapter.handleFleetLifecycleIntent`) → the registry bridge →
- * honest per-record round-trip state, never an optimistic success:
- * - `onAgentLifecycleIntent` — catches a single card's `lifecycleIntent` (resolved up the controller
- *   chain via the card's listener) and dispatches it for that card's record.
- * - `onStartFleet` — the design SSOT §01 "▶ Start fleet" one-click: fans `start` out to every
- *   rendered card, so each resident drives its own honest round-trip.
+ * State split (the operator's partial-provider ruling): truths MORE THAN ONE surface reads live
+ * on {@link AgentOS.view.fleet.cockpit.StateProvider} and the surfaces bind. Per-pane snapshots
+ * (operator inbox, memories + drill, wake routes, tasks, catch-up) are CONTROLLER state below,
+ * written to their one pane directly at WRITE time through the view's phase-blind accessors (a
+ * pane torn into a vessel or parked in a returning window still receives the truth; a destroyed
+ * one never swallows it).
+ *
+ * Every read follows the inherited one discipline: fence bump FIRST, verb-presence check, typed
+ * unavailable fallback (never a fabricated success), and only the newest generation writes.
  *
  * @class AgentOS.view.fleet.cockpit.Controller
- * @extends Neo.controller.Component
+ * @extends AgentOS.view.fleet.cockpit.LivenessController
  */
-class FleetCockpitController extends Controller {
+class Controller extends LivenessController {
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.cockpit.Controller'
          * @protected
          */
-        className: 'AgentOS.view.fleet.cockpit.Controller'
+        className: 'AgentOS.view.fleet.cockpit.Controller',
+        /**
+         * @member {String} ntype='fm-fleet-cockpit-controller'
+         * @protected
+         */
+        ntype: 'fm-fleet-cockpit-controller'
     }
 
     /**
-     * The active fleet-start batch. Repeated activations join this Promise until its summary and
-     * one roster reconciliation have settled, so a partially completed batch can never re-fan-out
-     * already-settled members or race a second summary.
+     * Read-fence + owner-held snapshot for the catch-up history surface.
+     * @member {Number} catchUpReadGeneration=0
+     * @protected
+     */
+    catchUpReadGeneration = 0
+    /**
+     * @member {Object|null} catchUpSnapshot=null
+     * @protected
+     */
+    catchUpSnapshot = null
+    /**
+     * The last explicit mark-caught-up outcome, owner-held for pane rematerialization.
+     * @member {Object|null} catchUpMarkOutcome=null
+     * @protected
+     */
+    catchUpMarkOutcome = null
+    /**
+     * The read-fence + owner-held drill state for the memories surfaces.
+     * @member {Number} memoriesReadGeneration=0
+     * @protected
+     */
+    memoriesReadGeneration = 0
+    /**
+     * @member {Number} memoriesDrillReadGeneration=0
+     * @protected
+     */
+    memoriesDrillReadGeneration = 0
+    /**
+     * The open memories drill — `{sessionId, title}` — owner-held BEFORE any await, so a pane
+     * rematerialized mid-read reopens on the PENDING drill.
+     * @member {Object|null} memoriesDrillSession=null
+     * @protected
+     */
+    memoriesDrillSession = null
+    /**
+     * @member {Object|null} memoriesDrillSnapshot=null
+     * @protected
+     */
+    memoriesDrillSnapshot = null
+    /**
+     * @member {Object|null} memoriesSnapshot=null
+     * @protected
+     */
+    memoriesSnapshot = null
+    /**
+     * The memories pane's pending target, owner-held BEFORE the await (honest switch-pending on
+     * rematerialization, never the last accepted target).
+     * @member {String|null} memoriesTarget=null
+     * @protected
+     */
+    memoriesTarget = null
+    /**
+     * Read-fence + owner-held snapshot for the operator's own mailbox mirror.
+     * @member {Number} operatorInboxReadGeneration=0
+     * @protected
+     */
+    operatorInboxReadGeneration = 0
+    /**
+     * @member {Object|null} operatorSnapshot=null
+     * @protected
+     */
+    operatorSnapshot = null
+    /**
+     * The resolved operator identity record (`{agentIdentityNodeId, githubUsername}`) — the
+     * bootstrap leg of "the client SAYS self, the admission stamp proves it".
+     * @member {Object|null} operatorRecord=null
+     * @protected
+     */
+    operatorRecord = null
+    /**
+     * The seat-conflation posture derived from the roster for the resolved viewer identity.
+     * @member {Object|null} operatorIdentityPosture=null
+     * @protected
+     */
+    operatorIdentityPosture = null
+    /**
+     * The active fleet-start batch — repeated activations join it until its summary and one
+     * roster reconciliation settled.
      * @member {Promise<Object>|null} startFleetPromise=null
      * @protected
      */
     startFleetPromise = null
+    /**
+     * Read-fence + in-flight accounting + owner-held snapshot for the tasks surface.
+     * @member {Number} tasksReadGeneration=0
+     * @protected
+     */
+    tasksReadGeneration = 0
+    /**
+     * @member {Number} tasksReadInFlight=0
+     * @protected
+     */
+    tasksReadInFlight = 0
+    /**
+     * @member {Object|null} tasksSnapshot=null
+     * @protected
+     */
+    tasksSnapshot = null
+    /**
+     * Read-fence + owner-held snapshot for the wake-routes surface.
+     * @member {Number} wakeRoutesReadGeneration=0
+     * @protected
+     */
+    wakeRoutesReadGeneration = 0
+    /**
+     * @member {Object|null} wakeRoutesSnapshot=null
+     * @protected
+     */
+    wakeRoutesSnapshot = null
+    /**
+     * @summary The cockpit-owned authenticated bridge — resolved fresh per call, never captured.
+     * @returns {Object|undefined}
+     * @protected
+     */
+    get bridge() {
+        return globalThis.AgentOS?.fleet?.registryBridge
+    }
+
+    /* ── intent relays (the B4÷C2 seam: surfaces fire intents, this composition root owns the wire) ── */
+
+    /**
+     * @summary Consume a card's `lifecycleIntent` and drive the honest round-trip: the intent +
+     * that card's roster record go to the C2 adapter, which writes pending/settled/rejected state
+     * onto the record — never an optimistic success.
+     * @param {Object} data `{action, agentId, source}` — Neo stamps `source`.
+     */
+    onAgentLifecycleIntent(data) {
+        const card = Neo.getComponent(data.source);
+
+        return card && this.refreshRosterOnSettle(
+            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent(data, card.record).then(result => Boolean(result?.ok))
+        )
+    }
+
+    /**
+     * @summary Drill into a resident: resolve the record from the provider-owned store, seat it
+     * through the view's ONE selection-write site, and reveal the auto-hidden detail pane.
+     * @param {Object} data The `agentSelect` payload `{agentId}`.
+     */
+    onAgentSelect(data) {
+        const
+            cockpit = this.component,
+            record  = this.resolveFleetRosterStore()?.get(data.agentId);
+
+        if (!record) {
+            return
+        }
+
+        cockpit.applySelection(record);
+
+        if (cockpit.dockModel?.items?.detail?.autoHidden) {
+            const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden: false});
+
+            result && !result.errors?.length && cockpit.onDockZoneDocumentChange(result.document)
+        }
+    }
+
+    /**
+     * @summary The grid's bootstrap CTA (empty fleet) opens the S5 define-agent zone.
+     * @param {Object} data The `addAgentRequest` payload.
+     */
+    onAddAgentRequest(data) {
+        const cockpit = this.component;
+
+        if (cockpit.dockModel?.items?.defineAgent?.autoHidden) {
+            const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'defineAgent', autoHidden: false});
+
+            result && !result.errors?.length && cockpit.onDockZoneDocumentChange(result.document)
+        }
+    }
+
+    /**
+     * @summary Relay the operator-mailbox compose intent to the fleet write verb and close the
+     * outcome loop: `Observable.fire` discards handler returns, so the settled per-recipient
+     * outcome is written back onto the mailbox surface for the form to render — a refusal is
+     * never invisible.
+     * @param {Object} data The `compose` payload `{message, source}`.
+     */
+    async onOperatorCompose(data) {
+        const
+            outcome = await this.composeOperatorMessage(data.message),
+            mailbox = this.getReference('operator-mailbox');
+
+        mailbox && (mailbox.composeOutcome = outcome);
+
+        return outcome
+    }
+
+    /**
+     * @summary Relay the operator-mailbox paged re-read.
+     * @param {Object} data `{offset, source}`
+     */
+    onOperatorInboxPageRequest(data) {
+        return this.loadOperatorInbox({offset: data.offset})
+    }
+
+    /**
+     * @summary Relay a CatchUpPane read intent.
+     * @param {Object} data
+     * @returns {Promise<Object>}
+     */
+    onCatchUpHistoryRequest(data) {
+        const {source, ...params} = data;
+
+        return this.loadCatchUp(params)
+    }
+
+    /**
+     * @summary Relay the explicit runtime-only mark intent.
+     * @param {Object} data
+     * @returns {Promise<Object>}
+     */
+    onCatchUpMarkRequest(data) {
+        return this.markCatchUp({windowEnd: data.windowEnd})
+    }
+
+    /**
+     * @summary Route to the existing live adjacency without turning it into history authority.
+     * @param {Object} data
+     * @returns {Promise<Object>}
+     */
+    onCatchUpLiveSurfaceRequest(data) {
+        return this.component.openCatchUpLiveSurface({target: data.target})
+    }
+
+    /**
+     * @summary Relay a MemoriesPane read intent.
+     * @param {Object} data `{agentIdentity, offset?}`
+     * @returns {Promise<Object>}
+     */
+    onMemoriesRequest(data) {
+        const {source, ...params} = data;
+
+        return this.loadMemories(params)
+    }
+
+    /**
+     * @summary Relay a MemoriesPane drill-in read intent.
+     * @param {Object} data `{sessionId, title?, offset?}`
+     * @returns {Promise<Object>}
+     */
+    onSessionDetailRequest(data) {
+        const {source, ...params} = data;
+
+        return this.loadSessionMemories(params)
+    }
+
+    /**
+     * @summary Clear the owner-held drill when the pane closes it — a drill the operator left
+     * must not reopen on rematerialization.
+     * @param {Object} data
+     */
+    onSessionDetailClosed(data) {
+        this.clearSessionMemoriesDrill()
+    }
+
+    /**
+     * @summary Relay a WakeRoutePane read intent.
+     * @param {Object} data
+     * @returns {Promise<Object>}
+     */
+    onWakeRoutesRequest(data) {
+        const {source, ...params} = data;
+
+        return this.loadWakeRoutes(params)
+    }
+
+    /**
+     * @summary Relay a TasksPane read intent.
+     * @param {Object} data
+     * @returns {Promise<Object>}
+     */
+    onTasksRequest(data) {
+        const {source, ...params} = data;
+
+        return this.loadTasks(params)
+    }
+
+    /**
+     * @summary A preset button's click — activate the named perspective on the view (the dock
+     * document + projection are view state; the button carries its `presetName`).
+     * @param {Object} data
+     */
+    onPresetSelect(data) {
+        this.component.activatePerspective(data.component.presetName)
+    }
+
+    /**
+     * @summary The memories pop-out/return toggle — routed to the view's vessel state machine.
+     * @param {Object} data
+     */
+    onMemoriesWindowToggle(data) {
+        this.component.onMemoriesWindowToggle(data)
+    }
+
+    /**
+     * @summary The detail pop-out/reattach toggle — routed to the view's vessel state machine.
+     * @param {Object} data
+     */
+    onDetailWindowToggle(data) {
+        this.component.onDetailWindowToggle(data)
+    }
+
+    /* ── the fleet-start batch ── */
 
     /**
      * @summary Join the active one-click fleet-start batch, or create exactly one new batch.
@@ -53,23 +361,11 @@ class FleetCockpitController extends Controller {
     }
 
     /**
-     * @summary Execute the STAGED fleet bring-up: partition, per-card cascade, honest summary.
-     *
-     * The cockpit owns the wire (the cards stay intent-only). The action reads the roster STORE
-     * (the full fleet truth — a folded idle card is still a member) and partitions it through the
-     * pure {@link module:apps/agentos/view/fleet/fleetStartPlan} rules — every eligibility fact
-     * comes from the wire (guest without a definition, launch-seam `launchable`, an in-flight
-     * verb, a live session state), and every excluded member carries its reason: never silently
-     * skipped, never a hardcoded roster. Each ELIGIBLE record then drives its own honest
-     * round-trip through the C2 adapter — the per-card pending CASCADE (excluded cards never flip
-     * pending; there is no fleet-wide spinner to lie N ways at once).
-     *
-     * After the cascade settles, the outcome summary renders into the chrome
-     * (`fleet-start-summary`): started / UNKNOWN / rejected / excluded counts with per-member reasons
-     * reachable from it — and the roster is re-polled ONCE so every resident that actually
-     * started advances to live runtime truth ({@link #refreshRosterOnSettle}).
-     * @returns {Promise<Object>} The outcome summary (see `FleetStartPlan.summarizeFleetStart`) — for tests and
-     *     callers; the chrome render is the operator-facing half.
+     * @summary Execute the STAGED fleet bring-up: partition the full roster truth through the
+     * pure eligibility rules (every fact from the wire, every exclusion named), drive each
+     * eligible record's own honest round-trip, render the outcome summary, then re-poll the
+     * roster once when anything genuinely started.
+     * @returns {Promise<Object>} The outcome summary.
      * @protected
      */
     async executeStartFleetBatch() {
@@ -94,10 +390,9 @@ class FleetCockpitController extends Controller {
     }
 
     /**
-     * @summary The full roster truth for fleet-level actions: the grid store's records — a folded
-     * idle card is still a fleet member. A present Store is authoritative even when empty; the
-     * rendered-cards fallback is only for compositions that mount the controller without the grid
-     * Store reference.
+     * @summary The full roster truth for fleet-level actions: the grid store's records (a folded
+     * idle card is still a member); the rendered-cards fallback covers compositions without the
+     * grid store reference.
      * @returns {Object[]}
      */
     getRosterRecords() {
@@ -107,10 +402,9 @@ class FleetCockpitController extends Controller {
     }
 
     /**
-     * @summary Write the fleet-start outcome into the chrome summary slot: the compact counts
-     * line as the element text, the per-member reasons as its title (hover-reachable), hidden
-     * again when cleared (`null` — a new run starts with no stale outcome showing).
-     * @param {Object|null} summary From `FleetStartPlan.summarizeFleetStart`, or null to clear.
+     * @summary Write the fleet-start outcome into the chrome summary slot — counts as text,
+     * per-member reasons on the title; hidden again when cleared.
+     * @param {Object|null} summary
      */
     renderStartSummary(summary) {
         const slot = this.getReference('fleet-start-summary');
@@ -118,233 +412,450 @@ class FleetCockpitController extends Controller {
         if (!slot) return;
 
         if (!summary) {
-            slot.set({hidden: true, html: ''});
+            slot.set({hidden: true, text: ''});
             return
         }
 
         const {detail, text} = FleetStartPlan.renderFleetStartSummary(summary);
 
-        slot.set({hidden: false, html: text});
         slot.vdom.title = detail;
-        slot.update()
+        slot.set({hidden: false, text})
     }
 
     /**
-     * @summary The rendered resident cards — the fleet grid's card region (a no-controller container, so
-     * its `fleet-cards` reference resolves up to this controller); the collapsed-idle fold and the header
-     * sub-tree are excluded by ntype.
+     * @summary The rendered resident cards (the collapsed-idle fold and header excluded by ntype).
      * @returns {Neo.component.Base[]}
      */
     getAgentCards() {
         return (this.getReference('fleet-cards')?.items ?? []).filter(card => card.ntype === 'fm-agent-card')
     }
 
-    /**
-     * @summary Consume a card's `lifecycleIntent` and drive the honest round-trip — the B4÷C2 seam.
-     *
-     * A card's control cluster fires an intent-only `lifecycleIntent {action, agentId}` and never
-     * touches transport. The cockpit is the composition root that knows both the cards and the fleet
-     * bridge: it resolves the firing card from the event `source`, then hands the intent + that card's
-     * roster record to the C2 adapter (`FleetLifecycleIntentAdapter.handleFleetLifecycleIntent`). The adapter calls the registry
-     * bridge and writes honest pending / settled / rejected state onto the record via `record.set()`;
-     * the store's `recordChange` re-renders the card — never an optimistic success.
-     * @param {Object} data The `lifecycleIntent` payload `{action, agentId, source}` — Neo stamps `source`.
-     */
-    onAgentLifecycleIntent(data) {
-        const card = Neo.getComponent(data.source);
+    /* ── provider store resolution (tolerant: an overridden provider chain degrades honestly) ── */
 
-        return card && this.refreshRosterOnSettle(
-            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent(data, card.record).then(result => Boolean(result?.ok))
-        )
-    }
+    /* ── the fenced pane-snapshot reads ── */
 
     /**
-     * @summary Drill into a resident — the roster-selection→detail seam.
-     *
-     * The roster fires `agentSelect {agentId}` after its selection seam wrote the provider truth
-     * pair; the cockpit is the composition root that knows both the roster store and the detail
-     * pane. It resolves the record from the provider-owned store and seats it through
-     * {@link AgentOS.view.fleet.cockpit.Container#applySelection} — the ONE selection-write site
-     * (owner-held `detailRecord` for re-projection, the provider pair, the live detail pane, the
-     * memories write-through). The detail pane is auto-hidden on the rail by default, so the FIRST
-     * select reveals it through the standard commit loop (which re-projects and builds the pane
-     * from `detailRecord`); a later select updates the already-shown pane in place, with no full
-     * re-projection. An unknown agentId is a no-op (fail-closed).
-     * @param {Object} data The `agentSelect` payload `{agentId}`.
+     * @summary READ-OBSERVE: one pane history intent → the fleet history verb; a typed
+     * unavailable envelope on absence/throw, the accepted snapshot owner-held and written to the
+     * pane at WRITE time.
+     * @param {Object} [params]
+     * @returns {Promise<Object>}
      */
-    onAgentSelect(data) {
+    async loadCatchUp(params = {}) {
         const
-            me      = this,
-            cockpit = me.component,
-            record  = cockpit.resolveFleetRosterStore()?.get(data.agentId);
+            me         = this,
+            {bridge}   = me,
+            generation = ++me.catchUpReadGeneration,
+            fallback   = reason => ({
+                capability         : {state: 'unavailable', reason},
+                needsFirstUseWindow: false,
+                partition          : params.partition || 'unified',
+                viewerState        : {lastSeen: null, lastVisitAt: null},
+                window             : null,
+                sources            : null
+            });
 
-        if (!record) {
-            return
+        let snapshot;
+
+        if (typeof bridge?.fleetHistory !== 'function') {
+            snapshot = fallback('fleet history verb not wired')
+        } else {
+            try {
+                snapshot = await bridge.fleetHistory(params)
+            } catch (error) {
+                snapshot = fallback('fleet history read failed')
+            }
         }
 
-        cockpit.applySelection(record);
+        if (generation === me.catchUpReadGeneration && !me.isDestroyed) {
+            me.catchUpSnapshot = snapshot;
 
-        if (cockpit.dockModel?.items?.detail?.autoHidden) {
-            const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden: false});
+            const pane = me.component.getCatchUpPane();
 
-            result && !result.errors?.length && cockpit.onDockZoneDocumentChange(result.document)
+            pane && (pane.snapshot = snapshot)
         }
+
+        return snapshot
     }
 
     /**
-     * @summary The grid's bootstrap CTA (empty fleet) opens the S5 define-agent zone — the same
-     * reveal verb the card-drill uses for the detail pane, aimed at the rail's add-agent tool.
-     * @param {Object} data The `addAgentRequest` payload — Neo stamps `source`.
+     * @summary RUNTIME-WRITE: advance the authenticated viewer's lastSeen through the pane's
+     * rendered window end, then write the honest outcome back.
+     * @param {Object} params `{windowEnd}`
+     * @returns {Promise<Object>}
      */
-    onAddAgentRequest(data) {
-        const cockpit = this.component;
-
-        if (cockpit.dockModel?.items?.defineAgent?.autoHidden) {
-            const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'defineAgent', autoHidden: false});
-
-            result && !result.errors?.length && cockpit.onDockZoneDocumentChange(result.document)
-        }
-    }
-
-    /**
-     * @summary Relay the operator-mailbox compose intent to the fleet write verb — the operator-steering
-     * seam, symmetric with {@link #onAgentLifecycleIntent}.
-     *
-     * The operator-mailbox surface fires `compose {message}` intent-only (it holds no transport, like the
-     * cards); the cockpit is the composition root that knows the bridge. It hands the message to the
-     * cockpit's {@link AgentOS.view.fleet.cockpit.Container#composeOperatorMessage} write, which routes it to
-     * the authenticated `composeOperatorMessage` verb — the sender is server-stamped from the bound viewer,
-     * never wire-carried — and re-polls the operator inbox so a sent message lands at canonical truth,
-     * never an optimistic insert.
-     * **Closing the outcome loop.** The surface fires `compose` intent-only and `Observable.fire` discards
-     * handler returns, so the fan-out's per-recipient result cannot flow back off the event. Instead the
-     * settled outcome is written back as owner-state onto the operator-mailbox surface, which relays it to
-     * the compose form to render — so a refusal / failure is never invisible (the review's P1).
-     * @param {Object} data The `compose` payload `{message, source}` — Neo stamps `source`.
-     */
-    async onOperatorCompose(data) {
+    async markCatchUp(params) {
         const
-            me      = this,
-            outcome = await me.component.composeOperatorMessage(data.message),
-            mailbox = me.component.getReference('operator-mailbox');
+            me       = this,
+            {bridge} = me;
 
-        mailbox && (mailbox.composeOutcome = outcome);
+        let outcome;
+
+        try {
+            outcome = typeof bridge?.markFleetCaughtUp === 'function'
+                ? await bridge.markFleetCaughtUp(params)
+                : {status: 'not-wired', reason: 'fleet catch-up mark verb not wired'}
+        } catch (error) {
+            outcome = {status: 'error', reason: 'fleet catch-up mark failed'}
+        }
+
+        if (!me.isDestroyed) {
+            me.catchUpMarkOutcome = outcome;
+
+            const pane = me.component.getCatchUpPane();
+
+            pane && (pane.markOutcome = outcome)
+        }
 
         return outcome
     }
 
     /**
-     * @summary Relay the operator-mailbox paged re-read to the cockpit's own-inbox mirror read — the
-     * read-seam split mirroring {@link #onAgentSelect}'s detail drill: the surface fires the intent, the
-     * composition root holds the bridge and re-reads the operator mirror at the requested offset.
-     * @param {Object} data The `inboxPageRequest` payload `{offset, source}`.
-     */
-    onOperatorInboxPageRequest(data) {
-        return this.component.loadOperatorInbox({offset: data.offset})
-    }
-
-    /**
-     * @summary Relay a CatchUpPane read intent to the cockpit-owned authenticated bridge.
-     * @param {Object} data
+     * @summary READ-OBSERVE: one pane memories intent. The requested selection is owner-held
+     * BEFORE any await — a pane rematerialized mid-read reopens on the PENDING target, never the
+     * last accepted one.
+     * @param {Object} [params] `{agentIdentity, offset?, limit?}`
      * @returns {Promise<Object>}
      */
-    onCatchUpHistoryRequest(data) {
-        const {source, ...params} = data;
+    async loadMemories(params = {}) {
+        const
+            me         = this,
+            {bridge}   = me,
+            generation = ++me.memoriesReadGeneration;
 
-        return this.component.loadCatchUp(params)
+        if (params.agentIdentity) {
+            me.memoriesTarget = params.agentIdentity
+        }
+
+        const fallback = reason => ({
+            capability: {state: 'unavailable', reason},
+            viewer    : null,
+            target    : params.agentIdentity || null,
+            page      : {offset: params.offset ?? 0, limit: null},
+            sessions  : [],
+            count     : 0,
+            total     : null
+        });
+
+        let snapshot;
+
+        if (typeof bridge?.fleetMemories !== 'function') {
+            snapshot = fallback('fleet memories verb not wired')
+        } else {
+            try {
+                snapshot = await bridge.fleetMemories(params)
+            } catch (error) {
+                snapshot = fallback('fleet memories read failed')
+            }
+        }
+
+        if (generation === me.memoriesReadGeneration && !me.isDestroyed) {
+            me.memoriesSnapshot = snapshot;
+
+            const livePane = me.component.getMemoriesPane();
+
+            livePane && (livePane.snapshot = snapshot)
+        }
+
+        return snapshot
     }
 
     /**
-     * @summary Relay the explicit runtime-only mark intent.
-     * @param {Object} data
+     * @summary The memories drill-in — the summary read's discipline one level down: the open
+     * drill is owner-held before the await, and display-only `title` never rides the wire.
+     * @param {Object} params `{sessionId, title?, offset?, limit?}`
      * @returns {Promise<Object>}
      */
-    onCatchUpMarkRequest(data) {
-        return this.component.markCatchUp({windowEnd: data.windowEnd})
+    async loadSessionMemories(params = {}) {
+        const
+            me         = this,
+            {bridge}   = me,
+            generation = ++me.memoriesDrillReadGeneration;
+
+        if (params.sessionId) {
+            me.memoriesDrillSession = {sessionId: params.sessionId, title: params.title ?? null}
+        }
+
+        const
+            {title, ...wireParams} = params,
+            fallback               = reason => ({
+                capability: {state: 'unavailable', reason},
+                viewer    : null,
+                sessionId : params.sessionId || null,
+                page      : {offset: params.offset ?? 0, limit: null},
+                turns     : [],
+                count     : 0,
+                total     : null
+            });
+
+        let snapshot;
+
+        if (typeof bridge?.fleetSessionMemories !== 'function') {
+            snapshot = fallback('fleet session-memories verb not wired')
+        } else {
+            try {
+                snapshot = await bridge.fleetSessionMemories(wireParams)
+            } catch (error) {
+                snapshot = fallback('fleet session-memories read failed')
+            }
+        }
+
+        if (generation === me.memoriesDrillReadGeneration && !me.isDestroyed) {
+            me.memoriesDrillSnapshot = snapshot;
+
+            const livePane = me.component.getMemoriesPane();
+
+            livePane && (livePane.drillSnapshot = snapshot)
+        }
+
+        return snapshot
     }
 
     /**
-     * @summary Route to the existing live adjacency without turning it into history authority.
-     * @param {Object} data
-     * @returns {Object}
+     * @summary Clear the owner-held drill — TERMINAL for in-flight reads: the fence bump makes a
+     * read landing after close unwanted, so it can never repopulate the drill the operator left.
      */
-    onCatchUpLiveSurfaceRequest(data) {
-        return this.component.openCatchUpLiveSurface({target: data.target})
+    clearSessionMemoriesDrill() {
+        this.memoriesDrillReadGeneration++;
+        this.memoriesDrillSession  = null;
+        this.memoriesDrillSnapshot = null
     }
 
     /**
-     * @summary Relay a MemoriesPane read intent to the cockpit-owned authenticated bridge.
-     * @param {Object} data `{agentIdentity, offset?}`
+     * @summary READ-OBSERVE: the decomposed per-seat wake-route envelope — the memories sibling,
+     * no variance.
+     * @param {Object} [params]
      * @returns {Promise<Object>}
      */
-    onMemoriesRequest(data) {
-        const {source, ...params} = data;
+    async loadWakeRoutes(params = {}) {
+        const
+            me         = this,
+            {bridge}   = me,
+            generation = ++me.wakeRoutesReadGeneration,
+            fallback   = reason => ({
+                capability: {state: 'unavailable', reason},
+                viewer    : null,
+                count     : 0,
+                seats     : []
+            });
 
-        return this.component.loadMemories(params)
+        let snapshot;
+
+        if (typeof bridge?.fleetWakeRoutes !== 'function') {
+            snapshot = fallback('fleet wake-routes verb not wired')
+        } else {
+            try {
+                snapshot = await bridge.fleetWakeRoutes(params)
+            } catch (error) {
+                snapshot = fallback('fleet wake-routes read failed')
+            }
+        }
+
+        if (generation === me.wakeRoutesReadGeneration && !me.isDestroyed) {
+            me.wakeRoutesSnapshot = snapshot;
+
+            const livePane = me.component.getWakeRoutesPane();
+
+            livePane && (livePane.snapshot = snapshot)
+        }
+
+        return snapshot
     }
 
     /**
-     * @summary Relay a MemoriesPane drill-in read intent (one session's turn-level memories) to
-     * the cockpit-owned authenticated bridge.
-     * @param {Object} data `{sessionId, title?, offset?}`
+     * @summary READ-OBSERVE: the deployment's task picture — plus the liveness tick's in-flight
+     * accounting: incremented before the verb check, released in `finally` on this read's OWN
+     * settle, never a newer read's.
+     * @param {Object} [params] Reserved; the verb takes no caller input today.
      * @returns {Promise<Object>}
      */
-    onSessionDetailRequest(data) {
-        const {source, ...params} = data;
+    async loadTasks(params = {}) {
+        const
+            me         = this,
+            {bridge}   = me,
+            generation = ++me.tasksReadGeneration,
+            fallback   = reason => ({
+                capability: {state: 'unavailable', reason},
+                viewer    : null,
+                sources   : {},
+                running   : [],
+                queued    : [],
+                recent    : [],
+                counts    : {running: 0, queued: 0, recent: 0}
+            });
 
-        return this.component.loadSessionMemories(params)
+        let snapshot;
+
+        me.tasksReadInFlight++;
+
+        try {
+            if (typeof bridge?.fleetTasks !== 'function') {
+                snapshot = fallback('fleet tasks verb not wired')
+            } else {
+                try {
+                    snapshot = await bridge.fleetTasks(params)
+                } catch (error) {
+                    snapshot = fallback('fleet tasks read failed')
+                }
+            }
+        } finally {
+            me.tasksReadInFlight--
+        }
+
+        if (generation === me.tasksReadGeneration && !me.isDestroyed) {
+            me.tasksSnapshot = snapshot;
+
+            const livePane = me.component.getTasksPane();
+
+            livePane && (livePane.snapshot = snapshot)
+        }
+
+        return snapshot
     }
 
     /**
-     * @summary Clear the owner-held drill-in when the pane closes it — rematerialization truth:
-     * a drill the operator left must not reopen.
-     * @param {Object} data
+     * @summary WRITE: route one operator-composed message — one target, several (fan-out, one
+     * authenticated call and one honest outcome per recipient), or the `AGENT:*` broadcast (a
+     * single call; the server expands the sentinel). The sender is server-stamped at the
+     * authenticated ingress, never carried here. The inbox re-polls exactly ONCE for the batch,
+     * and only when a real send landed.
+     * @param {Object} message `{to, subject, body, priority?, wakeSuppressed?, relatedTickets?}`
+     * @returns {Promise<Object>} `{results: [{to, outcome}]}` in order.
      */
-    onSessionDetailClosed(data) {
-        this.component.clearSessionMemoriesDrill()
+    async composeOperatorMessage(message) {
+        const
+            me       = this,
+            {bridge} = me,
+            targets  = Array.isArray(message.to) ? message.to : (message.to == null ? [] : [message.to]),
+            wired    = typeof bridge?.composeOperatorMessage === 'function',
+            results  = [];
+
+        for (const to of targets) {
+            if (!wired) {
+                results.push({to, outcome: {status: 'not-wired', reason: 'fleet: operator compose verb not wired'}});
+                continue
+            }
+
+            let outcome;
+
+            try {
+                // one target per call; the spread never mutates the caller's payload
+                outcome = await bridge.composeOperatorMessage({...message, to})
+            } catch (error) {
+                outcome = {status: 'error', reason: error?.message || 'compose failed'}
+            }
+
+            results.push({to, outcome})
+        }
+
+        if (results.some(result => result.outcome?.messageId)) {
+            await me.loadOperatorInbox({offset: 0})
+        }
+
+        return {results}
     }
 
     /**
-     * @summary Relay a WakeRoutePane read intent to the cockpit-owned authenticated bridge.
-     * @param {Object} data
-     * @returns {Promise<Object>}
-     */
-    onWakeRoutesRequest(data) {
-        const {source, ...params} = data;
-
-        return this.component.loadWakeRoutes(params)
-    }
-
-    /**
-     * @summary Relay a TasksPane read intent to the cockpit-owned authenticated bridge.
-     * @param {Object} data
-     * @returns {Promise<Object>}
-     */
-    onTasksRequest(data) {
-        const {source, ...params} = data;
-
-        return this.component.loadTasks(params)
-    }
-
-    /**
-     * @summary Re-poll the roster once a lifecycle intent has genuinely changed runtime state.
-     *
-     * `loadRoster` is the ONLY path that maps live runtime truth onto the roster records, and the
-     * cockpit calls it once at construct — so without this, a started resident's card stays at its
-     * stale pre-start state until a page reload (the observe half of define→start→observe). Here the
-     * cockpit re-polls exactly when a settle reports a real change (`ok`), and never on a rejected /
-     * timeout / unauthorized outcome (its honest reason render must stand — a refresh could clobber it
-     * with a stale snapshot). `loadRoster` is idempotent + fail-closed, so a redundant call is safe.
-     * @param {Promise<Boolean>} settledOk Resolves true when at least one intent changed runtime state.
-     * @returns {Promise<*>} The `loadRoster` re-poll (awaited), so the handler's settle point includes the
-     *     refresh and a `loadRoster` failure propagates to the caller instead of becoming a detached rejection.
+     * @summary BOOT: resolve the operator's OWN identity (whoami) and hold it owner-side — the
+     * mirror read requires an EXPLICIT subject (a self-default at a trust boundary is
+     * spoof-adjacent). Fail-closed: an unwired source / unbound context leaves the record null
+     * and the pane honestly unobserved. A bridge throw propagates — absence IS the state, no
+     * fallback envelope exists to fabricate.
      * @protected
      */
-    async refreshRosterOnSettle(settledOk) {
-        if (await settledOk) {
-            return this.component.loadRoster()
+    async loadOperatorIdentity() {
+        const
+            me       = this,
+            {bridge} = me;
+
+        if (typeof bridge?.resolveViewerIdentity !== 'function') {
+            return
+        }
+
+        const outcome = await bridge.resolveViewerIdentity();
+
+        if (outcome?.ok && outcome.agentIdentityNodeId && !me.isDestroyed) {
+            const nodeId = outcome.agentIdentityNodeId;
+
+            // the reused MailboxPane proves possession from `record.githubUsername` (canonicalized
+            // against the mirror admission's subject); the node id IS that @-form authority — carry
+            // both: the username for the possession match, the node id as the explicit read subject
+            me.operatorRecord = {agentIdentityNodeId: nodeId, githubUsername: nodeId.replace(/^@/, '')};
+
+            me.operatorIdentityPosture = me.deriveOperatorIdentityPosture(nodeId);
+
+            // both orderings (identity-first or pane-first) land exactly one first read
+            me.component.getOperatorMailboxPane()?.set({record: me.operatorRecord, identityPosture: me.operatorIdentityPosture})
         }
     }
+
+    /**
+     * @summary The seat-conflation honesty check: a viewer claim matching a registered agent
+     * identity means sends attribute to that seat — a truth the pane renders, never swallows. An
+     * empty roster answers `null` (cannot judge), not a clean bill.
+     * @param {String} viewerIdentity The resolved `@`-form viewer identity.
+     * @returns {{conflated: Boolean, seatIdentity: String}|null}
+     */
+    deriveOperatorIdentityPosture(viewerIdentity) {
+        const rows = this.resolveFleetRosterStore()?.items ?? [];
+
+        if (typeof viewerIdentity !== 'string' || !viewerIdentity.trim() || rows.length < 1) {
+            return null
+        }
+
+        const
+            bare      = id => String(id).trim().replace(/^@/, ''),
+            viewer    = bare(viewerIdentity),
+            conflated = rows.some(row => bare(row.agentId ?? '') === viewer);
+
+        return {conflated, seatIdentity: `@${viewer}`}
+    }
+
+    /**
+     * @summary READ-OBSERVE: the operator's own mailbox mirror. The gate IS the honest outcome
+     * (no pane / no bound subject / no verb → the pane's `unobserved` state stands); a throwing
+     * bridge KEEPS the last-known snapshot — the pane never renders "no mail" for a read that did
+     * not happen. Fence bumped before the gate: a refused intent still invalidates older
+     * in-flight reads.
+     * @param {Object} [params]
+     * @param {Number} [params.offset=0]
+     * @protected
+     */
+    async loadOperatorInbox({offset = 0} = {}) {
+        const
+            me         = this,
+            {bridge}   = me,
+            pane       = me.component.getOperatorMailboxPane(),
+            subject    = me.operatorRecord?.agentIdentityNodeId,
+            generation = ++me.operatorInboxReadGeneration;
+
+        if (!pane || !subject || typeof bridge?.fleetMailboxMirror !== 'function') {
+            return
+        }
+
+        try {
+            const snapshot = await bridge.fleetMailboxMirror({subjectAgentId: subject, offset});
+
+            if (generation === me.operatorInboxReadGeneration && !me.isDestroyed) {
+                me.operatorSnapshot = snapshot;
+
+                const livePane = me.component.getOperatorMailboxPane();
+
+                livePane && (livePane.snapshot = snapshot)
+            }
+        } catch (error) {
+            // fail-closed: the last-known snapshot stays
+        }
+    }
+
+    /* ── the liveness reads (provider-written surfaces; the banner + chrome bind) ── */
+
+    /* ── the shared loss edges + helpers ── */
+
+    /* ── roster mapping + reconciliation ── */
+
+    /* ── the liveness owner + reconnect + viewer-wake stream ── */
+
 }
 
-export default Neo.setupClass(FleetCockpitController);
+export default Neo.setupClass(Controller);

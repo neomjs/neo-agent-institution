@@ -11,7 +11,16 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import Component    from '../../../../../../../../node_modules/neo.mjs/src/component/Base.mjs';
-import FleetCockpit from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpit           from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
+
+// the pane loads are CONTROLLER methods — a prototype host with the write-time accessor on the
+// component seat drives them as production code
+const controllerHost = (component, overrides = {}) => Object.assign(Object.create(FleetCockpitController.prototype), {
+    component,
+    isDestroyed: false,
+    ...overrides
+});
 
 /**
  * @summary The vessel-safety contract for every tear-out-capable intent pane (the memories
@@ -23,16 +32,26 @@ import FleetCockpit from '../../../../../../../../apps/agentos/view/fleet/cockpi
  * still receives the truth.
  */
 function ownerStub(controller, overrides = {}) {
-    return {
+    // the resolver reads owner snapshots + option builders through the controller seat — enrich
+    // the passed controller in place (its identity is the scope the fire path binds)
+    controller && Object.entries({
         buildCatchUpPartitionOptions : () => [],
         buildOperatorRecipientOptions: () => [],
         catchUpMarkOutcome           : null,
         catchUpSnapshot              : null,
-        getController                : () => controller,
+        memoriesDrillSession         : null,
+        memoriesDrillSnapshot        : null,
+        memoriesSnapshot             : null,
+        memoriesTarget               : null,
         operatorIdentityPosture      : null,
         operatorRecord               : null,
         operatorSnapshot             : null,
-        wakeRoutesSnapshot           : null,
+        tasksSnapshot                : null,
+        wakeRoutesSnapshot           : null
+    }).forEach(([key, value]) => { key in controller || (controller[key] = value) });
+
+    return {
+        getController: () => controller,
         ...overrides
     }
 }
@@ -154,12 +173,12 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
         }}};
 
         try {
-            const me = ownerStub(null, {
+            const me = controllerHost({getCatchUpPane: () => currentPane}, {
                 catchUpReadGeneration: 0,
-                getCatchUpPane       : () => currentPane
+                catchUpSnapshot      : null
             });
 
-            const read = proto.loadCatchUp.call(me, {partition: 'unified'});
+            const read = me.loadCatchUp({partition: 'unified'});
 
             currentPane = newPane;
 
@@ -189,9 +208,9 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
         }}};
 
         try {
-            const me = ownerStub(null, {getCatchUpPane: () => currentPane});
+            const me = controllerHost({getCatchUpPane: () => currentPane}, {catchUpMarkOutcome: null});
 
-            const mark = proto.markCatchUp.call(me, {windowEnd: '2026-08-22T00:00:00Z'});
+            const mark = me.markCatchUp({windowEnd: '2026-08-22T00:00:00Z'});
 
             currentPane = newPane;
 
@@ -220,12 +239,12 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
         }}};
 
         try {
-            const me = ownerStub(null, {
+            const me = controllerHost({getWakeRoutesPane: () => currentPane}, {
                 wakeRoutesReadGeneration: 0,
-                getWakeRoutesPane       : () => currentPane
+                wakeRoutesSnapshot      : null
             });
 
-            const read = proto.loadWakeRoutes.call(me, {});
+            const read = me.loadWakeRoutes({});
 
             currentPane = newPane;
 
@@ -255,13 +274,13 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
         }}};
 
         try {
-            const me = ownerStub(null, {
+            const me = controllerHost({getOperatorMailboxPane: () => currentPane}, {
                 operatorInboxReadGeneration: 0,
                 operatorRecord             : {agentIdentityNodeId: '@tobiu'},
-                getOperatorMailboxPane     : () => currentPane
+                operatorSnapshot           : null
             });
 
-            const read = proto.loadOperatorInbox.call(me, {offset: 0});
+            const read = me.loadOperatorInbox({offset: 0});
 
             currentPane = newPane;
 
