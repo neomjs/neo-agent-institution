@@ -39,7 +39,7 @@ class SummaryGrid extends RowsGrid {
          * The engine grid positions rows on a FIXED row lattice — variable card heights overlap
          * (measured in the browser: 32px default vs ~180px cards stacked cell content on top of
          * itself). The cell is height-NORMED in the SCSS (`.fm-memories-card-cell` in
-         * `fleet/memories/Grid.scss`) and THIS value carries the same total: change one, change
+         * `fleet/memories/Container.scss`) and THIS value carries the same total: change one, change
          * both.
          * @member {Number} rowHeight=132
          * @reactive

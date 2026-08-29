@@ -32,7 +32,7 @@ class TurnGrid extends RowsGrid {
          */
         baseCls: ['fm-memories-turn-grid', 'neo-grid-container'],
         /**
-         * Height-normed with `.fm-memories-turn-cell` (`fleet/memories/Grid.scss`) — the fixed
+         * Height-normed with `.fm-memories-turn-cell` (`fleet/memories/Container.scss`) — the fixed
          * row lattice contract; see {@link AgentOS.view.fleet.memories.SummaryGrid#rowHeight}.
          * @member {Number} rowHeight=104
          * @reactive

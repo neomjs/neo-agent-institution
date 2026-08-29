@@ -14,7 +14,7 @@ import ViewerTime from '../../../util/ViewerTime.mjs';
  * prose line beneath it. Bounds are PRESENTATION only — the record keeps the full text, and the
  * cut says so with an ellipsis. Flat pure-vdom cell rendering from a fresh {@link #rowData} bag
  * per factory call (the pooled-cell contract — see
- * {@link AgentOS.view.fleet.memories.SummaryRow}); all content is escaped `text`, and
+ * {@link AgentOS.view.fleet.memories.SummaryRowComponent}); all content is escaped `text`, and
  * guarded-null prose is NAMED, never coerced.
  *
  * @class AgentOS.view.fleet.memories.TurnRowComponent
