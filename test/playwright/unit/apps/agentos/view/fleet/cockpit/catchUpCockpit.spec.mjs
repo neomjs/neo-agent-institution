@@ -8,7 +8,8 @@ setup({
 import {expect, test} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import FleetCockpit   from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpit   from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
+
 
 const clearBridge = () => { delete globalThis.AgentOS?.fleet };
 
@@ -29,7 +30,7 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetHistory: async params => { calls.push(params); return snapshot; }}};
 
-        await expect(FleetCockpit.prototype.loadCatchUp.call(cockpit, {partition: '@neo-opus-ada'})).resolves.toBe(snapshot);
+        await expect(FleetCockpitController.prototype.loadCatchUp.call({component: cockpit}, {partition: '@neo-opus-ada'})).resolves.toBe(snapshot);
         expect(calls).toEqual([{partition: '@neo-opus-ada'}]);
         expect(cockpit.catchUpSnapshot).toBe(snapshot);
         expect(pane.snapshot).toBe(snapshot)
@@ -47,7 +48,7 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
               });
 
         clearBridge();
-        await expect(FleetCockpit.prototype.loadCatchUp.call(make(), {partition: 'unified'}))
+        await expect(FleetCockpitController.prototype.loadCatchUp.call({component: make()}, {partition: 'unified'}))
             .resolves.toMatchObject({capability: {state: 'unavailable'}, sources: null});
         await expect(FleetCockpit.prototype.markCatchUp.call(make(), {windowEnd: '2026-07-18T12:00:00.000Z'}))
             .resolves.toEqual({status: 'not-wired', reason: 'fleet catch-up mark verb not wired'});
@@ -56,7 +57,7 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
             fleetHistory     : async () => { throw new Error('secret read detail') },
             markFleetCaughtUp: async () => { throw new Error('secret write detail') }
         }};
-        await expect(FleetCockpit.prototype.loadCatchUp.call(make()))
+        await expect(FleetCockpitController.prototype.loadCatchUp.call({component: make()}))
             .resolves.toMatchObject({capability: {state: 'unavailable', reason: 'fleet history read failed'}, sources: null});
         await expect(FleetCockpit.prototype.markCatchUp.call(make(), {windowEnd: '2026-07-18T12:00:00.000Z'}))
             .resolves.toEqual({status: 'error', reason: 'fleet catch-up mark failed'})
@@ -77,8 +78,8 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
         let reads = 0;
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetHistory: () => ++reads === 1 ? old : Promise.resolve({id: 'new'})}};
 
-        const first  = FleetCockpit.prototype.loadCatchUp.call(cockpit),
-              second = FleetCockpit.prototype.loadCatchUp.call(cockpit);
+        const first  = FleetCockpitController.prototype.loadCatchUp.call({component: cockpit}),
+              second = FleetCockpitController.prototype.loadCatchUp.call({component: cockpit});
 
         await second;
         resolveOld({id: 'old'});

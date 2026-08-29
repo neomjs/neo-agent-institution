@@ -15,6 +15,7 @@ import Neo                 from '../../../../../../../../node_modules/neo.mjs/sr
 import * as core           from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import {loadAgentOsModule} from '../../../../../../fixtures.mjs';
 import FleetCockpit        from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 
 const {describeOperatorSeatConflation} = await loadAgentOsModule('ai/services/fleet/operatorSeatConflation.mjs');
 
@@ -53,8 +54,8 @@ test.describe('operatorSeatConflation — cross-boundary parity pin (leaf ↔ co
 
     const
         leafDecision    = viewer => describeOperatorSeatConflation({viewerIdentity: viewer, registeredIds: REGISTERED}),
-        cockpitDecision = viewer => FleetCockpit.prototype.deriveOperatorIdentityPosture.call(
-            {resolveFleetRosterStore: () => ({items: REGISTERED.map(id => ({agentId: String(id).replace(/^@/, '')}))})},
+        cockpitDecision = viewer => FleetCockpitController.prototype.deriveOperatorIdentityPosture.call(
+            {component: {resolveFleetRosterStore: () => ({items: REGISTERED.map(id => ({agentId: String(id).replace(/^@/, '')}))})}},
             viewer
         );
 
@@ -67,8 +68,8 @@ test.describe('operatorSeatConflation — cross-boundary parity pin (leaf ↔ co
 
     test('the empty-list null contract holds on both sides — absence of truth is not a clean bill', () => {
         expect(describeOperatorSeatConflation({viewerIdentity: '@tobiu', registeredIds: []})).toBeNull();
-        expect(FleetCockpit.prototype.deriveOperatorIdentityPosture.call(
-            {resolveFleetRosterStore: () => ({items: []})},
+        expect(FleetCockpitController.prototype.deriveOperatorIdentityPosture.call(
+            {component: {resolveFleetRosterStore: () => ({items: []})}},
             '@tobiu'
         )).toBeNull()
     })

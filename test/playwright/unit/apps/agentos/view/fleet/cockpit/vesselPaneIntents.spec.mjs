@@ -12,6 +12,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import Component    from '../../../../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import FleetCockpit from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 
 /**
  * @summary The vessel-safety contract for every tear-out-capable intent pane (the memories
@@ -38,7 +39,8 @@ function ownerStub(controller, overrides = {}) {
 }
 
 test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pushes', () => {
-    const proto = FleetCockpit.prototype;
+    const proto = FleetCockpit.prototype,
+          ctrlProto = FleetCockpitController.prototype;
 
     test('vessel-fired intents reach the scoped controller through the REAL fire path — and die without the scope', () => {
         // every configured intent name per pane, from the resolver's own listener configs
@@ -159,7 +161,7 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
                 getCatchUpPane       : () => currentPane
             });
 
-            const read = proto.loadCatchUp.call(me, {partition: 'unified'});
+            const read = ctrlProto.loadCatchUp.call({component: me}, {partition: 'unified'});
 
             currentPane = newPane;
 
@@ -225,7 +227,7 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
                 getWakeRoutesPane       : () => currentPane
             });
 
-            const read = proto.loadWakeRoutes.call(me, {});
+            const read = ctrlProto.loadWakeRoutes.call({component: me}, {});
 
             currentPane = newPane;
 
@@ -261,7 +263,7 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
                 getOperatorMailboxPane     : () => currentPane
             });
 
-            const read = proto.loadOperatorInbox.call(me, {offset: 0});
+            const read = ctrlProto.loadOperatorInbox.call({component: me}, {offset: 0});
 
             currentPane = newPane;
 

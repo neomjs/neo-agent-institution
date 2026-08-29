@@ -11,6 +11,7 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import FleetCockpit   from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 
 /**
  * @summary The FleetCockpit owner seam for the memories selection, driven as prototype methods
@@ -38,7 +39,8 @@ function ownerStub({memoriesTarget = null, memoriesSnapshot = null, pane = null}
 
 test.describe('FleetCockpit — memories owner seam (pending selection + write-time pane resolve)', () => {
     test('the rebuilt pane receives the PENDING selection ahead of the accepted snapshot target', () => {
-        const proto = FleetCockpit.prototype;
+        const proto = FleetCockpit.prototype,
+          ctrlProto = FleetCockpitController.prototype;
 
         const pendingSwitch = proto.resolveDockComponentRef.call(
             ownerStub({memoriesTarget: '@neo-fable-clio', memoriesSnapshot: {target: '@neo-opus-ada'}}),
@@ -63,6 +65,7 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
     test('loadMemories owner-holds the target BEFORE the await and writes into the WRITE-time pane', async () => {
         const
             proto      = FleetCockpit.prototype,
+            ctrlProto  = FleetCockpitController.prototype,
             oldPane    = {},
             newPane    = {},
             previousNs = globalThis.AgentOS;
@@ -84,7 +87,7 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
                 getReference   : () => currentPane
             };
 
-            const read = proto.loadMemories.call(me, {agentIdentity: '@neo-gpt-bob'});
+            const read = ctrlProto.loadMemories.call({component: me}, {agentIdentity: '@neo-gpt-bob'});
 
             // owner-held synchronously, before any settlement — the rematerialization key exists
             // the moment the intent passes through the owner
@@ -110,6 +113,7 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
     test('loadSessionMemories owner-holds the drill BEFORE the await, strips display state off the wire, and writes into the WRITE-time pane', async () => {
         const
             proto      = FleetCockpit.prototype,
+            ctrlProto  = FleetCockpitController.prototype,
             oldPane    = {},
             newPane    = {},
             previousNs = globalThis.AgentOS;
@@ -133,7 +137,7 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
                 getMemoriesPane            : () => currentPane
             };
 
-            const read = proto.loadSessionMemories.call(me, {sessionId: 'abcd1234-session', title: 'The witnessed day'});
+            const read = ctrlProto.loadSessionMemories.call({component: me}, {sessionId: 'abcd1234-session', title: 'The witnessed day'});
 
             // owner-held synchronously, before any settlement — the rematerialization key exists
             // the moment the intent passes through the owner; the TITLE is owner/display state
@@ -154,17 +158,17 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
             expect(me.memoriesDrillSnapshot).toBe(envelope);
 
             // the close intent clears BOTH halves of the owner state — a left drill cannot reopen
-            proto.clearSessionMemoriesDrill.call(me);
+            ctrlProto.clearSessionMemoriesDrill.call({component: me});
             expect(me.memoriesDrillSession).toBe(null);
             expect(me.memoriesDrillSnapshot).toBe(null);
 
             // the close is TERMINAL for in-flight reads: the generation bump makes a read that
             // was racing the close land inert — no owner state, no pane write, for a drill the
             // operator already left (the reviewer's race, pinned)
-            const lateRead = proto.loadSessionMemories.call(me, {sessionId: 'abcd1234-session'});
+            const lateRead = ctrlProto.loadSessionMemories.call({component: me}, {sessionId: 'abcd1234-session'});
 
             expect(me.memoriesDrillSession).toEqual({sessionId: 'abcd1234-session', title: null});
-            proto.clearSessionMemoriesDrill.call(me);
+            ctrlProto.clearSessionMemoriesDrill.call({component: me});
 
             const lateEnvelope = {capability: {state: 'wired'}, sessionId: 'abcd1234-session', page: {offset: 0, limit: 20}, turns: [], count: 0, total: 0};
             releaseRead(lateEnvelope);

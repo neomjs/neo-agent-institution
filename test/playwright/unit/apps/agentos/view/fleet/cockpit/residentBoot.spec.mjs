@@ -11,9 +11,15 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; // defines Neo.get — the container child-add path resolves parents through it
 import FleetActivityEvents from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
-import FleetCockpit        from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpit        from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
+
 import FleetRoster         from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import StateProvider       from '../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
+
+/** #50 controller homing: dispatch a controller verb with `this` as the fake view. */
+const viaController = name => function(...args) {
+    return FleetCockpitController.prototype[name].apply({component: this}, args)
+};
 
 /**
  * Resident-boot lifecycle contracts for the south reading-surface tabs: the panes construct at
@@ -109,8 +115,8 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
                   buildActivityActorDirectory  : FleetCockpit.prototype.buildActivityActorDirectory,
                   buildCatchUpPartitionOptions : FleetCockpit.prototype.buildCatchUpPartitionOptions,
                   buildOperatorRecipientOptions: FleetCockpit.prototype.buildOperatorRecipientOptions,
-                  clearDegradedReason          : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface          : FleetCockpit.prototype.degradeWiredSurface,
+                  clearDegradedReason          : viaController('clearDegradedReason'),
+                  degradeWiredSurface          : viaController('degradeWiredSurface'),
                   getCatchUpPane               : () => ({set: values => sets.catchUp.push(values), onRefreshClick() {}}),
                   getOperatorMailboxPane       : () => ({set: values => sets.mailbox.push(values)}),
                   getReference                 : () => null, // NO grid, NO activity stream — torn or absent
@@ -130,7 +136,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
             fleetRoster: async () => ({capabilities: {}, rows: [{id: 'vega', githubUsername: 'neo-opus-vega', displayName: 'Vega'}]})
         }};
 
-        await FleetCockpit.prototype.loadRoster.call(host);
+        await FleetCockpitController.prototype.loadRoster.call({component: host});
 
         // the live rows landed in the PROVIDER Store despite the missing projection
         expect(store.getCount()).toBe(1);

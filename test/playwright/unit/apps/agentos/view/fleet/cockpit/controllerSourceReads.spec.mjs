@@ -1,13 +1,18 @@
-import {setup} from '../../../../setup.mjs';
+import {setup} from '../../../../../../setup.mjs';
 
 setup({appConfig: {name: 'CockpitSourceReadsTest'}});
 
-import {test, expect}    from '@playwright/test';
-import Neo               from '../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core         from '../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import CockpitSourceReads from '../../../../../../apps/agentos/util/CockpitSourceReads.mjs';
+import {test, expect}       from '@playwright/test';
+import Neo                  from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core            from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 
-const {readFencedSource, SOURCE_READS} = CockpitSourceReads;
+/**
+ * Drive one controller verb against a view stub — prototype dispatch with `this.component`
+ * bound, no instance lifecycle (the laws under test are the verbs', not the controller's).
+ * @param {Object} view @param {String} verb @param {...*} args @returns {*}
+ */
+const drive = (view, verb, ...args) => FleetCockpitController.prototype[verb].call({component: view}, ...args);
 
 /**
  * The fenced source-read laws, pinned ONCE at the discipline (#48, first cut of Epic #22) instead
@@ -16,7 +21,7 @@ const {readFencedSource, SOURCE_READS} = CockpitSourceReads;
  * release on the read's OWN settle, and the operator-inbox gate + keep-last-truth error mode.
  * The cockpit's verbs are thin delegates over exactly these paths.
  */
-test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read discipline', () => {
+test.describe('AgentOS.view.fleet.cockpit.Controller — the fenced source-read + liveness disciplines', () => {
     /** @returns {Object} a minimal owner carrying the fields the descriptors touch */
     function makeOwner(pane = {}) {
         return {
@@ -52,7 +57,7 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
     test('an unwired verb lands the typed unavailable fallback — never a fabricated success', async () => {
         const owner = makeOwner();
 
-        const snapshot = await withBridge({}, () => readFencedSource(owner, SOURCE_READS.memories, {agentIdentity: '@x'}));
+        const snapshot = await withBridge({}, () => drive(owner, 'loadMemories', {agentIdentity: '@x'}));
 
         expect(snapshot.capability).toEqual({state: 'unavailable', reason: 'fleet memories verb not wired'});
         expect(snapshot.target).toBe('@x');
@@ -66,7 +71,7 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
 
         const snapshot = await withBridge(
             {fleetWakeRoutes: async () => { throw new Error('boom') }},
-            () => readFencedSource(owner, SOURCE_READS.wakeRoutes, {})
+            () => drive(owner, 'loadWakeRoutes', {})
         );
 
         expect(snapshot.capability.reason).toBe('fleet wake-routes read failed');
@@ -83,14 +88,14 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
 
         const slow = withBridge(
             {fleetMemories: () => new Promise(resolve => { releaseSlow = () => resolve(slowSnapshot) })},
-            () => readFencedSource(owner, SOURCE_READS.memories, {agentIdentity: '@a'})
+            () => drive(owner, 'loadMemories', {agentIdentity: '@a'})
         );
 
         await Promise.resolve();   // the slow read has bumped its generation and is awaiting
 
         await withBridge(
             {fleetMemories: async () => fastSnapshot},
-            () => readFencedSource(owner, SOURCE_READS.memories, {agentIdentity: '@b'})
+            () => drive(owner, 'loadMemories', {agentIdentity: '@b'})
         );
 
         expect(owner.memoriesSnapshot).toBe(fastSnapshot);
@@ -109,7 +114,7 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
 
         const pending = withBridge(
             {fleetTasks: () => new Promise(resolve => { release = () => resolve({capability: {state: 'wired'}}) })},
-            () => readFencedSource(owner, SOURCE_READS.tasks, {})
+            () => drive(owner, 'loadTasks', {})
         );
 
         await Promise.resolve();
@@ -129,7 +134,7 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
 
         await withBridge(
             {fleetTasks: async () => { observedDuring = owner.tasksReadInFlight; throw new Error('down') }},
-            () => readFencedSource(owner, SOURCE_READS.tasks, {})
+            () => drive(owner, 'loadTasks', {})
         );
 
         expect(observedDuring).toBe(1);
@@ -143,7 +148,7 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
         owner.operatorRecord = null;
         const refused = await withBridge(
             {fleetMailboxMirror: async () => ({rows: ['never']})},
-            () => readFencedSource(owner, SOURCE_READS.operatorInbox, {})
+            () => drive(owner, 'loadOperatorInbox', {})
         );
         expect(refused).toBe(undefined);
         expect(owner.operatorSnapshot).toBe(null);
@@ -157,13 +162,13 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
                 expect(wire).toEqual({subjectAgentId: '@e2e-operator', offset: 0});
                 return accepted
             }},
-            () => readFencedSource(owner, SOURCE_READS.operatorInbox, {})
+            () => drive(owner, 'loadOperatorInbox', {})
         );
         expect(owner.operatorSnapshot).toBe(accepted);
 
         await withBridge(
             {fleetMailboxMirror: async () => { throw new Error('wire down') }},
-            () => readFencedSource(owner, SOURCE_READS.operatorInbox, {offset: 50})
+            () => drive(owner, 'loadOperatorInbox', {offset: 50})
         );
         expect(owner.operatorSnapshot).toBe(accepted)
     });
@@ -174,13 +179,13 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
 
         const pending = withBridge(
             {fleetSessionMemories: () => new Promise(resolve => { release = () => resolve({capability: {state: 'wired'}, turns: ['late']}) })},
-            () => readFencedSource(owner, SOURCE_READS.sessionMemories, {sessionId: 'S1', title: 'T'})
+            () => drive(owner, 'loadSessionMemories', {sessionId: 'S1', title: 'T'})
         );
 
         await Promise.resolve();
         expect(owner.memoriesDrillSession).toEqual({sessionId: 'S1', title: 'T'});
 
-        CockpitSourceReads.clearSessionMemoriesDrill(owner);
+        drive(owner, 'clearSessionMemoriesDrill');
         release();
         await pending;
 
@@ -207,7 +212,7 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
 
         await withBridge(
             {resolveViewerIdentity: async () => ({ok: true, agentIdentityNodeId: '@sentinel-seat'})},
-            () => CockpitSourceReads.loadOperatorIdentity(owner)
+            () => drive(owner, 'loadOperatorIdentity')
         );
 
         expect(calls[0]).toEqual({override: '@sentinel-seat'});
@@ -216,13 +221,99 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
         expect(calls[1]).toEqual({record: owner.operatorRecord, identityPosture: owner.operatorIdentityPosture})
     });
 
+    test('liveness class: owner overrides seat for the collaborator seams (the #49 virtual-dispatch law)', async () => {
+        const calls = [];
+        const store = {items: [], clear() { calls.push('clear') }, add(rows) { calls.push({add: rows.length}) }};
+        const owner = {
+            isDestroyed: false,
+            gridReadGeneration: 0, gridReadInFlight: 0,
+            rosterWired: true, rosterSourceMode: 'selected', lastLiveRows: null,
+            gridAdapterState: 'live', gridDegradedReason: 'stale-cause',
+            livenessReadTimeout: 500,
+            operatorRecord: null,
+            catchUpSnapshot: null,
+            resolveFleetRosterStore: () => store,
+            getReference: () => null,
+            getCatchUpPane: () => null,
+            getOperatorMailboxPane: () => null,
+            mapRosterRow: row => ({agentId: row.id, mapped: true}),
+            // the sentinels — a static bypass of either fails this witness
+            reconcileRoster(target, mapped) { calls.push({reconcile: mapped.length, target: target === store}) },
+            reconcileSelection() { calls.push('reselect') },
+            clearDegradedReason(surface) { calls.push({clear: surface}); this.gridDegradedReason = null },
+            buildCatchUpPartitionOptions: () => [],
+            buildActivityActorDirectory : () => ({}),
+            buildOperatorRecipientOptions: () => [],
+            deriveOperatorIdentityPosture: () => null,
+            syncSpineBanner() { calls.push('banner') },
+            degradeWiredSurface() { calls.push('degrade') }
+        };
+
+        await withBridge(
+            {selected: true, fleetRoster: async () => ({capabilities: {}, rows: [{id: 'a'}, {id: 'b'}]})},
+            () => drive(owner, 'loadRoster')
+        );
+
+        expect(calls).toContainEqual({reconcile: 2, target: true});
+        expect(calls).toContainEqual({clear: 'grid'});
+        expect(calls).toContain('banner');
+        expect(owner.gridAdapterState).toBe('live')
+    });
+
+    test('liveness class: the fence bumps BEFORE the cold-truth exit — an absence tick invalidates an older in-flight read', async () => {
+        const owner = {
+            isDestroyed: false,
+            streamReadGeneration: 0, streamReadInFlight: 0,
+            streamAdapterState: 'sample', streamDegradedReason: 'left-over',
+            activityWired: false,
+            livenessReadTimeout: 500,
+            resolveFleetActivityEventsStore: () => null,   // cold truth
+            getReference: () => null,
+            getStateProvider: () => null,
+            syncSpineBanner() {},
+            degradeWiredSurface() { throw new Error('must not degrade on the cold path') },
+            clearDegradedReason() {}
+        };
+
+        await withBridge({}, () => drive(owner, 'loadActivity'));
+
+        // the cold tick bumped the fence (newer knowledge) and retracted the sample-state cause
+        expect(owner.streamReadGeneration).toBe(1);
+        expect(owner.streamDegradedReason).toBe(null)
+    });
+
+    test('liveness class: a degrade in the catch dispatches the OWNER seam, fenced', async () => {
+        const calls = [];
+        const owner = {
+            isDestroyed: false,
+            streamReadGeneration: 0, streamReadInFlight: 0,
+            streamAdapterState: 'live', streamDegradedReason: null,
+            activityWired: true,
+            livenessReadTimeout: 500,
+            resolveFleetActivityEventsStore: () => ({ingestSnapshot() {}}),
+            getReference: () => null,
+            getStateProvider: () => null,
+            syncSpineBanner() { calls.push('banner') },
+            degradeWiredSurface(surface, error) { calls.push({degrade: surface, safe: typeof error}) },
+            clearDegradedReason() {}
+        };
+
+        await withBridge(
+            {fleetActivity: async () => { throw new Error('wire down') }},
+            () => drive(owner, 'loadActivity')
+        );
+
+        expect(calls[0]).toEqual({degrade: 'stream', safe: 'object'});
+        expect(calls).toContain('banner')
+    });
+
     test('the wire payload strips display-only title on the drill read', async () => {
         const owner = makeOwner();
         let seenWire;
 
         await withBridge(
             {fleetSessionMemories: async wire => { seenWire = wire; return {capability: {state: 'wired'}} }},
-            () => readFencedSource(owner, SOURCE_READS.sessionMemories, {sessionId: 'S1', title: 'display only', offset: 5})
+            () => drive(owner, 'loadSessionMemories', {sessionId: 'S1', title: 'display only', offset: 5})
         );
 
         expect(seenWire).toEqual({sessionId: 'S1', offset: 5})

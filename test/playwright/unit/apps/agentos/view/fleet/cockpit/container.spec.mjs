@@ -21,6 +21,19 @@ import {fileURLToPath}      from 'url';
 import Neo                  from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core            from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
+/**
+ * The #50 controller homing: the read/liveness verbs live on FleetCockpitController and reach
+ * view state through `this.component`. These fakes keep their exact shapes; the route flips.
+ * @param {String} name Controller verb.
+ * @returns {Function} a method whose `this` is the fake view, dispatching through the controller.
+ */
+let FleetCockpitController;
+
+const viaController = name => function(...args) {
+    return FleetCockpitController.prototype[name].apply({component: this}, args)
+};
+
+
 const seedPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../../../../apps/agentos/resources/data/fleetRoster.json');
 
 // A usable three-source collection: the runtime axis is WIRED. The eligibility partition fails a
@@ -104,8 +117,8 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
               // data that never existed.
               cockpit = {
                   ...makeActivityStoreHarness(),
-                  clearDegradedReason : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface : FleetCockpit.prototype.degradeWiredSurface,
+                  clearDegradedReason : viaController('clearDegradedReason'),
+                  degradeWiredSurface : viaController('degradeWiredSurface'),
                   getReference        : reference => reference === 'activity-stream' ? stream : null,
                   streamAdapterState  : 'sample',
                   streamDegradedReason: null,
@@ -114,13 +127,14 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
                   syncSpineBanner     : FleetCockpit.prototype.syncSpineBanner
               };
 
-        await FleetCockpit.prototype.loadActivity.call(cockpit);
+        await FleetCockpitController.prototype.loadActivity.call({component: cockpit});
 
         return {stream, cockpit, store: cockpit.activityStore, provider: cockpit.activityProvider}
     };
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpit           = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     test.afterEach(() => clearBridge());
@@ -248,8 +262,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     };
 
     const makeCockpit = (grid, rosterWired = false, gridAdapterState = 'sample', rosterSourceMode = 'sample') => ({
-        clearDegradedReason: FleetCockpit.prototype.clearDegradedReason,
-        degradeWiredSurface: FleetCockpit.prototype.degradeWiredSurface,
+        clearDegradedReason: viaController('clearDegradedReason'),
+        degradeWiredSurface: viaController('degradeWiredSurface'),
         // the resident-pane owner pushes route through the phase-blind accessors; an
         // unmaterialized pane resolves null — the same silence contract as getReference
         getCatchUpPane        : () => null,
@@ -281,14 +295,15 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         const grid    = makeGrid(known, items),
               cockpit = makeCockpit(grid, rosterWired, 'sample', rosterSourceMode);
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});
 
         return {cockpit, grid}
     };
 
     test.beforeAll(async () => {
         FleetAgent   = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpit           = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
         FleetRoster  = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default
     });
 
@@ -409,7 +424,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         // …then the transport dies: back on silence, the generic cold copy is the honest line
         // again, so the never-wired loss edge must drop the retained answered-state cause.
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => { throw new Error('transport lost') }}};
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});
 
         expect(cockpit.gridAdapterState).toBe('sample');
         expect(cockpit.gridDegradedReason).toBe(null)
@@ -425,7 +440,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(cockpit.gridDegradedReason).toContain('registry empty');
 
         clearBridge();
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});
 
         expect(cockpit.gridAdapterState).toBe('sample');
         expect(cockpit.gridDegradedReason).toBe(null)
@@ -437,7 +452,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(cockpit.gridDegradedReason).toContain('registry empty');
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {}};
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});
 
         expect(cockpit.gridAdapterState).toBe('sample');
         expect(cockpit.gridDegradedReason).toBe(null)
@@ -653,8 +668,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             // tear-out maps here → safe-nav falls through to getReference, same as the detail twin
             getMemoriesPane    : FleetCockpit.prototype.getMemoriesPane,
             applySelection     : FleetCockpit.prototype.applySelection,
-            clearDegradedReason: FleetCockpit.prototype.clearDegradedReason,
-            degradeWiredSurface: FleetCockpit.prototype.degradeWiredSurface,
+            clearDegradedReason: viaController('clearDegradedReason'),
+            degradeWiredSurface: viaController('degradeWiredSurface'),
             getReference       : reference => reference === 'fleet-grid' ? grid : reference === 'agent-detail' ? detail : null,
             grid,
             // mirrors the class field defaults the loss edge reads
@@ -699,7 +714,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         ]})}};
 
         // the bridge wins the race: live truth lands first
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});
 
         expect(cockpit.rosterWired).toBe(true);
         expect(cockpit.lastLiveRows.map(row => row.agentId)).toEqual(['ada', 'vega']);
@@ -743,7 +758,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows})}};
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});
 
         expect(cockpit.rosterWired).toBe(true);
         expect(store.getCount()).toBe(1000);
@@ -777,7 +792,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             {id: 'ada',  family: 'claude', lifecycle: {state: 'stopped'}}
         ]})}};
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);   // first-live clear+add replaces the seed
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});   // first-live clear+add replaces the seed
 
         const liveInstance = store.get('vega');
         expect(liveInstance).toBeTruthy();
@@ -801,7 +816,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: []})}};
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);   // authoritative empty snapshot → real Store.remove
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});   // authoritative empty snapshot → real Store.remove
 
         expect(store.get('vega')).toBeFalsy();                   // removed via the real Store path
         expect(cockpit.detailRecord).toBeNull();                // selection cleared
@@ -827,7 +842,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             {id: 'ada',  family: 'claude', lifecycle: {state: 'stopped'}}
         ]})}};
 
-        await FleetCockpit.prototype.loadRoster.call(cockpit);   // reconcile: record.set mutates in place (same object)
+        await FleetCockpitController.prototype.loadRoster.call({component: cockpit});   // reconcile: record.set mutates in place (same object)
 
         expect(store.get('vega')).toBe(instance);               // same instance, mutated in place
         expect(cockpit.detailRecord).toBe(instance);            // selection unchanged
@@ -917,7 +932,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 });
 
 test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
-    let FleetCockpit, FleetCockpitController;
+    let FleetCockpit;
 
     test.beforeAll(async () => {
         [FleetCockpit, FleetCockpitController] = await Promise.all([
@@ -1164,7 +1179,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
  * `loadRoster` is a spied collaborator here; that it correctly reconciles the Store is covered above.
  */
 test.describe('Fleet cockpit — controller re-polls the roster on a settled lifecycle intent (#14978)', () => {
-    let FleetCockpitController, FleetCockpit, FleetAgent, Store;
+    let FleetCockpit, FleetAgent, Store;
 
     const settlingBridge  = () => ({startAgent: async () => ({}), stopAgent: async () => ({}), restartAgent: async () => ({})});
     const rejectingBridge = () => ({startAgent: async () => { throw new Error('harness offline') }});
@@ -1359,8 +1374,8 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         // fake omitting it makes `++undefined` NaN, so the read's generation never matches the
         // owner's and EVERY read silently drops itself — a green suite over state nobody wrote.
         const cockpit = {
-            clearDegradedReason: FleetCockpit.prototype.clearDegradedReason,
-            degradeWiredSurface: FleetCockpit.prototype.degradeWiredSurface,
+            clearDegradedReason: viaController('clearDegradedReason'),
+            degradeWiredSurface: viaController('degradeWiredSurface'),
             // the resident-pane owner pushes route through the phase-blind accessors; an
             // unmaterialized pane resolves null — the same silence contract as getReference
             getCatchUpPane        : () => null,
@@ -1374,7 +1389,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
             mapRosterRow           : FleetCockpit.prototype.mapRosterRow,
             reconcileRoster        : FleetCockpit.prototype.reconcileRoster,
             reconcileSelection     : FleetCockpit.prototype.reconcileSelection,
-            loadRoster             : FleetCockpit.prototype.loadRoster,
+            loadRoster             : viaController('loadRoster'),
             rosterWired            : false,
             // the real banner sync: null getReference for the slot → guarded no-op, no stub drift
             syncSpineBanner    : FleetCockpit.prototype.syncSpineBanner
@@ -1421,7 +1436,8 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
     let FleetCockpit;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpit           = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     const makeBanner = () => {
@@ -1770,14 +1786,14 @@ test.describe('Fleet cockpit — the spine-banner slot sync (syncSpineBanner)', 
 
         return {
             ...makeActivityStoreHarness(),
-            clearDegradedReason: FleetCockpit.prototype.clearDegradedReason,
-            degradeWiredSurface: FleetCockpit.prototype.degradeWiredSurface,
+            clearDegradedReason: viaController('clearDegradedReason'),
+            degradeWiredSurface: viaController('degradeWiredSurface'),
             getReference       : reference =>
                 reference === 'fleet-spine-banner' ? banner :
                 reference === 'activity-stream'    ? stream : null,
             gridAdapterState    : 'live',
             gridDegradedReason  : null,
-            loadActivity        : FleetCockpit.prototype.loadActivity,
+            loadActivity        : viaController('loadActivity'),
             streamAdapterState  : 'live',
             streamDegradedReason: null,
             streamReadGeneration: 0,
@@ -2113,7 +2129,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
     let FleetCockpit;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpit           = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     /**
@@ -2185,8 +2202,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
               host   = {
                   ...makeTimerHost(),
                   ...makeActivityStoreHarness(),
-                  clearDegradedReason : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface : FleetCockpit.prototype.degradeWiredSurface,
+                  clearDegradedReason : viaController('clearDegradedReason'),
+                  degradeWiredSurface : viaController('degradeWiredSurface'),
                   getReference        : reference => reference === 'activity-stream' ? stream : null,
                   maxReadsInFlight    : 2,
                   streamAdapterState  : 'live',
@@ -2199,7 +2216,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         let tick, wireReads = 0;
 
         host.livenessReadTimeout = 5;
-        host.loadActivity        = FleetCockpit.prototype.loadActivity;
+        host.loadActivity        = viaController('loadActivity');
         host.loadRoster          = () => Promise.resolve();
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetActivity() {
@@ -2241,8 +2258,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
               host   = {
                   ...makeTimerHost(),
                   ...makeActivityStoreHarness(),
-                  clearDegradedReason : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface : FleetCockpit.prototype.degradeWiredSurface,
+                  clearDegradedReason : viaController('clearDegradedReason'),
+                  degradeWiredSurface : viaController('degradeWiredSurface'),
                   getReference        : reference => reference === 'activity-stream' ? stream : null,
                   maxReadsInFlight    : 2,
                   streamAdapterState  : 'live',
@@ -2255,7 +2272,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         let tick, wireReads = 0;   // 5-tick
 
         host.livenessReadTimeout = 5;
-        host.loadActivity        = FleetCockpit.prototype.loadActivity;
+        host.loadActivity        = viaController('loadActivity');
         host.loadRoster          = () => Promise.resolve();
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetActivity: () => {
@@ -2302,8 +2319,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
               host   = {
                   ...makeTimerHost(),
                   ...makeActivityStoreHarness(),
-                  clearDegradedReason : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface : FleetCockpit.prototype.degradeWiredSurface,
+                  clearDegradedReason : viaController('clearDegradedReason'),
+                  degradeWiredSurface : viaController('degradeWiredSurface'),
                   getReference        : reference => reference === 'activity-stream' ? stream : null,
                   streamAdapterState  : 'live',
                   streamDegradedReason: null,
@@ -2315,7 +2332,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         let tick, calls = 0;
 
         host.livenessReadTimeout = 5;                 // short window; the spec pins it, never sleeps on prod
-        host.loadActivity        = FleetCockpit.prototype.loadActivity;
+        host.loadActivity        = viaController('loadActivity');
         host.loadRoster          = () => Promise.resolve();
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetActivity: () => {
@@ -2478,7 +2495,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
                 livenessReadTimeout      : timeout,
                 maxReadsInFlight         : 2,
                 applyBrainHealth(response) { applied.push(response) },
-                loadBrainHealth: FleetCockpit.prototype.loadBrainHealth
+                loadBrainHealth: viaController('loadBrainHealth')
             };
 
         return host
@@ -2567,7 +2584,8 @@ test.describe('Fleet cockpit — the wake-routes read (loadWakeRoutes)', () => {
     let FleetCockpit;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpit           = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     const clearFleetBridge = () => { delete globalThis.AgentOS?.fleet };
@@ -2579,7 +2597,7 @@ test.describe('Fleet cockpit — the wake-routes read (loadWakeRoutes)', () => {
         wakeRoutesSnapshot      : null,
         getWakeRoutesPane       : () => pane,
         getReference            : reference => reference === 'wakeRoutes' ? pane : null,
-        loadWakeRoutes          : FleetCockpit.prototype.loadWakeRoutes
+        loadWakeRoutes          : viaController('loadWakeRoutes')
     });
 
     test('an unwired verb lands as a typed unavailable envelope on the owner AND the live pane', async () => {
@@ -2651,7 +2669,8 @@ test.describe('Fleet cockpit — the tasks read (loadTasks)', () => {
     let FleetCockpit;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpit           = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
     const clearFleetBridge = () => { delete globalThis.AgentOS?.fleet };
@@ -2664,7 +2683,7 @@ test.describe('Fleet cockpit — the tasks read (loadTasks)', () => {
         tasksSnapshot      : null,
         getTasksPane       : () => pane,
         getReference       : reference => reference === 'tasks' ? pane : null,
-        loadTasks          : FleetCockpit.prototype.loadTasks
+        loadTasks          : viaController('loadTasks')
     });
 
     test('an unwired verb lands as a typed unavailable envelope on the owner AND the live pane', async () => {
@@ -2754,7 +2773,7 @@ test.describe('Fleet cockpit — the tasks read (loadTasks)', () => {
  * method under `.call`, so each method's decision is exercised in isolation with no full instantiation.
  */
 test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-inbox read, #15377)', () => {
-    let FleetCockpit, FleetCockpitController;
+    let FleetCockpit;
 
     // scope the mock to the `fleet` subkey ONLY (see the loadActivity block): replacing `globalThis.AgentOS`
     // would wipe every `AgentOS.*` registration for later specs in the shared worker.
@@ -2916,7 +2935,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const {pane, cockpit} = makeReadOwner({subject: null});
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await FleetCockpitController.prototype.loadOperatorInbox.call({component: cockpit}, {offset: 0});
 
         expect(pane.snapshot, 'no subject → the pane must not receive a fabricated snapshot').toBe(null);
         expect(cockpit.operatorSnapshot).toBe(null);
@@ -2929,7 +2948,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const {pane, cockpit} = makeReadOwner();
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await FleetCockpitController.prototype.loadOperatorInbox.call({component: cockpit}, {offset: 0});
 
         expect(pane.snapshot).toBe(null)
     });
@@ -2942,7 +2961,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const {pane, cockpit} = makeReadOwner();
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 20});
+        await FleetCockpitController.prototype.loadOperatorInbox.call({component: cockpit}, {offset: 20});
 
         // the subject is the operator's OWN identity, held owner-side; the offset threads through unchanged
         expect(seen).toEqual([{subjectAgentId: 'NODE:operator', offset: 20}]);
@@ -2971,7 +2990,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         // finished while this one was in flight; when this stale read resumes, its captured generation no longer matches
         setBridge({fleetMailboxMirror: async () => { cockpit.operatorInboxReadGeneration++; return stale }});
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await FleetCockpitController.prototype.loadOperatorInbox.call({component: cockpit}, {offset: 0});
 
         expect(pane.snapshot, 'the loser of the race must not write staler news over newer').toBe(fresh);
         expect(cockpit.operatorSnapshot).toBe(fresh)
@@ -2984,7 +3003,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         setBridge({fleetMailboxMirror: async () => ({rows: ['late']})});
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await FleetCockpitController.prototype.loadOperatorInbox.call({component: cockpit}, {offset: 0});
 
         expect(pane.snapshot).toBe(prior);
         expect(cockpit.operatorSnapshot).toBe(prior)
@@ -2997,7 +3016,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         setBridge({fleetMailboxMirror: async () => { throw new Error('ingress down') }});
 
-        await FleetCockpit.prototype.loadOperatorInbox.call(cockpit, {offset: 0});
+        await FleetCockpitController.prototype.loadOperatorInbox.call({component: cockpit}, {offset: 0});
 
         // fail-closed: the pane never renders "no mail" for a read that did not happen
         expect(pane.snapshot).toBe(prior);
@@ -3011,7 +3030,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const cockpit = {operatorRecord: null, getReference: () => ({set() {}})};
 
-        await FleetCockpit.prototype.loadOperatorIdentity.call(cockpit);
+        await FleetCockpitController.prototype.loadOperatorIdentity.call({component: cockpit});
 
         expect(cockpit.operatorRecord).toBe(null)
     });
@@ -3024,13 +3043,13 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
               pane     = {set(cfg) { paneSets.push(cfg) }},
               cockpit  = {
                   operatorRecord               : null,
-                  deriveOperatorIdentityPosture: FleetCockpit.prototype.deriveOperatorIdentityPosture,
+                  deriveOperatorIdentityPosture: viaController('deriveOperatorIdentityPosture'),
                   getReference                 : () => null,
                   getOperatorMailboxPane       : () => pane,
                   resolveFleetRosterStore      : () => null
               };
 
-        await FleetCockpit.prototype.loadOperatorIdentity.call(cockpit);
+        await FleetCockpitController.prototype.loadOperatorIdentity.call({component: cockpit});
 
         // the record MUST carry `githubUsername` — MailboxPane's possession guard canonicalizes it to
         // `@<username>` and matches the admission's subjectAgentId; seeding only the node id fails
@@ -3047,7 +3066,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
         const cockpit = {operatorRecord: null, getReference: () => ({set() {}})};
 
-        await FleetCockpit.prototype.loadOperatorIdentity.call(cockpit);
+        await FleetCockpitController.prototype.loadOperatorIdentity.call({component: cockpit});
 
         expect(cockpit.operatorRecord, 'a refusal leaves the pane honestly unobserved, never a fallback identity').toBe(null)
     });
@@ -3062,13 +3081,13 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         // resolution over the cockpit surface (an empty provider roster → null posture).
         const cockpit = {
             operatorRecord               : null,
-            deriveOperatorIdentityPosture: FleetCockpit.prototype.deriveOperatorIdentityPosture,
+            deriveOperatorIdentityPosture: viaController('deriveOperatorIdentityPosture'),
             getReference                 : () => null,
             getOperatorMailboxPane       : () => null,
             resolveFleetRosterStore      : () => null
         };
 
-        await FleetCockpit.prototype.loadOperatorIdentity.call(cockpit);
+        await FleetCockpitController.prototype.loadOperatorIdentity.call({component: cockpit});
 
         expect(cockpit.operatorRecord).toEqual({agentIdentityNodeId: '@neo-opus-grace', githubUsername: 'neo-opus-grace'})
     });
@@ -3079,11 +3098,12 @@ test.describe('Fleet cockpit — operator-seat identity posture (the conflation 
     let FleetCockpit;
 
     test.beforeAll(async () => {
-        FleetCockpit = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default
+        FleetCockpit           = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
     });
 
-    const derive = (viewerIdentity, rows) => FleetCockpit.prototype.deriveOperatorIdentityPosture.call(
-        {resolveFleetRosterStore: () => ({items: rows})},
+    const derive = (viewerIdentity, rows) => FleetCockpitController.prototype.deriveOperatorIdentityPosture.call(
+        {component: {resolveFleetRosterStore: () => ({items: rows})}},
         viewerIdentity
     );
 
@@ -3104,7 +3124,7 @@ test.describe('Fleet cockpit — operator-seat identity posture (the conflation 
         const pushes = [],
               me     = {
                   isDestroyed                  : false,
-                  deriveOperatorIdentityPosture: FleetCockpit.prototype.deriveOperatorIdentityPosture,
+                  deriveOperatorIdentityPosture: viaController('deriveOperatorIdentityPosture'),
                   resolveFleetRosterStore      : () => ({items: ROWS}),
                   getOperatorMailboxPane       : () => ({set: config => pushes.push(config)})
               },
@@ -3115,7 +3135,7 @@ test.describe('Fleet cockpit — operator-seat identity posture (the conflation 
         }}};
 
         try {
-            await FleetCockpit.prototype.loadOperatorIdentity.call(me);
+            await FleetCockpitController.prototype.loadOperatorIdentity.call({component: me});
 
             expect(me.operatorRecord).toEqual({agentIdentityNodeId: '@neo-fable-clio', githubUsername: 'neo-fable-clio'});
             expect(me.operatorIdentityPosture).toEqual({conflated: true, seatIdentity: '@neo-fable-clio'});

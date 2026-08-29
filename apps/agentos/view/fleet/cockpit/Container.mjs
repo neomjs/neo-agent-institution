@@ -18,7 +18,6 @@ import ViewerWakeFeed         from '../../../store/ViewerWakeFeed.mjs';
 import WakeRoutePane          from '../wake/Container.mjs';
 import StateProvider          from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import CockpitDockDocument    from '../../../util/CockpitDockDocument.mjs';
-import CockpitSourceReads     from '../../../util/CockpitSourceReads.mjs';
 import CockpitPresets         from '../../../util/CockpitPresets.mjs';
 import SourceHealth           from '../../../util/SourceHealth.mjs';
 import SpineBanner            from '../../../util/SpineBanner.mjs';
@@ -50,74 +49,6 @@ const LIVENESS_POLL_INTERVAL = 15000;
  * @type {Number}
  */
 const LIVENESS_READ_TIMEOUT = 10000;
-
-/**
- * Longest safe reason rendered on the spine banner — a transport error can carry an entire response
- * body, and this line is one row of shell chrome, not a log viewer.
- * @type {Number}
- */
-const MAX_DEGRADED_REASON_LENGTH = 120;
-
-/**
- * @summary Reduces an untrusted transport failure to one safe, operator-readable clause.
- *
- * A transport error is peer/network-authored text this shell republishes into operator-visible
- * chrome, so it is redacted and bounded before it can ever render: credential-bearing forms are the
- * realistic payload of a failing authenticated request (a bearer header or PAT echoed back in an
- * error body), and the scheme rule must precede the `key: value` rule or `Authorization: Bearer x`
- * matches `authorization`, stops at the space, and republishes the secret intact.
- * @param {*} error Untrusted failure — an Error, a string reason, or anything else.
- * @returns {String|null} A safe single-line clause, or `null` when the cause is unknowable (the
- *     banner then renders its generic copy rather than inventing a cause).
- * @private
- */
-function toSafeDegradedReason(error) {
-    const raw = typeof error === 'string' ? error : error?.message;
-
-    if (typeof raw !== 'string' || !raw.trim()) return null;
-
-    const safe = raw
-        .replace(/\b(?:authorization\s*[:=]\s*)?bearer\s+[^\s,;)]+/gi, 'authorization=[redacted]')
-        .replace(/\b(authorization|token|secret|password|pat|credential)\s*[:=]\s*[^\s,;)]+/gi, '$1=[redacted]')
-        .replace(/\bgh[pousr]_[A-Za-z0-9_]+/g, '[redacted-token]')
-        .replace(/\bglpat-[A-Za-z0-9_-]+/g, '[redacted-token]')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    return safe ? safe.slice(0, MAX_DEGRADED_REASON_LENGTH) : null
-}
-
-/**
- * @summary Bounds one liveness read: it may fail, it may never hang.
- *
- * A hung read is not a slow read — it is a read that never answers, and an unbounded one poisons
- * every mechanism built on top of it. The in-flight latch releases in a `.finally()`, so a promise
- * that never settles holds its surface's slot **forever**: every later tick is suppressed, the
- * surface stays last-known-live, and the liveness owner silently stops being live — the original
- * defect, rebuilt from the other side. Bounding the read is what makes the latch safe to hold.
- *
- * The loser of the race is not aborted (the wire has no abort seam yet). It does not need to be:
- * the generation fence already makes a late arrival unable to write. This only guarantees the
- * SLOT comes back.
- * @param {Promise} read
- * @param {Number} timeout ms
- * @returns {Promise} settles with the read, or rejects with a timeout error inside `timeout` ms
- * @private
- */
-function boundedRead(read, timeout, onWireSettled) {
-    let timerId;
-
-    // the WIRE's own settle — independent of who wins the race. The accumulation bound counts this,
-    // because a timed-out wrapper does not free the socket the read is still holding.
-    read.then(onWireSettled, onWireSettled);
-
-    return Promise.race([
-        read.finally(() => clearTimeout(timerId)),
-        new Promise((resolve, reject) => {
-            timerId = setTimeout(() => reject(new Error(`fleet read exceeded ${timeout}ms`)), timeout)
-        })
-    ])
-}
 
 /**
  * Recent fleet activity for the fixture-fed stream — the live A2A / PR / lane adapters
@@ -2227,254 +2158,23 @@ class FleetCockpit extends DockWorkspace {
     }
 
     /**
-     * @summary Bind the activity stream to the live fleet feed: poll the read-observe `fleetActivity`
-     * verb on the injected registry bridge and route its honest capability state to the stream:
-     * - `wired` → **live** (the feed is newest-first; the stream renders chronological, so reverse). A
-     *   wired source is live even when momentarily empty — it is streaming, just quiet — so an empty
-     *   wired feed stays `live` (empty), never the sample: falling back to the sample would falsely
-     *   imply the source is not wired.
-     * - `degraded` → the **stale** banner.
-     * - not-wired / absent bridge / a thrown source → leave the representative **sample** in place
-     *   (honestly labelled by the stream header); fail closed rather than blanking the surface.
-     * The routed state also lands on the OWNER and its provider Store, so a pane returning from
-     * true absence materializes at current truth.
+     * @summary The activity feed through the liveness read class — capability routing (live /
+     * stale / answered-not-wired / cold) preserved verbatim.
      * @protected
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadActivity() {
-        let me     = this,
-            store  = me.resolveFleetActivityEventsStore(),
-            stream = me.getReference('activity-stream'),
-            bridge = globalThis.AgentOS?.fleet?.registryBridge;
-
-        // BEFORE the early return, not after. Absence is newer knowledge, and an older pending read
-        // must not outlive it: without the bump, a tick that finds the bridge gone returns silently
-        // and an in-flight read from when it was present still lands and writes.
-        const generation = ++me.streamReadGeneration;
-
-        if (!store || typeof bridge?.fleetActivity !== 'function') {
-            // no bridge/verb IS the cold truth — the spine banner must say so. Same retraction
-            // duty as the roster twin's absence exit: a never-wired surface's retained
-            // producer-answered cause ("activity source not wired") must not outlive the bridge
-            // that answered it; wired surfaces keep their stale/live semantics.
-            if (me.streamAdapterState === 'sample') {
-                me.streamDegradedReason = null
-            }
-
-            me.syncSpineBanner();
-            return
-        }
-
-        try {
-            me.streamReadInFlight++;
-
-            // `Promise.resolve().then(() => …)` — NOT `Promise.resolve(bridge.fleetActivity())`.
-            // The argument form evaluates the CALL first, so a SYNCHRONOUS throw lands in this
-            // method's catch before `boundedRead` ever attaches its settle hook, and the counter
-            // never comes back. Two sync throws consume the cap and suppress this surface forever —
-            // the leak, rebuilt inside the fix for the leak. Invoking INSIDE the chain turns a sync
-            // throw into a rejection of the tracked promise, so the reject path owns the release.
-            const {capability, counts, events} = await boundedRead(
-                Promise.resolve().then(() => bridge.fleetActivity()),
-                me.livenessReadTimeout,
-                () => { me.streamReadInFlight-- }
-            ) ?? {};
-
-            // The fence. Older news must never overwrite newer: an interval re-poll means two reads
-            // of THIS surface can be in flight at once, and without this the LOSER writes last —
-            // a slow failed poll landing after a fast successful one regresses live → stale on
-            // strictly staler information. `isDestroyed` is the same question at the other end: a
-            // read that outlives its owner has no surface left to speak for.
-            if (generation !== me.streamReadGeneration || me.isDestroyed) {
-                return
-            }
-
-            if (capability?.state === 'wired') {
-                me.streamAdapterState = 'live';
-                store.ingestSnapshot(Array.isArray(events) ? events : [], {replace: !me.activityWired});
-                me.activityWired = true;
-                me.getStateProvider()?.setData('activityCounts', Array.isArray(counts) ? counts : []);
-                stream && (stream.adapterState = me.streamAdapterState);
-                me.clearDegradedReason('stream')
-            } else if (capability?.state === 'degraded') {
-                me.streamAdapterState = 'stale';
-                stream && (stream.adapterState = 'stale');
-                // the adapter's OWN reason outranks a guess — it saw the failure, we only saw the answer
-                me.streamDegradedReason = toSafeDegradedReason(capability.reason)
-            } else if (capability) {
-                // The producer ANSWERED and said it is not wired (`not-wired`). The seed stays — the
-                // stream really is showing sample events, so its own state is honestly 'sample' — but
-                // an answer is not silence, and the difference is the whole point: a reachable server
-                // whose activity source is unconfigured is NOT an unreachable server. Retaining the
-                // reason is what lets the banner say which one it is instead of guessing the loudest.
-                me.streamDegradedReason = toSafeDegradedReason(capability.reason)
-            }
-            // NO capability at all (a torn/absent answer) → keep the 'sample' seed AND no reason:
-            // we learned nothing, so the banner falls back to its generic copy rather than inventing
-            // a cause. That is the genuine cold case.
-        } catch (error) {
-            // fenced too, and this is the branch that actually bit: a slow FAILURE landing after a
-            // fast success would regress live → stale on older news. The catch is not exempt from
-            // ordering just because it is the sad path.
-            if (generation === me.streamReadGeneration && !me.isDestroyed) {
-                // fail-closed: the last-known feed STAYS rather than blanking it — only the state advances
-                me.degradeWiredSurface('stream', error, stream)
-            }
-        } finally {
-            // a superseded or post-destroy read renders nothing: syncing here would let a dropped
-            // read still repaint the banner from state it was not allowed to write
-            if (generation === me.streamReadGeneration && !me.isDestroyed) {
-                me.syncSpineBanner()
-            }
-        }
+        return this.getController().loadActivity()
     }
 
     /**
-     * @summary Bind the fleet roster to the running fleet: poll the read-observe `fleetRoster` verb
-     * on the injected registry bridge — the Brain-side assembler DTO (`{sources, capabilities, rows,
-     * events}`, identity-enriched per the `resolveIdentityDisplay` join) — map its rows onto the
-     * FleetAgent record contract, and route honestly into the Store the grid renders from:
-     * - a populated resolved snapshot is **authoritative**: the first one replaces the sample seed
-     *   and promotes {@link #rosterSourceMode} to `selected`; every later one **reconciles** the
-     *   Store — `record.set(row)` per known `agentId`, `store.add` for a joiner, `store.remove` for
-     *   a resident absent from the snapshot (a `removeAgent` must never leave a ghost card).
-     * - an EMPTY first snapshot preserves the bundled sample while the source mode is `sample` — a
-     *   fresh private registry must not blank the zero-setup first paint. It becomes authoritative
-     *   when the source was explicitly `selected`, or after any live snapshot established
-     *   {@link #rosterWired}; a genuinely selected/drained fleet therefore still renders its TRUE
-     *   zero state rather than resurrecting sample residents.
-     *   Every admitted snapshot makes the grid `live` (instance + owner-held fallback state).
-     * - absent bridge / no verb / a MALFORMED answer (`rows` not an Array) / a thrown source →
-     *   keep the last-known roster; fail closed rather than blanking the fleet. A resolved call is
-     *   mechanically distinguishable from a failed one — only failures preserve last-known state.
-     *   Absence and thrown calls are DISTINCT transitions with one shared retraction duty: a
-     *   never-wired surface's retained answered cause is withdrawn on either (the claim must not
-     *   outlive its producer), while a wired surface keeps its stale/live semantics. (The grid's
-     *   `stale` render remains reserved for a real degraded signal once a producer emits one.)
+     * @summary The fleet roster through the liveness read class — sample-seed authority ladder,
+     * reconcile fan-out and per-surface degrade semantics preserved verbatim.
      * @protected
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadRoster() {
-        let me = this,
-            // the WRITE authority is the provider-owned Store — a torn/absent grid must not stop
-            // live ingest (round-2 RA-1: the projected child renders, it never owns the roster)
-            store  = me.resolveFleetRosterStore(),
-            grid   = me.getReference('fleet-grid'),
-            bridge = globalThis.AgentOS?.fleet?.registryBridge;
-
-        // BEFORE the early return — absence is newer knowledge and must invalidate an older pending
-        // read. See {@link #gridReadGeneration}.
-        const generation = ++me.gridReadGeneration;
-
-        if (!store || typeof bridge?.fleetRoster !== 'function') {
-            // no bridge/verb IS the cold truth — the spine banner must say so. Absence is a
-            // DISTINCT transition from a thrown call, and it owns the same retraction duty: a
-            // never-wired surface's retained ANSWERED cause ("server connected · registry
-            // empty") must not outlive the bridge that said it. A wired surface keeps its
-            // stale/live semantics — this exit only speaks for cold truth.
-            if (me.gridAdapterState === 'sample') {
-                me.gridDegradedReason = null
-            }
-
-            me.syncSpineBanner();
-            return
-        }
-
-        try {
-            me.gridReadInFlight++;
-
-            // invoked INSIDE the chain so a synchronous throw rejects the tracked promise rather
-            // than escaping before the settle hook attaches — see the activity twin
-            const {capabilities, rows} = await boundedRead(
-                Promise.resolve().then(() => bridge.fleetRoster()),
-                me.livenessReadTimeout,
-                () => { me.gridReadInFlight-- }
-            ) ?? {};
-
-            // the fence: a newer read started while this one was in flight, or the owner is gone.
-            // Either way this answer is no longer this surface's truth to write.
-            if (generation !== me.gridReadGeneration || me.isDestroyed) {
-                return
-            }
-
-            if (!Array.isArray(rows)) {
-                return // malformed answer → keep the last-known roster
-            }
-
-            const mapped = rows.filter(row => row?.id).map(row => me.mapRosterRow(row));
-
-            // The shipped sample is the cold-first-run authority. A reachable but fresh/empty
-            // private registry has answered, but it has not supplied a working fleet and no source
-            // was selected — replacing the sample here would turn successful boot into an empty
-            // flagship. An explicitly wired bridge (the injector marks it `selected`) IS a source
-            // selection, so its empty registry renders the true zero state; once any populated
-            // snapshot made the surface live, empty regains its ordinary authoritative meaning
-            // (the real fleet may genuinely drain).
-            if (!me.rosterWired && mapped.length === 0 && !bridge?.selected && me.rosterSourceMode !== 'selected') {
-                // The server ANSWERED — but an answer is not silence (the activity twin's not-wired
-                // discipline): retain the cause so the spine banner names "connected · registry
-                // empty" instead of falling back to "server offline · start it" — advice to restart
-                // a process that just replied, and the exact reachable-server case the spineBanner
-                // module documents as needing a retained reason. Cleared by the ordinary paths: a
-                // populated snapshot clears it below; a transport failure retracts it in
-                // {@link #degradeWiredSurface} (the claim must not outlive the connection).
-                me.gridDegradedReason = 'server connected · fleet registry empty — define agents to go live';
-                return
-            }
-
-            me.lastLiveRows = mapped;
-            me.rosterSourceMode = 'selected';
-
-            if (me.rosterWired) {
-                me.reconcileRoster(store, mapped)
-            } else {
-                store.clear();
-                mapped.length > 0 && store.add(mapped);
-                me.rosterWired = true;
-                // the first live snapshot replaces the sample seed wholesale — re-seat or clear a
-                // selection made against a now-removed sample record (reconcileRoster owns the later reconciles)
-                me.reconcileSelection()
-            }
-
-            me.gridAdapterState = 'live';
-            // rendering-only writes: the grid is a PROJECTION of the store's truth — torn/absent,
-            // it simply has nothing to paint, and the ingest above happened regardless
-            grid && (grid.adapterState = 'live');
-            // the presence-CAPABILITY envelope rides every admitted snapshot onto the grid's chip:
-            // a degraded producer gets NAMED at roster level (every band correctly vanished — the
-            // "no one is online" operator falsifier), and a recovered producer clears it on the
-            // next poll. Absent/malformed envelopes plumb null — the chip claims nothing.
-            grid && (grid.presenceCapability = capabilities?.presence ?? null);
-            me.getCatchUpPane()?.set({partitionOptions: me.buildCatchUpPartitionOptions()});
-            // the activity rows' actor chips join the same roster truth (avatar + display name)
-            me.getReference('activity-stream')?.set({actorDirectory: me.buildActivityActorDirectory()});
-            // resident panes snapshot their roster-derived options at projection time, which can
-            // precede this first live answer — every consumer refreshes here, the mailbox included
-            // (recipients grow beyond the boot-time AGENT:* sentinel), and the seat-conflation
-            // posture re-derives against the roster that can now actually judge it.
-            me.getOperatorMailboxPane()?.set({recipientOptions: me.buildOperatorRecipientOptions()});
-            if (me.operatorRecord) {
-                me.operatorIdentityPosture = me.deriveOperatorIdentityPosture(me.operatorRecord.agentIdentityNodeId);
-                me.getOperatorMailboxPane()?.set({identityPosture: me.operatorIdentityPosture})
-            }
-            // a resident CatchUp can emit its construction-time history request BEFORE the bridge
-            // wires (the cold-before-bridge ordering); that one-shot miss recovers the moment the
-            // bridge answers, through the pane's own guarded refresh path — the Reconnect
-            // affordance's documented re-drive, fired automatically at bridge arrival.
-            me.catchUpSnapshot?.capability?.state === 'unavailable' && me.getCatchUpPane()?.onRefreshClick();
-            me.clearDegradedReason('grid')
-        } catch (error) {
-            // fenced: a slow failure must not overwrite a newer success (see the stream twin)
-            if (generation === me.gridReadGeneration && !me.isDestroyed) {
-                // fail-closed: the last-known roster STAYS rather than blanking the fleet — only the
-                // state advances. A wired surface that stops answering is degraded, not cold: it is
-                // showing last-known LIVE rows, so claiming 'sample' would tell the operator they are
-                // looking at fixture data. Pre-wired failures keep the honest 'sample' seed.
-                me.degradeWiredSurface('grid', error, grid)
-            }
-        } finally {
-            if (generation === me.gridReadGeneration && !me.isDestroyed) {
-                me.syncSpineBanner()
-            }
-        }
+        return this.getController().loadRoster()
     }
 
     /**
@@ -2535,10 +2235,10 @@ class FleetCockpit extends DockWorkspace {
      * @summary READ-OBSERVE: one pane history intent through the fenced source-read discipline.
      * @param {Object} [params]
      * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadCatchUp(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.catchUp, params)
+        return this.getController().loadCatchUp(params)
     }
 
     /**
@@ -2577,10 +2277,10 @@ class FleetCockpit extends DockWorkspace {
      * (pre-await owner-held target included).
      * @param {Object} [params] `{agentIdentity, offset?, limit?}`
      * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadMemories(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.memories, params)
+        return this.getController().loadMemories(params)
     }
 
     /**
@@ -2588,28 +2288,28 @@ class FleetCockpit extends DockWorkspace {
      * hold; display-only `title` never rides the wire).
      * @param {Object} params `{sessionId, title?, offset?, limit?}`
      * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadSessionMemories(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.sessionMemories, params)
+        return this.getController().loadSessionMemories(params)
     }
 
     /**
      * @summary Clear the owner-held memories drill-in — the close is TERMINAL for in-flight reads.
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     clearSessionMemoriesDrill() {
-        CockpitSourceReads.clearSessionMemoriesDrill(this)
+        this.getController().clearSessionMemoriesDrill()
     }
 
     /**
      * @summary The per-seat wake-route envelope through the fenced source-read discipline.
      * @param {Object} [params]
      * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadWakeRoutes(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.wakeRoutes, params)
+        return this.getController().loadWakeRoutes(params)
     }
 
     /**
@@ -2617,10 +2317,10 @@ class FleetCockpit extends DockWorkspace {
      * liveness tick's in-flight accounting (released on this read's OWN settle).
      * @param {Object} [params] Reserved; the verb takes no caller input today.
      * @returns {Promise<Object>}
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadTasks(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.tasks, params)
+        return this.getController().loadTasks(params)
     }
 
     /**
@@ -2717,20 +2417,20 @@ class FleetCockpit extends DockWorkspace {
     /**
      * @summary BOOT: resolve and owner-hold the operator's own identity + seat posture.
      * @protected
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadOperatorIdentity() {
-        return CockpitSourceReads.loadOperatorIdentity(this)
+        return this.getController().loadOperatorIdentity()
     }
 
     /**
      * @summary The seat-conflation honesty check against the provider-owned roster.
      * @param {String} viewerIdentity The resolved `@`-form viewer identity.
      * @returns {{conflated: Boolean, seatIdentity: String}|null}
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     deriveOperatorIdentityPosture(viewerIdentity) {
-        return CockpitSourceReads.deriveOperatorIdentityPosture(this, viewerIdentity)
+        return this.getController().deriveOperatorIdentityPosture(viewerIdentity)
     }
 
     /**
@@ -2739,10 +2439,10 @@ class FleetCockpit extends DockWorkspace {
      * @param {Object} [params]
      * @param {Number} [params.offset=0]
      * @protected
-     * @see AgentOS.util.CockpitSourceReads
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadOperatorInbox(params = {}) {
-        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.operatorInbox, params)
+        return this.getController().loadOperatorInbox(params)
     }
 
     /**
@@ -3058,90 +2758,32 @@ class FleetCockpit extends DockWorkspace {
     }
 
     /**
-     * @summary Pulls whole-Brain health from the shell's lifecycle owner — the re-read obligation.
-     *
-     * Pull, never push: rides the liveness cadence for as long as the cockpit renders, so a fault
-     * arriving after mount still surfaces and a recovery still clears. The read follows the same
-     * bounded discipline as the wire reads — `boundedRead` frees the surface on a hung pull
-     * while the wire-settle release plus the {@link #maxReadsInFlight} cap bound accumulation, and
-     * the generation fence discards any late answer. Transport failure (absent shell, rejection,
-     * timeout) reaches {@link #applyBrainHealth} as `null` and moves nothing.
+     * @summary Whole-Brain health through the liveness read class (bounded pull, fence, applyBrainHealth).
      * @protected
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     async loadBrainHealth() {
-        let me = this;
-
-        // BEFORE any early exit: absence is newer knowledge, and an older pending read must not
-        // outlive it (the same rule the wire reads follow).
-        const generation = ++me.brainHealthReadGeneration;
-
-        try {
-            me.brainHealthReadInFlight++;
-
-            // Invoke INSIDE the chain: a synchronous throw becomes a rejection of the tracked
-            // promise, so the reject path owns the slot release (the sync-throw falsifier class).
-            const response = await boundedRead(
-                Promise.resolve().then(() => Neo.Main.brainHealth()),
-                me.livenessReadTimeout,
-                () => { me.brainHealthReadInFlight-- }
-            );
-
-            if (generation !== me.brainHealthReadGeneration || me.isDestroyed) return;
-
-            me.applyBrainHealth(response)
-        } catch (error) {
-            if (generation !== me.brainHealthReadGeneration || me.isDestroyed) return;
-
-            me.applyBrainHealth(null)
-        }
+        return this.getController().loadBrainHealth()
     }
 
     /**
-     * @summary Advances ONE wired surface to the degraded truth and retains the safe reason.
-     *
-     * The state-writing seams stay {@link #loadRoster} / {@link #loadActivity}; this is their shared
-     * loss edge, not a second writer. A surface that never reached `live` is left on its honest
-     * `sample` seed — advancing it to `stale` would claim last-known data that never existed.
-     * @param {String} surface `'grid'|'stream'`.
-     * @param {*} error The transport failure (untrusted — never rendered raw).
-     * @param {Neo.component.Base|null} [consumer] The held child whose badge mirrors the owner state.
+     * @summary Loss edge of the wired surfaces — homed on the controller (#50); virtual seam kept.
+     * @param {String} surface @param {*} error @param {Neo.component.Base|null} [consumer]
      * @protected
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     degradeWiredSurface(surface, error, consumer = null) {
-        let me     = this,
-            field  = surface === 'grid' ? 'gridAdapterState' : 'streamAdapterState',
-            reason = surface === 'grid' ? 'gridDegradedReason' : 'streamDegradedReason';
-
-        // never-wired stays cold-honest: 'sample' already says "this is fixture data" — and a
-        // transport failure RETRACTS any answered-state cause this surface retained (the
-        // "connected · registry empty" claim must not outlive the connection it describes; back
-        // on silence, the banner's generic cold copy is the honest line again).
-        if (me[field] === 'sample') {
-            me[reason] = null;
-            return
-        }
-
-        me[field]  = 'stale';
-        // this surface's cause, on this surface's field — never a shared slot a sibling can clear
-        me[reason] = toSafeDegradedReason(error);
-
-        if (consumer) consumer.adapterState = 'stale'
+        this.getController().degradeWiredSurface(surface, error, consumer)
     }
 
     /**
-     * @summary Clears ONE surface's retained degrade reason, once THAT surface answers cleanly.
-     *
-     * Scoped to the caller's own surface, because a reason is a fact about the surface that produced
-     * it and no other surface has standing to retract it. The shared-field version read both states
-     * and cleared when neither was `stale` — which meant a healthy roster erased a not-wired
-     * ACTIVITY's cause (the activity is `sample`, not `stale`, so the guard never saw it) and the
-     * banner regressed to "Fleet server offline" while the server was answering. The guard was not
-     * too weak; the field was shared, and no guard on a shared field can tell whose cause it holds.
-     * @param {String} surface `'grid'` | `'stream'` — the caller's own surface.
+     * @summary Clears ONE surface's retained degrade reason — controller-homed (#50).
+     * @param {String} surface
      * @protected
+     * @see AgentOS.view.fleet.cockpit.Controller
      */
     clearDegradedReason(surface) {
-        this[surface === 'grid' ? 'gridDegradedReason' : 'streamDegradedReason'] = null
+        this.getController().clearDegradedReason(surface)
     }
 
     /**
