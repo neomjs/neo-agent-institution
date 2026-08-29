@@ -37,14 +37,19 @@ const
     // every baseline, so a removed, renamed, or rewritten golden breaks the digest instead of
     // vanishing silently (the input-only scope false-greened on a deleted golden). Engine version
     // moves are visible through package-lock.json's neo.mjs entry, captured below as its own axis.
-    inputPaths = [
-        'apps/agentos',
-        'resources/scss',
-        'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs',
-        'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots',
-        'test/playwright/visual/FleetCockpitVisual.spec.mjs',
-        'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs'
-    ];
+    // Scope keys stay the stamp's stable identity; `exclude` carves non-style content out of a
+    // scope via git pathspec magic. `apps/agentos/design` holds SPEC documents (the #20 design
+    // contracts and direction mocks) — they specify surfaces, they do not style them, and hashing
+    // them forced an empty restamp on every sketch commit (the PR #53 friction).
+    inputScopes = [
+        {key: 'apps/agentos', exclude: ['apps/agentos/design']},
+        {key: 'resources/scss'},
+        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs'},
+        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots'},
+        {key: 'test/playwright/visual/FleetCockpitVisual.spec.mjs'},
+        {key: 'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs'}
+    ],
+    inputPaths = inputScopes.map(scope => scope.key);
 
 /**
  * @summary The pure digest half: sha256 over a sorted `git ls-files -s` listing.
@@ -76,11 +81,15 @@ export function diffStamp(stamp, current, paths) {
 
 /**
  * @summary One digest per input scope from the staged blob ids — index-exact, platform-free.
- * @param {String} scope A path passed to `git ls-files -s`.
+ * @param {Object}   scope
+ * @param {String}   scope.key       The path passed to `git ls-files -s` (and the stamp key).
+ * @param {String[]} [scope.exclude] Sub-paths carved out via git pathspec exclude magic.
  * @returns {String}
  */
-function scopeDigest(scope) {
-    return digestListing(execSync(`git ls-files -s -- "${scope}"`, {cwd, encoding: 'utf8'}))
+function scopeDigest({key, exclude = []}) {
+    const pathspecs = [`"${key}"`, ...exclude.map(sub => `":(exclude)${sub}"`)].join(' ');
+
+    return digestListing(execSync(`git ls-files -s -- ${pathspecs}`, {cwd, encoding: 'utf8'}))
 }
 
 /**
@@ -106,7 +115,7 @@ if (!isEntryScript) {
 
 const current = {
     engine: engineDigest(),
-    inputs: Object.fromEntries(inputPaths.map(p => [p, scopeDigest(p)]))
+    inputs: Object.fromEntries(inputScopes.map(scope => [scope.key, scopeDigest(scope)]))
 };
 
 if (process.argv.includes('--stamp')) {
