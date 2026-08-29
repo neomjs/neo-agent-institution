@@ -43,6 +43,11 @@ jobs:
             - name: Check visual baseline freshness
               run: npm run check-visual-baselines
 
+            # The #22 epic's closing clause: the 1k-LOC app-file bar with teeth — a file past the
+            # bar fails here with the offender list instead of regrowing the monolith silently.
+            - name: Check app file sizes
+              run: npm run check-app-file-sizes
+
             - name: Run isolated unit tests
               run: npm run test-unit
 

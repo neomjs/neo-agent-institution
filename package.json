@@ -19,6 +19,7 @@
         "build-themes": "node ./node_modules/neo.mjs/buildScripts/build/themes.mjs",
         "build-threads": "node ./node_modules/neo.mjs/buildScripts/webpack/buildThreads.mjs -f",
         "bundle-parse5": "node ./node_modules/neo.mjs/buildScripts/build/parse5.mjs",
+        "check-app-file-sizes": "node ./buildScripts/checkAppFileSizes.mjs",
         "check-data-tracking": "node ./buildScripts/checkDataTracking.mjs",
         "check-visual-baselines": "node ./buildScripts/checkVisualBaselines.mjs",
         "stamp-visual-baselines": "node ./buildScripts/checkVisualBaselines.mjs --stamp",
