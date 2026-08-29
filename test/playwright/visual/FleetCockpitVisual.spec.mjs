@@ -127,47 +127,55 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page).toHaveScreenshot('cockpit-vessel-314.png')
     });
 
-    test('the 720 intermediate band — shrink-only regime: no wrap, no overflow, banner truncation-capable (viewport capture, geometry asserted)', async ({page}) => {
+    test('the 720 intermediate band — mark regime: no wrap, no overflow, state collapses to marks with titles (viewport capture, geometry asserted)', async ({page}) => {
         // The lattice's third point, between the 314 fit witness and the desktop baselines:
-        // above the 570px vessel-narrow threshold (the @container block must stay
-        // silent — no bar wrap, no split stacking) but narrow enough that the unconditionally
-        // shrinkable spine banner is the only pressure valve. This receipt pins the shrink-only
-        // regime: zero document overflow, the bar keeps ONE row (proven via computed flex-wrap,
-        // never child-top arithmetic — siblings differ in height), and the banner is permitted to
-        // shrink — visibly truncating when the fixture text exceeds its compressed box.
+        // above the 570px vessel-narrow threshold (the @container block must stay silent — no bar
+        // wrap, no split stacking) but inside the #23 collapse order's narrow step (≤730): state
+        // drops its words and keeps its marks + T5 titles, action labels drop to their glyphs,
+        // and the view labels never drop. The old shrink-only regime witnessed the banner
+        // ellipsizing under pressure; its own receipt said a design fix widening the box must go
+        // red, not quiet — this cut IS that design fix (chrome labels are never sentences), so
+        // the witness now pins the designed narrow FORM instead of the pressure it removed.
         await page.setViewportSize({width: 720, height: 900});
         await bootSettledCockpit(page);
 
         const geometry = await page.evaluate(() => {
-            const bar    = document.querySelector('.fm-cockpit-bar'),
-                  banner = document.querySelector('.fm-spine-banner'),
-                  start  = document.querySelector('.fm-fleet-start');
+            const bar       = document.querySelector('.fm-cockpit-bar'),
+                  banner    = document.querySelector('.fm-spine-banner'),
+                  start     = document.querySelector('.fm-fleet-start'),
+                  startText = start?.querySelector('.neo-button-text'),
+                  preset    = document.querySelector('.fm-preset-button .neo-button-text');
 
             return {
                 viewport      : window.innerWidth,
                 docScrollWidth: Math.round(document.documentElement.scrollWidth),
                 barWrap       : getComputedStyle(bar).flexWrap,
                 banner        : banner ? {
-                    clientWidth : Math.round(banner.clientWidth),
-                    scrollWidth : Math.round(banner.scrollWidth),
-                    flexShrink  : getComputedStyle(banner).flexShrink,
-                    textOverflow: getComputedStyle(banner).textOverflow
+                    clientWidth: Math.round(banner.clientWidth),
+                    scrollWidth: Math.round(banner.scrollWidth),
+                    fontSize   : getComputedStyle(banner).fontSize,
+                    title      : banner.getAttribute('title') || '',
+                    ariaLabel  : banner.getAttribute('aria-label') || ''
                 } : null,
-                startRight    : start ? Math.round(start.getBoundingClientRect().right) : null
+                startTextShown : startText ? getComputedStyle(startText).display : null,
+                presetTextShown: preset ? getComputedStyle(preset).display : null,
+                startRight     : start ? Math.round(start.getBoundingClientRect().right) : null
             }
         });
 
         expect(geometry.viewport, 'the viewport is the 720px intermediate band').toBe(720);
-        expect(geometry.docScrollWidth, 'no horizontal document overflow in the shrink-only regime').toBeLessThanOrEqual(geometry.viewport);
+        expect(geometry.docScrollWidth, 'no horizontal document overflow in the mark regime').toBeLessThanOrEqual(geometry.viewport);
         expect(geometry.barWrap, 'the vessel-narrow wrap rule stays silent above the 570px threshold').toBe('nowrap');
         expect(geometry.banner, 'the spine banner is rendered').not.toBeNull();
-        expect(geometry.banner.flexShrink, 'the banner is permitted to shrink — the unconditional-shrink contract').toBe('1');
-        // The truncation witness is UNCONDITIONAL: at this width the banner must be under
-        // compression, or the shrink-only regime is not the one being witnessed. A conditional
-        // assert could silently no-op into a green run that witnesses nothing — the day the
-        // fixture text shortens or a design fix widens the box, this receipt must go red, not quiet.
-        expect(geometry.banner.scrollWidth, 'the banner text must exceed its compressed box at 720 — the regime under witness requires live pressure').toBeGreaterThan(geometry.banner.clientWidth);
-        expect(geometry.banner.textOverflow, 'the pressure resolves as visible truncation').toBe('ellipsis');
+        // the designed narrow form: the word retracts (font-size 0 — never mid-word clipping),
+        // the mark stays, and the FULL truth stays one hover away on title + aria
+        expect(geometry.banner.fontSize, 'the state word retracts in the mark regime').toBe('0px');
+        expect(geometry.banner.scrollWidth, 'no hidden pressure: the mark never overflows its box').toBeLessThanOrEqual(geometry.banner.clientWidth);
+        expect(geometry.banner.title, 'the full honesty sentence rides the title').toContain('Fleet');
+        expect(geometry.banner.ariaLabel, 'the aria mirror carries the sentence').toContain('Fleet');
+        // the collapse order's last two clauses: action labels drop to glyphs, view labels never drop
+        expect(geometry.startTextShown, 'action labels drop to their glyphs').toBe('none');
+        expect(geometry.presetTextShown, 'view labels NEVER drop — they are the navigation').not.toBe('none');
         expect(geometry.startRight, 'Start fleet stays inside the band').toBeLessThanOrEqual(geometry.viewport);
 
         await expect(page).toHaveScreenshot('cockpit-intermediate-720.png')

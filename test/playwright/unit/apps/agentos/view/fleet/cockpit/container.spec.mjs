@@ -1515,13 +1515,15 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
     // …and the render half that remains component-local: the title mirror. The banner is
     // presentation-thin — the slot binds text/cls/hidden from the derived data, and afterSetText
     // carries the full sentence onto the vdom `title` (the drill-free detail).
-    const titleAfterText = text => {
+    // #23: text and title are independent channels now — the component's title write happens on
+    // the bannerTitle beat, never as a text mirror. This drives the REAL afterSet path.
+    const titleAfterBannerTitle = title => {
         const fake = Object.create(SpineBannerComponent.prototype);
 
         Object.defineProperty(fake, 'vdom',    {configurable: true, enumerable: true, value: {}, writable: true});
         Object.defineProperty(fake, 'mounted', {configurable: true, enumerable: true, value: false, writable: true});
 
-        fake.afterSetText(text, null);
+        fake.afterSetBannerTitle(title, null);
 
         return fake.vdom.title
     };
@@ -1541,11 +1543,12 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         expect(verdict.kind).toBe('degraded');
         expect(verdict.hidden).toBe(false);
         expect(verdict.text).toContain('stopped');
-        expect(verdict.text).toContain('orchestrator exited');
+        expect(verdict.title).toContain('orchestrator exited');
         // The stale feed is the symptom; it must not be the sentence.
-        expect(verdict.text).not.toContain('last-known data');
-        // the full sentence rides the title as the drill-free detail
-        expect(titleAfterText(verdict.text)).toBe(verdict.text)
+        expect(verdict.title).not.toContain('last-known data');
+        // the full sentence rides the title as the drill-free detail — the component's own
+        // afterSet writes the ATTRIBUTE from the title channel
+        expect(titleAfterBannerTitle(verdict.title)).toBe(verdict.title)
     });
 
     test('the chrome dot mirrors the banner verdict — one truth, two renderers', () => {
@@ -1561,7 +1564,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         const truths = deriveTruths(data);
 
-        expect(truths.spineBanner.text).toContain('orchestrator exited');
+        expect(truths.spineBanner.title).toContain('orchestrator exited');
         expect(truths.instanceState).toBe('limited');
         expect(truths.daemonFault).toBe(true)
     });
@@ -1626,7 +1629,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         let verdict = verdictOf(provider.data);
         expect(verdict.hidden).toBe(false);
         expect(verdict.text).toContain('degraded');
-        expect(verdict.text).toContain('orchestrator: error spawn ENOENT');
+        expect(verdict.title).toContain('orchestrator: error spawn ENOENT');
 
         // Recovery is ALSO the shell's transition — the owner's `running` write.
         lifecycle.setBrainState('running');
@@ -1644,7 +1647,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         host.applyBrainHealth({cause: {detail: 'orchestrator: exit code 1', observedAt: 1, source: 'owned-child-termination'}, state: 'degraded'});
 
         expect(provider.data.daemonState).toBe('degraded');
-        expect(verdictOf(provider.data).text).toContain('orchestrator: exit code 1');
+        expect(verdictOf(provider.data).title).toContain('orchestrator: exit code 1');
 
         // the transport dies: an unavailable envelope AND a rejection-mapped null. A dead transport
         // is not a recovered organism — the KNOWN fault must stay visible, not be erased.
@@ -1679,8 +1682,9 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         expect(verdict.kind).toBe('cold');
         expect(verdict.hidden).toBe(false);
-        expect(verdict.text).toContain('Fleet server offline');
-        expect(verdict.text).toContain('neo-agent-brain checkout')
+        expect(verdict.text).toBe('fleet offline');
+        expect(verdict.title).toContain('Fleet server offline');
+        expect(verdict.title).toContain('neo-agent-brain checkout')
     });
 
     test('a degraded owner derives the degraded hook + last-known copy', () => {
@@ -1688,12 +1692,12 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         expect(verdict.kind).toBe('degraded');
         expect(verdict.hidden).toBe(false);
-        expect(verdict.text).toContain('last-known')
+        expect(verdict.title).toContain('last-known')
     });
 
     test('a fully live owner hides the banner with empty copy — zero nominal pixels', () => {
         expect(verdictOf({gridAdapterState: 'live', streamAdapterState: 'live'}))
-            .toEqual({hidden: true, kind: 'live', text: ''})
+            .toEqual({ariaLabel: '', hidden: true, kind: 'live', text: '', title: ''})
     });
 
     test('the Reconnect affordance shares the banner verdict: visible on any spoken line, hidden on live', () => {
@@ -1767,13 +1771,13 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         expect(provider.data.daemonState).toBeNull();
         expect(provider.data.shellTransport).toEqual({phase: 'starting'});
-        expect(verdictOf(provider.data).text).toContain('Fleet transport starting');
+        expect(verdictOf(provider.data).title).toContain('Fleet transport starting');
 
         // the boot settles foreign — the SAME wire moves the copy to the named case
         const fact = {fleetPort: 8083, mode: 'foreign-listener', phase: 'settled', reason: 'viewer mismatch', up: false};
         host.applyBrainHealth({state: null, transport: fact});
 
-        expect(verdictOf(provider.data).text).toContain('another fleet server holds port 8083');
+        expect(verdictOf(provider.data).title).toContain('another fleet server holds port 8083');
 
         // an UNCHANGED fact keeps the provider truth deep-equal — the engine provider\'s equality
         // gate is what turns "no data change" into "no repaint"; the input-side invariant is ours
@@ -1825,8 +1829,8 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         expect(verdict.hidden).toBe(false);
         expect(verdict.kind).toBe('degraded');
         // the retained reason is NAMED, not generic copy
-        expect(verdict.text).toContain('transport lost');
-        expect(verdict.text).toContain('last-known')
+        expect(verdict.title).toContain('transport lost');
+        expect(verdict.title).toContain('last-known')
     });
 
     test('recovery: a later successful poll returns live, clears the reason, and re-hides the banner', async () => {
@@ -1857,7 +1861,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         const verdict = verdictOf(provider.data);
         expect(verdict.hidden).toBe(false);
-        expect(verdict.text).toContain('roster bridge unreachable')
+        expect(verdict.title).toContain('roster bridge unreachable')
     });
 
     test('a never-wired surface stays cold-honest: a pre-live throw never claims last-known data', async () => {
@@ -1940,10 +1944,11 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         expect(provider.data.streamDegradedReason, 'a sibling has no standing to retract this cause').toBe('fleet activity source not wired');
 
-        const {text} = verdictOf(provider.data);
+        const {text, title} = verdictOf(provider.data);
 
-        expect(text).toContain('fleet activity source not wired');
-        expect(text, 'the lie the retained reason exists to prevent').not.toContain('Fleet server offline')
+        expect(text).toBe('feed pending');
+        expect(title).toContain('fleet activity source not wired');
+        expect(title, 'the lie the retained reason exists to prevent').not.toContain('Fleet server offline')
     });
 
     test('an OLDER failed completion never overwrites a NEWER success — @neo-gpt\'s second probe', async () => {
@@ -2061,11 +2066,11 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         // the derived line carries the markup VERBATIM as data — not stripped. Escaping is the
         // sink's job, and stripping would quietly corrupt a legitimate reason with a bracket.
-        expect(verdict.text).toContain('transport lost');
-        expect(verdict.text).toContain(markup);
+        expect(verdict.title).toContain('transport lost');
+        expect(verdict.title).toContain(markup);
         // the sink itself is the assertion: the slot binds the TEXT config (textContent), and the
-        // component's one vdom write is the title ATTRIBUTE — no html path exists
-        expect(titleAfterText(verdict.text)).toBe(verdict.text)
+        // component's vdom writes are ATTRIBUTES (title/aria-label) — no html path exists
+        expect(titleAfterBannerTitle(verdict.title)).toBe(verdict.title)
     });
 });
 

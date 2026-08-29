@@ -61,11 +61,14 @@ class ViewerWakeTelltale extends Base {
         if (alive) {
             const relative = Number.isFinite(lastSignal?.receivedAt) ? ` · ${AgentFreshness.formatAge(nowMs - lastSignal.receivedAt)}` : '';
 
-            text = `wake: live${relative}`
+            text = `wake live${relative}`
         } else {
-            // The consumer's absence-of-signal grammar passes through verbatim — the reason IS the
-            // rendering, whether the stream is disconnected, handshake-pending, or never wired.
-            text = `wake: ${reason}`
+            // The pill wears the status word pair; the consumer's absence-of-signal grammar passes
+            // through verbatim on the TITLE's first line and the aria label — chrome labels are
+            // never sentences (the old inline pass-through rendered "wake: wake stream
+            // disconnected (connect refused)": a duplicated axis word, clipped mid-word at bar
+            // widths — the #23 sketch's named failure mode).
+            text = 'wake off'
         }
 
         const catchUpLine = catchUp
@@ -82,7 +85,9 @@ class ViewerWakeTelltale extends Base {
         ].join('\n');
 
         return {
-            ariaLabel: `Viewer wake push: ${text}`,
+            // The reason rides the aria label too: the pill word alone would make the title's
+            // hover the only path to the cause, unreachable to a screen reader.
+            ariaLabel: alive ? `Viewer wake push: ${text}` : `Viewer wake push: ${text} — ${reason}`,
             cls      : ['fm-viewer-wake', alive ? 'fm-viewer-wake-live' : 'fm-viewer-wake-degraded'],
             text,
             title

@@ -167,24 +167,53 @@ class FleetCockpit extends VesselContainer {
             flex     : 'none',
             reference: 'fleet-control-bar',
             items    : [{
+                // exception chrome for the VIEW class: the preset-restore refusal line renders
+                // beside its source (the preset buttons the controller inserts ahead of it)
                 ntype    : 'component',
                 cls      : ['fm-preset-error'],
                 hidden   : true,
                 reference: 'fleet-preset-error'
-            }, {
-                // the per-SPINE honesty line — the derived spineBanner leaves bind here at
-                // the consumption site; the component renders itself
-                module   : SpineBannerComponent,
-                bind     : {
-                    cls   : data => [`fm-spine-banner-${data.spineBanner.kind}`],
-                    hidden: data => data.spineBanner.hidden,
-                    text  : data => data.spineBanner.text
-                },
-                reference: 'fleet-spine-banner'
+            },
+            '->',
+            {
+                // THE STATE BLOCK — the #23 structural law: state never sits between action
+                // buttons; the two spine axes (fleet · wake) render as one right-aligned block
+                // before the action group. Wide bars stack the pills vertically (the band's
+                // vertical space is there), mid widths run them in a row, narrow widths drop to
+                // dots-with-titles — the collapse order is a container query in the cockpit
+                // SCSS, never measured here.
+                ntype: 'container',
+                cls  : ['fm-bar-state'],
+                items: [{
+                    // the per-SPINE honesty pill — the derived spineBanner leaves bind here at
+                    // the consumption site; status word visible, full sentence on title/aria
+                    module   : SpineBannerComponent,
+                    bind     : {
+                        bannerAriaLabel: data => data.spineBanner.ariaLabel,
+                        bannerTitle    : data => data.spineBanner.title,
+                        cls            : data => [`fm-spine-banner-${data.spineBanner.kind}`],
+                        hidden         : data => data.spineBanner.hidden,
+                        text           : data => data.spineBanner.text
+                    },
+                    reference: 'fleet-spine-banner'
+                }, {
+                    // the per-viewer wake-push telltale — every channel of the derived chip binds
+                    // here as its own first-class config (text, cls, title, aria — independently
+                    // reactive; see the component class)
+                    module   : ViewerWakeTelltaleComponent,
+                    bind     : {
+                        chipAriaLabel: data => data.viewerWakeTelltale.ariaLabel,
+                        chipTitle    : data => data.viewerWakeTelltale.title,
+                        cls          : data => data.viewerWakeTelltale.cls.slice(1),
+                        text         : data => data.viewerWakeTelltale.text
+                    },
+                    reference: 'viewer-wake-telltale'
+                }]
             }, {
                 // the banner's manual recovery affordance: one click re-drives every liveness
                 // seam through the existing authenticated bridge — no reload, no new transport.
-                // Visibility IS the banner verdict, bound from the same formula.
+                // Visibility IS the banner verdict, bound from the same formula. First of the
+                // ACTION group — contextual: it exists only while the fleet pill shows.
                 module   : Button,
                 bind     : {hidden: data => data.spineBanner.hidden},
                 cls      : ['fm-reconnect-button'],
@@ -192,24 +221,11 @@ class FleetCockpit extends VesselContainer {
                 iconCls  : 'fa-solid fa-rotate',
                 reference: 'fleet-reconnect-button',
                 text     : 'Reconnect'
-            },
-            '->',
-            {
-                // the per-viewer wake-push telltale — every channel of the derived chip binds
-                // here as its own first-class config (text, cls, title, aria — independently
-                // reactive; see the component class)
-                module   : ViewerWakeTelltaleComponent,
-                bind     : {
-                    chipAriaLabel: data => data.viewerWakeTelltale.ariaLabel,
-                    chipTitle    : data => data.viewerWakeTelltale.title,
-                    cls          : data => data.viewerWakeTelltale.cls.slice(1),
-                    text         : data => data.viewerWakeTelltale.text
-                },
-                reference: 'viewer-wake-telltale'
             }, {
                 // The fleet-start outcome summary — written by the controller after the staged
                 // bring-up settles ("N started · U UNKNOWN · M rejected · K excluded"; per-member
-                // reasons ride the title). Empty + hidden until a start ran.
+                // reasons ride the title). Empty + hidden until a start ran; renders beside the
+                // start verb whose outcome it reports.
                 ntype    : 'component',
                 cls      : ['fm-fleet-start-summary'],
                 hidden   : true,

@@ -95,6 +95,20 @@
         padding: 6px 10px;
         gap    : var(--fm-space-2);
 
+        /* THE STATE BLOCK (#23): the two spine axes as ONE right-aligned group before the action
+           buttons — state never sits between actions. The declared collapse order lives in the
+           container queries at the end of this file: wide stacks the pills vertically (the band's
+           vertical space is there), mid runs them in a row, narrow drops to marks-with-titles.
+           `min-width: 0` lets the block yield before it ever forces bar width. */
+        .fm-bar-state {
+            display        : flex;
+            flex-direction : column;
+            align-items    : flex-end;
+            justify-content: center;
+            gap            : 2px;
+            min-width      : 0;
+        }
+
         /* Button hierarchy (ledger D1): the SSOT's quiet, panel-toned base — the default theme's
            same-weight blue slab never reaches the bar. Mirrors the chrome's agent-button pair
            (Viewport.scss); only the primary action reaches for the signal. The shell-owned pop-out
@@ -263,6 +277,42 @@
         --dock-splitter-handle-size      : 0;
         --dock-splitter-radius           : 0;
         --dock-transition-duration-fast  : var(--fm-motion-fast);
+    }
+
+    /* ── the #23 declared collapse order — three designed forms, no mid-word clipping ever:
+       (1) wide (default rules above): the two state pills stack vertically, right-aligned;
+       (2) mid: the same pills, one row;
+       (3) narrow: state text drops to marks-with-titles, action labels drop to icons.
+       Every step is a designed form and the T5 titles carry the full truth at every width. */
+    @container fm-cockpit (max-width: 1180px) {
+        .fm-cockpit-bar .fm-bar-state {
+            flex-direction: row;
+            align-items   : center;
+            gap           : var(--fm-space-2);
+        }
+    }
+
+    @container fm-cockpit (max-width: 730px) {
+        .fm-cockpit-bar {
+            /* state drops its words, keeps its marks: the chip's left-mark geometry IS the dot
+               form of the family — the word retracts, the mark and the T5 title stay. */
+            .fm-spine-banner,
+            .fm-viewer-wake {
+                font-size: 0;
+                min-width: 0;
+                width    : 14px;
+                height   : 16px;
+            }
+
+            /* action labels drop to their glyphs; the view labels NEVER drop — they are the
+               navigation (the declared order's last step is a step that never happens). */
+            .neo-button.fm-reconnect-button .neo-button-text,
+            .neo-button.fm-fleet-start .neo-button-text,
+            .neo-button.fm-memories-window-toggle .neo-button-text,
+            .neo-button.fm-detail-window-toggle .neo-button-text {
+                display: none;
+            }
+        }
     }
 
     /* Vessel-narrow mode: below the width where two zones can sit beside each other honestly

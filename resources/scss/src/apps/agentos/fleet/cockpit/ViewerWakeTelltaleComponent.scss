@@ -1,13 +1,14 @@
 /* class: always-rendered — the chip family's FURNITURE-CLASS reference member (see Chips.scss for
    the family contract). The per-viewer wake-push telltale: the quiet chrome readout of MY push
    lane's health. The nominal state is one token wide ("wake: live · 12s ago") and must read as
-   toolbar furniture, while a degraded push carries the consumer's reason and must read as a quiet
-   exception, never an alarm: push is latency, poll is truth, so a dead push lane degrades comfort,
-   not correctness — the family's quiet-exception tone rule.
+   toolbar furniture, while a degraded push keeps its word pair quiet ("wake off") with the
+   consumer's reason on title + aria (#23 — chrome labels are never sentences): push is latency,
+   poll is truth, so a dead push lane degrades comfort, not correctness — the family's
+   quiet-exception tone rule.
 
    Color is supplemental and token-only, per the SpineBanner / SourceHealthMarker discipline: the
-   text carries the whole message (the consumer's own absence-of-signal reason), the accent mark
-   carries state in geometry, and neither channel is load-bearing alone. Geometry consumes the
+   word carries the state, the reason sits one hover away, the accent mark
+   carries state in geometry, and no single channel is load-bearing alone. Geometry consumes the
    family tokens (the mark width migrated 2px → the family's 3px); both-theme adaptation is
    automatic through the --fm-* token layer. */
 .fm-viewer-wake {
@@ -19,9 +20,9 @@
     display      : inline-flex;
     align-items  : center;
     flex         : 0 1 auto;
-    /* the shrink floor: quiet furniture may truncate, never vanish — the nominal one-token
-       readout stays whole under bar crowding (the de-crowding contract) */
-    min-width    : 12ch;
+    /* no shrink floor needed: the status word pair is naturally narrow; the ellipsis below is a
+       last resort, not the design (the collapse order drops to the mark before words truncate) */
+    min-width    : 0;
     max-width    : 40ch;
     padding      : var(--fm-chip-pad-y) var(--fm-chip-pad-x);
     border-left  : var(--fm-chip-mark-w) solid var(--fm-viewer-wake-mark);

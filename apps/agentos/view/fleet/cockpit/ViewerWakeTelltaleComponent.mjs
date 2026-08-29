@@ -53,10 +53,11 @@ class ViewerWakeTelltaleComponent extends Component {
          */
         role: 'status',
         /**
-         * @member {String} text='wake: not started'
+         * The pre-derivation status word — the stream really is off until someone starts it.
+         * @member {String} text='wake off'
          * @reactive
          */
-        text: 'wake: not started'
+        text: 'wake off'
     }
 
     /**

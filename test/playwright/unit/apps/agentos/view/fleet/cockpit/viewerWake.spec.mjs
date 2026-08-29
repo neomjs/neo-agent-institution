@@ -123,7 +123,10 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         expect(stamped.stream.alive).toBe('unknown');
         expect(stamped.stream.reason).toContain('wake push not wired');
         expect(stamped.catchUp).toEqual({state: null, at: null, pending: null});
-        expect(renderSlot(cockpit).text).toContain('wake push not wired');
+        const slot = renderSlot(cockpit);
+        // #23: the slot wears the word pair; the stamped reason reaches the reader via title/aria
+        expect(slot.text).toBe('wake off');
+        expect(slot.vdom.title).toContain('wake push not wired');
 
         cockpit.feed.destroy()
     });
@@ -161,7 +164,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         expect(stamped.stream.alive).toBe(true);
         expect(stamped.stream.reason).toBe('composed wake stream connected · armed for this viewer');
         const slot = renderSlot(cockpit);
-        expect(slot.text).toContain('wake: live');
+        expect(slot.text).toContain('wake live');
         expect(slot.vdom.title).toContain('wake push live');
 
         cockpit.feed.destroy()
