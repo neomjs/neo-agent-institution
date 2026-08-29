@@ -190,13 +190,14 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
     test('participationStatus renders as availability (not a role); an unstamped status hides the line', () => {
         const detail = createDetail({agentId: 'gem', participationStatus: 'operator_benched', state: 'off'});
 
-        const line = detail.down({reference: 'detail-participation'});
-        expect(line.hidden).toBe(false);
-        expect(line.text).toBe('operator benched');
+        const rowTexts = () => (detail.down({reference: 'detail-ledger'}).vdom.cn ?? []).map(node => node.text ?? '');
 
-        // null (no identity-root fact) → hidden, never guessed
+        expect(rowTexts()).toContain('status');
+        expect(rowTexts()).toContain('operator benched');
+
+        // null (no identity-root fact) → no row, never guessed (#23 ledger: absent facts are absent)
         applySet(detail, {participationStatus: null});
-        expect(detail.down({reference: 'detail-participation'}).hidden).toBe(true);
+        expect(rowTexts()).not.toContain('status');
 
         detail.destroy()
     });
@@ -258,8 +259,11 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         const detail = createDetail({agentId: 'vega', laneLine: 'FM cockpit agent detail view', openLaneCount: 17, state: 'ok'});
 
         expect(body(detail, 'lane').text).toBe('FM cockpit agent detail view · 17 open lanes');
-        // a feed-gated pane never fabricates a stream
-        expect(body(detail, 'thought-stream').text).toBe('awaiting live feed');
+        // a feed-gated pane never fabricates a stream — and never repeats the head's honest
+        // "not observed" as a body line either (#23): the body stays EMPTY, the awaiting truth
+        // rides the freshness pill's title
+        expect(body(detail, 'thought-stream').text).toBe('');
+        expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting live feed');
 
         // no lane reported → honest fallback, no fabricated count
         applySet(detail, {laneLine: null, openLaneCount: null});
@@ -284,17 +288,16 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                   throttle: {source: 'fleet:throttle', state: 'unknown', confidence: 'none', reason: hostile}
               });
 
-        const telltale = detail.down({reference: 'detail-telltale'});
+        const ledger = detail.down({reference: 'detail-ledger'});
 
         // the sink itself: ANY html on this node re-opens the hole regardless of today's content
-        expect(telltale.html).toBeFalsy();
+        expect(ledger.html).toBeFalsy();
 
-        const nodes = telltale.vdom.cn ?? [],
-              texts = nodes.map(node => node.text ?? '');
+        const nodes = ledger.vdom.cn ?? [];
 
-        // carried, inert, and still READABLE — an operator needs the producer's evidence, so escaping
-        // it out of existence would be its own defect
-        expect(texts.some(text => text.includes(hostile))).toBe(true);
+        // carried, inert, and still READABLE — an operator needs the producer's evidence; it rides
+        // the pill's title ATTRIBUTE now (#23), which is an attribute string: inert like a text node
+        expect(nodes.some(node => node.title === hostile)).toBe(true);
 
         // …and nowhere as markup, on any node
         nodes.forEach(node => {
@@ -316,13 +319,16 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             throttle: {source: 'fleet:throttle', state: 'unknown', confidence: 'none', reason: 'no throttle reader injected'}
         });
 
-        const texts = (detail.down({reference: 'detail-telltale'}).vdom.cn ?? []).map(node => node.text ?? '');
+        const nodes = detail.down({reference: 'detail-ledger'}).vdom.cn ?? [],
+              texts = nodes.map(node => node.text ?? '');
 
-        // both axes always, and the reason with them: the detail is the opposite of the card's
-        // exception-based chip
-        expect(texts.some(text => text.includes('no throttle reader injected'))).toBe(true);
-        expect(texts.some(text => text.includes('throttle: unknown'))).toBe(true);
-        expect(texts.some(text => text.includes('wake: on'))).toBe(true);
+        // an OBSERVED capacity axis renders (the source gate silences only the unreported case),
+        // wearing the axis word the enum measures; the producer's reason rides the pill title
+        expect(texts).toContain('capacity');
+        expect(texts).toContain('unknown');
+        expect(nodes.some(node => node.title === 'no throttle reader injected')).toBe(true);
+        expect(texts).toContain('wake');
+        expect(texts).toContain('on');
 
         detail.destroy()
     });
@@ -331,20 +337,22 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         // the default fixture wires all three (roster/repo/runtime observed). The detail is the opposite
         // of the card's exception-based strip: every source states itself, with its producer, always —
         // an operator who drilled in needs "runtime: wired, observed by X" confirmed, never omitted.
-        const detail  = createDetail({agentId: 'vega', state: 'ok'}),
-              sources = detail.down({reference: 'detail-sources'});
+        const detail = createDetail({agentId: 'vega', state: 'ok'}),
+              ledger = detail.down({reference: 'detail-ledger'});
 
-        // the same sink guard the telltale carries: ANY html on this node re-opens the innerHTML hole
-        expect(sources.html).toBeFalsy();
+        // the same sink guard the old stacks carried: ANY html on this node re-opens the innerHTML hole
+        expect(ledger.html).toBeFalsy();
 
-        const texts = (sources.vdom.cn ?? []).map(node => node.text ?? '');
+        const nodes = ledger.vdom.cn ?? [],
+              texts = nodes.map(node => node.text ?? '');
 
-        // all three, in full words, each with confidence AND its producer literal — the provenance the
-        // compact card had no room for, which is the entire point of the drill-in
-        expect(texts.some(text => text.includes('Runtime: wired · observed'))).toBe(true);
-        expect(texts.some(text => text.includes('Repository: wired · observed'))).toBe(true);
-        expect(texts.some(text => text.includes('Roster: wired · observed'))).toBe(true);
-        expect(texts.some(text => text.includes('fleet:runtimeStatus'))).toBe(true);
+        // all three axes state themselves, each pill carrying confidence in TEXT and the producer
+        // literal on its title — the provenance the compact card had no room for
+        expect(texts).toContain('runtime');
+        expect(texts).toContain('repository');
+        expect(texts).toContain('roster');
+        expect(texts.filter(text => text === 'wired · observed')).toHaveLength(3);
+        expect(nodes.some(node => node.title === 'fleet:runtimeStatus')).toBe(true);
 
         detail.destroy()
     });
@@ -362,16 +370,19 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             }
         });
 
-        const nodes       = detail.down({reference: 'detail-sources'}).vdom.cn ?? [],
-              runtimeNode = nodes.find(node => (node.text ?? '').startsWith('Runtime:'));
+        const nodes       = detail.down({reference: 'detail-ledger'}).vdom.cn ?? [],
+              runtimeIdx  = nodes.findIndex(node => node.text === 'runtime'),
+              runtimePill = nodes[runtimeIdx + 1];
 
-        expect(runtimeNode.text).toContain('not wired');
-        expect(runtimeNode.cls).toContain('fm-detail-sources-not-wired');
+        // the condition rides the TEXT plus the absence tone class — never colour alone
+        expect(runtimePill.text).toBe('not wired');
+        expect(runtimePill.cls).toContain('is-unobserved');
 
-        // the readout stays unconditional — the two wired sources still state themselves
+        // the ledger stays unconditional — the two wired sources still state themselves
         const texts = nodes.map(node => node.text ?? '');
-        expect(texts.some(text => text.includes('Repository: wired · observed'))).toBe(true);
-        expect(texts.some(text => text.includes('Roster: wired · observed'))).toBe(true);
+        expect(texts).toContain('repository');
+        expect(texts).toContain('roster');
+        expect(texts.filter(text => text === 'wired · observed')).toHaveLength(2);
 
         detail.destroy()
     });

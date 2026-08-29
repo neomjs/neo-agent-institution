@@ -228,34 +228,23 @@ class AgentDetail extends Container {
                     ntype    : 'component',
                     cls      : ['fm-detail-id'],
                     reference: 'detail-id'
-                }, {
-                    // availability (participationStatus), not a role — honest status word or nothing
-                    ntype    : 'component',
-                    cls      : ['fm-detail-participation'],
-                    reference: 'detail-participation'
-                }, {
-                    // The FULL two-axis telltale readout. The card is exception-based — nominal earns
-                    // zero pixels there, because 20 cards cannot spend a line each on "fine". This is
-                    // ONE resident, so both axes state themselves unconditionally: an operator who
-                    // drilled in cannot otherwise tell "wake is on" from "nobody looked at wake".
-                    // Lives in the identity block rather than a fifth pane — the four SSOT panes are
-                    // content surfaces with freshness TTLs, and this is resident state.
-                    ntype    : 'component',
-                    cls      : ['fm-detail-telltale'],
-                    reference: 'detail-telltale'
-                }, {
-                    // The full three-source provenance readout — the drill-in counterpart to the card's
-                    // ONE honest word-line. The card names only the abnormal source(s) (20 compact cards
-                    // cannot each spend three lines on provenance); the resident detail states all three
-                    // unconditionally, each with the producer that reported it — the evidence the summary
-                    // had no room for. Reads the SAME SourceHealth.normalizeFleetSources output as the card's strip, so
-                    // detail and card can never disagree about a source's health. Sibling to the telltale
-                    // by design: both are resident identity state, not freshness-gated pane content.
-                    ntype    : 'component',
-                    cls      : ['fm-detail-sources'],
-                    reference: 'detail-sources'
                 }]
             }]
+        }, {
+            // ONE state ledger in the pane's own freshness-pill vocabulary (#23) — the identity
+            // block above stays pure identity (name is the only display-tier line). Every
+            // liveness/wiring axis renders exactly once as an `axis · pill` row: availability,
+            // the wake telltale, capacity (SOURCE-GATED: the axis renders only when a producer
+            // reported it — a permanently-unobservable row is furniture, not honesty), and the
+            // three data sources. Nominal states render too — this is ONE resident, and an
+            // operator who drilled in needs "wake on" confirmed, not omitted (the card stays
+            // exception-based). Provenance (producer literal, consumer reason) rides each pill's
+            // title attribute — inert by construction, like every text node here.
+            ntype    : 'component',
+            cls      : ['fm-detail-ledger'],
+            flex     : 'none',
+            hidden   : true,
+            reference: 'detail-ledger'
         }, {
             // the drill-in's tabbed body: Status panes + the Configuration card — the a11y region
             // + identity header stay above. Mail is NOT a detail concern: the south pane is the
@@ -300,8 +289,11 @@ class AgentDetail extends Container {
         // render flush; a later re-seat (applyRecord) keeps the root, so the region survives.
         Object.assign(this.vdom, {role: 'region', 'aria-label': 'Agent detail'});
 
-        // shell-supplied window verbs land at the identity header's trailing edge (layout-blind slot)
-        this.shellTools?.length && this.getReference('detail-header')?.add(this.shellTools);
+        // shell-supplied window verbs ride the tab header bar's ACTION seam (#23, operator
+        // direction): one icon at the trailing edge of the tab strip, outside the content flow —
+        // the old identity-header placement floated the verb OVER the identity block at rail
+        // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
+        this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
         // the pane renders and never fetches: it fires the page intent, this view (which holds the
         // read seam and the subject) performs the bounded re-read. Wired explicitly rather than via
         // a string handler — this view carries no controller for one to resolve against.
@@ -505,10 +497,12 @@ class AgentDetail extends Container {
             record = me.record,
             empty  = me.getReference('detail-empty'),
             header = me.getReference('detail-header'),
+            ledger = me.getReference('detail-ledger'),
             tabs   = me.getReference('detail-tabs');
 
         empty.hidden  = !!record;
         header.hidden = !record;
+        ledger.hidden = !record;
         tabs.hidden   = !record;
 
         // the configuration tab joins on the Fleet Registry key; a roster resident with no stored
@@ -539,79 +533,7 @@ class AgentDetail extends Container {
         me.getReference('detail-engine').text = record.engineTag ?? '';
         me.getReference('detail-id').text     = agentId;
 
-        // availability, rendered honestly — a known status word, or hidden when unstamped (null =
-        // no identity-root fact; never guessed, never a role)
-        const participation = record.participationStatus ?? null;
-
-        me.getReference('detail-participation').set({
-            hidden: participation === null,
-            text  : participation === null ? '' : participation.replace(/_/g, ' ')
-        });
-
-        // The full two-axis readout: BOTH axes, always — the opposite of the card's exception-based
-        // chip, and deliberately so. Three renderings for three different facts: a nominal axis says
-        // so (an operator who drilled in needs "wake: on" confirmed, not omitted), an observed
-        // `unknown` carries the producer's reason, and an axis nobody reported says "not reported"
-        // rather than borrowing 'unknown' — which would claim someone looked.
-        const readout = Telltale.describeTelltaleReadout({throttle: record.throttle, wake: record.wake});
-
-        // Built as VDOM nodes carrying `text`, never an `html` string. `reason` is the PRODUCER's
-        // sentence — it crosses a process boundary before it reaches here — and Neo routes `html` to
-        // innerHTML (src/vdom/Helper.mjs), so interpolating it made a remote adapter's error message
-        // executable in the cockpit. A `text` node is inert by construction, which is the only version
-        // of this that cannot be got wrong again later: escaping is a thing you must remember, and a
-        // text node is a thing you cannot forget.
-        const telltale = me.getReference('detail-telltale');
-
-        telltale.vdom.cn = readout.flatMap(({axis, reason, reported, state}) => {
-            if (!reported) {
-                return [{tag: 'span', cls: ['fm-detail-telltale-axis', 'fm-detail-telltale-unreported'], text: `${axis}: not reported`}]
-            }
-
-            const nodes = [{tag: 'span', cls: ['fm-detail-telltale-axis', `fm-detail-telltale-${state}`], text: `${axis}: ${state}`}];
-
-            // the reason is the producer's evidence for what it could not see; the card has no room
-            // for it, which is what makes a degraded chip a prompt to drill in rather than a dead end
-            if (reason) {
-                nodes.push({tag: 'span', cls: ['fm-detail-telltale-reason'], text: `— ${reason}`})
-            }
-
-            return nodes
-        });
-
-        telltale.update();
-
-        // The three-source provenance readout — the drill-in counterpart to the card's one word-line.
-        // Each source states itself unconditionally (like the telltale's axes): a wired source names its
-        // confidence AND its producer; a not-wired / missing source says so plainly. State rides the TEXT
-        // ("not wired" / "missing"), never colour alone (WCAG 1.4.1). Built as `text` VDOM nodes, never an
-        // `html` string — `fact.source` is a producer literal that crossed a process boundary, and Neo
-        // routes `html` to innerHTML; a text node is inert by construction.
-        const
-            sourceLabels  = {runtime: 'Runtime', repoStatus: 'Repository', roster: 'Roster'},
-            sourceOrder   = ['runtime', 'repoStatus', 'roster'],
-            detailSources = me.getReference('detail-sources');
-
-        detailSources.vdom.cn = sourceOrder.flatMap(key => {
-            const
-                fact      = sources[key],
-                stateText = fact.state === 'wired' ? `wired · ${fact.confidence}` : fact.state.replace(/-/g, ' '),
-                nodes     = [{
-                    tag : 'span',
-                    cls : ['fm-detail-sources-axis', `fm-detail-sources-${fact.state}`],
-                    text: `${sourceLabels[key]}: ${stateText}`
-                }];
-
-            // the producer literal is the provenance evidence — which adapter reported this fact; the
-            // card's one-word summary cannot carry it, which is the point of the drill-in
-            if (fact.source) {
-                nodes.push({tag: 'span', cls: ['fm-detail-sources-producer'], text: `— ${fact.source}`})
-            }
-
-            return nodes
-        });
-
-        detailSources.update();
+        me.renderStateLedger(record, sources);
 
         me.getReference('detail-avatar').set({
             alt: record.displayName ?? agentId,
@@ -622,13 +544,86 @@ class AgentDetail extends Container {
     }
 
     /**
+     * @summary Render the ONE state ledger — every liveness/wiring axis once, as `axis · pill`
+     * rows in the pane's own freshness-pill vocabulary (#23: three vocabularies became one).
+     *
+     * Rows, in order: availability (participationStatus — a known status word or no row),
+     * the wake telltale (BOTH renderings the old readout carried: a nominal axis says so, an
+     * observed `unknown` keeps the producer's reason — on the pill title now), capacity
+     * (the throttle axis, SOURCE-GATED: it renders only when a producer actually reported it —
+     * the adapter documents that no trustworthy capacity truth source exists yet, so an
+     * unconditional row could only ever say "not reported": furniture, not honesty; the row
+     * returns with its producer, wearing a word that means what the enum measures), and the
+     * three data sources with their producer literals on the title.
+     *
+     * Tone classes reuse the freshness family deliberately (one pill language per pane):
+     * `is-fresh` = nominal, `is-stale` = deviating, `is-unobserved` = absent/unknown/not wired.
+     *
+     * Built as `text` VDOM nodes with `title` ATTRIBUTES, never an `html` string — reasons and
+     * producer literals cross a process boundary before they reach here, and Neo routes `html`
+     * to innerHTML; text nodes and attribute strings are inert by construction.
+     * @param {Object} record The drilled-in FleetAgent record (never null here).
+     * @param {Object} sources `SourceHealth.normalizeFleetSources` output — the SAME resolved
+     *     truth the card's strip reads, so detail and card can never disagree.
+     * @protected
+     */
+    renderStateLedger(record, sources) {
+        const
+            me     = this,
+            ledger = me.getReference('detail-ledger'),
+            rows   = [],
+            row    = (axis, word, tone, title) => rows.push(
+                {tag: 'span', cls: ['fm-ledger-axis'], text: axis},
+                {tag: 'span', cls: ['fm-freshness', tone], text: word, ...(title ? {title} : {})}
+            );
+
+        const participation = record.participationStatus ?? null;
+
+        participation !== null && row('status', participation.replace(/_/g, ' '),
+            participation === 'active' ? 'is-fresh' : 'is-stale');
+
+        Telltale.describeTelltaleReadout({throttle: record.throttle, wake: record.wake})
+            .forEach(({axis, reason, reported, state}) => {
+                // capacity (the renamed throttle axis) is source-gated; wake states itself always
+                if (axis === 'throttle' && !reported) {
+                    return
+                }
+
+                const
+                    label = axis === 'throttle' ? 'capacity' : axis,
+                    word  = reported ? state : 'not reported',
+                    tone  = !reported || state === 'unknown' ? 'is-unobserved'
+                          : (state === 'on' || state === 'none') ? 'is-fresh' : 'is-stale';
+
+                row(label, word, tone, reason || null)
+            });
+
+        const
+            sourceLabels = {runtime: 'runtime', repoStatus: 'repository', roster: 'roster'},
+            sourceOrder  = ['runtime', 'repoStatus', 'roster'];
+
+        sourceOrder.forEach(key => {
+            const
+                fact  = sources[key],
+                wired = fact.state === 'wired',
+                word  = wired ? `wired · ${fact.confidence}` : fact.state.replace(/-/g, ' ');
+
+            row(sourceLabels[key], word, wired ? 'is-fresh' : 'is-unobserved', fact.source || null)
+        });
+
+        ledger.vdom.cn = rows;
+        ledger.update()
+    }
+
+    /**
      * @summary Render each pane's freshness chip + known body content, honestly.
      *
      * Every pane header shows its observation freshness — timestamped `fresh`/`stale`/`lost` from a
      * wired ledger, or `unobserved` until its feed lands (never a silently-current
      * claim). The `lane` pane additionally renders the record-known lane line + open-lane count; the
-     * feed-gated panes (thought-stream / repo / prs) render an honest "awaiting …" body until their
-     * Lane-C / memory-surface leaf wires content.
+     * feed-gated panes (thought-stream / repo / prs) keep their body EMPTY until their Lane-C /
+     * memory-surface leaf wires content — the head's freshness pill carries the awaiting truth on
+     * its title (#23: the per-section boilerplate collapsed into the one provenance pill).
      * @protected
      */
     applyPaneFreshness() {
@@ -645,15 +640,24 @@ class AgentDetail extends Container {
 
             // .text (never .html): the label is ours but the pane body is record-derived
             // (laneLine), so it must be escaped text, never interpreted markup — no injection surface
-            me.getReference(`pane-${pane.key}-freshness`).set({cls, text: label});
+            const freshnessChip = me.getReference(`pane-${pane.key}-freshness`);
+
+            freshnessChip.set({cls, text: label});
+            // the awaiting truth rides the pill's title (one provenance pill per section — #23);
+            // an attribute string is inert, like every text node here
+            freshnessChip.vdom.title = ledger ? null : 'awaiting live feed — no source wired for this pane yet';
+            freshnessChip.update();
+
             me.getReference(`pane-${pane.key}-body`).text = me.renderPaneBody(pane.key, record)
         })
     }
 
     /**
      * @summary The honest body content for one pane from the record's known facts. The `lane` pane
-     * renders the real lane line + open-lane count; the feed-gated panes render an "awaiting" line
-     * until their source leaf lands (degrade honestly, never a fabricated stream).
+     * renders the real lane line + open-lane count; the feed-gated panes render NO body until
+     * their source leaf lands — the head's freshness pill already states "not observed — source
+     * not wired" and carries the awaiting detail on its title, so a body line repeating it was
+     * the same fact told twice per section (#23).
      * @param {String} key Pane key.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
      * @returns {String}
@@ -669,7 +673,7 @@ class AgentDetail extends Container {
             return `${laneLine}${countText}`
         }
 
-        return 'awaiting live feed'
+        return ''
     }
 }
 

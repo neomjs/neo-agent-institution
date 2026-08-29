@@ -182,18 +182,24 @@ class VesselContainer extends DockWorkspace {
 
     /**
      * @summary SHELL-owned pop-out affordance config for the inspector — routes by the vessel
-     * state machine; {@link #syncControlBar} keeps the label naming the action it will take.
-     * Same pane-chrome placement contract as {@link #buildMemoriesWindowToggle}.
+     * state machine; {@link #syncVesselChrome} keeps title + aria naming the action it will take.
+     *
+     * Icon-only by design (#23, operator direction): the pane places this through its
+     * layout-blind `shellTools` slot onto the tab header bar's ACTION seam — one icon at the
+     * strip's trailing edge, outside the content flow (the old text button floated OVER the
+     * identity block at rail widths). `contextual: false` keeps it persistent: windowing the
+     * pane is a pane verb, not a per-tab one. The label lives on title + aria-label, byte-equal.
      * @returns {Object}
      */
     buildDetailWindowToggle() {
         return {
-            module   : Button,
-            cls      : ['fm-detail-window-toggle'],
-            handler  : this.onDetailWindowToggle.bind(this),
-            iconCls  : 'fa-solid fa-arrow-up-right-from-square',
-            reference: 'detail-window-toggle',
-            text     : 'Pop out detail'
+            module    : Button,
+            cls       : ['fm-detail-window-toggle'],
+            contextual: false,
+            handler   : this.onDetailWindowToggle.bind(this),
+            iconCls   : 'fa-solid fa-arrow-up-right-from-square',
+            reference : 'detail-window-toggle',
+            vdom      : {title: 'Pop out detail', 'aria-label': 'Pop out detail'}
         }
     }
 
@@ -841,10 +847,16 @@ class VesselContainer extends DockWorkspace {
             // toggle is inert — one vessel pathway at a time (G4 owns richer convergence)
             torn   = Boolean(me.tearOutPanes?.detail || me.tearOutPaneHandles?.detail);
 
-        toggle?.set({
-            disabled: state === 'reattaching' || torn,
-            text    : torn ? 'Detail torn out' : (out ? 'Reattach detail' : 'Pop out detail')
-        });
+        if (toggle) {
+            const label = torn ? 'Detail torn out' : (out ? 'Reattach detail' : 'Pop out detail');
+
+            toggle.set({disabled: state === 'reattaching' || torn});
+            // icon-only action (#23): the state-named label rides title + aria, byte-equal —
+            // attribute strings, inert by construction
+            toggle.vdom.title          = label;
+            toggle.vdom['aria-label']  = label;
+            toggle.mounted && toggle.update()
+        }
 
         // the exception-only recall verb: visible ONLY while the pane is away — the main view
         // must always hold a way home, and the traveling pane-side toggle cannot provide it here.

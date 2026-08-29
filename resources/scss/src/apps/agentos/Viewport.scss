@@ -61,6 +61,58 @@
        fact, and the animation exists only under no-preference (the StateDot inclusion-gate). */
     --fm-motion-pulse: 2400ms;
 
+    /* TAB HEADER ACTIONS — the app-wide contract for EVERY tab container (operator direction,
+       2026-08-30: one rule for all tab bars, never per-pane styling). The engine's header
+       toolbar stamps each action with `neo-toolbar-action`, so this targets the seam itself:
+       any pane placing a verb through `headerActions` inherits the same quiet icon form.
+
+       Geometry: a 24px square HIT AREA (an 11px glyph alone is a stray pixel to click), the
+       glyph in the chrome register (12px — one step above the 11px labels, an icon needs the
+       extra optical weight), centered on the toolbar's own axis (height:auto collapses the
+       theme button's 48px default, which floated the old box 9px above the label midline).
+       Quiet at rest, a soft field on hover — body without box weight. */
+    .neo-tab-header-toolbar .neo-button.neo-toolbar-action {
+        display        : inline-flex;
+        align-items    : center;
+        justify-content: center;
+        gap            : 0;
+        width          : 24px;
+        height         : 24px;
+        /* both minimums: the theme pins .neo-button to min-width var(--cmp-button-height) (48px)
+           with a :root prefix — width alone loses to it, and the glyph centers in the phantom */
+        min-height     : 0;
+        min-width      : 0;
+        padding        : 0;
+        background     : transparent;
+        border         : none;
+        border-radius  : 5px;
+        box-shadow     : none;
+        color          : var(--fm-ink-dim);
+        /* the hit field overhangs the content edge by its own half-padding so the icon INK sits
+           on the flush line the pane boxes and ledger pills end on — fields align by ink, boxes
+           by border (measured: without this the glyph reads ~6px shy of the content edge) */
+        margin-right   : -6px;
+        transition     : background var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+
+        &:hover {
+            border-color: transparent;
+            background  : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+            color       : var(--fm-ink);
+        }
+
+        .neo-button-glyph {
+            color      : inherit;
+            font-size  : 12px;
+            line-height: 1;
+        }
+
+        /* an icon-only action renders an EMPTY text span; any width it takes shoves the glyph
+           off the field's center (measured: 16px of phantom right-side space) */
+        .neo-button-text:empty {
+            display: none;
+        }
+    }
+
     /* The window-verb pair — quiet secondary, owned HERE because the skin must travel with the
        pane: the verbs render in pane chrome (which reparents into the widget vessel, where no
        FleetCockpit sheet ever loads) and as the cockpit bar's exception-only recall pair. This

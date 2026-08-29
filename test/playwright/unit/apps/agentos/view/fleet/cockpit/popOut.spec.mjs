@@ -178,7 +178,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — detail pop-out st
 
         // the shell affordance now names the reverse action
         // the verb lives in the pane's chrome and travels with it — resolve through the accessor
-        expect(cockpit.getAgentDetailPane().getReference('detail-window-toggle').text).toBe('Reattach detail')
+        expect(cockpit.getAgentDetailPane().getReference('detail-window-toggle').vdom.title).toBe('Reattach detail')
     });
 
     test('connect: the matching vessel adopts the SAME instance — opening → windowed', async () => {
@@ -239,7 +239,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — detail pop-out st
         expect(vessel.closeCalls).toHaveLength(1);
         expect(vessel.closeCalls[0].names).toEqual([`fm-agent-detail-${cockpit.id}`]);
 
-        expect(cockpit.getAgentDetailPane().getReference('detail-window-toggle').text).toBe('Pop out detail')
+        expect(cockpit.getAgentDetailPane().getReference('detail-window-toggle').vdom.title).toBe('Pop out detail')
     });
 
     test('blocked popup: windowOpen=false takes the failed-blocked edge and rolls back commit-or-neither', async () => {
