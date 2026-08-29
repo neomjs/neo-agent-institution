@@ -1496,17 +1496,18 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         streamAdapterState: 'sample', streamDegradedReason: null, ...over
     });
 
-    // the REAL derivation pass — CockpitStateProvider.deriveBannerTruths over a provider fake;
-    // returns every derived write ({daemonFault, instanceState, spineBanner})
+    // the REAL formulas over the full declared data surface — pull-based: each formula reads
+    // its source keys directly, so driving them with plain data is exactly the production path
     const deriveTruths = data => {
-        const writes = {};
+        const
+            full       = provData(data),
+            {formulas} = CockpitStateProvider.config;
 
-        CockpitStateProvider.prototype.deriveBannerTruths.call({
-            getHierarchyData: () => provData(data),
-            setData         : patch => Object.assign(writes, patch)
-        });
-
-        return writes
+        return {
+            daemonFault  : formulas.daemonFault(full),
+            instanceState: formulas.instanceState(full),
+            spineBanner  : formulas.spineBanner(full)
+        }
     };
 
     const verdictOf = data => deriveTruths(data).spineBanner;

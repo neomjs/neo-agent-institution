@@ -93,16 +93,11 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
     // `viewerWake` — the chip surface is `{ariaLabel, cls, text, title}`, with `title` living
     // on `vdom.title` in production via the component's afterSetText pull.
     const renderSlot = cockpit => {
-        const writes = {};
-
-        CockpitStateProvider.prototype.deriveViewerWakeTelltale.call({
-            // dotted-path walk over the fake's stored objects (the real provider resolves leaf
-            // configs; the fake stores whole stamps under their root key)
-            getData: path => path.split('.').reduce((node, key) => node?.[key], {viewerWake: cockpit.provider.getData('viewerWake')}),
-            setData: (key, value) => { writes[key] = value }
+        // the REAL formula over the stamped truth (pull-based — it reads the viewerWake leaves
+        // it derives from)
+        const chip = CockpitStateProvider.config.formulas.viewerWakeTelltale({
+            viewerWake: cockpit.provider.getData('viewerWake')
         });
-
-        const chip = writes.viewerWakeTelltale;
 
         return {text: chip.text, vdom: {title: chip.title, 'aria-label': chip.ariaLabel}}
     };

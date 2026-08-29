@@ -7,15 +7,17 @@ import ViewerWakeFeed      from '../../../store/ViewerWakeFeed.mjs';
 import {sampleActivity}    from '../../../config/fleetSampleData.mjs';
 
 /**
- * The banner verdict's SOURCE keys — a write to any of these re-derives the verdict family.
- * @type {String[]}
+ * @summary One banner-verdict derivation for the two formulas that render it (`spineBanner` and
+ * `instanceState`) — shared so the dot can never disagree with the sentence beside it.
+ * @param {Object} data The provider's hierarchical data proxy.
+ * @returns {{hidden: Boolean, kind: String, text: String}}
  */
-const bannerSourceKeys = [
-    'daemonDegradedReason', 'daemonState',
-    'gridAdapterState', 'gridDegradedReason',
-    'shellTransport',
-    'streamAdapterState', 'streamDegradedReason'
-];
+const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
+    daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason},
+    grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason},
+    stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason},
+    transport: data.shellTransport
+});
 
 /**
  * @summary The cockpit's state scope — every truth more than one surface reads lives here, so the
@@ -30,15 +32,15 @@ const bannerSourceKeys = [
  *   reasons (per-surface by design: one shared reason field cannot know whose cause it holds),
  *   the Brain daemon verdict + shell transport fact, the viewer-wake truths and the activity
  *   counts.
- * - **derived data** — `spineBanner` (the one banner verdict; the banner and the reconnect
- *   affordance bind it), `instanceState` (the chrome dot's mirror of the same verdict),
- *   `daemonFault` (the grid header's fold) and `viewerWakeTelltale` (the wake chip). Declared
- *   as data and kept live by {@link #onDataPropertyChange} — the official provider hook — so
- *   the derivation OWNER stays this class and consumers just bind. (Two engine constraints,
- *   both verified in source and live 2026-08-29, shape this: `formulas` on a CHILD provider
- *   never re-run after boot, and `setData` drills object values into LEAF paths, so derived
- *   truths are declared leaf-complete and consumers bind leaves.) The components stay
- *   presentation-thin; no imperative sync path exists.
+ * - **formulas** — `spineBanner` (the one banner verdict; the banner and the reconnect
+ *   affordance bind it), `instanceState` (the chrome dot's mirror of the same verdict, written
+ *   to the VIEWPORT-owned key through setData's closest-owner walk), `daemonFault` (the grid
+ *   header's fold) and `viewerWakeTelltale` (the wake chip). Formula effects run at
+ *   `onConstructed` and re-run on tracked child + parent dependencies. One engine behavior
+ *   shapes the data block: `setData` drills object values into LEAF paths, so every derived
+ *   truth also carries a leaf-complete DATA default — the declaration that makes each leaf a
+ *   trackable config for the slot binds. The components stay presentation-thin; no imperative
+ *   sync path exists.
  *
  * @class AgentOS.view.fleet.cockpit.StateProvider
  * @extends Neo.state.Provider
@@ -133,31 +135,75 @@ class StateProvider extends Provider {
                 catchUp: {state: null, at: null, pending: null},
                 signals: []
             },
-            /* ── the DERIVED truths (written only by this class's own re-derivation hook) ──
-               Declared here when the COCKPIT is their owner; a truth the Viewport provider
-               already declares (`instanceState`) is deliberately NOT re-declared — a child
-               redeclaration SHADOWS the parent authority instead of feeding it, and setData
-               reaches the closest existing owner on its own. */
+            /* ── leaf-complete DEFAULTS for the formula-owned truths ──
+               `setData` drills object values into leaf paths, so each derived object declares
+               its full leaf shape here — that declaration is what makes every leaf a trackable
+               config for the slot binds. The VALUES are formula-owned below. A truth the
+               Viewport provider already declares (`instanceState`) is deliberately NOT
+               re-declared — a child redeclaration would SHADOW the parent authority, and the
+               formula's setData reaches the closest existing owner on its own. */
             /**
-             * DERIVED — the header's aggregate daemon-fault fold; the SAME fault set the banner
-             * ranks, plumbed as a boolean. The grid derives nothing about daemons itself.
+             * Formula-owned — the header's aggregate daemon-fault fold; the SAME fault set the
+             * banner ranks, plumbed as a boolean. The grid derives nothing about daemons itself.
              * @member {Boolean} daemonFault=false
              */
             daemonFault: false,
             /**
-             * DERIVED — the one banner verdict; the banner and the reconnect affordance bind its
-             * LEAVES (`setData` drills object values into leaf paths — an object-valued key never
-             * becomes one trackable config, so consumers bind `data.spineBanner.text` etc. and
-             * every leaf is declared here). Seeded by {@link #onConstructed}'s first derivation.
+             * Formula-owned — the one banner verdict; the banner and the reconnect affordance
+             * bind its LEAVES (`setData` drills object values into leaf paths — an object-valued
+             * key never becomes one trackable config, so consumers bind `data.spineBanner.text`
+             * etc. and every leaf is declared here).
              * @member {Object} spineBanner
              */
             spineBanner: {hidden: false, kind: 'cold', text: ''},
             /**
-             * DERIVED — the wake chip's derivation; leaf-declared for the same reason. Re-derives
-             * on every `viewerWake` stamp beat (the cadence the observations move on).
+             * Formula-owned — the wake chip's derivation; leaf-declared for the same reason.
+             * Re-derives on every `viewerWake` stamp beat (the cadence the observations move on).
              * @member {Object} viewerWakeTelltale
              */
             viewerWakeTelltale: {ariaLabel: '', cls: [], text: 'wake: not started', title: ''}
+        },
+        /**
+         * The derivations, as REAL formulas: effects run once at construction and re-run on
+         * their tracked child + parent data dependencies. `deriveBannerVerdict` (module helper)
+         * is shared so the dot mirror can never disagree with the sentence beside it.
+         * @member {Object} formulas
+         */
+        formulas: {
+            /**
+             * The header's aggregate daemon-fault fold.
+             * @param {Object} data
+             * @returns {Boolean}
+             */
+            daemonFault: data => SpineBanner.DAEMON_FAULT_STATES.includes(data.daemonState),
+            /**
+             * The chrome switcher's dot — live→ok · degraded→limited · cold→off. Writes the
+             * VIEWPORT-owned key (setData's closest-owner walk; no local twin is declared).
+             * @param {Object} data
+             * @returns {String}
+             */
+            instanceState: data => {
+                const verdict = deriveBannerVerdict(data);
+
+                return verdict.hidden ? 'ok' : (verdict.kind === 'degraded' ? 'limited' : 'off')
+            },
+            /**
+             * The one banner verdict `{hidden, kind, text}`.
+             * @param {Object} data
+             * @returns {Object}
+             */
+            spineBanner: data => deriveBannerVerdict(data),
+            /**
+             * The wake chip `{ariaLabel, cls, text, title}` from the stamped consumer
+             * observations (bounded signal window included).
+             * @param {Object} data
+             * @returns {Object}
+             */
+            viewerWakeTelltale: data => TelltaleDeriver.describeViewerWakeTelltale({
+                stream : data.viewerWake.stream ?? null,
+                catchUp: data.viewerWake.catchUp?.state ? data.viewerWake.catchUp : null,
+                signals: data.viewerWake.signals ?? []
+            })
         },
         /**
          * @member {Object} stores
@@ -177,92 +223,6 @@ class StateProvider extends Provider {
         }
     }
 
-    /**
-     * @summary Seed the derived truths once every declared default exists — the same derivation
-     * {@link #onDataPropertyChange} keeps live afterwards.
-     */
-    onConstructed() {
-        super.onConstructed();
-
-        this.deriveBannerTruths();
-        this.deriveViewerWakeTelltale()
-    }
-
-    /**
-     * @summary The provider-owned re-derivation seam — the official subclass hook, fired on every
-     * data write: a banner SOURCE key re-derives the verdict family, a `viewerWake` stamp
-     * re-derives the chip. Derived keys re-enter this hook and match no source, so the recursion
-     * terminates by construction.
-     * @param {String} key
-     * @param {*} value
-     * @param {*} oldValue
-     */
-    onDataPropertyChange(key, value, oldValue) {
-        super.onDataPropertyChange(key, value, oldValue);
-
-        // `setData` drills object writes into LEAF paths, so a source match is prefix-shaped;
-        // the derived keys are no source, which terminates the recursion by construction
-        bannerSourceKeys.some(source => key === source || key.startsWith(source + '.')) && this.deriveBannerTruths();
-
-        (key === 'viewerWake' || key.startsWith('viewerWake.')) && this.deriveViewerWakeTelltale()
-    }
-
-    /**
-     * @summary One banner derivation pass: verdict, dot state and daemon fold — three renderers,
-     * one truth, derived where the truth lives.
-     * @protected
-     */
-    deriveBannerTruths() {
-        const
-            me      = this,
-            data    = me.getHierarchyData(),
-            verdict = SpineBanner.deriveSpineBanner({
-                daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason},
-                grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason},
-                stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason},
-                transport: data.shellTransport
-            });
-
-        me.setData({
-            daemonFault: SpineBanner.DAEMON_FAULT_STATES.includes(data.daemonState),
-            spineBanner: verdict,
-            // NOT declared locally: `instanceState` is Viewport-provider data (the instance
-            // switcher binds it there) — setData walks to the closest existing OWNER, so this
-            // write updates the PARENT truth instead of shadowing it with a child twin
-            instanceState: verdict.hidden ? 'ok' : (verdict.kind === 'degraded' ? 'limited' : 'off')
-        })
-    }
-
-    /**
-     * @summary The wake-chip derivation — the consumer's stamped observations (bounded signal
-     * window included) reduced to `{ariaLabel, cls, text, title}`.
-     * @protected
-     */
-    deriveViewerWakeTelltale() {
-        // LEAF reads on purpose: a stamp's per-leaf writes fire this hook BEFORE the engine
-        // re-bubbles the parent objects, so an object-path read inside the hook still sees the
-        // previous composite — the leaves are already current, and the stamp's LAST leaf write
-        // makes this derivation the one that sticks
-        const
-            me      = this,
-            stream  = {
-                alive     : me.getData('viewerWake.stream.alive'),
-                reason    : me.getData('viewerWake.stream.reason'),
-                capturedAt: me.getData('viewerWake.stream.capturedAt')
-            },
-            catchUp = {
-                state  : me.getData('viewerWake.catchUp.state'),
-                at     : me.getData('viewerWake.catchUp.at'),
-                pending: me.getData('viewerWake.catchUp.pending')
-            },
-            signals = me.getData('viewerWake.signals');
-
-        me.setData('viewerWakeTelltale', TelltaleDeriver.describeViewerWakeTelltale({
-            stream,
-            catchUp: catchUp.state ? catchUp : null,
-            signals: signals ?? []
-        }))
-    }
 }
 
 export default Neo.setupClass(StateProvider);

@@ -15,7 +15,6 @@ import FleetGrid              from '../roster/Container.mjs';
 import MemoriesPane           from '../memories/Container.mjs';
 import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
-import WakeRoutePane          from '../wake/Container.mjs';
 import CockpitStateProvider   from './StateProvider.mjs';
 import CockpitDockDocument    from '../../../util/CockpitDockDocument.mjs';
 import CockpitPresets         from '../../../util/CockpitPresets.mjs';
@@ -266,9 +265,9 @@ class FleetCockpit extends VesselContainer {
          * @member {String} tearOutHostParam='cockpitId'
          */
         tearOutHostParam: 'cockpitId'
-        // `items` is built in construct() — not here — so each projection can carry the
-        // instance-bound applyDockZoneOperation + onDockZoneDocumentChange callbacks the resize
-        // commit loop needs.
+        // the persistent chrome is DECLARED in `items` above; only the dock projection joins at
+        // construct() — it carries the instance-bound applyDockZoneOperation +
+        // onDockZoneDocumentChange callbacks the resize commit loop needs.
     }
 
     /**
@@ -333,9 +332,9 @@ class FleetCockpit extends VesselContainer {
     sharedPerspectiveArtifact = null
 
     /**
-     * @summary Seed the layout SSOT and build the toolbar + dock projection as instance items —
-     * the projection carries instance-bound commit-loop callbacks, so it cannot live in the
-     * static config.
+     * @summary Seed the layout SSOT and add the ONE instance-bound member — the dock projection
+     * (its commit-loop callbacks bind this instance, so it cannot live in the static config; the
+     * persistent chrome is declared there).
      * @param {Object} config
      */
     construct(config) {
@@ -811,7 +810,10 @@ class FleetCockpit extends VesselContainer {
                 // The snapshot travels with rematerialization like the memories sibling: a torn or
                 // re-projected pane reopens on the last ACCEPTED envelope, never a blank claim.
                 return {
-                    module   : WakeRoutePane,
+                    // LAZY: the wake-routes pane is auto-hidden and unresolved at boot — its
+                    // module loads at first reveal (define-agent is the sibling case; the detail
+                    // pane is the stated eager exception for vessel identity)
+                    module   : () => import('../wake/Container.mjs'),
                     cls      : [marker],
                     snapshot : me.getController().wakeRoutesSnapshot,
                     listeners: {
