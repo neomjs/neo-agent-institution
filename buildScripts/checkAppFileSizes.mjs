@@ -1,25 +1,28 @@
-import {execSync} from 'node:child_process';
-import fs         from 'node:fs';
+import {execSync}      from 'node:child_process';
+import fs              from 'node:fs';
+import path            from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 /**
  * @summary The 1k-LOC bar with teeth: a mechanical size gate over the `apps/**` product surface.
  *
- * The #22 epic decomposed the 3.3k-LOC FleetCockpit god object into responsibility-seam leaves —
- * and its measurements show WHY a gate must outlive the cleanup: the debt class regressed once
- * before (3,327 → 3,487 LOC across a single feature PR) precisely because no gate watched it.
- * This script is the epic's closing clause: every tracked `apps/**` `.mjs` file is measured, and
- * a file past the bar fails CI with the offender list instead of merging silently.
+ * The cockpit decomposition split a 3.3k-line god object into responsibility-seam leaves — and the
+ * record shows WHY a gate must outlive the cleanup: the debt class regressed once before
+ * (3,327 → 3,487 lines across a single feature PR) precisely because no gate watched it. This
+ * script is the closing clause of that decomposition: every tracked `apps/**` `.mjs` file is
+ * measured, and a file past the bar fails CI with the offender list instead of merging silently.
  *
- * One budget, no exemptions — decided at #55 with the childapps question settled by measurement:
- * the demo monolith the epic exempted-in-principle (dockdemo / DemoBWorkspace) had already been
- * relocated out of the product app by the time this guard was born (neomjs/neo#16322 /
- * neomjs/neo#15614), so a childapps carve would exempt nothing today and would HIDE a returning
- * demo monolith tomorrow — the exact debt shape the relocation removed.
+ * One budget, no exemptions — settled by measurement at adoption: the demo monolith once
+ * considered for a carve had already been relocated out of the product tree by the time this guard
+ * was born, so a childapps carve would exempt nothing and would HIDE a returning demo monolith —
+ * the exact debt shape the relocation removed. (Historical coordinates live with the guard's
+ * ticket and PR, not here: the enforcement contract must stay readable without issue archaeology.)
  *
- * The ladder: warn ≥ 900 lines (headroom is shrinking — plan the next seam), error > 1,000 lines
- * (the bar itself; the line count of `wc -l`, matching the epic's measurements). The bar is the
- * SYMPTOM threshold — the fix is extraction along responsibility seams, never line golf; #22
- * records the proven seam families.
+ * The ladder: warn at 900 lines (headroom is shrinking — plan the next responsibility-seam cut),
+ * error above 1,000 lines (the bar itself). Lines are NEWLINE COUNTS, exactly `wc -l`: an empty
+ * file and a file without a final newline measure 0 and n respectively, matching the units the
+ * decomposition record was measured in. The bar is the SYMPTOM threshold — the fix is extraction
+ * along responsibility seams, never line golf.
  *
  * Check: npm run check-app-file-sizes   (CI + local; exits 1 with offenders past the bar)
  */
@@ -63,7 +66,9 @@ export function classifyEntries(entries) {
  * @summary The measurement half: line counts for every tracked file the pathspec matches.
  *
  * `git ls-files` keeps the inventory index-true (untracked scratch files cannot fail CI), and the
- * count matches `wc -l` — the unit the epic's own measurements use.
+ * count is the file's NEWLINE count — exactly `wc -l`, the unit the decomposition record uses.
+ * Exported for the hermetic inventory witness: the breadth of the guarded surface is part of the
+ * contract, so narrowing the pathspec or carving a subtree out must turn a spec red.
  * @param {String} cwd Repository root to measure from.
  * @returns {Object[]} `{path, lines}` per tracked file.
  */
@@ -71,23 +76,22 @@ export function collectAppFileSizes(cwd) {
     return execSync(`git ls-files -z '${guardPathspec}'`, {cwd, encoding: 'utf8'})
         .split('\0')
         .filter(Boolean)
-        .map(file => {
-            const content = fs.readFileSync(`${cwd}/${file}`, 'utf8');
-
-            return {path: file, lines: content.split('\n').length - (content.endsWith('\n') ? 1 : 0)}
-        })
+        .map(file => ({
+            path : file,
+            lines: (fs.readFileSync(`${cwd}/${file}`, 'utf8').match(/\n/g) || []).length
+        }))
 }
 
-const invokedAsScript = process.argv[1]?.endsWith('checkAppFileSizes.mjs');
+const isEntryScript = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
-if (invokedAsScript) {
+if (isEntryScript) {
     const {errors, warnings} = classifyEntries(collectAppFileSizes(process.cwd()));
 
-    warnings.forEach(({path, lines}) => console.warn(`⚠ ${path} (${lines} lines, warn ≥ ${WARN_LOC}) — headroom is shrinking; plan the next responsibility-seam cut (#22)`));
+    warnings.forEach(({path, lines}) => console.warn(`⚠ ${path} (${lines} lines, warn ≥ ${WARN_LOC}) — headroom is shrinking; plan the next responsibility-seam cut`));
 
     if (errors.length > 0) {
         errors.forEach(({path, lines}) => console.error(`✗ ${path} (${lines} lines > ${ERROR_LOC})`));
-        console.error(`\nThe 1k-LOC app-file bar failed. The fix is extraction along responsibility seams (see #22's seam families), never line golf.`);
+        console.error(`\nThe app-file size bar failed. The fix is extraction along responsibility seams, never line golf.`);
         process.exit(1)
     }
 
