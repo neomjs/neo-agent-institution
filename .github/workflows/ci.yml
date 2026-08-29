@@ -43,6 +43,11 @@ jobs:
             - name: Check visual baseline freshness
               run: npm run check-visual-baselines
 
+            # The app-file size bar with teeth — a tracked apps/** module past the 1k-line bar
+            # fails here with the offender list instead of regrowing a monolith silently.
+            - name: Check app file sizes
+              run: npm run check-app-file-sizes
+
             - name: Run isolated unit tests
               run: npm run test-unit
 
