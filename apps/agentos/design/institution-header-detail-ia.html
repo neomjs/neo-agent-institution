@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Institution header + agent detail — information architecture (the #23 sketch, §04-scored)</title>
+<style>
+  :root {
+    --ground:#0b0e13; --panel:#141a23; --panel-2:#1a212c;
+    --line:#262f3d; --line-soft:#1c242f;
+    --ink:#d6dce6; --ink-dim:#8b97a8; --ink-faint:#5a6575;
+    --signal:#5eead4;
+    --warn:#f5b544; --bad:#f4718b; --ok:#4ade80;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    /* §04 T1 role tokens, mirrored for the sketch (values = TOKENS.md) */
+    --t-display:600 14px/1.3 var(--sans);
+    --t-body:400 12px/1.45 var(--sans);
+    --t-detail:400 11px/1.4 var(--mono);
+    --t-micro:400 10px/1.3 var(--mono);
+    --t-chrome:400 11px/1 var(--mono);
+    /* §04 T2 chip geometry */
+    --chip-pad-y:2px; --chip-pad-x:8px; --chip-radius:4px; --chip-gap:8px; --chip-mark-w:3px;
+    /* §04 rhythm */
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:36px 24px 64px}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--signal);margin:0}
+  h1{font-size:26px;letter-spacing:-.01em;margin:10px 0 6px;font-weight:640}
+  h2{font-size:15px;margin:0 0 4px}
+  .lede{font-size:14px;color:var(--ink-dim);max-width:76ch;margin:0 0 26px}
+  .lede b{color:var(--ink)}
+  .col-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:26px 0 8px}
+  .note{font-size:12px;color:var(--ink-dim);max-width:76ch;margin:8px 0 0}
+  .note b{color:var(--ink);font-weight:600}
+  .falsifier{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:6px;max-width:86ch}
+  .divider{border-top:1px solid var(--line-soft);margin:34px 0 26px}
+  .mono{font-family:var(--mono)}
+  table{border-collapse:collapse;font-size:12px;max-width:86ch}
+  th,td{text-align:left;padding:5px 14px 5px 0;vertical-align:top;border-top:1px solid var(--line-soft);color:var(--ink-dim)}
+  th{color:var(--ink);font-weight:600;border-top:none}
+  td.mono{font-size:11px}
+
+  /* ── shared vocabulary: the state pill (the .fm-freshness geometry, reused verbatim) ── */
+  .pill{display:inline-flex;align-items:center;gap:5px;font:var(--t-micro);line-height:1;white-space:nowrap;
+        padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--ink-dim);background:var(--panel-2)}
+  .pill .dot{width:6px;height:6px;border-radius:50%;flex:none}
+  .dot-ok{background:var(--ok)} .dot-warn{background:var(--warn)} .dot-bad{background:var(--bad)} .dot-off{background:var(--ink-faint)}
+  .pill-word{font:var(--t-micro)}
+
+  /* ── the header stage ── */
+  .bar{background:var(--panel);border:1px solid var(--line-soft);border-radius:8px;display:flex;align-items:center;
+       gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);margin-top:10px}
+  .bar .views{display:flex;gap:6px}
+  .btn{font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;padding:5px 12px;background:var(--panel-2)}
+  .btn.active{color:var(--ink);border-color:var(--ink-dim)}
+  .btn.primary{color:var(--signal);border-color:var(--signal)}
+  .spacer{flex:1}
+  .statebox{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+  .statebox.h{flex-direction:row;align-items:center}
+  .barw{font:var(--t-micro);color:var(--ink-faint);margin-top:14px}
+
+  /* ── the detail stage ── */
+  .rail{background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;max-width:300px;overflow:hidden}
+  .rail-head{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
+  .rail-title{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
+  .icon-btn{margin-left:auto;font:var(--t-detail);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;
+            padding:3px 7px;background:var(--panel-2)}
+  .id-row{display:grid;grid-template-columns:32px 1fr;gap:0 var(--sp-2);align-items:center;padding:var(--sp-3)}
+  .avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#2b3a4d,#17202b);border:1px solid var(--line)}
+  .id-name-row{display:flex;align-items:baseline;gap:6px;min-width:0}
+  .id-name{font:var(--t-display);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .id-chip{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:var(--chip-radius);padding:1px 6px;flex:none}
+  .id-handle{grid-column:2;font:var(--t-micro);color:var(--ink-dim)}
+  .ledger{padding:0 var(--sp-3) var(--sp-3);display:grid;grid-template-columns:max-content 1fr;gap:5px var(--sp-3);align-items:center}
+  .ledger .axis{font:var(--t-detail);color:var(--ink-dim);white-space:nowrap}
+  .sect{border-top:1px solid var(--line-soft);padding:var(--sp-2) var(--sp-3)}
+  .sect-head{display:flex;align-items:center;gap:var(--chip-gap)}
+  .sect-title{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
+  .strike{color:var(--ink-faint);text-decoration:line-through}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">agent institution · fleet manager</p>
+  <h1>Header + agent detail — the information architecture cut</h1>
+  <p class="lede">The operator's brief, verbatim: <b>"it is not 'make chips smaller' — which items should be in there? in which order?"</b> This sketch answers exactly that for the two chrome surfaces, against live captures (2026-08-30): the cockpit bar renders a five-fact prose sentence <i>between action buttons</i> while the wake chip clips mid-word beside it; the detail rail clips the agent's NAME to three characters while spelling out the model tag beside it — inverted importance — six state lines wrap mid-phrase, a tool button floats OVER content, and three state vocabularies coexist in one stack. The fix is declared item sets, one pill vocabulary, and a declared collapse order — content decisions first, geometry second.</p>
+
+  <div class="col-label">the two chrome tiers, named (today: implicit and interleaved)</div>
+  <table>
+    <tr><th>tier</th><th>owns</th><th>item classes (complete, in order)</th></tr>
+    <tr><td><b>product bar</b> (viewport top toolbar)</td><td>which product, which instance</td><td class="mono">logo · instance switcher ·(spacer)· theme switch</td></tr>
+    <tr><td><b>cockpit bar</b> (control strip)</td><td>which view, what state, what next</td><td class="mono">views (Overview/Focus/Review) ·(spacer)· STATE (fleet · wake, right-aligned block) · ACTIONS (Reconnect when offline · Start fleet)</td></tr>
+  </table>
+  <p class="note"><b>The one structural law:</b> state never sits between action buttons. Today's bar interleaves them (views → banner prose → Reconnect → wake chip → Start fleet); the declared order groups state as ONE right-aligned block BEFORE the action group, so every pixel between the view switcher and the state block is honest whitespace, not accidental slack. Exactly four item classes exist — anything that is not identity/view/state/action does not ride the chrome.</p>
+
+  <div class="col-label">label content: the rewrite (facts move to their tiers — nothing is lost, everything is re-homed)</div>
+  <table>
+    <tr><th>fact (today: all inline in one sentence)</th><th>destination</th></tr>
+    <tr><td>state verdict ("fleet offline" / "degraded" / "wake off")</td><td><b>the pill text</b> — a status word, never a sentence</td></tr>
+    <tr><td>endpoint (<span class="mono">127.0.0.1:8083/fleet</span>) + consequence ("showing the static roster")</td><td><b>the pill's title</b> (T5 pattern, one hover away)</td></tr>
+    <tr><td>remediation (<span class="mono">npm run ai:fleet-server</span> / "start it from the checkout")</td><td><b>detail surface</b> (system/diagnostics view · popover), never chrome</td></tr>
+    <tr><td>wake failure reason ("stream disconnected (connect refused)")</td><td><b>the wake pill's title</b>; the pill says <span class="mono">wake off</span></td></tr>
+  </table>
+  <p class="note"><b>Label-language law:</b> a chrome label is one status word or word pair from the existing pill vocabulary — the axis word (<span class="mono">fleet</span>, <span class="mono">wake</span>) plus a state word. The live capture's <span class="mono">"wake: wake stream disconnected (connec…"</span> shows the failure mode of prose-in-chrome twice at once: the axis word duplicates itself, and the sentence clips mid-word. The typed connection-state vocabulary (its own ticket) slots into the pill TEXT when it lands; this sketch fixes the container the vocabulary renders into.</p>
+
+  <div class="col-label">the cockpit bar, declared — wide (≥ ~1180px container): state stacks vertically</div>
+  <div class="bar">
+    <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
+    <span class="spacer"></span>
+    <span class="statebox">
+      <span class="pill" title="127.0.0.1:8083/fleet — fleet server offline; showing the static roster"><span class="dot dot-bad"></span>fleet offline</span>
+      <span class="pill" title="wake stream disconnected (connect refused)"><span class="dot dot-off"></span>wake off</span>
+    </span>
+    <span class="btn">⟳ Reconnect</span>
+    <span class="btn primary">▶ Start fleet</span>
+  </div>
+  <p class="barw">wide — the operator's observation applied: the 50px band has the vertical space, so the two state axes stack, right-aligned, before the actions</p>
+
+  <div class="col-label">mid (~900–1180px): the same pills, one row</div>
+  <div class="bar">
+    <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
+    <span class="spacer"></span>
+    <span class="statebox h">
+      <span class="pill" title="127.0.0.1:8083/fleet — fleet server offline; showing the static roster"><span class="dot dot-bad"></span>fleet offline</span>
+      <span class="pill" title="wake stream disconnected (connect refused)"><span class="dot dot-off"></span>wake off</span>
+    </span>
+    <span class="btn">⟳ Reconnect</span>
+    <span class="btn primary">▶ Start fleet</span>
+  </div>
+
+  <div class="col-label">narrow (≤ ~730px): dots with titles — full truth stays one hover away</div>
+  <div class="bar" style="max-width:560px">
+    <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
+    <span class="spacer"></span>
+    <span class="statebox h">
+      <span class="pill" title="fleet offline — 127.0.0.1:8083/fleet; showing the static roster"><span class="dot dot-bad"></span></span>
+      <span class="pill" title="wake off — stream disconnected (connect refused)"><span class="dot dot-off"></span></span>
+    </span>
+    <span class="btn">⟳</span>
+    <span class="btn primary">▶</span>
+  </div>
+  <p class="note"><b>Declared collapse order</b> (container query on the cockpit bar, the mechanism the roster/card/activity surfaces already use): (1) state text drops → dots-with-titles; (2) action labels drop → icon buttons; (3) view labels never drop — they are the navigation. Nothing ever clips mid-word: every step is a designed form, and the T5 title carries the full truth at every width. Reconnect renders only while the fleet pill is not hidden (the existing bind), so the narrow bar in a healthy fleet is just views + start + two quiet dots.</p>
+  <p class="falsifier">header falsifiers: no label carries an endpoint or shell command inline (grep the chrome vdom for "npm run" / host:port = empty) · no mid-word clipping at 1280/1024/900/730 (computed receipts: scrollWidth ≤ clientWidth on every chrome label) · state block sits right of the last view button and left of the first action button at every width · the axis word renders exactly once per pill.</p>
+
+  <div class="divider"></div>
+
+  <div class="col-label">agent detail — identity: one grid row, importance restored</div>
+  <div class="rail">
+    <div class="rail-head"><span class="rail-title">Agent detail</span><span class="icon-btn" title="Pop out detail">⧉</span></div>
+    <div class="id-row">
+      <span class="avatar"></span>
+      <span class="id-name-row"><span class="id-name">Emmy</span><span class="id-chip">gpt-5.6-sol</span></span>
+      <span class="id-handle mono">@neo-gpt-emmy</span>
+    </div>
+    <div class="ledger">
+      <span class="axis">presence</span><span><span class="pill" title="who_is_online band — fleet:listAgents"><span class="dot dot-ok"></span>online</span></span>
+      <span class="axis">wake</span><span><span class="pill" title="not reported by the wake-route probe"><span class="dot dot-off"></span>not reported</span></span>
+      <span class="axis">runtime</span><span><span class="pill" title="source not wired — fleet:listAgents"><span class="dot dot-off"></span>not wired</span></span>
+      <span class="axis">repository</span><span><span class="pill" title="source not wired — fleet:listAgents"><span class="dot dot-off"></span>not wired</span></span>
+      <span class="axis">roster</span><span><span class="pill" title="source not wired — fleet:listAgents"><span class="dot dot-off"></span>not wired</span></span>
+    </div>
+    <div class="sect"><div class="sect-head"><span class="sect-title">Thought stream</span><span class="pill" title="awaiting live feed — source not wired"><span class="dot dot-off"></span>unwired</span></div></div>
+    <div class="sect"><div class="sect-head"><span class="sect-title">Current lane</span><span class="pill" title="awaiting live feed — source not wired"><span class="dot dot-off"></span>unwired</span></div></div>
+  </div>
+  <p class="note"><b>Identity row law (the live capture showed "E…" beside a fully spelled model tag):</b> the NAME is the only display-tier text and the only line allowed to ellipsize — at 240px rail width "Emmy" and even "Mnemosyne" render whole before the model chip would wrap; the model tag is a micro chip, the handle a micro line beneath. Avatar is 32px, grid-locked: it can never squeeze the text column below readability, because the text column owns <span class="mono">1fr</span>. The pop-out control rides the <b>tab header bar's action icons</b> (the engine's header-toolbar seam, right-pinned — the operator's direction): one icon with a T5 title, OUTSIDE the card entirely — the live capture's floating button drained a third of the card width and overlapped the runtime line; that whole control class leaves the content flow.</p>
+  <p class="note"><b>One state language (three today):</b> every liveness and wiring axis renders exactly once, as an <span class="mono">axis · pill</span> ledger row in the freshness vocabulary that already exists in this pane's own SCSS — axis labels <span class="mono">nowrap</span>, state words short enough that NO row wraps at 240–360px rail widths. Provenance (<span class="mono">fleet:listAgents</span>) rides the pill title, not a dangling prose line. The drawer sections below stop re-stating axes: each keeps its title plus ONE provenance pill — the live capture's three-line "not observed — source not wired · awaiting live feed" boilerplate per section collapses into it.</p>
+
+  <div class="col-label">axis vocabulary — every word earns its meaning (the operator's "what does throttled even MEAN?")</div>
+  <table>
+    <tr><th>axis word</th><th>what it actually measures</th><th>source today</th><th>verdict</th></tr>
+    <tr><td class="mono">presence</td><td>the plane's who-is-online band (<span class="mono">online · idle · dark · benched</span>)</td><td>roster passthrough — live</td><td><b>keeps</b> — replaces the bare "Active" word with the band vocabulary</td></tr>
+    <tr><td class="mono">wake</td><td>can the wake channel reach this seat</td><td>wake-route probe</td><td><b>keeps</b> — "wake" is established platform language (wake routes pane)</td></tr>
+    <tr><td class="mono strike">throttle</td><td>seat capacity: session overage or a provider rate limit (<span class="mono">none · overage · rate-limited</span>) — NOT a speed mode; harness fast modes are a different, unrelated concept</td><td><b>none exists</b> — the adapter is a documented contract-and-seam; every row answers "not reported", permanently</td><td><b>renamed <span class="mono">capacity</span>, and the row WAITS for its producer</b> — per the register honesty rule the pane contracts established: a register without a source renders nothing (no placeholder chrome). The seam stays; the row returns with the truth source, wearing a word that means what it measures.</td></tr>
+    <tr><td class="mono">runtime / repository / roster</td><td>wiring state of the three data surfaces this pane renders from</td><td>fleet sources (offline today, wired when the fleet server runs)</td><td><b>keep</b> — real sources with a real off/on lifecycle; "not wired" is their honest cold state</td></tr>
+  </table>
+  <p class="note"><b>The rule behind the throttle row's removal:</b> the telltale module's own JSDoc concedes "no trustworthy throttle truth source exists in the platform yet" — so the ledger line has read "not reported" for every agent since birth and can read nothing else. A permanently-unobservable axis is not honesty, it is furniture. This deliberately supersedes the module's states-every-axis-unconditionally clause FOR source-less axes: the detail states every axis <i>that has a producer</i>; the contract seam stays in code, documented, awaiting its truth source.</p>
+  <p class="falsifier">detail falsifiers: no state line wraps at rail widths 240–360 (computed: every ledger row height = one line-height) · elementFromPoint over the identity block never returns a control · the name is the only ellipsized node · each axis string appears exactly once in the pane's rendered text · both themes token-only, check-theme-surfaces green.</p>
+
+  <div class="divider"></div>
+
+  <div class="col-label">implementation coordinates (the later cut, not this sketch)</div>
+  <p class="note">The cockpit bar items live in the cockpit container's declared chrome (banner slot, wake telltale slot, action buttons — already bound to the provider verdicts); the re-form is a re-ORDER plus pill re-skin of those slots, no new state. The detail identity/ledger lives in the detail container's header vdom; the pop-out button already exists as vessel chrome and moves onto the tab header bar's action-icon seam (the engine's header toolbar, icons right-pinned). The throttle→capacity rename touches the model field's rendered LABEL and the ledger row's source-gated presence — the model field, its enum and the adapter seam stay as shipped. Container queries follow the roster/card pattern. The typed connection-state vocabulary and the boot-truth fix stay their own coordinates; this cut consumes their words when they land.</p>
+</div>
+</body>
+</html>
