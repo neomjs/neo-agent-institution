@@ -17,11 +17,12 @@ import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/Vie
 
 /**
  * The chrome-binding REVEAL witness over a real constructed cockpit: the declared chrome slots
- * bind the provider's DERIVED data leaves (the two engine constraints that shape the provider:
- * child-provider formulas never re-run post-boot, and object-valued setData drills into leaf
- * paths — so derived truths are declared leaf-complete and consumers bind leaves), so the banner
- * must arrive REVEALED with the cold verdict on a cold boot, and the reconnect affordance must
- * share it.
+ * bind the provider's formula-owned leaves. The formula model, source-exact: the provider's
+ * onConstructed performs the initial run, each formula PULLS its dependencies through the
+ * hierarchical data proxy while its Effect subscribes those Configs, and later dependency
+ * changes schedule re-runs automatically. Object-valued setData drills into leaf paths, so the
+ * derived truths are declared leaf-complete and consumers bind leaves. The banner must arrive
+ * REVEALED with the cold verdict on a cold boot, and the reconnect affordance must share it.
  */
 test('the declared chrome binds the derived truths — banner revealed with the cold verdict', async () => {
     const cockpit = Neo.create(FleetCockpit, {

@@ -176,10 +176,9 @@ class FleetCockpit extends VesselContainer {
                 // the consumption site; the component renders itself
                 module   : SpineBannerComponent,
                 bind     : {
-                    cls        : data => [`fm-spine-banner-${data.spineBanner.kind}`],
-                    hidden     : data => data.spineBanner.hidden,
-                    probeDetail: data => 'detail:' + data.viewerWakeTelltale.title.length,
-                    text       : data => data.spineBanner.text
+                    cls   : data => [`fm-spine-banner-${data.spineBanner.kind}`],
+                    hidden: data => data.spineBanner.hidden,
+                    text  : data => data.spineBanner.text
                 },
                 reference: 'fleet-spine-banner'
             }, {
