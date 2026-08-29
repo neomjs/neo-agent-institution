@@ -35,12 +35,14 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
  * - **formulas** — `spineBanner` (the one banner verdict; the banner and the reconnect
  *   affordance bind it), `instanceState` (the chrome dot's mirror of the same verdict, written
  *   to the VIEWPORT-owned key through setData's closest-owner walk), `daemonFault` (the grid
- *   header's fold) and `viewerWakeTelltale` (the wake chip). Formula effects run at
- *   `onConstructed` and re-run on tracked child + parent dependencies. One engine behavior
- *   shapes the data block: `setData` drills object values into LEAF paths, so every derived
- *   truth also carries a leaf-complete DATA default — the declaration that makes each leaf a
- *   trackable config for the slot binds. The components stay presentation-thin; no imperative
- *   sync path exists.
+ *   header's fold) and `viewerWakeTelltale` (the wake chip). Reactivity is PULL-based,
+ *   source-exact: `Provider.onConstructed` performs the initial formula run; during that run
+ *   each formula pulls its dependencies through the hierarchical data proxy, the Effect
+ *   subscribes to those Configs (child and parent alike), and later dependency changes schedule
+ *   re-runs automatically. One engine behavior shapes the data block: `setData` drills object
+ *   values into LEAF paths, so every derived truth also carries a leaf-complete DATA default —
+ *   the declaration that makes each leaf a trackable config for the slot binds. The components
+ *   stay presentation-thin; no imperative sync path exists.
  *
  * @class AgentOS.view.fleet.cockpit.StateProvider
  * @extends Neo.state.Provider
@@ -164,9 +166,11 @@ class StateProvider extends Provider {
             viewerWakeTelltale: {ariaLabel: '', cls: [], text: 'wake: not started', title: ''}
         },
         /**
-         * The derivations, as REAL formulas: effects run once at construction and re-run on
-         * their tracked child + parent data dependencies. `deriveBannerVerdict` (module helper)
-         * is shared so the dot mirror can never disagree with the sentence beside it.
+         * The derivations, as REAL formulas — pull-based: the initial run at `onConstructed`
+         * pulls each formula's dependencies through the hierarchical data proxy, the Effect
+         * subscribes to those Configs, and dependency changes schedule re-runs automatically.
+         * `deriveBannerVerdict` (module helper) is shared so the dot mirror can never disagree
+         * with the sentence beside it.
          * @member {Object} formulas
          */
         formulas: {
