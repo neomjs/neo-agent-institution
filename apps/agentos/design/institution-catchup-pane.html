@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Institution catch-up pane — information design (the #20 catch-up slice, §04-scored)</title>
+<style>
+  :root {
+    --ground:#0b0e13; --panel:#141a23; --panel-2:#1a212c;
+    --line:#262f3d; --line-soft:#1c242f;
+    --ink:#d6dce6; --ink-dim:#8b97a8; --ink-faint:#5a6575;
+    --signal:#5eead4;
+    --warn:#f5b544; --bad:#f4718b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    /* §04 T1 role tokens, mirrored for the sketch (values = TOKENS.md) */
+    --t-display:600 14px/1.3 var(--sans);
+    --t-body:400 12px/1.45 var(--sans);
+    --t-detail:400 11px/1.4 var(--mono);
+    --t-micro:400 10px/1.3 var(--mono);
+    --t-chrome:400 11px/1 var(--mono);
+    /* §04 T2 chip geometry */
+    --chip-pad-y:2px; --chip-pad-x:8px; --chip-radius:4px; --chip-gap:8px; --chip-mark-w:3px;
+    /* §04 rhythm */
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:36px 24px 64px}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--signal);margin:0}
+  h1{font-size:26px;letter-spacing:-.01em;margin:10px 0 6px;font-weight:640}
+  .lede{font-size:14px;color:var(--ink-dim);max-width:76ch;margin:0 0 26px}
+  .lede b{color:var(--ink)}
+  /* §04 text-color contract: information-bearing text renders --ink-dim (5.90:1 on panel) or
+     --ink; --ink-faint (2.96:1) survives only on decorative marks and borders */
+  .col-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:26px 0 8px}
+  .note{font-size:12px;color:var(--ink-dim);max-width:76ch;margin:8px 0 0}
+  .note b{color:var(--ink);font-weight:600}
+  .falsifier{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:6px;max-width:86ch}
+  .divider{border-top:1px solid var(--line-soft);margin:34px 0 26px}
+
+  /* ── the pane stage (drawer-shell owns the real frame) ── */
+  .pane{background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;max-width:680px;overflow:hidden}
+  .pane-head{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
+  .pane-title{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);flex:1}
+  .authority{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+
+  /* ── the window receipt: THE headline of the pane — a designed sentence, not chrome ── */
+  .window{display:flex;align-items:baseline;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);
+          border-bottom:1px solid var(--line-soft)}
+  .window .span{font:var(--t-display);color:var(--ink)}
+  .window .scope{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+  .window.is-cold .span{font:var(--t-body);color:var(--ink-dim);font-weight:400}
+
+  /* partition chips: affordance class (selection is structural — border + weight, never hue-alone) */
+  .parts{display:flex;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+  .part{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;
+        padding:var(--chip-pad-y) var(--chip-pad-x);background:var(--panel-2);cursor:pointer}
+  .part.is-active{color:var(--ink);font-weight:600;border-color:var(--ink-dim)}
+
+  /* actions row */
+  .actions{display:flex;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
+  .abtn{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:var(--chip-radius);
+        padding:var(--chip-pad-y) var(--chip-pad-x);background:var(--panel-2);cursor:pointer}
+  .abtn:hover{border-color:var(--ink-dim);color:var(--ink)}
+  .abtn.is-primary{color:var(--ink);border-color:var(--ink-dim)}
+  .spacer{flex:1}
+
+  /* ── source SECTION header (the list.Base useHeaders record) ── */
+  .shead{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3) var(--sp-1);
+         background:var(--panel-2);border-bottom:1px solid var(--line-soft)}
+  .stitle{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);flex:1}
+  .sstate{font:var(--t-micro);border-radius:var(--chip-radius);padding:var(--chip-pad-y) var(--chip-pad-x);
+          border:1px solid var(--line);color:var(--ink-dim);position:relative;
+          padding-left:calc(var(--chip-pad-x) + var(--chip-mark-w) + 3px)}
+  .sstate::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--chip-mark-w);
+          border-radius:var(--chip-radius) 0 0 var(--chip-radius);background:var(--ink-faint)}
+  .sstate.is-live::before{background:var(--signal)}
+  .sstate.is-degraded::before{background:var(--warn)}
+  .sstate.is-unavailable::before{background:var(--bad)}
+
+  /* freshness as designed metadata: a PILL GROUP, not a suffix sentence */
+  .fresh{display:flex;gap:var(--sp-1);padding:var(--sp-1) var(--sp-3);flex-wrap:wrap;
+         border-bottom:1px solid var(--line-soft)}
+  .pill{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line-soft);border-radius:999px;
+        padding:1px 7px;display:inline-flex;gap:4px;align-items:baseline}
+  .pill b{color:var(--ink);font-weight:600}
+  .pill.is-warn{border-color:var(--warn);color:var(--warn)}
+
+  /* synthesis: the ONE prose block, body-tier, 68ch */
+  .synth{font:var(--t-body);color:var(--ink);max-width:68ch;padding:var(--sp-2) var(--sp-3)}
+  .synth.is-fallback{color:var(--ink-dim)}
+  .reason{font:var(--t-detail);color:var(--warn);padding:0 var(--sp-3) var(--sp-2);max-width:68ch}
+
+  /* citation rows: the repeated unit — detail-tier mono, one row per receipt */
+  .cite{display:grid;grid-template-columns:auto 1fr auto;gap:0 var(--chip-gap);
+        padding:var(--sp-1) var(--sp-3);align-items:baseline}
+  .cite + .cite{border-top:1px solid var(--line-soft)}
+  .ckind{font:var(--t-micro);color:var(--ink-dim);text-transform:uppercase;letter-spacing:.08em}
+  .cid{font:var(--t-detail);color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cid a{color:var(--signal);text-decoration:none}
+  .cid a:hover{text-decoration:underline}
+  .ctag{font:var(--t-micro);color:var(--ink-dim)}
+  .coverflow{font:var(--t-micro);color:var(--ink-dim);padding:var(--sp-1) var(--sp-3) var(--sp-2)}
+
+  .empty{padding:var(--sp-4) var(--sp-3);font:var(--t-body);color:var(--ink-dim)}
+  .choice{display:flex;gap:var(--sp-1);align-items:center;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
+  .choice .q{font:var(--t-body);color:var(--ink);flex:1}
+
+  table{border-collapse:collapse;font-size:12px;color:var(--ink-dim);margin-top:10px}
+  th,td{border:1px solid var(--line-soft);padding:6px 10px;text-align:left;vertical-align:top}
+  th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-dim)}
+  td b{color:var(--ink)}
+  td .mono{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">institution pane information design · #20 · catch-up slice</p>
+  <h1>The catch-up pane — what happened since you looked, as a receipt</h1>
+  <p class="lede">The pane renders two <b>source-owned Bird View envelopes</b> (Memory per partition, resolved PRs fleet-wide) without synthesizing anything itself — every honest state the wire can produce is a first-class rendering: first-use window choice, per-source unavailable/degraded/empty, synthesis fallbacks, census-only citations, bounded overflow. The design job is HIERARCHY: today the window receipt, the source states, the coverage facts and the citations all render at one visual weight as appended "·"-chained text. The contract below gives each fact its tier — <b>the window is the headline, freshness is metadata pills, citations are receipt rows</b> — and states the #24 target primitive with its section shape.</p>
+
+  <div class="col-label">the designed pane · live window, one live + one degraded source</div>
+  <div class="pane">
+    <div class="pane-head"><span class="pane-title">Since you last looked</span><span class="authority">query-time · not authority</span></div>
+    <div class="window">
+      <span class="span">Aug 28, 19:04 → Aug 29, 18:20</span>
+      <span class="scope">whole fleet</span>
+    </div>
+    <div class="parts">
+      <span class="part is-active">Fleet</span><span class="part">Ada</span><span class="part">Clio</span><span class="part">Emmy</span><span class="part">Euclid</span><span class="part">Grace</span><span class="part">Vega</span>
+    </div>
+    <div class="actions">
+      <span class="abtn">⚡ Live activity</span>
+      <span class="spacer"></span>
+      <span class="abtn">↻ Refresh</span>
+      <span class="abtn is-primary">✓ Mark caught up</span>
+    </div>
+
+    <div class="shead"><span class="stitle">Memory · fleet</span><span class="sstate is-live">live</span></div>
+    <div class="fresh">
+      <span class="pill">generated <b>18:20</b></span>
+      <span class="pill">coverage <b>41/41</b></span>
+      <span class="pill">manifest <b>b41f…c9</b></span>
+    </div>
+    <div class="synth">The cockpit rebuild landed through review and merge; the fleet spent the window on the #17836 resize arc, two Brain policy leaves, and the §04 chrome passes. One correction cycle: the e2e "CI gap" broadcast was retracted after the operator retired the scheduler in both repos.</div>
+    <div class="cite"><span class="ckind">memory</span><span class="cid">turn 93088c11 · cockpit rebuild PR opened</span><span class="ctag"></span></div>
+    <div class="cite"><span class="ckind">memory</span><span class="cid">turn 5ccc8123 · Brain PR #235 merge-eligible</span><span class="ctag">census only</span></div>
+    <div class="coverflow">3 more citations in the source manifest</div>
+
+    <div class="shead"><span class="stitle">Resolved pull requests · fleet</span><span class="sstate is-degraded">degraded</span></div>
+    <div class="fresh">
+      <span class="pill">generated <b>18:19</b></span>
+      <span class="pill is-warn">coverage <b>9/12</b></span>
+      <span class="pill">manifest <b>77aa…e1</b></span>
+    </div>
+    <div class="synth is-fallback">Synthesis unavailable · summariser budget exhausted for this window</div>
+    <div class="reason">Coverage degraded · three PR bodies exceeded the excerpt bound</div>
+    <div class="cite"><span class="ckind">pr</span><span class="cid"><a href="#">neomjs/neo#17852 · menu polish merged</a></span><span class="ctag"></span></div>
+    <div class="cite"><span class="ckind">pr</span><span class="cid"><a href="#">neomjs/neo-agent-brain#234 · policy ledger</a></span><span class="ctag"></span></div>
+  </div>
+  <p class="note"><b>The hierarchy, stated:</b> the window receipt is the pane's ONE display-tier line (it answers the pane's title); partition scope rides it as a pill, never a suffix. Source sections are chrome-tier headers with the state as a §04 family chip (mark + word — never hue-alone). <b>Freshness is a metadata pill group</b> — generated-instant, coverage fraction, manifest hash — each pill one fact with the value in ink; a degraded coverage fraction carries the warn tone on the WHOLE pill (border + text, two channels). The synthesis is the one body-tier prose block at 68ch; fallbacks render the same block dimmed with their reason on its own detail-tier line. Citations are receipt ROWS (kind · id · flags), mono detail-tier — they read as a ledger, not as prose.</p>
+  <p class="falsifier">falsifier: render the degraded PR section and gray-filter the screenshot — state must survive via the chip word + mark geometry and the warn pill must survive via its border; if either fact lives in hue alone, the contract is violated (§04 law-1).</p>
+
+  <div class="divider"></div>
+
+  <div class="col-label">honest cold states · designed, not apologised for</div>
+  <div class="pane" style="margin-bottom:14px">
+    <div class="pane-head"><span class="pane-title">Since you last looked</span><span class="authority">query-time · not authority</span></div>
+    <div class="window is-cold"><span class="span">No runtime anchor yet</span></div>
+    <div class="choice">
+      <span class="q">Choose the first window — no history window is invented.</span>
+      <span class="abtn">24h</span><span class="abtn">3 days</span><span class="abtn">Week</span>
+    </div>
+  </div>
+  <div class="pane">
+    <div class="pane-head"><span class="pane-title">Since you last looked</span><span class="authority">query-time · not authority</span></div>
+    <div class="window is-cold"><span class="span">History not observed yet</span></div>
+    <div class="empty">Catch-up source unavailable.</div>
+  </div>
+  <p class="note"><b>First-use is a question, not an empty state:</b> the three window buttons render beside the question at body tier — the pane's only moment where the affordance outranks content. The unobserved/unavailable pane keeps the full chrome (head, window line) so the surface reads as the same instrument in a waiting state, never as a broken one.</p>
+
+  <div class="divider"></div>
+
+  <div class="col-label">the state model · every wire state → one designed rendering</div>
+  <table>
+    <tr><th>wire state</th><th>rendering (tier)</th><th>rule</th></tr>
+    <tr><td><b>window present</b></td><td>display-tier span pair + scope pill; both bounds on the hover receipt</td><td>a window is citable only as a PAIR — naming one end would be worse than none (landed rule, kept)</td></tr>
+    <tr><td><b>needsFirstUseWindow</b></td><td>cold window line + the three-button question row</td><td>no invented window; the choice is the content</td></tr>
+    <tr><td><b>source live</b></td><td>signal-marked state chip; synthesis at body tier</td><td>nominal earns quiet — no extra ornament on the happy path</td></tr>
+    <tr><td><b>source degraded</b></td><td>warn-marked chip; degraded coverage pill in warn tone; reason on its own detail line</td><td>the reason renders verbatim (source-owned text), never rewritten</td></tr>
+    <tr><td><b>source unavailable</b></td><td>bad-marked chip; the unavailableReason as the body block (dimmed)</td><td>absence of an envelope is a stated fact, not an empty div</td></tr>
+    <tr><td><b>coverage 0</b></td><td>"No source records in this window." as the dimmed body block</td><td>empty ≠ failed — the window ran and found nothing</td></tr>
+    <tr><td><b>synthesis unavailable</b></td><td>dimmed body block with the source's own reason</td><td>census still renders below — citations outlive the narrative</td></tr>
+    <tr><td><b>citation, linkable</b></td><td>receipt row, id as signal link (canonical PR targets only)</td><td>only source-owned PR ids resolve to hrefs; everything else renders non-navigating (landed rule)</td></tr>
+    <tr><td><b>citation, census-only</b></td><td>receipt row + "census only" flag at micro tier</td><td>inSynthesis:false is a fact on the row, not a style</td></tr>
+    <tr><td><b>citation overflow</b></td><td>one micro-tier count line closing the section</td><td>the bound is honest; the manifest holds the rest</td></tr>
+    <tr><td><b>mark outcome</b></td><td>one detail-tier line under the actions row (accepted/refused verbatim)</td><td>write receipts render where the write was asked</td></tr>
+  </table>
+
+  <div class="divider"></div>
+
+  <div class="col-label">target primitive · the #24 coordinate this contract binds</div>
+  <p class="note"><b>Primitive call: <span class="mono">Neo.list.Base</span> with <span class="mono">useHeaders</span> section records — the tasks-pane shape, not <span class="mono">grid.Container</span>.</b> #24's primitive map names grid for catch-up as direction "refined per leaf"; this contract records the refinement: the pane renders exactly TWO fixed sections whose rows are heterogeneous (freshness pills, one prose block, N citation rows, one overflow line) with no column semantics, no sort/filter need, and a hard citation bound (<span class="mono">citationLimit</span>) — buffered rendering has nothing to buffer, and a column grid would force prose into cells. The flattened store shape: <span class="mono">[sectionHeader(memory), freshness, synthesis, citation×N, overflow?, sectionHeader(prs), …]</span> — one record type per row class, the list item renderer keyed by <span class="mono">record.kind</span>. The window/partition/actions chrome above the list stays pane composition (it is chrome, not data). <b>Implementation coordinate:</b> the #24 catch-up migration leaf consumes this contract; the existing <span class="mono">CatchUpEntries</span> store already models source records and extends to the flattened row classes.</p>
+  <p class="note"><b>What the landed anatomy already covers</b> (absorbed, per the ticket): partition chips, the first-use choice, per-source honest states, citation bounds + census flags, the mark receipt — all landed through #17219/#17340-era work and preserved here. <b>What the migration must add:</b> the three-tier hierarchy (window headline / freshness pills / receipt rows), the §04 chip family on the state markers, the warn-toned coverage pill, and the list.Base section structure replacing the nested-container cards.</p>
+  <p class="falsifier">falsifier: after the migration, `grep -c "module: Container" view/fleet/catchup/` inside the source-card path returns 0 (the sections are list records, not nested containers), and the §04 acceptance sweep finds zero font-size literals in the catch-up SCSS.</p>
+</div>
+</body>
+</html>
