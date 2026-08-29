@@ -1,5 +1,5 @@
 import {test, expect} from '@playwright/test';
-import {digestListing, diffStamp} from '../../../../buildScripts/checkVisualBaselines.mjs';
+import {digestListing, diffStamp, inputScopes, scopeListing} from '../../../../buildScripts/checkVisualBaselines.mjs';
 
 /**
  * The drift gate's negative coverage — born from a review falsifier: the input-only digest scope
@@ -49,4 +49,34 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         expect(diffStamp({engine: 'old', inputs}, {engine: 'new', inputs}, ['apps/agentos']))
             .toEqual(['package-lock.json → node_modules/neo.mjs (engine version)'])
     });
+
+    test('the design-carve scope contract: SPEC documents never move the style digest; style-owning files still do', () => {
+        // the contract row under witness
+        const agentosScope = inputScopes.find(scope => scope.key === 'apps/agentos');
+
+        expect(agentosScope.exclude).toContain('apps/agentos/design');
+
+        // REAL index, read-only: the unfiltered listing carries the tracked design documents,
+        // the contract listing carves every one of them out — so a tracked design/** change can
+        // never move the apps/agentos digest
+        const
+            unfiltered = scopeListing({key: agentosScope.key}),
+            filtered   = scopeListing(agentosScope);
+
+        expect(unfiltered).toContain('apps/agentos/design/');
+        expect(filtered).not.toContain('apps/agentos/design/');
+
+        // a design-document delta leaves the contract digest unchanged (the filtered listing is
+        // design-blind by construction)…
+        const withNewSketch = unfiltered + '100644 ' + 'e'.repeat(40) + ' 0\tapps/agentos/design/institution-new-pane.html\n';
+
+        expect(digestListing(filtered)).toBe(digestListing(filtered));
+        expect(digestListing(withNewSketch)).not.toBe(digestListing(unfiltered)); // the OLD scope would have drifted
+
+        // …while a style-owning delta still changes it — the gate keeps its teeth
+        const withStyleChange = filtered + '100644 ' + 'f'.repeat(40) + ' 0\tapps/agentos/view/fleet/cockpit/Container.mjs\n';
+
+        expect(digestListing(withStyleChange)).not.toBe(digestListing(filtered))
+    });
+
 });

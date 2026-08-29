@@ -29,6 +29,22 @@ import {fileURLToPath} from 'node:url';
  * Check:  npm run check-visual-baselines   (CI + local; exits 1 on drift with the recovery steps)
  */
 
+/**
+ * The input-scope CONTRACT: scope keys stay the stamp's stable identity; `exclude` carves
+ * non-style content out via git pathspec magic. `apps/agentos/design` holds SPEC documents
+ * (design contracts and direction mocks) — they specify surfaces, they do not style them.
+ * Exported for the scope-contract regression witness.
+ * @type {Object[]}
+ */
+export const inputScopes = [
+        {key: 'apps/agentos', exclude: ['apps/agentos/design']},
+        {key: 'resources/scss'},
+        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs'},
+        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots'},
+        {key: 'test/playwright/visual/FleetCockpitVisual.spec.mjs'},
+        {key: 'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs'}
+];
+
 const
     cwd       = process.cwd(),
     stampFile = 'test/playwright/visual/__screenshots__/baseline-inputs.json',
@@ -37,18 +53,6 @@ const
     // every baseline, so a removed, renamed, or rewritten golden breaks the digest instead of
     // vanishing silently (the input-only scope false-greened on a deleted golden). Engine version
     // moves are visible through package-lock.json's neo.mjs entry, captured below as its own axis.
-    // Scope keys stay the stamp's stable identity; `exclude` carves non-style content out of a
-    // scope via git pathspec magic. `apps/agentos/design` holds SPEC documents (the #20 design
-    // contracts and direction mocks) — they specify surfaces, they do not style them, and hashing
-    // them forced an empty restamp on every sketch commit (the PR #53 friction).
-    inputScopes = [
-        {key: 'apps/agentos', exclude: ['apps/agentos/design']},
-        {key: 'resources/scss'},
-        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs'},
-        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots'},
-        {key: 'test/playwright/visual/FleetCockpitVisual.spec.mjs'},
-        {key: 'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs'}
-    ],
     inputPaths = inputScopes.map(scope => scope.key);
 
 /**
@@ -80,16 +84,26 @@ export function diffStamp(stamp, current, paths) {
 }
 
 /**
- * @summary One digest per input scope from the staged blob ids — index-exact, platform-free.
+ * @summary The raw staged-blob listing for one scope, exclusions applied — exported so the scope
+ * CONTRACT (what is carved out of a digest) has direct regression coverage.
  * @param {Object}   scope
  * @param {String}   scope.key       The path passed to `git ls-files -s` (and the stamp key).
  * @param {String[]} [scope.exclude] Sub-paths carved out via git pathspec exclude magic.
  * @returns {String}
  */
-function scopeDigest({key, exclude = []}) {
+export function scopeListing({key, exclude = []}) {
     const pathspecs = [`"${key}"`, ...exclude.map(sub => `":(exclude)${sub}"`)].join(' ');
 
-    return digestListing(execSync(`git ls-files -s -- ${pathspecs}`, {cwd, encoding: 'utf8'}))
+    return execSync(`git ls-files -s -- ${pathspecs}`, {cwd, encoding: 'utf8'})
+}
+
+/**
+ * @summary One digest per input scope from the staged blob ids — index-exact, platform-free.
+ * @param {Object} scope See {@link scopeListing}.
+ * @returns {String}
+ */
+function scopeDigest(scope) {
+    return digestListing(scopeListing(scope))
 }
 
 /**
