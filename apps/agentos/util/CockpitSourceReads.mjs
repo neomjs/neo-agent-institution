@@ -330,8 +330,10 @@ async function loadOperatorIdentity(owner) {
 
         // the seat-conflation honesty check rides the same resolution: a viewer claim matching a
         // registered agent identity means sends are attributed to that seat — a truth the pane
-        // must render, not swallow
-        owner.operatorIdentityPosture = deriveOperatorIdentityPosture(owner, nodeId);
+        // must render, not swallow. Dispatched THROUGH THE OWNER, never the private function:
+        // the shipped seam is the cockpit's virtual method, and an owner-side override must keep
+        // receiving the call (the delegate routes the default back here).
+        owner.operatorIdentityPosture = owner.deriveOperatorIdentityPosture(nodeId);
 
         // a materialized pane picks up the identity live and reads; a pane that projected first
         // takes the identity through this same live set — both orderings land exactly one first read

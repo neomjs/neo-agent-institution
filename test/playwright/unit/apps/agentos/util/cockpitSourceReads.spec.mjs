@@ -189,6 +189,33 @@ test.describe('AgentOS.util.CockpitSourceReads — the one fenced-read disciplin
         expect(owner.memoriesDrillSnapshot).toBe(null)
     });
 
+    test('loadOperatorIdentity dispatches posture through the OWNER — a custom override is invoked, never the private default', async () => {
+        const calls = [];
+        const pane  = {set(values) { calls.push(values) }};
+        const owner = {
+            isDestroyed           : false,
+            operatorRecord        : null,
+            operatorIdentityPosture: null,
+            getOperatorMailboxPane: () => pane,
+            // the sentinel override — the shipped virtual seam this witness pins (review control
+            // on the first head returned static-bypass; this test is red against that head)
+            deriveOperatorIdentityPosture(nodeId) {
+                calls.push({override: nodeId});
+                return {conflated: false, seatIdentity: nodeId, sentinel: true}
+            }
+        };
+
+        await withBridge(
+            {resolveViewerIdentity: async () => ({ok: true, agentIdentityNodeId: '@sentinel-seat'})},
+            () => CockpitSourceReads.loadOperatorIdentity(owner)
+        );
+
+        expect(calls[0]).toEqual({override: '@sentinel-seat'});
+        expect(owner.operatorIdentityPosture).toEqual({conflated: false, seatIdentity: '@sentinel-seat', sentinel: true});
+        expect(owner.operatorRecord).toEqual({agentIdentityNodeId: '@sentinel-seat', githubUsername: 'sentinel-seat'});
+        expect(calls[1]).toEqual({record: owner.operatorRecord, identityPosture: owner.operatorIdentityPosture})
+    });
+
     test('the wire payload strips display-only title on the drill read', async () => {
         const owner = makeOwner();
         let seenWire;
