@@ -1,6 +1,6 @@
 import AgentMailboxStore from '../../../store/AgentMailbox.mjs';
-import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container         from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import MailboxGrid       from './Grid.mjs';
 import AgentFreshness    from '../../../util/AgentFreshness.mjs';
 
 /**
@@ -66,13 +66,14 @@ function isRecognizedPage(page) {
  *  - `degraded` — the source failed for a non-admission reason: the honest reason line.
  *  - `empty` — wired, admitted, zero active rows: an explicit empty state.
  *
- * **Rows** render flat-chronological newest-first (the store's binding sort) with thread-collapse
- * where `partOfThread` exists: the NEWEST message of a thread heads the collapsed row (consistent
- * with the pane's newest-first order) over a `+N earlier` count chip; expanding renders the thread
- * inline, still newest-first. All row content is escaped `text` — record-derived strings never
- * render as markup. Pane-grain freshness reuses the S1 `agentFreshness` closed vocabulary
- * (fresh / stale / lost / `unobserved` as the fail-closed degrade tier) against the snapshot's
- * `capability.capturedAt`, so the cockpit speaks ONE freshness language.
+ * **Rows** render through {@link AgentOS.view.fleet.mailbox.Grid} — the #24 law-0 buffered
+ * `grid.Container` with one pooled {@link AgentOS.view.fleet.mailbox.RowComponent} per rendered
+ * row (the merged #36/#38 sketch is the scored row spec). The grid owns thread collapse and its
+ * delegated toggle; this pane keeps the states, the admission gate and the snapshot projection.
+ * No paging chrome exists anywhere on the surface (operator direction 2026-08-28): the window
+ * scrolls, and its honest end is the only end. Pane-grain freshness reuses the S1 `agentFreshness`
+ * closed vocabulary (fresh / stale / lost / `unobserved` as the fail-closed degrade tier) against
+ * the snapshot's `capability.capturedAt`, so the cockpit speaks ONE freshness language.
  *
  * The pane owns its {@link AgentOS.store.AgentMailbox} instance (created with the pane, destroyed
  * with it) — a leaf list owns a local store; no per-view `state.Provider`. The hosting wiring
@@ -130,7 +131,7 @@ class MailboxPane extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The pane head (freshness chip + page bounds) over the state line and the rows body.
+         * The pane head (title + freshness chip) over the state line and the buffered rows grid.
          * @member {Object[]} items
          */
         items: [{
@@ -147,43 +148,6 @@ class MailboxPane extends Container {
                 reference: 'mailbox-title'
             }, {
                 ntype    : 'component',
-                // The page bounds between their two transitions. The bounds label alone made row 51
-                // unreachable — a window with no way to move it is a claim about the data, not
-                // access to it. The pane REQUESTS a page (it renders, never fetches); the owner
-                // re-reads the mirror at the new offset.
-                //
-                // Composed from `button.Base` with the SHIPPED paging vocabulary (`fa fa-angle-*`,
-                // as `toolbar.Paging` uses), never hand-rolled `{tag:'button'}` vdom. The primitive
-                // is not ceremony: handler wiring, `iconCls`, disabled state and the `neo-selection`
-                // arrow-key opt-in all live there already — the visual states a raw tag is missing
-                // are missing *because* it bypassed the thing that supplies them.
-                ntype    : 'container',
-                cls      : ['fm-mailbox-page'],
-                flex     : 'none',
-                layout   : {ntype: 'hbox', align: 'center'},
-                reference: 'mailbox-page',
-
-                items: [{
-                    module   : Button,
-                    cls      : ['fm-mailbox-page-step', 'fm-mailbox-page-prev'],
-                    iconCls  : 'fa fa-angle-left',
-                    ui       : 'ghost',
-                    handler  : 'up.onPrevPageClick',
-                    reference: 'mailbox-page-prev'
-                }, {
-                    ntype    : 'component',
-                    cls      : ['fm-mailbox-page-range'],
-                    reference: 'mailbox-page-range'
-                }, {
-                    module   : Button,
-                    cls      : ['fm-mailbox-page-step', 'fm-mailbox-page-next'],
-                    iconCls  : 'fa fa-angle-right',
-                    ui       : 'ghost',
-                    handler  : 'up.onNextPageClick',
-                    reference: 'mailbox-page-next'
-                }]
-            }, {
-                ntype    : 'component',
                 flex     : 'none',
                 reference: 'mailbox-freshness'
             }]
@@ -193,42 +157,37 @@ class MailboxPane extends Container {
             cls      : ['fm-mailbox-state'],
             reference: 'mailbox-state'
         }, {
-            // the rows body — vdom-built from the pane-owned store, delegated single listener for
-            // the thread-collapse toggle (display-state navigation, the pane's ONLY interaction)
-            ntype    : 'component',
-            cls      : ['fm-mailbox-rows'],
+            // the rows body IS the buffered grid (#24 law 0): one pooled RowComponent per rendered
+            // row, thread collapse delegated inside the grid itself — this pane keeps the honest
+            // states, the admission gate and the snapshot projection, and hands the grid its store
+            module   : MailboxGrid,
             flex     : 1,
             hidden   : true,
-            reference: 'mailbox-rows',
-
-            // delegated to the native toggle BUTTON, not the row: a listener on the whole row makes
-            // the row an interactive region no keyboard user can reach. The handler still resolves
-            // the thread from the row's `data-thread-id` by walking the event path.
-            domListeners: [{
-                click   : 'up.onThreadHeadClick',
-                delegate: '.fm-mail-thread-toggle'
-            }]
+            reference: 'mailbox-rows'
         }]
     }
 
-    /**
-     * The offset the Newer step requests — held here because this view already owns the snapshot the
-     * bounds came from; stamping it onto the control would be a second copy of the same fact.
-     * @member {Number} prevPageOffset=0
-     * @protected
-     */
-    prevPageOffset = 0
-    /**
-     * The offset the Older step requests.
-     * @member {Number} nextPageOffset=0
-     * @protected
-     */
-    nextPageOffset = 0
     /**
      * The pane-owned row store — created with the pane, destroyed with it (see class summary).
      * @member {AgentOS.store.AgentMailbox|null} store=null
      */
     store = null
+    /**
+     * Armed by {@link #afterSetSnapshot} and consumed by ONE {@link #applySnapshot} run: the drain
+     * request (the next window beyond `page.hasMore`) fires only for a freshly landed snapshot —
+     * a freshness re-render (`now`) or a record swap re-projects without re-requesting.
+     * @member {Boolean} drainArmed=false
+     * @protected
+     */
+    drainArmed = false
+    /**
+     * The last projected window's identity (`[offset, rows]` fingerprint) — the explicit
+     * identical-poll gate: a refresh carrying the same rows skips the projection, so view-owned
+     * display state (an expanded thread) survives it.
+     * @member {String|null} projectedFingerprint=null
+     * @protected
+     */
+    projectedFingerprint = null
 
     /**
      * @summary Create the pane-owned store, then render the initial (honest) state.
@@ -237,14 +196,12 @@ class MailboxPane extends Container {
     onConstructed(...args) {
         super.onConstructed(...args);
 
-        // Icon-only controls have no text to name them, so without this they reach AT as an unnamed
-        // button — the chevron IS the label to a sighted operator and nothing at all to anyone else.
-        // Named here rather than in the config: `button.Base` builds its own vdom, and handing it a
-        // `vdom` config would fight the primitive for ownership of the tree it renders.
-        this.getReference('mailbox-page-prev').changeVdomRootKey('aria-label', 'Newer messages');
-        this.getReference('mailbox-page-next').changeVdomRootKey('aria-label', 'Older messages');
-
         this.store = Neo.create(AgentMailboxStore);
+
+        // the grid renders what this pane projects: injected store (autoDestroyStore: false on the
+        // grid — this pane stays the owner), refresh driven by applySnapshot() per projection
+        this.getReference('mailbox-rows').store = this.store;
+
         this.applySnapshot()
     }
 
@@ -260,13 +217,14 @@ class MailboxPane extends Container {
     }
 
     /**
-     * Triggered after the snapshot config changed — a new adapter read replaces the rows wholesale
-     * (rows are immutable timestamped facts; the new snapshot IS the new truth).
+     * Triggered after the snapshot config changed — a new adapter read projects (the first window
+     * replaces wholesale; a follow-up window appends), and arms exactly one drain request.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
      */
     afterSetSnapshot(value, oldValue) {
+        this.drainArmed = true;
         this.isConstructed && this.applySnapshot()
     }
 
@@ -391,19 +349,12 @@ class MailboxPane extends Container {
             state        = me.getPaneState(),
             rows         = state === 'rows',
             stateCmp     = me.getReference('mailbox-state'),
-            rowsCmp      = me.getReference('mailbox-rows'),
-            pageCmp      = me.getReference('mailbox-page'),
+            rowsGrid     = me.getReference('mailbox-rows'),
             now          = me.now ?? Date.now(),
             ledger       = snapshot ? {freshnessTtl: me.freshnessTtl, observedAt: snapshot.capability?.capturedAt} : null,
             {cls, label} = AgentFreshness.describePaneFreshness(AgentFreshness.classifyPaneFreshness(ledger, now));
 
         me.getReference('mailbox-freshness').set({cls, text: label});
-
-        // page bounds are shown only when rows show — a denial/degrade never fakes a window
-        const page = snapshot?.page;
-
-        pageCmp.hidden = !rows || !page;
-        rows && page && me.applyPageBounds(page);
 
         stateCmp.set({
             cls   : ['fm-mailbox-state', `is-${state}`],
@@ -411,10 +362,38 @@ class MailboxPane extends Container {
             text  : rows ? '' : me.getStateText(state)
         });
 
-        rowsCmp.hidden = !rows;
+        rowsGrid.hidden = !rows;
 
-        me.store.applySnapshotRows(rows ? snapshot.rows : []);
-        rows && me.renderRows()
+        // Projection: the FIRST window replaces wholesale; a follow-up window (offset > 0) extends
+        // the held corpus — the accumulation half of the no-paging contract (the buffered surface
+        // owns the whole corpus; the old offset chrome moved windows, the drain below fetches
+        // them). An identical-rows poll (only capture time advanced) skips the projection
+        // entirely, so the operator's expansion state survives a refresh with nothing new — the
+        // gate is explicit and pane-owned. Both branches ride the grid's ONE data path
+        // (`applyBags`): fresh windows arrive collapsed, an extension re-projects the held rows
+        // (their live `threadCollapsed` state included) plus the new window in one set.
+        const fingerprint = rows ? JSON.stringify([snapshot.page?.offset ?? 0, snapshot.rows]) : null;
+
+        if (fingerprint !== me.projectedFingerprint) {
+            const
+                extend    = rows && snapshot.page?.offset > 0,
+                projected = rows ? snapshot.rows.map(row => ({...row, threadCollapsed: true})) : [];
+
+            rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected);
+            me.projectedFingerprint = fingerprint
+        }
+
+        // The drain: while the producer says more exists beyond this window, request the next one —
+        // exactly ONE request per received snapshot (sequential by construction, no in-flight
+        // stacking), fired only when a NEW snapshot landed (afterSetSnapshot arms it) so freshness
+        // re-renders and record swaps never re-request. Row 51+ stays reachable without any chrome:
+        // the corpus assembles itself at the pane's own pace, and the honest end (hasMore: false)
+        // is the only stop.
+        if (rows && me.drainArmed && snapshot.page?.hasMore) {
+            me.fire('pageRequest', {offset: snapshot.page.offset + snapshot.page.limit, source: me})
+        }
+
+        me.drainArmed = false
     }
 
     /**
@@ -448,244 +427,6 @@ class MailboxPane extends Container {
         }
     }
 
-    /**
-     * @summary Build the rows body vdom from the pane-owned store: flat-chrono newest-first with
-     * thread-collapse. Store order is the binding order; threads group in first-encounter order,
-     * so the NEWEST message of a thread heads its collapsed row. All content renders as `text`.
-     * @protected
-     */
-    renderRows() {
-        let me      = this,
-            rowsCmp = me.getReference('mailbox-rows'),
-            groups  = new Map(),
-            cn      = [];
-
-        me.store.items.forEach(record => {
-            const threadId = record.partOfThread;
-
-            if (!threadId) {
-                cn.push(me.createRowVdom(record));
-                return
-            }
-
-            if (!groups.has(threadId)) {
-                // first encounter = the newest message of the thread → the thread head
-                const group = {head: record, rest: []};
-                groups.set(threadId, group);
-                cn.push(group)
-            } else {
-                groups.get(threadId).rest.push(record)
-            }
-        });
-
-        rowsCmp.vdom.cn = cn.map(entry => {
-            if (!entry.head) {
-                return entry
-            }
-
-            const {head, rest} = entry;
-
-            if (rest.length === 0) {
-                return me.createRowVdom(head)
-            }
-
-            if (head.threadCollapsed) {
-                return me.createRowVdom(head, {
-                    collapsed  : true,
-                    threadCount: rest.length,
-                    threadId   : head.partOfThread
-                })
-            }
-
-            return {
-                cls: ['fm-mail-thread'],
-                cn : [
-                    me.createRowVdom(head, {expanded: true, threadId: head.partOfThread}),
-                    ...rest.map(record => me.createRowVdom(record, {inThread: true}))
-                ]
-            }
-        });
-
-        rowsCmp.update()
-    }
-
-    /**
-     * @summary One row's vdom — escaped `text` leaves only, no interpreted markup anywhere. The
-     * thread head is the single interactive surface (the collapse toggle); everything else is
-     * inert fact rendering.
-     * @param {Object} record One {@link AgentOS.model.MailboxMessage} record.
-     * @param {Object} [options={}]
-     * @param {Boolean} [options.collapsed] Render as a collapsed thread head with a count chip.
-     * @param {Boolean} [options.expanded] Render as an expanded thread head.
-     * @param {Boolean} [options.inThread] Render as an indented thread member.
-     * @param {Number}  [options.threadCount] Collapsed-away count for the chip.
-     * @param {String}  [options.threadId] Thread id stamped on toggleable heads.
-     * @returns {Object}
-     * @protected
-     */
-    createRowVdom(record, {collapsed = false, expanded = false, inThread = false, threadCount = 0, threadId = null} = {}) {
-        const
-            isHead = collapsed || expanded,
-            meta   = [record.from, record.priority, record.status, record.taskState, record.sentAt]
-                .filter(Boolean)
-                .join(' · ');
-
-        return {
-            cls: [
-                'fm-mail-row',
-                record.status === 'unread' ? 'is-unread' : '',
-                isHead ? 'fm-mail-thread-head' : '',
-                inThread ? 'is-in-thread' : ''
-            ].filter(Boolean),
-            data: threadId ? {threadId} : null,
-            cn  : [{
-                cls: ['fm-mail-row-main'],
-                cn : [
-                    {tag: 'span', cls: ['fm-mail-subject'], text: record.subject || '(no subject)'},
-                    // The toggle is a NATIVE button, not a clickable div: it is the pane's only
-                    // affordance, and a div owns no Enter/Space and no tab stop, so thread collapse
-                    // was mouse-only. Same discipline as the card drill's native-button target —
-                    // an interactive region that is not a control is not operable. `aria-expanded`
-                    // names the state it toggles; the row keeps `fm-mail-thread-head` for styling.
-                    ...(collapsed ? [{
-                        tag            : 'button',
-                        type           : 'button',
-                        cls            : ['fm-mail-thread-count', 'fm-mail-thread-toggle'],
-                        text           : `+${threadCount} earlier`,
-                        'aria-expanded': 'false',
-                        'aria-label'   : `Expand thread — ${threadCount} earlier messages`
-                    }] : []),
-                    ...(expanded ? [{
-                        tag            : 'button',
-                        type           : 'button',
-                        cls            : ['fm-mail-thread-count', 'fm-mail-thread-toggle'],
-                        text           : 'collapse thread',
-                        'aria-expanded': 'true',
-                        'aria-label'   : 'Collapse thread'
-                    }] : [])
-                ]
-            }, {
-                cls : ['fm-mail-row-meta'],
-                text: meta
-            }]
-        }
-    }
-
-    /**
-     * @summary Apply the window bounds onto the composed page controls.
-     *
-     * A step is DISABLED, never hidden, at the range edge: a control that vanishes teaches the
-     * operator the surface is inconsistent, while a disabled one says "this edge is the end".
-     * `disabled` is `button.Base`'s own state — the primitive renders and styles it, so nothing here
-     * hand-rolls a visual for it.
-     *
-     * The offsets are held on THIS view rather than stamped into the controls: the pane already owns
-     * the snapshot the bounds came from, so a control carrying its own offset would be a second copy
-     * of a fact this view already has.
-     * @param {{limit: Number, offset: Number, count: Number, hasMore: Boolean}} page The snapshot's echoed bounds.
-     * @protected
-     */
-    applyPageBounds({limit, offset, count, hasMore}) {
-        let me = this;
-
-        me.prevPageOffset = Math.max(0, offset - limit);
-        me.nextPageOffset = offset + limit;
-
-        me.getReference('mailbox-page-range').text = `${offset + 1}–${offset + count}`;
-
-        // The producer's own boundary fact for `next`, never inferred from `count === limit`. A full
-        // page is ambiguous — it cannot distinguish "more follows" from "that was exactly the last
-        // one" — and guessing enables Next on an exactly-full final page, whose read returns an
-        // empty window at a positive offset: the pane then renders a global "no messages" and hides
-        // the strip, trapping the operator with no way back.
-        me.applyPageStep('mailbox-page-prev', offset <= 0);
-        me.applyPageStep('mailbox-page-next', !hasMore)
-    }
-
-    /**
-     * @summary Set one step's edge state — visually AND semantically.
-     *
-     * `Neo.component.Base`'s `disabled` adds the `neo-disabled` class and no `aria-disabled`, so on
-     * the class alone a styled-shut control is ANNOUNCED as enabled — the operator who most needs the
-     * edge to be honest is the one it lies to. So the class carries the look, `aria-disabled` carries
-     * the announcement, and the handler guard carries the refusal for direct entry (a routed
-     * activation is already stopped upstream — see {@link #onPrevPageClick}).
-     *
-     * Each covers exactly its own half-truth and no more. `aria-disabled` **announces** — it does not
-     * remove the control from the tab order, so a keyboard user still lands on a closed edge and is
-     * told, correctly, that it is closed. Whether a control ALSO emits a native `disabled`, and what
-     * that even does — a `<button>` root leaves the tab order, an anchor root ignores the attribute
-     * entirely — is that control's own contract to state, not this pane's to assume on its behalf.
-     * @param {String} reference The step control.
-     * @param {Boolean} closed Whether this edge is the end of the range.
-     * @protected
-     */
-    applyPageStep(reference, closed) {
-        const step = this.getReference(reference);
-
-        step.disabled = closed;
-        step.changeVdomRootKey('aria-disabled', closed ? 'true' : null)
-    }
-
-    /**
-     * @summary Request the newer page.
-     *
-     * The disabled check is defense in depth — not the edge's only gate, and not evidence that a
-     * ROUTED activation escapes. Two layers already close that route: global `.neo-disabled` sets
-     * `pointer-events: none`, and `manager/DomEvent` breaks its listener walk on a `disabled`
-     * component for every non-resize event. A keyboard Enter on a native button arrives as a click
-     * on that same route, so it stops there too. What no layer covers is DIRECT entry:
-     * `Neo.button.Base.onClick` never consults the config, so a programmatic call reaches `handler`
-     * with the routed gates bypassed. Stepping past the last page reads an empty window at a
-     * positive offset — the trap the `hasMore` boundary exists to prevent, and cheap to refuse here.
-     * @see src/manager/DomEvent.mjs — the listener walk that breaks on `disabled`
-     * @protected
-     */
-    onPrevPageClick() {
-        this.requestPage('mailbox-page-prev', this.prevPageOffset)
-    }
-
-    /**
-     * @summary Request the older page. See {@link #onPrevPageClick} for why the edge is re-checked.
-     * @protected
-     */
-    onNextPageClick() {
-        this.requestPage('mailbox-page-next', this.nextPageOffset)
-    }
-
-    /**
-     * @summary Fire one page request, refusing it at a closed edge.
-     * @param {String} reference The step control whose disabled state gates this request.
-     * @param {Number} offset The window offset to request.
-     * @protected
-     */
-    requestPage(reference, offset) {
-        this.getReference(reference)?.disabled || this.fire('pageRequest', {offset, source: this})
-    }
-
-    /**
-     * @summary The pane's only interaction: toggle a thread's collapse — display-state navigation
-     * on the view-owned record field, never a data write and never a read-state change.
-     * @param {Object} data Delegated click event data.
-     * @protected
-     */
-    onThreadHeadClick(data) {
-        const
-            me       = this,
-            target   = data.path?.find(node => node.data?.threadId),
-            threadId = target?.data?.threadId;
-
-        if (!threadId) {
-            return
-        }
-
-        const head = me.store.items.find(record => record.partOfThread === threadId);
-
-        if (head) {
-            head.threadCollapsed = !head.threadCollapsed;
-            me.renderRows()
-        }
-    }
 }
 
 export default Neo.setupClass(MailboxPane);

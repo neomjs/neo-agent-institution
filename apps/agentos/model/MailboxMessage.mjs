@@ -86,6 +86,16 @@ class MailboxMessage extends Model {
             name        : 'threadCollapsed',
             type        : 'Boolean',
             defaultValue: true
+        }, {
+            // VIEW-OWNED display facts, the second sanctioned exception beside `threadCollapsed`:
+            // `{isHead, collapsed, hiddenCount, inThread}` for thread rows, null for standalone —
+            // stamped by the grid's thread derivation on every store mutation. Living ON the record
+            // is deliberate: the component-column pool short-circuits on an unchanged record
+            // version, so per-row display facts must ride the record (a version bump) to survive
+            // cell recycling — a sidecar config would silently go stale (grid.column.Component's
+            // own contract: record-specific data belongs in the record-driven path).
+            name        : 'threadFacts',
+            defaultValue: null
         }]
     }
 }

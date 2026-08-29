@@ -65,18 +65,29 @@ test.describe('AgentOS OperatorMailbox — the operator mailbox surface (#15377)
         box.destroy()
     });
 
-    test('relays the inbox page intent to the owner — the cockpit holds the read seam', () => {
-        const box = createBox();
-
+    test('fires the single inbox read intent at construction — the cockpit holds the read seam', () => {
+        // The paging chrome retired with the buffered grid (operator direction 2026-08-28): the
+        // pane no longer fires `pageRequest`. The read trigger is THIS surface's own — one
+        // construction-time fire per bound identity, offset always 0, the event name and payload
+        // kept stable for the cockpit's existing wiring.
         let relayed = null;
-        box.on('inboxPageRequest', data => {relayed = data});
 
-        box.getReference('operator-inbox-pane').fire('pageRequest', {offset: 60, source: 'the-pane'});
+        const box = createBox({
+            record   : {agentId: 'op', githubUsername: 'tobiu'},
+            listeners: {inboxPageRequest: data => {relayed = data}}
+        });
 
-        expect(relayed?.offset).toBe(60);
+        expect(relayed?.offset).toBe(0);
         expect(relayed.source).toBe(box.id);
 
-        box.destroy()
+        box.destroy();
+
+        // without a bound identity there is nothing to read — no fire
+        let fired = false;
+        const idle = createBox({listeners: {inboxPageRequest: () => {fired = true}}});
+
+        expect(fired).toBe(false);
+        idle.destroy()
     });
 
     test('passes the operator snapshot straight to the inbox pane', () => {

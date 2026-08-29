@@ -11,11 +11,12 @@ import OperatorComposeForm from './ComposeForm.mjs';
  * own identity) above {@link AgentOS.view.fleet.mailbox.ComposeForm}, and RELAYS both surfaces'
  * intents up to the cockpit — it performs no transport itself.
  *
- * **Why a relay, not a doer.** Both children fire intents the OWNER services against the
- * authenticated seam: the inbox pane fires `pageRequest` (the cockpit re-reads the operator mirror
- * at the new offset — exactly AgentDetail's read-seam split), and the compose form fires `compose`
- * (the cockpit maps it onto the compose verb). This surface holds neither the read seam nor the
- * verb, so it forwards both — keeping identity a transport fact end-to-end, never authored here.
+ * **Why a relay, not a doer.** The intents the OWNER services live against the authenticated seam:
+ * this surface fires `inboxPageRequest` itself (construction / identity bind — the cockpit reads
+ * the operator mirror; the paging chrome retired with the buffered grid, so the offset is always
+ * 0), and the compose form fires `compose` (the cockpit maps it onto the compose verb). This
+ * surface holds neither the read seam nor the verb — identity stays a transport fact end-to-end,
+ * never authored here.
  *
  * **Capability today = the shipped read-only pane.** The pane is read-only by its own MUST-NOT
  * (operator mark-read would mutate an agent's turn-start signal). The operator's OWN inbox is the
@@ -144,6 +145,8 @@ class OperatorMailbox extends Container {
             inbox = me.getReference('operator-inbox-pane'),
             form  = me.getReference('operator-compose-form');
 
+        // the pane's drain requests (the next window while `page.hasMore`) relay through the same
+        // read intent the construction fire uses — one event, one cockpit handler, no chrome
         inbox?.on('pageRequest', me.onInboxPageRequest, me);
         form?.on('compose', me.onCompose, me);
 
@@ -239,9 +242,12 @@ class OperatorMailbox extends Container {
     }
 
     /**
-     * @summary Relay the inbox's page intent to the owner — the cockpit holds the read seam and
-     * re-reads the operator mirror at the requested offset.
-     * @param {Object} data The pane's `pageRequest` payload (`{offset, source}`).
+     * @summary Fire the inbox read intent to the owner — the cockpit holds the read seam and reads
+     * the operator mirror at the requested offset. Two callers, one event: the construction /
+     * identity-bind fire (offset 0) and the pane's snapshot-driven DRAIN (the next window while
+     * `page.hasMore` — one request per received snapshot, so row 51+ assembles without chrome).
+     * The event name and payload shape stay stable for the cockpit's existing wiring.
+     * @param {Object} data The read payload (`{offset}`).
      * @protected
      */
     onInboxPageRequest(data) {

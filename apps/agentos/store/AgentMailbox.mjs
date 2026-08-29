@@ -8,8 +8,8 @@ import Store               from '../../../node_modules/neo.mjs/src/data/Store.mj
  * @summary The mailbox mirror pane's row layer — a Store of
  * {@link AgentOS.model.MailboxMessage} records holding ONE adapter snapshot's frozen rows for the
  * pane's current subject. **Not a singleton and not provider-hosted**: the mailbox pane owns its
- * store instance directly — created with the pane, replaced wholesale on each snapshot via
- * {@link #applySnapshotRows}, destroyed with the pane.
+ * store instance directly — created with the pane, replaced wholesale on each snapshot through the
+ * grid's one data path ({@link AgentOS.view.fleet.mailbox.Grid#applyBags}), destroyed with the pane.
  *
  * No `url`: this store is NEVER fetched. The Fleet mailbox read adapter (the S1 Brain half) is the
  * only data source, and its viewer-admission + read-only + active-inbox boundaries live on that
@@ -44,18 +44,6 @@ class AgentMailbox extends Store {
             direction: 'DESC',
             property : 'sentAt'
         }]
-    }
-
-    /**
-     * @summary Replace the store content with one adapter snapshot's rows — wholesale, never a
-     * per-row merge: rows are immutable timestamped facts, so a new snapshot IS the new truth.
-     * Thread-collapse display state initializes fresh on each replace (thread heads collapsed) —
-     * seeded EXPLICITLY because the collection updates same-key records in place, where a model
-     * default would let the previous snapshot's display state leak through.
-     * @param {Object[]} rows Frozen mirror rows from `readFleetMailboxMirror`.
-     */
-    applySnapshotRows(rows) {
-        this.data = (Array.isArray(rows) ? rows : []).map(row => ({...row, threadCollapsed: true}))
     }
 }
 
