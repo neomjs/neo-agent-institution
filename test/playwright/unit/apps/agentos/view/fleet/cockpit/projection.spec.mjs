@@ -58,6 +58,9 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             values = {
                 getController        : () => controllerStub,
                 getReference         : () => null,
+                // OWN value: the inherited engine accessor walks real config state a bare fake
+                // does not carry (the #configs private-member throw)
+                getStateProvider     : () => null,
                 detailRecord         : null,
                 dockModel            : CockpitDockDocument.create(),
                 gridAdapterState     : 'sample',
@@ -405,6 +408,8 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
             values = {
                 getController   : () => controllerStub,
                 getReference    : () => null,
+                // OWN value — same #configs guard as makeHost
+                getStateProvider: () => null,
                 detailRecord    : null,
                 dockModel       : (await import('../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default.create(),
                 gridAdapterState: 'sample',

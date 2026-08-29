@@ -14,14 +14,14 @@ import {expect, test}      from '@playwright/test';
 import Neo                 from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core           from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import {loadAgentOsModule} from '../../../../../../fixtures.mjs';
-import FleetCockpit        from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 
 const {describeOperatorSeatConflation} = await loadAgentOsModule('ai/services/fleet/operatorSeatConflation.mjs');
 
 /**
  * @summary The parity pin for a DELIBERATE cross-boundary duplication: the seat-conflation
  * decision exists twice by design — the pure leaf in `ai/services/fleet` (the fleet entry's boot
- * consumer) and `FleetCockpit#deriveOperatorIdentityPosture` (the pane consumer) — because an
+ * consumer) and `FleetCockpitController#deriveOperatorIdentityPosture` (the pane consumer — the #50 rebuild homes it on the controller) — because an
  * app→Brain runtime import would cost more than three duplicated lines (the parity-twin
  * philosophy). A duplication defended by a comment decays the first time someone edits one side;
  * THIS table is what converts the architectural bet into an enforced one. A cross-boundary import
@@ -53,7 +53,7 @@ test.describe('operatorSeatConflation — cross-boundary parity pin (leaf ↔ co
 
     const
         leafDecision    = viewer => describeOperatorSeatConflation({viewerIdentity: viewer, registeredIds: REGISTERED}),
-        cockpitDecision = viewer => FleetCockpit.prototype.deriveOperatorIdentityPosture.call(
+        cockpitDecision = viewer => FleetCockpitController.prototype.deriveOperatorIdentityPosture.call(
             {resolveFleetRosterStore: () => ({items: REGISTERED.map(id => ({agentId: String(id).replace(/^@/, '')}))})},
             viewer
         );
@@ -67,7 +67,7 @@ test.describe('operatorSeatConflation — cross-boundary parity pin (leaf ↔ co
 
     test('the empty-list null contract holds on both sides — absence of truth is not a clean bill', () => {
         expect(describeOperatorSeatConflation({viewerIdentity: '@tobiu', registeredIds: []})).toBeNull();
-        expect(FleetCockpit.prototype.deriveOperatorIdentityPosture.call(
+        expect(FleetCockpitController.prototype.deriveOperatorIdentityPosture.call(
             {resolveFleetRosterStore: () => ({items: []})},
             '@tobiu'
         )).toBeNull()
