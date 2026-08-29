@@ -18,6 +18,7 @@ import ViewerWakeFeed         from '../../../store/ViewerWakeFeed.mjs';
 import WakeRoutePane          from '../wake/Container.mjs';
 import StateProvider          from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import CockpitDockDocument    from '../../../util/CockpitDockDocument.mjs';
+import CockpitSourceReads     from '../../../util/CockpitSourceReads.mjs';
 import CockpitPresets         from '../../../util/CockpitPresets.mjs';
 import SourceHealth           from '../../../util/SourceHealth.mjs';
 import SpineBanner            from '../../../util/SpineBanner.mjs';
@@ -2531,54 +2532,13 @@ class FleetCockpit extends DockWorkspace {
     }
 
     /**
-     * @summary READ-OBSERVE: route one pane history intent through the authenticated Fleet verb and
-     * write the returned source envelopes back as owner state. Fail-closed: absence/throw becomes an
-     * explicit unavailable snapshot, never an empty historical claim.
+     * @summary READ-OBSERVE: one pane history intent through the fenced source-read discipline.
      * @param {Object} [params]
      * @returns {Promise<Object>}
+     * @see AgentOS.util.CockpitSourceReads
      */
     async loadCatchUp(params = {}) {
-        const me         = this,
-              bridge     = globalThis.AgentOS?.fleet?.registryBridge,
-              generation = ++me.catchUpReadGeneration;
-
-        let snapshot;
-
-        if (typeof bridge?.fleetHistory !== 'function') {
-            snapshot = {
-                capability         : {state: 'unavailable', reason: 'fleet history verb not wired'},
-                needsFirstUseWindow: false,
-                partition          : params.partition || 'unified',
-                viewerState        : {lastSeen: null, lastVisitAt: null},
-                window             : null,
-                sources            : null
-            }
-        } else {
-            try {
-                snapshot = await bridge.fleetHistory(params)
-            } catch (error) {
-                snapshot = {
-                    capability         : {state: 'unavailable', reason: 'fleet history read failed'},
-                    needsFirstUseWindow: false,
-                    partition          : params.partition || 'unified',
-                    viewerState        : {lastSeen: null, lastVisitAt: null},
-                    window             : null,
-                    sources            : null
-                }
-            }
-        }
-
-        if (generation === me.catchUpReadGeneration && !me.isDestroyed) {
-            me.catchUpSnapshot = snapshot;
-
-            // resolve at WRITE time (phase-blind): a pane torn out or rebuilt during the await
-            // still receives the truth — the memories owner-seam contract
-            const pane = me.getCatchUpPane();
-
-            pane && (pane.snapshot = snapshot)
-        }
-
-        return snapshot
+        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.catchUp, params)
     }
 
     /**
@@ -2613,230 +2573,54 @@ class FleetCockpit extends DockWorkspace {
     }
 
     /**
-     * @summary READ-OBSERVE: route one pane memories intent through the authenticated Fleet verb
-     * and write the returned source envelope back as owner state. Fail-closed: absence/throw
-     * becomes an explicit unavailable envelope, never an empty historical claim. Generation-fenced
-     * so a slow older read never overwrites a newer target's rows.
+     * @summary READ-OBSERVE: one pane memories intent through the fenced source-read discipline
+     * (pre-await owner-held target included).
      * @param {Object} [params] `{agentIdentity, offset?, limit?}`
      * @returns {Promise<Object>}
+     * @see AgentOS.util.CockpitSourceReads
      */
     async loadMemories(params = {}) {
-        const me         = this,
-              bridge     = globalThis.AgentOS?.fleet?.registryBridge,
-              generation = ++me.memoriesReadGeneration;
-
-        // Owner-hold the requested selection BEFORE any await: a pane removed and rematerialized
-        // while this read is in flight must reopen on the PENDING target (honest switch-pending
-        // state), not on the last accepted snapshot's target and not with a null selection.
-        if (params.agentIdentity) {
-            me.memoriesTarget = params.agentIdentity
-        }
-
-        const
-              fallback   = reason => ({
-                  capability: {state: 'unavailable', reason},
-                  viewer    : null,
-                  target    : params.agentIdentity || null,
-                  page      : {offset: params.offset ?? 0, limit: null},
-                  sessions  : [],
-                  count     : 0,
-                  total     : null
-              });
-
-        let snapshot;
-
-        if (typeof bridge?.fleetMemories !== 'function') {
-            snapshot = fallback('fleet memories verb not wired')
-        } else {
-            try {
-                snapshot = await bridge.fleetMemories(params)
-            } catch (error) {
-                snapshot = fallback('fleet memories read failed')
-            }
-        }
-
-        if (generation === me.memoriesReadGeneration && !me.isDestroyed) {
-            me.memoriesSnapshot = snapshot;
-
-            // Resolve the pane at WRITE time, not call time: the pane can be removed and
-            // rematerialized while this read was in flight — a call-time reference would write
-            // the accepted truth into the DESTROYED instance and leave the live pane pending
-            // forever. The owner state above plus this live-resolve keep both variants coherent.
-            const livePane = me.getMemoriesPane();
-
-            livePane && (livePane.snapshot = snapshot)
-        }
-
-        return snapshot
+        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.memories, params)
     }
 
     /**
-     * @summary Read one page of a session's turn-level memories through the cockpit-owned
-     * authenticated bridge — the memories drill-in, {@link #loadMemories}' discipline one level
-     * down: the open drill is owner-held BEFORE any await (a pane rematerialized mid-read reopens
-     * on the pending drill), the read is generation-fenced, an unwired verb or throwing bridge
-     * lands as a typed unavailable envelope, and the pane resolves at WRITE time through the
-     * phase-blind accessor so a vesseled or returning-parked pane receives the truth too.
-     * @param {Object} params `{sessionId, title?, offset?, limit?}` — `title` is owner/display
-     *     state only and never rides the wire call.
+     * @summary The memories drill-in through the fenced source-read discipline (pre-await drill
+     * hold; display-only `title` never rides the wire).
+     * @param {Object} params `{sessionId, title?, offset?, limit?}`
      * @returns {Promise<Object>}
+     * @see AgentOS.util.CockpitSourceReads
      */
     async loadSessionMemories(params = {}) {
-        const me         = this,
-              bridge     = globalThis.AgentOS?.fleet?.registryBridge,
-              generation = ++me.memoriesDrillReadGeneration;
-
-        if (params.sessionId) {
-            me.memoriesDrillSession = {sessionId: params.sessionId, title: params.title ?? null}
-        }
-
-        const
-              {title, ...wireParams} = params,
-              fallback               = reason => ({
-                  capability: {state: 'unavailable', reason},
-                  viewer    : null,
-                  sessionId : params.sessionId || null,
-                  page      : {offset: params.offset ?? 0, limit: null},
-                  turns     : [],
-                  count     : 0,
-                  total     : null
-              });
-
-        let snapshot;
-
-        if (typeof bridge?.fleetSessionMemories !== 'function') {
-            snapshot = fallback('fleet session-memories verb not wired')
-        } else {
-            try {
-                snapshot = await bridge.fleetSessionMemories(wireParams)
-            } catch (error) {
-                snapshot = fallback('fleet session-memories read failed')
-            }
-        }
-
-        if (generation === me.memoriesDrillReadGeneration && !me.isDestroyed) {
-            me.memoriesDrillSnapshot = snapshot;
-
-            const livePane = me.getMemoriesPane();
-
-            livePane && (livePane.drillSnapshot = snapshot)
-        }
-
-        return snapshot
+        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.sessionMemories, params)
     }
 
     /**
-     * @summary Clear the owner-held memories drill-in — the pane's close intent lands here, so a
-     * later rematerialization reopens the summary list, never a drill the operator already left.
-     * The last accepted drill snapshot leaves with the session: holding it would rematerialize
-     * rows no open drill points at.
-     *
-     * The generation bump makes the close TERMINAL for in-flight reads: the counter is the
-     * change-proxy for "is this read still wanted", and close is a second way to make a read
-     * unwanted — without the bump, a read landing after close would repopulate the owner state
-     * (and the pane) for exactly the drill the operator left, held harmless only as long as
-     * every render stays keyed on the session rather than the snapshot.
+     * @summary Clear the owner-held memories drill-in — the close is TERMINAL for in-flight reads.
+     * @see AgentOS.util.CockpitSourceReads
      */
     clearSessionMemoriesDrill() {
-        this.memoriesDrillReadGeneration++;
-        this.memoriesDrillSession  = null;
-        this.memoriesDrillSnapshot = null
+        CockpitSourceReads.clearSessionMemoriesDrill(this)
     }
 
     /**
-     * @summary Read the decomposed per-seat wake-route envelope through the cockpit-owned
-     * authenticated bridge — the memories sibling, same discipline end to end: generation-fenced
-     * (a slow older read never overwrites a newer one), fail-honest (an unwired verb or a throwing
-     * bridge lands as a typed unavailable envelope, never fabricated seats), and the pane resolves
-     * at WRITE time so a removed-and-rematerialized pane receives the accepted truth instead of a
-     * destroyed instance swallowing it.
+     * @summary The per-seat wake-route envelope through the fenced source-read discipline.
      * @param {Object} [params]
      * @returns {Promise<Object>}
+     * @see AgentOS.util.CockpitSourceReads
      */
     async loadWakeRoutes(params = {}) {
-        const me         = this,
-              bridge     = globalThis.AgentOS?.fleet?.registryBridge,
-              generation = ++me.wakeRoutesReadGeneration,
-              fallback   = reason => ({
-                  capability: {state: 'unavailable', reason},
-                  viewer    : null,
-                  count     : 0,
-                  seats     : []
-              });
-
-        let snapshot;
-
-        if (typeof bridge?.fleetWakeRoutes !== 'function') {
-            snapshot = fallback('fleet wake-routes verb not wired')
-        } else {
-            try {
-                snapshot = await bridge.fleetWakeRoutes(params)
-            } catch (error) {
-                snapshot = fallback('fleet wake-routes read failed')
-            }
-        }
-
-        if (generation === me.wakeRoutesReadGeneration && !me.isDestroyed) {
-            me.wakeRoutesSnapshot = snapshot;
-
-            const livePane = me.getWakeRoutesPane();
-
-            livePane && (livePane.snapshot = snapshot)
-        }
-
-        return snapshot
+        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.wakeRoutes, params)
     }
 
     /**
-     * @summary Read the deployment's task picture through the cockpit-owned authenticated bridge —
-     * the wake-routes loader's three laws (typed unavailable envelope for an unwired or throwing
-     * bridge, generation fence, write-time pane resolution) plus the liveness tick's in-flight
-     * accounting: the tick launches this read only while fewer than {@link #maxReadsInFlight} are
-     * unsettled, and the count is released on the read's OWN settle, never on a newer read's.
+     * @summary The deployment's task picture through the fenced source-read discipline — plus the
+     * liveness tick's in-flight accounting (released on this read's OWN settle).
      * @param {Object} [params] Reserved; the verb takes no caller input today.
      * @returns {Promise<Object>}
+     * @see AgentOS.util.CockpitSourceReads
      */
     async loadTasks(params = {}) {
-        const me         = this,
-              bridge     = globalThis.AgentOS?.fleet?.registryBridge,
-              generation = ++me.tasksReadGeneration,
-              fallback   = reason => ({
-                  capability: {state: 'unavailable', reason},
-                  viewer    : null,
-                  sources   : {},
-                  running   : [],
-                  queued    : [],
-                  recent    : [],
-                  counts    : {running: 0, queued: 0, recent: 0}
-              });
-
-        let snapshot;
-
-        me.tasksReadInFlight++;
-
-        try {
-            if (typeof bridge?.fleetTasks !== 'function') {
-                snapshot = fallback('fleet tasks verb not wired')
-            } else {
-                try {
-                    snapshot = await bridge.fleetTasks(params)
-                } catch (error) {
-                    snapshot = fallback('fleet tasks read failed')
-                }
-            }
-        } finally {
-            me.tasksReadInFlight--
-        }
-
-        if (generation === me.tasksReadGeneration && !me.isDestroyed) {
-            me.tasksSnapshot = snapshot;
-
-            const livePane = me.getTasksPane();
-
-            livePane && (livePane.snapshot = snapshot)
-        }
-
-        return snapshot
+        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.tasks, params)
     }
 
     /**
@@ -2931,119 +2715,34 @@ class FleetCockpit extends DockWorkspace {
     }
 
     /**
-     * @summary BOOT: resolve the operator's OWN identity from the authenticated bridge (whoami) and hold it
-     * owner-side so the operator-mailbox pane can read its own inbox — the missing bootstrap leg of "the
-     * client SAYS self, the admission stamp proves it". The mirror read requires an EXPLICIT subjectAgentId
-     * (never a viewer-default — a self-default at a trust boundary is spoof-adjacent), so the cockpit first
-     * learns its own @-id via `resolveViewerIdentity`, then the pane passes it and the mirror's admission
-     * re-stamps + proves it. Pushing the record to a materialized pane drives its first read (the pane fires
-     * `inboxPageRequest` on a newly-bound identity); a pane a custom document dropped materializes from the
-     * held record at its next projection. Fail-closed: an unwired source / unbound context / absent bridge leaves `operatorRecord` null,
-     * so the pane stays honestly unobserved — never a fabricated or fallback identity.
+     * @summary BOOT: resolve and owner-hold the operator's own identity + seat posture.
      * @protected
+     * @see AgentOS.util.CockpitSourceReads
      */
     async loadOperatorIdentity() {
-        const
-            me     = this,
-            bridge = globalThis.AgentOS?.fleet?.registryBridge;
-
-        if (typeof bridge?.resolveViewerIdentity !== 'function') {
-            return
-        }
-
-        const outcome = await bridge.resolveViewerIdentity();
-
-        // {ok:true, agentIdentityNodeId} | {ok:false, error} (source-not-wired | unbound). Only a proven
-        // identity seeds the subject; a refusal never reads a wrong inbox.
-        if (outcome?.ok && outcome.agentIdentityNodeId && !me.isDestroyed) {
-            const nodeId = outcome.agentIdentityNodeId;
-            // the reused MailboxPane proves possession from `record.githubUsername` — it canonicalizes it
-            // to `@<username>` and matches the mirror admission's `subjectAgentId`. Seeding only the node
-            // id fails that guard closed and the own inbox NEVER renders. The resolved node id IS the
-            // `@`-form authority, so carry both: `githubUsername` for the possession match, the node id as
-            // the explicit read subject (they canonicalize to the same value).
-            me.operatorRecord = {agentIdentityNodeId: nodeId, githubUsername: nodeId.replace(/^@/, '')};
-            // the seat-conflation honesty check rides the same resolution: the roster the cockpit
-            // already holds knows every registered agent identity, and a viewer claim matching one
-            // means sends are attributed to that seat — a truth the pane must render, not swallow
-            me.operatorIdentityPosture = me.deriveOperatorIdentityPosture(nodeId);
-            // a materialized pane picks up the identity live and reads; when this resolution loses
-            // the boot race instead, the resident pane already projected without a record and takes
-            // the identity through this same live set — both orderings land exactly one first read
-            me.getOperatorMailboxPane()?.set({record: me.operatorRecord, identityPosture: me.operatorIdentityPosture})
-        }
+        return CockpitSourceReads.loadOperatorIdentity(this)
     }
 
     /**
-     * @summary Compare the resolved viewer identity against the provider-owned roster's agent
-     * identities — the cockpit half of the seat-conflation honesty contract (the fleet server
-     * runs the same decision server-side at boot over the registry; the check is trivial enough
-     * that duplicating it beats an app→Brain import across the parity boundary).
-     *
-     * An empty roster answers `null` (cannot judge) rather than `{conflated: false}` — absence of
-     * roster truth is not a clean bill, and the pane renders unknown as unknown.
+     * @summary The seat-conflation honesty check against the provider-owned roster.
      * @param {String} viewerIdentity The resolved `@`-form viewer identity.
      * @returns {{conflated: Boolean, seatIdentity: String}|null}
+     * @see AgentOS.util.CockpitSourceReads
      */
     deriveOperatorIdentityPosture(viewerIdentity) {
-        const rows = this.resolveFleetRosterStore()?.items ?? [];
-
-        if (typeof viewerIdentity !== 'string' || !viewerIdentity.trim() || rows.length < 1) {
-            return null
-        }
-
-        const
-            bare      = id => String(id).trim().replace(/^@/, ''),
-            viewer    = bare(viewerIdentity),
-            conflated = rows.some(row => bare(row.agentId ?? '') === viewer);
-
-        return {conflated, seatIdentity: `@${viewer}`}
+        return CockpitSourceReads.deriveOperatorIdentityPosture(this, viewerIdentity)
     }
 
     /**
-     * @summary READ-OBSERVE: re-read the OPERATOR's own mailbox mirror at `offset` and route the snapshot
-     * to the operator-mailbox pane — the cockpit's ONE mailbox surface (a selection-scoped per-agent
-     * subject mode re-enters here when the S5 Fleet grants/admission layer lands — viewer ingress
-     * is already live; the policy ledger holds the mirror read at awaiting-s5).
-     * Generation-fenced (older news never overwrites newer) and fail-closed (the pane stays honestly
-     * unobserved rather than inventing a snapshot). The viewer is server-resolved from the ingress request
-     * context; the subject is the operator's own identity, held owner-side.
+     * @summary READ-OBSERVE: the operator's own mailbox mirror through the fenced source-read
+     * discipline (gate = the honest unobserved outcome; a throwing bridge keeps the last truth).
      * @param {Object} [params]
      * @param {Number} [params.offset=0]
      * @protected
+     * @see AgentOS.util.CockpitSourceReads
      */
-    async loadOperatorInbox({offset = 0} = {}) {
-        const
-            me      = this,
-            pane    = me.getOperatorMailboxPane(),
-            bridge  = globalThis.AgentOS?.fleet?.registryBridge,
-            subject = me.operatorRecord?.agentIdentityNodeId;
-
-        const generation = ++me.operatorInboxReadGeneration;
-
-        if (!pane || !subject || typeof bridge?.fleetMailboxMirror !== 'function') {
-            // no bound identity / no bridge / no verb IS the honest unobserved truth — never a fabricated
-            // snapshot; the pane's own `unobserved` state stands until a real read lands
-            return
-        }
-
-        try {
-            const snapshot = await bridge.fleetMailboxMirror({subjectAgentId: subject, offset});
-
-            // the fence: an interval re-poll or a post-compose re-read can race a page-request read; the
-            // loser must not write staler news over newer, and a read outliving its owner has no pane to speak for
-            if (generation === me.operatorInboxReadGeneration && !me.isDestroyed) {
-                me.operatorSnapshot = snapshot;
-
-                // resolve at WRITE time (phase-blind): the admission read above still gates the
-                // request, but a pane torn out or returning during the await gets the fresh truth
-                const livePane = me.getOperatorMailboxPane();
-
-                livePane && (livePane.snapshot = snapshot)
-            }
-        } catch (error) {
-            // fail-closed: the last-known snapshot stays; the pane never renders "no mail" for a read that did not happen
-        }
+    async loadOperatorInbox(params = {}) {
+        return CockpitSourceReads.readFencedSource(this, CockpitSourceReads.SOURCE_READS.operatorInbox, params)
     }
 
     /**
