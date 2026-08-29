@@ -1,5 +1,6 @@
 import {test, expect} from '@playwright/test';
-import {digestListing, diffStamp} from '../../../../buildScripts/checkVisualBaselines.mjs';
+import {execSync}     from 'node:child_process';
+import {digestListing, diffStamp, inputScopes, scopeListing} from '../../../../buildScripts/checkVisualBaselines.mjs';
 
 /**
  * The drift gate's negative coverage — born from a review falsifier: the input-only digest scope
@@ -49,4 +50,49 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         expect(diffStamp({engine: 'old', inputs}, {engine: 'new', inputs}, ['apps/agentos']))
             .toEqual(['package-lock.json → node_modules/neo.mjs (engine version)'])
     });
+
+    test('the design-carve scope contract: SPEC documents never move the style digest; style-owning files still do', () => {
+        // the contract row under witness
+        const agentosScope = inputScopes.find(scope => scope.key === 'apps/agentos');
+
+        expect(agentosScope.exclude).toContain('apps/agentos/design');
+
+        // baseline over the REAL index
+        const
+            unfiltered = scopeListing({key: agentosScope.key}),
+            filtered   = scopeListing(agentosScope);
+
+        expect(unfiltered).toContain('apps/agentos/design/');
+        expect(filtered).not.toContain('apps/agentos/design/');
+
+        // the NEGATIVE arm, for real: stage a synthetic design document into the actual index
+        // (cacheinfo — no worktree file), re-run the CONTRACT listing pipeline, and require the
+        // contract digest to be UNCHANGED while the old unfiltered scope drifts. Cleaned up in
+        // finally so the index leaves the test exactly as it entered.
+        const witnessPath = 'apps/agentos/design/__scope-witness__.html';
+
+        try {
+            const blob = execSync('git hash-object -w --stdin', {input: '<!-- scope witness -->', encoding: 'utf8'}).trim();
+
+            execSync(`git update-index --add --cacheinfo 100644,${blob},${witnessPath}`, {encoding: 'utf8'});
+
+            const
+                filteredAfter   = scopeListing(agentosScope),
+                unfilteredAfter = scopeListing({key: agentosScope.key});
+
+            expect(unfilteredAfter, 'the staged design file IS in the index').toContain(witnessPath);
+            expect(filteredAfter,   'the contract listing never sees it').not.toContain(witnessPath);
+            expect(digestListing(filteredAfter), 'a design change leaves the contract digest unchanged').toBe(digestListing(filtered));
+            expect(digestListing(unfilteredAfter), 'the OLD un-carved scope would have drifted').not.toBe(digestListing(unfiltered))
+        } finally {
+            execSync(`git update-index --force-remove ${witnessPath}`, {encoding: 'utf8'})
+        }
+
+        // the POSITIVE arm: a style-owning delta still changes the contract digest — the gate
+        // keeps its teeth (pure, over the digest function the checker uses)
+        const withStyleChange = filtered + '100644 ' + 'f'.repeat(40) + ' 0\tapps/agentos/view/fleet/cockpit/Container.mjs\n';
+
+        expect(digestListing(withStyleChange)).not.toBe(digestListing(filtered))
+    });
+
 });
