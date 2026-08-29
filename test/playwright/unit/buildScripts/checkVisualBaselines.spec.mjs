@@ -1,4 +1,5 @@
 import {test, expect} from '@playwright/test';
+import {execSync}     from 'node:child_process';
 import {digestListing, diffStamp, inputScopes, scopeListing} from '../../../../buildScripts/checkVisualBaselines.mjs';
 
 /**
@@ -56,9 +57,7 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
 
         expect(agentosScope.exclude).toContain('apps/agentos/design');
 
-        // REAL index, read-only: the unfiltered listing carries the tracked design documents,
-        // the contract listing carves every one of them out — so a tracked design/** change can
-        // never move the apps/agentos digest
+        // baseline over the REAL index
         const
             unfiltered = scopeListing({key: agentosScope.key}),
             filtered   = scopeListing(agentosScope);
@@ -66,14 +65,31 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         expect(unfiltered).toContain('apps/agentos/design/');
         expect(filtered).not.toContain('apps/agentos/design/');
 
-        // a design-document delta leaves the contract digest unchanged (the filtered listing is
-        // design-blind by construction)…
-        const withNewSketch = unfiltered + '100644 ' + 'e'.repeat(40) + ' 0\tapps/agentos/design/institution-new-pane.html\n';
+        // the NEGATIVE arm, for real: stage a synthetic design document into the actual index
+        // (cacheinfo — no worktree file), re-run the CONTRACT listing pipeline, and require the
+        // contract digest to be UNCHANGED while the old unfiltered scope drifts. Cleaned up in
+        // finally so the index leaves the test exactly as it entered.
+        const witnessPath = 'apps/agentos/design/__scope-witness__.html';
 
-        expect(digestListing(filtered)).toBe(digestListing(filtered));
-        expect(digestListing(withNewSketch)).not.toBe(digestListing(unfiltered)); // the OLD scope would have drifted
+        try {
+            const blob = execSync('git hash-object -w --stdin', {input: '<!-- scope witness -->', encoding: 'utf8'}).trim();
 
-        // …while a style-owning delta still changes it — the gate keeps its teeth
+            execSync(`git update-index --add --cacheinfo 100644,${blob},${witnessPath}`, {encoding: 'utf8'});
+
+            const
+                filteredAfter   = scopeListing(agentosScope),
+                unfilteredAfter = scopeListing({key: agentosScope.key});
+
+            expect(unfilteredAfter, 'the staged design file IS in the index').toContain(witnessPath);
+            expect(filteredAfter,   'the contract listing never sees it').not.toContain(witnessPath);
+            expect(digestListing(filteredAfter), 'a design change leaves the contract digest unchanged').toBe(digestListing(filtered));
+            expect(digestListing(unfilteredAfter), 'the OLD un-carved scope would have drifted').not.toBe(digestListing(unfiltered))
+        } finally {
+            execSync(`git update-index --force-remove ${witnessPath}`, {encoding: 'utf8'})
+        }
+
+        // the POSITIVE arm: a style-owning delta still changes the contract digest — the gate
+        // keeps its teeth (pure, over the digest function the checker uses)
         const withStyleChange = filtered + '100644 ' + 'f'.repeat(40) + ' 0\tapps/agentos/view/fleet/cockpit/Container.mjs\n';
 
         expect(digestListing(withStyleChange)).not.toBe(digestListing(filtered))
