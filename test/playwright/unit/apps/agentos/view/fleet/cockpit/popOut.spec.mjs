@@ -14,7 +14,8 @@ import Container           from '../../../../../../../../node_modules/neo.mjs/sr
 import FleetActivityEvents from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit        from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetRoster         from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
-import StateProvider       from '../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
+import ViewerWakeFeed      from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
 
 /**
  * @summary Installs deterministic popup-vessel seams for the cockpit pop-out specs.
@@ -127,10 +128,11 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — detail pop-out st
         cockpit = Neo.create(FleetCockpit, {
             // hermetic: no sample-seed fetch in the unit env; the roster data path has its own suite
             stateProvider: {
-                module: StateProvider,
+                module: CockpitStateProvider,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false}
+                    fleetRoster        : {module: FleetRoster, autoLoad: false},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
         })
@@ -281,10 +283,11 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — detail pop-out st
         cockpit = Neo.create(FleetCockpit, {
             detailVesselConnectWindowMs: 20,
             stateProvider              : {
-                module: StateProvider,
+                module: CockpitStateProvider,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false}
+                    fleetRoster        : {module: FleetRoster, autoLoad: false},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
         });
@@ -576,10 +579,11 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — memories click po
     test.beforeEach(() => {
         cockpit = Neo.create(FleetCockpit, {
             stateProvider: {
-                module: StateProvider,
+                module: CockpitStateProvider,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false}
+                    fleetRoster        : {module: FleetRoster, autoLoad: false},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
         })
@@ -644,8 +648,10 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — memories click po
         expect(cockpit.getDockZoneDocument().items.memories).toBeTruthy();
         expect(cockpit.getReference('memories')).toBeFalsy();
 
-        cockpit.memoriesTarget   = '@neo-fable-clio';
-        cockpit.memoriesSnapshot = wiredEnvelope('@neo-fable-clio', 'owner-held');
+        // the memories selection + snapshot are CONTROLLER-held state now (the view materializes
+        // panes from them through resolveDockComponentRef)
+        cockpit.getController().memoriesTarget   = '@neo-fable-clio';
+        cockpit.getController().memoriesSnapshot = wiredEnvelope('@neo-fable-clio', 'owner-held');
 
         const readd = cockpit.applyDockZoneOperation({operation: 'addTab', itemId: 'memories', tabsNodeId: 'stream-tabs'});
 
@@ -687,7 +693,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — memories click po
             // The REAL one-picker path: roster selection writes through the cockpit owner. Its
             // phase-blind accessor reaches the vesseled pane; that reactive target change fires
             // the pane's scoped memoriesRequest intent back to the owning controller.
-            cockpit.applySelection({agentId: 'grace', githubUsername: 'neo-opus-grace'});
+            cockpit.getController().applySelection({agentId: 'grace', githubUsername: 'neo-opus-grace'});
 
             await expect.poll(() => bridgeCalls.length, {timeout: 2000}).toBe(1);
             expect(bridgeCalls[0].agentIdentity).toBe('@neo-opus-grace');
@@ -796,7 +802,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — memories click po
         try {
             // Roster selection writes through the owner to the vesseled pane; its scoped intent
             // performs the summary read before the session drill begins.
-            cockpit.applySelection({agentId: 'clio', githubUsername: 'neo-fable-clio'});
+            cockpit.getController().applySelection({agentId: 'clio', githubUsername: 'neo-fable-clio'});
             await expect.poll(() => pane.summaryStore.count, {timeout: 2000}).toBe(1);
 
             pane.onCardOpen(pane.summaryStore.first());
@@ -807,12 +813,12 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — memories click po
             // the drill snapshot lands on the VESSELED pane through the accessor route, and the
             // owner holds the drill for rematerialization truth
             await expect.poll(() => pane.turnStore.count, {timeout: 2000}).toBe(1);
-            expect(cockpit.memoriesDrillSession).toEqual({sessionId: 'vessel-session-1', title: 'Vessel session'});
+            expect(cockpit.getController().memoriesDrillSession).toEqual({sessionId: 'vessel-session-1', title: 'Vessel session'});
 
             // closing the drill from the vessel clears the OWNER state the same way
             pane.onDrillBackClick();
-            expect(cockpit.memoriesDrillSession).toBeNull();
-            expect(cockpit.memoriesDrillSnapshot).toBeNull()
+            expect(cockpit.getController().memoriesDrillSession).toBeNull();
+            expect(cockpit.getController().memoriesDrillSnapshot).toBeNull()
         } finally {
             prevFleet === undefined ? delete globalThis.AgentOS.fleet : globalThis.AgentOS.fleet = prevFleet
         }

@@ -10,7 +10,8 @@ import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
-import FleetCockpit   from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpit           from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 
 /**
  * @summary The FleetCockpit owner seam for the memories selection, driven as prototype methods
@@ -21,16 +22,17 @@ import FleetCockpit   from '../../../../../../../../apps/agentos/view/fleet/cock
  */
 function ownerStub({memoriesTarget = null, memoriesSnapshot = null, pane = null} = {}) {
     return {
-        memoriesTarget,
-        memoriesSnapshot,
-        memoriesReadGeneration   : 0,
         // the shell-owned window verb rides the resolver config; this seam test asserts
         // selection travel, so an empty tool config is the honest minimal stub
         buildMemoriesWindowToggle: () => ({}),
-        // the cockpit surface the seam methods consume: the explicit listener scope
-        // resolves through getController, and owner pushes route through the phase-blind
-        // accessor instead of a raw reference read
-        getController  : () => null,
+        // the memories selection + snapshots are CONTROLLER-held state: the resolver reads them
+        // through the controller seat, and string listeners scope to the same controller
+        getController: () => ({
+            memoriesDrillSession : null,
+            memoriesDrillSnapshot: null,
+            memoriesSnapshot,
+            memoriesTarget
+        }),
         getMemoriesPane: () => pane,
         getReference   : () => pane
     }
@@ -75,16 +77,16 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
         }}};
 
         try {
-            const me = {
-                memoriesTarget        : null,
-                memoriesSnapshot      : null,
+            const me = Object.assign(Object.create(FleetCockpitController.prototype), {
+                // the WRITE-time resolve rides the view's phase-blind accessor
+                component             : {getMemoriesPane: () => currentPane},
+                isDestroyed           : false,
                 memoriesReadGeneration: 0,
-                // the WRITE-time resolve rides the phase-blind accessor
-                getMemoriesPane: () => currentPane,
-                getReference   : () => currentPane
-            };
+                memoriesSnapshot      : null,
+                memoriesTarget        : null
+            });
 
-            const read = proto.loadMemories.call(me, {agentIdentity: '@neo-gpt-bob'});
+            const read = me.loadMemories({agentIdentity: '@neo-gpt-bob'});
 
             // owner-held synchronously, before any settlement — the rematerialization key exists
             // the moment the intent passes through the owner
@@ -126,14 +128,15 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
         }}};
 
         try {
-            const me = {
-                memoriesDrillSession       : null,
-                memoriesDrillSnapshot      : null,
+            const me = Object.assign(Object.create(FleetCockpitController.prototype), {
+                component                  : {getMemoriesPane: () => currentPane},
+                isDestroyed                : false,
                 memoriesDrillReadGeneration: 0,
-                getMemoriesPane            : () => currentPane
-            };
+                memoriesDrillSession       : null,
+                memoriesDrillSnapshot      : null
+            });
 
-            const read = proto.loadSessionMemories.call(me, {sessionId: 'abcd1234-session', title: 'The witnessed day'});
+            const read = me.loadSessionMemories({sessionId: 'abcd1234-session', title: 'The witnessed day'});
 
             // owner-held synchronously, before any settlement — the rematerialization key exists
             // the moment the intent passes through the owner; the TITLE is owner/display state
@@ -154,17 +157,17 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
             expect(me.memoriesDrillSnapshot).toBe(envelope);
 
             // the close intent clears BOTH halves of the owner state — a left drill cannot reopen
-            proto.clearSessionMemoriesDrill.call(me);
+            me.clearSessionMemoriesDrill();
             expect(me.memoriesDrillSession).toBe(null);
             expect(me.memoriesDrillSnapshot).toBe(null);
 
             // the close is TERMINAL for in-flight reads: the generation bump makes a read that
             // was racing the close land inert — no owner state, no pane write, for a drill the
             // operator already left (the reviewer's race, pinned)
-            const lateRead = proto.loadSessionMemories.call(me, {sessionId: 'abcd1234-session'});
+            const lateRead = me.loadSessionMemories({sessionId: 'abcd1234-session'});
 
             expect(me.memoriesDrillSession).toEqual({sessionId: 'abcd1234-session', title: null});
-            proto.clearSessionMemoriesDrill.call(me);
+            me.clearSessionMemoriesDrill();
 
             const lateEnvelope = {capability: {state: 'wired'}, sessionId: 'abcd1234-session', page: {offset: 0, limit: 20}, turns: [], count: 0, total: 0};
             releaseRead(lateEnvelope);

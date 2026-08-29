@@ -27,22 +27,49 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
  * docking design's pane contract, and owner-held pane state surviving re-projection.
  */
 test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)', () => {
-    let ActivityStream, AgentDetail, CatchUpPane, DockProjectionReconciler, DockWorkspace, DockZoneModel, FleetCockpit, FleetGrid, MemoriesPane, OperatorMailbox, CockpitDockDocument;
+    let ActivityStream, AgentDetail, CatchUpPane, DockProjectionReconciler, DockWorkspace, DockZoneModel, FleetCockpit, FleetCockpitController, FleetGrid, MemoriesPane, OperatorMailbox, CockpitDockDocument;
 
     // a projection-capable spy owner: the REAL prototype methods over controlled state, without
     // provider/store/bridge wiring (their routing has its own suite in fleetCockpit.spec.mjs)
     const makeHost = (overrides = {}) => {
         const
-            host   = Object.create(FleetCockpit.prototype),
+            host = Object.create(FleetCockpit.prototype),
+            // the resident reading surfaces resolve their owner state + option lists through the
+            // CONTROLLER seat; this projection-only host answers with the cold controller surface
+            // (all-null owner state), the roster resolving through the host's provider seat as
+            // the real controller does
+            controllerStub = {
+                // the stream resolver joins roster actor facts through the controller now; the
+                // honest empty directory is exactly what an unmaterialized roster yields
+                buildActivityActorDirectory  : () => ({}),
+                buildCatchUpPartitionOptions : () => [],
+                buildOperatorRecipientOptions: () => [],
+                catchUpMarkOutcome     : null,
+                catchUpSnapshot        : null,
+                memoriesDrillSession   : null,
+                memoriesDrillSnapshot  : null,
+                memoriesSnapshot       : null,
+                memoriesTarget         : null,
+                operatorIdentityPosture: null,
+                resolveFleetRosterStore: () => host.getStateProvider?.()?.getStore('fleetRoster') ?? null,
+                tasksSnapshot          : null,
+                wakeRoutesSnapshot     : null
+            },
+            // the REAL selection-write site runs over this host (the controller owns it now)
+            _wireSelection = (() => {
+                controllerStub.component      = host;
+                controllerStub.memoriesTarget = null;
+                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                return true
+            })(),
             values = {
-                // the stream resolver joins roster actor facts; this host owns no roster, and
-                // the honest empty directory is exactly what an unmaterialized grid yields
-                buildActivityActorDirectory: () => ({}),
-                // the resident reading surfaces resolve their option lists through the
-                // projected tree and bind their listener scope to the owning controller; this
-                // host projects no tree and owns no controller — null is that honest answer
-                getController        : () => null,
+                getController        : () => controllerStub,
                 getReference         : () => null,
+                getMemoriesPane      : () => null,
+                // OWN value: the inherited engine accessor walks real config state a bare fake
+                // does not carry (the #configs private-member throw)
+                getStateProvider     : () => null,
+                detailRecord         : null,
                 dockModel            : CockpitDockDocument.create(),
                 gridAdapterState     : 'sample',
                 isDestroyed          : false,
@@ -85,12 +112,18 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         DockWorkspace       = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockWorkspace.mjs')).default;
         DockZoneModel       = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs')).default;
         FleetCockpit        = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
         FleetGrid           = (await import('../../../../../../../../apps/agentos/view/fleet/roster/Container.mjs')).default;
         CockpitDockDocument = (await import('../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default
     });
 
     test('#17681 consumes the engine host without shadowing its holder or tear-out lifecycle', () => {
-        expect(Object.getPrototypeOf(FleetCockpit.prototype) === DockWorkspace.prototype).toBe(true);
+        // the #50 factoring: the declared cockpit sits on its vessel layer, which sits on the
+        // engine host — one chain, no sideways copies
+        const vesselLayer = Object.getPrototypeOf(FleetCockpit.prototype);
+
+        expect(vesselLayer.constructor.name).toBe('VesselContainer');
+        expect(Object.getPrototypeOf(vesselLayer) === DockWorkspace.prototype).toBe(true);
 
         for (const method of [
             'adoptTearOutPane',
@@ -108,7 +141,8 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             'releaseTearOutPane',
             'reparentTearOutPane'
         ]) {
-            expect(Object.hasOwn(FleetCockpit.prototype, method), `${method} is inherited`).toBe(false)
+            expect(Object.hasOwn(FleetCockpit.prototype, method), `${method} is inherited`).toBe(false);
+            expect(Object.hasOwn(vesselLayer, method), `${method} is not shadowed by the vessel layer`).toBe(false)
         }
     });
 
@@ -279,15 +313,17 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         const grid = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'fleet-grid', {title: 'Fleet'}, 'fleet');
 
         expect(grid.module).toBe(FleetGrid);
-        expect(grid.adapterState).toBe('live');                       // owner-held truth, not the config default
-        expect(grid.bind).toEqual({store: 'stores.fleetRoster'});     // provider-scope binding survives projection depth
+        // owner-held truth arrives through the provider BINDING now — the bind function IS the route
+        expect(grid.bind.adapterState({gridAdapterState: 'live'})).toBe('live');
+        expect(grid.bind.store).toBe('stores.fleetRoster');           // provider-scope binding survives projection depth
         expect(grid.cls).toContain('dock-flip-item-fleet');           // the stable FLIP correlation key
 
         const stream = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'activity-stream', {title: 'Activity'}, 'stream');
 
         expect(stream.module).toBe(ActivityStream);
-        expect(stream.adapterState).toBe('stale');
-        expect(stream.bind).toEqual({counts: 'activityCounts', store: 'stores.fleetActivityEvents'});
+        expect(stream.bind.adapterState({streamAdapterState: 'stale'})).toBe('stale');
+        expect(stream.bind.counts({activityCounts: [1]})).toEqual([1]);
+        expect(stream.bind.store).toBe('stores.fleetActivityEvents');
         expect(stream.cls).toContain('dock-flip-item-stream');
 
         // agent-detail now renders the real drill-in view from OWNER-held fallback state
@@ -353,21 +389,45 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
  * control bar derives from store state.
  */
 test.describe('Fleet cockpit — perspective presets (the switch through the commit loop)', () => {
-    let DockPerspectiveStore, DockZoneModel, FleetCockpit, CockpitPresets, Neo;
+    let DockPerspectiveStore, DockZoneModel, FleetCockpit, FleetCockpitController, CockpitPresets, Neo;
 
     const makePresetHost = async (overrides = {}) => {
         const
-            store  = Neo.create(DockPerspectiveStore, {collection: CockpitPresets.create()}),
-            host   = Object.create(FleetCockpit.prototype),
+            store = Neo.create(DockPerspectiveStore, {collection: CockpitPresets.create()}),
+            host  = Object.create(FleetCockpit.prototype),
+            // the cold controller surface, roster resolving through the host's provider seat as
+            // the real controller does (the Review-switch default-selection path reads it)
+            controllerStub = {
+                // the stream resolver joins roster actor facts through the controller now; the
+                // honest empty directory is exactly what an unmaterialized roster yields
+                buildActivityActorDirectory  : () => ({}),
+                buildCatchUpPartitionOptions : () => [],
+                buildOperatorRecipientOptions: () => [],
+                catchUpMarkOutcome     : null,
+                catchUpSnapshot        : null,
+                memoriesDrillSession   : null,
+                memoriesDrillSnapshot  : null,
+                memoriesSnapshot       : null,
+                memoriesTarget         : null,
+                operatorIdentityPosture: null,
+                resolveFleetRosterStore: () => host.getStateProvider?.()?.getStore('fleetRoster') ?? null,
+                tasksSnapshot          : null,
+                wakeRoutesSnapshot     : null
+            },
+            // same wiring for the preset host
+            _wireSelection = (() => {
+                controllerStub.component      = host;
+                controllerStub.memoriesTarget = null;
+                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                return true
+            })(),
             values = {
-                // the stream resolver joins roster actor facts; the preset host owns no roster,
-                // and the honest empty directory is exactly what an unmaterialized grid yields
-                buildActivityActorDirectory: () => ({}),
-                // the resident reading surfaces resolve their option lists through the
-                // projected tree and bind their listener scope to the owning controller; this
-                // host projects no tree and owns no controller — null is that honest answer
-                getController   : () => null,
+                getController   : () => controllerStub,
                 getReference    : () => null,
+                getMemoriesPane : () => null,
+                // OWN value — same #configs guard as makeHost
+                getStateProvider: () => null,
+                detailRecord    : null,
                 dockModel       : (await import('../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default.create(),
                 gridAdapterState: 'sample',
                 isDestroyed     : false,
@@ -398,6 +458,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         DockPerspectiveStore    = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockPerspectiveStore.mjs')).default;
         DockZoneModel           = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs')).default;
         FleetCockpit            = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
+        FleetCockpitController  = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
         CockpitPresets = (await import('../../../../../../../../apps/agentos/util/CockpitPresets.mjs')).default
     });
 
@@ -455,9 +516,9 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         expect(host.streamAdapterState).toBe('live');
         expect(host.streamEvents).toBe(events);
 
-        // and a genuinely absent pane's next materialization carries that state
+        // and a genuinely absent pane's next materialization binds that state from the provider
         const grid = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'fleet-grid', {title: 'Fleet'}, 'fleet');
-        expect(grid.adapterState).toBe('live');
+        expect(grid.bind.adapterState({gridAdapterState: 'live'})).toBe('live');
 
         host.perspectiveStore.destroy()
     });
@@ -540,7 +601,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
             })),
             error = {
                 hidden: true,
-                html  : '',
+                text  : '',
                 set(values) { Object.assign(this, values) }
             },
             host = await makePresetHost({
@@ -560,7 +621,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
 
         expect(buttons).toEqual(identities);
         expect(buttons.map(button => button.pressed)).toEqual([false, true, false]);
-        expect(error).toMatchObject({hidden: false, html: 'refused visibly'});
+        expect(error).toMatchObject({hidden: false, text: 'refused visibly'});
 
         host.perspectiveStore.destroy()
     });
@@ -580,10 +641,8 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         // the error path updates the persistent bar, without a document commit or shell refresh
         expect(synced).toBe(1);
 
-        // the bar derives from state: pressed follows the active record, the error chip renders
-        const bar = FleetCockpit.prototype.buildWorkspaceItems.call(host)[0];
-        expect(bar.items.filter(item => item.cls?.includes('fm-preset-button')).map(item => item.pressed)).toEqual([true, false, false]);
-        expect(bar.items.find(item => item.cls?.includes('fm-preset-error'))?.html).toContain('ghost');
+        // fail-closed on the SSOT too: the active perspective record never moved
+        expect(host.perspectiveStore.collection.activeLayoutId).toBe('overview');
 
         host.perspectiveStore.destroy()
     });

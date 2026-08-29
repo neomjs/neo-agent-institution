@@ -13,7 +13,9 @@ import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; 
 import FleetActivityEvents from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit        from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetRoster         from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
-import StateProvider       from '../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
+import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
+import ViewerWakeFeed      from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
 
 /**
  * Resident-boot lifecycle contracts for the south reading-surface tabs: the panes construct at
@@ -29,12 +31,14 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
     test.beforeEach(() => {
         prevFleet = globalThis.AgentOS?.fleet;
         cockpit   = Neo.create(FleetCockpit, {
+            // hermetic: the REAL cockpit provider class (data + formulas), with the store
+            // block overridden so no sample-seed fetch runs in the unit env
             stateProvider: {
-                module: StateProvider,
-                data  : {selectedAgentId: null, selectedAgentIdentity: null},
+                module: CockpitStateProvider,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false}
+                    fleetRoster        : {module: FleetRoster, autoLoad: false},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
         })
@@ -62,7 +66,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
         // Cold truth, not breakage: an unanswered roster yields the broadcast sentinel alone and
         // empty CatchUp options. Memories has no second roster/picker; provider selection is null.
         expect(mailbox.recipientOptions.map(option => option.id)).toEqual(['AGENT:*']);
-        expect(cockpit.buildCatchUpPartitionOptions()).toEqual([]);
+        expect(cockpit.getController().buildCatchUpPartitionOptions()).toEqual([]);
         expect(cockpit.getMemoriesPane().activeAgent).toBeNull();
         expect(cockpit.getStateProvider().getData('selectedAgentId')).toBeNull();
         expect(cockpit.getStateProvider().getData('selectedAgentIdentity')).toBeNull()
@@ -71,13 +75,13 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
     test('roster-derived builders read the PROVIDER Store, never the projected grid — options resolve with no grid at all', () => {
         const rows = [{agentId: 'vega', githubUsername: 'neo-opus-vega', displayName: 'Vega'}],
               host = {
-                  resolveFleetRosterStore: () => ({items: rows}),
-                  getReference           : () => null // the grid does not exist — torn, absent, or not yet projected
+                  getController: () => ({resolveFleetRosterStore: () => ({items: rows})}),
+                  getReference : () => null // the grid does not exist — torn, absent, or not yet projected
               };
 
-        expect(FleetCockpit.prototype.buildOperatorRecipientOptions.call(host).map(option => option.id))
+        expect(FleetCockpitController.prototype.buildOperatorRecipientOptions.call(host.getController()).map(option => option.id))
             .toEqual(['AGENT:*', '@neo-opus-vega']);
-        expect(FleetCockpit.prototype.buildCatchUpPartitionOptions.call(host).map(option => option.partition))
+        expect(FleetCockpitController.prototype.buildCatchUpPartitionOptions.call(host.getController()).map(option => option.partition))
             .toEqual(['@neo-opus-vega'])
     });
 
@@ -93,7 +97,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
             fleetRoster: async () => ({capabilities: {}, rows: [{id: 'vega', githubUsername: 'neo-opus-vega', displayName: 'Vega'}]})
         }};
 
-        await cockpit.loadRoster();
+        await cockpit.getController().loadRoster();
 
         expect(mailbox.recipientOptions.map(option => option.id)).toEqual(['AGENT:*', '@neo-opus-vega']);
         expect(cockpit.getCatchUpPane().partitionOptions.map(option => option.partition)).toEqual(['@neo-opus-vega']);
@@ -103,39 +107,52 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
     });
 
     test('loadRoster ingests into the PROVIDER Store with NO grid at all — the projected child renders, it never owns the roster', async () => {
-        const store = Neo.create(FleetRoster, {autoLoad: false}),
-              sets  = {catchUp: [], mailbox: []},
-              host  = {
+        const store    = Neo.create(FleetRoster, {autoLoad: false}),
+              sets     = {catchUp: [], mailbox: []},
+              provider = {
+                  data: {gridAdapterState: 'sample', gridDegradedReason: null},
+                  getData(key) { return this.data[key] },
+                  setData(key, value) {
+                      if (typeof key === 'object') { Object.assign(this.data, key) } else { this.data[key] = value }
+                  }
+              },
+              // the REAL view builders run over this view fake; the controller drives the load
+              view = {
                   buildActivityActorDirectory  : FleetCockpit.prototype.buildActivityActorDirectory,
                   buildCatchUpPartitionOptions : FleetCockpit.prototype.buildCatchUpPartitionOptions,
                   buildOperatorRecipientOptions: FleetCockpit.prototype.buildOperatorRecipientOptions,
-                  clearDegradedReason          : FleetCockpit.prototype.clearDegradedReason,
-                  degradeWiredSurface          : FleetCockpit.prototype.degradeWiredSurface,
+                  detailRecord                 : null,
                   getCatchUpPane               : () => ({set: values => sets.catchUp.push(values), onRefreshClick() {}}),
                   getOperatorMailboxPane       : () => ({set: values => sets.mailbox.push(values)}),
                   getReference                 : () => null, // NO grid, NO activity stream — torn or absent
-                  gridAdapterState             : 'sample',
-                  gridReadGeneration           : 0,
-                  mapRosterRow                 : FleetCockpit.prototype.mapRosterRow,
-                  reconcileRoster              : FleetCockpit.prototype.reconcileRoster,
-                  reconcileSelection           : FleetCockpit.prototype.reconcileSelection,
-                  resolveFleetRosterStore      : () => store,
-                  rosterSourceMode             : 'sample',
-                  rosterWired                  : false,
-                  syncSpineBanner              : () => {}
-              };
+                  getStateProvider             : () => provider,
+                  livenessReadTimeout          : 4000,
+                  rosterSourceMode             : 'sample'
+              },
+              host = Object.assign(Object.create(FleetCockpitController.prototype), {
+                  component              : view,
+                  getReference           : () => null,
+                  gridReadGeneration     : 0,
+                  gridReadInFlight       : 0,
+                  isDestroyed            : false,
+                  lastLiveRows           : null,
+                  resolveFleetRosterStore: () => store,
+                  rosterWired            : false
+              });
+
+        view.getController = () => host;
 
         globalThis.AgentOS.fleet = {registryBridge: {
             selected   : true,
             fleetRoster: async () => ({capabilities: {}, rows: [{id: 'vega', githubUsername: 'neo-opus-vega', displayName: 'Vega'}]})
         }};
 
-        await FleetCockpit.prototype.loadRoster.call(host);
+        await host.loadRoster();
 
         // the live rows landed in the PROVIDER Store despite the missing projection
         expect(store.getCount()).toBe(1);
         expect(store.getAt(0).githubUsername).toBe('neo-opus-vega');
-        expect(host.gridAdapterState).toBe('live');
+        expect(provider.data.gridAdapterState).toBe('live');
         expect(host.rosterWired).toBe(true);
 
         // and every resident consumer refreshed from that same truth
@@ -149,14 +166,14 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
         await cockpit.refreshPromise;
 
         // the construction-time historyRequest ran with no bridge → the unavailable envelope
-        expect(cockpit.catchUpSnapshot?.capability?.state).toBe('unavailable');
+        expect(cockpit.getController().catchUpSnapshot?.capability?.state).toBe('unavailable');
 
         let redrives = 0;
         cockpit.getCatchUpPane().onRefreshClick = () => {
             redrives++;
             // the guarded refresh path lands a healthy snapshot (what the real handler achieves
             // once the bridge answers) — so the NEXT live load must not re-drive again
-            cockpit.catchUpSnapshot = {capability: {state: 'wired'}}
+            cockpit.getController().catchUpSnapshot = {capability: {state: 'wired'}}
         };
 
         globalThis.AgentOS.fleet = {registryBridge: {
@@ -164,10 +181,10 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
             fleetRoster: async () => ({capabilities: {}, rows: [{id: 'vega', githubUsername: 'neo-opus-vega'}]})
         }};
 
-        await cockpit.loadRoster();
+        await cockpit.getController().loadRoster();
         expect(redrives, 'the one-shot cold miss recovers at bridge arrival').toBe(1);
 
-        await cockpit.loadRoster();
+        await cockpit.getController().loadRoster();
         expect(redrives, 'a healthy snapshot is never re-driven — the recovery is need-gated, not periodic').toBe(1)
     });
 
@@ -175,19 +192,19 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
         await cockpit.refreshPromise;
 
         let reads = 0;
-        cockpit.loadOperatorInbox = () => { reads++ };
+        cockpit.getController().loadOperatorInbox = () => { reads++ };
 
         // resident projection happened with no identity — no read may have fired, and none may
         // fire until the identity resolves
-        expect(cockpit.operatorRecord).toBe(null);
+        expect(cockpit.getController().operatorRecord ?? null).toBe(null);
 
         globalThis.AgentOS.fleet = {registryBridge: {
             resolveViewerIdentity: async () => ({ok: true, agentIdentityNodeId: '@neo-fable-clio'})
         }};
 
-        await cockpit.loadOperatorIdentity();
+        await cockpit.getController().loadOperatorIdentity();
 
-        expect(cockpit.operatorRecord?.githubUsername).toBe('neo-fable-clio');
+        expect(cockpit.getController().operatorRecord?.githubUsername).toBe('neo-fable-clio');
         expect(reads, 'the opposite ordering to the construction-flush: one live set, one read').toBe(1)
     })
 });
