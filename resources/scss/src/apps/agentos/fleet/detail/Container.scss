@@ -34,29 +34,27 @@
         border-bottom : 1px solid var(--fm-line-soft);
     }
 
+    /* 64px, grid-locked: size encodes drill depth — the roster card wears 40px, and the detail
+       is ONE resident's profile surface, so its portrait reads clearly ABOVE the card tier
+       (operator call, 2026-08-30: a detail avatar at-or-below card size inverts the hierarchy).
+       Grid-locked means it can never squeeze the identity text below readability — the text
+       column owns the remaining width, and the NAME is the only ellipsizing line in the pane. */
     .fm-detail-avatar {
-        width        : 48px;
-        height       : 48px;
+        width        : 64px;
+        height       : 64px;
         flex         : none;
         border-radius: 50%;
         object-fit   : cover;
         background   : color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
     }
 
-    /* the shell-supplied window verb docks at the header's trailing edge — layout owned here,
-       never as an inline style on the shell's config */
-    .fm-detail-header .fm-detail-window-toggle {
-        flex       : none;
-        margin-left: auto;
-    }
-
     .fm-detail-identity {
         gap      : 2px;
         overflow : hidden;
-        /* a flex child's automatic minimum is its content size: without a floor the identity
-           column refuses to shrink and the header's trailing shell tool pays with a clipped
-           label. The ch-floor makes the squeeze SHARED: the name ellipsizes down to a readable
-           stub, and only past that does the trailing verb start giving way. */
+        /* a flex child's automatic minimum is its content size: the floor keeps the name
+           ellipsizing to a readable stub instead of the column collapsing under rail pressure.
+           (The window verb left the header for the tab bar's action seam — #23 — so the column
+           no longer shares its width with a trailing control.) */
         min-width: 12ch;
     }
 
@@ -81,18 +79,38 @@
         color: var(--fm-ink-dim);
     }
 
-    /* the durable anchor — always shown, smallest + faintest: the name is display state OVER it */
+    /* the durable anchor — always shown, smallest + faintest: the name is display state OVER it.
+       Aligned with the NAME's text edge, not the row edge (operator call, 2026-08-30): the handle
+       is the durable form of the same identity, so name + handle read as ONE text column; the
+       state dot is a marker ON the name, never a column anchor. Indent = dot 8px + row gap 7px. */
     .fm-detail-id {
-        font : var(--fm-text-micro);
-        color: var(--fm-ink-dim);
+        font        : var(--fm-text-micro);
+        color       : var(--fm-ink-dim);
+        padding-left: 15px;
     }
 
-    /* availability (participationStatus), not a role */
-    .fm-detail-participation {
-        font          : var(--fm-text-detail);   /* 11px meta → detail: availability is session-metadata, the mono meta voice */
-        color         : var(--fm-ink-dim);
-        text-transform: capitalize;
+    /* THE ONE STATE LEDGER (#23): every liveness/wiring axis once, `axis · pill` per row, in the
+       pane's own freshness-pill vocabulary — the three prior languages (italic telltale prose,
+       coloured source lines, a dangling producer suffix) collapsed into it. Grid-locked columns:
+       axis words never wrap, the pill column owns the rest; NO row exceeds one line-height at
+       rail widths (the #23 falsifier). Tone mapping documented at the renderer: is-fresh =
+       nominal, is-stale = deviating, is-unobserved = absent/unknown/not wired. */
+    .fm-detail-ledger {
+        display              : grid;
+        grid-template-columns: max-content 1fr;
+        gap                  : 5px 12px;
+        align-items          : center;
+        justify-items        : start;
+        padding-bottom       : 10px;
+        border-bottom        : 1px solid var(--fm-line-soft);
     }
+
+    .fm-ledger-axis {
+        font       : var(--fm-text-detail);
+        color      : var(--fm-ink-dim);
+        white-space: nowrap;
+    }
+
 
     .fm-detail-panes {
         gap     : var(--fm-space-2);
@@ -228,68 +246,6 @@
     }
 }
 
-.fm-agent-detail {
-    // The FULL two-axis readout — both axes always, unlike the card's exception chip.
-    .fm-detail-telltale {
-        display  : flex;
-        flex-wrap: wrap;
-        gap      : 6px 10px;
-        font     : var(--fm-text-detail);
-    }
-
-    .fm-detail-telltale-axis {
-        color: var(--fm-ink-dim);
-    }
-
-    // A deviating axis earns the state color; nominal stays dim, because in the detail "wake: on" is
-    // information the operator asked for, not an alert.
-    .fm-detail-telltale-off,
-    .fm-detail-telltale-suppressed,
-    .fm-detail-telltale-overage,
-    .fm-detail-telltale-rate-limited {
-        color: var(--fm-state-limited);
-    }
-
-    // "we looked and could not see" reads as absent-information, never as an alert and never as health
-    .fm-detail-telltale-unknown {
-        color: var(--fm-ink-dim);
-    }
-
-    // "nobody reported this axis" — the absence of an observation, which is less than an unknown one.
-    // That gradient rides the ITALIC channel rather than a fainter ink: the faint tier measures below
-    // the 4.5:1 text floor on every surface in both skins, and carrying the distinction in colour alone
-    // would make colour the sole bearer of the meaning. Italic separates it while the text stays legible.
-    .fm-detail-telltale-unreported {
-        color     : var(--fm-ink-dim);
-        font-style: italic;
-    }
-
-    .fm-detail-telltale-reason {
-        color: var(--fm-ink-dim);
-    }
-
-    // The three-source provenance readout — the drill-in counterpart to the card's one word-line.
-    .fm-detail-sources {
-        display  : flex;
-        flex-wrap: wrap;
-        gap      : 6px 10px;
-        font     : var(--fm-text-detail);
-    }
-
-    .fm-detail-sources-axis {
-        display: block; // one line per source — a run-together can never read as one broken sentence
-        color  : var(--fm-ink-dim);
-    }
-
-    // A source that is not wired (or missing) earns the state colour; a wired one stays dim, because in
-    // the detail a healthy source is information the operator asked for, not an alert. The state also
-    // rides the TEXT ("not wired" / "missing"), so colour is never the sole bearer of meaning (WCAG 1.4.1).
-    .fm-detail-sources-not-wired,
-    .fm-detail-sources-missing {
-        color: var(--fm-state-limited);
-    }
-
-    .fm-detail-sources-producer {
-        color: var(--fm-ink-dim);
-    }
-}
+/* The telltale/sources prose stacks retired into the state ledger (#23) — one pill vocabulary
+   per pane. State rides the pill TEXT plus its tone class, never colour alone (WCAG 1.4.1); the
+   producer literal and the consumer's reason ride each pill's title attribute. */

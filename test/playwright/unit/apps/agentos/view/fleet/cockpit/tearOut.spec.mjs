@@ -298,7 +298,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — gesture tear-out 
         const toggle = cockpit.getAgentDetailPane().getReference('detail-window-toggle');
 
         expect(toggle.disabled).toBe(true);
-        expect(toggle.text).toBe('Detail torn out');
+        expect(toggle.vdom.title).toBe('Detail torn out');
 
         // the accessor still reaches the live instance (the drill stays live)
         expect(cockpit.getAgentDetailPane()).toBe(detailPane);
