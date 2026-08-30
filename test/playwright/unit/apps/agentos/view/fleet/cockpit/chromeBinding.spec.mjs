@@ -45,16 +45,17 @@ test('the declared chrome binds the derived truths — banner revealed with the 
 
     expect(banner).toBeTruthy();
     expect(banner.hidden, 'the cold verdict reveals the banner').toBe(false);
-    expect(banner.text).toContain('Fleet server offline');
+    // #23: the visible label is the STATUS WORD; the full sentence rides title + aria
+    expect(banner.text).toBe('fleet offline');
     expect(banner.cls).toContain('fm-spine-banner-cold');
-    // the title mirror carries the full sentence in the same beat
-    expect(banner.vdom.title).toBe(banner.text);
+    expect(banner.vdom.title).toContain('Fleet server offline');
+    expect(banner.vdom['aria-label']).toContain('Fleet server offline');
 
     // the reconnect affordance binds the SAME derived leaf — visible on any spoken verdict
     expect(reconnect.hidden).toBe(false);
 
     // the wake chip binds its own derivation
-    expect(telltale.text).toContain('wake:');
+    expect(telltale.text).toContain('wake');
     expect(telltale.cls).toContain('fm-viewer-wake-degraded');
 
     cockpit.destroy()

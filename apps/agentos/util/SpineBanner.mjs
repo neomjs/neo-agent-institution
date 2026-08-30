@@ -98,29 +98,44 @@ const DAEMON_FAULT_STATES = Object.freeze(['degraded', 'stopped']);
  * keeps the classic copy: there, silence really does imply a server the operator must start.
  * @param {Object|null} transport The shell transport-boot fact
  *     `{phase: 'starting'|'settled', mode, up, fleetPort, reason, error}`, or `null` outside the shell.
- * @returns {String}
+ * @returns {{text: String, title: String}} The pill's status word plus the full honesty sentence.
  * @private
  */
 function coldFallbackFor(transport) {
     if (!transport) {
-        return 'Fleet server offline — showing the static roster · start it from the neo-agent-brain checkout'
+        return {
+            text : 'fleet offline',
+            title: 'Fleet server offline — showing the static roster · start it from the neo-agent-brain checkout'
+        }
     }
 
     if (transport.phase === 'starting') {
-        return 'Fleet transport starting — the cockpit connects automatically'
+        return {
+            text : 'fleet starting',
+            title: 'Fleet transport starting — the cockpit connects automatically'
+        }
     }
 
     if (transport.mode === 'foreign-listener') {
         const port = transport.fleetPort ?? 'the fleet port';
 
-        return `another fleet server holds port ${port} — quit it, then Reconnect · ${transport.reason || 'listener did not prove canonical Fleet identity'}`
+        return {
+            text : 'fleet blocked',
+            title: `another fleet server holds port ${port} — quit it, then Reconnect · ${transport.reason || 'listener did not prove canonical Fleet identity'}`
+        }
     }
 
     if (transport.up !== true) {
-        return `Fleet transport failed to start — showing the static roster${transport.error ? ` · ${transport.error}` : ''}`
+        return {
+            text : 'fleet failed',
+            title: `Fleet transport failed to start — showing the static roster${transport.error ? ` · ${transport.error}` : ''}`
+        }
     }
 
-    return 'Fleet transport ready — cockpit loading · use Reconnect if this persists'
+    return {
+        text : 'fleet connecting',
+        title: 'Fleet transport ready — cockpit loading · use Reconnect if this persists'
+    }
 }
 
 /**
@@ -151,12 +166,17 @@ class SpineBanner extends Base {
      * @param {Object|null} [options.transport] The shell transport-boot fact (see {@link coldFallbackFor}).
      *     Optional and `null`-safe — only the cold fallback consults it, so a retained surface reason
      *     still outranks any topology guess.
-     * @returns {{hidden: Boolean, kind: String, text: String}} `kind` is `'live'|'cold'|'degraded'`
-     *     — the class hook; `hidden` is `true` only for the fully live spine.
+     * @returns {{hidden: Boolean, kind: String, text: String, title: String, ariaLabel: String}}
+     *     `kind` is `'live'|'cold'|'degraded'` — the class hook; `hidden` is `true` only for the
+     *     fully live spine. `text` is the pill's STATUS WORD (axis word + state word — chrome
+     *     labels are never sentences); `title` carries the full honesty sentence with the retained
+     *     cause (one hover away, T5); `ariaLabel` mirrors the sentence so the distinction the
+     *     sentence encodes stays reachable to a screen reader without the hover.
      */
     static deriveSpineBanner({daemon, grid, stream, transport = null}) {
         const surfaces = [grid, stream],
-              states   = surfaces.map(surface => surface?.state);
+              states   = surfaces.map(surface => surface?.state),
+              verdict  = (kind, text, title) => ({hidden: false, kind, text, title, ariaLabel: title});
 
         // Only a sample GRID enters the cold family: its copy asserts roster + server facts, and a
         // sample sibling stream has no standing to make either claim over a live roster.
@@ -165,19 +185,19 @@ class SpineBanner extends Base {
         if (grid?.state === 'sample') {
             const reason = reasonFor(surfaces, 'sample');
 
-            return {
-                hidden: false,
-                kind  : 'cold',
-                // Same discipline the `stale` line follows: name the retained cause when the owner HAS
-                // one, guess only when it does not. A reachable server whose source is unconfigured
-                // answers `not-wired` — the seed stays, so the data really is sample, but "start the
-                // server" would be advice to restart a process that just replied. The fallback for
-                // SILENCE is topology-owned: the shell's transport fact picks the honest line, and
-                // only the plain-browser flow keeps the classic "start the server" advice.
-                text: reason
-                    ? `Fleet data unavailable — showing the static roster · ${reason}`
-                    : coldFallbackFor(transport)
+            // Same discipline the `stale` line follows: name the retained cause when the owner HAS
+            // one, guess only when it does not. A reachable server whose source is unconfigured
+            // answers `not-wired` — the seed stays, so the data really is sample, but "start the
+            // server" would be advice to restart a process that just replied. The fallback for
+            // SILENCE is topology-owned: the shell's transport fact picks the honest word AND line,
+            // and only the plain-browser flow keeps the classic "start the server" advice.
+            if (reason) {
+                return verdict('cold', 'fleet offline', `Fleet data unavailable — showing the static roster · ${reason}`)
             }
+
+            const fallback = coldFallbackFor(transport);
+
+            return verdict('cold', fallback.text, fallback.title)
         }
 
         // ABOVE `stale` deliberately: a dead daemon is usually what MADE the feed stale, so reporting the
@@ -186,35 +206,27 @@ class SpineBanner extends Base {
         // a transport sibling.
         if (SpineBanner.DAEMON_FAULT_STATES.includes(daemon?.state)) {
             const reason = reasonFor([daemon], daemon.state),
-              // The state is part of the sentence, not just the class: `stopped` and `degraded` are
-              // different operator situations (nothing running vs something wrong), and a banner that
+              // The state is part of the PILL WORD, not just the class: `stopped` and `degraded` are
+              // different operator situations (nothing running vs something wrong), and a pill that
               // said only "degraded" for both would make the tray the sole place that distinction
-              // exists — unreachable to a screen reader.
+              // exists — so the word pair carries it, and the ariaLabel carries the full sentence.
               label  = daemon.state === 'stopped' ? 'stopped' : 'degraded';
 
-            return {
-                hidden: false,
-                kind  : 'degraded',
-                // Same reason-or-fallback discipline as the transport lines. The fallback names WHERE to
-                // look rather than what to run: unlike the fleet server there is no single restart verb
-                // that is right for every daemon, and printing a confident wrong command is worse than
-                // pointing at the surface that knows which daemon died.
-                text: reason
-                    ? `Agent OS ${label} — showing the cockpit over a partial organism · ${reason}`
-                    : `Agent OS ${label} — showing the cockpit over a partial organism · check the tray state and the daemon log`
-            }
+            // Same reason-or-fallback discipline as the transport lines. The fallback names WHERE to
+            // look rather than what to run: unlike the fleet server there is no single restart verb
+            // that is right for every daemon, and printing a confident wrong command is worse than
+            // pointing at the surface that knows which daemon died.
+            return verdict('degraded', `agent os ${label}`, reason
+                ? `Agent OS ${label} — showing the cockpit over a partial organism · ${reason}`
+                : `Agent OS ${label} — showing the cockpit over a partial organism · check the tray state and the daemon log`)
         }
 
         if (states.includes('stale')) {
             const reason = reasonFor(surfaces, 'stale');
 
-            return {
-                hidden: false,
-                kind  : 'degraded',
-                text  : reason
-                    ? `Fleet feed degraded — showing last-known data · ${reason}`
-                    : 'Fleet feed degraded — showing last-known data'
-            }
+            return verdict('degraded', 'fleet degraded', reason
+                ? `Fleet feed degraded — showing last-known data · ${reason}`
+                : 'Fleet feed degraded — showing last-known data')
         }
 
         // The stream's own verdict: reachable here only with a LIVE grid (sample/stale grids returned
@@ -224,16 +236,12 @@ class SpineBanner extends Base {
         if (stream?.state === 'sample') {
             const reason = reasonFor([stream], 'sample');
 
-            return {
-                hidden: false,
-                kind  : 'degraded',
-                text  : reason
-                    ? `Activity feed pending — roster is live · ${reason}`
-                    : 'Activity feed pending — roster is live'
-            }
+            return verdict('degraded', 'feed pending', reason
+                ? `Activity feed pending — roster is live · ${reason}`
+                : 'Activity feed pending — roster is live')
         }
 
-        return {hidden: true, kind: 'live', text: ''}
+        return {hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''}
     }
 }
 

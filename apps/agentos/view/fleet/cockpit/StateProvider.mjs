@@ -154,16 +154,17 @@ class StateProvider extends Provider {
              * Formula-owned — the one banner verdict; the banner and the reconnect affordance
              * bind its LEAVES (`setData` drills object values into leaf paths — an object-valued
              * key never becomes one trackable config, so consumers bind `data.spineBanner.text`
-             * etc. and every leaf is declared here).
+             * etc. and every leaf is declared here). `text` is the pill's status word; `title`
+             * carries the full honesty sentence, `ariaLabel` its screen-reader mirror.
              * @member {Object} spineBanner
              */
-            spineBanner: {hidden: false, kind: 'cold', text: ''},
+            spineBanner: {ariaLabel: '', hidden: false, kind: 'cold', text: '', title: ''},
             /**
              * Formula-owned — the wake chip's derivation; leaf-declared for the same reason.
              * Re-derives on every `viewerWake` stamp beat (the cadence the observations move on).
              * @member {Object} viewerWakeTelltale
              */
-            viewerWakeTelltale: {ariaLabel: '', cls: [], text: 'wake: not started', title: ''}
+            viewerWakeTelltale: {ariaLabel: '', cls: [], text: 'wake off', title: 'wake stream not started'}
         },
         /**
          * The derivations, as REAL formulas — pull-based: the initial run at `onConstructed`

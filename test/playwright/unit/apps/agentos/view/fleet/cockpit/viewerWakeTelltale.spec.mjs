@@ -29,9 +29,9 @@ test.describe('viewerWakeTelltale — the quiet chrome readout of MY push lane',
             nowMs  : NOW
         });
 
-        expect(text).toBe('wake: live · 12s ago');
+        expect(text).toBe('wake live · 12s ago');
         expect(cls).toEqual(['fm-viewer-wake', 'fm-viewer-wake-live']);
-        expect(ariaLabel).toBe('Viewer wake push: wake: live · 12s ago');
+        expect(ariaLabel).toBe('Viewer wake push: wake live · 12s ago');
         expect(title).toContain('wake push live — composed wake stream connected · armed for this viewer');
         expect(title).toContain('catch-up: fresh (3 pending drained) · 5s ago');
         expect(title).toContain('last signals: wake/digest · 12s ago')
@@ -43,20 +43,25 @@ test.describe('viewerWakeTelltale — the quiet chrome readout of MY push lane',
             nowMs : NOW
         });
 
-        expect(text).toBe('wake: live');
+        expect(text).toBe('wake live');
         expect(title).toContain('no signals observed on this stream');
         expect(title).toContain('catch-up: no observation')
     });
 
-    test("the consumer's absence-of-signal reason renders VERBATIM — disconnected", () => {
+    test("the consumer's absence-of-signal reason renders VERBATIM — on title and aria, never the chrome label", () => {
         const reason = 'wake stream disconnected (stream refused: HTTP 401) — poll remains the truth lane';
 
-        const {cls, text} = ViewerWakeTelltale.describeViewerWakeTelltale({
+        const {ariaLabel, cls, text, title} = ViewerWakeTelltale.describeViewerWakeTelltale({
             stream: {alive: 'unknown', reason, capturedAt: NOW},
             nowMs : NOW
         });
 
-        expect(text).toBe(`wake: ${reason}`);
+        // #23: the pill wears the word pair; the verbatim reason moves to title + aria — the old
+        // inline pass-through rendered "wake: wake stream disconnected (…": a duplicated axis
+        // word, clipped mid-word under bar pressure.
+        expect(text).toBe('wake off');
+        expect(title).toContain(`wake push unavailable — ${reason}`);
+        expect(ariaLabel).toBe(`Viewer wake push: wake off — ${reason}`);
         expect(cls).toEqual(['fm-viewer-wake', 'fm-viewer-wake-degraded'])
     });
 
@@ -66,7 +71,7 @@ test.describe('viewerWakeTelltale — the quiet chrome readout of MY push lane',
             nowMs : NOW
         });
 
-        expect(text).toContain('wake push not wired');
+        expect(text).toBe('wake off');
         expect(title).toContain('wake push unavailable — wake push not wired')
     });
 
@@ -82,9 +87,11 @@ test.describe('viewerWakeTelltale — the quiet chrome readout of MY push lane',
     });
 
     test('no stream observation at all stays inside the closed vocabulary', () => {
-        const {cls, text} = ViewerWakeTelltale.describeViewerWakeTelltale({nowMs: NOW});
+        const {ariaLabel, cls, text} = ViewerWakeTelltale.describeViewerWakeTelltale({nowMs: NOW});
 
-        expect(text).toBe('wake: no stream observation');
+        expect(text).toBe('wake off');
+        // the closed-vocabulary fallback reason still reaches the reader, via aria
+        expect(ariaLabel).toBe('Viewer wake push: wake off — no stream observation');
         expect(cls).toEqual(['fm-viewer-wake', 'fm-viewer-wake-degraded'])
     });
 
