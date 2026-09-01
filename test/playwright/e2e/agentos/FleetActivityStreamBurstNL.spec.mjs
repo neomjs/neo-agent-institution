@@ -14,24 +14,101 @@ const
  * @param {Number} [start=0]
  * @returns {Object[]}
  */
+// mixed kinds on purpose (#63): the kind-chip geometry witness needs short and long words
+// (PR · A2A · ISSUE-ACTIVITY · WORK-STALL · REVIEW) riding the SAME pooled rows through recycle
+const EVENT_KINDS = ['a2a-activity', 'pr', 'issue-activity', 'work-stall', 'review'];
+
 function createEvents(count, start=0) {
     return Array.from({length: count}, (_, offset) => {
-        const index = start + offset;
+        const
+            index = start + offset,
+            type  = EVENT_KINDS[index % EVENT_KINDS.length],
+            isA2A = type === 'a2a-activity';
 
         return {
             eventId   : `e2e:${index}`,
-            type      : index % 2 === 0 ? 'a2a-activity' : 'pr',
-            source    : index % 2 === 0 ? 'memory-core:mailbox' : 'github:pull-requests',
+            type,
+            source    : isA2A ? 'memory-core:mailbox' : 'github:pull-requests',
             agentId   : index % 2 === 0 ? '@neo-gpt-emmy' : '@neo-fable',
             confidence: 'observed',
             occurredAt: new Date(BASE_TIME + index * 1000).toISOString(),
             payload   : {
                 text          : `event ${index}`,
-                to            : index % 2 === 0 ? 'AGENT:*' : null,
-                recipientClass: index % 2 === 0 ? 'broadcast' : null
+                to            : isA2A ? 'AGENT:*' : null,
+                recipientClass: isA2A ? 'broadcast' : null
             }
         }
     })
+}
+
+/**
+ * @summary Reads the mounted rows' cell geometry the way a reader sees it (#63): one grid row per
+ * event, every cell at its own content size around one vertical center, and every kind chip
+ * exactly as wide and as tall as its own word box. The stretch family this guards: a pooled row
+ * whose flexbox layout outranks the grid paints 23px chips and rows that read top-aligned and
+ * centered at once, and a row that is not a grid at paint time stretches the chip to the row width.
+ * @param {import('@playwright/test').Page} page
+ * @returns {Promise<Object[]>} One entry per mounted row.
+ */
+function readRowGeometry(page) {
+    return page.locator('.fm-activity-row').evaluateAll(rows => rows.map(row => {
+        const
+            style  = getComputedStyle(row),
+            rect   = row.getBoundingClientRect(),
+            center = rect.top + rect.height / 2,
+            chip   = row.querySelector('.fm-event-chip'),
+            box    = chip.getBoundingClientRect(),
+            word   = document.createRange();
+
+        word.selectNodeContents(chip);
+
+        const
+            chipStyle = getComputedStyle(chip),
+            chrome    = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
+                .reduce((sum, key) => sum + parseFloat(chipStyle[key]), 0);
+
+        return {
+            alignItems : style.alignItems,
+            display    : style.display,
+            inlineFlex : [...row.children].filter(cell => cell.style.flex).length,
+            kind       : chip.textContent,
+            chipHeight : Math.round(box.height),
+            chipWidth  : Math.round(box.width),
+            chipSlack  : Math.round(box.width - word.getBoundingClientRect().width - chrome),
+            centerDrift: Math.max(...[...row.children].map(cell => {
+                const cellBox = cell.getBoundingClientRect();
+
+                return Math.abs(cellBox.top + cellBox.height / 2 - center)
+            }))
+        }
+    }))
+}
+
+/**
+ * @summary The row contract at one paint: grid rows, centered cells, no layout-written inline flex,
+ * chips at their own word box (19px tall: 13px line + 2×2px padding + 2×1px border).
+ * @param {Object[]} geometry `readRowGeometry` output.
+ * @param {String} label The paint under test, for the failure message.
+ */
+function expectIntrinsicRows(geometry, label) {
+    expect(geometry.length, `${label}: rows are mounted`).toBeGreaterThan(0);
+
+    for (const row of geometry) {
+        expect(row.display,     `${label}: a pooled row is the grid its SCSS declares`).toBe('grid');
+        expect(row.alignItems,  `${label}: the row centers its cells — no layout class outranks the grid`).toBe('center');
+        expect(row.inlineFlex,  `${label}: no cell carries a layout-written inline flex`).toBe(0);
+        expect(row.chipHeight,  `${label}: the ${row.kind} chip is as tall as its own word box`).toBeLessThanOrEqual(20);
+        expect(Math.abs(row.chipSlack), `${label}: the ${row.kind} chip is exactly as wide as its word`).toBeLessThanOrEqual(1);
+        expect(row.centerDrift, `${label}: every cell shares the row's vertical center`).toBeLessThanOrEqual(1)
+    }
+}
+
+/**
+ * @param {Object[]} geometry `readRowGeometry` output.
+ * @returns {Object} kind word → chip width, one entry per kind present.
+ */
+function chipWidthsByKind(geometry) {
+    return Object.fromEntries(geometry.map(row => [row.kind, row.chipWidth]))
 }
 
 /** @param {Object} result @returns {String|null} */
@@ -107,8 +184,10 @@ async function boot(page, neuralLink) {
  *
  * The Store remains complete while the DOM is finite; the first nested pooled row joins record,
  * VDOM, VNode and painted text; history reading survives a prepend without a jump; source counts
- * never borrow local retention; stale transport never blanks the retained feed; and both skins
- * render the same fixed-height row anatomy.
+ * never borrow local retention; stale transport never blanks the retained feed; both skins
+ * render the same fixed-height row anatomy; and the row geometry (#63) — grid rows, centered
+ * cells, kind chips at their own word box — is the same at first paint, deep in recycled history
+ * and back at the top.
  *
  * @see apps/agentos/store/FleetActivityEvents.mjs
  * @see apps/agentos/view/fleet/activity/Container.mjs
@@ -130,7 +209,9 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
 
         expect(admission).toMatchObject({added: 500, dropped: 0, retained: 500});
 
-        await app.setProperties(streamId, {adapterState: 'live'});
+        // the stream's `adapterState` binds from the cockpit provider's `streamAdapterState` (the
+        // liveness owner's leaf) — write the leaf, never the bound config
+        await app.modifyStateProvider(providerId, {streamAdapterState: 'live'});
         await app.modifyStateProvider(providerId, {
             activityCounts: [{
                 source    : 'memory-core:mailbox',
@@ -182,6 +263,13 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         expect(storeAtTop.items[0].eventId).toBe('e2e:499');
         await expect(rows).toHaveCount(expectedPool);
         await expect(page.locator('.fm-stream-fold')).toHaveCount(0);
+
+        // #63 — first paint, before any scroll: the geometry a reader sees without touching the
+        // surface. Scrolling must never be a repair step.
+        const geometryAtFirstPaint = await readRowGeometry(page);
+
+        expectIntrinsicRows(geometryAtFirstPaint, 'first paint');
+        expect(Object.keys(chipWidthsByKind(geometryAtFirstPaint)).length, 'the pool shows mixed kinds').toBeGreaterThan(2);
 
         const scrollMetrics = await list.evaluate(element => ({
             clientHeight: element.clientHeight,
@@ -261,7 +349,13 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         expect((await app.queryComponent({className: ROW_CLASS}, ['id'])).map(componentId).sort()).toEqual(poolIdsBefore);
         await expect(rows).toHaveCount(expectedPool);
 
-        await app.setProperties(streamId, {adapterState: 'stale'});
+        // #63 — deep in history after the prepend: the same physical rows carry other records now;
+        // recycling changes record truth, never chip geometry
+        const geometryAfterRecycle = await readRowGeometry(page);
+
+        expectIntrinsicRows(geometryAfterRecycle, 'after recycle');
+
+        await app.modifyStateProvider(providerId, {streamAdapterState: 'stale'});
         await expect(page.locator('.fm-stream-head.is-stale')).toBeVisible();
         await expect(page.locator('.fm-stream-state')).toHaveText('stale — reconnecting');
         await expect(rows).toHaveCount(expectedPool);
@@ -270,6 +364,20 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         await expect.poll(async () => (await getListState(app, listId)).scrollTop).toBe(0);
         await expect(page.locator('.fm-stream-new-events')).toBeHidden();
         await expect(firstObject).toHaveText('event 501');
+
+        // #63 — back at the top after the round trip (the operator's path: scroll down, then up):
+        // the geometry is the first-paint geometry, and a kind's chip is the width it was
+        const geometryBackAtTop = await readRowGeometry(page),
+              widthsAtFirstPaint = chipWidthsByKind(geometryAtFirstPaint),
+              widthsBackAtTop    = chipWidthsByKind(geometryBackAtTop);
+
+        expectIntrinsicRows(geometryBackAtTop, 'back at the top');
+
+        for (const [kind, width] of Object.entries(widthsBackAtTop)) {
+            if (kind in widthsAtFirstPaint) {
+                expect(width, `the ${kind} chip keeps its first-paint width through the round trip`).toBe(widthsAtFirstPaint[kind])
+            }
+        }
 
         const
             viewportState = await app.getComponent(viewportId, ['controller']),

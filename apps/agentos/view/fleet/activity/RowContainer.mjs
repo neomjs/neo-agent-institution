@@ -79,6 +79,16 @@ class RowContainer extends Container {
          */
         record_: null,
         /**
+         * The row is a CSS grid (`RowContainer.scss` owns the five columns and centers the cells),
+         * so it declares the Engine's base layout instead of the container default `vbox`: a
+         * flexbox layout would stamp `neo-flex-align-stretch` on the row — outranking the grid's
+         * `align-items: center` and stretching every cell to the pool height — and write
+         * `flex: 1 1 0%` onto each cell, which stretches a kind chip to the row width whenever a
+         * pooled row is not a grid at paint time (#63).
+         * @member {Object} layout={ntype: 'layout-base'}
+         */
+        layout: {ntype: 'layout-base'},
+        /**
          * The fixed child anatomy. CSS changes only the grid placement at narrow widths; the
          * component and DOM tree never changes shape.
          * @member {Object[]}
