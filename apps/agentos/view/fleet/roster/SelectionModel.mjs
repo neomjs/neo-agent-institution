@@ -55,10 +55,17 @@ class SelectionModel extends ListModel {
 
     /**
      * @summary Enter selects the row the Navigator's item focus sits on (`view.focusIndex` is kept
-     * current by the base `onListNavigate`). A no-op without a focused row.
-     * @param {Object} data The key event.
+     * current by the base `onListNavigate`). A no-op without a focused row — and a no-op when the
+     * key lands inside a card's lifecycle control cluster: Tab reaches the native control Buttons
+     * from the list item, and Enter there is the verb's own activation (the same carve-out
+     * {@link #onListClick} applies to a pointer), never a selection of the card that hosts it.
+     * @param {Object} data The key event; `data.path` is the DOM path, innermost first.
      */
     onKeyDownEnter(data) {
+        if ((data.path || []).some(node => node.cls?.includes('fm-card-control-verbs'))) {
+            return
+        }
+
         const {focusIndex} = this.view;
 
         Neo.isNumber(focusIndex) && focusIndex > -1 && this.selectAt(focusIndex)
