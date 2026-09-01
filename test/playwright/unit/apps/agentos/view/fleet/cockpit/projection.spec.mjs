@@ -15,39 +15,45 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
 /**
- * The engine Workspace configs its projection + view-sync paths READ (the action-rail flags and
- * their icons, the maximize transient, the host/shell placement). A bare fake host
+ * The engine Workspace reads its own configs on the projection + view-sync paths (the action-rail
+ * flags and their icons, the maximize transient, the host/shell placement). A bare spy host
  * (`Object.create(prototype)`) carries no `#configs` backing, so every such read must land on an
- * OWN property — these are the cockpit's effective values (the engine defaults plus the
- * cockpit's declared placement + lifecycle opt-ins), restated for the spy owners, never a
- * second contract.
+ * OWN property. The values are DERIVED from the classes' declared `static config` layers —
+ * Workspace first, then the cockpit's own overrides up the chain — never transcribed, so an
+ * Engine default flip (lock joining the default rail) reaches these specs through the pin bump
+ * instead of leaving them green on a configuration the real cockpit no longer has.
+ * @param {Function} cls The consumer class whose effective dock configs the spy host carries.
+ * @param {Function} stopAt The first ancestor NOT to read (the generic dashboard root).
+ * @returns {Object}
  */
-const engineWorkspaceDefaults = {
-    // the projection stamps the workspace id as the cross-zone motion boundary; `id` is a config
-    id                        : 'fleet-cockpit-spy-host',
-    // the refresh awaits a mount only for an unmounted host; the spy owner IS its own dock host
-    mounted                   : true,
-    dockHostReference         : null,
-    dockLockIconCls           : 'fa fa-lock',
-    dockMaximizeIconCls       : 'far fa-window-maximize',
-    dockMaximizeMotion        : 'animate',
-    dockMinimizeIconCls       : 'far fa-window-minimize',
-    dockPopOutIconCls         : 'far fa-window-restore',
-    dockProjectionConfig      : {flex: 1},
-    dockShellIndex            : 1,
-    dockUnlockIconCls         : 'fa fa-lock-open',
-    enableDockCloseAction     : true,
-    enableDockLockAction      : false,
-    enableDockMaximizeAction  : true,
-    enableDockPinAction       : true,
-    enableDockPopOutAction    : true,
-    enableDockReloadAction    : true,
-    enableDockTearOutLifecycle: true,
-    flipMarkerPrefix          : 'dock-flip-item-',
-    maximizeMarkerPrefix      : 'dock-maximize-node-',
-    maximizedNodeId           : null,
-    tearOutHandlers           : null,
-    tearOutHostParam          : 'cockpitId'
+const declaredDockConfigs = (cls, stopAt) => {
+    const layers = [];
+
+    for (let ctor = cls; ctor && ctor !== stopAt; ctor = Object.getPrototypeOf(ctor)) {
+        layers.unshift(ctor)
+    }
+
+    return layers.reduce((acc, ctor) => {
+        Object.entries(ctor.config || {}).forEach(([key, value]) => {
+            const name = key.replace(/_$/, '');
+
+            if (/^(dock|enableDock|flipMarkerPrefix|maximizeMarkerPrefix|maximizedNodeId|tearOutHostParam)/.test(name)) {
+                acc[name] = value
+            }
+        });
+
+        return acc
+    }, {})
+};
+
+/**
+ * The two spy-host facts that are fixture identity, not Engine contract: the projection stamps
+ * the workspace `id` as the cross-zone motion boundary, and the refresh awaits a mount only for
+ * an unmounted host — the spy owner IS its own mounted dock host.
+ */
+const spyHostIdentity = {
+    id     : 'fleet-cockpit-spy-host',
+    mounted: true
 };
 
 /**
@@ -119,7 +125,8 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 tearOutPanes         : {},
                 tearOutPlacements    : {},
                 timeout              : ms => new Promise(resolve => setTimeout(resolve, ms)),
-                ...engineWorkspaceDefaults,
+                ...spyHostIdentity,
+                ...declaredDockConfigs(FleetCockpit, Object.getPrototypeOf(Workspace)),
                 ...overrides
             };
 
@@ -426,7 +433,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
  * control bar derives from store state.
  */
 test.describe('Fleet cockpit — perspective presets (the switch through the commit loop)', () => {
-    let PerspectiveLibrary, Document, FleetCockpit, FleetCockpitController, CockpitPresets, Neo;
+    let PerspectiveLibrary, Persistence, Document, Workspace, FleetCockpit, FleetCockpitController, CockpitDockDocument, CockpitPresets, Neo;
 
     const makePresetHost = async (overrides = {}) => {
         const
@@ -478,7 +485,8 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
                 streamAdapterState: 'sample',
                 streamEvents      : [],
                 timeout           : ms => new Promise(resolve => setTimeout(resolve, ms)),
-                ...engineWorkspaceDefaults,
+                ...spyHostIdentity,
+                ...declaredDockConfigs(FleetCockpit, Object.getPrototypeOf(Workspace)),
                 ...overrides
             };
 
@@ -494,10 +502,13 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
     test.beforeAll(async () => {
         Neo                     = (await import('../../../../../../../../node_modules/neo.mjs/src/Neo.mjs')).default;
         PerspectiveLibrary      = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs')).default;
+        Persistence             = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs')).default;
         Document                = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs')).default;
+        Workspace               = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs')).default;
         FleetCockpit            = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
         FleetCockpitController  = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
-        CockpitPresets = (await import('../../../../../../../../apps/agentos/util/CockpitPresets.mjs')).default
+        CockpitDockDocument     = (await import('../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default;
+        CockpitPresets          = (await import('../../../../../../../../apps/agentos/util/CockpitPresets.mjs')).default
     });
 
     test('the seeded library validates whole and lists the three duty presets, Overview active', () => {
@@ -681,6 +692,34 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
 
         // fail-closed on the SSOT too: the active perspective record never moved
         expect(host.perspectiveStore.collection.activeLayoutId).toBe('overview');
+
+        host.perspectiveStore.destroy()
+    });
+
+    test('a captured perspective carries a NON-FIRST active south tab and a switch restores it exactly — the active item rides the document, never app state', async () => {
+        const host = await makePresetHost({refreshDockWorkspace() {}}),
+              live = CockpitDockDocument.create();
+
+        // the operator read Memories: a live `activeIndex` change commits `setActiveItem`, so the
+        // document — the only thing a perspective captures — already carries the selection
+        live.nodes['stream-tabs'].activeItemId = 'memories';
+        expect(Document.validate(live)).toEqual([]);
+
+        const captured = Persistence.capturePerspective(live, {layoutId: 'memories-open', perspectiveName: 'Memories open', title: 'Memories open'});
+
+        expect(captured.errors).toEqual([]);
+        expect(host.perspectiveStore.savePerspective(captured.layout, {activate: false}).saved).toBe(true);
+
+        // a Focus switch restores Focus's own recorded selection (the seeded first tab)...
+        FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
+        expect(host.dockModel.nodes['stream-tabs'].activeItemId).toBe('stream');
+
+        // ...and the captured perspective brings Memories back exactly — no tab-one reset
+        const verdict = FleetCockpit.prototype.activatePerspective.call(host, 'Memories open');
+
+        expect(verdict).toEqual({errors: [], switched: true});
+        expect(host.dockModel.nodes['stream-tabs'].activeItemId).toBe('memories');
+        expect(host.dockModel.nodes['stream-tabs'].items).toEqual(live.nodes['stream-tabs'].items);
 
         host.perspectiveStore.destroy()
     });
