@@ -68,8 +68,8 @@ test.describe('AgentOS operator mailbox mounted delivery journey (#15377)', () =
 
             const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
             expect(cockpit?.properties?.id).toBeTruthy();
-            await app.callMethod(cockpit.properties.id, 'loadRoster');
-            await app.callMethod(cockpit.properties.id, 'loadOperatorIdentity');
+            await app.callMethod(cockpit.properties.id, 'controller.loadRoster');
+            await app.callMethod(cockpit.properties.id, 'controller.loadOperatorIdentity');
 
             // resident south tab titled "Mailbox" (the navigation model): activate the tab and the
             // pane renders in the strip's body — no rail reveal, no overlay

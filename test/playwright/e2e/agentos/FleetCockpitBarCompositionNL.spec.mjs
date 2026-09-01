@@ -30,7 +30,10 @@ test.describe('AgentOS Fleet cockpit — bar composition at the contract widths 
             // state — the recall pair exists only while a pane is away (removeDom keeps this exact)
             await expect(bar.locator('.fm-detail-window-toggle, .fm-memories-window-toggle')).toHaveCount(0);
 
-            await expect(bar).toHaveScreenshot(`cockpit-bar-${label}.png`)
+            // The goldens are headless captures; the battery's honest headed run drifts from them
+            // by sub-pixel antialiasing only (0.01 measured at 800px). A lost floor or a new tenant
+            // moves the bar by 0.06 and more — the tolerance separates the two.
+            await expect(bar).toHaveScreenshot(`cockpit-bar-${label}.png`, {maxDiffPixelRatio: 0.02})
         })
     }
 });

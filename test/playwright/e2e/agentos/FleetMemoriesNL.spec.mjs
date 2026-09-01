@@ -153,7 +153,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
             expect(cockpit?.properties?.id).toBeTruthy();
-            await app.callMethod(cockpit.properties.id, 'loadRoster');
+            await app.callMethod(cockpit.properties.id, 'controller.loadRoster');
 
             // resident south reading-surface tab (the navigation model): activate, never rail-reveal
             const tab = page.getByRole('tab', {name: 'Memories', exact: true});
