@@ -261,10 +261,11 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
 
         // Known Engine hold, kept failing-honest rather than skipped: at Engine dev@0659b0e42d the
         // projection stages tab chrome with `hideMode: 'visibility'` and un-hides it on the FLIP
-        // settle, which does not land under HEADLESS Chromium — this step then times out on a pane
-        // that is mounted but `visibility: hidden`. Headed it passes in ~2s (the operator's real
-        // surface). Ledger: neo-agent-institution#66; Engine defect-note on the A2A trail. Run
-        // `npm run test-e2e:nl -- --headed` for the honest receipt until the Engine settle lands.
+        // settle. Under HEADLESS Chromium the settle never lands and this step times out on a pane
+        // that is mounted but `visibility: hidden`; headed it usually passes in ~2s but the same
+        // hold surfaced once in three full headed runs (2026-09-01), so a red here is the Engine
+        // race, not this journey. Ledger: neo-agent-institution#66; Engine defect-note on the A2A
+        // trail. `npm run test-e2e:nl -- --headed` is the honest receipt until the settle lands.
         await expect(page.locator('.fm-agent-detail'), 'Review materializes the genuinely absent detail pane')
             .toBeVisible({timeout: 10000});
         const details = await app.findInstances({className: 'AgentOS.view.fleet.detail.Container'}, ['id']),
