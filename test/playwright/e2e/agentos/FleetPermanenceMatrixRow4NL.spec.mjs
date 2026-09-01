@@ -17,7 +17,7 @@ import {expect, test} from '../../fixtures.mjs';
  *    census is unchanged.
  * 4. **Universal invariants** — gesture continuity (native clicks), same-instance permanence,
  *    JSON-only persisted state (the REAL perspective writer: the live document saved through
- *    `DockPerspectiveStore`'s landed validation seam and read back byte-identical), exact-once
+ *    `PerspectiveLibrary`'s landed validation seam and read back byte-identical), exact-once
  *    (a single detail instance asserted by census, not first-match), idempotent cleanup (a
  *    repeated disconnect terminal on the retired window id is a byte-equal no-op), and an empty
  *    three-realm error ledger (main page, popup, worker runtime).
@@ -177,7 +177,7 @@ test.describe('matrix row 4 — AgentDetail permanence with live FleetRoster con
               document = topology?.document ?? topology;
 
         // JSON-only persisted state: the REAL perspective writer, not a serializability probe —
-        // the live document saved through DockPerspectiveStore's landed validation seam and read
+        // the live document saved through PerspectiveLibrary's landed validation seam and read
         // back byte-identical (the row-7 sibling's persistDockReceipt shape, on the Fleet surface)
         const layoutRecord = {
                 captureScope     : 'window',
@@ -185,7 +185,7 @@ test.describe('matrix row 4 — AgentDetail permanence with live FleetRoster con
                 layoutId         : 'matrix-row-4',
                 metadata         : {},
                 perspectiveName  : 'matrix-row-4',
-                schema           : 'neo.harness.dockLayout.v2',
+                schema           : 'neo.dock.layout.v1',
                 title            : 'matrix-row-4',
                 windowFingerprint: null
             },

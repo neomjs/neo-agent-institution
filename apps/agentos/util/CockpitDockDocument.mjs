@@ -15,7 +15,7 @@ class CockpitDockDocument extends Base {
     }
 
     /**
-     * The Fleet Cockpit's default dock layout, expressed as pure `neo.harness.dockZone.v1` data.
+     * The Fleet Cockpit's default dock layout, expressed as pure `neo.dock.zone.v1` data.
      *
      * @summary The SSOT §01 mission-control split under the shell's one-navigation-vocabulary model —
      * the **fleet zone** (~1.55fr: the density-ranked agent-card roster + the scale-to-a-glance health
@@ -32,19 +32,19 @@ class CockpitDockDocument extends Base {
      *
      * This is a **data leaf only**. The projection / render + resize-commit wiring is the sibling leaf;
      * nothing here reads a `DOMRect`, mounts a component, or touches the drag lifecycle. The document
-     * round-trips `Neo.dashboard.DockZoneModel.validate` (empty error list) and feeds
-     * `Neo.dashboard.DockLayoutAdapter` unchanged. It is intentionally a factory returning a fresh
+     * round-trips `Neo.dashboard.dock.model.Document.validate` (empty error list) and feeds
+     * `Neo.dashboard.dock.projection.LayoutAdapter` unchanged. It is intentionally a factory returning a fresh
      * object per call — never a shared mutable singleton — so consumers and the semantic operations
      * (which deep-clone) never alias one authored default.
      *
      * `componentRef` values name the `AgentOS.view.fleet.*` keeper-view surfaces; the exact
      * secondary-pane inventory tracks the FM cockpit SSOT map and may be pinned as that map lands.
      *
-     * @returns {Object} a fresh `neo.harness.dockZone.v1` document
+     * @returns {Object} a fresh `neo.dock.zone.v1` document
      */
     static create() {
         return {
-            schema: 'neo.harness.dockZone.v1',
+            schema: 'neo.dock.zone.v1',
             root  : 'cockpit-root',
             items : {
                 fleet : {componentRef: 'fleet-grid',       title: 'Fleet',        kind: 'panel'},
@@ -65,8 +65,12 @@ class CockpitDockDocument extends Base {
                 wakeRoutes : {componentRef: 'wakeRoutes',        title: 'Wake routes',  kind: 'tool',      autoHidden: true}
             },
             nodes: {
-                // Root edge-zone: the primary split in the center, the auto-hidden chrome on the right rail.
-                'cockpit-root'  : {type: 'edge-zone', zones: {center: 'primary-split', right: 'secondary-rail'}},
+                // Root edge-zone: the primary split in the center; the right edge is a RESIZABLE band with a
+                // committed extent. Every member is auto-hidden at boot, so the engine projects the band
+                // rail-only (an all-railed band gets no splitter by design); the moment a member is pinned
+                // open (the Review preset) the same descriptor renders the real edge splitter, and the
+                // reveal overlay reads the same committed extent — one authority for both readers.
+                'cockpit-root'  : {type: 'edge-zone', zones: {center: {nodeId: 'primary-split'}, right: {nodeId: 'secondary-rail', extent: 0.25, resizable: true}}},
                 // SSOT §01: fleet zone (~1.55fr) on top, the reading-surface tabs (1fr) docked at the bottom — vertical split, normalized to sum 1.
                 'primary-split': {type: 'split', orientation: 'vertical', children: ['fleet-tabs', 'stream-tabs'], sizes: [0.6078, 0.3922]},
                 'fleet-tabs'   : {type: 'tabs', items: ['fleet'], activeItemId: 'fleet'},

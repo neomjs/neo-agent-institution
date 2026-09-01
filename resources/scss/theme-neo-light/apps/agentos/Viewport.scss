@@ -88,7 +88,7 @@
 }
 
 // DockPreview domain-alias projections (moved here from the app's DockPreview theme file
-// when the renderer lifted to Neo.dashboard.DockPreview — the app anchor is the loading
+// when the renderer lifted to Neo.dashboard.dock.interaction.Preview — the app anchor is the loading
 // vehicle; the childapp dockdemo carries its own copy for the same reason).
 // §06 authority (dock-choreography design artifact): these component-domain aliases map accept
 // and reject to the artifact's light signal/hot column without pre-empting #14681's global FM

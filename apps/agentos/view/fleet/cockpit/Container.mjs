@@ -1,15 +1,15 @@
 import ActivityStream         from '../activity/Container.mjs';
 import AgentDetail            from '../detail/Container.mjs';
 import Button                 from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-// NAMED registration import: the engine's DockLayoutAdapter emits `ntype: 'tab-container'` for tab
+// NAMED registration import: the engine's dock LayoutAdapter emits `ntype: 'tab-container'` for tab
 // zones without importing the class itself (engine gap) — until it does, the dock consumer owns
 // the registration, and the named binding keeps the dependency visible.
 import TabContainer           from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import CatchUpPane            from '../catchup/Container.mjs';
-import DockPerspectiveStore   from '../../../../../node_modules/neo.mjs/src/dashboard/DockPerspectiveStore.mjs';
+import Document               from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs';
 import DockService            from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
 import VesselContainer        from './VesselContainer.mjs';
-import DockZoneModel          from '../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs';
+import PerspectiveLibrary     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
 import MemoriesPane           from '../memories/Container.mjs';
@@ -49,18 +49,18 @@ const livenessReadTimeoutDefault = 10000;
  * scale-to-a-glance health bar) over the live activity stream in the SSOT's ~1.55fr / 1fr split,
  * with the secondary chrome panes (agent detail, perspectives) auto-hidden onto the right edge rail.
  *
- * The layout SSOT is the committed `neo.harness.dockZone.v1` document ({@link #dockModel}, seeded
+ * The layout SSOT is the committed `neo.dock.zone.v1` document ({@link #dockModel}, seeded
  * from {@link module:cockpitDockDocument}); the visible tree is
- * {@link Neo.dashboard.DockLayoutAdapter}'s projection of it. The commit loop follows the proven
+ * {@link Neo.dashboard.dock.projection.LayoutAdapter}'s projection of it. The commit loop follows the proven
  * dashboard-dock pattern — a clean reducer / view-sync split:
- * - {@link #applyDockZoneOperation} is the **reducer**: a pure `DockZoneModel.applyOperation` over
+ * - {@link #applyDockZoneOperation} is the **reducer**: a pure `Neo.dashboard.dock.model.Operations.applyOperation` over
  *   the current document — splitter drags, cross-zone tab drops and NL-driven operations all
  *   funnel through it;
  * - {@link #onDockZoneDocumentChange} is the **view-sync**: it stores the committed document and
  *   reconciles one tick deferred (the committing splitter must finish its own `onDragEnd` before
  *   its retired shell destroys it — use-after-destroy otherwise; `isDestroyed` guards teardown).
  *
- * {@link Neo.dashboard.DockWorkspace} also owns Fleet's gesture tear-out admission, exact token
+ * {@link Neo.dashboard.dock.Workspace} also owns Fleet's gesture tear-out admission, exact token
  * routing, pre-terminal/committed window state, placement capture and semantic return. Fleet keeps
  * only product policy: platform window open/close, live-pane resolution, click-detail continuation,
  * control-bar observers and the click-Memories verb that enters the same engine admission path.
@@ -286,11 +286,11 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
-     * The named preset library — a {@link Neo.dashboard.DockPerspectiveStore} over the seeded
-     * workspace-scope collection ({@link module:cockpitPresets}). The store is the preset SSOT;
+     * The named preset library — a {@link Neo.dashboard.dock.persistence.PerspectiveLibrary} over the seeded
+     * workspace-scope collection ({@link module:cockpitPresets}). The library is the preset SSOT;
      * {@link #dockModel} stays the LIVE layout SSOT — presets are snapshots the switch restores
      * from, never live-bound mirrors.
-     * @member {Neo.dashboard.DockPerspectiveStore|null} perspectiveStore=null
+     * @member {Neo.dashboard.dock.persistence.PerspectiveLibrary|null} perspectiveStore=null
      * @protected
      */
     perspectiveStore = null
@@ -358,7 +358,7 @@ class FleetCockpit extends VesselContainer {
         let me = this;
 
         me.dockService         = Neo.create(DockService, {});
-        me.perspectiveStore    = Neo.create(DockPerspectiveStore, {collection: CockpitPresets.create()});
+        me.perspectiveStore    = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.create()});
         me.dockModel           = me.dockModel || CockpitDockDocument.create();
 
         me.add(Object.assign(me.projectDockModel(), {flex: 1}));
@@ -484,11 +484,11 @@ class FleetCockpit extends VesselContainer {
      * revealed), is not auto-hidden to the rail, and is its node's active tab or the node's only
      * member. `!items.detail?.autoHidden` alone is TRUE for an absent item, so an unrelated valid
      * perspective would mutate the owner-held selection — the round-1 falsifier.
-     * @param {Object} document A committed `dockZone.v1` document.
+     * @param {Object} document A committed `neo.dock.zone.v1` document.
      * @returns {Boolean}
      */
     isInspectorRevealed(document) {
-        const tabsId = DockZoneModel.findContainingTabsId(document, 'detail'),
+        const tabsId = Document.findContainingTabsId(document, 'detail'),
               node   = tabsId ? document.nodes[tabsId] : null;
 
         return !!node && !document.items.detail?.autoHidden

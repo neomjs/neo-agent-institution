@@ -9,8 +9,8 @@ setup({
 import {test, expect}       from '@playwright/test';
 import Neo                  from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core            from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import DockPerspectiveStore from '../../../../../../../../node_modules/neo.mjs/src/dashboard/DockPerspectiveStore.mjs';
-import DockZoneModel        from '../../../../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs';
+import Persistence          from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs';
+import PerspectiveLibrary   from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import CockpitDockDocument  from '../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs';
 
@@ -25,8 +25,8 @@ test.describe('Fleet cockpit — perspective share round-trip', () => {
     const proto = FleetCockpit.prototype;
 
     test('the share round-trip on the REAL store: export serializes the stored layout, import re-admits it through validation, fingerprint-stable', () => {
-        const store    = Neo.create(DockPerspectiveStore, {}),
-              captured = DockZoneModel.capturePerspective(CockpitDockDocument.create(), {layoutId: 'tour-shared-session', perspectiveName: 'Shared Session', title: 'Shared Session'});
+        const store    = Neo.create(PerspectiveLibrary, {}),
+              captured = Persistence.capturePerspective(CockpitDockDocument.create(), {layoutId: 'tour-shared-session', perspectiveName: 'Shared Session', title: 'Shared Session'});
 
         expect(captured.errors).toEqual([]);
         expect(store.savePerspective(captured.layout).saved).toBe(true);
@@ -39,7 +39,7 @@ test.describe('Fleet cockpit — perspective share round-trip', () => {
         expect(typeof exporter.sharedPerspectiveArtifact).toBe('string');
 
         // import half into a SECOND, empty store — the teammate's cockpit
-        const targetStore = Neo.create(DockPerspectiveStore, {}),
+        const targetStore = Neo.create(PerspectiveLibrary, {}),
               importer    = {
                   perspectiveStore         : targetStore,
                   sharedPerspectiveArtifact: exporter.sharedPerspectiveArtifact,
@@ -59,7 +59,7 @@ test.describe('Fleet cockpit — perspective share round-trip', () => {
     });
 
     test('import fails closed: no held artifact and malformed JSON both refuse without touching the store', () => {
-        const store = Neo.create(DockPerspectiveStore, {});
+        const store = Neo.create(PerspectiveLibrary, {});
 
         expect(proto.importPerspectiveArtifact.call({perspectiveStore: store, sharedPerspectiveArtifact: null}).imported).toBe(false);
 
