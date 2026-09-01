@@ -184,6 +184,9 @@ class FleetCockpit extends VesselContainer {
                 // SCSS, never measured here.
                 ntype: 'container',
                 cls  : ['fm-bar-state'],
+                // Both pills size to their words: the block's flexbox layout would otherwise
+                // write `flex: 1 1 0%` onto each child, which splits the row form's width equally
+                // and clipped the longer pill mid-word while the shorter one held slack.
                 items: [{
                     // the per-SPINE honesty pill — the derived spineBanner leaves bind here at
                     // the consumption site; status word visible, full sentence on title/aria
@@ -195,6 +198,7 @@ class FleetCockpit extends VesselContainer {
                         hidden         : data => data.spineBanner.hidden,
                         text           : data => data.spineBanner.text
                     },
+                    flex     : '0 1 auto',
                     reference: 'fleet-spine-banner'
                 }, {
                     // the per-viewer wake-push telltale — every channel of the derived chip binds
@@ -207,6 +211,7 @@ class FleetCockpit extends VesselContainer {
                         cls          : data => data.viewerWakeTelltale.cls.slice(1),
                         text         : data => data.viewerWakeTelltale.text
                     },
+                    flex     : '0 1 auto',
                     reference: 'viewer-wake-telltale'
                 }]
             }, {

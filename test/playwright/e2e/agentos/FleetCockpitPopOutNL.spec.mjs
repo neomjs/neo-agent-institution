@@ -67,8 +67,10 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         // exception-only recall twin while the pane is away
         const toggle = page.locator('.fm-detail-window-toggle');
 
+        // the verb is an icon action on the detail strip's tab seam; its name lives in the
+        // accessible label, not in visible text
         await expect(toggle).toBeVisible();
-        await expect(toggle).toContainText('Pop out detail');
+        await expect(toggle).toHaveAttribute('aria-label', 'Pop out detail');
 
         const cockpits = await app.findInstances({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
               holderId = (Array.isArray(cockpits) ? cockpits[0] : cockpits)?.id,

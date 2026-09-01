@@ -100,10 +100,12 @@ test.describe('AgentOS fleet cockpit — the drill round-trip journey (card → 
         await expect(detail.locator('.fm-detail-name')).not.toBeEmpty();
         await expect(detail.locator('.fm-detail-pane')).toHaveCount(4);
 
-        // the RENDERED freshness vocabulary (the ledger's DOM seam): every pane carries its
-        // labeled chip — the labels, not their substrates, are what the user reads
-        await expect(detail.locator('.fm-freshness')).toHaveCount(4);
-        for (const chip of await detail.locator('.fm-freshness').all()) {
+        // the RENDERED freshness vocabulary: every pane carries its labeled chip — the labels, not
+        // their substrates, are what the user reads. Scoped to the panes: the state ledger above
+        // them speaks the same `.fm-freshness` vocabulary for its own axes (status · wake · the
+        // three sources) and is witnessed by the drill spec.
+        await expect(detail.locator('.fm-detail-pane .fm-freshness')).toHaveCount(4);
+        for (const chip of await detail.locator('.fm-detail-pane .fm-freshness').all()) {
             await expect(chip).not.toBeEmpty()
         }
 
@@ -134,8 +136,8 @@ test.describe('AgentOS fleet cockpit — the drill round-trip journey (card → 
         // freshness after the hop: every pane carries its RENDERED labeled chip in the VESSEL
         // window — the freshness surfaces survive the transition as pixels, not just as state
         await expect(popup.locator('.fm-detail-pane')).toHaveCount(4);
-        await expect(popup.locator('.fm-freshness')).toHaveCount(4);
-        for (const chip of await popup.locator('.fm-freshness').all()) {
+        await expect(popup.locator('.fm-detail-pane .fm-freshness')).toHaveCount(4);
+        for (const chip of await popup.locator('.fm-detail-pane .fm-freshness').all()) {
             await expect(chip).not.toBeEmpty()
         }
 
@@ -224,7 +226,9 @@ test.describe('AgentOS fleet cockpit — the drill round-trip journey (card → 
                 await expect(narrowDetail.locator('.fm-detail-avatar'), `[${tag}] narrow receipt carries the avatar`).toBeVisible();
                 await expect(narrowDetail.locator('.fm-detail-tabs .neo-tab-header-button').first(), `[${tag}] narrow receipt carries the tab strip`).toBeVisible();
 
-                await expect(narrowDetail).toHaveScreenshot(`agent-detail-${tag}-narrow-271.png`)
+                // headless goldens, headed receipt: antialiasing drift only (0.01 measured); the
+                // overlap/clip regressions this pin exists for move 0.06 and more
+                await expect(narrowDetail).toHaveScreenshot(`agent-detail-${tag}-narrow-271.png`, {maxDiffPixelRatio: 0.02})
             }
         } finally {
             await app.setProperties(detailId, {width: null});
@@ -285,10 +289,13 @@ test.describe('AgentOS fleet cockpit — the drill round-trip journey (card → 
         expect(await readStreamTicks(), 'the tick count never reset across the hops — 45 held through reattach').toBe(45);
 
         // ── join 4: adapter loss — stale, never frozen ───────────────────────────────────────
-        const streams  = await app.findInstances({className: 'AgentOS.view.fleet.activity.Container'}, ['id']),
-              streamId = (Array.isArray(streams) ? streams[0] : streams)?.id;
+        // The stream's `adapterState` binds from the cockpit provider's `streamAdapterState` (the
+        // liveness owner's leaf), so the loss is written where the owner writes it — whichever
+        // stream instance the dock projection currently mounts renders it.
+        const provider = await app.callMethod(holderId, 'getStateProvider');
 
-        await app.setProperties(streamId, {adapterState: 'stale'});
+        expect(provider?.id, 'the cockpit provider must be addressable').toBeTruthy();
+        await app.modifyStateProvider(provider.id, {streamAdapterState: 'stale'});
 
         // the RENDERED stale vocabulary (the burst sibling's exact seam) — the user-visible
         // truth, not the worker substrate alone

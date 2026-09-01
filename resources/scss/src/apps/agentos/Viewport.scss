@@ -298,17 +298,22 @@
 
     /* Horizontal strips (south content tabs, the detail's inner strip — .neo-dock-top): the
        chrome tier's designed density, down from the stock xlarge. The vertical keeper bar
-       deliberately keeps its intrinsic sizing — a rotated label owns its main axis. */
+       deliberately keeps its intrinsic sizing — a rotated label owns its main axis.
+
+       The Engine projects its dock tab containers with `ui: 'inline'`, and the theme lights that
+       family with a top-lit gradient on the strip. The cockpit's strips are flat panel surfaces
+       (the design gate's goldens): opt out at the token, keep the family's geometry. */
     .neo-tab-header-toolbar.neo-dock-top {
-        --tab-button-height                : 30px;
-        --tab-button-height-pressed        : 30px;
-        --tab-button-padding               : 0 var(--fm-space-3);
-        --tab-button-gap                   : var(--fm-space-2);
-        --tab-button-text-color            : var(--fm-ink-dim);
-        --tab-button-glyph-color           : var(--fm-ink-dim);
-        --tab-button-glyph-color-pressed   : var(--fm-ink);
-        --tab-button-background-color      : transparent;
-        --tab-button-background-color-hover: var(--fm-panel);
+        --tab-button-height                  : 30px;
+        --tab-button-height-pressed          : 30px;
+        --tab-button-padding                 : 0 var(--fm-space-3);
+        --tab-button-gap                     : var(--fm-space-2);
+        --tab-button-text-color              : var(--fm-ink-dim);
+        --tab-button-glyph-color             : var(--fm-ink-dim);
+        --tab-button-glyph-color-pressed     : var(--fm-ink);
+        --tab-button-background-color        : transparent;
+        --tab-button-background-color-hover  : var(--fm-panel);
+        --tab-header-inline-background-image : none;
     }
 
     /* The active place is structural: signal indicator, full ink, weight — never hue-alone

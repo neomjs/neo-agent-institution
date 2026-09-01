@@ -202,9 +202,11 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
 
             const cockpitId = cockpit.id;
 
-            await app.callMethod(cockpitId, 'loadRoster');
-            await app.callMethod(cockpitId, 'loadActivity');
-            await app.callMethod(cockpitId, 'loadOperatorIdentity');
+            // the load verbs live on the cockpit's controller layer; the Neural Link resolves the
+            // dotted path against the component instance
+            await app.callMethod(cockpitId, 'controller.loadRoster');
+            await app.callMethod(cockpitId, 'controller.loadActivity');
+            await app.callMethod(cockpitId, 'controller.loadOperatorIdentity');
 
             // The operator pane is a resident south tab (the navigation model): activating its tab
             // mounts the body through the production tab machinery. The pane stays ordinary dock
@@ -220,7 +222,7 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
                 intervals: [100, 250]
             }).toBe(true);
 
-            await app.callMethod(cockpitId, 'loadOperatorInbox', [{offset: 0}]);
+            await app.callMethod(cockpitId, 'controller.loadOperatorInbox', [{offset: 0}]);
 
             const mailboxBefore = first(await app.queryComponent(
                 {className: 'AgentOS.view.fleet.mailbox.OperatorContainer'},
@@ -461,9 +463,9 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
             expect(streamStoreId, 'the activity pane must expose its provider-owned Store').toBeTruthy();
 
             fleet.advance();
-            await app.callMethod(cockpitId, 'loadRoster');
-            await app.callMethod(cockpitId, 'loadActivity');
-            await app.callMethod(cockpitId, 'loadOperatorInbox', [{offset: 0}]);
+            await app.callMethod(cockpitId, 'controller.loadRoster');
+            await app.callMethod(cockpitId, 'controller.loadActivity');
+            await app.callMethod(cockpitId, 'controller.loadOperatorInbox', [{offset: 0}]);
 
             await expect.poll(async () => {
                 const

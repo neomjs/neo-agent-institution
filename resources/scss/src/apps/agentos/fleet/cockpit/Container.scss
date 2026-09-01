@@ -259,7 +259,15 @@
        (1) wide (default rules above): the two state pills stack vertically, right-aligned;
        (2) mid: the same pills, one row;
        (3) narrow: state text drops to marks-with-titles, action labels drop to icons.
-       Every step is a designed form and the T5 titles carry the full truth at every width. */
+       Every step is a designed form and the T5 titles carry the full truth at every width.
+
+       The mid→narrow step sits at 760px, not the first-cut 730px: measured on the live bar, the
+       two pills need 179px at their content widths ("fleet offline" 102 + "wake off" 69 + gap)
+       and the state block yields to the buttons first (`min-width: 0`), so at a 749px container
+       (an 800px viewport) it holds 170px — no honest row form fits there, and a pill cut short
+       is the exact form this order forbids. 760 gives the row form its floor; below it the marks
+       form carries the words in the T5 titles. (The content widths are the cockpit's doing: the
+       state block's items opt out of the layout's equal `flex: 1 1 0%` split.) */
     @container fm-cockpit (max-width: 1180px) {
         .fm-cockpit-bar .fm-bar-state {
             flex-direction: row;
@@ -268,7 +276,7 @@
         }
     }
 
-    @container fm-cockpit (max-width: 730px) {
+    @container fm-cockpit (max-width: 760px) {
         .fm-cockpit-bar {
             /* state drops its words, keeps its marks: the chip's left-mark geometry IS the dot
                form of the family — the word retracts, the mark and the T5 title stay. */

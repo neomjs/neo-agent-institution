@@ -133,6 +133,18 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-unit
 NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e -- --list
 ```
 
+The cockpit's Neural Link dock witnesses (`test/playwright/e2e/agentos/FleetCockpit*NL.spec.mjs`
+— drill, pop-out, tear-out, rail reveal, perspective presets, liveness, N-window, viewer wake) run
+in no CI job. They are the product's proof surface for docking, so run them locally before and
+after any dock, cockpit-chrome, or Engine-pin change:
+
+```bash
+NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e:nl
+```
+
+Add `-- --headed` for the honest receipt while the Engine's headless motion-settle hold stands
+(the Review-preset journey in `FleetCockpitDockNL` documents it inline).
+
 Live maintainer seats also require their own local GitHub token, remote MCP bearer, and agent
 identity configuration. For Neo's team these include `GH_TOKEN`, `NEO_MCP_REMOTE_TOKEN`, and
 `NEO_AGENT_IDENTITY`; other institutions supply their own values and identities. **Never commit

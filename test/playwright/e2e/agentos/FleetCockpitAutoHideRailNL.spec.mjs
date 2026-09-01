@@ -62,8 +62,12 @@ test.describe('AgentOS Fleet cockpit — auto-hide rail product cycle', () => {
         }, {timeout: 15000}).toEqual({autoHidden: false, pinned: true});
 
         await expect(railTab, 'the pinned detail must retire from the edge rail').toHaveCount(0);
+        // the survivors are whatever the authored document rails beside the detail — derived from the
+        // committed document read before the gesture, never a literal that goes stale when an item
+        // moves between the rail and the south strip
         await expect(page.locator('.neo-dashboard-dock-rail-tab'),
-            'the other four authored Fleet rail items must survive the detail pin').toHaveCount(4);
+            'the other authored Fleet rail items must survive the detail pin')
+            .toHaveCount(before.nodes['secondary-rail'].items.length - 1);
         await expect(page.locator('.neo-tab-header-button', {hasText: 'Agent detail'}).first(),
             'the pinned detail must re-enter the normal rendered tab flow').toBeVisible({timeout: 15000});
         await expect(page.locator('.neo-dashboard-dock-reveal-overlay'),

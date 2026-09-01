@@ -121,14 +121,9 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
         await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken});
         await reloadRoster(app);
 
-        const readLiveness = async () => {
-            const [c] = await app.queryComponent(
-                {className: 'AgentOS.view.fleet.cockpit.Container'},
-                ['gridAdapterState', 'streamAdapterState', 'gridDegradedReason', 'streamDegradedReason', 'id']
-            );
-
-            return c?.properties ?? {}
-        };
+        // the adapter states are provider data (the cockpit's StateProvider owns the liveness
+        // leaves, the chrome binds them) — read the SAME instance the banner renders from
+        const readLiveness = async () => (await app.callMethod(cockpitId, 'getStateProvider'))?.data ?? {};
 
         // both surfaces reach live through the REAL producer (roster registry + composed activitySource);
         // a fully-live spine renders NOTHING
@@ -144,8 +139,10 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
 
         // ── pin a fast, deterministic cadence and RE-ARM the owner so the timer drives the edges ─
         await app.setProperties(cockpitId, {livenessPollInterval: 300, livenessReadTimeout: 2500});
-        await app.callMethod(cockpitId, 'stopLiveness');
-        await app.callMethod(cockpitId, 'startLiveness');
+        // the liveness verbs live on the cockpit's controller (the wire-liveness layer); the
+        // Neural Link resolves the dotted path against the component instance
+        await app.callMethod(cockpitId, 'controller.stopLiveness');
+        await app.callMethod(cockpitId, 'controller.startLiveness');
 
         // ── transport KILLED: close the socket; the next TIMER tick reads connection-refused ────
         await fleet.close();
@@ -163,15 +160,20 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
 
         expect(degraded.gridDegradedReason,   'the roster surface retains a safe degrade reason').toBeTruthy();
         expect(degraded.streamDegradedReason, 'the activity surface retains a safe degrade reason').toBeTruthy();
-        expect(degraded.id, 'the SAME cockpit instance advanced the state — no reload').toBe(cockpitId);
+        const [sameCockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
+
+        expect(sameCockpit?.properties?.id, 'the SAME cockpit instance advanced the state — no reload').toBe(cockpitId);
 
         // the spine banner NAMES the loss in the DOM — and carries the RETAINED REASON, not just the
         // generic prefix (proving the safe reason reaches rendered copy, RA-3)
         const banner = page.locator('.fm-spine-banner-degraded');
 
         await expect(banner, 'the spine banner renders the degraded state').toBeVisible({timeout: 15000});
+        // the pill wears the status word pair; the sentence WITH the retained reason rides the
+        // title (the #23 chrome grammar — labels are never sentences)
+        await expect(banner).toHaveText('fleet degraded');
         await expect(banner, 'the banner names the loss AND carries the retained reason (not only the prefix)')
-            .toHaveText(/Fleet feed degraded — showing last-known data · .+/);
+            .toHaveAttribute('title', /Fleet feed degraded — showing last-known data · .+/);
 
         // ── transport RESTARTED at the SAME endpoint, SAME bearer — the bridge is NOT re-wired ──
         fleet = await startLivenessFleetServer({port: fleetPort, bearerToken});
