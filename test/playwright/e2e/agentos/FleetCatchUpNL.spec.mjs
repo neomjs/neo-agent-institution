@@ -173,7 +173,15 @@ test.describe('AgentOS Fleet catch-up — authenticated resident-tab journey (#1
             await expect(pane.locator('.fm-catch-up-source').nth(0)).toContainText('Memory history for @neo-opus-ada');
 
             await pane.getByRole('button', {name: 'Mark caught up'}).click();
-            await expect(pane).toContainText(`Caught up through ${ViewerTime.formatViewerTime(WINDOW.windowEnd).text}`);
+
+            // The rendered stamp is the VIEWER's locale and zone (ViewerTime's ladder), and the
+            // fixture's browser context does not receive this process's locale — an exact string
+            // here encodes the author's machine clock (the retired form). The words are asserted as
+            // a shape; the wire instant stays exact on the line's title (the T5 receipt).
+            const markOutcome = pane.locator('[data-ref="catch-up-mark-outcome"]');
+
+            await expect(markOutcome).toContainText(/^Caught up through .+/);
+            await expect(markOutcome).toHaveAttribute('title', ViewerTime.viewerTimeTitle(WINDOW.windowEnd));
 
             await pane.getByRole('button', {name: 'Live activity'}).click();
             await expect.poll(() => page.locator('.fm-activity-stream').evaluate(element => document.activeElement === element))

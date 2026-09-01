@@ -133,17 +133,25 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-unit
 NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e -- --list
 ```
 
-The cockpit's Neural Link dock witnesses (`test/playwright/e2e/agentos/FleetCockpit*NL.spec.mjs`
-— drill, pop-out, tear-out, rail reveal, perspective presets, liveness, N-window, viewer wake) run
-in no CI job. They are the product's proof surface for docking, so run them locally before and
-after any dock, cockpit-chrome, or Engine-pin change:
+The cockpit's Neural Link witnesses (`test/playwright/e2e/agentos/*NL.spec.mjs` plus
+`FleetGridKeyboardA11y` — docking, drill, pop-out, tear-out, rail reveal, perspective presets,
+liveness, N-window, viewer wake, the activity pool, the empty fleet, catch-up, memories, the
+operator mailbox, the card at vessel widths, keyboard selection) run in no CI job. They are the
+product's proof surface, so run them locally before and after any dock, cockpit-chrome, or
+Engine-pin change:
 
 ```bash
 NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e:nl
 ```
 
-Add `-- --headed` for the honest receipt while the Engine's headless motion-settle hold stands
-(the Review-preset journey in `FleetCockpitDockNL` documents it inline).
+The script reaches every Neural Link witness under `test/playwright/e2e/agentos/` — a suffix
+match, not a prefix, so a new witness joins the battery by its name, and a red one announces
+itself instead of falling outside the glob. Add `-- --headed` for the honest receipt while the
+Engine's motion-settle hold stands: the Review-preset journey in `FleetCockpitDockNL` holds on the
+Engine's FLIP settle (deterministic headless, occasional headed) and documents it inline — a red
+there is the Engine race, not the battery. Two more reds are stated, not masked (#73):
+`AddAgentJourneyNL` waits on #74 (the define-agent zone reveals empty), and `FleetGridScaleNL`
+reads back an empty store after possessing it over the wire — cause open.
 
 Live maintainer seats also require their own local GitHub token, remote MCP bearer, and agent
 identity configuration. For Neo's team these include `GH_TOKEN`, `NEO_MCP_REMOTE_TOKEN`, and

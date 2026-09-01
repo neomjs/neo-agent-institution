@@ -143,6 +143,21 @@ test.describe('AgentOS Fleet cockpit — rail measure + drawer content fit (Neur
         // marked. That is engine interaction behaviour and predates this change, so this witness
         // uses the unambiguous input rather than encoding the quirk as expected; it is written up
         // on the PR for a follow-up rather than silently absorbed here.
+        //
+        // Escape is the overlay's OWN keydown, and the reveal machine settles on the FLIP motion:
+        // right after the retarget click the overlay still wears `neo-dashboard-dock-animating`
+        // and the click's focus move can land a beat later — an Escape pressed inside that window
+        // reaches a machine that is not yet `revealed-focused` and dismisses nothing, so the mark
+        // stays (the Institution CI's isolated job tripped here 2 of 4 runs on 2026-09-01; #73
+        // item 5). Wait for the machine's own precondition, then press the key — a settle-aware
+        // wait, not a retry.
+        await expect.poll(() => page.evaluate(() => {
+            const overlayEl = document.querySelector('.neo-dashboard-dock-reveal-overlay');
+
+            return Boolean(overlayEl) &&
+                !overlayEl.classList.contains('neo-dashboard-dock-animating') &&
+                Boolean(document.activeElement?.closest('.neo-dashboard-dock-reveal-overlay'))
+        }), {message: 'the retargeted reveal has settled with real focus inside it before Escape', timeout: 10000}).toBe(true);
         await page.keyboard.press('Escape');
         await expect(perspectivesTab, 'dismissal clears the mark').not.toHaveClass(/\bpressed\b/, {timeout: 10000});
         await expect(page.locator('.neo-dashboard-dock-rail-tab.pressed'),

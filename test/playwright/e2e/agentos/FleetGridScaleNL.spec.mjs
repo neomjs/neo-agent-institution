@@ -24,13 +24,20 @@ test.describe('AgentOS fleet grid — density-evidence scale (Neural Link)', () 
         // landed, or the late seed load replaces the fixture (measured: a fixture written before
         // the fetch resolves reads back as the 7-row seed).
         await expect(page.locator('.fm-fleet-title')).not.toHaveText('Fleet · 0 agents', {timeout: 30000});
+        // …and rendered: the title flips on the load event while the seed's records are still being
+        // seated; possessing in that window reads back empty (the sibling AgentCard witness waits
+        // for the first card for the same reason)
+        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
+        // The provider-hosted FleetRoster instance, addressed by class — the store registry lists
+        // more than one store of the FleetAgent model since the August rebuilds, and the first
+        // registry hit is not the one the grid renders from (the sibling AgentCard witness's shape).
         const
-            app    = await neuralLink.connectToApp('AgentOS'),
-            stores = await app.listStores(),
-            roster = stores.stores.find(candidate => candidate.model === 'AgentOS.model.FleetAgent');
+            app       = await neuralLink.connectToApp('AgentOS'),
+            instances = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
+            roster    = Array.isArray(instances) ? instances[0] : instances;
 
-        expect(roster, 'the provider-hosted FleetRoster store should be registered in the App Worker').toBeTruthy();
+        expect(roster?.id, 'the provider-hosted FleetRoster store should be registered in the App Worker').toBeTruthy();
 
         // The 20-agent fixture at the evidence's ceiling band: 4 online (2 ok + 1 limited +
         // 1 wedged) · 14 idle · 2 benched — over the density-derived fold threshold (12).
@@ -41,11 +48,21 @@ test.describe('AgentOS fleet grid — density-evidence scale (Neural Link)', () 
             ...Array.from({length: 14}, (item, index) => ({agentId: `scale-idle-${String(index).padStart(2, '0')}`, state: 'idle'})),
             ...['scale-off-a', 'scale-off-b'].map(agentId => ({agentId, state: 'off'}))
         ].map(entry => ({
-            avatarUrl  : '',
-            displayName: entry.agentId,
-            engineTag  : 'fixture',
-            family     : 'claude',
-            laneLine   : 'density-scale fixture row',
+            // production-shaped rows: the model admits a resident with its identity handle and
+            // its per-source provenance (the keyboard witness's row shape) — a bare id row is
+            // refused at the record boundary since the August rebuilds
+            avatarUrl     : '',
+            displayName   : entry.agentId,
+            engineTag     : 'fixture',
+            family        : 'claude',
+            githubUsername: entry.agentId,
+            laneLine      : 'density-scale fixture row',
+            lifecycle     : {source: 'fleet:runtimeStatus', state: entry.state === 'off' ? 'stopped' : 'running', confidence: 'observed'},
+            sources       : {
+                roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
+                repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
+                runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
+            },
             ...entry
         }));
 
