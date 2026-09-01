@@ -163,19 +163,30 @@ class FleetGrid extends Container {
                 {cls: ['fm-roster-fold'],   handler: 'onIdleFoldClick',     hidden: true, reference: 'fold-chip', text: ''}
             ]
         }, {
-            module   : RosterList,
+            // THE CARD REGION: the list is the scroll owner, and the bootstrap CTA renders inside
+            // the same box as the cards it stands in for — centered over it (the design ruling's
+            // "real button in the card region", #69) instead of trailing the empty list at the
+            // pane bottom. The wrapper keeps the flex chain: only the cards scroll.
+            ntype    : 'container',
+            cls      : ['fm-fleet-card-region'],
             flex     : 1,
-            listeners: {select: 'onRosterSelect'},
-            reference: 'roster-list'
-        }, {
-            module   : Button,
-            cls      : ['fm-fleet-empty-cta'],
-            flex     : 'none',
-            handler  : 'onEmptyCtaClick',
-            hidden   : true,
-            iconCls  : 'fa fa-plus',
-            reference: 'empty-cta',
-            text     : 'Add your first agent'
+            reference: 'card-region',
+
+            items: [{
+                module   : RosterList,
+                flex     : 1,
+                listeners: {select: 'onRosterSelect'},
+                reference: 'roster-list'
+            }, {
+                module   : Button,
+                cls      : ['fm-fleet-empty-cta'],
+                flex     : 'none',
+                handler  : 'onEmptyCtaClick',
+                hidden   : true,
+                iconCls  : 'fa fa-plus',
+                reference: 'empty-cta',
+                text     : 'Add your first agent'
+            }]
         }]
     }
 
