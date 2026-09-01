@@ -60,16 +60,17 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(detail.locator('.fm-detail-name')).not.toBeEmpty();
         await expect(detail.locator('.fm-detail-pane')).toHaveCount(4);
 
-        // The three-source provenance readout renders in the MOUNTED DOM (not merely worker vdom) — the
-        // drill-in counterpart to the card's one honest word-line. All three sources state themselves
-        // unconditionally, so every label is present regardless of each source's wired/not-wired state;
-        // this is the resident-detail contract the compact card deliberately cannot carry.
-        await expect(detail.locator('.fm-detail-sources')).toBeVisible();
+        // The state ledger renders in the MOUNTED DOM (not merely worker vdom) — the drill-in
+        // counterpart to the card's one honest word-line: every liveness/wiring axis once, as an
+        // `axis · pill` row. The three source axes state themselves unconditionally, so every label
+        // is present regardless of each source's wired/not-wired state; this is the resident-detail
+        // contract the compact card deliberately cannot carry.
+        await expect(detail.locator('.fm-detail-ledger')).toBeVisible();
 
-        const sourceReadout = await detail.locator('.fm-detail-sources').innerText();
-        expect(sourceReadout, 'the inspector states the runtime source fact in the mounted DOM').toMatch(/Runtime:/);
-        expect(sourceReadout, 'the inspector states the repository source fact').toMatch(/Repository:/);
-        expect(sourceReadout, 'the inspector states the roster source fact').toMatch(/Roster:/);
+        const ledgerReadout = await detail.locator('.fm-detail-ledger').innerText();
+        expect(ledgerReadout, 'the inspector states the runtime source axis in the mounted DOM').toMatch(/runtime/i);
+        expect(ledgerReadout, 'the inspector states the repository source axis').toMatch(/repository/i);
+        expect(ledgerReadout, 'the inspector states the roster source axis').toMatch(/roster/i);
 
         const dockAfterDrill = await readDockModel();
         expect(dockAfterDrill.items.detail.autoHidden, 'nested avatar selection must commit the reveal').toBe(false);

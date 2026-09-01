@@ -136,8 +136,9 @@ export async function wireAuthenticatedFleetBridge({app, fleetUrl, bearerToken, 
  * @summary Re-reads the roster against the (now live) bridge — the observe half after injection.
  *
  * Passive boot-time loads consume the fail-closed bridge before the injection can land; keeper
- * views do not re-mount on route toggles. `FleetCockpit.loadRoster` is the ONE sanctioned re-poll
- * path (idempotent + fail-closed), so the harness calls it rather than inventing a refresh.
+ * views do not re-mount on route toggles. The cockpit controller's `loadRoster` is the ONE
+ * sanctioned re-poll path (idempotent + fail-closed), so the harness calls it through the
+ * component's `controller.` path rather than inventing a refresh.
  *
  * @param {Object} app The `neuralLink.connectToApp('AgentOS')` handle.
  * @returns {Promise<void>} Resolves once the re-read settled; a missing cockpit resolves silently
@@ -147,6 +148,6 @@ export async function reloadRoster(app) {
     const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
 
     if (cockpit?.properties?.id) {
-        await app.callMethod(cockpit.properties.id, 'loadRoster')
+        await app.callMethod(cockpit.properties.id, 'controller.loadRoster')
     }
 }

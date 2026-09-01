@@ -7,7 +7,7 @@ const {generateLocalBearerToken} = await loadAgentOsModule('ai/mcp/server/shared
  * @summary The viewer wake journey proven on the MOUNTED cockpit against the REAL
  * push-lane producer: bridge wired (two mints, two headers) → the cockpit's liveness tick rebinds
  * the wake stream to the NEW bridge (custody heal) → the fanout's `state` handshake vouches
- * `armedForViewer` + the subscription id → the telltale renders `wake: live` → a digest pushed
+ * `armedForViewer` + the subscription id → the telltale renders `wake live` → a digest pushed
  * through the production fan-out lands in the page (feed detail on the telltale title) →
  * transport killed → the telltale carries the consumer's own absence-of-signal reason → transport
  * restarted at the SAME endpoint → the consumer's OWN reconnect (no re-wire) restores `live`.
@@ -201,13 +201,13 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         // a fast deterministic cadence so the liveness tick performs the custody rebind promptly
         await app.setProperties(cockpitId, {livenessPollInterval: 300, livenessReadTimeout: 2500});
-        await app.callMethod(cockpitId, 'stopLiveness');
-        await app.callMethod(cockpitId, 'startLiveness');
+        await app.callMethod(cockpitId, 'controller.stopLiveness');
+        await app.callMethod(cockpitId, 'controller.startLiveness');
 
         const telltale = page.locator('.fm-viewer-wake');
 
         // ── the armed handshake reaches the chrome: live, quietly ───────────────────────────────
-        await expect(telltale, 'the telltale reaches wake: live through the rebound bridge').toHaveText(/^wake: live/, {timeout: 30000});
+        await expect(telltale, 'the telltale reaches wake: live through the rebound bridge').toHaveText(/^wake live/, {timeout: 30000});
         await expect(telltale).toHaveClass(/fm-viewer-wake-live/);
 
         const liveTitle = await telltale.getAttribute('title');
@@ -258,13 +258,16 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         // the wake axis is independent chrome: the spine may be degraded (every non-push surface
         // refuses here, deliberately) while MY push lane is live — different surfaces, different truths
-        await expect(telltale).toHaveText(/^wake: live/);
+        await expect(telltale).toHaveText(/^wake live/);
 
         // ── transport KILLED: the consumer's own observation reaches the chrome verbatim ────────
+        // The pill wears the status word pair only; the absence-of-signal reason rides the title's
+        // first line (the #23 chrome grammar — labels are never sentences).
         await fixture.close();
 
-        await expect(telltale, 'a dead stream renders the absence-of-signal reason, never a verdict')
-            .toHaveText(/^wake: .*poll remains the truth lane/, {timeout: 30000});
+        await expect(telltale, 'a dead stream drops the pill to its off word — the reason rides the title, never a verdict')
+            .toHaveText('wake off', {timeout: 30000});
+        await expect(telltale).toHaveAttribute('title', /poll remains the truth lane/);
         await expect(telltale).toHaveClass(/fm-viewer-wake-degraded/);
 
         // ── transport RESTARTED at the SAME endpoint: the consumer reconnects ITSELF ────────────
@@ -273,7 +276,7 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         // no re-wire, no new bridge: recovery is the consumer's own backoff loop
         await expect(telltale, 'the consumer self-reconnects and the telltale returns to live')
-            .toHaveText(/^wake: live/, {timeout: 60000});
+            .toHaveText(/^wake live/, {timeout: 60000});
 
         await fixture.close();
 

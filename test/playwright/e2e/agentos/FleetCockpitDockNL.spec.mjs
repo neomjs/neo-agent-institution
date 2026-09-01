@@ -73,7 +73,10 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
               sizes0 = doc0.nodes['primary-split'].sizes;
 
         expect(doc0.nodes['primary-split'].children).toEqual(['fleet-tabs', 'stream-tabs']);
-        expect(doc0.nodes['cockpit-root'].zones.center).toBe('primary-split');
+        // the final model reads nested zone descriptors only: the center names its node, the right
+        // edge carries the committed extent + resizable policy the splitter and the reveal both read
+        expect(doc0.nodes['cockpit-root'].zones.center).toEqual({nodeId: 'primary-split'});
+        expect(doc0.nodes['cockpit-root'].zones.right).toEqual({nodeId: 'secondary-rail', extent: 0.25, resizable: true});
 
         const fleetGrids = await app.findInstances({className: 'AgentOS.view.fleet.roster.Container'}, ['id']),
               streams    = await app.findInstances({className: 'AgentOS.view.fleet.activity.Container'}, ['id']),
@@ -256,6 +259,12 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
               docReview  = topoReview?.document ?? topoReview;
         expect(docReview.items.detail.autoHidden, 'Review must open the detail band').toBe(false);
 
+        // Known Engine hold, kept failing-honest rather than skipped: at Engine dev@0659b0e42d the
+        // projection stages tab chrome with `hideMode: 'visibility'` and un-hides it on the FLIP
+        // settle, which does not land under HEADLESS Chromium — this step then times out on a pane
+        // that is mounted but `visibility: hidden`. Headed it passes in ~2s (the operator's real
+        // surface). Ledger: neo-agent-institution#66; Engine defect-note on the A2A trail. Run
+        // `npm run test-e2e:nl -- --headed` for the honest receipt until the Engine settle lands.
         await expect(page.locator('.fm-agent-detail'), 'Review materializes the genuinely absent detail pane')
             .toBeVisible({timeout: 10000});
         const details = await app.findInstances({className: 'AgentOS.view.fleet.detail.Container'}, ['id']),

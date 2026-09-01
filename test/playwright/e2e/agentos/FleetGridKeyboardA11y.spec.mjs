@@ -351,7 +351,7 @@ test.describe('AgentOS fleet roster — semantic list selection + stable animate
         await charlieToggle.focus();
         await page.waitForTimeout(500);
         fleet.setRosterRows([...KEYBOARD_ROSTER_ROWS, alpha]);
-        await app.callMethod(cockpitId, 'loadRoster');
+        await app.callMethod(cockpitId, 'controller.loadRoster');
         await expect(cards).toHaveCount(4);
         expect(await charlieCard.getAttribute('id'), 'sort moves the same AgentCard instance').toBe(charlieCardBefore);
         expect(await charlieItem.getAttribute('id'), 'sort moves the same li node').toBe(charlieItemBefore);
