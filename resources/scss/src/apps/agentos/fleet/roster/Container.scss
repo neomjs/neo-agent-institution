@@ -158,28 +158,36 @@
 
 /* the bootstrap CTA — renders only while the roster is empty (the design ruling's required
    refinement): a real button in the card region, token-only, gone with the first agent. It is
-   centered over the region's box, both axes, and wears the family ink through the button's own
-   token channel: the Engine colours `.neo-button-text` / `.neo-button-glyph` from
-   `--button-text-color` / `--button-glyph-color`, so a `color` on the button never reaches them
-   (the theme's default is the reversed ink of a filled button — near black on this plate, #69). */
+   centered over the region's box, both axes, and wears the family plate and ink through the
+   button's own token channel in EVERY state the Engine paints: `.neo-button` reads its plate,
+   border, label and glyph from `--button-*` tokens, and `.neo-button:hover` / `:active` (0,2,0)
+   re-paint all four from the `-hover` / `-active` siblings — so an element-level `background`,
+   `border` or `color` is inert on touch (and `color` never reached the spans at all); the themes'
+   defaults are the reversed ink and the primary surface of a filled button — the #69 defect. The
+   plate deepens one step per state (12 → 16 → 20 % signal) so the press reads as a press. */
 .fm-fleet-empty-cta {
-    --button-text-color        : var(--fm-ink);
-    --button-text-color-hover  : var(--fm-ink);
-    --button-text-color-active : var(--fm-ink);
-    --button-glyph-color       : var(--fm-ink);
-    --button-glyph-color-hover : var(--fm-ink);
+    --button-background-color        : color-mix(in srgb, var(--fm-signal) 12%, transparent);
+    --button-background-color-hover  : color-mix(in srgb, var(--fm-signal) 16%, transparent);
+    --button-background-color-active : color-mix(in srgb, var(--fm-signal) 20%, transparent);
+    --button-background-image        : none;
+    --button-border                  : 1px dashed var(--fm-signal);
+    --button-border-hover            : 1px dashed var(--fm-signal);
+    --button-border-active           : 1px dashed var(--fm-signal);
+    --button-border-radius           : 8px;
+    --button-text-color              : var(--fm-ink);
+    --button-text-color-hover        : var(--fm-ink);
+    --button-text-color-active       : var(--fm-ink);
+    --button-glyph-color             : var(--fm-ink);
+    --button-glyph-color-hover       : var(--fm-ink);
+    --button-glyph-color-active      : var(--fm-ink);
 
-    background   : color-mix(in srgb, var(--fm-signal) 12%, transparent);
-    border       : 1px dashed var(--fm-signal);
-    border-radius: 8px;
-    color        : var(--fm-ink);
-    font-weight  : 600;
-    height       : fit-content;
-    inset        : 0;
-    margin       : auto;
-    padding      : 10px 18px;
-    position     : absolute;
-    width        : fit-content;
+    font-weight: 600;
+    height     : fit-content;
+    inset      : 0;
+    margin     : auto;
+    padding    : 10px 18px;
+    position   : absolute;
+    width      : fit-content;
 
     &:focus-visible {
         outline       : 2px solid var(--fm-signal);

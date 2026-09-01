@@ -138,6 +138,64 @@ test.describe('AgentOS fleet roster — the empty fleet\'s first-run CTA (#69)',
                 expect(colours.text,  `${theme}: the label wears the family ink`).toBe(colours.ink);
                 expect(colours.glyph, `${theme}: the plus glyph wears the family ink`).toBe(colours.ink);
 
+                // ── the interaction states: the Engine re-paints a button's plate, border, label and
+                // glyph from its `-hover` / `-active` tokens (`.neo-button:hover` / `:active`, 0,2,0),
+                // so a CTA that only sets the resting tokens reverts to the theme's reversed ink and
+                // primary surface the moment it is touched — the filed defect, one state deeper.
+                const readState = () => page.evaluate(() => {
+                    const
+                        grid  = document.querySelector('.fm-fleet-grid'),
+                        probe = token => {
+                            const span = document.createElement('span');
+
+                            span.style.color = `var(${token})`;
+                            grid.append(span);
+
+                            const value = getComputedStyle(span).color;
+
+                            span.remove();
+
+                            return value
+                        },
+                        cta   = document.querySelector('.fm-fleet-empty-cta'),
+                        style = getComputedStyle(cta);
+
+                    return {
+                        ink               : probe('--fm-ink'),
+                        themeHoverSurface : probe('--button-background-color-hover'),
+                        themeActiveSurface: probe('--button-background-color-active'),
+                        background        : style.backgroundColor,
+                        borderStyle       : style.borderTopStyle,
+                        text              : getComputedStyle(cta.querySelector('.neo-button-text')).color,
+                        glyph             : getComputedStyle(cta.querySelector('.neo-button-glyph')).color
+                    }
+                });
+
+                const box = await cta.boundingBox();
+
+                // hover: the pointer rests on the CTA
+                await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+                const hovered = await readState();
+
+                expect(hovered.text,        `${theme}: the label keeps the family ink under hover`).toBe(hovered.ink);
+                expect(hovered.glyph,       `${theme}: the glyph keeps the family ink under hover`).toBe(hovered.ink);
+                expect(hovered.borderStyle, `${theme}: the dashed plate survives hover`).toBe('dashed');
+                expect(hovered.background,  `${theme}: hover does not swap the plate for the theme's primary surface`).not.toBe(hovered.themeHoverSurface);
+
+                // press: the button is held down (released off the button, so no click fires)
+                await page.mouse.down();
+
+                const pressed = await readState();
+
+                await page.mouse.move(box.x + box.width + 40, box.y + box.height + 40);
+                await page.mouse.up();
+
+                expect(pressed.text,        `${theme}: the label keeps the family ink under press`).toBe(pressed.ink);
+                expect(pressed.glyph,       `${theme}: the glyph keeps the family ink under press`).toBe(pressed.ink);
+                expect(pressed.borderStyle, `${theme}: the dashed plate survives the press`).toBe('dashed');
+                expect(pressed.background,  `${theme}: the press does not swap the plate for the theme's primary surface`).not.toBe(pressed.themeActiveSurface);
+
                 // the human receipt beside the DOM receipt: the empty roster as the operator sees it
                 await page.screenshot({path: testInfo.outputPath(`empty-fleet-${theme}.png`)})
             }
