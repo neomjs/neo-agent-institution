@@ -1,17 +1,17 @@
-import Button        from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import DockWorkspace from '../../../../../node_modules/neo.mjs/src/dashboard/DockWorkspace.mjs';
-import DockZoneModel from '../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs';
+import Button    from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Document  from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs';
+import Workspace from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs';
 
 /**
  * @summary The cockpit's vessel + window-chrome layer — every pop-out / tear-out / reattach
- * behavior between the engine's {@link Neo.dashboard.DockWorkspace} tear-out substrate and the
+ * behavior between the engine's {@link Neo.dashboard.dock.Workspace} tear-out substrate and the
  * declared Fleet cockpit, factored per the #50 ruling (the container declares; the vessel
  * choreography is its own class).
  *
  * Three responsibilities live here, nothing else:
  * - **The engine template hooks** (`openTearOutVessel`, `closeTearOutVessel`,
  *   `onUnhandledWindowConnect/Disconnect`, `resolveTearOutPane`, `captureWindowConnectContext`,
- *   the `afterTearOut*` sync hooks, `getPreservedItemIds`) — DockWorkspace calls them on `this`,
+ *   the `afterTearOut*` sync hooks, `getPreservedItemIds`) — the engine Workspace calls them on `this`,
  *   so they are REAL overrides on the inheritance chain, never delegation stubs.
  * - **The vessel state machines**: the click-detail admission
  *   (`docked → opening → connected → windowed → reattaching → docked` with the `failed-blocked` /
@@ -26,9 +26,9 @@ import DockZoneModel from '../../../../../node_modules/neo.mjs/src/dashboard/Doc
  * `syncControlBar` (the full chrome pass; {@link #syncVesselChrome} is the half owned here).
  *
  * @class AgentOS.view.fleet.cockpit.VesselContainer
- * @extends Neo.dashboard.DockWorkspace
+ * @extends Neo.dashboard.dock.Workspace
  */
-class VesselContainer extends DockWorkspace {
+class VesselContainer extends Workspace {
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.cockpit.VesselContainer'
@@ -388,7 +388,7 @@ class VesselContainer extends DockWorkspace {
     async popOutAgentDetail() {
         let me   = this,
             pane = me.getReference('agent-detail'),
-            home = DockZoneModel.findContainingTabsId(me.dockModel, 'detail');
+            home = Document.findContainingTabsId(me.dockModel, 'detail');
 
         if (me.detachedDetail || !pane || !home) {
             return {detached: false, errors: ['agent-detail is not a docked, projected pane']}
@@ -673,7 +673,7 @@ class VesselContainer extends DockWorkspace {
             return {detached: false, errors: ['memories is already in a vessel']}
         }
 
-        if (!DockZoneModel.findContainingTabsId(me.dockModel, itemId)) {
+        if (!Document.findContainingTabsId(me.dockModel, itemId)) {
             return {detached: false, errors: ['memories is not a docked item']}
         }
 

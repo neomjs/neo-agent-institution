@@ -15,9 +15,45 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
 /**
+ * The engine Workspace configs its projection + view-sync paths READ (the action-rail flags and
+ * their icons, the maximize transient, the host/shell placement). A bare fake host
+ * (`Object.create(prototype)`) carries no `#configs` backing, so every such read must land on an
+ * OWN property — these are the cockpit's effective values (the engine defaults plus the
+ * cockpit's declared placement + lifecycle opt-ins), restated for the spy owners, never a
+ * second contract.
+ */
+const engineWorkspaceDefaults = {
+    // the projection stamps the workspace id as the cross-zone motion boundary; `id` is a config
+    id                        : 'fleet-cockpit-spy-host',
+    // the refresh awaits a mount only for an unmounted host; the spy owner IS its own dock host
+    mounted                   : true,
+    dockHostReference         : null,
+    dockLockIconCls           : 'fa fa-lock',
+    dockMaximizeIconCls       : 'far fa-window-maximize',
+    dockMaximizeMotion        : 'animate',
+    dockMinimizeIconCls       : 'far fa-window-minimize',
+    dockPopOutIconCls         : 'far fa-window-restore',
+    dockProjectionConfig      : {flex: 1},
+    dockShellIndex            : 1,
+    dockUnlockIconCls         : 'fa fa-lock-open',
+    enableDockCloseAction     : true,
+    enableDockLockAction      : false,
+    enableDockMaximizeAction  : true,
+    enableDockPinAction       : true,
+    enableDockPopOutAction    : true,
+    enableDockReloadAction    : true,
+    enableDockTearOutLifecycle: true,
+    flipMarkerPrefix          : 'dock-flip-item-',
+    maximizeMarkerPrefix      : 'dock-maximize-node-',
+    maximizedNodeId           : null,
+    tearOutHandlers           : null,
+    tearOutHostParam          : 'cockpitId'
+};
+
+/**
  * Covers the cockpit's dock projection wiring — the live half of the §01 layout: the
- * committed `dockZone.v1` document as the layout SSOT, projected through
- * `Neo.dashboard.DockLayoutAdapter`, with the reducer / view-sync commit loop the splitters,
+ * committed `neo.dock.zone.v1` document as the layout SSOT, projected through
+ * `Neo.dashboard.dock.projection.LayoutAdapter`, with the reducer / view-sync commit loop the splitters,
  * cross-zone drops and NL operations all funnel through.
  *
  * The units are the loop's own contracts (prototype-call granularity, spy owners — the
@@ -27,7 +63,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
  * docking design's pane contract, and owner-held pane state surviving re-projection.
  */
 test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)', () => {
-    let ActivityStream, AgentDetail, CatchUpPane, DockProjectionReconciler, DockWorkspace, DockZoneModel, FleetCockpit, FleetCockpitController, FleetGrid, MemoriesPane, OperatorMailbox, CockpitDockDocument;
+    let ActivityStream, AgentDetail, CatchUpPane, Reconciler, Workspace, Operations, FleetCockpit, FleetCockpitController, FleetGrid, MemoriesPane, OperatorMailbox, CockpitDockDocument;
 
     // a projection-capable spy owner: the REAL prototype methods over controlled state, without
     // provider/store/bridge wiring (their routing has its own suite in fleetCockpit.spec.mjs)
@@ -83,6 +119,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 tearOutPanes         : {},
                 tearOutPlacements    : {},
                 timeout              : ms => new Promise(resolve => setTimeout(resolve, ms)),
+                ...engineWorkspaceDefaults,
                 ...overrides
             };
 
@@ -108,9 +145,9 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         CatchUpPane         = (await import('../../../../../../../../apps/agentos/view/fleet/catchup/Container.mjs')).default;
         MemoriesPane        = (await import('../../../../../../../../apps/agentos/view/fleet/memories/Container.mjs')).default;
         OperatorMailbox     = (await import('../../../../../../../../apps/agentos/view/fleet/mailbox/OperatorContainer.mjs')).default;
-        DockProjectionReconciler = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockProjectionReconciler.mjs')).default;
-        DockWorkspace       = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockWorkspace.mjs')).default;
-        DockZoneModel       = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs')).default;
+        Reconciler          = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/projection/Reconciler.mjs')).default;
+        Workspace           = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs')).default;
+        Operations          = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Operations.mjs')).default;
         FleetCockpit        = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
         FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
         FleetGrid           = (await import('../../../../../../../../apps/agentos/view/fleet/roster/Container.mjs')).default;
@@ -123,7 +160,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         const vesselLayer = Object.getPrototypeOf(FleetCockpit.prototype);
 
         expect(vesselLayer.constructor.name).toBe('VesselContainer');
-        expect(Object.getPrototypeOf(vesselLayer) === DockWorkspace.prototype).toBe(true);
+        expect(Object.getPrototypeOf(vesselLayer) === Workspace.prototype).toBe(true);
 
         for (const method of [
             'adoptTearOutPane',
@@ -174,7 +211,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         let refreshed = 0;
 
         const host = makeHost({refreshDockWorkspace() { refreshed++ }}),
-              next = DockZoneModel.applyOperation(host.dockModel, {
+              next = Operations.applyOperation(host.dockModel, {
                   operation: 'resizeSplit', splitNodeId: 'primary-split', sizes: [0.3, 0.7]
               }).document;
 
@@ -203,10 +240,10 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
 
     test('two rapid commits serialize their captured document snapshots instead of overlapping shells', async () => {
         const
-            first = DockZoneModel.applyOperation(CockpitDockDocument.create(), {
+            first = Operations.applyOperation(CockpitDockDocument.create(), {
                 operation: 'resizeSplit', splitNodeId: 'primary-split', sizes: [0.3, 0.7]
             }).document,
-            second = DockZoneModel.applyOperation(first, {
+            second = Operations.applyOperation(first, {
                 operation: 'resizeSplit', splitNodeId: 'primary-split', sizes: [0.4, 0.6]
             }).document,
             starts   = [],
@@ -235,7 +272,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
     test('refresh reconciles shell index 1, preserves flex, and decorates a genuinely absent pane', async () => {
         const
             document = CockpitDockDocument.create(),
-            original = DockProjectionReconciler.reconcileProjection,
+            original = Reconciler.reconcileProjection,
             preset   = {reference: 'fleet-preset-overview', set(values) { Object.assign(this, values) }},
             error    = {set(values) { Object.assign(this, values) }},
             host     = makeHost({
@@ -250,7 +287,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
 
         let options;
 
-        DockProjectionReconciler.reconcileProjection = async value => {
+        Reconciler.reconcileProjection = async value => {
             options = value
         };
 
@@ -269,7 +306,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             expect(absent.data).toMatchObject({componentRef: 'fleet-grid', dockItemId: 'fleet'})
         } finally {
             options?.placeholders?.forEach(placeholder => !placeholder.isDestroyed && placeholder.destroy());
-            DockProjectionReconciler.reconcileProjection = original
+            Reconciler.reconcileProjection = original
         }
     });
 
@@ -389,11 +426,11 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
  * control bar derives from store state.
  */
 test.describe('Fleet cockpit — perspective presets (the switch through the commit loop)', () => {
-    let DockPerspectiveStore, DockZoneModel, FleetCockpit, FleetCockpitController, CockpitPresets, Neo;
+    let PerspectiveLibrary, Document, FleetCockpit, FleetCockpitController, CockpitPresets, Neo;
 
     const makePresetHost = async (overrides = {}) => {
         const
-            store = Neo.create(DockPerspectiveStore, {collection: CockpitPresets.create()}),
+            store = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.create()}),
             host  = Object.create(FleetCockpit.prototype),
             // the cold controller surface, roster resolving through the host's provider seat as
             // the real controller does (the Review-switch default-selection path reads it)
@@ -441,6 +478,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
                 streamAdapterState: 'sample',
                 streamEvents      : [],
                 timeout           : ms => new Promise(resolve => setTimeout(resolve, ms)),
+                ...engineWorkspaceDefaults,
                 ...overrides
             };
 
@@ -455,8 +493,8 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
 
     test.beforeAll(async () => {
         Neo                     = (await import('../../../../../../../../node_modules/neo.mjs/src/Neo.mjs')).default;
-        DockPerspectiveStore    = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockPerspectiveStore.mjs')).default;
-        DockZoneModel           = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs')).default;
+        PerspectiveLibrary      = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs')).default;
+        Document                = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs')).default;
         FleetCockpit            = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
         FleetCockpitController  = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
         CockpitPresets = (await import('../../../../../../../../apps/agentos/util/CockpitPresets.mjs')).default
@@ -465,10 +503,10 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
     test('the seeded library validates whole and lists the three duty presets, Overview active', () => {
         const collection = CockpitPresets.create();
 
-        expect(DockZoneModel.validateSavedLayoutCollection(collection)).toEqual([]);
+        expect(PerspectiveLibrary.validateSavedLayoutCollection(collection)).toEqual([]);
         expect(collection.activeLayoutId).toBe('overview');
 
-        const store = Neo.create(DockPerspectiveStore, {collection});
+        const store = Neo.create(PerspectiveLibrary, {collection});
 
         expect(store.list().map(preset => preset.perspectiveName)).toEqual(['Overview', 'Focus', 'Review']);
         store.destroy()
@@ -586,7 +624,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         doc.nodes['secondary-rail'].items = doc.nodes['secondary-rail'].items.filter(id => id !== 'detail');
         doc.nodes['secondary-rail'].activeItemId = doc.nodes['secondary-rail'].items[0];
         delete doc.items.detail;
-        expect(DockZoneModel.validate(doc)).toEqual([]);
+        expect(Document.validate(doc)).toEqual([]);
         expect(FleetCockpit.prototype.isInspectorRevealed.call(host, doc)).toBe(false);
 
         host.perspectiveStore.destroy()

@@ -100,6 +100,15 @@
             color       : var(--fm-ink);
         }
 
+        /* The engine collapses a focus-gated action out of layout while its tab container holds
+           no focus (`neo-toolbar-action-context-inactive`, display:none — the zero-gap rail). This
+           contract's `display: inline-flex` outranks that engine rule by specificity, so the
+           collapse is restated here at the higher weight; without it every pane shows its pop-out
+           and maximize verbs at rest, the exact reserved-hole the engine retired. */
+        &.neo-toolbar-action-context-inactive {
+            display: none;
+        }
+
         .neo-button-glyph {
             color      : inherit;
             font-size  : 12px;

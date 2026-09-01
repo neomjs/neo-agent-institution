@@ -10,19 +10,30 @@ import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
-test.describe('AgentOS.view.fleet cockpit dock document — dockZone.v1 default layout', () => {
-    let CockpitDockDocument, DockZoneModel;
+test.describe('AgentOS.view.fleet cockpit dock document — neo.dock.zone.v1 default layout', () => {
+    let CockpitDockDocument, Document;
 
     test.beforeAll(async () => {
         CockpitDockDocument = (await import('../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default;
-        DockZoneModel       = (await import('../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs')).default
+        Document            = (await import('../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs')).default
     });
 
-    test('validates against DockZoneModel with the v1 schema (zero invariant violations)', () => {
+    test('validates against the dock Document model with the v1 schema (zero invariant violations)', () => {
         const doc = CockpitDockDocument.create();
 
-        expect(doc.schema).toBe('neo.harness.dockZone.v1');
-        expect(DockZoneModel.validate(doc)).toEqual([])
+        expect(doc.schema).toBe('neo.dock.zone.v1');
+        expect(Document.validate(doc)).toEqual([])
+    });
+
+    test('the right edge is a resizable nested descriptor with a committed extent — the one authority the splitter and the reveal both read', () => {
+        const {zones} = CockpitDockDocument.create().nodes['cockpit-root'];
+
+        expect(zones.center).toEqual({nodeId: 'primary-split'});
+        expect(zones.right).toEqual({nodeId: 'secondary-rail', extent: 0.25, resizable: true});
+
+        // a string descriptor is the retired pre-cut shape: the final model reads nested records only
+        expect(Document.getZoneNodeId(zones.right)).toBe('secondary-rail');
+        expect(Document.getZoneNodeId('secondary-rail')).toBeNull()
     });
 
     test('expresses the SSOT ~1.55fr / 1fr fleet-over-activity vertical split (activity docks to the bottom)', () => {

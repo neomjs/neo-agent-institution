@@ -11,7 +11,7 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; // defines Neo.get — the container child-add path resolves parents through it
 import Container           from '../../../../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import DockZoneModel       from '../../../../../../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs';
+import Document            from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs';
 import FleetActivityEvents from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit        from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetRoster         from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
@@ -351,7 +351,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — gesture tear-out 
         expect(mainView.items, 'the dead vessel view keeps no pane').not.toContain(fleetPane);
         expect(fleetPane.isDestroyed, 'same-instance return: the pane is never destroyed').toBeFalsy();
         expect(cockpit.getReference('fleet-grid'), 'the projection resolves the ORIGINAL instance').toBe(fleetPane);
-        expect(DockZoneModel.findContainingTabsId(cockpit.dockModel, 'fleet'), 'the item is back in the tree').toBeTruthy();
+        expect(Document.findContainingTabsId(cockpit.dockModel, 'fleet'), 'the item is back in the tree').toBeTruthy();
 
         // every record is consumed exact-once
         expect(cockpit.tearOutPanes.fleet).toBeUndefined();
@@ -391,7 +391,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — gesture tear-out 
 
         expect(detailPane.isDestroyed, 'same-instance return: the pane is never destroyed').toBeFalsy();
         expect(cockpit.getAgentDetailPane(), 'the accessor resolves the ORIGINAL instance').toBe(detailPane);
-        expect(DockZoneModel.findContainingTabsId(cockpit.dockModel, 'detail'), 'the item is back in the tree').toBeTruthy()
+        expect(Document.findContainingTabsId(cockpit.dockModel, 'detail'), 'the item is back in the tree').toBeTruthy()
     });
 
     test('a surviving home node gets the EXACT stored position back — not append order', async () => {

@@ -1,6 +1,7 @@
 import Base                from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import DockZoneModel       from '../../../node_modules/neo.mjs/src/dashboard/DockZoneModel.mjs';
 import CockpitDockDocument from './CockpitDockDocument.mjs';
+import Persistence         from '../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs';
+import PerspectiveLibrary  from '../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 
 /**
  * Static factory for the Fleet Cockpit perspective collection.
@@ -18,7 +19,7 @@ class CockpitPresets extends Base {
 
     /**
      * The Fleet Cockpit's seeded perspective presets — the §01 duty variants as pure
-     * `dockLayoutCollection.v1` data over the landed saved-layout wrappers:
+     * `neo.dock.layoutCollection.v1` data over the landed saved-layout wrappers:
      *
      * - **Overview** — the default mission-control split (the authored dock document, unchanged).
      *   Named so the preset reads as a LAYOUT control: the former "Fleet" name collided with the
@@ -36,7 +37,7 @@ class CockpitPresets extends Base {
      * thrown loudly (an authored preset that fails validation is a build-time defect, not a
      * runtime condition).
      *
-     * @returns {Object} a fresh `neo.harness.dockLayoutCollection.v1` collection, `overview` active
+     * @returns {Object} a fresh `neo.dock.layoutCollection.v1` collection, `overview` active
      */
     static create() {
         const overviewDoc = CockpitDockDocument.create();
@@ -53,7 +54,7 @@ class CockpitPresets extends Base {
             {document: focusDoc,    layoutId: 'focus',    perspectiveName: 'Focus',    title: 'Focus — roster dominant'},
             {document: reviewDoc,   layoutId: 'review',   perspectiveName: 'Review',   title: 'Review — one agent + the trail'}
         ].map(({document, layoutId, perspectiveName, title}) => {
-            const {layout, errors} = DockZoneModel.createSavedLayout(document, {
+            const {layout, errors} = Persistence.createSavedLayout(document, {
                 layoutId,
                 perspectiveName,
                 title,
@@ -67,7 +68,7 @@ class CockpitPresets extends Base {
             return layout
         });
 
-        const {collection, errors} = DockZoneModel.createSavedLayoutCollection(layouts, {
+        const {collection, errors} = PerspectiveLibrary.createSavedLayoutCollection(layouts, {
             activeLayoutId: 'overview',
             metadata      : {owner: 'fm-cockpit'}
         });
