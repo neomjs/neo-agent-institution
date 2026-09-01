@@ -1,4 +1,4 @@
-import {test, expect, loadNeuralLinkModules} from '../../fixtures.mjs';
+import {test, expect, loadAgentOsModule, loadNeuralLinkModules} from '../../fixtures.mjs';
 import {createFleetWireOffer}                from '../../../../apps/agentos/config/fleetWireMethods.mjs';
 import {
     authenticatedFleetOptions,
