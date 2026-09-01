@@ -148,17 +148,38 @@
     }
 }
 
+/* the card region — the list (the scroll owner) and the bootstrap CTA share one box, so the CTA
+   can center over the cards it stands in for. `min-height: 0` keeps the flex chain engaged: only
+   the cards scroll, the head and the controls stay pinned above (#69). */
+.fm-fleet-card-region {
+    min-height: 0;
+    position  : relative;
+}
+
 /* the bootstrap CTA — renders only while the roster is empty (the design ruling's required
-   refinement): a real button in the card region, token-only, gone with the first agent */
+   refinement): a real button in the card region, token-only, gone with the first agent. It is
+   centered over the region's box, both axes, and wears the family ink through the button's own
+   token channel: the Engine colours `.neo-button-text` / `.neo-button-glyph` from
+   `--button-text-color` / `--button-glyph-color`, so a `color` on the button never reaches them
+   (the theme's default is the reversed ink of a filled button — near black on this plate, #69). */
 .fm-fleet-empty-cta {
-    align-self   : center;
+    --button-text-color        : var(--fm-ink);
+    --button-text-color-hover  : var(--fm-ink);
+    --button-text-color-active : var(--fm-ink);
+    --button-glyph-color       : var(--fm-ink);
+    --button-glyph-color-hover : var(--fm-ink);
+
     background   : color-mix(in srgb, var(--fm-signal) 12%, transparent);
     border       : 1px dashed var(--fm-signal);
     border-radius: 8px;
     color        : var(--fm-ink);
     font-weight  : 600;
-    margin       : 24px auto;
+    height       : fit-content;
+    inset        : 0;
+    margin       : auto;
     padding      : 10px 18px;
+    position     : absolute;
+    width        : fit-content;
 
     &:focus-visible {
         outline       : 2px solid var(--fm-signal);
