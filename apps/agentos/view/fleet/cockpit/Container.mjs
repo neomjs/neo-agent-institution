@@ -753,8 +753,12 @@ class FleetCockpit extends VesselContainer {
                 // the S5 add-agent flow (rail tool, invoked-not-ambient per the design ruling).
                 // `agentDefinitionAccepted` walks up the component chain to the Viewport's roster
                 // seam — the same consumer Accounts feeds, so both entry points write one truth.
+                //
+                // LAZY, like the wake-routes sibling: the zone is an auto-hidden rail tool, so its
+                // module loads on the first reveal — the engine's rail resolves a loader function on
+                // reveal exactly as a card layout does on tab activation, and an eager import would
+                // pay the form's class load, construction and initAsync at app boot.
                 return {
-                    // LAZY: the define-agent zone opens on explicit intent only
                     module   : () => import('../instances/AddAgentForm.mjs'),
                     cls      : [marker],
                     listeners: {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'},
