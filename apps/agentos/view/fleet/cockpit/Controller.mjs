@@ -1,4 +1,5 @@
 import LivenessController          from './LivenessController.mjs';
+import CockpitPresets              from '../../../util/CockpitPresets.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
@@ -304,6 +305,74 @@ class Controller extends LivenessController {
         const {source, ...params} = data;
 
         return this.loadWakeRoutes(params)
+    }
+
+    /**
+     * @summary Relay a PerspectivesPane intent: `apply` switches the cockpit to the named
+     * perspective through the same path the preset switcher uses; `capture` wraps the live dock
+     * document under the given name. Both re-project the list the drawer binds to.
+     * @param {Object} data
+     * @param {String} data.action `apply` or `capture`
+     * @param {String} data.name The perspective's name
+     * @returns {Object} the cockpit's verdict
+     */
+    onPerspectiveRequest(data) {
+        const {action, name} = data;
+
+        return action === 'capture'
+            ? this.capturePerspective(name)
+            : this.component.activatePerspective(name)
+    }
+
+    /**
+     * @summary Capture the live dock document as a named perspective — the drawer's capture verb.
+     * The wrapped record saves WITHOUT replacing: a name a shipped preset (or an earlier capture)
+     * holds is refused with the library's collision verdict, never silently overwritten. A saved
+     * capture is FILED, not activated: it reaches the drawer through the projected list, verdict
+     * included, while the live layout stays what it is — the card's Apply is the switch. It joins
+     * the preset switcher on the NEXT dock refresh (the pre-projection chrome sync), never in the
+     * capture's own tick: an update elsewhere in the cockpit while the drawer re-renders inside
+     * its open reveal overlay drops the revealed pane (measured: the drawer left the DOM 50ms after
+     * its own verdict, with the new button sometimes never landing either — an engine seam, filed
+     * as a follow-up).
+     * @param {String} name The operator's name for the layout.
+     * @returns {{saved: Boolean, layoutId: String|null, name: String|null, errors: String[]}}
+     */
+    capturePerspective(name) {
+        let view    = this.component,
+            verdict;
+
+        // A capture that throws is still a verdict the drawer must show — a silent failure would
+        // read as "nothing happened", the one outcome a capture verb may never produce.
+        try {
+            let {layout, errors} = CockpitPresets.captureSavedLayout(view.getDockZoneDocument(), name);
+
+            verdict = {saved: false, layoutId: null, name: layout?.perspectiveName ?? null, errors};
+
+            if (!errors.length) {
+                // Never activate here: activating restores the capture as a new document, and a
+                // perspective restore releases every open reveal — the drawer the operator is
+                // looking at would close on its own verdict (measured: the pane left the DOM 50ms
+                // after the click). The live layout already IS this document; Apply switches to it.
+                const outcome = view.perspectiveStore.savePerspective(layout, {activate: false});
+
+                verdict = {
+                    saved   : outcome.saved,
+                    layoutId: outcome.layoutId,
+                    name    : layout.perspectiveName,
+                    // the library's collision verdict names the HOLDER (`holderTitle` / `holderLayoutId`)
+                    errors  : outcome.collision
+                        ? [`"${layout.perspectiveName}" is already held by ${outcome.collision.holderTitle ?? outcome.collision.holderLayoutId}`]
+                        : outcome.errors
+                }
+            }
+        } catch (error) {
+            console.error('FleetCockpit: capturing the live layout failed', error);
+            verdict = {saved: false, layoutId: null, name: (name ?? '').trim() || null, errors: [`capture failed: ${error.message}`]}
+        }
+
+        view.publishPerspectives(verdict);
+        return verdict
     }
 
     /**

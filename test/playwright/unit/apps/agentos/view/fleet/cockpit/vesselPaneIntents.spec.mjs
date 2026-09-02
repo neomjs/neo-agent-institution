@@ -65,7 +65,8 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
             'operator-mailbox': ['compose', 'inboxPageRequest'],
             'catch-up'        : ['historyRequest', 'markCaughtUpRequest', 'liveSurfaceRequest'],
             'memories'        : ['memoriesRequest', 'sessionDetailRequest', 'sessionDetailClosed'],
-            'wakeRoutes'      : ['wakeRoutesRequest']
+            'wakeRoutes'      : ['wakeRoutesRequest'],
+            'perspectives'    : ['perspectiveRequest']
         };
 
         for (const [ref, events] of Object.entries(paneIntents)) {

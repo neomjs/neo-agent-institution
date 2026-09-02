@@ -387,12 +387,22 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             }
         }
 
-        // perspectives remains a sibling-leaf placeholder — an HONEST labelled pane, never a blank one
+        // perspectives resolves to its own drawer — LAZY like the wake-routes sibling (a loader,
+        // not a class), bound to the projected list, its intent relayed to the controller; the
+        // honest placeholder now belongs only to a zone no case knows
         const perspectives = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'perspectives', {title: 'Perspectives'}, 'perspectives');
 
-        expect(perspectives.cls).toContain('fm-pane-placeholder');
-        expect(perspectives.cls).toContain('dock-flip-item-perspectives');
-        expect(perspectives.html).toContain('Perspectives')
+        expect(typeof perspectives.module, 'a loader, resolved at first reveal').toBe('function');
+        expect(perspectives.cls).toEqual(['dock-flip-item-perspectives']);
+        expect(perspectives.bind.perspectives({perspectives: 'projected'})).toBe('projected');
+        expect(perspectives.listeners.perspectiveRequest).toBe('onPerspectiveRequest');
+        expect(perspectives.html).toBeUndefined();
+
+        const unknown = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'no-such-zone', {title: 'Nowhere'}, 'no-such-zone');
+
+        expect(unknown.cls).toContain('fm-pane-placeholder');
+        expect(unknown.cls).toContain('dock-flip-item-no-such-zone');
+        expect(unknown.html).toContain('Nowhere')
     });
 
     test('the projected tree renders the document\'s zones: every live pane present, exactly once each', () => {

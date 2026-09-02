@@ -91,6 +91,15 @@ class StateProvider extends Provider {
              */
             gridDegradedReason: null,
             /**
+             * The cockpit's projected perspective list — every saved layout (the shipped presets
+             * plus captures), the active one, and the latest capture verdict — written by the
+             * cockpit's `publishPerspectives`; the perspectives drawer binds to it. Empty `items`
+             * means "not projected yet", never "no layouts"; `captureNote` is the latest capture
+             * verdict as one sentence (a string leaf — nested objects drill into leaf paths here).
+             * @member {Object} perspectives={activeLayoutId:null,captureNote:null,items:[]}
+             */
+            perspectives: {activeLayoutId: null, captureNote: null, items: []},
+            /**
              * The presence-capability envelope riding every admitted roster snapshot — the grid's
              * chip names a degraded producer and clears on recovery; `null` claims nothing.
              * @member {Object|null} presenceCapability=null
