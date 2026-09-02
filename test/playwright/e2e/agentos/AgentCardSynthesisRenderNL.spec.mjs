@@ -237,15 +237,19 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                     expect(c.actionSize, `[${scope}] card ${i}: controls ${narrow ? '44px touch target at genuine narrow' : 'compact 32px where capacity exists'}`).toBe(narrow ? 44 : 32)
                 });
 
-                // The goldens are headless captures. The battery's honest headed run drifts from
-                // them by text antialiasing only (0.02 measured at 294px, 2026-09-01), so a HEADED
-                // run gets 0.03; a headless run keeps the strict 0.01 bar under which the 2px
-                // trailing-edge change of 2026-09-01 was caught. The strict path lives here, in a
-                // local headless run — no CI job executes a Neural Link witness — and a composition
-                // change on these dense cards moves far more than either bar.
-                await expect(page.locator('.fm-fleet-cards')).toHaveScreenshot(`agentcard-synthesis-${themeTag}-${label}.png`, {
-                    maxDiffPixelRatio: test.info().project.use.headless === false ? 0.03 : 0.01
-                })
+                // The goldens are headless captures, and a headless run compares byte-exact (no ratio
+                // option — the default per-pixel threshold only): a SAME-SIZE content change on these
+                // dense cards — a chip fill, a telltale colour, a verb icon — fails there. A DIMENSION
+                // change (the 2px trailing-edge change of 2026-09-01: 314×407 → 314×405) fails on size
+                // mismatch on every path, before any ratio is computed. The battery's honest HEADED
+                // run drifts from the captures by text antialiasing only (0.02 measured at 294px,
+                // 2026-09-01), so it alone carries a 0.03 allowance — enough for antialiasing, and an
+                // admission that a same-size change below it passes headed. The strict path is the
+                // local headless run: no CI job executes a Neural Link witness.
+                await expect(page.locator('.fm-fleet-cards')).toHaveScreenshot(
+                    `agentcard-synthesis-${themeTag}-${label}.png`,
+                    test.info().project.use.headless === false ? {maxDiffPixelRatio: 0.03} : {}
+                )
             }
         };
 
