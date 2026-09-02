@@ -817,32 +817,44 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('avatar-persists (#15536): a null avatarUrl keeps the slot and its accessible name — the head row never collapses, and no lifecycle state hides the face', () => {
+    test('avatar-persists (#15536): a null avatarUrl keeps the slot and its accessible name — the monogram holds it, the head row never collapses, and no lifecycle state hides the keeper', () => {
         const
-            card   = createCard({agentId: 'vega', displayName: 'Vega', avatarUrl: 'vega.png', state: 'ok'}),
-            avatar = () => card.down({reference: 'card-avatar'});
+            card     = createCard({agentId: 'vega', displayName: 'Vega', avatarUrl: 'vega.png', family: 'claude', state: 'ok'}),
+            avatar   = () => card.down({reference: 'card-avatar'}),
+            monogram = () => card.down({reference: 'card-monogram'});
 
         expect(avatar().src).toBe('vega.png');
         expect(avatar().alt).toBe('Vega');
         expect(avatar().hidden).toBe(false);
+        expect(monogram().hidden, 'a faced record shows no monogram').toBe(true);
 
-        // avatarUrl dropped (absent or unreachable picture) → the SLOT SURVIVES: src goes null while the
-        // component stays mounted and visible, so the head row keeps its geometry instead of reflowing
-        // the identity column. `hidden: true` here would be exactly the demotion the operator invariant
-        // bans, and the alt is RETAINED so the face slot still names its resident.
+        // avatarUrl dropped (absent or unreachable picture) → the SLOT SURVIVES, as the monogram: the
+        // image withdraws from the DOM (a src-less <img> paints the browser's broken-image glyph — the
+        // demotion the operator invariant bans) while the initials take the SAME box on the family
+        // ink, so the head row keeps its geometry and the slot still names its resident.
         const avatarId = avatar().id;
 
         applySet(card, {avatarUrl: null});
         expect(avatar().id).toBe(avatarId);          // same instance — updated in place, never re-keyed
         expect(avatar().src ?? null).toBeNull();
-        expect(avatar().hidden).toBe(false);
-        expect(avatar().alt).toBe('Vega');
+        expect(avatar().hidden).toBe(true);
+        expect(monogram().hidden).toBe(false);
+        expect(monogram().vdom['data-initials']).toBe('VE');
+        expect(monogram().cls).toContain('fm-family-claude');
+        expect(monogram().vdom['aria-label']).toBe('Vega');
 
-        // ...and no lifecycle state hides it either: a benched row still shows the face, which is the
+        // ...and no lifecycle state hides the keeper either: a benched row still shows it, which is the
         // fast-recognition / fleet-individuality anchor the invariant protects
         applySet(card, {state: 'off', sources: null});
+        expect(monogram().hidden).toBe(false);
+        expect(monogram().vdom['aria-label']).toBe('Vega');
+
+        // ...and the face returns in place on the same instance
+        applySet(card, {avatarUrl: 'vega.png'});
+        expect(avatar().id).toBe(avatarId);
         expect(avatar().hidden).toBe(false);
-        expect(avatar().alt).toBe('Vega');
+        expect(avatar().src).toBe('vega.png');
+        expect(monogram().hidden).toBe(true);
 
         // NOTE: width-mode persistence (narrow 294 / regular 360 / roomy 720, both themes) is NOT a unit
         // concern — those modes are card-owned SCSS @container rules, witnessed by the goldens in
