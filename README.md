@@ -149,7 +149,9 @@ match, not a prefix, so a new witness joins the battery by its name, and a red o
 itself instead of falling outside the glob. Add `-- --headed` for the honest receipt while the
 Engine's motion-settle hold stands: the Review-preset journey in `FleetCockpitDockNL` holds on the
 Engine's FLIP settle (deterministic headless, occasional headed) and documents it inline — a red
-there is the Engine race, not the battery. Two more reds are stated, not masked (#73):
+there is the Engine race, not the battery. The rail-drawer witness's Escape dismissal rides the
+same settle, so it runs only under the Brain root (the CI's headless runner does not land the
+settle within the wait; the headed battery is its receipt). Two more reds are stated, not masked (#73):
 `AddAgentJourneyNL` waits on #74 (the define-agent zone reveals empty), and `FleetGridScaleNL`
 reads back an empty store after possessing it over the wire — cause open.
 

@@ -27,15 +27,25 @@ import {test, expect} from '../../fixtures.mjs';
  *
  * The rail half did NOT measure clean, and the rail assertions are the ones with teeth.
  *
- * Run: NEO_E2E_PORT=49221 NEO_TEST_SKIP_CI=true npx playwright test agentos/FleetCockpitRailDrawerErgonomicsNL -c test/playwright/playwright.config.e2e.mjs --workers=1
+ * Run: NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npx playwright test agentos/FleetCockpitRailDrawerErgonomicsNL -c test/playwright/playwright.config.e2e.mjs --workers=1 --headed
  */
 test.describe('AgentOS Fleet cockpit — rail measure + drawer content fit (Neural Link)', () => {
     test.setTimeout(90000);
 
-    test('the strip is consumer-sized and the drawer hands its pane the full content width', async ({page}) => {
+    test('the strip is consumer-sized and the drawer hands its pane the full content width', async ({page, neuralLink}) => {
         await page.goto('/apps/agentos/index.html');
         page.on('pageerror', err => console.error('BROWSER JS ERROR:', err));
         await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+
+        // A Brain-root battery witness like its dock siblings: the Escape dismissal below rides the
+        // reveal machine's FLIP settle, which the CI's headless runner does not land inside the
+        // wait (2 of 4 isolated runs red on 2026-09-01, then a deterministic timeout of the
+        // settle-aware wait) — the headed local battery is this witness's receipt. The App Worker
+        // read is the fixture's honest use: the cockpit whose rail is measured must exist there.
+        const app       = await neuralLink.connectToApp('AgentOS'),
+              [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
+
+        expect(cockpit?.properties?.id, 'the FleetCockpit must exist in the App Worker').toBeTruthy();
 
         const railTab = page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Agent detail'}).first();
         await expect(railTab, 'the authored detail item must start on the edge rail').toBeVisible({timeout: 30000});
