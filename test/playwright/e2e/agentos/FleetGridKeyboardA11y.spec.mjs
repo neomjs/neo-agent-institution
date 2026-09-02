@@ -272,13 +272,15 @@ test.describe('AgentOS fleet roster — semantic list selection + stable animate
         await expect.poll(async () => (await app.getComponent(viewport.properties.id, ['theme'])).theme).toBe('neo-theme-neo-dark');
 
         // KEYBOARD: Navigator moves focus without changing selection; the focus ring paints the card,
-        // never the li. Enter then selects the focused resident and re-targets both panes.
+        // never the li. Enter then selects the focused resident and re-targets both panes. The
+        // roster is a row-major card grid, so its Navigator binds ArrowLeft/ArrowRight (DOM-order
+        // ±1 IS the horizontal neighbour — `roster/List.mjs`); ArrowDown is not a navigator key.
         const charlieItem = itemFor('Charlie');
         await charlieItem.focus();
         const focusBefore = await page.evaluate(() => document.activeElement?.closest('.neo-list-item')?.id ?? null);
-        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowRight');
         await expect.poll(async () => page.evaluate(() => document.activeElement?.closest('.neo-list-item')?.id ?? null), {
-            message: 'ArrowDown moves native list-item focus'
+            message: 'ArrowRight moves native list-item focus to the next card'
         }).not.toBe(focusBefore);
 
         const
@@ -369,12 +371,12 @@ test.describe('AgentOS fleet roster — semantic list selection + stable animate
         expect(itemTransition, 'animated list items carry opacity in their transition set').toMatch(/opacity/);
         await offlineToggle.click();
         await expect(cards).toHaveCount(3, {timeout: 10000});
-        await expect(offlineToggle).toHaveClass(/neo-pressed/);
+        await expect(offlineToggle).toHaveClass(/\bpressed\b/);
         expect((await selectionState()).selectedAgentId).toBe('a11y-c');
 
         await offlineToggle.click();
         await expect(cards).toHaveCount(4, {timeout: 10000});
-        await expect(offlineToggle).not.toHaveClass(/neo-pressed/);
+        await expect(offlineToggle).not.toHaveClass(/\bpressed\b/);
 
         // Reduced motion collapses both plugin and selected-card transitions. The default path
         // above proved both are non-zero before this preference flip.

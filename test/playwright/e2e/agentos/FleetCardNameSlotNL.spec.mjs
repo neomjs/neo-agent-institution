@@ -54,8 +54,10 @@ test.describe('AgentOS Fleet card — name slot on live roster data (Neural Link
             await expect(card).toHaveCount(1, {timeout: 30000});
 
             // DOM truth: the Brain-folded name (displayName -> name -> githubUsername -> id, folded
-            // Brain-side) is the drill target; the chip states the honest provenance register
-            await expect(card.locator('.fm-card-name .neo-button-text')).toHaveText(agentId);
+            // Brain-side) renders in the card's name slot — a plain component since the list
+            // conversion, no longer a Button with a text span; the chip states the honest
+            // provenance register
+            await expect(card.locator('.fm-card-name')).toHaveText(agentId);
             await expect(card.locator('.fm-name-provenance')).toHaveText('◇');
             await expect(card.locator('.fm-name-provenance')).toHaveAttribute('title', /declared display state/);
             await expect(card.locator('.fm-name-provenance')).toHaveAttribute('aria-label', /declared display state/);

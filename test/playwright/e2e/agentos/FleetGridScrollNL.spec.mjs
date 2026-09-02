@@ -26,13 +26,17 @@ test.describe('AgentOS FleetGrid — roster scroll ownership', () => {
         const metrics = await page.evaluate(() => {
             const cards         = document.querySelector('.fm-fleet-cards'),
                   head          = document.querySelector('.fm-fleet-head'),
-                  last          = cards.querySelector('.fm-agent-card:last-child'),
                   headTopBefore = head.getBoundingClientRect().top;
 
             cards.scrollTop = cards.scrollHeight;
 
+            // The animated list positions every card by transform (list.plugin.Animate owns the
+            // geometry), so DOM order no longer says which card sits lowest: the visually LAST card
+            // is the one whose box ends furthest down, read after the scroll.
             const cardsRect = cards.getBoundingClientRect(),
-                  lastRect  = last.getBoundingClientRect();
+                  lastRect  = [...cards.querySelectorAll('.fm-agent-card')]
+                      .map(card => card.getBoundingClientRect())
+                      .reduce((lowest, rect) => rect.bottom > lowest.bottom ? rect : lowest);
 
             return {
                 clientHeight  : cards.clientHeight,
@@ -42,6 +46,7 @@ test.describe('AgentOS FleetGrid — roster scroll ownership', () => {
                 lastCardBottom: lastRect.bottom,
                 lastCardTop   : lastRect.top,
                 regionBottom  : cardsRect.bottom,
+                regionTop     : cardsRect.top,
                 scrollHeight  : cards.scrollHeight
             }
         });
@@ -58,7 +63,10 @@ test.describe('AgentOS FleetGrid — roster scroll ownership', () => {
         // the scroll — the scroll moved the roster, never the summary
         expect(metrics.headTopAfter, 'the summary header must not move with the scroll')
             .toBe(metrics.headTopBefore);
+        // "above the roster" is the cards REGION's top edge, not the lowest card's: at this stage
+        // height the region is shorter than one 126px card row, so the reachable last card is
+        // legitimately clipped at the region's top while its bottom sits on the region's bottom.
         expect(metrics.headBottom, 'the summary header must stay visible above the roster')
-            .toBeLessThan(metrics.lastCardTop)
+            .toBeLessThanOrEqual(metrics.regionTop)
     })
 });

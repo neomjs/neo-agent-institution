@@ -133,17 +133,27 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-unit
 NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e -- --list
 ```
 
-The cockpit's Neural Link dock witnesses (`test/playwright/e2e/agentos/FleetCockpit*NL.spec.mjs`
-— drill, pop-out, tear-out, rail reveal, perspective presets, liveness, N-window, viewer wake) run
-in no CI job. They are the product's proof surface for docking, so run them locally before and
-after any dock, cockpit-chrome, or Engine-pin change:
+The cockpit's Neural Link witnesses (`test/playwright/e2e/agentos/*NL.spec.mjs` plus
+`FleetGridKeyboardA11y` — docking, drill, pop-out, tear-out, rail reveal, perspective presets,
+liveness, N-window, viewer wake, the activity pool, the empty fleet, catch-up, memories, the
+operator mailbox, the card at vessel widths, keyboard selection) run in no CI job. They are the
+product's proof surface, so run them locally before and after any dock, cockpit-chrome, or
+Engine-pin change:
 
 ```bash
 NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e:nl
 ```
 
-Add `-- --headed` for the honest receipt while the Engine's headless motion-settle hold stands
-(the Review-preset journey in `FleetCockpitDockNL` documents it inline).
+The script reaches every Neural Link witness under `test/playwright/e2e/agentos/` — a suffix
+match, not a prefix, so a new witness joins the battery by its name, and a red one announces
+itself instead of falling outside the glob. Add `-- --headed` for the honest receipt. Two reds are
+stated, not masked, and each has an owner: `AddAgentJourneyNL` waits on #74 (the define-agent zone
+reveals empty until the Engine's rail loads a lazy module item on reveal), and `FleetGridScaleNL`
+reads back an empty store after possessing it over the wire (#78). Two witnesses ride the Engine's
+FLIP settle — the Review-preset journey in `FleetCockpitDockNL` and the rail-drawer witness's Escape
+dismissal — and the settle occasionally does not land within the wait (measured 2026-09-02:
+`FleetCockpitDockNL` 2/2 green headless under the Brain root; the rail-drawer witness runs only
+under the Brain root). A red on either is the settle race, not the battery: re-run before triage.
 
 Live maintainer seats also require their own local GitHub token, remote MCP bearer, and agent
 identity configuration. For Neo's team these include `GH_TOKEN`, `NEO_MCP_REMOTE_TOKEN`, and
