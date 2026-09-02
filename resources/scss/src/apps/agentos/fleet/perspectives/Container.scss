@@ -1,0 +1,68 @@
+/* AgentOS.view.fleet.perspectives.Container — the saved-layouts pane in the pinned drawer.
+   Head (title · authority) over the meta line, one card per perspective (name + title line + the
+   apply verb), and the capture rail (name field + verb). Mount-agnostic by the drawer-shell
+   contract: the HOST owns surface, padding and rhythm — this root declares no frame; every colour
+   reads from the --fm-* token layer. Mirrors the wake-routes pane's grammar so the two rail
+   drawers read as siblings. */
+.fm-perspectives-pane {
+
+    .fm-perspectives-head {
+        gap        : var(--fm-space-2);
+        align-items: baseline;
+        flex-wrap  : wrap;
+    }
+
+    .fm-perspectives-title {
+        color      : var(--fm-ink);
+        font-weight: 700;
+    }
+
+    .fm-perspectives-authority,
+    .fm-perspectives-meta {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);
+    }
+
+    /* the cards own the scroll — the chrome above and the capture rail below stay put */
+    .fm-perspectives-rows {
+        overflow  : auto;
+        min-height: 0;
+        gap       : 10px;
+    }
+
+    .fm-perspectives-card {
+        gap          : var(--fm-space-2);
+        padding      : 10px;
+        border       : 1px solid var(--fm-line-soft);
+        border-radius: 6px;
+        background   : var(--fm-panel);
+
+        /* the live layout: the signal on the leading edge, the same accent the preset switcher
+           presses — one vocabulary for "this is where you are" */
+        &.is-active {
+            border-color: color-mix(in srgb, var(--fm-signal) 45%, var(--fm-line-soft));
+            box-shadow  : inset 3px 0 0 var(--fm-signal);
+        }
+    }
+
+    .fm-perspectives-card-title {
+        color      : var(--fm-ink);
+        font       : var(--fm-text-body);
+        font-weight: 650;
+    }
+
+    .fm-perspectives-card-detail {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-detail);
+    }
+
+    .fm-perspectives-actions {
+        gap: var(--fm-space-2);
+    }
+
+    /* honest quiet state — absence is not an error (drawer-shell contract item 5) */
+    .fm-perspectives-empty {
+        padding: 14px var(--fm-space-1);
+        color  : var(--fm-ink-dim);
+    }
+}

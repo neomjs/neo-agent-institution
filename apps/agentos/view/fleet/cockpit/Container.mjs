@@ -352,6 +352,13 @@ class FleetCockpit extends VesselContainer {
     sharedPerspectiveArtifact = null
 
     /**
+     * The identity of the last perspective list written into provider data — the guard that keeps
+     * {@link #publishPerspectives} idempotent across dock refreshes.
+     * @member {String|null} publishedPerspectives=null
+     */
+    publishedPerspectives = null
+
+    /**
      * @summary Seed the layout SSOT and add the ONE instance-bound member — the dock projection
      * (its commit-loop callbacks bind this instance, so it cannot live in the static config; the
      * persistent chrome is declared there).
@@ -555,6 +562,11 @@ class FleetCockpit extends VesselContainer {
 
         let me = this;
 
+        // the boot projection of the perspective list: `construct` seats the preset buttons before
+        // the provider chain is complete, so the drawer's binding source is written here, once
+        // everything the projection reads exists
+        me.publishPerspectives();
+
         // the listener authority is the provider-owned Store, same as every roster read/write —
         // it exists (and keeps reconciling) whether or not the grid projection currently does
         const controller0 = me.getController();
@@ -579,6 +591,19 @@ class FleetCockpit extends VesselContainer {
      */
     beforeRefreshDockWorkspace(document, refreshOptions) {
         this.syncControlBar()
+    }
+
+    /**
+     * @summary Publishes the perspective list once a refresh has SETTLED — never from the
+     * pre-projection hook. The perspectives drawer is a reveal pane inside the dock host and
+     * re-renders its cards when the projected list moves; doing that while the host's own update
+     * is still in flight stalled the refresh chain (every later dock operation waits on the
+     * previous refresh), measured with the drawer open: no preset switch, no rail switch, until
+     * the publish moved here.
+     * @param {Object} data The engine's settled-refresh envelope.
+     */
+    afterRefreshDockWorkspace(data) {
+        this.publishPerspectives()
     }
 
     /**
@@ -612,6 +637,38 @@ class FleetCockpit extends VesselContainer {
         // CHANGES; a re-projection needs the standing value re-rendered)
         me.afterSetPresetError(me.presetError, null);
         me.syncVesselChrome()
+    }
+
+    /**
+     * @summary Project the perspective list into provider data (`perspectives`): the drawer and
+     * any other reader bind to it, so nothing outside this cockpit reaches into the library. Runs
+     * with every control-bar sync (a switch, a capture, an import) and once more with the capture
+     * verdict, which rides the projection rather than a side channel.
+     * @param {Object|null} [captureResult=null] The latest capture verdict, or `null`.
+     */
+    publishPerspectives(captureResult = null) {
+        let me       = this,
+            provider = me.getStateProvider(),
+            next     = {
+                activeLayoutId: me.perspectiveStore?.collection?.activeLayoutId ?? null,
+                // one string leaf, never a nested verdict object: provider data drills plain objects
+                // into leaf paths, and a verdict under a `null` leaf never reads back
+                captureNote   : !captureResult
+                    ? null
+                    : captureResult.saved
+                        ? `captured "${captureResult.name ?? captureResult.layoutId}" — apply it from its card`
+                        : `capture refused: ${captureResult.errors?.[0] ?? 'unnamed reason'}`,
+                items         : me.perspectiveStore?.list?.() || []
+            },
+            identity = JSON.stringify(next);
+
+        // Idempotent on purpose: the chrome hook republishes on EVERY dock refresh, and a fresh
+        // object per refresh would re-render the drawer (and re-enter the projection it binds
+        // into) for a list that did not move. Only a changed list, active layout or verdict writes.
+        if (provider && identity !== me.publishedPerspectives) {
+            me.publishedPerspectives = identity;
+            provider.setData({perspectives: next})
+        }
     }
 
     /**
@@ -860,9 +917,23 @@ class FleetCockpit extends VesselContainer {
                     },
                     reference: 'tasks'
                 };
+            case 'perspectives':
+                // LAZY like the wake-routes sibling: the drawer loads at first reveal. It binds
+                // the projected perspective list from the provider and fires intent; the library
+                // stays owner-held (this cockpit + the controller relay).
+                return {
+                    module   : () => import('../perspectives/Container.mjs'),
+                    cls      : [marker],
+                    bind     : {perspectives: data => data.perspectives},
+                    listeners: {
+                        perspectiveRequest: 'onPerspectiveRequest',
+                        scope             : me.getController()
+                    },
+                    reference: 'perspectives'
+                };
             default:
-                // perspectives arrives with its own leaf — an honest labelled placeholder, never a
-                // blank pane masquerading as a finished surface
+                // a zone the document names but no case resolves — an honest labelled placeholder,
+                // never a blank pane masquerading as a finished surface (no shipped zone takes it)
                 return {
                     ntype: 'component',
                     cls  : [marker, 'fm-pane-placeholder'],

@@ -4,7 +4,21 @@ import Persistence         from '../../../node_modules/neo.mjs/src/dashboard/doc
 import PerspectiveLibrary  from '../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 
 /**
- * Static factory for the Fleet Cockpit perspective collection.
+ * What a captured perspective's id folds away: everything but lowercase letters and digits
+ * collapses to one hyphen.
+ * @type {RegExp}
+ */
+const idFold = /[^a-z0-9]+/g;
+
+/**
+ * The hyphens a folded id sheds at either end.
+ * @type {RegExp}
+ */
+const edgeHyphens = /^-+|-+$/g;
+
+/**
+ * Static factory for the Fleet Cockpit perspective collection, and the capture wrapper that turns
+ * the live dock document into one more saved layout.
  * @class AgentOS.util.CockpitPresets
  * @extends Neo.core.Base
  */
@@ -78,6 +92,36 @@ class CockpitPresets extends Base {
         }
 
         return collection
+    }
+
+    /**
+     * @summary Wrap the live dock document as a saved layout under an operator-given name — the
+     * capture half of the perspectives drawer. The id is `capture-` plus the folded name (lowercase
+     * letters, digits and single hyphens; a name of nothing but punctuation folds to `layout`) —
+     * the prefix keeps a capture's id off the shipped presets' ids, so naming a capture "Overview"
+     * COLLIDES with the preset in the library instead of updating it in place under the same id.
+     * The title is the name itself, and the source stamp separates a capture from a shipped preset.
+     * Document validation is the wrapper's, and the library clones at save time; an unnamed
+     * capture is refused here because it has nothing to be filed under.
+     * @param {Object} document The committed `neo.dock.zone.v1` document.
+     * @param {String} name The operator's name for the layout.
+     * @returns {{layout: (Object|null), errors: String[]}}
+     */
+    static captureSavedLayout(document, name) {
+        const perspectiveName = (name ?? '').trim();
+
+        if (!perspectiveName) {
+            return {layout: null, errors: ['a perspective needs a name']}
+        }
+
+        const layoutId = `capture-${perspectiveName.toLowerCase().replace(idFold, '-').replace(edgeHyphens, '') || 'layout'}`;
+
+        return Persistence.createSavedLayout(document, {
+            layoutId,
+            perspectiveName,
+            title   : perspectiveName,
+            metadata: {source: 'fm-cockpit-capture'}
+        })
     }
 }
 
