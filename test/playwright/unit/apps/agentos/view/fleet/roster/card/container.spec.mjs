@@ -839,7 +839,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(avatar().src ?? null).toBeNull();
         expect(avatar().hidden).toBe(true);
         expect(monogram().hidden).toBe(false);
-        expect(monogram().text).toBe('VE');
+        expect(monogram().vdom['data-initials']).toBe('VE');
         expect(monogram().cls).toContain('fm-family-claude');
         expect(monogram().vdom['aria-label']).toBe('Vega');
 

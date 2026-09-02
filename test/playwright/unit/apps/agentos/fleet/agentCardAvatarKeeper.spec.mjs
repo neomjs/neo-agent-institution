@@ -55,7 +55,8 @@ test.describe('AgentCard avatar keeper — a faceless record shows a monogram, a
         expect(avatar.src, 'no src is written').toBeNull();
 
         expect(monogram.hidden, 'the monogram shows').toBe(false);
-        expect(monogram.text, 'two initials, upper-cased').toBe('EF');
+        expect(monogram.vdom['data-initials'], 'two initials, upper-cased — painted by the sheet, never a text node').toBe('EF');
+        expect(monogram.text ?? null, 'no text node: the card text stays the name alone').toBeNull();
         expect(monogram.cls, 'on the family ink').toContain('fm-family-kimi');
         expect(monogram.vdom['aria-label'], 'named for assistive tech').toBe('Eulalia Fontaine-Marchbanks');
         expect(monogram.vdom.role, 'as an image').toBe('img')
@@ -79,7 +80,7 @@ test.describe('AgentCard avatar keeper — a faceless record shows a monogram, a
 
         expect(avatar.hidden, 'a face that goes away withholds the image again').toBe(true);
         expect(monogram.hidden).toBe(false);
-        expect(monogram.text).toBe('EF')
+        expect(monogram.vdom['data-initials']).toBe('EF')
     });
 
     test('an unknown family renders the monogram on the neutral marker, never a guessed family', () => {

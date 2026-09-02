@@ -145,7 +145,7 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
             const imgs = [...document.querySelectorAll('img.fm-card-avatar')],
                   mono = [...document.querySelectorAll('.fm-card-monogram')];
             return imgs.length === 4 && imgs.every(el => el.complete && el.naturalWidth > 0) &&
-                mono.length === 1 && mono[0].textContent === 'AF';
+                mono.length === 1 && mono[0].dataset.initials === 'AF' && mono[0].textContent === '';
         }), {message: 'every faced card avatar image is loaded and the faceless card shows its monogram', timeout: 15000, intervals: [250]}).toBe(true);
 
         await page.evaluate(() => document.fonts.ready);
@@ -263,7 +263,8 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                         first: document.querySelector('.fm-agent-card') === card,
                         img  : !!card?.querySelector('img.fm-card-avatar'),
                         size : mono ? Math.round(mono.getBoundingClientRect().width) : null,
-                        text : mono?.textContent ?? null
+                        // the initials paint from the attribute; the card's text stays the name alone
+                        text : mono ? (mono.textContent === '' ? mono.dataset.initials : `text-node:${mono.textContent}`) : null
                     }
                 });
 

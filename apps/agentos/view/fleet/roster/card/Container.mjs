@@ -520,11 +520,14 @@ class AgentCard extends Container {
             src   : face
         });
 
+        // the initials are decoration, painted by the sheet from `data-initials` (never a text node:
+        // a text node would run into the name — "ADAda" — for every text reader, Playwright's
+        // hasText included); the resident's NAME is the monogram's accessible name
         monogram.set({
             cls   : ['fm-card-monogram', familyClass],
-            hidden: Boolean(face),
-            text  : AgentCard.monogramFor(nameSlot.text)
+            hidden: Boolean(face)
         });
+        monogram.changeVdomRootKey('data-initials', AgentCard.monogramFor(nameSlot.text));
         monogram.changeVdomRootKey('aria-label', nameSlot.text);
 
         const

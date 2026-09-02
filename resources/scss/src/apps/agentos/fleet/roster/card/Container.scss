@@ -81,6 +81,12 @@
         color          : var(--fm-rail, var(--fm-state-off));
         background     : color-mix(in srgb, var(--fm-rail, var(--fm-state-off)) 18%, transparent);
         border         : 1px solid color-mix(in srgb, var(--fm-rail, var(--fm-state-off)) 35%, transparent);
+
+        /* the initials paint from the attribute, never as a text node: a text node runs into the
+           name for every text reader ("ADAda"); the aria-label carries the resident's name */
+        &::before {
+            content: attr(data-initials);
+        }
     }
 
     .fm-card-identity {
