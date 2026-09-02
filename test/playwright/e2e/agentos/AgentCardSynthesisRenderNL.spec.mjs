@@ -237,11 +237,15 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                     expect(c.actionSize, `[${scope}] card ${i}: controls ${narrow ? '44px touch target at genuine narrow' : 'compact 32px where capacity exists'}`).toBe(narrow ? 44 : 32)
                 });
 
-                // The goldens are headless captures; the battery's honest headed run drifts from
-                // them by text antialiasing only (0.02 measured at 294px, 2026-09-01). A composition
-                // change on these dense cards moves far more; a 2px trailing-edge change (0.01) is
-                // below this bar under headed runs and is caught by the headless capture path.
-                await expect(page.locator('.fm-fleet-cards')).toHaveScreenshot(`agentcard-synthesis-${themeTag}-${label}.png`, {maxDiffPixelRatio: 0.03})
+                // The goldens are headless captures. The battery's honest headed run drifts from
+                // them by text antialiasing only (0.02 measured at 294px, 2026-09-01), so a HEADED
+                // run gets 0.03; a headless run keeps the strict 0.01 bar under which the 2px
+                // trailing-edge change of 2026-09-01 was caught. The strict path lives here, in a
+                // local headless run — no CI job executes a Neural Link witness — and a composition
+                // change on these dense cards moves far more than either bar.
+                await expect(page.locator('.fm-fleet-cards')).toHaveScreenshot(`agentcard-synthesis-${themeTag}-${label}.png`, {
+                    maxDiffPixelRatio: test.info().project.use.headless === false ? 0.03 : 0.01
+                })
             }
         };
 

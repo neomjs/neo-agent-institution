@@ -146,14 +146,14 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e:nl
 
 The script reaches every Neural Link witness under `test/playwright/e2e/agentos/` — a suffix
 match, not a prefix, so a new witness joins the battery by its name, and a red one announces
-itself instead of falling outside the glob. Add `-- --headed` for the honest receipt while the
-Engine's motion-settle hold stands: the Review-preset journey in `FleetCockpitDockNL` holds on the
-Engine's FLIP settle (deterministic headless, occasional headed) and documents it inline — a red
-there is the Engine race, not the battery. The rail-drawer witness's Escape dismissal rides the
-same settle, so it runs only under the Brain root (the CI's headless runner does not land the
-settle within the wait; the headed battery is its receipt). Two more reds are stated, not masked (#73):
-`AddAgentJourneyNL` waits on #74 (the define-agent zone reveals empty), and `FleetGridScaleNL`
-reads back an empty store after possessing it over the wire — cause open.
+itself instead of falling outside the glob. Add `-- --headed` for the honest receipt. Two reds are
+stated, not masked, and each has an owner: `AddAgentJourneyNL` waits on #74 (the define-agent zone
+reveals empty until the Engine's rail loads a lazy module item on reveal), and `FleetGridScaleNL`
+reads back an empty store after possessing it over the wire (#78). Two witnesses ride the Engine's
+FLIP settle — the Review-preset journey in `FleetCockpitDockNL` and the rail-drawer witness's Escape
+dismissal — and the settle occasionally does not land within the wait (measured 2026-09-02:
+`FleetCockpitDockNL` 2/2 green headless under the Brain root; the rail-drawer witness runs only
+under the Brain root). A red on either is the settle race, not the battery: re-run before triage.
 
 Live maintainer seats also require their own local GitHub token, remote MCP bearer, and agent
 identity configuration. For Neo's team these include `GH_TOKEN`, `NEO_MCP_REMOTE_TOKEN`, and
