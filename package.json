@@ -40,7 +40,7 @@
         "watch-themes": "node ./node_modules/neo.mjs/buildScripts/helpers/watchThemes.mjs"
     },
     "dependencies": {
-        "neo.mjs": "github:neomjs/neo#0659b0e42d65f67f0ec0cbd568ed32c5b2c1bc14"
+        "neo.mjs": "github:neomjs/neo#5ae9358063c35bb4e0c88f2dedd4f4284d8394d6"
     },
     "devDependencies": {
         "@fortawesome/fontawesome-free": "^7.3.0",
