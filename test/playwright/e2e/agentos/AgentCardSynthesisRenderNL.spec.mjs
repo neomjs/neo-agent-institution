@@ -12,7 +12,9 @@ import {test, expect} from '../../fixtures.mjs';
  * - mixed session state (wedged/limited/idle/off) and the full source-health vocabulary
  *   (wired-observed / wired-inferred / missing / not-wired) — the summary strip must NAME the
  *   abnormal source (no 9px acronym wall) and can never contradict the facts;
- * - the operator avatar-keeper invariant: a visible avatar at every card width (real image slot).
+ * - the operator avatar-keeper invariant: a visible avatar at every card width — a real image slot for
+ *   the faced rows, and for the faceless row a family-inked monogram in the same slot (no src-less
+ *   `<img>`, no browser broken-image glyph).
  *
  * Captured on the CARD's own width (294 / 319 / 320 / 328 / 360 / 720) in BOTH skins (neo-dark +
  * neo-light, driven through the real ViewportController#setTheme) — the same axis the selected
@@ -50,6 +52,16 @@ const
 
 // two lanes sharing the first seven chars ("control") + 2-digit overflow — the tail-elision falsifier
 const PATHOLOGICAL_ROSTER = [
+    {
+        // the faceless row: no avatarUrl at all — the S5 path before a GitHub face resolves. The
+        // avatar keeper must hold the slot with the initials on the family ink instead of a src-less
+        // <img>. It LEADS the rendered roster by construction (tier 0 via `ok`, a name that sorts
+        // before "Alexander" — the store ranks tier, then folded name) so it sits inside the captured
+        // box: the list element is shorter than the full column, and the goldens show its top.
+        agentId: 'stress-faceless', githubUsername: '@stress-faceless', displayName: 'Abelard Fontaine-Marchbanks', engineTag: 'kimi-k3',
+        family : 'kimi', state: 'ok', laneLine: 'defined through the S5 form — face not yet resolved', openLaneCount: 1,
+        sources: {roster: roster('wired', 'observed'), repoStatus: repo('not-wired'), runtime: runtime('wired', 'inferred')}
+    },
     {
         agentId      : 'stress-wedged', githubUsername: '@stress-wedged', displayName: 'Alexander Constantine Maximilianus',
         engineTag    : 'opus-4.8-experimental-preview-turbo', family: 'claude', state: 'wedged', avatarUrl: avatar('#7c5cbf'),
@@ -127,11 +139,14 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
 
         expect(storeCount, 'the store carries exactly the pathological fleet').toBe(PATHOLOGICAL_ROSTER.length);
 
-        // the avatar keeper must be painted before capture (data-URI decode is async)
+        // the avatar keeper must be painted before capture (data-URI decode is async) — the four faced
+        // rows through their images, the faceless row through its monogram in the same slot
         await expect.poll(async () => page.evaluate(() => {
-            const imgs = [...document.querySelectorAll('.fm-card-avatar')];
-            return imgs.length === 4 && imgs.every(el => el.complete && el.naturalWidth > 0);
-        }), {message: 'every card avatar image is loaded', timeout: 15000, intervals: [250]}).toBe(true);
+            const imgs = [...document.querySelectorAll('img.fm-card-avatar')],
+                  mono = [...document.querySelectorAll('.fm-card-monogram')];
+            return imgs.length === 4 && imgs.every(el => el.complete && el.naturalWidth > 0) &&
+                mono.length === 1 && mono[0].textContent === 'AF';
+        }), {message: 'every faced card avatar image is loaded and the faceless card shows its monogram', timeout: 15000, intervals: [250]}).toBe(true);
 
         await page.evaluate(() => document.fonts.ready);
 
@@ -236,6 +251,26 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                     expect(c.engineShown, `[${scope}] card ${i}: engine tag ${narrow ? 'hidden at genuine narrow' : 'shown — head has capacity'}`).toBe(!narrow);
                     expect(c.actionSize, `[${scope}] card ${i}: controls ${narrow ? '44px touch target at genuine narrow' : 'compact 32px where capacity exists'}`).toBe(narrow ? 44 : 32)
                 });
+
+                // The avatar keeper at every width: the faceless card mounts NO <img> and its monogram
+                // fills the avatar slot at the mode's avatar size (40px regular, 32px narrow), so the
+                // width modes size the two keeper halves alike.
+                const keeper = await page.evaluate(() => {
+                    const card = [...document.querySelectorAll('.fm-agent-card')].find(c => c.querySelector('.fm-card-monogram')),
+                          mono = card?.querySelector('.fm-card-monogram');
+
+                    return {
+                        first: document.querySelector('.fm-agent-card') === card,
+                        img  : !!card?.querySelector('img.fm-card-avatar'),
+                        size : mono ? Math.round(mono.getBoundingClientRect().width) : null,
+                        text : mono?.textContent ?? null
+                    }
+                });
+
+                expect(keeper.img,  `[${scope}] the faceless card mounts no <img>`).toBe(false);
+                expect(keeper.text, `[${scope}] the monogram reads the initials`).toBe('AF');
+                expect(keeper.first, `[${scope}] the faceless card leads the rendered roster (tier 0, folded name) — inside the captured box`).toBe(true);
+                expect(keeper.size, `[${scope}] the monogram fills the avatar slot`).toBe(narrow ? 32 : 40);
 
                 // The goldens are headless captures, and a headless run compares byte-exact (no ratio
                 // option — the default per-pixel threshold only): a SAME-SIZE content change on these

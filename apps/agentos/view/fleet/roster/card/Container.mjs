@@ -26,9 +26,16 @@ const PRESENCE_BAND_LABEL = Object.freeze({
     idle  : 'idle'
 });
 
+import FamilyTokens from '../../../../util/FamilyTokens.mjs';
 import NameSlot     from '../../../../util/NameSlot.mjs';
 import SourceHealth from '../../../../util/SourceHealth.mjs';
 import Telltale     from '../../../../util/Telltale.mjs';
+
+/**
+ * The word boundaries a monogram reads initials across: whitespace, hyphens, underscores, dots.
+ * @type {RegExp}
+ */
+const nameSeparators = /[\s\-_.]+/;
 
 /**
  * The resident card: the cockpit's atom — the evolved-D/synthesis composition (operator SELECT
@@ -39,7 +46,8 @@ import Telltale     from '../../../../util/Telltale.mjs';
  * to docking, never viewport media queries.
  *
  * Anatomy (top-to-bottom, the family rail a left accent owned by FamilyRail):
- * - **head** — avatar spanning a two-line **identity** column: `name-line` (name · provenance ·
+ * - **head** — avatar (the face image, or a family-inked monogram in the same slot when the record
+ *   carries no face — a src-less `<img>` never mounts) spanning a two-line **identity** column: `name-line` (name · provenance ·
  *   engine) over `state-line` (dot · state-word · lane-count badge · telltale), with the contextual
  *   lifecycle **actions** right-aligned;
  * - **work-row** — the current lane, two-line clamped with head+tail middle elision so two lanes
@@ -125,6 +133,16 @@ class AgentCard extends Container {
                 cls      : ['fm-card-avatar'],
                 flex     : 'none',
                 reference: 'card-avatar'
+            }, {
+                // the avatar keeper's other half: a record without a face shows the name's initials
+                // on the family ink in the SAME slot (the width modes size both alike), so the
+                // browser's broken-image glyph can never stand in for a resident
+                ntype    : 'component',
+                cls      : ['fm-card-monogram'],
+                flex     : 'none',
+                hidden   : true,
+                reference: 'card-monogram',
+                role     : 'img'
             }, {
                 ntype    : 'container',
                 cls      : ['fm-card-identity'],
@@ -288,6 +306,20 @@ class AgentCard extends Container {
             tail = line.slice(-30).replace(/^\S*\s+/, '').trim();
 
         return {head: `${head} — … — `, tail}
+    }
+
+    /**
+     * @summary The monogram a faceless record shows in its avatar slot: the initials of the name's
+     * first two words, else its first two characters, upper-cased. An empty name yields an empty
+     * monogram — the family-inked circle alone.
+     * @param {String} name The resolved name-slot text.
+     * @returns {String}
+     * @private
+     */
+    static monogramFor(name) {
+        const words = (name ?? '').trim().split(nameSeparators).filter(Boolean);
+
+        return (words.length > 1 ? words[0][0] + words[1][0] : (words[0]?.slice(0, 2) ?? '')).toUpperCase()
     }
 
     /**
@@ -474,10 +506,26 @@ class AgentCard extends Container {
         });
         strip.changeVdomRootKey('aria-label', summary.ariaLabel);
 
+        // the avatar keeper: a face renders the image; no face hides it (removeDom — a src-less `<img>`
+        // never mounts) and the monogram takes the same slot on the family ink. Both flip in place on
+        // the live record, so a face that resolves after registration replaces the initials.
+        const
+            face        = record.avatarUrl || null,
+            monogram    = me.getReference('card-monogram'),
+            familyClass = FamilyTokens.familyClass(record.family) ?? 'fm-family-unclassified';
+
         me.getReference('card-avatar').set({
-            alt: record.displayName ?? '',
-            src: record.avatarUrl ?? null
+            alt   : record.displayName ?? '',
+            hidden: !face,
+            src   : face
         });
+
+        monogram.set({
+            cls   : ['fm-card-monogram', familyClass],
+            hidden: Boolean(face),
+            text  : AgentCard.monogramFor(nameSlot.text)
+        });
+        monogram.changeVdomRootKey('aria-label', nameSlot.text);
 
         const
             toggle  = me.getReference('control-toggle'),

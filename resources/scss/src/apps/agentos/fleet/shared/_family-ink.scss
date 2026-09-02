@@ -1,0 +1,13 @@
+/* The family class → ink mapping, the closed FAMILY_TOKEN set (apps/agentos/util/FamilyTokens.mjs).
+   Every surface that speaks a resident's family colour — the rail spine, the avatar monogram — binds
+   `--fm-rail` through the same fm-family-* class FamilyRail's resolver swaps, so the mapping lives
+   once and a new family lands here and in FamilyTokens, nowhere else. The neutral fallback stays with
+   each consumer (`var(--fm-rail, var(--fm-state-off))`): an unclassified family reads as no family,
+   never as a guessed one. */
+@mixin family-ink {
+    &.fm-family-claude { --fm-rail: var(--fm-family-claude); }
+    &.fm-family-gpt    { --fm-rail: var(--fm-family-gpt); }
+    &.fm-family-gemini { --fm-rail: var(--fm-family-gemini); }
+    &.fm-family-human  { --fm-rail: var(--fm-family-human); }
+    &.fm-family-kimi   { --fm-rail: var(--fm-family-kimi); }
+}

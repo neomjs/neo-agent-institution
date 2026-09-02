@@ -9,6 +9,8 @@
    (the pill register, distinct from the chip family) — recorded here and deferred to the
    #17268/#17211 composition passes. Compact `line-height: 1` overrides on pill/meta registers
    are site-visible role deviations, deliberate. */
+@use '../../shared/family-ink' as *;
+
 .fm-agent-card {
     container-type: inline-size;   /* the card is its own width-query context (card-owned responsiveness) */
     position      : relative;
@@ -44,13 +46,41 @@
         gap: 10px;
     }
 
-    .fm-card-avatar {
+    /* the avatar slot's two keeper halves share ONE box — the face image, or, for a record without a
+       face, the monogram (initials on the family ink) — so every width mode sizes both alike and the
+       slot never changes shape when a face resolves later */
+    .fm-card-avatar,
+    .fm-card-monogram {
         width        : 40px;
         height       : 40px;
         flex         : none;
         border-radius: 50%;
-        object-fit   : cover;
-        background   : color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+    }
+
+    .fm-card-avatar {
+        object-fit: cover;
+        background: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+    }
+
+    /* the monogram: the family ink as text over its own tint, bound through the shared fm-family-*
+       mapping (the same class FamilyRail swaps); the name reaches assistive tech via aria-label, so
+       colour is never the only carrier. An unclassified family reads on the neutral token. */
+    .fm-card-monogram {
+        @include family-ink;
+
+        display        : flex;
+        align-items    : center;
+        justify-content: center;
+        font           : var(--fm-text-display);
+        font-size      : 14px;
+        font-weight    : 600;
+        line-height    : 1;
+        letter-spacing : .04em;
+        text-transform : uppercase;
+        user-select    : none;
+        color          : var(--fm-rail, var(--fm-state-off));
+        background     : color-mix(in srgb, var(--fm-rail, var(--fm-state-off)) 18%, transparent);
+        border         : 1px solid color-mix(in srgb, var(--fm-rail, var(--fm-state-off)) 35%, transparent);
     }
 
     .fm-card-identity {
@@ -327,9 +357,14 @@
        controls to 44px (a 94px action group = 31.5% of a 298px head): the breakpoint manufactured the
        scarcity it was meant to absorb. */
     @container (max-width: 289px) {
-        .fm-card-avatar {
+        .fm-card-avatar,
+        .fm-card-monogram {
             width : 32px;
             height: 32px;
+        }
+
+        .fm-card-monogram {
+            font-size: 12px;
         }
 
         .fm-card-engine {
@@ -355,9 +390,14 @@
             gap: var(--fm-space-2);
         }
 
-        .fm-card-avatar {
+        .fm-card-avatar,
+        .fm-card-monogram {
             width : 24px;
             height: 24px;
+        }
+
+        .fm-card-monogram {
+            font-size: 10px;   /* the micro floor: nothing below 10px ships */
         }
 
         .fm-card-action {
