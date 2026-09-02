@@ -178,8 +178,8 @@ class PerspectivesPane extends Container {
     }
 
     /**
-     * @summary Project the list into the meta line and the cards; the capture verdict, when the
-     * projection carries one, is named on the meta line rather than flashed and lost.
+     * @summary Project the list into the meta line and the cards — in place. The capture verdict,
+     * when the projection carries one, is named on the meta line rather than flashed and lost.
      */
     applyPerspectives() {
         const
@@ -197,14 +197,73 @@ class PerspectivesPane extends Container {
                 : `${items.length} ${items.length === 1 ? 'layout' : 'layouts'} · ${active ? `${me.nameOf(active)} active` : 'none active'}${note ? ` · ${note}` : ''}`
         }
 
-        if (!target) return;
+        target && me.syncPerspectiveCards(target, items, active)
+    }
 
-        target.removeAll(true);
+    /**
+     * @summary Reconcile the card instances against the projected list, keyed by `layoutId` —
+     * object permanence, exactly like the cockpit's own preset switcher: a card that already
+     * exists keeps its instance and gets its marker and verb moved in place, a new perspective
+     * inserts its card at its list position, a departed one removes its card. Nothing is
+     * destroyed to be rebuilt.
+     * @param {Neo.container.Base} target The rows container.
+     * @param {Object[]} items The projected perspectives, in list order.
+     * @param {Object|null} active The live perspective, when the list holds one.
+     */
+    syncPerspectiveCards(target, items, active) {
+        const
+            me    = this,
+            cards = () => target.items.filter(item => item.layoutId),
+            empty = target.items.find(item => item.isPerspectivesEmpty);
 
-        target.add(items.length
-            ? items.map(item => me.perspectiveCardConfig(item, item === active))
-            : {module: Component, cls: ['fm-perspectives-empty'], text: 'Nothing here claims a layout yet.'}
-        )
+        if (!items.length) {
+            // the honest empty state: one placeholder, no card posing as a layout — a list that
+            // emptied is a one-time transition, never a hot path
+            cards().forEach(card => target.remove(card, true));
+            empty || target.add({module: Component, cls: ['fm-perspectives-empty'], isPerspectivesEmpty: true, text: 'Nothing here claims a layout yet.'});
+            return
+        }
+
+        empty && target.remove(empty, true);
+
+        items.forEach((item, index) => {
+            const card = target.items.find(candidate => candidate.layoutId === item.layoutId);
+
+            if (card) {
+                const from = target.items.indexOf(card);
+
+                me.syncPerspectiveCard(card, item, item === active);
+                // a moved perspective keeps its instance and moves to its list position
+                from !== index && target.moveTo(from, index)
+            } else {
+                target.insert(index, me.perspectiveCardConfig(item, item === active))
+            }
+        });
+
+        cards()
+            .filter(card => !items.some(item => item.layoutId === card.layoutId))
+            .forEach(card => target.remove(card, true))
+    }
+
+    /**
+     * @summary Move one existing card onto its projected entry: the active marker, the name, the
+     * title line and the apply verb — leaf updates on the live instances, no re-creation.
+     * @param {Neo.container.Base} card
+     * @param {Object} item
+     * @param {Boolean} active
+     */
+    syncPerspectiveCard(card, item, active) {
+        const
+            name   = this.nameOf(item),
+            detail = this.detailOf(item, name),
+            text   = card.items[0].items,
+            verb   = card.items[1];
+
+        card[active ? 'addCls' : 'removeCls']('is-active');
+        text[0].text = name;
+        text[1].set({hidden: !detail, text: detail});
+        verb.presetName = name;
+        verb.set({disabled: active, iconCls: active ? 'fa fa-check' : 'fa fa-arrow-right', text: active ? 'Active' : 'Apply'})
     }
 
     /**
@@ -217,9 +276,20 @@ class PerspectivesPane extends Container {
     }
 
     /**
+     * @summary The card's second line: the title when it says more than the name, else the
+     * capture scope, else nothing.
+     * @param {Object} item
+     * @param {String} name The product name already resolved for the item.
+     * @returns {String}
+     */
+    detailOf(item, name) {
+        return item.title && item.title !== name ? item.title : (item.captureScope ? `${item.captureScope} scope` : '')
+    }
+
+    /**
      * @summary Build one perspective card: the name, the title line beneath it (only when it says
      * more than the name), and the apply verb — which reads `Active` and rests while the card is
-     * the live layout.
+     * the live layout. Built once per perspective; {@link #syncPerspectiveCard} moves it after.
      * @param {Object} item One projected list entry.
      * @param {Boolean} active Whether this perspective is the live one.
      * @returns {Object}
@@ -227,14 +297,15 @@ class PerspectivesPane extends Container {
     perspectiveCardConfig(item, active) {
         const
             name   = this.nameOf(item),
-            detail = item.title && item.title !== name ? item.title : (item.captureScope ? `${item.captureScope} scope` : '');
+            detail = this.detailOf(item, name);
 
         return {
-            module: Container,
-            cls   : ['fm-perspectives-card', ...(active ? ['is-active'] : [])],
-            flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
-            items : [{
+            module  : Container,
+            cls     : ['fm-perspectives-card', ...(active ? ['is-active'] : [])],
+            flex    : 'none',
+            layout  : {ntype: 'hbox', align: 'center'},
+            layoutId: item.layoutId,
+            items   : [{
                 ntype : 'container',
                 flex  : 1,
                 layout: {ntype: 'vbox', align: 'stretch'},

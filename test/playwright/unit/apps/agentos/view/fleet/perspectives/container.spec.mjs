@@ -75,16 +75,41 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
         expect(cards[0].items[0].items[1].text, 'the title line says more than the name').toBe('Overview — mission control')
     });
 
-    test('a re-projection re-renders in place: the switch moves the marker, a capture verdict lands on the meta line', () => {
+    test('a re-projection moves the cards in place — object permanence: the instances survive, the marker and the verbs move, a new perspective inserts, a departed one removes', () => {
         pane = Neo.create(PerspectivesPane, {appName, perspectives: projected('overview')});
+
+        const before = cardsOf(pane).slice();
 
         pane.perspectives = projected('review', 'captured "triage" — apply it from its card');
 
         const cards = cardsOf(pane);
 
+        expect(cards.every((card, index) => card === before[index]), 'the three card instances are the same objects').toBe(true);
         expect(cards[2].cls).toContain('is-active');
         expect(cards[0].cls).not.toContain('is-active');
+        expect(cards[2].items[1].text).toBe('Active');
+        expect(cards[2].items[1].disabled).toBe(true);
+        expect(cards[0].items[1].text).toBe('Apply');
+        expect(cards[0].items[1].disabled).toBe(false);
         expect(pane.getReference('perspectives-meta').text).toBe('3 layouts · Review active · captured "triage" — apply it from its card');
+
+        // a capture joins as a FOURTH card; the three keep their instances
+        const grown = projected('review');
+
+        grown.items.push({layoutId: 'capture-triage', perspectiveName: 'Triage', title: 'Triage', captureScope: 'window'});
+        pane.perspectives = grown;
+
+        expect(cardsOf(pane)).toHaveLength(4);
+        expect(cardsOf(pane).slice(0, 3).every((card, index) => card === before[index])).toBe(true);
+        expect(cardsOf(pane)[3].items[0].items[0].text).toBe('Triage');
+        expect(cardsOf(pane)[3].items[0].items[1].text, 'a capture titled by its name shows its scope').toBe('window scope');
+        expect(cardsOf(pane)[3].items[1].presetName).toBe('Triage');
+
+        // a departed perspective removes its card; the rest keep their instances
+        pane.perspectives = projected('review');
+
+        expect(cardsOf(pane)).toHaveLength(3);
+        expect(cardsOf(pane).every((card, index) => card === before[index])).toBe(true);
 
         // the same content under a new reference is a no-op — the drawer renders on identity, so a
         // provider that re-hands the list on every leaf touch can never re-enter the projection

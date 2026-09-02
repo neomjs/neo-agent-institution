@@ -55,7 +55,7 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         expect(list.captureNote).toBeNull()
     });
 
-    test('capture files the live layout under the name and projects the verdict — filed, never activated; the switcher seats it on the next refresh', async () => {
+    test('capture files the live layout under the name, seats its preset button and projects the verdict — filed, never activated', async () => {
         cockpit = createCockpit();
         await cockpit.refreshPromise;
 
@@ -74,16 +74,9 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         expect(list.activeLayoutId).toBe('overview');
         expect(list.captureNote).toBe('captured "Triage" — apply it from its card');
 
-        // never in the capture's own tick: an update elsewhere in the cockpit while the drawer
-        // re-renders inside its open reveal overlay drops the revealed pane (measured live)
-        expect(cockpit.getReference('fleet-preset-capture-triage'), 'the switcher does not reconcile in the capture tick').toBeFalsy();
-
-        // the next dock refresh's pre-projection chrome sync seats it
-        cockpit.syncControlBar();
-
         const button = cockpit.getReference('fleet-preset-capture-triage');
 
-        expect(button, 'the capture joins the preset switcher on the next refresh').toBeTruthy();
+        expect(button, 'the capture joins the preset switcher').toBeTruthy();
         expect(button.text).toBe('Triage');
         expect(button.pressed, 'seated, not pressed — Apply is the switch').toBe(false);
         expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(true)
