@@ -1,4 +1,5 @@
 import ActivityStream         from '../activity/Container.mjs';
+import AddAgentForm           from '../instances/AddAgentForm.mjs';
 import AgentDetail            from '../detail/Container.mjs';
 import Button                 from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 // NAMED registration import: the engine's dock LayoutAdapter emits `ntype: 'tab-container'` for tab
@@ -753,9 +754,14 @@ class FleetCockpit extends VesselContainer {
                 // the S5 add-agent flow (rail tool, invoked-not-ambient per the design ruling).
                 // `agentDefinitionAccepted` walks up the component chain to the Viewport's roster
                 // seam — the same consumer Accounts feeds, so both entry points write one truth.
+                //
+                // A STATIC module, on purpose: the zone still opens on explicit intent only (it is
+                // an auto-hidden rail tool), but a lazy `module: () => import(...)` is loaded by the
+                // card layout on tab activation — and a rail item never takes that path. The reveal
+                // overlay's pane slot is a plain container, which keeps a lazy item as an unrendered
+                // object, so the zone revealed EMPTY from the rail and from the bootstrap CTA (#74).
                 return {
-                    // LAZY: the define-agent zone opens on explicit intent only
-                    module   : () => import('../instances/AddAgentForm.mjs'),
+                    module   : AddAgentForm,
                     cls      : [marker],
                     listeners: {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'},
                     reference: 'add-agent-form'

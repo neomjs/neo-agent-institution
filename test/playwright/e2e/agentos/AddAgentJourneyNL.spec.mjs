@@ -1,4 +1,5 @@
 import {test, expect, loadAgentOsModule, loadNeuralLinkModules} from '../../fixtures.mjs';
+import {createFleetWireOffer}                                    from '../../../../apps/agentos/config/fleetWireMethods.mjs';
 import {
     authenticatedFleetOptions,
     fleetE2EFailure,
@@ -167,7 +168,10 @@ test.describe('AgentOS S5 add-agent journey (Neural Link)', () => {
 
             const starts = fleet.requests.filter(request => request.method === 'startAgent');
             expect(starts).toHaveLength(1);
-            expect(starts[0]).toEqual({method: 'startAgent', params: TEST_AGENT_ID});
+            // minimal payload — one agent id — plus this realm's versioned protocol offer, asserted
+            // through the exported builder so exact equality keeps rejecting stray keys (the
+            // keyboard witness's shape)
+            expect(starts[0]).toEqual({method: 'startAgent', params: TEST_AGENT_ID, protocol: createFleetWireOffer()});
 
             // ── wire discipline: exactly one defineAgent carried the payload — and the credential
             // exists NOWHERE else: not in another request, not in any readback we injected
