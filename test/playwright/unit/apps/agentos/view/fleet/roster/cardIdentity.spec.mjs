@@ -42,7 +42,9 @@ test.afterAll(() => {
  * DOM node of a card the moment a joiner sorted ahead of it — and the keyboard focus inside the node
  * died with it. Measured on engine dev@205bc52f8a, where a joiner finally sorts by the record's
  * `tierRank` instead of landing last as a raw row. These arms pin the record-keyed identity in the
- * unit tier, where a rebuild is `createItems()` after a store mutation.
+ * unit tier on the production event chain alone: a store mutation fires the store's own `load`, the
+ * list's `onStoreLoad` rebuilds, and every assertion follows the event with no manual `createItems`
+ * between them — a rebuild the chain did not perform stays visible.
  */
 test.describe('Fleet roster — cards and list items keep their identity across a re-sort', () => {
     let FleetAgent, FleetGrid, Store;
@@ -127,9 +129,9 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         expect(liBefore).toBe(`${list.id}__item-${bravoKey}`);
         expect(liIds(list)).toContain(liBefore);
 
-        // the joiner sorts first by name — every existing card shifts one seat
+        // the joiner sorts first by name — every existing card shifts one seat; the rebuild is the
+        // store's own `load`, fired inside the mutation
         store.add({...joiner});
-        list.createItems(true);
 
         expect(cards(list).map(card => card.record.displayName)).toEqual(['AAA', 'Agent A', 'Agent B', 'Agent C']);
         expect(cards(list)[2], 'the same AgentCard instance moved with its record').toBe(bravo);
@@ -167,7 +169,6 @@ test.describe('Fleet roster — cards and list items keep their identity across 
 
         // a joiner's fresh card survives its own mutation — nothing retires on an add
         store.add({...joiner});
-        list.createItems(true);
 
         expect(cards(list).map(card => card.record.displayName)).toEqual(['AAA', 'Agent A', 'Agent B']);
         expect(cards(list)[1]).toBe(alpha);
@@ -181,10 +182,10 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         expect(list.items.length).toBe(3);
 
         // join/leave cycles of unique agents leave nothing behind — pool and registry stay bounded;
-        // the rebuild after the add is the production `load` path's job, the retirement is not
+        // the rebuild after each add is the production `load` path's own, the retirement is the
+        // removal's `mutate`
         for (let i = 0; i < 5; i++) {
             store.add({agentId: `cycle-${i}`, displayName: `Cycle ${i}`, githubUsername: `neo-cycle-${i}`, state: 'ok'});
-            list.createItems(true);
             expect(Neo.get(`${list.id}__card-cycle-${i}`), `cycle ${i}: the joiner's card is registered`).toBeTruthy();
             expect(Neo.get(`${list.id}__card-cycle-${i}`).isDestroyed).toBeFalsy();
             store.remove(`cycle-${i}`);
@@ -195,7 +196,6 @@ test.describe('Fleet roster — cards and list items keep their identity across 
 
         // the same agent returning gets a fresh card under the same id — freed with the old one
         store.add(charlieRow);
-        list.createItems(true);
 
         const returned = cards(list).find(card => card.record.agentId === charlieKey);
 
