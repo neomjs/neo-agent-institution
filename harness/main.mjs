@@ -24,7 +24,7 @@ import {
     computeFirstPaintVerdict
 } from './adapterWitness.mjs';
 import {createAppLifecycle}    from './appLifecycle.mjs';
-import {createFleetCapability} from './fleetCapability.mjs';
+import {createAbsentFleetCapability, createFleetCapability} from './fleetCapability.mjs';
 import {
     APP_HOST,
     CONTENT_SECURITY_POLICY,
@@ -48,7 +48,7 @@ import {
     probePort,
     registerOwnedChild,
     resolveBrainMode,
-    resolveAgentOsRuntimeRoot,
+    resolveLauncherRuntimeRoot,
     resolveUiFleetTransport,
     resolveBrainPaths,
     resolveProductBrainPlan,
@@ -64,10 +64,8 @@ const
     repoRoot             = path.resolve(harnessDir, '..'),
     packagedMode         = app.isPackaged,
     packagedOrganismRoot = packagedMode ? path.join(process.resourcesPath, 'organism') : null,
-    // Renderer assets stay product-owned. Brain executables resolve through their own explicit
-    // runtime root in checkout mode; the packaged artifact supplies one assembled organism root.
+    // Renderer assets stay product-owned.
     productRoot           = packagedMode ? packagedOrganismRoot : repoRoot,
-    agentosRuntimeRoot    = packagedMode ? packagedOrganismRoot : resolveAgentOsRuntimeRoot(),
     // DEV MODE, deliberately (operator decision 2026-07-10): the harness window loads the
     // zero-build SOURCE app — Neural Link possession needs real ESM, which minification destroys.
     APP_URL      = `app://${APP_HOST}/apps/agentos/index.html`,
@@ -78,10 +76,15 @@ const
     // product IS the supervised organism; NEO_HARNESS_BRAIN=0 is the explicit opt-out) and opt-in
     // on a checkout (dev machines carry a canonical Brain; see brain.mjs#resolveBrainMode).
     brainMode             = resolveBrainMode({env: process.env, packaged: packagedMode}),
-    fleetRuntimeContracts = await loadFleetRuntimeContracts(agentosRuntimeRoot),
+    // Brain executables resolve through their own explicit runtime root in checkout mode; the
+    // packaged artifact supplies one assembled organism root; a checkout with the Brain leg OFF and
+    // no root boots as the UI alone — no root, no contracts, no transport (the resolver's rule).
+    agentosRuntimeRoot    = resolveLauncherRuntimeRoot({brainMode, env: process.env, packaged: packagedMode, packagedOrganismRoot}),
+    fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts(agentosRuntimeRoot) : null,
     // ONE main-owned secret per Electron boot. It crosses only into the Fleet child environment
     // and main-process Authorization headers; preload/renderer/App-Worker receive no getter or byte.
-    fleetBearerToken = fleetRuntimeContracts.resolveFleetBearer({suppliedToken: process.env.NEO_FLEET_BEARER}),
+    // `null` when this boot carries no transport: nothing to protect, nothing to censor.
+    fleetBearerToken = fleetRuntimeContracts ? fleetRuntimeContracts.resolveFleetBearer({suppliedToken: process.env.NEO_FLEET_BEARER}) : null,
     smokeState       = {
         assetFailures : new Set(),
         assetsSeen    : new Set(),
@@ -163,7 +166,7 @@ function recordSmokeFailure(type, details) {
 
     const
         raw           = String(details?.message ?? details ?? 'unknown'),
-        containsToken = raw.includes(fleetBearerToken),
+        containsToken = fleetBearerToken !== null && raw.includes(fleetBearerToken),
         message       = `${type}: ${containsToken ? '[secret-bearing detail redacted]' : raw.slice(0, 500)}`;
 
     containsToken && smokeState.secretLeaks.add(type);
@@ -440,21 +443,27 @@ h1{font-size:20px;margin:0 0 16px}p{color:#b9c4d8;margin:8px 0}.hint{color:#8ea4
 
 // The handler closures own the only renderer→Fleet route in the packaged topology. The Brain
 // promise is read at call time so an early-rendering UI receives a named not-ready envelope while a
-// later call joins the exact boot the lifecycle owner retained.
-const fleetCapability = createFleetCapability({
-    bearerToken        : fleetBearerToken,
-    createWireOffer    : fleetRuntimeContracts.createFleetWireOffer,
-    createWireRequest  : fleetRuntimeContracts.createFleetWireRequest,
-    createWireResponse : fleetRuntimeContracts.createFleetWireResponse,
-    credentialMethods  : fleetRuntimeContracts.FLEET_CREDENTIAL_METHODS,
-    credentialProvider : promptFleetCredential,
-    getBrain           : () => brainBootPromise,
-    inspectWireResponse: fleetRuntimeContracts.inspectFleetWireResponse,
-    isTrustedSender    : isTrustedIpcSender,
-    onAdmitted         : ({method}) => diagnosticMode && smokeState.fleetMethods.push(method),
-    responseStates     : fleetRuntimeContracts.FLEET_WIRE_RESPONSE_STATES,
-    wireMethods        : fleetRuntimeContracts.FLEET_WIRE_METHODS
-});
+// later call joins the exact boot the lifecycle owner retained. A boot without a Brain root keeps
+// the route registered and rejects every request with the named reason — never a missing handler.
+const fleetCapability = fleetRuntimeContracts
+    ? createFleetCapability({
+        bearerToken        : fleetBearerToken,
+        createWireOffer    : fleetRuntimeContracts.createFleetWireOffer,
+        createWireRequest  : fleetRuntimeContracts.createFleetWireRequest,
+        createWireResponse : fleetRuntimeContracts.createFleetWireResponse,
+        credentialMethods  : fleetRuntimeContracts.FLEET_CREDENTIAL_METHODS,
+        credentialProvider : promptFleetCredential,
+        getBrain           : () => brainBootPromise,
+        inspectWireResponse: fleetRuntimeContracts.inspectFleetWireResponse,
+        isTrustedSender    : isTrustedIpcSender,
+        onAdmitted         : ({method}) => diagnosticMode && smokeState.fleetMethods.push(method),
+        responseStates     : fleetRuntimeContracts.FLEET_WIRE_RESPONSE_STATES,
+        wireMethods        : fleetRuntimeContracts.FLEET_WIRE_METHODS
+    })
+    : createAbsentFleetCapability({
+        isTrustedSender: isTrustedIpcSender,
+        reason         : 'fleet: this shell boots without a Brain root (NEO_HARNESS_BRAIN is off and NEO_AGENTOS_RUNTIME_ROOT is unset) — no Fleet transport in this boot'
+    });
 
 /**
  * @summary Reduces an untrusted boot-report payload to its allowlisted primitive fields.
@@ -726,7 +735,7 @@ async function invokeFleetFromWindow(win, request, timeoutMs = 8000) {
         }), timeoutMs))
     ]);
 
-    if (JSON.stringify(reply).includes(fleetBearerToken)) {
+    if (fleetBearerToken !== null && JSON.stringify(reply).includes(fleetBearerToken)) {
         smokeState.secretLeaks.add('ipc-reply');
         return {
             envelope : {error: 'secret-bearing reply rejected by smoke census', ok: false},
@@ -861,7 +870,7 @@ process.on('unhandledRejection', async error => {
 const brainState = {children: [], isolationRoot: null};
 
 function brainLog(line) {
-    if (line.includes(fleetBearerToken)) {
+    if (fleetBearerToken !== null && line.includes(fleetBearerToken)) {
         smokeState.secretLeaks.add('brain-log');
         console.log('HARNESS_BRAIN [secret-bearing line redacted]')
     } else {
@@ -1177,8 +1186,10 @@ app.whenReady().then(async () => {
     // The banner fact enters 'starting' exactly when a transport boot is actually in flight —
     // brain mode boots the organism's fleet leg, UI-only product self-supplies. Plain UI-only
     // smoke spawns nothing by isolation contract and keeps `null`: no transport story to tell.
-    if (brainMode || !diagnosticMode) {
+    if (brainMode || (!diagnosticMode && agentosRuntimeRoot)) {
         uiTransportFact = {phase: 'starting'}
+    } else if (!diagnosticMode) {
+        console.log('HARNESS_UI_FLEET none — no Brain root in this boot: the shell runs as the UI alone')
     }
 
     brainBootPromise = brainMode
@@ -1192,9 +1203,10 @@ app.whenReady().then(async () => {
                 uiTransportFact = normalizeTransportFact(boot);
                 return boot
             })
-        : (diagnosticMode
+        : (diagnosticMode || !agentosRuntimeRoot
             // Plain smoke keeps its isolation contract: UI-only legs spawn nothing (a dev machine
-            // may carry a live transport); the fleet leg's evidence lives in smoke:brain.
+            // may carry a live transport); the fleet leg's evidence lives in smoke:brain. A checkout
+            // without a Brain root has nothing to self-supply from: the UI alone, no transport story.
             ? Promise.resolve(null)
             // UI-only product path: self-supply the transport. Tray Brain state is deliberately
             // untouched — a fleet transport is not a Brain claim.
@@ -1331,7 +1343,7 @@ app.whenReady().then(async () => {
                     JSON.stringify(probe.shellKeys) === JSON.stringify(expectedShellKeys)
                 ),
                 urlSecretFree     = BrowserWindow.getAllWindows().every(win =>
-                    !win.webContents.getURL().includes(fleetBearerToken)
+                    fleetBearerToken === null || !win.webContents.getURL().includes(fleetBearerToken)
                 );
 
             fleetFromWindow = {

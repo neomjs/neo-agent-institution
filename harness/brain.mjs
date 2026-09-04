@@ -65,6 +65,32 @@ export function resolveAgentOsRuntimeRoot(env = process.env) {
 }
 
 /**
+ * @summary The launcher's runtime-root rule per boot shape. Packaged: the assembled organism root,
+ * always. Checkout with the Brain leg on: the explicit absolute Brain checkout, required (the
+ * contract above). Checkout with the Brain leg off: that root when the operator supplies one (the
+ * UI-only transport self-supplies from it), `null` when absent — the shell then boots as the UI
+ * alone, spawns nothing and loads no Brain contract. A RELATIVE value stays an error in every shape:
+ * never a cwd guess.
+ * @param {Object} options
+ * @param {Boolean} options.brainMode `resolveBrainMode`'s verdict.
+ * @param {Object} [options.env=process.env]
+ * @param {Boolean} options.packaged `app.isPackaged` at the call site.
+ * @param {String|null} [options.packagedOrganismRoot=null]
+ * @returns {String|null}
+ */
+export function resolveLauncherRuntimeRoot({brainMode, env = process.env, packaged, packagedOrganismRoot = null}) {
+    if (packaged) {
+        return packagedOrganismRoot
+    }
+
+    if (brainMode || env.NEO_AGENTOS_RUNTIME_ROOT !== undefined) {
+        return resolveAgentOsRuntimeRoot(env)
+    }
+
+    return null
+}
+
+/**
  * Loads Fleet trust primitives from the selected organism instead of the shell bundle.
  * @summary Keeps checkout and packaged launchers on one canonical Fleet contract implementation.
  * @param {String} [repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain checkout or packaged organism root.

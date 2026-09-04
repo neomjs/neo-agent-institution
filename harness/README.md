@@ -150,16 +150,30 @@ provide the renderer-identity and clean process-group receipts.
 
 ```bash
 cd harness
-npm run dist    # pack.mjs stages the organism, electron-builder emits dist-artifacts/*.zip
+NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run dist
+# pack.mjs stages the organism from its three owners, electron-builder emits dist-artifacts/*.zip
 ```
 
 The artifact is ONE double-clickable app (unsigned — signing/notarization is release-line,
-operator-owned; never repo tooling) wrapping the ORGANISM: the renderer's source graph derived
-from the contentPolicy allowlist (one authority — a new allowlist prefix ships automatically),
-the Brain tree (`ai/`, minus examples and the not-yet-enabled temporal-summary daemon), a
-GENERATED dependency manifest (this repo declares only devDependencies, so the runtime closure
-is derived from the bundled trees' bare imports and pinned to repo-declared versions —
-fail-loud on any undeclared import), and pack-time-fresh instance configs. **No checkout
+operator-owned; never repo tooling) wrapping the ORGANISM, assembled from three explicit owners
+and nothing else: the PRODUCT root (this checkout — the renderer's source graph derived from the
+contentPolicy allowlist, one authority: a new allowlist prefix ships automatically), the ENGINE
+package (the pinned `neo.mjs` dependency, installed into the stage from the product's own pin),
+and the BRAIN root (`NEO_AGENTOS_RUNTIME_ROOT`, absolute — the same contract the checkout launcher
+uses; the stage copies its `ai/` and `src/` trees, minus examples and the not-yet-enabled
+temporal-summary daemon with its aggregation script; the Engine modules the Brain imports bare,
+its sanitizer among them, come from the staged install). Every owner is proven
+BEFORE the stage dir is touched: a missing or relative Brain authority, or a root without its
+markers, fails the pack with nothing removed, built or installed — never a cwd or sibling guess.
+The dependency manifest is GENERATED with each import's provenance kept — each owner's COPIED
+files are scanned on their own, so the `src/` both owners share credits nothing to the wrong one:
+the renderer graph's bare imports are pinned by the product `package.json`, the Brain trees' by
+the Brain root's `package.json`, a name both trees import must carry the same declaration in both (a disagreement
+fails the pack — never a silent precedence), and `neo.mjs` is the one named exception: the Engine
+is the product's pin. An import its owner never declared fails loud; on the complete stage every
+pin is checked to be present under its `node_modules` and every relative import of a staged module
+to resolve inside the stage. `organism-build-info.json` records the three owners as role, name,
+version, pin and Brain revision — never a build-host path. **No checkout
 instance overlay ever ships:** any `config.mjs` with a `config.template.mjs` sibling — the
 top-level `ai/config.mjs` AND every per-server MCP overlay, all of which can carry hand-edited
 operator credentials — is excluded by DERIVATION, a post-copy assertion fails the build on any
