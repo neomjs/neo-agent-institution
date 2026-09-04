@@ -5,7 +5,6 @@ import {existsSync, mkdirSync, writeFileSync} from 'node:fs';
 import {tmpdir}                               from 'node:os';
 import {fileURLToPath}                        from 'node:url';
 import {
-    BRAIN_FILES,
     BRAIN_TREES,
     ENGINE_THEME_BUILD,
     TREE_EXCLUDES,
@@ -15,6 +14,7 @@ import {
     buildOrganismManifest,
     collectTreeBarePackages,
     deriveCopySpecs,
+    describeOwners,
     extractBarePackages,
     extractLiteralImportSpecifiers,
     extractLocalMjsImports,
@@ -254,8 +254,10 @@ test.describe('harness pack stage', () => {
     test('deriveCopySpecs keeps the two owners apart: the allowlist names the product graph, the constants name the Brain set, node_modules entries ride the install', () => {
         const {brain, product} = deriveCopySpecs();
 
-        expect(brain.trees).toEqual([...BRAIN_TREES]);
-        expect(brain.files).toEqual([...BRAIN_FILES]);
+        // the Brain's own `src/` rides with `ai/` (it imports it relatively); the Engine modules the
+        // Brain imports bare come from the install, never from a copied file
+        expect(brain).toEqual({trees: ['ai', 'src']});
+        expect(BRAIN_TREES).toEqual(['ai', 'src']);
 
         // Allowlist-derived: the renderer's source graph ships automatically.
         expect(product.trees).toContain('src');
@@ -267,7 +269,7 @@ test.describe('harness pack stage', () => {
         // no owner stages the other's tree; node_modules-prefixed allowlist entries come from the
         // staged dependency install
         expect(product.trees).not.toContain('ai');
-        expect([...product.trees, ...product.files, ...brain.trees, ...brain.files].some(entry => entry.includes('node_modules'))).toBe(false)
+        expect([...product.trees, ...product.files, ...brain.trees].some(entry => entry.includes('node_modules'))).toBe(false)
     });
 
     // The split-root assembly: three owners, each proven before the stage is touched. A tmp tree
@@ -284,9 +286,8 @@ test.describe('harness pack stage', () => {
         writeFileSync(path.join(product, 'node_modules', 'neo.mjs', 'package.json'), JSON.stringify({name: 'neo.mjs', version: '13.1.0'}), 'utf8');
         writeFileSync(path.join(product, 'node_modules', 'neo.mjs', ENGINE_THEME_BUILD), 'export default {}', 'utf8');
         mkdirSync(path.join(brain, 'ai'), {recursive: true});
-        mkdirSync(path.join(brain, 'buildScripts', 'util'), {recursive: true});
+        mkdirSync(path.join(brain, 'src'), {recursive: true});
         writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0'}), 'utf8');
-        writeFileSync(path.join(brain, 'buildScripts', 'util', 'sanitizer.mjs'), 'export default {}', 'utf8');
 
         return {brain, product, root}
     };
@@ -333,22 +334,40 @@ test.describe('harness pack stage', () => {
         }
     });
 
-    test('assertImportClosure fails loud when the staged install lacks a pinned package', async () => {
+    test('assertImportClosure fails loud on a missing pinned package and on a staged module importing outside the stage', async () => {
         const root = await mkdtemp(path.join(tmpdir(), 'neo-pack-closure-'));
 
         try {
             mkdirSync(path.join(root, 'node_modules', 'chromadb'), {recursive: true});
             writeFileSync(path.join(root, 'node_modules', 'chromadb', 'package.json'), '{}', 'utf8');
+            mkdirSync(path.join(root, 'ai', 'daemons'), {recursive: true});
+            writeFileSync(path.join(root, 'ai', 'config.mjs'), 'export default {}', 'utf8');
+            // a sibling-tree import that resolves (../config.mjs) beside one that does not: the
+            // real stage carried exactly this shape — `ai/` importing a `src/` nobody copied
+            writeFileSync(path.join(root, 'ai', 'daemons', 'daemon.mjs'), "import config from '../config.mjs';\nimport rem from '../../src/evolution/createRemDigestion.mjs';\nexport default {config, rem}", 'utf8');
 
-            expect(() => assertImportClosure({manifest: {dependencies: {chromadb: '3.5.0'}}, stageDir: root})).not.toThrow();
+            const manifest = {dependencies: {chromadb: '3.5.0'}};
+
+            expect(() => assertImportClosure({manifest, stageDir: root})).not.toThrow();
             expect(() => assertImportClosure({manifest: {dependencies: {'better-sqlite3': '12.0.0', chromadb: '3.5.0'}}, stageDir: root}))
-                .toThrow(/lacks pinned package.*better-sqlite3/)
+                .toThrow(/lacks pinned package.*better-sqlite3/);
+            expect(() => assertImportClosure({manifest, stageDir: root, trees: ['ai']}))
+                .toThrow(/import outside the stage: ai\/daemons\/daemon\.mjs → \.\.\/\.\.\/src\/evolution\/createRemDigestion\.mjs/);
+
+            // once the sibling tree is staged the same module closes
+            mkdirSync(path.join(root, 'src', 'evolution'), {recursive: true});
+            writeFileSync(path.join(root, 'src', 'evolution', 'createRemDigestion.mjs'), 'export default {}', 'utf8');
+            expect(() => assertImportClosure({manifest, stageDir: root, trees: ['ai', 'src']})).not.toThrow()
         } finally {
             await rm(root, {force: true, recursive: true})
         }
     });
 
     test('the Genesis probe is checkout-only without excluding runtime diagnostics wholesale', () => {
+        // an importer of an excluded tree goes with it — a staged module must never import a
+        // module the stage does not carry
+        expect(TREE_EXCLUDES).toContain('ai/daemons/temporal-summary');
+        expect(TREE_EXCLUDES).toContain('ai/scripts/maintenance/aggregate-temporal-summary.mjs');
         expect(TREE_EXCLUDES).toContain('ai/scripts/diagnostics/genesisProbe.mjs');
         expect(TREE_EXCLUDES).not.toContain('ai/scripts/diagnostics');
         expect(TREE_EXCLUDES).not.toContain('ai/scripts/diagnostics/mcpHealthcheck.mjs')
@@ -442,61 +461,107 @@ test.describe('harness pack stage', () => {
         }
     });
 
-    test('buildOrganismManifest pins scanned packages to the owners\' declared versions and fails loud on undeclared imports', () => {
+    const NO_SUPPLEMENTAL = {brain: [], product: []};
+
+    test('buildOrganismManifest pins each tree\'s imports by the owner that stages it, and fails loud on an import that owner never declared', () => {
         const
             productPackageJson = {dependencies: {'neo.mjs': 'github:neomjs/neo#abc'}, devDependencies: {webpack: '^5.0.0'}, version: '11.11.0'},
             brainPackageJson   = {dependencies: {'better-sqlite3': '^12.0.0', chromadb: '^3.5.0'}};
 
         const manifest = buildOrganismManifest({
             brainPackageJson,
-            packages    : ['better-sqlite3', 'chromadb', 'neo.mjs'],
             productPackageJson,
-            supplemental: []
+            scanned     : {brain: ['better-sqlite3', 'chromadb'], product: ['neo.mjs', 'webpack']},
+            supplemental: NO_SUPPLEMENTAL
         });
 
-        expect(manifest.dependencies).toEqual({'better-sqlite3': '^12.0.0', chromadb: '^3.5.0', 'neo.mjs': 'github:neomjs/neo#abc'});
+        expect(manifest.dependencies).toEqual({'better-sqlite3': '^12.0.0', chromadb: '^3.5.0', 'neo.mjs': 'github:neomjs/neo#abc', webpack: '^5.0.0'});
         expect(manifest.private).toBe(true);
         expect(manifest.type).toBe('module');
         expect(manifest.version).toBe('11.11.0');
 
+        // provenance is strict: a Brain import the Brain never declared is missing even where the
+        // product happens to declare the same name — the checkout would have failed the same way
         expect(() => buildOrganismManifest({
             brainPackageJson,
-            packages    : ['ghost-package'],
             productPackageJson,
-            supplemental: []
-        })).toThrow(/no declared version.*ghost-package/)
+            scanned     : {brain: ['webpack'], product: []},
+            supplemental: NO_SUPPLEMENTAL
+        })).toThrow(/no declared version.*webpack \(brain\)/);
+
+        expect(() => buildOrganismManifest({
+            brainPackageJson,
+            productPackageJson,
+            scanned     : {brain: [], product: ['ghost-package']},
+            supplemental: NO_SUPPLEMENTAL
+        })).toThrow(/no declared version.*ghost-package \(product\)/)
     });
 
-    test('buildOrganismManifest takes the Brain root\'s package.json as the runtime tier — required, both tiers read, the product winning a shared name', () => {
-        // Post-split the Brain runtime the organism ships (Memory Core's better-sqlite3, the
-        // chromadb client) is declared by the Brain checkout's own package.json; the product
-        // declares the renderer closure and pins the Engine. A shared name resolves to the
-        // product's pin, and a scan without the Brain authority must hard-error.
+    test('buildOrganismManifest keeps owner authority at a collision: agreement passes, disagreement fails loud, the Engine is the product\'s by name', () => {
+        // The live pair disagrees on chalk (product ^6.0.0, Brain ^5.6.2) and on neo.mjs. A Brain
+        // import of chalk stays the Brain's pin; a name BOTH trees import must agree; neo.mjs is
+        // the named exception — the Engine is the product's dependency wherever it is imported.
         const
-            productPackageJson = {dependencies: {'neo.mjs': 'github:neomjs/neo#product-pin'}, devDependencies: {webpack: '^5.0.0'}, version: '13.1.0'},
-            brainPackageJson   = {dependencies: {'better-sqlite3': '12.11.1', 'neo.mjs': 'github:neomjs/neo#brain-pin'}, devDependencies: {chromadb: '3.5.0'}};
+            productPackageJson = {dependencies: {'neo.mjs': 'github:neomjs/neo#product-pin', chalk: '^6.0.0'}, devDependencies: {webpack: '^5.0.0', acorn: '^8.17.0'}, version: '13.1.0'},
+            brainPackageJson   = {dependencies: {'better-sqlite3': '12.11.1', 'neo.mjs': 'github:neomjs/neo#brain-pin', chalk: '^5.6.2'}, devDependencies: {chromadb: '3.5.0', acorn: '^8.17.0'}};
 
-        const manifest = buildOrganismManifest({
+        expect(buildOrganismManifest({
             brainPackageJson,
-            packages    : ['better-sqlite3', 'chromadb', 'neo.mjs', 'webpack'],
             productPackageJson,
-            supplemental: []
-        });
-
-        expect(manifest.dependencies).toEqual({
+            scanned     : {brain: ['acorn', 'better-sqlite3', 'chalk', 'chromadb', 'neo.mjs'], product: ['acorn', 'neo.mjs', 'webpack']},
+            supplemental: NO_SUPPLEMENTAL
+        }).dependencies).toEqual({
+            acorn           : '^8.17.0',                      // both import it, both agree
             'better-sqlite3': '12.11.1',
+            chalk           : '^5.6.2',                       // only the Brain imports it → the Brain's pin, not the product's ^6
             chromadb        : '3.5.0',
-            'neo.mjs'       : 'github:neomjs/neo#product-pin',
+            'neo.mjs'       : 'github:neomjs/neo#product-pin', // the named exception
             webpack         : '^5.0.0'
         });
+
+        // the red control: chalk imported by BOTH trees with different declarations is a hard error,
+        // never a silent winner
+        expect(() => buildOrganismManifest({
+            brainPackageJson,
+            productPackageJson,
+            scanned     : {brain: ['chalk'], product: ['chalk']},
+            supplemental: NO_SUPPLEMENTAL
+        })).toThrow(/owners disagree on chalk: brain \^5\.6\.2 vs product \^6\.0\.0/);
+
+        // supplemental names belong to an owner too
+        expect(buildOrganismManifest({
+            brainPackageJson  : {...brainPackageJson, dependencies: {...brainPackageJson.dependencies, '@chroma-core/default-embed': '1.0.0'}},
+            productPackageJson: {...productPackageJson, devDependencies: {...productPackageJson.devDependencies, '@fortawesome/fontawesome-free': '7.0.0'}},
+            scanned           : {brain: [], product: []}
+        }).dependencies).toEqual({'@chroma-core/default-embed': '1.0.0', '@fortawesome/fontawesome-free': '7.0.0'});
 
         // No Brain authority, no manifest — never a silently broken artifact (the pre-split
         // package.brain.json was optional; the Brain root's package.json is not).
         expect(() => buildOrganismManifest({
-            packages    : ['better-sqlite3'],
             productPackageJson,
-            supplemental: []
+            scanned     : {brain: ['better-sqlite3'], product: []},
+            supplemental: NO_SUPPLEMENTAL
         })).toThrow(/Brain package\.json/)
+    });
+
+    test('describeOwners ships role, name, version, pin and revision — no build-host coordinate survives in the staged metadata', () => {
+        const
+            roots = {brainRoot: '/Users/someone/checkouts/neo-agent-brain', enginePackageRoot: '/Users/someone/checkouts/product/node_modules/neo.mjs', productRoot: '/Users/someone/checkouts/product'},
+            info  = describeOwners({
+                brainPackageJson  : {name: 'neo-agent-brain', version: '0.0.0'},
+                enginePackageJson : {name: 'neo.mjs', version: '13.1.0'},
+                productPackageJson: {dependencies: {'neo.mjs': 'github:neomjs/neo#205bc52f'}, name: 'neo-agent-institution', version: '0.1.0'},
+                revisionOf        : root => root === roots.brainRoot ? 'abc123' : null,
+                roots
+            });
+
+        expect(info).toEqual({
+            brain  : {name: 'neo-agent-brain', revision: 'abc123', version: '0.0.0'},
+            engine : {name: 'neo.mjs', pin: 'github:neomjs/neo#205bc52f', version: '13.1.0'},
+            product: {name: 'neo-agent-institution', version: '0.1.0'}
+        });
+        expect(JSON.stringify(info)).not.toContain('/Users/');
+        expect(JSON.stringify(info)).not.toContain('checkouts')
     });
 
     test('the node shim fails loud without the runtime binary and execs it in node mode', () => {

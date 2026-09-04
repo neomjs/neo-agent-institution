@@ -160,14 +160,19 @@ and nothing else: the PRODUCT root (this checkout — the renderer's source grap
 contentPolicy allowlist, one authority: a new allowlist prefix ships automatically), the ENGINE
 package (the pinned `neo.mjs` dependency, installed into the stage from the product's own pin),
 and the BRAIN root (`NEO_AGENTOS_RUNTIME_ROOT`, absolute — the same contract the checkout launcher
-uses; the stage copies its `ai/` tree, minus examples and the not-yet-enabled temporal-summary
-daemon, plus the one `buildScripts` module the Brain entrypoints import). Every owner is proven
+uses; the stage copies its `ai/` and `src/` trees, minus examples and the not-yet-enabled
+temporal-summary daemon with its aggregation script; the Engine modules the Brain imports bare,
+its sanitizer among them, come from the staged install). Every owner is proven
 BEFORE the stage dir is touched: a missing or relative Brain authority, or a root without its
 markers, fails the pack with nothing removed, built or installed — never a cwd or sibling guess.
-The dependency manifest is GENERATED: the staged trees' bare imports, pinned to the versions the
-product `package.json` and the Brain root's `package.json` declare (the product wins a shared
-name — the Engine is its dependency; fail-loud on any undeclared import), and the install is then
-verified to resolve every pin. `organism-build-info.json` records the three owners. **No checkout
+The dependency manifest is GENERATED with each import's provenance kept: the renderer graph's
+bare imports are pinned by the product `package.json`, the Brain tree's by the Brain root's
+`package.json`, a name both trees import must carry the same declaration in both (a disagreement
+fails the pack — never a silent precedence), and `neo.mjs` is the one named exception: the Engine
+is the product's pin. An import its owner never declared fails loud; on the complete stage every
+pin is checked to be present under its `node_modules` and every relative import of a staged module
+to resolve inside the stage. `organism-build-info.json` records the three owners as role, name,
+version, pin and Brain revision — never a build-host path. **No checkout
 instance overlay ever ships:** any `config.mjs` with a `config.template.mjs` sibling — the
 top-level `ai/config.mjs` AND every per-server MCP overlay, all of which can carry hand-edited
 operator credentials — is excluded by DERIVATION, a post-copy assertion fails the build on any
