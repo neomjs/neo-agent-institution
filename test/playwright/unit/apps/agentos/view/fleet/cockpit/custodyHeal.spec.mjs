@@ -110,5 +110,32 @@ test.describe.serial('AgentOS.view.fleet.cockpit.LivenessController — followin
 
         expect(controller.reconnectFleetCalls).toBe(0);
         expect(controller.livenessTimerId).not.toBeNull()
+    });
+
+    // A promise callback cannot be detached: the liveness owner supports stop → start, and a restart
+    // before the heal settles would otherwise leave two callbacks that both see a running timer.
+    test('a stop/restart before the heal settles re-drives exactly once — the callback is fenced to the liveness generation that attached it', async () => {
+        const controller = createCockpit();
+
+        controller.stopLiveness();
+        controller.startLiveness();
+
+        settleHeal(true);
+
+        await expect.poll(() => controller.reconnectFleetCalls).toBe(1);
+        await Promise.resolve();
+        expect(controller.reconnectFleetCalls).toBe(1)
+    });
+
+    test('a second start while liveness runs attaches nothing — the heal still re-drives once', async () => {
+        const controller = createCockpit();
+
+        controller.startLiveness();
+
+        settleHeal(true);
+
+        await expect.poll(() => controller.reconnectFleetCalls).toBe(1);
+        await Promise.resolve();
+        expect(controller.reconnectFleetCalls).toBe(1)
     })
 });

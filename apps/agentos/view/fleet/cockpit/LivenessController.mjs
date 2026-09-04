@@ -98,6 +98,13 @@ class LivenessController extends ComponentController {
      */
     livenessTimerId = null
     /**
+     * Counts liveness starts. A callback attached by an earlier start (the custody heal's) checks
+     * it before acting, so a stop/restart before the heal settles cannot deliver twice.
+     * @member {Number} livenessGeneration=0
+     * @protected
+     */
+    livenessGeneration = 0
+    /**
      * Whether any populated LIVE roster snapshot has been admitted — flips empty snapshots to
      * their ordinary authoritative meaning (a real fleet may genuinely drain).
      * @member {Boolean} rosterWired=false
@@ -649,6 +656,10 @@ class LivenessController extends ComponentController {
 
         if (me.livenessTimerId !== null) return;
 
+        // every start is a new generation: a callback attached by an earlier start — the custody
+        // heal's, pending across a stop/restart — must not act on behalf of this one
+        me.livenessGeneration++;
+
         me.livenessTimerId = setInterval(() => {
             const cap = cockpit.maxReadsInFlight;
 
@@ -675,14 +686,18 @@ class LivenessController extends ComponentController {
      * the first wire read at the 15s cadence tick. The boot module publishes the in-flight heal as
      * `AgentOS.fleet.custodyHeal`; its `true` resolution re-drives every seam now, the way the
      * Reconnect click does. No slot, a heal that ends without promotion, or liveness stopped in
-     * the meantime: nothing happens.
+     * the meantime: nothing happens. A promise callback cannot be detached, so the re-drive is
+     * fenced to the liveness generation that attached it: a stop/restart before the heal settles
+     * leaves the earlier callback inert, and the heal re-drives exactly once.
      * @protected
      */
     followCustodyHeal() {
-        const me = this;
+        const
+            me         = this,
+            generation = me.livenessGeneration;
 
         globalThis.AgentOS?.fleet?.custodyHeal?.then(promoted => {
-            promoted && !me.isDestroyed && me.livenessTimerId !== null && me.reconnectFleet()
+            promoted && !me.isDestroyed && me.livenessTimerId !== null && me.livenessGeneration === generation && me.reconnectFleet()
         })
     }
 
