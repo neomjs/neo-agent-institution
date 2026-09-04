@@ -389,12 +389,12 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         grid.destroy()
     });
 
-    test('#78: a batch that crosses the threshold keeps every non-idle resident — the fold decides after the mutation settles', async () => {
-        // The Engine mirrors a store mutation into `allItems` as a `mutate` LISTENER, one step
-        // behind the store's own synchronous `load` (neomjs/neo#18269). A fold toggled inside
-        // that `load` rebuilds the view from an `allItems` that does not hold the batch yet, and
-        // every row being added vanishes — not only the idle ones. Red against the synchronous
-        // toggle: `count` reads 0 right after `add`.
+    test('a batch that crosses the threshold keeps every non-idle resident — the fold decides inside the mutation, on a projection that already holds the batch', () => {
+        // The Engine writes the unfiltered projection inside the mutation, ahead of the store's
+        // own synchronous `load` — so the fold toggled in that `load` folds the whole fleet it was
+        // handed. Under the previous pin the projection trailed the event and a synchronous
+        // toggle emptied the view (`count` 0 right after `add`); the consumer deferred by one
+        // microtask. That deferral is gone: everything below holds right after `add`.
         const store = makeStore(roster(['ok', 'ok'])),
               grid  = Neo.create(FleetGrid, {appName, foldThreshold: 12, store}),
               // 2 more online · 14 idle · 2 benched → 20 with the seed pair, over the threshold
@@ -405,15 +405,11 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
 
         const added = store.add(batch);
 
-        // the mutation itself is whole: every row answers as a record, the view holds the batch
-        expect(added.filter(Boolean).length, 'add answers a record per row').toBe(18);
-        expect(store.getCount(), 'no row is lost to the fold inside the mutation').toBe(20);
-
-        // one microtask later the fold is decided on the settled whole fleet
-        await Promise.resolve();
-
+        // `add` answers the VISIBLE instance per key — the four non-idle rows; the fourteen the
+        // fold hides answer null, the store's own contract for a filtered row
+        expect(added.filter(Boolean).length, 'add answers a record per visible row').toBe(4);
         expect(store.allItems.getCount(), 'the whole fleet lives in the unfiltered twin').toBe(20);
-        expect(store.getCount(), 'the folded view keeps the six non-idle residents').toBe(6);
+        expect(store.getCount(), 'the folded view keeps the six non-idle residents, right after add').toBe(6);
         expect(store.items.every(record => record.tierRank !== 1)).toBe(true);
         expect(grid.getReference('fleet-title').text).toBe('Fleet · 20 agents');
         expect(grid.getReference('fold-chip').text).toBe('+14 idle · show');
@@ -537,8 +533,6 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
 
         list.createItems(true);
         expect(cards(list).length).toBe(3);
-        // the derived surface settles one microtask after the mutation (#78, neomjs/neo#18269)
-        await Promise.resolve();
         expect(grid.getReference('fleet-title').text).toBe('Fleet · 3 agents');
 
         grid.destroy()
@@ -774,10 +768,8 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         grid.getController().onEmptyCtaClick({});
         expect(fired).toHaveLength(1);
 
-        // the first agent retires the CTA — it is a bootstrap affordance, never ambient chrome;
-        // the derived surface settles one microtask after the mutation (#78, neomjs/neo#18269)
+        // the first agent retires the CTA — it is a bootstrap affordance, never ambient chrome
         store.add({agentId: 'first', displayName: 'First', state: 'ok'});
-        await Promise.resolve();
 
         expect(cta.hidden).toBe(true);
         expect(grid.getReference('fleet-title').text).toBe('Fleet · 1 agents');

@@ -146,18 +146,18 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e:nl
 
 The script reaches every Neural Link witness under `test/playwright/e2e/agentos/` — a suffix
 match, not a prefix, so a new witness joins the battery by its name, and a red one announces
-itself instead of falling outside the glob. Add `-- --headed` for the honest receipt. One red is
-stated, not masked, and it has an owner: `FleetGridScaleNL` folds a 20-agent roster correctly in
-the store but the animated list drops the cards, because the pinned Engine's unfiltered projection
-(`allItems`) holds a batch as raw rows while the store holds records of the same rows, and the
-list reconciles by identity. The Engine fix is merged (neomjs/neo#18269); the cockpit's own
-defence — the fold decided after the mutation settles and derived from `state` — is in #78; the
-witness turns green with the Engine pin that carries the fix, #98, which owns this sentence until
-then. `AddAgentJourneyNL` went green with #74. Two witnesses ride the Engine's
-FLIP settle — the Review-preset journey in `FleetCockpitDockNL` and the rail-drawer witness's Escape
-dismissal — and the settle occasionally does not land within the wait (measured 2026-09-02:
-`FleetCockpitDockNL` 2/2 green headless under the Brain root; the rail-drawer witness runs only
-under the Brain root). A red on either is the settle race, not the battery: re-run before triage.
+itself instead of falling outside the glob. Add `-- --headed` for the honest receipt. Two reds are
+stated, not masked, and each has an owner. `FleetGridKeyboardA11y`'s reorder step: the roster seats
+its cards by position and renumbers them on a real reorder, so the focused node is replaced the
+moment a joiner sorts ahead — hidden until #98, whose Engine finally sorts a joiner by its tier
+(#99; its implementation, PR #101, rebases onto this Engine after the pin lands). `FleetCockpitDockNL`'s
+Review-preset arm: the FLIP-settle hold, #103 — the projection stages the detail pane and un-hides
+it on the settle, which does not always land within the wait (red 3/3 at pin 6, headless and headed;
+1/3 one Engine commit earlier; the rail-drawer witness's Escape dismissal rides the same settle;
+#66 closed without an owner for it). A red there is the race, not the battery: re-run before triage. `FleetGridScaleNL` went green with #98 — the Engine
+writes its unfiltered projection inside the mutation (neomjs/neo#18269), so the roster's fold
+decides on the whole batch and the cards it renders are the records it holds; `AddAgentJourneyNL`
+went green with #74.
 
 Live maintainer seats also require their own local GitHub token, remote MCP bearer, and agent
 identity configuration. For Neo's team these include `GH_TOKEN`, `NEO_MCP_REMOTE_TOKEN`, and
