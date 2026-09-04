@@ -7,14 +7,16 @@ import {test, expect} from '../../fixtures.mjs';
  * 1. the initial projection RENDERS (both live panes + the primary splitter in the DOM);
  * 2. the READ half (`getDockZoneDocument`) serves Neural Link topology before any operation;
  * 3. a REAL pointer drag on the projected splitter commits `resizeSplit` through the reducer /
- *    view-sync split — the document advances, a NEW splitter replaces the committed-away one,
- *    and the toolbar plus keeper panes preserve component and DOM identity;
+ *    view-sync split — the document advances, the reconciler takes its geometry fast path
+ *    (`resizeSplit` declares the `geometry` change class, neomjs/neo#18206): the ONE live splitter
+ *    instance and its DOM node survive the commit, the pane sizes re-project from the committed
+ *    ratio, and the toolbar plus keeper panes preserve component and DOM identity;
  * 4. the WRITE half (`executeDockOperation`) round-trips the same loop programmatically — a
- *    human drag and an NL operation are the same commit path.
+ *    human drag and an NL operation are the same commit path, and the same retained identity.
  *
  * Post-commit witnesses deliberately pair App Worker identity through the Neural Link with exact
- * DOM-node identity. Structural splitters are replaced only after their gesture ends; persistent
- * toolbar and pane nodes transfer into the reconciled shell.
+ * DOM-node identity. A geometry commit replaces nothing: splitter, toolbar and pane nodes all
+ * carry through the reconciled shell; only a topology change stages a new shell.
  *
  * State-relative throughout (the SharedWorker heap is shared across a sweep): every target
  * derives from the CURRENT committed sizes, never from assumed seeds.
@@ -137,17 +139,31 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
             return doc.nodes['primary-split'].sizes[0]
         }, {message: 'the splitter drag must COMMIT resizeSplit through the reducer', timeout: 10000, intervals: [100]}).not.toBe(sizes0[0]);
 
+        // `resizeSplit` declares the `geometry` change class (`dock/model/Operations.mjs`), so the
+        // commit takes the reconciler's geometry fast path (neomjs/neo#18206): the ONE live splitter
+        // instance and its DOM node survive the commit — only the projected sizes move. The
+        // pre-pin contract (a fresh splitter per commit) is gone with it.
+        const splitterIds = () => page.locator('.fm-fleet-cockpit .neo-dashboard-dock-splitter').evaluateAll(elements =>
+            elements.map(element => element.id)
+        );
+
+        // the projected geometry follows the committed ratio: the fleet pane's share of the split
+        const fleetShare = async () => {
+            const fleet  = await page.locator('[class*="dock-flip-item-fleet"]').first().boundingBox(),
+                  stream = await page.locator('[class*="dock-flip-item-stream"]').first().boundingBox();
+            return fleet && stream ? fleet.height / (fleet.height + stream.height) : null
+        };
+
         await expect.poll(async () => {
-            const ids = await page.locator('.fm-fleet-cockpit .neo-dashboard-dock-splitter').evaluateAll(elements =>
-                elements.map(element => element.id)
-            );
-            return ids.length === 1 && ids[0] !== splitterId0
-        }, {message: 'the deferred projection must replace the committed splitter instance', timeout: 10000, intervals: [100]}).toBe(true);
+            const topo = await app.getDockTopology(holderId),
+                  doc  = topo?.document ?? topo,
+                  share = await fleetShare();
+            return share !== null && Math.abs(share - doc.nodes['primary-split'].sizes[0]) < 0.06
+        }, {message: 'the geometry commit re-projects the pane sizes from the committed ratio', timeout: 10000, intervals: [100]}).toBe(true);
 
-        const splitterId1 = await page.locator('.fm-fleet-cockpit .neo-dashboard-dock-splitter').first().getAttribute('id');
-
-        expect(await page.evaluate(id => document.getElementById(id) === null, splitterId0),
-            'the committed-away splitter DOM node is retired').toBe(true);
+        expect(await splitterIds(), 'the geometry commit keeps the one live splitter instance').toEqual([splitterId0]);
+        expect(await page.evaluate(id => globalThis.__fleetProjectionIdentity?.splitter === document.getElementById(id), splitterId0),
+            'the committed splitter DOM node survives the commit').toBe(true);
         await assertPersistentIdentity('the toolbar and keeper panes survive the real splitter commit');
 
         // 4) the WRITE half: an NL-driven operation commits through the SAME loop
@@ -170,12 +186,11 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
         }, {message: 'the NL operation must land in the committed document', timeout: 10000, intervals: [100]}).toEqual(target);
 
         await expect.poll(async () => {
-            const ids = await page.locator('.fm-fleet-cockpit .neo-dashboard-dock-splitter').evaluateAll(elements =>
-                elements.map(element => element.id)
-            );
-            return ids.length === 1 && ids[0] !== splitterId1
-        }, {message: 'the NL operation must reconcile like the human gesture', timeout: 10000, intervals: [100]}).toBe(true);
+            const share = await fleetShare();
+            return share !== null && Math.abs(share - target[0]) < 0.06
+        }, {message: 'the NL operation re-projects the pane sizes like the human gesture', timeout: 10000, intervals: [100]}).toBe(true);
 
+        expect(await splitterIds(), 'the NL geometry commit keeps the same live splitter instance').toEqual([splitterId0]);
         await assertPersistentIdentity('the toolbar and keeper panes survive the NL splitter commit');
         expect(runtimeErrors, 'no global error or unhandled rejection across both projection paths').toEqual([]);
         expect(pageErrors, 'no Playwright pageerror across both projection paths').toEqual([])
