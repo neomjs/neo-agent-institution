@@ -1,12 +1,15 @@
 import {expect, test}             from '@playwright/test';
 import * as yaml                  from 'js-yaml';
-import {mkdtemp, readFile, rm}    from 'node:fs/promises';
-import {mkdirSync, writeFileSync} from 'node:fs';
-import {tmpdir}                   from 'node:os';
-import {fileURLToPath}            from 'node:url';
+import {mkdtemp, readFile, rm}                from 'node:fs/promises';
+import {existsSync, mkdirSync, writeFileSync} from 'node:fs';
+import {tmpdir}                               from 'node:os';
+import {fileURLToPath}                        from 'node:url';
 import {
+    BRAIN_FILES,
     BRAIN_TREES,
+    ENGINE_THEME_BUILD,
     TREE_EXCLUDES,
+    assertImportClosure,
     assertNoInstanceOverlays,
     buildNodeShim,
     buildOrganismManifest,
@@ -15,10 +18,12 @@ import {
     extractBarePackages,
     extractLiteralImportSpecifiers,
     extractLocalMjsImports,
-    isInstanceOverlayPath
+    isInstanceOverlayPath,
+    resolvePackRoots,
+    stageOrganism
 } from '../../../../harness/pack.mjs';
-import {buildPackagedBrainEnv, resolveBrainMode} from '../../../../harness/brain.mjs';
-import path                                      from 'node:path';
+import {buildPackagedBrainEnv, resolveBrainMode, resolveLauncherRuntimeRoot} from '../../../../harness/brain.mjs';
+import path                                                                  from 'node:path';
 
 /**
  * @summary Traverses the packaged main-process `.mjs` graph from one entry file. Relative literals
@@ -246,22 +251,101 @@ test.describe('harness pack stage', () => {
         }
     });
 
-    test('deriveCopySpecs rides the contentPolicy allowlist plus the Brain trees, skipping node_modules entries', () => {
-        const {files, trees} = deriveCopySpecs();
+    test('deriveCopySpecs keeps the two owners apart: the allowlist names the product graph, the constants name the Brain set, node_modules entries ride the install', () => {
+        const {brain, product} = deriveCopySpecs();
 
-        for (const tree of BRAIN_TREES) {
-            expect(trees).toContain(tree)
-        }
+        expect(brain.trees).toEqual([...BRAIN_TREES]);
+        expect(brain.files).toEqual([...BRAIN_FILES]);
 
         // Allowlist-derived: the renderer's source graph ships automatically.
-        expect(trees).toContain('src');
-        expect(trees).toContain('apps/agentos');
-        expect(trees).toContain('dist/development/css');
-        expect(files).toContain('resources/theme-map.json');
-        expect(files).toContain('resources/images/logo/neo_logo_primary.svg');
+        expect(product.trees).toContain('src');
+        expect(product.trees).toContain('apps/agentos');
+        expect(product.trees).toContain('dist/development/css');
+        expect(product.files).toContain('resources/theme-map.json');
+        expect(product.files).toContain('resources/images/logo/neo_logo_primary.svg');
 
-        // node_modules-prefixed allowlist entries come from the staged dependency install.
-        expect([...trees, ...files].some(entry => entry.includes('node_modules'))).toBe(false)
+        // no owner stages the other's tree; node_modules-prefixed allowlist entries come from the
+        // staged dependency install
+        expect(product.trees).not.toContain('ai');
+        expect([...product.trees, ...product.files, ...brain.trees, ...brain.files].some(entry => entry.includes('node_modules'))).toBe(false)
+    });
+
+    // The split-root assembly: three owners, each proven before the stage is touched. A tmp tree
+    // stands in for the two checkouts and the Engine install; nothing here runs the real stage.
+    const scaffoldRoots = async () => {
+        const
+            root    = await mkdtemp(path.join(tmpdir(), 'neo-pack-roots-')),
+            product = path.join(root, 'product'),
+            brain   = path.join(root, 'brain');
+
+        mkdirSync(path.join(product, 'apps', 'agentos'), {recursive: true});
+        mkdirSync(path.join(product, 'node_modules', 'neo.mjs', 'buildScripts', 'build'), {recursive: true});
+        writeFileSync(path.join(product, 'package.json'), JSON.stringify({name: 'product', version: '1.0.0'}), 'utf8');
+        writeFileSync(path.join(product, 'node_modules', 'neo.mjs', 'package.json'), JSON.stringify({name: 'neo.mjs', version: '13.1.0'}), 'utf8');
+        writeFileSync(path.join(product, 'node_modules', 'neo.mjs', ENGINE_THEME_BUILD), 'export default {}', 'utf8');
+        mkdirSync(path.join(brain, 'ai'), {recursive: true});
+        mkdirSync(path.join(brain, 'buildScripts', 'util'), {recursive: true});
+        writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0'}), 'utf8');
+        writeFileSync(path.join(brain, 'buildScripts', 'util', 'sanitizer.mjs'), 'export default {}', 'utf8');
+
+        return {brain, product, root}
+    };
+
+    test('resolvePackRoots proves the product, the Engine package and the Brain root — the Brain authority explicit and absolute, every marker present', async () => {
+        const {brain, product, root} = await scaffoldRoots();
+
+        try {
+            expect(resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product})).toEqual({
+                brainRoot        : brain,
+                enginePackageRoot: path.join(product, 'node_modules', 'neo.mjs'),
+                productRoot      : product
+            });
+
+            // the Brain authority: missing or relative fails on the one runtime-root contract
+            expect(() => resolvePackRoots({env: {}, productRoot: product})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
+            expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: 'brain'}, productRoot: product})).toThrow(/absolute/);
+            // a root without its markers is named, never guessed around
+            expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: root}, productRoot: product})).toThrow(/brain root .* carries no package\.json/);
+            expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: root})).toThrow(/product root .* carries no apps\/agentos/);
+
+            // the Engine owner is proven too: the theme builder the stage runs lives in the pinned
+            // package, and a product root without an installed Engine fails before any mutation
+            await rm(path.join(product, 'node_modules', 'neo.mjs', ENGINE_THEME_BUILD), {force: true});
+            expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product})).toThrow(/engine package root .* carries no buildScripts\/build\/themes\.mjs/)
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
+    test('stageOrganism fails before mutation on a missing Brain authority: the stage dir keeps its contents, nothing is built or installed', async () => {
+        const
+            {product, root} = await scaffoldRoots(),
+            stageDir        = path.join(root, 'stage');
+
+        mkdirSync(stageDir, {recursive: true});
+        writeFileSync(path.join(stageDir, 'sentinel'), 'still here', 'utf8');
+
+        try {
+            expect(() => stageOrganism({electronVersion: '38.0.0', env: {}, productRoot: product, stageDir})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
+            expect(existsSync(path.join(stageDir, 'sentinel'))).toBe(true)
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
+    test('assertImportClosure fails loud when the staged install lacks a pinned package', async () => {
+        const root = await mkdtemp(path.join(tmpdir(), 'neo-pack-closure-'));
+
+        try {
+            mkdirSync(path.join(root, 'node_modules', 'chromadb'), {recursive: true});
+            writeFileSync(path.join(root, 'node_modules', 'chromadb', 'package.json'), '{}', 'utf8');
+
+            expect(() => assertImportClosure({manifest: {dependencies: {chromadb: '3.5.0'}}, stageDir: root})).not.toThrow();
+            expect(() => assertImportClosure({manifest: {dependencies: {'better-sqlite3': '12.0.0', chromadb: '3.5.0'}}, stageDir: root}))
+                .toThrow(/lacks pinned package.*better-sqlite3/)
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
     });
 
     test('the Genesis probe is checkout-only without excluding runtime diagnostics wholesale', () => {
@@ -358,51 +442,61 @@ test.describe('harness pack stage', () => {
         }
     });
 
-    test('buildOrganismManifest pins scanned packages to repo-declared versions and fails loud on undeclared imports', () => {
-        const repoPackageJson = {
-            devDependencies: {'better-sqlite3': '^12.0.0', chromadb: '^3.5.0'},
-            version        : '11.11.0'
-        };
+    test('buildOrganismManifest pins scanned packages to the owners\' declared versions and fails loud on undeclared imports', () => {
+        const
+            productPackageJson = {dependencies: {'neo.mjs': 'github:neomjs/neo#abc'}, devDependencies: {webpack: '^5.0.0'}, version: '11.11.0'},
+            brainPackageJson   = {dependencies: {'better-sqlite3': '^12.0.0', chromadb: '^3.5.0'}};
 
         const manifest = buildOrganismManifest({
-            packages    : ['better-sqlite3', 'chromadb'],
-            repoPackageJson,
+            brainPackageJson,
+            packages    : ['better-sqlite3', 'chromadb', 'neo.mjs'],
+            productPackageJson,
             supplemental: []
         });
 
-        expect(manifest.dependencies).toEqual({'better-sqlite3': '^12.0.0', chromadb: '^3.5.0'});
+        expect(manifest.dependencies).toEqual({'better-sqlite3': '^12.0.0', chromadb: '^3.5.0', 'neo.mjs': 'github:neomjs/neo#abc'});
         expect(manifest.private).toBe(true);
         expect(manifest.type).toBe('module');
+        expect(manifest.version).toBe('11.11.0');
 
         expect(() => buildOrganismManifest({
+            brainPackageJson,
             packages    : ['ghost-package'],
-            repoPackageJson,
+            productPackageJson,
             supplemental: []
         })).toThrow(/no declared version.*ghost-package/)
     });
 
-    test('buildOrganismManifest reads the Brain-tier manifest as dependency authority (the tier split)', () => {
-        // The root package.json is no longer the whole authority: the Brain runtime the organism
-        // ships is declared in package.brain.json. A scan that cannot see it must hard-error —
-        // that was the review falsifier this witness pins.
-        const repoPackageJson  = {devDependencies: {webpack: '^5.0.0'}, version: '13.1.0'},
-              brainPackageJson = {devDependencies: {'better-sqlite3': '12.11.1', chromadb: '3.5.0'}};
+    test('buildOrganismManifest takes the Brain root\'s package.json as the runtime tier — required, both tiers read, the product winning a shared name', () => {
+        // Post-split the Brain runtime the organism ships (Memory Core's better-sqlite3, the
+        // chromadb client) is declared by the Brain checkout's own package.json; the product
+        // declares the renderer closure and pins the Engine. A shared name resolves to the
+        // product's pin, and a scan without the Brain authority must hard-error.
+        const
+            productPackageJson = {dependencies: {'neo.mjs': 'github:neomjs/neo#product-pin'}, devDependencies: {webpack: '^5.0.0'}, version: '13.1.0'},
+            brainPackageJson   = {dependencies: {'better-sqlite3': '12.11.1', 'neo.mjs': 'github:neomjs/neo#brain-pin'}, devDependencies: {chromadb: '3.5.0'}};
 
         const manifest = buildOrganismManifest({
-            packages    : ['better-sqlite3', 'chromadb', 'webpack'],
-            repoPackageJson,
             brainPackageJson,
+            packages    : ['better-sqlite3', 'chromadb', 'neo.mjs', 'webpack'],
+            productPackageJson,
             supplemental: []
         });
 
-        expect(manifest.dependencies).toEqual({'better-sqlite3': '12.11.1', chromadb: '3.5.0', webpack: '^5.0.0'});
+        expect(manifest.dependencies).toEqual({
+            'better-sqlite3': '12.11.1',
+            chromadb        : '3.5.0',
+            'neo.mjs'       : 'github:neomjs/neo#product-pin',
+            webpack         : '^5.0.0'
+        });
 
-        // Without the brain authority the same scan fails loud — never a silently broken artifact.
+        // No Brain authority, no manifest — never a silently broken artifact (the pre-split
+        // package.brain.json was optional; the Brain root's package.json is not).
         expect(() => buildOrganismManifest({
             packages    : ['better-sqlite3'],
-            repoPackageJson,
+            productPackageJson,
             supplemental: []
-        })).toThrow(/no declared version.*better-sqlite3/)
+        })).toThrow(/Brain package\.json/)
     });
 
     test('the node shim fails loud without the runtime binary and execs it in node mode', () => {
@@ -466,6 +560,18 @@ test.describe('harness pack stage', () => {
         expect(resolveBrainMode({env: {NEO_HARNESS_BRAIN: '0'}, packaged: true})).toBe(false);
         expect(resolveBrainMode({env: {}, packaged: false})).toBe(false);
         expect(resolveBrainMode({env: {NEO_HARNESS_BRAIN: '1'}, packaged: false})).toBe(true)
+    });
+
+    // The launcher-ordering half: a checkout with the Brain leg off must boot without a Brain root
+    // and without loading a Brain contract; the root stays required while the leg is on, and a
+    // relative value is an error in every shape.
+    test('resolveLauncherRuntimeRoot: packaged → the organism root; Brain on → the absolute checkout, required; Brain off → the supplied root or none, relative never', () => {
+        expect(resolveLauncherRuntimeRoot({brainMode: true, env: {}, packaged: true, packagedOrganismRoot: '/app/organism'})).toBe('/app/organism');
+        expect(resolveLauncherRuntimeRoot({brainMode: true, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false})).toBe('/abs/brain');
+        expect(() => resolveLauncherRuntimeRoot({brainMode: true, env: {}, packaged: false})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
+        expect(resolveLauncherRuntimeRoot({brainMode: false, env: {}, packaged: false})).toBeNull();
+        expect(resolveLauncherRuntimeRoot({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false})).toBe('/abs/brain');
+        expect(() => resolveLauncherRuntimeRoot({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: 'brain'}, packaged: false})).toThrow(/absolute/)
     });
 
     // The security stop-line: a checkout's gitignored config overlay (which CAN carry hand-edited

@@ -1,5 +1,6 @@
 import {expect, test} from '@playwright/test';
 import {
+    createAbsentFleetCapability,
     createFleetCapability,
     projectPublicAgentIntent,
     projectPublicCredentialIntent
@@ -31,6 +32,22 @@ const createCapability = options => createFleetCapability({
 });
 
 test.describe('harness Fleet capability', () => {
+    // A checkout booted with the Brain leg off and no Brain root has no contract to build the real
+    // capability from; the route still answers — by rejecting with the reason that names the shape
+    // (never a hand-made envelope the renderer would read as malformed), sender trust first.
+    test('the absent capability rejects every request with the named reason, sender trust first', async () => {
+        const
+            reason     = 'fleet: this shell boots without a Brain root',
+            capability = createAbsentFleetCapability({isTrustedSender: event => event?.trusted === true, reason}),
+            request    = {method: 'listAgents', params: {}};
+
+        await expect(capability.request({trusted: true}, request)).rejects.toThrow(reason);
+        await expect(capability.request({trusted: false}, request)).rejects.toThrow('fleet: untrusted shell sender');
+
+        expect(() => createAbsentFleetCapability({isTrustedSender: null, reason})).toThrow(TypeError);
+        expect(() => createAbsentFleetCapability({isTrustedSender: () => true, reason: ''})).toThrow(TypeError)
+    });
+
     test('requires credential methods inside the wire allowlist and snapshots both inputs', async () => {
         expect(() => createCapability({
             credentialMethods: ['defineAgent', 'ghostCredentialVerb'],

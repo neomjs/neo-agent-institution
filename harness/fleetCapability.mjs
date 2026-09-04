@@ -76,6 +76,31 @@ export function projectPublicCredentialIntent(method, params) {
 }
 
 /**
+ * @summary The capability a shell WITHOUT a Brain root exposes (a checkout with the Brain leg off and
+ * no `NEO_AGENTOS_RUNTIME_ROOT`): the IPC route stays registered and every request REJECTS with the
+ * reason that names the shape. No envelope is minted — the wire contract that would shape one is
+ * exactly what this boot does not load, and a hand-made envelope would fail the renderer's inspection
+ * as "malformed" (a lie: it is absent). A rejection reaches the bridge as its closed transport failure,
+ * which is the truth — there is no transport — while the reason stays readable on the IPC error and
+ * in the shell log. Sender trust is checked first, exactly like the real capability's.
+ * @param {Object} options
+ * @param {Function} options.isTrustedSender Validates a real Electron IPC event.
+ * @param {String} options.reason Names the boot shape that has no transport.
+ * @returns {{request: Function}}
+ */
+export function createAbsentFleetCapability({isTrustedSender, reason}) {
+    if (typeof isTrustedSender !== 'function' || typeof reason !== 'string' || !reason) {
+        throw new TypeError('createAbsentFleetCapability requires isTrustedSender and the reason that names the shell shape')
+    }
+
+    return {
+        async request(event) {
+            throw new Error(isTrustedSender(event) ? reason : 'fleet: untrusted shell sender')
+        }
+    }
+}
+
+/**
  * @summary Creates the Electron-main owner for Fleet IPC. Sender trust and request shape are checked
  * before Brain readiness or network access; the bearer is attached only here, and every reply is
  * positively censused against both the bearer and (for Add-Peer) the submitted credential.

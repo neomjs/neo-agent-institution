@@ -25,6 +25,7 @@ import {builtinModules}                             from 'node:module';
 import path                                         from 'node:path';
 import {fileURLToPath}                              from 'node:url';
 import {parse}                                      from 'acorn';
+import {resolveAgentOsRuntimeRoot}                  from './brain.mjs';
 import {ALLOWED_EXACT_PATHS, ALLOWED_PATH_PREFIXES} from './contentPolicy.mjs';
 
 const
@@ -35,8 +36,8 @@ export const STAGE_DIR = path.join(harnessDir, '.stage', 'organism');
 
 // Runtime trees the renderer allowlist cannot know about: the Brain, plus the single buildScripts
 // module its entrypoints import (shipping the whole util dir would drag lint-tooling deps into the
-// organism manifest). node_modules-prefixed allowlist entries are NOT copied — they come from the
-// staged dependency install.
+// organism manifest). Both resolve against the BRAIN root, never this checkout. node_modules-prefixed
+// allowlist entries are NOT copied — they come from the staged dependency install.
 export const BRAIN_TREES = Object.freeze([
     'ai'
 ]);
@@ -54,6 +55,11 @@ export const TREE_EXCLUDES = Object.freeze([
     'ai/daemons/temporal-summary',
     'ai/scripts/diagnostics/genesisProbe.mjs'
 ]);
+
+// The theme builder the stage runs before copying `dist/development/css`: an ENGINE-package script
+// (the product's own `build-themes` is the same path), resolved inside the pinned install — the
+// product root carries no buildScripts/build of its own since the split.
+export const ENGINE_THEME_BUILD = 'buildScripts/build/themes.mjs';
 
 /**
  * @summary True when a repo-relative path is a checkout-instance CONFIG OVERLAY — a `config.mjs`
@@ -116,13 +122,14 @@ export const OPTIONAL_LAZY_PACKAGES = Object.freeze([
 ]);
 
 /**
- * @summary Derives the filesystem trees/files to stage from the renderer allowlist (URL-path
- * form) + the Brain set. One authority: a new allowlist prefix automatically ships.
- * @returns {{trees: String[], files: String[]}} repo-relative copy specs.
+ * @summary Derives the copy specs per OWNER: the renderer's source graph from the allowlist (URL-path
+ * form, product-root-relative) and the Brain set (Brain-root-relative). One authority each: a new
+ * allowlist prefix ships automatically; the Brain set is the two constants above.
+ * @returns {{brain: {files: String[], trees: String[]}, product: {files: String[], trees: String[]}}}
  */
 export function deriveCopySpecs() {
     const
-        trees = new Set(BRAIN_TREES),
+        trees = new Set(),
         files = new Set();
 
     for (const prefix of ALLOWED_PATH_PREFIXES) {
@@ -137,9 +144,48 @@ export function deriveCopySpecs() {
         }
     }
 
-    BRAIN_FILES.forEach(file => files.add(file));
+    return {
+        brain  : {files: [...BRAIN_FILES], trees: [...BRAIN_TREES]},
+        product: {files: [...files].sort(), trees: [...trees].sort()}
+    }
+}
 
-    return {files: [...files].sort(), trees: [...trees].sort()}
+/**
+ * @summary Resolves the three owners the stage assembles from, and proves each BEFORE anything is
+ * mutated: the PRODUCT root (this checkout — the renderer graph and its `package.json`), the ENGINE
+ * package (the pinned `neo.mjs` install inside it), and the BRAIN root (`NEO_AGENTOS_RUNTIME_ROOT`,
+ * absolute by the one runtime-root contract in brain.mjs — never a cwd or sibling guess). A missing
+ * or relative Brain authority, or a root without its markers, throws here: no stage dir removed, no
+ * theme built, nothing installed.
+ * @param {Object} [options]
+ * @param {Object} [options.env=process.env]
+ * @param {String} [options.productRoot] Defaults to this checkout.
+ * @returns {{brainRoot: String, enginePackageRoot: String, productRoot: String}}
+ */
+export function resolvePackRoots({env = process.env, productRoot = repoRoot} = {}) {
+    const
+        resolvedProduct   = path.resolve(productRoot),
+        enginePackageRoot = path.join(resolvedProduct, 'node_modules', 'neo.mjs'),
+        brainRoot         = resolveAgentOsRuntimeRoot(env),
+        owners            = [
+            ['product',        resolvedProduct,   ['apps/agentos', 'package.json']],
+            ['engine package', enginePackageRoot, ['package.json', ENGINE_THEME_BUILD]],
+            ['brain',          brainRoot,         ['package.json', ...BRAIN_TREES, ...BRAIN_FILES]]
+        ];
+
+    for (const [owner, root, markers] of owners) {
+        for (const marker of markers) {
+            if (!fs.existsSync(path.join(root, marker))) {
+                throw new Error(`pack: the ${owner} root ${root} carries no ${marker} — refusing to stage`)
+            }
+        }
+    }
+
+    return {brainRoot, enginePackageRoot, productRoot: resolvedProduct}
+}
+
+function readPackageJson(root) {
+    return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 }
 
 // npm package-name shape — rejects non-package specifiers before manifest projection.
@@ -268,23 +314,33 @@ export function collectTreeBarePackages({rootDir}) {
 
 /**
  * @summary Builds the organism's dependency manifest: every scanned bare package pinned to the
- * version the repo declares — under `devDependencies` of EITHER install-tier manifest. The root
- * `package.json` is no longer the whole authority since the tier split: the Brain runtime the
- * organism ships (Memory Core's `better-sqlite3`, the `chromadb` client) is declared in
- * `package.brain.json`, and a scan that cannot see it hard-errors exactly where a broken
- * artifact would otherwise ship. An import with NO declared version in either tier is a hard
- * error: the checkout would have failed too, and silence here would ship a broken artifact.
+ * version one of the two owners declares. The PRODUCT `package.json` declares the renderer graph's
+ * closure (the pinned Engine among it); the BRAIN root's `package.json` is the runtime tier the
+ * organism ships (Memory Core's `better-sqlite3`, the `chromadb` client) — required, never optional:
+ * a scan that cannot see it hard-errors exactly where a broken artifact would otherwise ship. Both
+ * tiers of each manifest count, and on a name both owners declare the product's pin wins (the Engine
+ * is the product's dependency). An import with NO declared version in either owner is a hard error:
+ * the checkout would have failed too, and silence here would ship a broken artifact.
  * @param {Object} options
  * @param {String[]} options.packages Scanned package names.
- * @param {Object} options.repoPackageJson Parsed repo package.json.
- * @param {Object} [options.brainPackageJson] Parsed repo package.brain.json (Brain-tier authority).
+ * @param {Object} options.productPackageJson Parsed product package.json.
+ * @param {Object} options.brainPackageJson Parsed Brain-root package.json.
  * @param {String[]} [options.supplemental=SUPPLEMENTAL_DEPENDENCIES]
  * @param {String[]} [options.optionalLazy=OPTIONAL_LAZY_PACKAGES]
- * @returns {Object} `{name, private, dependencies}` — the staged package.json.
+ * @returns {Object} `{name, private, type, version, dependencies}` — the staged package.json.
  */
-export function buildOrganismManifest({packages, repoPackageJson, brainPackageJson = null, supplemental = SUPPLEMENTAL_DEPENDENCIES, optionalLazy = OPTIONAL_LAZY_PACKAGES}) {
+export function buildOrganismManifest({packages, productPackageJson, brainPackageJson, supplemental = SUPPLEMENTAL_DEPENDENCIES, optionalLazy = OPTIONAL_LAZY_PACKAGES}) {
+    if (!productPackageJson || !brainPackageJson) {
+        throw new Error('organism manifest: the product package.json and the Brain package.json are both required dependency authorities')
+    }
+
     const
-        declared     = {...repoPackageJson.dependencies, ...repoPackageJson.devDependencies, ...brainPackageJson?.devDependencies},
+        declared     = {
+            ...brainPackageJson.devDependencies,
+            ...brainPackageJson.dependencies,
+            ...productPackageJson.devDependencies,
+            ...productPackageJson.dependencies
+        },
         dependencies = {},
         missing      = [];
 
@@ -305,7 +361,25 @@ export function buildOrganismManifest({packages, repoPackageJson, brainPackageJs
         name   : 'neo-harness-organism',
         private: true,
         type   : 'module',
-        version: repoPackageJson.version ?? '0.0.0'
+        version: productPackageJson.version ?? '0.0.0'
+    }
+}
+
+/**
+ * @summary The packaged-runtime import closure, verified after the install: every package the
+ * manifest pins resolves inside the stage's own `node_modules`. npm reports an optional or
+ * platform-skipped package as a warning at most — a stranger's double-click would find out at the
+ * first import instead.
+ * @param {Object} options
+ * @param {Object} options.manifest The staged package.json.
+ * @param {String} options.stageDir
+ */
+export function assertImportClosure({manifest, stageDir}) {
+    const missing = Object.keys(manifest.dependencies)
+        .filter(name => !fs.existsSync(path.join(stageDir, 'node_modules', name, 'package.json')));
+
+    if (missing.length > 0) {
+        throw new Error(`pack: the staged install lacks pinned package(s): ${missing.join(', ')}`)
     }
 }
 
@@ -347,23 +421,45 @@ function copyTree(sourceRoot, targetRoot, relative) {
     })
 }
 
+function copyFile(sourceRoot, targetRoot, relative) {
+    const source = path.join(sourceRoot, relative);
+
+    if (!fs.existsSync(source)) {
+        throw new Error(`pack: staged file missing in ${sourceRoot}: ${relative}`)
+    }
+
+    fs.mkdirSync(path.dirname(path.join(targetRoot, relative)), {recursive: true});
+    fs.copyFileSync(source, path.join(targetRoot, relative))
+}
+
 function run(command, args, options = {}) {
     execFileSync(command, args, {stdio: 'inherit', ...options})
 }
 
 /**
- * @summary Stages the complete organism: trees + files (allowlist-derived), generated dependency
- * manifest + install, the @electron/rebuild attempt (falsifier-gated arm), the pack-time-fresh
- * instance config, and the node shim. Idempotent: the stage dir is rebuilt from scratch.
+ * @summary Stages the complete organism from its three owners: the product graph (allowlist-derived)
+ * and the Brain set (from the explicit Brain root), the generated dependency manifest + install with
+ * its verified closure, the @electron/rebuild attempt (falsifier-gated arm), the pack-time-fresh
+ * instance config, and the node shim. Idempotent: the stage dir is rebuilt from scratch — but only
+ * once every owner is proven, so a missing authority never leaves a half-staged tree behind.
  * @param {Object} [options]
- * @param {String} [options.stageDir=STAGE_DIR]
  * @param {String} [options.electronVersion] Version for @electron/rebuild (harness devDep pin).
+ * @param {Object} [options.env=process.env] Carries `NEO_AGENTOS_RUNTIME_ROOT`, the Brain authority.
+ * @param {String} [options.productRoot] Defaults to this checkout.
+ * @param {String} [options.stageDir=STAGE_DIR]
  * @returns {Object} build info (also written to `<stageDir>/organism-build-info.json`).
  */
-export function stageOrganism({stageDir = STAGE_DIR, electronVersion} = {}) {
+export function stageOrganism({electronVersion, env = process.env, productRoot = repoRoot, stageDir = STAGE_DIR} = {}) {
     if (!electronVersion) {
         throw new Error('pack: electronVersion is required — the staged natives MUST target the bundled runtime ABI.')
     }
+
+    const
+        roots              = resolvePackRoots({env, productRoot}),
+        productPackageJson = readPackageJson(roots.productRoot),
+        enginePackageJson  = readPackageJson(roots.enginePackageRoot),
+        brainPackageJson   = readPackageJson(roots.brainRoot),
+        {brain, product}   = deriveCopySpecs();
 
     fs.rmSync(stageDir, {force: true, recursive: true});
     fs.mkdirSync(stageDir, {recursive: true});
@@ -373,40 +469,43 @@ export function stageOrganism({stageDir = STAGE_DIR, electronVersion} = {}) {
     // (live incident: a theming merge landed after the last local theme build). The artifact
     // never trusts checkout state — it rebuilds.
     console.log('[pack] building dev themes from current SCSS');
-    run('node', ['buildScripts/build/themes.mjs', '-f', '-n', '-e', 'dev', '-t', 'all'], {cwd: repoRoot});
+    run('node', [path.join(roots.enginePackageRoot, ENGINE_THEME_BUILD), '-f', '-n', '-e', 'dev', '-t', 'all'], {cwd: roots.productRoot});
 
-    const {files, trees} = deriveCopySpecs();
-
-    for (const tree of trees) {
-        copyTree(repoRoot, stageDir, tree)
-    }
-
-    for (const file of files) {
-        fs.mkdirSync(path.dirname(path.join(stageDir, file)), {recursive: true});
-        fs.copyFileSync(path.join(repoRoot, file), path.join(stageDir, file))
-    }
+    product.trees.forEach(tree => copyTree(roots.productRoot, stageDir, tree));
+    product.files.forEach(file => copyFile(roots.productRoot, stageDir, file));
+    brain.trees.forEach(tree => copyTree(roots.brainRoot, stageDir, tree));
+    brain.files.forEach(file => copyFile(roots.brainRoot, stageDir, file));
 
     // Security stop-line: no checkout instance overlay may exist in the stage BEFORE the fresh
     // template-defaults generation below. Runs pre-install so the walk stays cheap.
     assertNoInstanceOverlays(stageDir);
 
     const
-        repoPackageJson  = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')),
-        brainPath        = path.join(repoRoot, 'package.brain.json'),
-        brainPackageJson = fs.existsSync(brainPath) ? JSON.parse(fs.readFileSync(brainPath, 'utf8')) : null,
-        packages         = [...new Set(trees.flatMap(tree => collectTreeBarePackages({rootDir: path.join(stageDir, tree)})))].sort(),
-        manifest         = buildOrganismManifest({packages, repoPackageJson, brainPackageJson});
+        trees    = [...product.trees, ...brain.trees],
+        packages = [...new Set(trees.flatMap(tree => collectTreeBarePackages({rootDir: path.join(stageDir, tree)})))].sort(),
+        manifest = buildOrganismManifest({brainPackageJson, packages, productPackageJson});
 
     fs.writeFileSync(path.join(stageDir, 'package.json'), JSON.stringify(manifest, null, 4), 'utf8');
 
-    console.log(`[pack] staged ${trees.length} trees + ${files.length} files; installing ${Object.keys(manifest.dependencies).length} organism dependencies`);
+    console.log(`[pack] staged ${trees.length} trees + ${product.files.length + brain.files.length} files; installing ${Object.keys(manifest.dependencies).length} organism dependencies`);
     run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], {cwd: stageDir});
+    assertImportClosure({manifest, stageDir});
 
     // Mandatory ABI targeting: the staged natives rebuild for the bundled Electron. Failure fails
     // the build — a catch-and-ship here is a silently-broken-artifact vector.
     run('npx', ['@electron/rebuild', '--module-dir', stageDir, '--version', electronVersion], {cwd: harnessDir});
 
-    const buildInfo = {electronVersion, rebuilt: true, stagedAt: new Date().toISOString()};
+    const buildInfo = {
+        electronVersion,
+        rebuilt : true,
+        // the owners this artifact was assembled from — the provenance a reader of the bundle needs
+        roots   : {
+            brain  : {name: brainPackageJson.name, root: roots.brainRoot, version: brainPackageJson.version},
+            engine : {pin: productPackageJson.dependencies?.['neo.mjs'] ?? null, version: enginePackageJson.version},
+            product: {name: productPackageJson.name, root: roots.productRoot, version: productPackageJson.version}
+        },
+        stagedAt: new Date().toISOString()
+    };
 
     // Pack-time-fresh instance config: template-current by construction, so the packaged first
     // boot never needs to WRITE into the (possibly read-only, translocated) resources dir.
