@@ -146,10 +146,14 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e:nl
 
 The script reaches every Neural Link witness under `test/playwright/e2e/agentos/` — a suffix
 match, not a prefix, so a new witness joins the battery by its name, and a red one announces
-itself instead of falling outside the glob. Add `-- --headed` for the honest receipt. Two reds are
-stated, not masked, and each has an owner: `AddAgentJourneyNL` waits on #74 (the define-agent zone
-reveals empty until the Engine's rail loads a lazy module item on reveal), and `FleetGridScaleNL`
-reads back an empty store after possessing it over the wire (#78). Two witnesses ride the Engine's
+itself instead of falling outside the glob. Add `-- --headed` for the honest receipt. One red is
+stated, not masked, and it has an owner outside this repo: `FleetGridScaleNL` folds a 20-agent
+roster correctly in the store but the animated list drops the cards, because the Engine's
+unfiltered projection (`allItems`) holds a batch as raw rows while the store holds records of the
+same rows, and the list reconciles by identity (neomjs/neo#18269 — the cockpit's own defence, the
+fold decided after the mutation settles and derived from `state`, is in #78; the witness turns
+green with the pin that carries the Engine fix). `AddAgentJourneyNL` went green with #74. Two
+witnesses ride the Engine's
 FLIP settle — the Review-preset journey in `FleetCockpitDockNL` and the rail-drawer witness's Escape
 dismissal — and the settle occasionally does not land within the wait (measured 2026-09-02:
 `FleetCockpitDockNL` 2/2 green headless under the Brain root; the rail-drawer witness runs only
