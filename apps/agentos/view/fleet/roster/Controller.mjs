@@ -236,23 +236,14 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary The roster set changed (seed, live replace, joiners/leavers): re-derive counts,
-     * fold state and the CTA — one microtask after the mutation, never inside it.
-     *
-     * The store fires `load` synchronously from its own `mutate` listener, and the Engine mirrors
-     * that same mutation into `allItems` from a LATER `mutate` listener (neomjs/neo#18269). A fold
-     * toggled here re-filters the view from an `allItems` the batch has not reached yet, and every
-     * row being added vanishes from the view — the whole batch, not only the idle tier. Deciding
-     * on the settled fleet costs one microtask and no truth: title, CTA and chip read the same
-     * whole fleet either way. Removable once the Engine mirrors inside the mutation.
+     * @summary The roster set changed (seed, live replace, joiners/leavers): re-derive counts, fold
+     * state and the CTA — inside the store's own `load`, which the Engine fires with the unfiltered
+     * projection already holding the batch (it is written inside the mutation, ahead of every
+     * listener), so a fold toggled here folds the whole fleet it was just handed.
      * @param {Object} data The store load event.
      */
     onRosterStoreLoad(data) {
-        const me = this;
-
-        queueMicrotask(() => {
-            !me.isDestroyed && !me.component?.isDestroyed && me.syncRosterDerived()
-        })
+        this.syncRosterDerived()
     }
 
     /**
