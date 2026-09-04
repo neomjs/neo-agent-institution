@@ -165,9 +165,10 @@ temporal-summary daemon with its aggregation script; the Engine modules the Brai
 its sanitizer among them, come from the staged install). Every owner is proven
 BEFORE the stage dir is touched: a missing or relative Brain authority, or a root without its
 markers, fails the pack with nothing removed, built or installed — never a cwd or sibling guess.
-The dependency manifest is GENERATED with each import's provenance kept: the renderer graph's
-bare imports are pinned by the product `package.json`, the Brain tree's by the Brain root's
-`package.json`, a name both trees import must carry the same declaration in both (a disagreement
+The dependency manifest is GENERATED with each import's provenance kept — each owner's COPIED
+files are scanned on their own, so the `src/` both owners share credits nothing to the wrong one:
+the renderer graph's bare imports are pinned by the product `package.json`, the Brain trees' by
+the Brain root's `package.json`, a name both trees import must carry the same declaration in both (a disagreement
 fails the pack — never a silent precedence), and `neo.mjs` is the one named exception: the Engine
 is the product's pin. An import its owner never declared fails loud; on the complete stage every
 pin is checked to be present under its `node_modules` and every relative import of a staged module

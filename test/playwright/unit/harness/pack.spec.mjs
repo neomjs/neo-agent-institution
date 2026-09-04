@@ -12,7 +12,7 @@ import {
     assertNoInstanceOverlays,
     buildNodeShim,
     buildOrganismManifest,
-    collectTreeBarePackages,
+    collectBarePackages,
     deriveCopySpecs,
     describeOwners,
     extractBarePackages,
@@ -21,7 +21,8 @@ import {
     isInstanceOverlayPath,
     materializeOverlaySlots,
     resolvePackRoots,
-    stageOrganism
+    stageOrganism,
+    stageOwners
 } from '../../../../harness/pack.mjs';
 import {buildPackagedBrainEnv, resolveBrainMode, resolveLauncherRuntimeRoot} from '../../../../harness/brain.mjs';
 import path                                                                  from 'node:path';
@@ -335,6 +336,54 @@ test.describe('harness pack stage', () => {
         }
     });
 
+    test('stageOwners keeps provenance across the shared src tree: each owner is scanned from the files IT copied, and a merged scan is the red control', async () => {
+        const
+            {brain, product, root} = await scaffoldRoots(),
+            stageDir               = path.join(root, 'stage'),
+            productPackageJson     = {dependencies: {'product-only-pkg': '1.0.0'}, name: 'product', version: '1.0.0'},
+            brainPackageJson       = {dependencies: {'brain-only-pkg': '2.0.0'}, name: 'neo-agent-brain', version: '0.0.0'};
+
+        // the product's allowlist set (trees + exact files) and the Brain's two trees; both owners
+        // carry a `src/` — the product's loader beside the Brain's evolution module — and each
+        // imports a package only ITS owner declares
+        mkdirSync(path.join(product, 'src'), {recursive: true});
+        mkdirSync(path.join(product, 'dist', 'development', 'css'), {recursive: true});
+        mkdirSync(path.join(product, 'resources', 'images', 'logo'), {recursive: true});
+        writeFileSync(path.join(product, 'resources', 'theme-map.json'), '{}', 'utf8');
+        writeFileSync(path.join(product, 'resources', 'images', 'logo', 'neo_logo_primary.svg'), '<svg/>', 'utf8');
+        writeFileSync(path.join(product, 'src', 'MicroLoader.mjs'), "import loader from 'product-only-pkg';\nexport default loader", 'utf8');
+        mkdirSync(path.join(brain, 'src', 'evolution'), {recursive: true});
+        writeFileSync(path.join(brain, 'ai', 'x.mjs'), 'export default {}', 'utf8');
+        writeFileSync(path.join(brain, 'src', 'evolution', 'rem.mjs'), "import sqlite from 'brain-only-pkg';\nimport x from '../../ai/x.mjs';\nexport default {sqlite, x}", 'utf8');
+
+        try {
+            const
+                roots             = resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product}),
+                {copied, scanned} = stageOwners({roots, stageDir});
+
+            expect(copied.brain.sort()).toEqual(['ai/x.mjs', 'src/evolution/rem.mjs']);
+            expect(copied.product.sort()).toEqual(['resources/images/logo/neo_logo_primary.svg', 'resources/theme-map.json', 'src/MicroLoader.mjs']);
+            expect(scanned).toEqual({brain: ['brain-only-pkg'], product: ['product-only-pkg']});
+            expect(buildOrganismManifest({brainPackageJson, productPackageJson, scanned, supplemental: NO_SUPPLEMENTAL}).dependencies)
+                .toEqual({'brain-only-pkg': '2.0.0', 'product-only-pkg': '1.0.0'});
+
+            // the red control: a scan of the MERGED stage/src credits both imports to both owners,
+            // and the manifest then reports a Brain-only import as missing for the product
+            const merged = collectBarePackages({files: ['src/MicroLoader.mjs', 'src/evolution/rem.mjs'], rootDir: stageDir});
+
+            expect(merged).toEqual(['brain-only-pkg', 'product-only-pkg']);
+            expect(() => buildOrganismManifest({brainPackageJson, productPackageJson, scanned: {brain: merged, product: merged}, supplemental: NO_SUPPLEMENTAL}))
+                .toThrow(/no declared version.*brain-only-pkg \(product\)/);
+
+            // two owners may share the directory, never a file
+            writeFileSync(path.join(brain, 'src', 'MicroLoader.mjs'), 'export default {}', 'utf8');
+            await rm(stageDir, {force: true, recursive: true});
+            expect(() => stageOwners({roots, stageDir})).toThrow(/two owners stage the same path/)
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
     test('assertImportClosure fails loud on a missing pinned package and on a staged module importing outside the stage', async () => {
         const root = await mkdtemp(path.join(tmpdir(), 'neo-pack-closure-'));
 
@@ -451,7 +500,7 @@ test.describe('harness pack stage', () => {
         ])
     });
 
-    test('collectTreeBarePackages scans staged mjs, cjs, and js files through the shared syntax scanner', async () => {
+    test('collectBarePackages scans an explicit file set — mjs, cjs, and js through the shared syntax scanner, other files skipped', async () => {
         const root = await mkdtemp(path.join(tmpdir(), 'neo-pack-import-scan-'));
 
         try {
@@ -467,8 +516,12 @@ test.describe('harness pack stage', () => {
                 "export {value} from '@scope/js-package/deep/path.mjs';",
                 "const runtime = import(runtimeSpecifier);"
             ].join('\n'), 'utf8');
+            writeFileSync(path.join(root, 'notes.md'), "import ghost from 'md-ghost';", 'utf8');
+            writeFileSync(path.join(root, 'unlisted.mjs'), "import ghost from 'unlisted-ghost';", 'utf8');
 
-            expect(collectTreeBarePackages({rootDir: root})).toEqual([
+            // only the files named are read — a file on disk but outside the owner's set (the other
+            // owner's file in a shared directory) contributes nothing
+            expect(collectBarePackages({files: ['module.mjs', 'common.cjs', 'plain.js', 'notes.md'], rootDir: root})).toEqual([
                 '@scope/js-package',
                 'cjs-package',
                 'mjs-package'

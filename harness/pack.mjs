@@ -296,29 +296,24 @@ export function extractBarePackages(source) {
 }
 
 /**
- * @summary Walks the staged runtime trees and collects every bare package import.
+ * @summary Collects every bare package import of an explicit FILE SET — the files one owner copied,
+ * never a directory walk: both owners land a `src/` in the stage, and walking the merged directory
+ * would credit every import in it to both owners (a Brain-only import declared by the Brain alone
+ * would then read as missing for the product, and the reverse). Non-script files are skipped.
  * @param {Object} options
- * @param {String} options.rootDir Directory whose `.mjs`/`.cjs`/`.js` files are scanned.
- * @returns {String[]} unique package names across the tree.
+ * @param {String[]} options.files Stage-relative paths.
+ * @param {String} options.rootDir The stage.
+ * @returns {String[]} unique package names across the set.
  */
-export function collectTreeBarePackages({rootDir}) {
+export function collectBarePackages({files, rootDir}) {
     const packages = new Set();
 
-    const walk = dir => {
-        for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
-            const fullPath = path.join(dir, entry.name);
-
-            if (entry.isDirectory()) {
-                if (entry.name !== 'node_modules' && entry.name !== '.git') {
-                    walk(fullPath)
-                }
-            } else if (/\.(mjs|cjs|js)$/.test(entry.name)) {
-                extractBarePackages(fs.readFileSync(fullPath, 'utf8')).forEach(name => packages.add(name))
-            }
+    for (const file of files) {
+        if (/\.(mjs|cjs|js)$/.test(file)) {
+            extractBarePackages(fs.readFileSync(path.join(rootDir, file), 'utf8')).forEach(name => packages.add(name))
         }
-    };
+    }
 
-    walk(rootDir);
     return [...packages].sort()
 }
 
@@ -539,8 +534,11 @@ export function buildNodeShim() {
 
 // Two owners may share a directory in the stage (both carry a `src/`), never a file: an existing
 // target is a collision between owners and fails the copy instead of letting the later one win.
+// Both copiers return the stage-relative files they placed — the owner's provenance for the scan.
 function copyTree(sourceRoot, targetRoot, relative) {
-    const source = path.join(sourceRoot, relative);
+    const
+        source = path.join(sourceRoot, relative),
+        copied = [];
 
     if (!fs.existsSync(source)) {
         throw new Error(`pack: staged tree missing in ${sourceRoot}: ${relative}`)
@@ -550,13 +548,17 @@ function copyTree(sourceRoot, targetRoot, relative) {
         fs.cpSync(source, path.join(targetRoot, relative), {
             errorOnExist: true,
             filter      : entry => {
-                const rel = path.relative(sourceRoot, entry);
+                const
+                    rel   = path.relative(sourceRoot, entry),
+                    ships = !TREE_EXCLUDES.some(exclude => rel === exclude || rel.startsWith(exclude + path.sep)) &&
+                        !isInstanceOverlayPath(sourceRoot, rel) &&
+                        !/(^|\/)(node_modules|\.git)(\/|$)/.test(rel) &&
+                        !/(^|\/)\.env(\.|$)/.test(rel) &&
+                        !rel.endsWith('.DS_Store');
 
-                return !TREE_EXCLUDES.some(exclude => rel === exclude || rel.startsWith(exclude + path.sep)) &&
-                    !isInstanceOverlayPath(sourceRoot, rel) &&
-                    !/(^|\/)(node_modules|\.git)(\/|$)/.test(rel) &&
-                    !/(^|\/)\.env(\.|$)/.test(rel) &&
-                    !rel.endsWith('.DS_Store')
+                ships && fs.statSync(entry).isFile() && copied.push(rel);
+
+                return ships
             },
             force    : false,
             recursive: true
@@ -568,6 +570,8 @@ function copyTree(sourceRoot, targetRoot, relative) {
 
         throw error
     }
+
+    return copied
 }
 
 function copyFile(sourceRoot, targetRoot, relative) {
@@ -584,7 +588,40 @@ function copyFile(sourceRoot, targetRoot, relative) {
     }
 
     fs.mkdirSync(path.dirname(target), {recursive: true});
-    fs.copyFileSync(source, target)
+    fs.copyFileSync(source, target);
+
+    return relative
+}
+
+/**
+ * @summary Copies every owner's set into the stage — the product's allowlist trees and files from
+ * the product root, the Brain's trees from the Brain root — and scans each owner's COPIED files for
+ * their bare imports. This is the boundary where provenance is kept: the merged stage cannot show
+ * which owner a file came from once both have landed a `src/`, so the scan reads the file sets the
+ * copiers returned, never the directory. The instance-overlay stop-line runs here too, before any
+ * fresh-config generation, while the walk is cheap.
+ * @param {Object} options
+ * @param {{brainRoot: String, productRoot: String}} options.roots Resolved by `resolvePackRoots`.
+ * @param {String} options.stageDir
+ * @returns {{copied: {brain: String[], product: String[]}, scanned: {brain: String[], product: String[]}}}
+ */
+export function stageOwners({roots, stageDir}) {
+    const
+        {brain, product} = deriveCopySpecs(),
+        copied           = {
+            brain  : brain.trees.flatMap(tree => copyTree(roots.brainRoot, stageDir, tree)),
+            product: [
+                ...product.trees.flatMap(tree => copyTree(roots.productRoot, stageDir, tree)),
+                ...product.files.map(file => copyFile(roots.productRoot, stageDir, file))
+            ]
+        };
+
+    assertNoInstanceOverlays(stageDir);
+
+    return {
+        copied,
+        scanned: Object.fromEntries(Object.entries(copied).map(([owner, files]) => [owner, collectBarePackages({files, rootDir: stageDir})]))
+    }
 }
 
 function run(command, args, options = {}) {
@@ -626,25 +663,13 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     console.log('[pack] building dev themes from current SCSS');
     run('node', [path.join(roots.enginePackageRoot, ENGINE_THEME_BUILD), '-f', '-n', '-e', 'dev', '-t', 'all'], {cwd: roots.productRoot});
 
-    product.trees.forEach(tree => copyTree(roots.productRoot, stageDir, tree));
-    product.files.forEach(file => copyFile(roots.productRoot, stageDir, file));
-    brain.trees.forEach(tree => copyTree(roots.brainRoot, stageDir, tree));
-
-    // Security stop-line: no checkout instance overlay may exist in the stage BEFORE the fresh
-    // template-defaults generation below. Runs pre-install so the walk stays cheap.
-    assertNoInstanceOverlays(stageDir);
-
-    // Each owner's trees are scanned on their own, so every import keeps the owner that stages it.
     const
-        scanned  = Object.fromEntries(Object.entries({brain, product}).map(([owner, specs]) => [
-            owner,
-            [...new Set(specs.trees.flatMap(tree => collectTreeBarePackages({rootDir: path.join(stageDir, tree)})))].sort()
-        ])),
-        manifest = buildOrganismManifest({brainPackageJson, productPackageJson, scanned});
+        {copied, scanned} = stageOwners({roots, stageDir}),
+        manifest          = buildOrganismManifest({brainPackageJson, productPackageJson, scanned});
 
     fs.writeFileSync(path.join(stageDir, 'package.json'), JSON.stringify(manifest, null, 4), 'utf8');
 
-    console.log(`[pack] staged ${product.trees.length + brain.trees.length} trees + ${product.files.length} files; installing ${Object.keys(manifest.dependencies).length} organism dependencies`);
+    console.log(`[pack] staged ${copied.product.length} product + ${copied.brain.length} Brain files; installing ${Object.keys(manifest.dependencies).length} organism dependencies`);
     run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], {cwd: stageDir});
 
     // Mandatory ABI targeting: the staged natives rebuild for the bundled Electron. Failure fails
