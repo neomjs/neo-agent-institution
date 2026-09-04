@@ -20,6 +20,8 @@ import * as core                                                        from '..
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                       '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {makeActivityStoreHarness, makeControllerFake, makeProviderFake} from './cockpitFakes.mjs';
+import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import {createFleetWireResponse} from '../../../../../../../../apps/agentos/config/fleetWireMethods.mjs';
 
 /**
  * The slot-sync consumer witness: `syncSpineBanner` against a REAL recording banner slot — the
@@ -369,6 +371,48 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
             delete globalThis.AgentOS?.fleet
         }
     };
+
+    test('connection publication is owner-keyed for a third surface and cannot rewrite either sibling', () => {
+        const {host, provider} = makeLivenessHost(),
+              grid = {state: 'refused', reason: 'roster refused'},
+              stream = {state: 'timeout', reason: 'activity timed out'};
+        provider.setData({gridConnection: grid, streamConnection: stream});
+
+        host.publishConnection('system', {pending: true});
+        expect(provider.data.systemConnection).toEqual({state: 'connecting', reason: null});
+        host.publishConnection('system', {error: Object.assign(new Error('denied token=private'), {
+            fleetConnectionState: 'refused'
+        })});
+        expect(provider.data.systemConnection).toEqual({state: 'refused', reason: 'denied token=[redacted]'});
+        host.publishConnection('system');
+        expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+        expect(provider.data.gridConnection).toBe(grid);
+        expect(provider.data.streamConnection).toBe(stream)
+    });
+
+    test('a real refused activity response reaches its own cold feed banner with a sanitized reason', async () => {
+        const {host, provider} = makeLivenessHost();
+        provider.data.streamAdapterState = 'sample';
+
+        let answer;
+        installFleetBridge({send: () => new Promise(resolve => { answer = resolve })});
+        const pending = host.loadActivity();
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(verdictOf(provider.data).text).toBe('feed connecting');
+        answer(createFleetWireResponse('refused', {error: 'activity denied; Authorization: Bearer secret-value'}));
+        await pending;
+
+        expect(provider.data.streamConnection.state).toBe('refused');
+        expect(provider.data.streamConnection.reason).not.toContain('secret-value');
+        const verdict = verdictOf(provider.data);
+        expect(verdict.text).toBe('feed refused');
+        expect(verdict.title).toContain('activity denied');
+        expect(verdict.title).toContain('roster is live');
+        expect(verdict.title).not.toContain('server offline');
+        expect(titleAfterBannerTitle(verdict.title)).toBe(verdict.title);
+        expect(deriveTruths(provider.data).instanceState).toBe('limited')
+    });
 
     test('owner-truth MOBILITY: once live, a thrown load advances to stale and the verdict NAMES the loss', async () => {
         // `live` must stop meaning "was live once": a transport death the operator can\'t see is

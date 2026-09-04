@@ -16,7 +16,12 @@ import * as core                  from '../../../../../../../../node_modules/neo
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                 '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
-import {makeActivityStoreHarness} from './cockpitFakes.mjs';
+import {makeActivityStoreHarness, makeProviderFake} from './cockpitFakes.mjs';
+import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import {
+    createFleetWireResponse,
+    FLEET_WIRE_RESPONSE_STATES
+} from '../../../../../../../../apps/agentos/config/fleetWireMethods.mjs';
 
 /**
  * The liveness owner's LIFECYCLE witness. A transition matrix proves the owner tells the truth while
@@ -31,10 +36,11 @@ import {makeActivityStoreHarness} from './cockpitFakes.mjs';
  * start on a live cockpit would silently double the poll rate against the bridge.
  */
 test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #15293)', () => {
-    let FleetCockpitController;
+    let FleetCockpitController, FleetRoster;
 
     test.beforeAll(async () => {
-        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
+        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
+        FleetRoster = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default
     });
 
     /**
@@ -78,6 +84,202 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             _clearInterval: id => cleared.push(id)
         })
     };
+
+    test.describe('roster connection observations through the real bridge and loader', () => {
+        let previousFleet, stores;
+
+        test.beforeEach(() => {
+            previousFleet = globalThis.AgentOS?.fleet;
+            stores = []
+        });
+
+        test.afterEach(() => {
+            stores.forEach(store => store.destroy());
+            if (previousFleet === undefined) {
+                delete globalThis.AgentOS.fleet
+            } else {
+                globalThis.AgentOS.fleet = previousFleet
+            }
+        });
+
+        /**
+         * @summary Keeps the real roster loader, mapping and Store; only unrelated view seams
+         * are absent. Every capacity change comes from a real wire settlement, never a counter edit.
+         */
+        const makeRosterHost = ({state = 'sample', timeout = 2000} = {}) => {
+            const provider = makeProviderFake({
+                gridAdapterState: state,
+                gridConnection: {state: null, reason: null},
+                streamConnection: {state: 'failed-upstream', reason: 'activity source unavailable'}
+            });
+            const store = Neo.create(FleetRoster, {
+                autoLoad: false,
+                data: [{agentId: 'resident', displayName: 'Retained resident'}]
+            });
+            const grid = {adapterState: state};
+            const host = Object.assign(makeTimerHost(), {
+                getReference: reference => reference === 'fleet-grid' ? grid : null,
+                resolveFleetRosterStore: () => store,
+                rosterWired: state === 'live'
+            });
+
+            Object.assign(host.component, {
+                getCatchUpPane: () => null,
+                getMemoriesPane: () => null,
+                getOperatorMailboxPane: () => null,
+                getStateProvider: () => provider,
+                getWakeRoutesPane: () => null,
+                livenessReadTimeout: timeout,
+                rosterSourceMode: 'selected'
+            });
+            delete host.loadRoster;
+            stores.push(store);
+
+            return {grid, host, provider, store}
+        };
+
+        /** @summary Install the production proxy against a controllable envelope-producing wire. */
+        const installWire = send => installFleetBridge({credentialIngress: 'shell', send, target: globalThis});
+        const rosterReply = id => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {
+            result: {rows: [{id, displayName: id}]}
+        });
+        const refusedReply = error => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.refused, {error});
+
+        test('a cold roster read publishes connecting, retains a safe refusal, and clears on real recovery', async () => {
+            const {host, provider, store} = makeRosterHost();
+            const wire = Promise.withResolvers();
+            let calls = 0;
+
+            installWire(() => ++calls === 1 ? wire.promise : rosterReply('recovered'));
+            const read = host.loadRoster();
+
+            expect(provider.data.gridConnection).toEqual({state: 'connecting', reason: null});
+            await expect.poll(() => calls).toBe(1);
+            wire.resolve(refusedReply('Authorization: Bearer secret-value; request refused'));
+            await read;
+
+            expect(provider.data.gridConnection.state).toBe('refused');
+            expect(provider.data.gridConnection.reason).toContain('[redacted]');
+            expect(provider.data.gridConnection.reason).not.toContain('secret-value');
+            expect(provider.data.gridAdapterState).toBe('sample');
+            expect(store.get('resident')).toBeTruthy();
+            expect(host.gridReadInFlight).toBe(0);
+
+            await host.loadRoster();
+
+            expect(provider.data.gridConnection).toEqual({state: null, reason: null});
+            expect(provider.data.gridAdapterState).toBe('live');
+            expect(store.get('recovered')).toBeTruthy();
+            expect(store.get('resident')).toBeFalsy();
+            expect(provider.data.streamConnection).toEqual({state: 'failed-upstream', reason: 'activity source unavailable'})
+        });
+
+        test('a roster timeout preserves last-known data and wire capacity until its late reply settles', async () => {
+            const {host, provider, store} = makeRosterHost({state: 'live', timeout: 20});
+            const wire = Promise.withResolvers();
+
+            installWire(() => wire.promise);
+            const read = host.loadRoster();
+
+            expect(provider.data.gridConnection.state).toBe('connecting');
+            await read;
+
+            expect(provider.data.gridConnection).toEqual({state: 'timeout', reason: 'fleet read exceeded 20ms'});
+            expect(provider.data.gridAdapterState).toBe('stale');
+            expect(host.gridReadInFlight, 'the deadline did not settle the wire').toBe(1);
+            expect(store.get('resident')).toBeTruthy();
+
+            wire.resolve(rosterReply('late'));
+            await expect.poll(() => host.gridReadInFlight).toBe(0);
+
+            expect(provider.data.gridConnection.state).toBe('timeout');
+            expect(store.get('resident')).toBeTruthy();
+            expect(store.get('late')).toBeFalsy()
+        });
+
+        for (const newerState of ['connecting', 'refused']) {
+            test(`an older roster success cannot clear the newer ${newerState} observation`, async () => {
+                const {host, provider, store} = makeRosterHost();
+                const wires = [Promise.withResolvers(), Promise.withResolvers()];
+                let calls = 0;
+
+                installWire(() => wires[calls++].promise);
+                const older = host.loadRoster(), newer = host.loadRoster();
+
+                await expect.poll(() => calls).toBe(2);
+
+                if (newerState === 'refused') {
+                    wires[1].resolve(refusedReply('newer request refused'));
+                    await newer
+                }
+
+                wires[0].resolve(rosterReply('obsolete'));
+                await older;
+
+                expect(provider.data.gridConnection.state).toBe(newerState);
+                expect(store.get('resident')).toBeTruthy();
+                expect(store.get('obsolete')).toBeFalsy();
+
+                if (newerState === 'connecting') {
+                    expect(host.gridReadInFlight).toBe(1);
+                    wires[1].resolve(rosterReply('current'));
+                    await newer;
+                    expect(provider.data.gridConnection).toEqual({state: null, reason: null});
+                    expect(store.get('current')).toBeTruthy()
+                }
+
+                expect(host.gridReadInFlight).toBe(0)
+            })
+        }
+
+        test('bridge absence clears a pending roster observation without releasing or admitting its old wire', async () => {
+            const {host, provider, store} = makeRosterHost();
+            const wire = Promise.withResolvers();
+
+            installWire(() => wire.promise);
+            const pending = host.loadRoster();
+
+            expect(provider.data.gridConnection.state).toBe('connecting');
+            delete globalThis.AgentOS.fleet.registryBridge;
+            await host.loadRoster();
+
+            expect(provider.data.gridConnection).toEqual({state: null, reason: null});
+            expect(host.gridReadInFlight).toBe(1);
+
+            wire.resolve(rosterReply('obsolete'));
+            await pending;
+
+            expect(host.gridReadInFlight).toBe(0);
+            expect(provider.data.gridConnection).toEqual({state: null, reason: null});
+            expect(store.get('resident')).toBeTruthy();
+            expect(store.get('obsolete')).toBeFalsy()
+        });
+
+        test('Reconnect admits the new bridge while an old refusal can only release its own capacity', async () => {
+            const {host, provider, store} = makeRosterHost();
+            const oldWire = Promise.withResolvers();
+
+            installWire(() => oldWire.promise);
+            const older = host.loadRoster();
+
+            expect(provider.data.gridConnection.state).toBe('connecting');
+            installWire(() => rosterReply('reconnected'));
+            host.reconnectFleet();
+
+            await expect.poll(() => provider.data.gridAdapterState).toBe('live');
+            expect(provider.data.gridConnection).toEqual({state: null, reason: null});
+            expect(store.get('reconnected')).toBeTruthy();
+            expect(host.gridReadInFlight, 'the prior bridge still owns an unsettled request').toBe(1);
+
+            oldWire.resolve(refusedReply('obsolete bridge refused'));
+            await older;
+
+            expect(host.gridReadInFlight).toBe(0);
+            expect(provider.data.gridConnection).toEqual({state: null, reason: null});
+            expect(provider.data.gridAdapterState).toBe('live');
+            expect(store.get('reconnected')).toBeTruthy()
+        })
+    });
 
     test('start is idempotent: a second call never stacks a second timer', () => {
         const host     = makeTimerHost(),

@@ -14,8 +14,8 @@ import {sampleActivity}    from '../../../config/fleetSampleData.mjs';
  */
 const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
     daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason},
-    grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason},
-    stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason},
+    grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason, connection: data.gridConnection},
+    stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection},
     transport: data.shellTransport
 });
 
@@ -85,6 +85,12 @@ class StateProvider extends Provider {
              */
             gridAdapterState: 'sample',
             /**
+             * The roster read owner's finite observation and sanitized reason. Leaf-complete so
+             * the banner and dot react to this surface independently of the activity read.
+             * @member {Object} gridConnection={state:null,reason:null}
+             */
+            gridConnection: {state: null, reason: null},
+            /**
              * The ROSTER surface's retained degrade reason. Per-surface, not shared: one field
              * for two independently-answering surfaces cannot know whose cause it holds.
              * @member {String|null} gridDegradedReason=null
@@ -129,6 +135,11 @@ class StateProvider extends Provider {
              * @member {String} streamAdapterState='sample'
              */
             streamAdapterState: 'sample',
+            /**
+             * Activity read observation; success/absence clears only this surface's fields.
+             * @member {Object} streamConnection={state:null,reason:null}
+             */
+            streamConnection: {state: null, reason: null},
             /**
              * The ACTIVITY surface's retained degrade reason — see {@link #data.gridDegradedReason}.
              * @member {String|null} streamDegradedReason=null

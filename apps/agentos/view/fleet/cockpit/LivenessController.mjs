@@ -213,13 +213,13 @@ class LivenessController extends ComponentController {
         if (!store || typeof bridge?.fleetActivity !== 'function') {
             // no bridge/verb IS the cold truth; a never-wired surface's retained answered cause
             // must not outlive the bridge that answered it
-            if (provider?.getData('streamAdapterState') === 'sample') {
-                provider.setData('streamDegradedReason', null)
-            }
+            me.publishConnection('stream', {data: provider?.getData('streamAdapterState') === 'sample'
+                ? {streamDegradedReason: null} : {}});
             return
         }
 
         try {
+            me.publishConnection('stream', {pending: true});
             me.streamReadInFlight++;
 
             // invoked INSIDE the chain: a synchronous throw becomes a rejection of the tracked
@@ -239,22 +239,26 @@ class LivenessController extends ComponentController {
             if (capability?.state === 'wired') {
                 store.ingestSnapshot(Array.isArray(events) ? events : [], {replace: !me.activityWired});
                 me.activityWired = true;
-                provider?.setData({
+                me.publishConnection('stream', {data: {
                     activityCounts      : Array.isArray(counts) ? counts : [],
                     streamAdapterState  : 'live',
                     streamDegradedReason: null
-                });
+                }});
                 stream && (stream.adapterState = 'live')
             } else if (capability?.state === 'degraded') {
-                provider?.setData({
+                me.publishConnection('stream', {data: {
                     streamAdapterState  : 'stale',
                     streamDegradedReason: me.toSafeDegradedReason(capability.reason)
-                });
+                }});
                 stream && (stream.adapterState = 'stale')
             } else if (capability) {
                 // the producer ANSWERED not-wired: the sample seed stays (the stream really is
                 // showing sample events) but an answer is not silence — retain the cause
-                provider?.setData('streamDegradedReason', me.toSafeDegradedReason(capability.reason))
+                me.publishConnection('stream', {data: {
+                    streamDegradedReason: me.toSafeDegradedReason(capability.reason)
+                }})
+            } else {
+                me.publishConnection('stream')
             }
             // NO capability (torn/absent answer): keep the sample seed AND no reason — we learned
             // nothing, the banner falls back to generic copy rather than inventing a cause
@@ -286,13 +290,13 @@ class LivenessController extends ComponentController {
             generation = ++me.gridReadGeneration;
 
         if (!store || typeof bridge?.fleetRoster !== 'function') {
-            if (provider?.getData('gridAdapterState') === 'sample') {
-                provider.setData('gridDegradedReason', null)
-            }
+            me.publishConnection('grid', {data: provider?.getData('gridAdapterState') === 'sample'
+                ? {gridDegradedReason: null} : {}});
             return
         }
 
         try {
+            me.publishConnection('grid', {pending: true});
             me.gridReadInFlight++;
 
             const {capabilities, rows} = await me.boundedRead(
@@ -305,6 +309,7 @@ class LivenessController extends ComponentController {
             }
 
             if (!Array.isArray(rows)) {
+                me.publishConnection('grid');
                 return // malformed answer → keep the last-known roster
             }
 
@@ -316,7 +321,9 @@ class LivenessController extends ComponentController {
             if (!me.rosterWired && mapped.length === 0 && !bridge?.selected && cockpit.rosterSourceMode !== 'selected') {
                 // the server ANSWERED — retain the cause so the banner names "connected · registry
                 // empty" instead of advising a restart of a process that just replied
-                provider?.setData('gridDegradedReason', 'server connected · fleet registry empty — define agents to go live');
+                me.publishConnection('grid', {data: {
+                    gridDegradedReason: 'server connected · fleet registry empty — define agents to go live'
+                }});
                 return
             }
 
@@ -333,13 +340,13 @@ class LivenessController extends ComponentController {
                 me.reconcileSelection()
             }
 
-            provider?.setData({
+            me.publishConnection('grid', {data: {
                 gridAdapterState  : 'live',
                 gridDegradedReason: null,
                 // the presence-capability envelope rides every admitted snapshot; absent or
                 // malformed envelopes plumb null — the chip claims nothing
                 presenceCapability: capabilities?.presence ?? null
-            });
+            }});
             grid && (grid.adapterState = 'live');
 
             // roster-derived consumer refreshes: resident panes snapshot their options at
@@ -434,7 +441,8 @@ class LivenessController extends ComponentController {
      * @summary Advance ONE wired surface to the degraded truth and retain the safe reason. A
      * surface that never reached `live` stays on its honest `sample` seed — advancing it to
      * `stale` would claim last-known data that never existed — and a transport failure RETRACTS
-     * any answered-state cause it retained (the claim must not outlive the connection).
+     * any answered-state cause it retained (the claim must not outlive the connection). The
+     * current read's typed connection observation keeps its own sanitized reason on either path.
      * @param {String} surface `'grid'|'stream'`
      * @param {*} error The transport failure (untrusted — never rendered raw).
      * @param {Neo.component.Base|null} [consumer] The held child whose badge mirrors the state.
@@ -448,18 +456,46 @@ class LivenessController extends ComponentController {
 
         if (!provider) return;
 
-        if (provider.getData(stateKey) === 'sample') {
-            provider.setData(causeKey, null);
-            return
-        }
-
-        provider.setData({
-            [stateKey]: 'stale',
+        const state = provider.getData(stateKey) === 'sample' ? 'sample' : 'stale';
+        this.publishConnection(surface, {error, data: {
+            [stateKey]: state,
             // this surface's cause on this surface's field — never a shared slot a sibling clears
-            [causeKey]: this.toSafeDegradedReason(error)
-        });
+            [causeKey]: state === 'sample' ? null : this.toSafeDegradedReason(error)
+        }});
 
-        consumer && (consumer.adapterState = 'stale')
+        consumer && state === 'stale' && (consumer.adapterState = 'stale')
+    }
+
+    /**
+     * @summary Retain only a finite producer classification and its safe reason for this read.
+     * Message text never determines the class; unknown errors preserve ordinary fallback copy.
+     * @param {*} error The bridge failure or locally produced read-bound error.
+     * @returns {{state: String|null, reason: String|null}}
+     * @protected
+     */
+    connectionObservation(error) {
+        const state = ['refused', 'unreachable', 'timeout', 'failed-upstream'].includes(error?.fleetConnectionState)
+            ? error.fleetConnectionState : null;
+
+        return {state, reason: state ? this.toSafeDegradedReason(error) : null}
+    }
+
+    /**
+     * @summary Publish one read owner's observation with its other state in one Provider batch.
+     * The caller must pass its generation fence first; a new surface declares its own Provider
+     * leaves and reuses this path without sharing another surface's connection or reason.
+     * @param {String} surface The owner key, e.g. grid or stream.
+     * @param {Object} [options={}]
+     * @param {Boolean} [options.pending=false] The admitted read is still in flight.
+     * @param {*} [options.error=null] Its terminal failure, or null to clear the observation.
+     * @param {Object} [options.data={}] Additional validated state from this same read owner.
+     * @protected
+     */
+    publishConnection(surface, {pending=false, error=null, data={}}={}) {
+        this.component.getStateProvider()?.setData({
+            ...data,
+            [`${surface}Connection`]: pending ? {state: 'connecting', reason: null} : this.connectionObservation(error)
+        })
     }
 
     /**
@@ -507,7 +543,9 @@ class LivenessController extends ComponentController {
         return Promise.race([
             read.finally(() => clearTimeout(timerId)),
             new Promise((resolve, reject) => {
-                timerId = setTimeout(() => reject(new Error(`fleet read exceeded ${timeout}ms`)), timeout)
+                timerId = setTimeout(() => reject(Object.assign(new Error(`fleet read exceeded ${timeout}ms`), {
+                    fleetConnectionState: 'timeout'
+                })), timeout)
             })
         ])
     }

@@ -14,6 +14,8 @@ import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/Fle
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import {createFleetWireResponse} from '../../../../../../../../apps/agentos/config/fleetWireMethods.mjs';
 
 /**
  * The chrome-binding REVEAL witness over a real constructed cockpit: the declared chrome slots
@@ -59,6 +61,56 @@ test('the declared chrome binds the derived truths — banner revealed with the 
     expect(telltale.cls).toContain('fm-viewer-wake-degraded');
 
     cockpit.destroy()
+});
+
+test('typed wire refusal and recovery drive the real read owner, reactive banner and parent dot', async () => {
+    const previousFleet = globalThis.AgentOS?.fleet,
+          parent = Neo.create((await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default, {
+              data: {boundProfileId: null, instanceState: 'off'}
+          }),
+          cockpit = Neo.create(FleetCockpit, {
+              stateProvider: {
+                  module: CockpitStateProvider,
+                  parent,
+                  stores: {
+                      fleetActivityEvents: {module: FleetActivityEvents},
+                      fleetRoster: {module: FleetRoster, autoLoad: false},
+                      viewerWakeFeed: {module: ViewerWakeFeed}
+                  }
+              }
+          });
+
+    try {
+        await cockpit.refreshPromise;
+        const provider = cockpit.getStateProvider(),
+              banner = cockpit.getReference('fleet-spine-banner');
+        provider.setData({gridAdapterState: 'live', streamAdapterState: 'sample'});
+
+        let answer;
+        installFleetBridge({send: () => new Promise(resolve => { answer = resolve })});
+        const pending = cockpit.getController().loadActivity();
+        await expect.poll(() => banner.text).toBe('feed connecting');
+        answer(createFleetWireResponse('refused', {error: 'request denied; token=private-token'}));
+        await pending;
+
+        expect(banner.text).toBe('feed refused');
+        expect(banner.vdom.title).toContain('request denied');
+        expect(banner.vdom.title).not.toContain('private-token');
+        expect(banner.vdom['aria-label']).toBe(banner.vdom.title);
+        expect(parent.getData('instanceState')).toBe('limited');
+
+        installFleetBridge({send: async () => createFleetWireResponse('ok', {
+            result: {capability: {state: 'wired'}, events: []}
+        })});
+        await cockpit.getController().loadActivity();
+        expect(provider.getData('streamConnection.state')).toBeNull();
+        expect(banner.hidden).toBe(true);
+        expect(parent.getData('instanceState')).toBe('ok')
+    } finally {
+        cockpit.destroy();
+        parent.destroy();
+        previousFleet === undefined ? delete globalThis.AgentOS.fleet : globalThis.AgentOS.fleet = previousFleet
+    }
 });
 
 test('RA-1 witness: the cockpit derivation writes the PARENT-owned instanceState — live→ok, degraded→limited, never a child shadow', async () => {
