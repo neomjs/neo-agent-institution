@@ -7,14 +7,16 @@ import {test, expect} from '../../fixtures.mjs';
  * 1. the initial projection RENDERS (both live panes + the primary splitter in the DOM);
  * 2. the READ half (`getDockZoneDocument`) serves Neural Link topology before any operation;
  * 3. a REAL pointer drag on the projected splitter commits `resizeSplit` through the reducer /
- *    view-sync split — the document advances, a NEW splitter replaces the committed-away one,
- *    and the toolbar plus keeper panes preserve component and DOM identity;
+ *    view-sync split — the document advances, the reconciler takes its geometry fast path
+ *    (`resizeSplit` declares the `geometry` change class, neomjs/neo#18206): the ONE live splitter
+ *    instance and its DOM node survive the commit, the pane sizes re-project from the committed
+ *    ratio, and the toolbar plus keeper panes preserve component and DOM identity;
  * 4. the WRITE half (`executeDockOperation`) round-trips the same loop programmatically — a
- *    human drag and an NL operation are the same commit path.
+ *    human drag and an NL operation are the same commit path, and the same retained identity.
  *
  * Post-commit witnesses deliberately pair App Worker identity through the Neural Link with exact
- * DOM-node identity. Structural splitters are replaced only after their gesture ends; persistent
- * toolbar and pane nodes transfer into the reconciled shell.
+ * DOM-node identity. A geometry commit replaces nothing: splitter, toolbar and pane nodes all
+ * carry through the reconciled shell; only a topology change stages a new shell.
  *
  * State-relative throughout (the SharedWorker heap is shared across a sweep): every target
  * derives from the CURRENT committed sizes, never from assumed seeds.
