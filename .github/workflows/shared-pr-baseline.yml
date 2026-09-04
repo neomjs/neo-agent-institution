@@ -13,10 +13,14 @@ permissions:
   contents: read
   pull-requests: read
 
-# Deliberately unfiltered: once these jobs become required contexts, every PR must emit a terminal
-# result. The called PR-base job rejects an unsupported base instead of leaving a context pending.
+# Deliberately unfiltered by branch or path: once these jobs become required contexts, every PR
+# must emit a terminal result — the called PR-base job rejects an unsupported base instead of
+# leaving a context pending. The activity types are explicit because the callee reads the pull
+# request LIVE and says so in its own header: a body-only `edited` and a draft's `ready_for_review`
+# must re-run the gate, and GitHub's default set carries neither.
 on:
   pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
 
 jobs:
   baseline:
