@@ -47,12 +47,16 @@ const declaredDockConfigs = (cls, stopAt) => {
 };
 
 /**
- * The two spy-host facts that are fixture identity, not Engine contract: the projection stamps
- * the workspace `id` as the cross-zone motion boundary, and the refresh awaits a mount only for
- * an unmounted host — the spy owner IS its own mounted dock host.
+ * The three spy-host facts that are fixture identity, not Engine contract: the projection stamps
+ * the workspace `id` as the cross-zone motion boundary, the refresh awaits a mount only for
+ * an unmounted host — the spy owner IS its own mounted dock host — and that host holds no
+ * projected shell: the lock-rail sweep the engine runs at every commit boundary
+ * (`Workspace#syncDockLockRails`, neomjs/neo#18185) walks an empty item list instead of the
+ * `items` config a bare prototype cannot answer.
  */
 const spyHostIdentity = {
     id     : 'fleet-cockpit-spy-host',
+    items  : [],
     mounted: true
 };
 

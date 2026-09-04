@@ -324,8 +324,14 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — gesture tear-out 
 
         cockpit.tearOutHandlers.onDockTearOutTerminal({itemId: 'fleet', sortZone: zone});
 
-        // capture rode the detach commit: 'fleet' lived alone in fleet-tabs at index 0
-        expect(cockpit.tearOutPlacements.fleet).toEqual({tabsNodeId: 'fleet-tabs', index: 0});
+        // capture rode the detach commit: 'fleet' lived alone in fleet-tabs at index 0, and the record
+        // carries the node's own home (neomjs/neo#18164 / neomjs/neo#18177): the first child of the
+        // vertical primary split, anchored on the sibling the collapsed split folds into
+        expect(cockpit.tearOutPlacements.fleet).toEqual({
+            tabsNodeId: 'fleet-tabs',
+            index     : 0,
+            home      : {parentId: 'primary-split', slot: 0, orientation: 'vertical', size: 0.6078, siblingId: 'stream-tabs', position: 'before'}
+        });
 
         const popupUrl = new URL(vessel.openCalls[0].url, 'https://unit.test/').href;
 
@@ -404,7 +410,11 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — gesture tear-out 
         const zone = await tearOutExit('stream');
 
         cockpit.tearOutHandlers.onDockTearOutTerminal({itemId: 'stream', sortZone: zone});
-        expect(cockpit.tearOutPlacements.stream).toEqual({tabsNodeId: 'stream-tabs', index: 0});
+        expect(cockpit.tearOutPlacements.stream).toEqual({
+            tabsNodeId: 'stream-tabs',
+            index     : 0,
+            home      : {parentId: 'primary-split', slot: 1, orientation: 'vertical', size: 0.3922, siblingId: 'fleet-tabs', position: 'after'}
+        });
         expect(cockpit.dockModel.nodes['stream-tabs'].items).toEqual(['tasks', 'memories', 'operator', 'catchUp']);
 
         cockpit.tearOutPanes.stream = {windowName: `fm-tearout-stream-${cockpit.id}`, windowId: 'tearout-win-5'};
