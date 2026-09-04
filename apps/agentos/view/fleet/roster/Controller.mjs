@@ -1,4 +1,5 @@
 import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import FleetAgent          from '../../../model/FleetAgent.mjs';
 
 /**
  * The roster's sort modes as plain store-sorter sets — replacing the whole set keeps ONE ordering
@@ -69,7 +70,10 @@ class Controller extends ComponentController {
         store.filters = [
             {disabled: true, property: 'state',               filterBy: ({item}) => item.state === 'off'},
             {disabled: true, property: 'participationStatus', filterBy: ({item}) => item.participationStatus === 'operator_benched'},
-            {disabled: true, property: 'tierRank',            filterBy: ({item}) => item.tierRank === 1}
+            // derived from `state`, never read from the calculated `tierRank`: the engine evaluates
+            // filters over its unfiltered projection, which holds a freshly added batch as RAW rows
+            // (no calculated fields) until something hydrates them — neomjs/neo#18269, facet 2
+            {disabled: true, property: 'tierRank',            filterBy: ({item}) => FleetAgent.tierRankFor(item.state) === 1}
         ]
     }
 
@@ -106,7 +110,7 @@ class Controller extends ComponentController {
             {component} = me,
             records     = me.getWholeFleet(),
             total       = records.length,
-            idleCount   = records.filter(record => record.tierRank === 1).length,
+            idleCount   = records.filter(record => FleetAgent.tierRankFor(record.state) === 1).length,
             folded      = total >= component.foldThreshold,
             foldFilter  = component.store?.getFilter?.('tierRank'),
             {idleShown} = component,
@@ -233,11 +237,22 @@ class Controller extends ComponentController {
 
     /**
      * @summary The roster set changed (seed, live replace, joiners/leavers): re-derive counts,
-     * fold state and the CTA.
+     * fold state and the CTA — one microtask after the mutation, never inside it.
+     *
+     * The store fires `load` synchronously from its own `mutate` listener, and the Engine mirrors
+     * that same mutation into `allItems` from a LATER `mutate` listener (neomjs/neo#18269). A fold
+     * toggled here re-filters the view from an `allItems` the batch has not reached yet, and every
+     * row being added vanishes from the view — the whole batch, not only the idle tier. Deciding
+     * on the settled fleet costs one microtask and no truth: title, CTA and chip read the same
+     * whole fleet either way. Removable once the Engine mirrors inside the mutation.
      * @param {Object} data The store load event.
      */
     onRosterStoreLoad(data) {
-        this.syncRosterDerived()
+        const me = this;
+
+        queueMicrotask(() => {
+            !me.isDestroyed && !me.component?.isDestroyed && me.syncRosterDerived()
+        })
     }
 
     /**

@@ -140,17 +140,13 @@ class FleetAgent extends Model {
         }, {
             // The roster's rank tier DERIVED from `state` — the default sort's leading axis,
             // expressed as a calculated field so "online first" is a plain store sorter instead of
-            // a render-time partition: 0 = online (present and engaged: working, wedged or
-            // rate-limited — a wedged agent is a thing the operator must SEE, never calm
-            // background), 1 = idle (the calm middle, the collapsible tier), 2 = the tail
-            // (benched / offline / unknown-guest). One derivation site; every consumer sorts on
-            // the field
+            // a render-time partition. The derivation itself lives in {@link #tierRankFor}: a
+            // calculated field exists on RECORDS only, and the engine's unfiltered projection
+            // (`allItems`) carries a batch as raw rows until something hydrates them (#78,
+            // neomjs/neo#18269) — so the fold predicate derives the tier from `state` itself,
+            // the one field every row shape carries.
             name     : 'tierRank',
-            calculate: data => {
-                const {state} = data;
-
-                return (state === 'ok' || state === 'wedged' || state === 'limited') ? 0 : state === 'idle' ? 1 : 2
-            }
+            calculate: data => FleetAgent.tierRankFor(data.state)
         }, {
             // normalized `fleetCockpitStatus.rows[*].sources`: roster / repoStatus / runtime
             // provenance. Replaced as one Object on each snapshot so Store recordChange remains
@@ -159,6 +155,19 @@ class FleetAgent extends Model {
             type        : 'Object',
             defaultValue: null
         }]
+    }
+
+    /**
+     * @summary The one derivation of a resident's rank tier from its session `state`: 0 = online
+     * (present and engaged: working, wedged or rate-limited — a wedged agent is a thing the operator
+     * must SEE, never calm background), 1 = idle (the calm middle, the collapsible tier), 2 = the
+     * tail (benched / offline / unknown-guest). The `tierRank` field calculates through it, and the
+     * roster's fold predicate reads it directly, so a raw row and its record answer the same tier.
+     * @param {String} state The session state (`ok` · `wedged` · `limited` · `idle` · `off` · other).
+     * @returns {Number} 0, 1 or 2
+     */
+    static tierRankFor(state) {
+        return (state === 'ok' || state === 'wedged' || state === 'limited') ? 0 : state === 'idle' ? 1 : 2
     }
 }
 

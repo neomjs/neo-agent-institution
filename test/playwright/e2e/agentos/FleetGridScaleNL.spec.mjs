@@ -32,12 +32,19 @@ test.describe('AgentOS fleet grid — density-evidence scale (Neural Link)', () 
         // The provider-hosted FleetRoster instance, addressed by class — the store registry lists
         // more than one store of the FleetAgent model since the August rebuilds, and the first
         // registry hit is not the one the grid renders from (the sibling AgentCard witness's shape).
+        // The instance question (#78): the class query answers TWO instances — the provider-hosted
+        // store and its `-all` twin, the engine's unfiltered projection the roster's filters create
+        // (`Neo.collection.Base#filter` clones the store's own class as `<id>-all`). The grid binds
+        // the store; the twin is where the whole fleet lives once a filter is active.
         const
             app       = await neuralLink.connectToApp('AgentOS'),
-            instances = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
-            roster    = Array.isArray(instances) ? instances[0] : instances;
+            found     = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
+            instances = Array.isArray(found) ? found : [found],
+            roster    = instances.find(instance => !instance?.id?.endsWith('-all')),
+            wholeId   = `${roster?.id}-all`;
 
         expect(roster?.id, 'the provider-hosted FleetRoster store should be registered in the App Worker').toBeTruthy();
+        expect(instances.some(instance => instance?.id === wholeId), 'the store carries its unfiltered twin').toBe(true);
 
         // The 20-agent fixture at the evidence's ceiling band: 4 online (2 ok + 1 limited +
         // 1 wedged) · 14 idle · 2 benched — over the density-derived fold threshold (12).
@@ -71,25 +78,33 @@ test.describe('AgentOS fleet grid — density-evidence scale (Neural Link)', () 
         await app.callMethod(roster.id, 'clear');
         await app.callMethod(roster.id, 'add', [fixture]);
 
-        // The possessed store is the source of truth the grid derives from. Read the LIVE rows
-        // (`items` / `count`): `totalCount` is the remote-paging field frozen at the last URL
-        // load — it deliberately does not track local mutations, so it must never gate this.
+        // The possessed store is the source of truth the grid derives from — read BOTH halves.
+        // The whole fleet lives in the unfiltered twin (20); the view the grid renders is the
+        // folded one: 14 idle rows filtered out by the density preset, 6 rows left (`items` /
+        // `count`). `totalCount` is the remote-paging field frozen at the last URL load — it
+        // deliberately does not track local mutations, so it must never gate this.
+        await expect.poll(() => app.callMethod(wholeId, 'getCount'), {
+            message: 'the whole fleet lands in the unfiltered twin', timeout: 10000, intervals: [100]
+        }).toBe(20);
+
         const snapshot = await app.inspectStore(roster.id, 25);
-        expect(snapshot.items.length).toBe(20);
-        expect(snapshot.count).toBe(20);
+        expect(snapshot.count, 'the folded view keeps every non-idle resident').toBe(6);
+        expect(snapshot.items.map(item => item.agentId).sort()).toEqual(
+            ['scale-limited-a', 'scale-off-a', 'scale-off-b', 'scale-ok-a', 'scale-ok-b', 'scale-wedged-a']
+        );
 
         // DOM verdicts — the mounted surface obeys the density rules:
         // the header title tracks the possessed total,
         await expect(page.locator('.fm-fleet-title')).toHaveText('Fleet · 20 agents');
         // the idle tier folds to an honest count (14 idle never render as 14 cards),
-        await expect(page.locator('.fm-fleet-fold')).toHaveText('14 idle');
+        await expect(page.locator('.fm-roster-fold')).toHaveText('+14 idle · show');
         // online (4) + benched (2) stay as cards — working-first keeps the glance priority,
         await expect(page.locator('.fm-fleet-cards .fm-agent-card')).toHaveCount(6);
         // and dropping back BELOW threshold un-folds: every card renders again.
         await app.callMethod(roster.id, 'clear');
         await app.callMethod(roster.id, 'add', [fixture.slice(0, 6)]);
 
-        await expect(page.locator('.fm-fleet-fold')).toHaveCount(0);
+        await expect(page.locator('.fm-roster-fold')).toBeHidden();
         await expect(page.locator('.fm-fleet-title')).toHaveText('Fleet · 6 agents')
     });
 });
