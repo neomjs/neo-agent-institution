@@ -87,6 +87,14 @@ test.describe('Fleet roster — cards and list items keep their identity across 
     const liIds  = list => list.getVdomRoot().cn.map(node => node.id);
     const joiner = {agentId: 'agent-00', displayName: 'AAA', githubUsername: 'neo-agent-00', state: 'ok'};
 
+    // the joiner must sort AHEAD on every engine this repo pins: the shipped "online first" order
+    // ranks by the calculated `tierRank`, which a raw row lacks on engines before neomjs/neo#18269
+    // (a raw joiner sorted last there, which is how this defect stayed hidden). Name order reads a
+    // plain field, so `AAA` leads on either engine — the tier axis is the pin battery's witness.
+    const byName = store => {
+        store.sorters = [{direction: 'ASC', property: 'displayName', sortBy: (a, b) => (a.displayName ?? '').toLowerCase().localeCompare((b.displayName ?? '').toLowerCase())}]
+    };
+
     test.beforeAll(async () => {
         FleetGrid  = (await import('../../../../../../../../apps/agentos/view/fleet/roster/Container.mjs')).default;
         FleetAgent = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
@@ -113,7 +121,8 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         expect(bravoId).toBe(`${list.id}__${bravoKey}__component`);
         expect(liIds(list)).toContain(liBefore);
 
-        // the joiner ranks equal and sorts first by name — every existing card shifts one seat
+        // the joiner sorts first by name — every existing card shifts one seat
+        byName(store);
         store.add({...joiner});
         list.createItems(true);
 
@@ -137,6 +146,7 @@ test.describe('Fleet roster — cards and list items keep their identity across 
             [alpha, bravo, charlie] = cards(list),
             ids                     = [alpha.id, bravo.id, charlie.id];
 
+        byName(store);
         store.remove(charlie.record.agentId);
         store.add({...joiner});
         list.createItems(true);
