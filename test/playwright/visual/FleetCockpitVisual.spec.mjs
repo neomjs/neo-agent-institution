@@ -64,6 +64,30 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 }))
         ));
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+        // #85's shared measure — the fleet head's no-clip geometry, read by the narrow arms below:
+        // a legend that hides its last states says those states do not exist, so every band
+        // asserts scrollWidth inside clientWidth and the last swatch inside the row.
+        await page.evaluate(() => {
+            globalThis.__fmMeasureFleetHead = () => {
+                const head     = document.querySelector('.fm-fleet-head'),
+                      title    = head.querySelector('.fm-fleet-title'),
+                      legend   = head.querySelector('.fm-health-bar'),
+                      swatches = [...head.querySelectorAll('.fm-health-swatch')],
+                      rect     = head.getBoundingClientRect(),
+                      last     = swatches.at(-1)?.getBoundingClientRect();
+
+                return {
+                    clientWidth    : head.clientWidth,
+                    scrollWidth    : head.scrollWidth,
+                    right          : Math.round(rect.right),
+                    swatches       : swatches.length,
+                    lastSwatchRight: last ? Math.round(last.right) : null,
+                    titleBottom    : Math.round(title.getBoundingClientRect().bottom),
+                    legendTop      : legend ? Math.round(legend.getBoundingClientRect().top) : null
+                }
+            }
+        });
     };
 
     test('the default shell layout — the committed document projected (fleet over stream, chrome tucked)', async ({page}) => {
@@ -109,11 +133,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 scrollWidth   : Math.round(cockpit.scrollWidth),
                 startRect     : start ? start.getBoundingClientRect().toJSON() : null,
                 docScrollWidth: Math.round(document.documentElement.scrollWidth),
-                minIdentity   : idents.length ? Math.min(...idents) : 0
+                minIdentity   : idents.length ? Math.min(...idents) : 0,
+                head          : globalThis.__fmMeasureFleetHead()
             }
         });
 
         expect(geometry.viewport, 'the viewport itself is the 314px vessel window').toBe(314);
+        // #85: the seven-state legend folds inside its bar at vessel width — never clips a state
+        expect(geometry.head.swatches, 'all seven legend states are rendered at vessel width').toBe(7);
+        expect(geometry.head.scrollWidth, 'the head row hides nothing: no horizontal pressure').toBeLessThanOrEqual(geometry.head.clientWidth);
+        expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
         expect(geometry.scrollWidth, 'the repaired cockpit no longer overflows its vessel — scroll width stays inside the client box').toBeLessThanOrEqual(geometry.clientWidth);
         expect(geometry.docScrollWidth, 'the document carries no horizontal overflow at vessel width').toBeLessThanOrEqual(geometry.viewport);
         expect(geometry.startRect, 'the Start fleet button is rendered').not.toBeNull();
@@ -159,11 +188,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 } : null,
                 startTextShown : startText ? getComputedStyle(startText).display : null,
                 presetTextShown: preset ? getComputedStyle(preset).display : null,
-                startRight     : start ? Math.round(start.getBoundingClientRect().right) : null
+                startRight     : start ? Math.round(start.getBoundingClientRect().right) : null,
+                head           : globalThis.__fmMeasureFleetHead()
             }
         });
 
         expect(geometry.viewport, 'the viewport is the 720px intermediate band').toBe(720);
+        // #85: the legend wraps under the title at this band instead of clipping its tail
+        expect(geometry.head.swatches, 'all seven legend states are rendered in the intermediate band').toBe(7);
+        expect(geometry.head.scrollWidth, 'the head row hides nothing in the intermediate band').toBeLessThanOrEqual(geometry.head.clientWidth);
+        expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
         expect(geometry.docScrollWidth, 'no horizontal document overflow in the mark regime').toBeLessThanOrEqual(geometry.viewport);
         expect(geometry.barWrap, 'the vessel-narrow wrap rule stays silent above the 570px threshold').toBe('nowrap');
         expect(geometry.banner, 'the spine banner is rendered').not.toBeNull();
@@ -179,6 +213,40 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(geometry.startRight, 'Start fleet stays inside the band').toBeLessThanOrEqual(geometry.viewport);
 
         await expect(page).toHaveScreenshot('cockpit-intermediate-720.png')
+    });
+
+    test('the Review preset at 1280×720 — the fleet head keeps its whole legend when the inspector docks beside it (geometry asserted)', async ({page}) => {
+        // #85's exact case: the shipped Review preset narrows the fleet pane to ~896px, which the
+        // seven-state health legend does not fit beside the title. The head row wraps (layout
+        // wrap), so the legend takes the line under the title — every state stays readable, and
+        // the wide presets (Overview, Focus) keep their one-line head. The capture pins the
+        // wrapped form; the geometry pins the no-clip contract.
+        await page.setViewportSize({width: 1280, height: 720});
+        await bootSettledCockpit(page);
+        await page.locator('.fm-preset-button', {hasText: 'Review'}).click();
+        await expect(page.locator('.fm-preset-button.pressed')).toHaveText(/Review/);
+        // the switch commits through the dock loop one tick later: wait for the projected form
+        // (the inspector docked beside the roster) rather than for the press
+        await expect(page.locator('[class*="dock-flip-item-detail"]').first()).toBeVisible();
+        await expect.poll(
+            () => page.evaluate(() => Math.round(document.querySelector('.fm-fleet-grid').getBoundingClientRect().width)),
+            {message: 'the Review preset narrows the fleet pane below the one-line legend width', timeout: 10000, intervals: [100]}
+        ).toBeLessThan(1000);
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+        const geometry = await page.evaluate(() => ({
+            viewport : window.innerWidth,
+            paneWidth: Math.round(document.querySelector('.fm-fleet-grid').getBoundingClientRect().width),
+            head     : globalThis.__fmMeasureFleetHead()
+        }));
+
+        expect(geometry.viewport, 'the viewport is the design pass width').toBe(1280);
+        expect(geometry.head.swatches, 'all seven legend states are rendered').toBe(7);
+        expect(geometry.head.scrollWidth, 'the head row hides nothing: scrollWidth stays inside clientWidth').toBeLessThanOrEqual(geometry.head.clientWidth);
+        expect(geometry.head.lastSwatchRight, 'the last legend state (benched / offline) sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
+        expect(geometry.head.legendTop, 'the legend took the line under the title').toBeGreaterThan(geometry.head.titleBottom - 1);
+
+        await expect(page).toHaveScreenshot('cockpit-review-1280.png')
     });
 
     test('the Accounts surface — the inherited design-gate golden, under harness refresh semantics', async ({page}) => {

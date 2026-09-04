@@ -123,10 +123,13 @@ class HealthBar extends Container {
          */
         baseCls: ['fm-health-bar'],
         /**
-         * @member {Object} layout={ntype:'hbox',align:'center'}
+         * Wrap-capable: at a vessel width the seven swatches fold onto a second line inside the
+         * bar instead of clipping the last states — a legend that drops a state says the state
+         * does not exist (#85). Wide rows stay one line.
+         * @member {Object} layout={ntype:'hbox',align:'center',wrap:'wrap'}
          * @reactive
          */
-        layout: {ntype: 'hbox', align: 'center'},
+        layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
         /**
          * The bound roster Store the counts derive from — the same record seam the grid renders
          * (never a hand-pushed plain-array copy). Counts refresh on `load` and on session-`state`

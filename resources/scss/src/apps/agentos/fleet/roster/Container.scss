@@ -12,9 +12,12 @@
     gap           : var(--fm-space-3);
 
     .fm-fleet-head {
-        flex: none; /* pinned: the summary must never scroll away with the roster */
-        gap : 10px;
-        font: var(--fm-text-chrome);
+        flex      : none; /* pinned: the summary must never scroll away with the roster */
+        column-gap: 10px;
+        /* the row wraps (layout wrap, #85): once the pane cannot hold title + legend on one line
+           the legend takes the next line under the title — the wrapped line rides the 8px step */
+        row-gap   : var(--fm-space-2);
+        font      : var(--fm-text-chrome);
 
         &.is-stale .fm-fleet-stale {
             color: var(--fm-state-wedged);

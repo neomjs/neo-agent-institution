@@ -116,7 +116,10 @@ class FleetGrid extends Container {
             ntype    : 'container',
             cls      : ['fm-fleet-head', 'is-live'],
             flex     : 'none',
-            layout   : {ntype: 'hbox', align: 'center'},
+            // wrap: the head answers its OWN width — the pane's width is dock-owned (preset,
+            // splitter, vessel), so the legend drops under the title once the row cannot hold all
+            // seven states, instead of clipping the last ones (#85). Wide rows stay one line.
+            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             reference: 'fleet-head',
 
             items: [
