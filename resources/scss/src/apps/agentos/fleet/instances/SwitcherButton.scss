@@ -11,8 +11,11 @@
     color        : var(--fm-ink-dim);
     height       : auto;
     min-width    : 0;
+    overflow     : hidden;         /* whatever cannot shrink paints inside the box, never over a neighbour */
     padding      : var(--fm-space-1) var(--fm-space-2);
 
+    /* the text row and the label shrink WITH the button: a flex item's default minimum is its own
+       nowrap text, so max-width + ellipsis alone never fired and the label painted over its neighbours */
     .neo-button-text {
         align-items   : center;
         color         : inherit;
@@ -20,6 +23,8 @@
         font          : var(--fm-text-chrome);
         gap           : var(--fm-space-2);
         letter-spacing: var(--fm-text-chrome-tracking);
+        max-width     : 100%;
+        min-width     : 0;
         text-transform: uppercase;
     }
 
@@ -29,7 +34,9 @@
     }
 
     .fm-instance-label {
+        flex         : 0 1 auto;
         max-width    : 180px;
+        min-width    : 0;
         overflow     : hidden;
         text-overflow: ellipsis;
         white-space  : nowrap;

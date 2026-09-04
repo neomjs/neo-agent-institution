@@ -158,7 +158,30 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                   // the sub-narrow card grammar's semantic floor: at vessel width every card must
                   // still name its resident — identity may ellipsize, never collapse
                   idents  = [...document.querySelectorAll('.fm-agent-card .fm-card-identity')]
-                      .map(el => Math.round(el.getBoundingClientRect().width));
+                      .map(el => Math.round(el.getBoundingClientRect().width)),
+                  // the shell's scope control contains its own label (it once spilled 11px over the
+                  // wordmark and past the theme switch), and the wordmark yields at this band
+                  rect     = el => el?.getBoundingClientRect(),
+                  // the intersection AREA: the verbs sit on their own row under the identity at this
+                  // band, so an x-only overlap would read a word above them as a word under them
+                  overlap  = (a, b) => a && b
+                      ? Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+                      : 0,
+                  switcher = rect(document.querySelector('.fm-instance-switcher')),
+                  label    = rect(document.querySelector('.fm-instance-switcher .fm-instance-label')),
+                  title    = rect(document.querySelector('.agent-shell-title')),
+                  // the no-mid-word-clipping law on the densest card — every state word ends inside its
+                  // own state line and never runs under the verbs (it once lost "rved" under them)
+                  cards    = [...document.querySelectorAll('.fm-agent-card')].map(card => {
+                      const word  = rect(card.querySelector('.fm-card-state')),
+                            line  = rect(card.querySelector('.fm-card-state-line')),
+                            verbs = rect(card.querySelector('.fm-card-control-verbs'));
+
+                      return {
+                          wordPastLine  : word && line ? Math.round(word.right - line.right) : 0,
+                          wordUnderVerbs: Math.round(overlap(word, verbs))
+                      }
+                  });
 
             return {
                 viewport      : window.innerWidth,
@@ -167,7 +190,13 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 startRect     : start ? start.getBoundingClientRect().toJSON() : null,
                 docScrollWidth: Math.round(document.documentElement.scrollWidth),
                 minIdentity   : idents.length ? Math.min(...idents) : 0,
-                head          : globalThis.__fmMeasureFleetHead()
+                head          : globalThis.__fmMeasureFleetHead(),
+                shell         : {
+                    labelInside  : !!label && label.left >= switcher.left && label.right <= switcher.right,
+                    labelOverTheme: Math.round(overlap(label, rect(document.querySelector('.agent-theme-button')))),
+                    titleWidth   : title ? Math.round(title.width) : 0
+                },
+                cards
             }
         });
 
@@ -185,8 +214,61 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // column to 15px and every resident's name collapsed to two letters. The sub-narrow card
         // mode exists to prevent exactly that — this floor keeps it honest.
         expect(geometry.minIdentity, 'every card still NAMES its resident at vessel width — the identity column never collapses').toBeGreaterThanOrEqual(44);
+        // the scope control paints inside its own box, and the wordmark yields at this band (the
+        // logo is the mark, the window title carries "Agent OS", the scope keeps its tail)
+        expect(geometry.shell.labelInside, 'the instance label sits inside the switcher box').toBe(true);
+        expect(geometry.shell.labelOverTheme, 'the instance label never reaches the theme switch').toBe(0);
+        expect(geometry.shell.titleWidth, 'the wordmark yields at the vessel band').toBe(0);
+        expect(geometry.cards.length, 'the roster rendered cards to measure').toBeGreaterThan(0);
+        for (const card of geometry.cards) {
+            expect(card.wordPastLine, 'the state word ends inside its own state line').toBeLessThanOrEqual(0);
+            expect(card.wordUnderVerbs, 'the state word never runs under the verbs').toBe(0);
+        }
 
         await expect(page).toHaveScreenshot('cockpit-vessel-314.png')
+    });
+
+    test('the shell wordmark reads on its band in both skins (computed contrast, no golden)', async ({page}) => {
+        // the wordmark rendered the engine's one-colour label ink in both skins — 16.56:1 on the dark
+        // rail, 1.04:1 on the light one. A computed receipt on purpose: no light-skin golden exists,
+        // and a pixel comparator would only bless whatever frame it saw first.
+        await page.setViewportSize({width: 1280, height: 720});
+        await bootSettledCockpit(page);
+
+        const readContrast = () => page.evaluate(() => {
+            const title = document.querySelector('.agent-shell-title'),
+                  band  = document.querySelector('.agent-top-toolbar'),
+                  lum   = color => {
+                      const [r, g, b] = color.match(/[\d.]+/g).map(Number),
+                            f         = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 };
+
+                      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+                  },
+                  a = lum(getComputedStyle(title).color),
+                  b = lum(getComputedStyle(band).backgroundColor);
+
+            return {
+                theme   : [...document.querySelector('.agent-os-viewport').classList].find(cls => cls.startsWith('neo-theme-')) || 'config-default',
+                contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+            }
+        });
+
+        const dark = await readContrast();
+        expect(dark.contrast, `the wordmark reads on the dark band (${dark.theme})`).toBeGreaterThanOrEqual(4.5);
+
+        // the first click only makes the config default explicit (the controller assumes light while
+        // viewport.theme is unset and sets dark) — click until the light class is on the viewport
+        for (let i = 0; i < 3; i++) {
+            await page.locator('.agent-theme-button').click();
+
+            if (await page.locator('.agent-os-viewport.neo-theme-neo-light').waitFor({timeout: 2000}).then(() => true, () => false)) {
+                break
+            }
+        }
+
+        const light = await readContrast();
+        expect(light.theme, 'the light skin is on the viewport').toBe('neo-theme-neo-light');
+        expect(light.contrast, 'the wordmark reads on the light band — it measured 1.04:1 before the ink binding').toBeGreaterThanOrEqual(4.5);
     });
 
     test('the 720 intermediate band — mark regime: no wrap, no overflow, state collapses to marks with titles (viewport capture, geometry asserted)', async ({page}) => {

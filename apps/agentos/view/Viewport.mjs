@@ -93,6 +93,7 @@ class Viewport extends BaseViewport {
                 vdom : {cn: [{tag: 'img', src: '../../resources/images/logo/neo_logo_primary.svg', alt: 'Neo.mjs'}]}
             }, {
                 ntype: 'label',
+                cls  : ['agent-shell-title'],
                 text : 'Agent OS'
             }, {
                 module   : InstanceSwitcher,
