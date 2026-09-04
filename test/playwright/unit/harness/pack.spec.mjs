@@ -1,7 +1,7 @@
 import {expect, test}             from '@playwright/test';
 import * as yaml                  from 'js-yaml';
-import {mkdtemp, readFile, rm}                from 'node:fs/promises';
-import {existsSync, mkdirSync, writeFileSync} from 'node:fs';
+import {mkdtemp, readFile, rm}                              from 'node:fs/promises';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir}                               from 'node:os';
 import {fileURLToPath}                        from 'node:url';
 import {
@@ -19,6 +19,7 @@ import {
     extractLiteralImportSpecifiers,
     extractLocalMjsImports,
     isInstanceOverlayPath,
+    materializeOverlaySlots,
     resolvePackRoots,
     stageOrganism
 } from '../../../../harness/pack.mjs';
@@ -354,9 +355,25 @@ test.describe('harness pack stage', () => {
             expect(() => assertImportClosure({manifest, stageDir: root, trees: ['ai']}))
                 .toThrow(/import outside the stage: ai\/daemons\/daemon\.mjs → \.\.\/\.\.\/src\/evolution\/createRemDigestion\.mjs/);
 
-            // once the sibling tree is staged the same module closes
+            // once the sibling tree is staged the same module closes — and a tree named by both
+            // owners (`src`) is walked once, so a finding is reported once
             mkdirSync(path.join(root, 'src', 'evolution'), {recursive: true});
             writeFileSync(path.join(root, 'src', 'evolution', 'createRemDigestion.mjs'), 'export default {}', 'utf8');
+            expect(() => assertImportClosure({manifest, stageDir: root, trees: ['ai', 'src', 'src']})).not.toThrow();
+
+            // an overlay slot the copy filter left empty (template present, config absent) is the
+            // closure's next finding — the derived materialization fills it, once, template-verbatim,
+            // and leaves a slot the setup script already filled alone
+            writeFileSync(path.join(root, 'src', 'evolution', 'config.template.mjs'), "export default {slot: 'template'}", 'utf8');
+            writeFileSync(path.join(root, 'src', 'evolution', 'RemDigestion.mjs'), "import config from './config.mjs';\nexport default config", 'utf8');
+            writeFileSync(path.join(root, 'ai', 'config.template.mjs'), "export default {slot: 'template'}", 'utf8');
+            expect(() => assertImportClosure({manifest, stageDir: root, trees: ['ai', 'src']}))
+                .toThrow(/src\/evolution\/RemDigestion\.mjs → \.\/config\.mjs/);
+
+            expect(materializeOverlaySlots({stageDir: root, trees: ['ai', 'src', 'src']})).toEqual(['src/evolution/config.mjs']);
+            expect(readFileSync(path.join(root, 'src', 'evolution', 'config.mjs'), 'utf8')).toBe("export default {slot: 'template'}");
+            expect(readFileSync(path.join(root, 'ai', 'config.mjs'), 'utf8')).toBe('export default {}');
+            expect(materializeOverlaySlots({stageDir: root, trees: ['ai', 'src']})).toEqual([]);
             expect(() => assertImportClosure({manifest, stageDir: root, trees: ['ai', 'src']})).not.toThrow()
         } finally {
             await rm(root, {force: true, recursive: true})

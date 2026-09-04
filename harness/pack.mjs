@@ -445,7 +445,8 @@ export function assertImportClosure({manifest, stageDir, trees = []}) {
         }
     };
 
-    trees.forEach(tree => walk(path.join(stageDir, tree)));
+    // two owners may name the same stage path (both carry a `src/`): walk it once
+    [...new Set(trees)].forEach(tree => walk(path.join(stageDir, tree)));
 
     if (missing.length > 0) {
         throw new Error(`pack: the staged install lacks pinned package(s): ${missing.join(', ')}`)
@@ -454,6 +455,40 @@ export function assertImportClosure({manifest, stageDir, trees = []}) {
     if (dangling.length > 0) {
         throw new Error(`pack: staged module(s) import outside the stage: ${dangling.join(', ')}`)
     }
+}
+
+/**
+ * @summary Materializes every instance-overlay slot the copy filter left empty: a staged
+ * `config.template.mjs` whose `config.mjs` sibling is absent gets the template as its pack-time-fresh
+ * instance — the same DERIVED rule the exclusion uses, so a slot the Brain's own setup script does
+ * not know (its `src/evolution/config.mjs`, for one) still ships template-current. A slot the setup
+ * script already filled is left alone.
+ * @param {Object} options
+ * @param {String} options.stageDir
+ * @param {String[]} options.trees Stage-relative trees to walk.
+ * @returns {String[]} the stage-relative configs written.
+ */
+export function materializeOverlaySlots({stageDir, trees}) {
+    const written = [];
+
+    const walk = dir => {
+        for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+            const fullPath = path.join(dir, entry.name);
+
+            if (entry.isDirectory()) {
+                if (entry.name !== 'node_modules' && entry.name !== '.git') {
+                    walk(fullPath)
+                }
+            } else if (entry.name === 'config.template.mjs' && !fs.existsSync(path.join(dir, 'config.mjs'))) {
+                fs.copyFileSync(fullPath, path.join(dir, 'config.mjs'));
+                written.push(path.relative(stageDir, path.join(dir, 'config.mjs')))
+            }
+        }
+    };
+
+    [...new Set(trees)].forEach(tree => walk(path.join(stageDir, tree)));
+
+    return written.sort()
 }
 
 /**
@@ -624,11 +659,18 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     };
 
     // Pack-time-fresh instance config: template-current by construction, so the packaged first
-    // boot never needs to WRITE into the (possibly read-only, translocated) resources dir.
+    // boot never needs to WRITE into the (possibly read-only, translocated) resources dir. The
+    // Brain's setup script fills the slots it knows; the derived pass fills the rest.
     run('node', ['ai/scripts/setup/initServerConfigs.mjs'], {cwd: stageDir});
 
-    // The closure is checked on the COMPLETE stage: the generated configs above are import targets.
-    assertImportClosure({manifest, stageDir, trees: [...product.trees, ...brain.trees]});
+    const
+        trees    = [...product.trees, ...brain.trees],
+        filled   = materializeOverlaySlots({stageDir, trees});
+
+    filled.length && console.log(`[pack] materialized ${filled.length} overlay slot(s) the setup script left empty: ${filled.join(', ')}`);
+
+    // The closure is checked on the COMPLETE stage: the configs above are import targets.
+    assertImportClosure({manifest, stageDir, trees});
 
     const shimsDir = path.join(stageDir, 'shims');
 
