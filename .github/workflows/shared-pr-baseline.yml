@@ -5,8 +5,13 @@
 
 name: Shared PR Baseline
 
+# The called workflow's PR-body job reads the pull request live (never the event snapshot), so it
+# declares `pull-requests: read` for itself — and a called job may not hold more than its caller
+# grants: with `contents: read` alone the run fails at startup before any job exists (measured on
+# this repository's first caller run). Both grants stay read-only.
 permissions:
   contents: read
+  pull-requests: read
 
 # Deliberately unfiltered: once these jobs become required contexts, every PR must emit a terminal
 # result. The called PR-base job rejects an unsupported base instead of leaving a context pending.
