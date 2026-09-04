@@ -149,32 +149,81 @@ class List extends ComponentList {
     }
 
     /**
-     * @summary The card id keys by record, never by position: `<list>__<record key>__component`.
+     * @summary A record key as a DOM-id fragment, reversibly: every code unit outside `[A-Za-z0-9-]`
+     * — the underscore included, so the encoding never produces its own escape — becomes
+     * `_` + four hex digits. Agent ids are whatever the Brain accepted (`a__component`, a space, a
+     * non-Latin name), and a DOM id built from them must neither collide with the list's own
+     * `__item-` / `__card-` namespaces nor lose the key on the way back.
+     * @param {String|Number} key
+     * @returns {String}
+     */
+    static encodeKey(key) {
+        return String(key).replace(/[^A-Za-z0-9-]/g, char => `_${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
+    }
+
+    /**
+     * @summary The exact inverse of {@link #encodeKey}.
+     * @param {String} encoded
+     * @returns {String}
+     */
+    static decodeKey(encoded) {
+        return encoded.replace(/_([0-9a-f]{4})/g, (match, hex) => String.fromCharCode(parseInt(hex, 16)))
+    }
+
+    /**
+     * @summary The card id keys by record, never by position: `<list>__card-<encoded key>` — its own
+     * namespace beside the list item's `__item-`, so no two agent ids can meet on one DOM id.
      * @param {Object} record
      * @returns {String}
      */
     getCardId(record) {
-        return `${this.id}__${this.getRecordId(record)}__component`
+        return `${this.id}__card-${List.encodeKey(this.getRecordId(record))}`
     }
 
     /**
-     * @summary The list item's id keys by record id — the `Neo.list.Base` shape, not the component
+     * @summary The list item's id keys by record id — `<list>__item-<encoded key>`, not the component
      * list's store index — so the `li` around a card keeps its node across a sort. A record resolves
      * to its key first, the way the base list reads it; the selection model hands either form.
      * @param {Object|String|Number} recordOrId
      * @returns {String}
      */
     getItemId(recordOrId) {
-        return `${this.id}__${recordOrId?.isRecord ? this.getRecordId(recordOrId) : recordOrId}`
+        return `${this.id}__item-${List.encodeKey(recordOrId?.isRecord ? this.getRecordId(recordOrId) : recordOrId)}`
     }
 
     /**
-     * @summary The inverse of {@link #getItemId}: the record id is the suffix after the list id.
+     * @summary The inverse of {@link #getItemId}: the record key decoded from the item namespace.
      * @param {String} vnodeId
      * @returns {String}
      */
     getItemRecordId(vnodeId) {
-        return vnodeId.slice(this.id.length + 2)
+        return List.decodeKey(vnodeId.slice(this.id.length + '__item-'.length))
+    }
+
+    /**
+     * @summary A rebuild, then the pool's retirement pass: a card whose record has left the whole
+     * fleet — not merely the filtered view — is destroyed and dropped, so the pool and the instance
+     * registry stay bounded by the fleet's current cardinality across any number of join/leave
+     * cycles. A filtered-out record is still in the store's unfiltered projection, and its card
+     * keeps its seat behind the rendered ones for the day the filter lifts.
+     * @param {Boolean} silent=false
+     */
+    createItems(silent=false) {
+        let me = this;
+
+        super.createItems(silent);
+
+        if (me.items) {
+            const whole = me.store.allItems ?? me.store;
+
+            me.items = me.items.filter(card => {
+                const alive = card.record && whole.get(me.getRecordId(card.record));
+
+                !alive && card.destroy();
+
+                return alive
+            })
+        }
     }
 
     /**
@@ -190,10 +239,12 @@ class List extends ComponentList {
         let me = this;
 
         if (me.items) {
+            // by key from the pool itself, never by position in `previousItems`: a store with an
+            // unfiltered projection hands the event a previous list that is already sorted
             const
-                pool         = me.items,
-                previousKeys = data.previousItems.map(record => me.getRecordId(record)),
-                sorted       = data.items.map(record => pool[previousKeys.indexOf(me.getRecordId(record))]).filter(Boolean);
+                pool   = me.items,
+                cardOf = record => pool.find(card => card.record && me.getRecordId(card.record) === me.getRecordId(record)),
+                sorted = data.items.map(cardOf).filter(Boolean);
 
             me.items       = sorted.concat(pool.filter(card => !sorted.includes(card)));
             me.updateDepth = -1

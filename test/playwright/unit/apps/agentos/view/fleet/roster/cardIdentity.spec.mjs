@@ -107,9 +107,14 @@ test.describe('Fleet roster — cards and list items keep their identity across 
     });
 
     test('a joiner that sorts ahead moves the existing cards — same instance, same card id, same li id', async () => {
-        const store = makeStore(roster(['ok', 'ok', 'ok'])),
-              grid  = Neo.create(FleetGrid, {appName, store}),
-              list  = await readyList(grid);
+        const store = makeStore(roster(['ok', 'ok', 'ok']));
+
+        // seated BEFORE the grid: the controller keeps a store's own sorters, and no `sort` event
+        // fires inside the arm — the plugin's transition timer would outlive the grid otherwise
+        byName(store);
+
+        const grid = Neo.create(FleetGrid, {appName, store}),
+              list = await readyList(grid);
 
         const
             bravo    = cards(list)[1],
@@ -118,11 +123,11 @@ test.describe('Fleet roster — cards and list items keep their identity across 
             liBefore = list.getItemId(bravoKey);
 
         expect(cards(list).map(card => card.record.displayName)).toEqual(['Agent A', 'Agent B', 'Agent C']);
-        expect(bravoId).toBe(`${list.id}__${bravoKey}__component`);
+        expect(bravoId).toBe(`${list.id}__card-${bravoKey}`);
+        expect(liBefore).toBe(`${list.id}__item-${bravoKey}`);
         expect(liIds(list)).toContain(liBefore);
 
         // the joiner sorts first by name — every existing card shifts one seat
-        byName(store);
         store.add({...joiner});
         list.createItems(true);
 
@@ -137,17 +142,21 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         grid.destroy()
     });
 
-    test('a record that leaves keeps its card behind the seats; the survivors keep theirs; a joiner gets its own', async () => {
-        const store = makeStore(roster(['ok', 'ok', 'ok'])),
-              grid  = Neo.create(FleetGrid, {appName, store}),
-              list  = await readyList(grid);
+    test('a record that leaves retires its card — destroyed and dropped, the pool bounded by the fleet; survivors keep theirs, a joiner gets its own', async () => {
+        const store = makeStore(roster(['ok', 'ok', 'ok']));
+
+        byName(store);
+
+        const grid = Neo.create(FleetGrid, {appName, store}),
+              list = await readyList(grid);
 
         const
             [alpha, bravo, charlie] = cards(list),
-            ids                     = [alpha.id, bravo.id, charlie.id];
+            ids                     = [alpha.id, bravo.id, charlie.id],
+            charlieRow              = {...roster(['ok', 'ok', 'ok'])[2]},
+            charlieKey              = charlie.record.agentId;
 
-        byName(store);
-        store.remove(charlie.record.agentId);
+        store.remove(charlieKey);
         store.add({...joiner});
         list.createItems(true);
 
@@ -157,29 +166,103 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         expect([alpha.id, bravo.id]).toEqual([ids[0], ids[1]]);
         // a card is never re-keyed onto another record: the joiner's is new, under the joiner's id
         expect(cards(list)[0]).not.toBe(charlie);
-        expect(cards(list)[0].id).toBe(`${list.id}__agent-00__component`);
-        // Charlie's card stays behind the rendered seats, still Charlie's
+        expect(cards(list)[0].id).toBe(`${list.id}__card-agent-00`);
+        // Charlie's card left with Charlie: destroyed, unregistered, out of the pool
+        expect(list.items.length, 'the pool is bounded by the fleet').toBe(3);
+        expect(charlie.isDestroyed).toBe(true);
+        expect(Neo.get(ids[2])).toBeFalsy();
+
+        // join/leave cycles of unique agents leave nothing behind — pool and registry stay bounded
+        for (let i = 0; i < 5; i++) {
+            store.add({agentId: `cycle-${i}`, displayName: `Cycle ${i}`, githubUsername: `neo-cycle-${i}`, state: 'ok'});
+            list.createItems(true);
+            store.remove(`cycle-${i}`);
+            list.createItems(true);
+
+            expect(Neo.get(`${list.id}__card-cycle-${i}`)).toBeFalsy()
+        }
+
+        expect(list.items.length).toBe(3);
+
+        // the same agent returning gets a fresh card under the same id — freed with the old one
+        store.add(charlieRow);
+        list.createItems(true);
+
+        const returned = cards(list).find(card => card.record.agentId === charlieKey);
+
+        expect(returned).toBeTruthy();
+        expect(returned).not.toBe(charlie);
+        expect(returned.id).toBe(ids[2]);
         expect(list.items.length).toBe(4);
-        expect(list.items[3]).toBe(charlie);
-        expect(charlie.id).toBe(ids[2]);
 
         grid.destroy()
     });
 
-    test('an explicit sort — the Animate path — reorders the pool without touching a single id', async () => {
-        const store = makeStore(roster(['ok', 'ok', 'ok'])),
+    test('agent ids are whatever the Brain accepted — item and card namespaces never meet, and every id round-trips DOM-safe', async () => {
+        const rows  = ['plain', 'plain__component', 'item-plain', 'card-plain', 'with space', 'ünïcode', '_', 'a.b/c#d']
+                  .map((agentId, i) => ({agentId, displayName: `N${i}`, githubUsername: `g${i}`, state: 'ok'})),
+              store = makeStore(rows),
               grid  = Neo.create(FleetGrid, {appName, store}),
               list  = await readyList(grid);
 
-        const before = cards(list).map(card => ({card, id: card.id, key: card.record.agentId}));
+        const itemIds = rows.map(row => list.getItemId(row.agentId)),
+              cardIds = cards(list).map(card => card.id),
+              all     = [...itemIds, ...cardIds];
 
-        list.sortItems({
-            items        : [...store.items].reverse(),
-            previousItems: [...store.items]
-        });
+        expect(cardIds.length).toBe(rows.length);
+        expect(new Set(all).size, 'no two ids collide across both namespaces').toBe(all.length);
+        all.forEach(id => expect(id, 'DOM-safe: letters, digits, hyphen, underscore').toMatch(/^[A-Za-z0-9_-]+$/));
+        rows.forEach(row => expect(list.getItemRecordId(list.getItemId(row.agentId)), `round-trip ${row.agentId}`).toBe(row.agentId));
+        // the rendered lis carry exactly the item ids, and no li id is any card's id
+        expect(liIds(list).sort()).toEqual([...itemIds].sort());
+        expect(cardIds.some(id => liIds(list).includes(id))).toBe(false);
 
-        expect(list.items.map(card => card.record.agentId)).toEqual(before.map(entry => entry.key).reverse());
+        grid.destroy()
+    });
+
+    test('a sort through the Animate plugin moves the same nodes — translated mid-motion, rebuilt after the transition under the same ids', async () => {
+        const store  = makeStore(roster(['ok', 'ok', 'ok'])),
+              grid   = Neo.create(FleetGrid, {appName, store}),
+              list   = await readyList(grid),
+              plugin = list.getPlugin('list-animate');
+
+        plugin.transitionDuration = 20;
+
+        const
+            before    = cards(list).map(card => ({card, id: card.id, key: card.record.agentId})),
+            reversed  = before.map(entry => entry.key).reverse(),
+            nodeOf    = key => list.getVdomRoot().cn.find(node => node.id === list.getItemId(key)),
+            seatOf    = key => nodeOf(key)?.style?.transform,
+            seats     = Object.fromEntries(before.map(({key}) => [key, seatOf(key)])),
+            itemIds   = before.map(({key}) => list.getItemId(key)).sort();
+
+        before.forEach(({key}) => expect(seats[key], `${key} sits on a translated seat`).toMatch(/^translate\(/));
+
+        // the store's own `sort` event drives the plugin's `sortComponentList`: the pool follows the
+        // records at once, and not one id changes — the nodes the transition will move are the same
+        store.sorters = [{direction: 'DESC', property: 'displayName'}];
+
+        expect(list.items.map(card => card.record.agentId), 'the pool follows the sorted records').toEqual(reversed);
         before.forEach(({card, id}) => expect(card.id).toBe(id));
+        expect(liIds(list).sort(), 'the same lis, no new node').toEqual(itemIds);
+
+        // the transition callback rebuilds the items: the same instances under the same ids, and the
+        // moved records' nodes carry NEW seats — the transform changed on the same node id, which is
+        // what lets the CSS transition play instead of a rebuilt card flashing in
+        await new Promise(resolve => setTimeout(resolve, 80));
+
+        expect(cards(list).map(card => card.record.agentId)).toEqual(reversed);
+        before.forEach(({card, id, key}) => {
+            const now = cards(list).find(candidate => candidate.record.agentId === key);
+
+            expect(now, `${key} is the same AgentCard instance`).toBe(card);
+            expect(now.id).toBe(id)
+        });
+        expect(liIds(list).sort()).toEqual(itemIds);
+        expect(seatOf(before[0].key), 'the first record moved to the last seat').not.toBe(seats[before[0].key]);
+        expect(seatOf(before[2].key), 'the last record moved to the first seat').not.toBe(seats[before[2].key]);
+        expect(seatOf(before[1].key), 'the middle record kept its seat').toBe(seats[before[1].key]);
+        expect(seatOf(before[2].key)).toBe(seats[before[0].key]);
 
         grid.destroy()
     })
