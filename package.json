@@ -83,7 +83,7 @@
         "highlightjs-line-numbers.js": "^2.9.1",
         "html-minifier-terser": "^7.2.0",
         "inquirer": "^13.4.3",
-        "js-yaml": "^4.1.1",
+        "js-yaml": "^5.2.3",
         "jsdoc-api": "^9.3.6",
         "marked": "^18.0.5",
         "mermaid": "^11.16.0",
