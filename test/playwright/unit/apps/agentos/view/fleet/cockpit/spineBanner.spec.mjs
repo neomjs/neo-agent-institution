@@ -27,6 +27,63 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
 
     const HIDDEN_LIVE = {hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''};
 
+    test.describe('connection observations belong to the deciding read', () => {
+        const cases = [
+            ['connecting', 'connecting'], ['refused', 'refused'], ['unreachable', 'unreachable'],
+            ['timeout', 'timed out'], ['failed-upstream', 'failed']
+        ];
+
+        for (const [state, word] of cases) {
+            test(`${state} distinguishes cold roster and last-known activity without a server diagnosis`, () => {
+                const connection = {state, reason: 'bounded read detail'},
+                      cold = SpineBanner.deriveSpineBanner({grid: {state: 'sample', connection}, stream: {state: 'live'}}),
+                      stale = SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'stale', connection}});
+                expect(cold.text).toBe(`fleet ${word}`);
+                expect(cold.title).toContain('static roster');
+                expect(stale.text).toBe(`feed ${word}`);
+                expect(stale.title).toContain('last-known');
+                expect(stale.ariaLabel).toBe(stale.title);
+                expect(cold.title + stale.title).not.toMatch(/safe to wait|authentication refused|server offline/)
+            })
+        }
+
+        test('a live sibling cannot relabel the stale surface whose reason decided the verdict', () => {
+            const result = SpineBanner.deriveSpineBanner({
+                grid: {state: 'live', connection: {state: 'timeout', reason: 'wrong sibling'}},
+                stream: {state: 'stale', reason: 'activity source not wired'}
+            });
+            expect(result.text).toBe('fleet degraded');
+            expect(result.title).toContain('activity source not wired');
+            expect(result.title).not.toMatch(/timed out|wrong sibling/)
+        });
+
+        test('reason selection and connection selection agree when both surfaces are stale', () => {
+            const result = SpineBanner.deriveSpineBanner({
+                grid: {state: 'stale', reason: 42, connection: {state: 'timeout'}},
+                stream: {state: 'stale', reason: 'activity refused', connection: {state: 'refused', reason: 'activity refused'}}
+            });
+            expect(result.text).toBe('feed refused');
+            expect(result.title).toContain('activity refused');
+            expect(result.title).not.toContain('timed out')
+        });
+
+        test('a pending refresh preserves the retained producer reason; daemon and live precedence stand', () => {
+            const connection = {state: 'connecting', reason: null},
+                  grid = {state: 'stale', reason: 'source unavailable', connection};
+            expect(SpineBanner.deriveSpineBanner({grid, stream: {state: 'live'}}).title).toContain('source unavailable');
+            expect(SpineBanner.deriveSpineBanner({grid, stream: {state: 'live'}, daemon: {state: 'stopped'}}).text).toBe('agent os stopped');
+            expect(SpineBanner.deriveSpineBanner({grid: {state: 'live', connection}, stream: {state: 'live', connection}})).toEqual(HIDDEN_LIVE)
+        });
+
+        test('unknown observation states preserve the ordinary fallback, including prototype names', () => {
+            const plain = {grid: {state: 'sample'}, stream: {state: 'live'}};
+            for (const state of [null, 'slow', 'toString', 'constructor', 'unknown']) {
+                expect(SpineBanner.deriveSpineBanner({...plain, grid: {state: 'sample', connection: {state, reason: 'untrusted'}}}))
+                    .toEqual(SpineBanner.deriveSpineBanner(plain))
+            }
+        })
+    });
+
     // ⭐ The daemon surface: the shell spec's "tray-state change + ONE cockpit banner with the
     // diagnosis pointer — never a popup storm". The storm clause is a property of EPISODES, not
     // renders, so it is asserted as such below rather than assumed from the return type.

@@ -497,8 +497,110 @@ test.describe('installFleetBridge — App-Worker wiring of the dev-server app<->
                 target           : {}
             });
 
-            await expect(bridge.listAgents()).rejects.toThrow(/malformed|unoffered/)
+            const error = await bridge.listAgents().catch(error => error);
+
+            expect(error).toBeInstanceOf(Error);
+            expect(error.message).toMatch(/malformed|unoffered/);
+            expect(error).not.toHaveProperty('fleetConnectionState')
         }
+    });
+
+    test('validated wire failures retain their finite connection state through both proxy transports', async () => {
+        const cases = [
+            {state: FLEET_WIRE_RESPONSE_STATES.refused, expected: 'refused'},
+            {state: FLEET_WIRE_RESPONSE_STATES.operationFailed, expected: 'failed-upstream'},
+            {state: FLEET_WIRE_RESPONSE_STATES.degraded, expected: 'failed-upstream', degraded: 'source-unavailable'}
+        ];
+
+        for (const {state, expected, degraded} of cases) {
+            const envelope = createFleetWireResponse(state, {error: 'upstream report', degraded});
+            const bridges = [
+                installFleetBridge({credentialIngress: 'shell', send: async () => envelope, target: {}}),
+                installFleetBridge({
+                    bearerToken: testBearer,
+                    fetchImpl  : async () => ({json: async () => envelope}),
+                    target     : {},
+                    url        : fleetUrl
+                })
+            ];
+
+            for (const bridge of bridges) {
+                const error = await bridge.fleetRoster().catch(error => error);
+
+                expect(error).toBeInstanceOf(Error);
+                expect(error.message).toBe('upstream report');
+                expect(error.fleetConnectionState, state).toBe(expected)
+            }
+        }
+    });
+
+    test('unsupported and malformed outcomes gain no classification from refusal-shaped text', async () => {
+        const responses = [
+            ...[
+                FLEET_WIRE_RESPONSE_STATES.unsupportedCapability,
+                FLEET_WIRE_RESPONSE_STATES.unsupportedMethod,
+                FLEET_WIRE_RESPONSE_STATES.unsupportedProtocol
+            ].map(state => createFleetWireResponse(state, {error: 'request refused: failed-upstream'})),
+            {...createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.refused), ok: true},
+            {...createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.refused), state: 'unknown'},
+            createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.degraded, {error: 'request refused'})
+        ];
+
+        for (const response of responses) {
+            const bridge = installFleetBridge({
+                credentialIngress: 'shell',
+                send             : async () => response,
+                target           : {}
+            });
+            const error = await bridge.fleetActivity().catch(error => error);
+
+            expect(error).toBeInstanceOf(Error);
+            expect(error).not.toHaveProperty('fleetConnectionState')
+        }
+    });
+
+    test('pre-response rejection is unreachable, and neither credentials nor an injected classification escape', async () => {
+        const unsafe = Object.assign(new Error(`Authorization: Bearer ${testBearer}; refused at ${fleetUrl}`), {
+            fleetConnectionState: 'refused'
+        });
+        const bridges = [
+            installFleetBridge({
+                credentialIngress: 'shell',
+                send             : async () => { throw unsafe },
+                target           : {}
+            }),
+            installFleetBridge({
+                bearerToken: testBearer,
+                fetchImpl  : async () => { throw unsafe },
+                target     : {},
+                url        : fleetUrl
+            })
+        ];
+
+        for (const bridge of bridges) {
+            const error = await bridge.fleetRoster().catch(error => error);
+
+            expect(error).toBeInstanceOf(Error);
+            expect(error).not.toBe(unsafe);
+            expect(error.message).toBe('fleet: request transport failed');
+            expect(error.fleetConnectionState).toBe('unreachable');
+            expect(error.message).not.toContain(testBearer);
+            expect(error.message).not.toContain(fleetUrl)
+        }
+    });
+
+    test('a response whose JSON cannot be read is unclassified, not an unreachable plane', async () => {
+        const bridge = installFleetBridge({
+            bearerToken: testBearer,
+            fetchImpl  : async () => ({json: async () => { throw new Error(`Bearer ${testBearer}`) }}),
+            target     : {},
+            url        : fleetUrl
+        });
+        const error = await bridge.fleetActivity().catch(error => error);
+
+        expect(error).toBeInstanceOf(Error);
+        expect(error.message).toBe('fleet: request transport failed');
+        expect(error).not.toHaveProperty('fleetConnectionState')
     });
 
     test('transport and JSON-parser rejection text is never relayed into the pane', async () => {
@@ -524,13 +626,17 @@ test.describe('installFleetBridge — App-Worker wiring of the dev-server app<->
     });
 
     test('known local launch-state errors retain their bounded remediation', async () => {
-        const bridge = installFleetBridge({
-            credentialIngress: 'shell',
-            send             : async () => { throw new Error(FLEET_LOCAL_TRANSPORT_ERRORS.noLiveWindow) },
-            target           : {}
-        });
+        for (const message of Object.values(FLEET_LOCAL_TRANSPORT_ERRORS)) {
+            const bridge = installFleetBridge({
+                credentialIngress: 'shell',
+                send             : async () => { throw new Error(message) },
+                target           : {}
+            });
+            const error = await bridge.listAgents().catch(error => error);
 
-        await expect(bridge.listAgents()).rejects.toThrow(FLEET_LOCAL_TRANSPORT_ERRORS.noLiveWindow)
+            expect(error.message).toBe(message);
+            expect(error).not.toHaveProperty('fleetConnectionState')
+        }
     });
 
     test('fails loud before publishing when the fleet endpoint is missing or invalid', () => {

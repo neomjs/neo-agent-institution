@@ -161,39 +161,58 @@ export function installFleetBridge({
                 throw new Error(FLEET_LOCAL_TRANSPORT_ERRORS.noBearer)
             }
             : async request => {
-                const response = await fetchImpl(fleetUrl.href, {
+                return fetchImpl(fleetUrl.href, {
                     method : 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         Authorization : `Bearer ${bearerToken}`
                     },
                     body: JSON.stringify(request)
-                });
-
-                return response.json()
+                })
             }
     }
 
-    // The browser's half of the wire contract: one async proxy per twin-listed verb, unwrapping the
-    // finite response envelope only after its selection matches this realm's offer. Browser mode
-    // sends that offer directly; shell mode relies on parity with main's independently owned offer.
+    /**
+     * @summary Unwrap one validated reply and preserve only evidence-backed connection failures.
+     *
+     * `Error.fleetConnectionState` is a finite client observation: `unreachable` means send/fetch
+     * rejected before returning a response; validated `refused` and operation failure/degradation
+     * mean `refused` and `failed-upstream`. Local launch failures, JSON decoding and protocol
+     * validation failures remain unclassified. Neither error text nor a transport-supplied Error
+     * property can assert a remote outcome. Browser requests carry this realm's offer; shell
+     * requests rely on parity with main's independently owned offer.
+     * @param {String} method
+     * @param {*} params
+     * @returns {Promise<*>} The validated operation result.
+     */
     const request = async (method, params) => {
         const
             offer       = createFleetWireOffer(),
             wireRequest = createFleetWireRequest(method, params, offer);
 
-        let envelope, inspection;
+        let envelope, inspection, response;
 
         try {
-            envelope = await transportSend(shellTransport
+            response = await transportSend(shellTransport
                 ? {method: wireRequest.method, params: wireRequest.params}
                 : wireRequest)
         } catch (error) {
-            const safeError = Object.values(FLEET_LOCAL_TRANSPORT_ERRORS).includes(error?.message)
-                ? error.message
-                : 'fleet: request transport failed';
+            const localFailure = Object.values(FLEET_LOCAL_TRANSPORT_ERRORS).includes(error?.message),
+                  safeError    = new Error(localFailure ? error.message : 'fleet: request transport failed');
 
-            throw new Error(safeError)
+            if (!localFailure) {
+                safeError.fleetConnectionState = 'unreachable'
+            }
+
+            throw safeError
+        }
+
+        try {
+            envelope = shellTransport ? response : await response.json()
+        } catch {
+            // A response arrived, but its body is unusable. Keep the established safe message
+            // without classifying that parsing failure as absence of a response.
+            throw new Error('fleet: request transport failed')
         }
 
         try {
@@ -207,7 +226,15 @@ export function installFleetBridge({
         }
 
         if (envelope.state !== FLEET_WIRE_RESPONSE_STATES.ok) {
-            throw new Error(envelope?.error || `fleet: '${method}' failed`);
+            const error = new Error(envelope.error || `fleet: '${method}' failed`);
+
+            if (envelope.state === FLEET_WIRE_RESPONSE_STATES.refused) {
+                error.fleetConnectionState = 'refused'
+            } else if ([FLEET_WIRE_RESPONSE_STATES.operationFailed, FLEET_WIRE_RESPONSE_STATES.degraded].includes(envelope.state)) {
+                error.fleetConnectionState = 'failed-upstream'
+            }
+
+            throw error
         }
 
         return envelope.result

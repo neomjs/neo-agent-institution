@@ -155,10 +155,42 @@ class SpineBanner extends Base {
     }
 
     /**
+     * @summary Describe the deciding read's observation without diagnosing another surface.
+     * A refusal can originate at an admitted shell boundary, so copy names the request, never
+     * an authentication decision or a claim that the remote server refused it. Timeout means
+     * the read bound elapsed; it says nothing about progress or whether waiting is safe.
+     * @param {Object} surface The read owner-held surface with an optional connection observation.
+     * @param {String} kind Existing banner skin: cold or degraded.
+     * @param {String} scope Fleet roster or activity feed label.
+     * @param {String} detail The data state this verdict is qualified to describe.
+     * @returns {Object|null} A banner verdict, or null for absent/unknown observations.
+     */
+    static connectionVerdict(surface, kind, scope, detail) {
+        const connection = surface?.connection,
+              subject = scope === 'fleet' ? 'Roster' : 'Activity',
+              copy = {
+                  connecting: ['connecting', `${subject} read in progress`],
+                  refused: ['refused', `${subject} request refused`],
+                  unreachable: ['unreachable', `${subject} connection unavailable`],
+                  timeout: ['timed out', `${subject} read timed out`],
+                  'failed-upstream': ['failed', `${subject} request reported an upstream failure`]
+              };
+
+        if (!connection || !Object.hasOwn(copy, connection.state)) return null;
+
+        const [word, sentence] = copy[connection.state],
+              reason = typeof connection.reason === 'string' ? connection.reason.trim() : '',
+              title = `${sentence} — ${detail}${reason ? ` · ${reason}` : ''}`;
+
+        return {hidden: false, kind, text: `${scope} ${word}`, title, ariaLabel: title}
+    }
+
+    /**
      * @summary Derives the spine banner from the owner-held surface truths.
      * @param {Object} options
-     * @param {{state: String, reason: ?String}} options.grid The roster surface: `'sample'|'stale'|'live'`
-     *     plus the safe cause the owner retained for THAT surface, if it learned one.
+     * @param {{state: String, reason: ?String, connection: ?Object}} options.grid The roster surface:
+     *     `'sample'|'stale'|'live'`, its retained cause and its read owner's optional connection
+     *     observation `{state, reason}`. Both reasons are sanitized before publication.
      * @param {{state: String, reason: ?String}} options.stream The activity surface, same shape.
      * @param {{state: String, reason: ?String}} [options.daemon] Brain daemon health:
      *     `'running'|'degraded'|'stopped'`, with the diagnosis pointer as its reason. Optional — a caller
@@ -195,6 +227,10 @@ class SpineBanner extends Base {
                 return verdict('cold', 'fleet offline', `Fleet data unavailable — showing the static roster · ${reason}`)
             }
 
+            const connection = SpineBanner.connectionVerdict(grid, 'cold', 'fleet', 'showing the static roster');
+
+            if (connection) return connection;
+
             const fallback = coldFallbackFor(transport);
 
             return verdict('cold', fallback.text, fallback.title)
@@ -222,7 +258,15 @@ class SpineBanner extends Base {
         }
 
         if (states.includes('stale')) {
-            const reason = reasonFor(surfaces, 'stale');
+            const reason = reasonFor(surfaces, 'stale'),
+                  // Follow the SAME surface whose retained reason decided the verdict. A live
+                  // sibling's pending read has no standing to relabel this loss.
+                  deciding = surfaces.find(surface => surface?.state === 'stale' &&
+                      (reason ? typeof surface.reason === 'string' && surface.reason.trim() === reason : true)),
+                  connection = reason && deciding?.connection?.state === 'connecting' ? null :
+                      SpineBanner.connectionVerdict(deciding, 'degraded', deciding === grid ? 'fleet' : 'feed', 'showing last-known data');
+
+            if (connection) return connection;
 
             return verdict('degraded', 'fleet degraded', reason
                 ? `Fleet feed degraded — showing last-known data · ${reason}`
@@ -235,6 +279,12 @@ class SpineBanner extends Base {
         // transport fact is deliberately not consulted (it belongs to the cold family alone).
         if (stream?.state === 'sample') {
             const reason = reasonFor([stream], 'sample');
+
+            if (!reason) {
+                const connection = SpineBanner.connectionVerdict(stream, 'degraded', 'feed', 'roster is live · showing sample activity');
+
+                if (connection) return connection
+            }
 
             return verdict('degraded', 'feed pending', reason
                 ? `Activity feed pending — roster is live · ${reason}`
