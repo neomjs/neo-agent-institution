@@ -2,7 +2,13 @@
    the signal; the transition is decoration, gated behind BOTH the animateCounts switch and
    prefers-reduced-motion (reduced-motion users lose nothing informational). */
 .fm-health-bar {
-    gap: 12px;
+    column-gap: 12px;
+    row-gap   : var(--fm-space-1); /* a wrapped swatch line (vessel width, #85) stays close to its row */
+    /* The bar is a pinned (flex: none) item of the fleet head, so its natural width is its one-line
+       max-content — 762px for seven states. The ceiling makes it yield to whatever line the head
+       gives it: beside the title while that fits, the whole line under the title next, and folded
+       onto a second swatch line at vessel width. Without it the wrap above never engages (#85). */
+    max-width : 100%;
 
     /* The aggregate verdict dot: ONE glanceable header signal ahead of the counts — green when no
        state needs an operator (the default-state contract: a fleet of un-managed seats is CALM),
