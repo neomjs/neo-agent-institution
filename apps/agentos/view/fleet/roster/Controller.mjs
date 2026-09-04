@@ -70,20 +70,22 @@ class Controller extends ComponentController {
         store.filters = [
             {disabled: true, property: 'state',               filterBy: ({item}) => item.state === 'off'},
             {disabled: true, property: 'participationStatus', filterBy: ({item}) => item.participationStatus === 'operator_benched'},
-            // derived from `state`, never read from the calculated `tierRank`: the engine evaluates
-            // filters over its unfiltered projection, which holds a freshly added batch as RAW rows
-            // (no calculated fields) until something hydrates them — neomjs/neo#18269, facet 2
+            // derived from `state`, never read from the calculated `tierRank`: a filter must not depend
+            // on a calculated field being present on the row it sees — a wire row or a turbo-mode row
+            // carries none — and `state` is the record's own source truth. The engine now hands the
+            // filter records, with the unfiltered projection written inside the mutation; the
+            // derivation stays because it is the honest source either way, not a workaround
             {disabled: true, property: 'tierRank',            filterBy: ({item}) => FleetAgent.tierRankFor(item.state) === 1}
         ]
     }
 
     /**
      * @summary The whole-fleet record set — filters shape the VIEW, so every COUNT (title, fold
-     * chip, health tally) reads the unfiltered truth. `allItems` is consulted ONLY while a filter
-     * is actively excluding rows: the collection materializes it as a snapshot copy on the first
-     * filter pass (even an all-disabled one) and does not route later adds into it while no
-     * filter is active — with zero active filters, `items` IS the whole fleet and the snapshot is
-     * stale by design.
+     * chip, health tally) reads the unfiltered truth. The engine writes its unfiltered projection
+     * (`allItems`) inside every mutation, so it is authoritative whenever it exists — and it exists
+     * only once a filter pass ran. With zero active filters, `items` IS the whole fleet; `allItems`
+     * is consulted only while a filter is actively excluding rows, because then `items` is the
+     * narrowed view and the projection is the fleet.
      * @returns {Object[]}
      */
     getWholeFleet() {
