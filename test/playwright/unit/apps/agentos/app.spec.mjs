@@ -60,7 +60,7 @@ test.describe('AgentOS packaged Fleet window routing', () => {
     test('browser boot invokes Neo.app before its delayed handshake settles', async () => {
         const {onStart} = await import('../../../../../apps/agentos/app.mjs');
 
-        let releaseFetch;
+        let releaseFetch, slotAtApp;
 
         const
             originalAgentOS = globalThis.AgentOS,
@@ -72,7 +72,12 @@ test.describe('AgentOS packaged Fleet window routing', () => {
         try {
             globalThis.AgentOS = {};
             Neo.config.url     = {href: 'http://localhost:8080/apps/agentos/', search: ''};
-            Neo.app            = () => { order.push('app') };
+            Neo.app            = () => {
+                order.push('app');
+                // the in-flight heal is already a published fact when the shell constructs —
+                // the cockpit's liveness owner chains its immediate re-drive onto this slot
+                slotAtApp = globalThis.AgentOS.fleet?.custodyHeal
+            };
             globalThis.fetch   = async () => {
                 order.push('fetch');
                 await new Promise(resolve => { releaseFetch = resolve });
@@ -82,6 +87,7 @@ test.describe('AgentOS packaged Fleet window routing', () => {
             onStart();
 
             expect(order[0]).toBe('app');
+            expect(slotAtApp).toBeInstanceOf(Promise);
             await expect.poll(() => order.includes('fetch')).toBe(true);
             expect(order).toEqual(['app', 'fetch']);
 
@@ -90,7 +96,10 @@ test.describe('AgentOS packaged Fleet window routing', () => {
             releaseFetch();
             await Promise.resolve();
             await Promise.resolve();
-            await Promise.resolve()
+            await Promise.resolve();
+
+            // the cancelled heal settles its published slot with `false` — no re-drive follows
+            await expect(slotAtApp).resolves.toBe(false)
         } finally {
             globalThis.AgentOS = originalAgentOS;
             globalThis.fetch   = originalFetch;

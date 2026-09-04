@@ -664,7 +664,26 @@ class LivenessController extends ComponentController {
 
         // the daemon surface has no other first read; waiting a full cadence would leave a
         // boot-time fault invisible
-        me.loadBrainHealth()
+        me.loadBrainHealth();
+
+        me.followCustodyHeal()
+    }
+
+    /**
+     * @summary A boot-time custody heal promotes AFTER the construct-time reads answered on the
+     * fail-closed bridge — measured on a fresh boot against an armed server: promotion at 0.3s,
+     * the first wire read at the 15s cadence tick. The boot module publishes the in-flight heal as
+     * `AgentOS.fleet.custodyHeal`; its `true` resolution re-drives every seam now, the way the
+     * Reconnect click does. No slot, a heal that ends without promotion, or liveness stopped in
+     * the meantime: nothing happens.
+     * @protected
+     */
+    followCustodyHeal() {
+        const me = this;
+
+        globalThis.AgentOS?.fleet?.custodyHeal?.then(promoted => {
+            promoted && !me.isDestroyed && me.livenessTimerId !== null && me.reconnectFleet()
+        })
     }
 
     /**

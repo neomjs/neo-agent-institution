@@ -127,15 +127,30 @@ export const onStart = () => {
         }
     }
 
+    // The in-flight heal is a published fact BEFORE the shell exists — `AgentOS.fleet.custodyHeal`,
+    // a promise resolving `true` exactly when the heal retained promotion authority — so the
+    // cockpit's liveness owner can chain its immediate re-drive onto it at construct time: the
+    // construct-time reads answer on the fail-closed bridge, custody is promoted a few hundred
+    // milliseconds later, and without this the cockpit sits on that cold verdict until the next
+    // cadence tick. The heal itself still starts only AFTER shell creation (no network wait gates
+    // Neo.app()), and keeps one SharedWorker-wide window in flight: a later joining window may
+    // start a fresh bounded window after exhaustion, replacing the slot; no permanent poller lives.
+    // A boot without a heal (shell transport, a bearer already in custody) publishes no slot.
+    let settleHeal = null;
+
+    if (browserHeal && browserFleetHealPromise === null) {
+        globalThis.AgentOS.fleet.custodyHeal = new Promise(resolve => { settleHeal = resolve })
+    }
+
     Neo.app({
         mainView: Viewport,
         name    : 'AgentOS'
     });
 
-    // Start only AFTER shell creation and keep one SharedWorker-wide window in flight. A later
-    // joining window may start a fresh bounded window after exhaustion; no permanent poller lives.
-    if (browserHeal && browserFleetHealPromise === null) {
+    if (settleHeal) {
         const current = browserFleetHealPromise = healBrowserFleetSession(browserHeal);
+
+        current.then(settleHeal);
 
         current.finally(() => {
             browserFleetHealPromise === current && (browserFleetHealPromise = null)
