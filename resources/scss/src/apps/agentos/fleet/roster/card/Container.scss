@@ -392,8 +392,24 @@
        regular 32px verbs and a smaller avatar: the name keeps ≥ ~50px and stays the card's
        subject. The 44px direction continues to own the 240–289px narrow band unchanged. */
     @container (max-width: 240px) {
+        /* the verbs take their own row under the head: beside the identity they left it 53px at the
+           vessel width and the state word slid under them — the text stays whole, the card grows a row */
         .fm-card-head {
-            gap: var(--fm-space-2);
+            flex-wrap: wrap;
+            gap      : var(--fm-space-2);
+        }
+
+        .fm-card-control-verbs {
+            width          : 100%;   /* the container's inline `flex: 0 0 auto` keeps its basis on the width */
+            justify-content: flex-end;
+        }
+
+        /* with the verbs below, the state line owns the identity width; under pressure the badge /
+           presence band / telltale take a second row here — a word is never cut. The narrow band
+           keeps its single line: its card wall is height-constrained and a second row clips. */
+        .fm-card-state-line {
+            flex-wrap: wrap;
+            gap      : var(--fm-space-1) var(--fm-space-2);
         }
 
         .fm-card-avatar,

@@ -213,8 +213,25 @@
         display     : flex;
         margin-right: 15px;
 
+        /* the vessel band's gutter drops to the 8px step so the scope label keeps its whole tail */
+        @media (max-width: 560px) {
+            margin-right: var(--fm-space-2);
+        }
+
         img {
             height: 30px;
+        }
+    }
+
+    /* the wordmark reads on the ink tier in both skins (the engine's label ink is one colour) and never
+       shrinks below its word; at the vessel band it yields to the instance scope — the logo is the
+       mark, the window title carries the name, and the scope control keeps its whole label */
+    .agent-shell-title {
+        flex : none;
+        color: var(--fm-ink);
+
+        @media (max-width: 560px) {
+            display: none;
         }
     }
 
