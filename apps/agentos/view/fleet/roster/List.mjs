@@ -96,13 +96,14 @@ class List extends ComponentList {
     navigator = {previousKey: 'ArrowLeft', nextKey: 'ArrowRight'}
 
     /**
-     * @summary One pooled AgentCard per RECORD, for the record's lifetime: the card seated on this
-     * record if there is one, else a new one whose id derives from the record key. A card is never
-     * re-keyed onto another record — re-keying a live component breaks its reference tree — so a
-     * rebuild that moved the record re-seats the same instance under the same id, and the DOM node
-     * with the focus inside it survives. A record that left the store leaves its card behind the
-     * rendered seats. The pool is kept in store order by swapping, because the plugin's geometry and
-     * every reader of `items` take position `index` as the card of record `index`. The
+     * @summary One pooled AgentCard per RECORD, for the record's time in the fleet: the card seated
+     * on this record if there is one, else a new one whose id derives from the record key. A card is
+     * never re-keyed onto another record — re-keying a live component breaks its reference tree —
+     * so a rebuild that moved the record re-seats the same instance under the same id, and the DOM
+     * node with the focus inside it survives. A record that left the fleet takes its card with it
+     * ({@link #onStoreMutate}); a record the view merely filters out keeps its card behind the
+     * rendered seats. The pool is kept in store order by swapping, because the plugin's geometry
+     * and every reader of `items` take position `index` as the card of record `index`. The
      * `lifecycleIntent` listener stays a string: it resolves up the controller chain at fire time
      * (card → roster controller → cockpit controller), exactly like the shipped card config did.
      * @param {Object} record
@@ -201,27 +202,52 @@ class List extends ComponentList {
     }
 
     /**
-     * @summary A rebuild, then the pool's retirement pass: a card whose record has left the whole
-     * fleet — not merely the filtered view — is destroyed and dropped, so the pool and the instance
-     * registry stay bounded by the fleet's current cardinality across any number of join/leave
-     * cycles. A filtered-out record is still in the store's unfiltered projection, and its card
-     * keeps its seat behind the rendered ones for the day the filter lifts.
-     * @param {Boolean} silent=false
+     * @summary Besides the base list's store listeners, the roster follows the store's `mutate`: the
+     * event names the records that left, and that — not a projection read inside `load` — is the
+     * authority for retiring their cards. On an engine where the unfiltered projection is mirrored
+     * by a listener registered after the store's own `load`, a `load`-time read of that projection
+     * cannot see the batch it was just handed (a joiner's fresh card would be destroyed against
+     * stale authority); the mutation payload carries the truth on every engine.
+     * @param {Neo.data.Store|null} value
+     * @param {Neo.data.Store|null} oldValue
+     * @protected
      */
-    createItems(silent=false) {
+    afterSetStore(value, oldValue) {
         let me = this;
 
-        super.createItems(silent);
+        super.afterSetStore(value, oldValue);
 
-        if (me.items) {
-            const whole = me.store.allItems ?? me.store;
+        oldValue?.un({mutate: me.onStoreMutate, scope: me});
+        value?.on({mutate: me.onStoreMutate, scope: me})
+    }
+
+    /**
+     * @summary The pool's retirement pass, on the mutation that removed the records: a card whose
+     * record left the fleet — not merely the filtered view, which fires `filter`, never `mutate` —
+     * is destroyed and dropped, so the pool and the instance registry stay bounded by the fleet's
+     * current cardinality across any number of join/leave cycles. A record re-added inside the
+     * same mutation keeps its card. Runs after the store's own `mutate` listener (registered at the
+     * store's construction), so a rebuild driven by `load` has already seated the survivors.
+     * @param {Object}   data
+     * @param {Object[]} [data.addedItems]
+     * @param {Object[]} [data.removedItems]
+     * @protected
+     */
+    onStoreMutate(data) {
+        let me = this;
+
+        if (me.items && data.removedItems?.length) {
+            const
+                removed = new Set(data.removedItems.map(record => me.getRecordId(record))),
+                readded = new Set((data.addedItems ?? []).map(record => me.getRecordId(record)));
 
             me.items = me.items.filter(card => {
-                const alive = card.record && whole.get(me.getRecordId(card.record));
+                const key    = card.record && me.getRecordId(card.record),
+                      retire = key !== null && key !== undefined && removed.has(key) && !readded.has(key);
 
-                !alive && card.destroy();
+                retire && card.destroy();
 
-                return alive
+                return !retire
             })
         }
     }

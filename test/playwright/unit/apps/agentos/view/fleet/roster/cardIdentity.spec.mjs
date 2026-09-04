@@ -156,7 +156,16 @@ test.describe('Fleet roster — cards and list items keep their identity across 
             charlieRow              = {...roster(['ok', 'ok', 'ok'])[2]},
             charlieKey              = charlie.record.agentId;
 
+        // the removal's own `mutate` retires Charlie's card — no rebuild in between: the store's
+        // event names the records that left, so the retirement never reads a projection that may
+        // trail the event on an older engine
         store.remove(charlieKey);
+
+        expect(charlie.isDestroyed, 'retired on the mutation that removed the record').toBe(true);
+        expect(Neo.get(ids[2])).toBeFalsy();
+        expect(list.items.length, 'the pool is bounded by the fleet').toBe(2);
+
+        // a joiner's fresh card survives its own mutation — nothing retires on an add
         store.add({...joiner});
         list.createItems(true);
 
@@ -167,22 +176,22 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         // a card is never re-keyed onto another record: the joiner's is new, under the joiner's id
         expect(cards(list)[0]).not.toBe(charlie);
         expect(cards(list)[0].id).toBe(`${list.id}__card-agent-00`);
-        // Charlie's card left with Charlie: destroyed, unregistered, out of the pool
-        expect(list.items.length, 'the pool is bounded by the fleet').toBe(3);
-        expect(charlie.isDestroyed).toBe(true);
-        expect(Neo.get(ids[2])).toBeFalsy();
+        expect(cards(list)[0].isDestroyed).toBeFalsy();
+        expect(Neo.get(`${list.id}__card-agent-00`)).toBe(cards(list)[0]);
+        expect(list.items.length).toBe(3);
 
-        // join/leave cycles of unique agents leave nothing behind — pool and registry stay bounded
+        // join/leave cycles of unique agents leave nothing behind — pool and registry stay bounded;
+        // the rebuild after the add is the production `load` path's job, the retirement is not
         for (let i = 0; i < 5; i++) {
             store.add({agentId: `cycle-${i}`, displayName: `Cycle ${i}`, githubUsername: `neo-cycle-${i}`, state: 'ok'});
             list.createItems(true);
+            expect(Neo.get(`${list.id}__card-cycle-${i}`), `cycle ${i}: the joiner's card is registered`).toBeTruthy();
+            expect(Neo.get(`${list.id}__card-cycle-${i}`).isDestroyed).toBeFalsy();
             store.remove(`cycle-${i}`);
-            list.createItems(true);
 
-            expect(Neo.get(`${list.id}__card-cycle-${i}`)).toBeFalsy()
+            expect(Neo.get(`${list.id}__card-cycle-${i}`)).toBeFalsy();
+            expect(list.items.length).toBe(3)
         }
-
-        expect(list.items.length).toBe(3);
 
         // the same agent returning gets a fresh card under the same id — freed with the old one
         store.add(charlieRow);
