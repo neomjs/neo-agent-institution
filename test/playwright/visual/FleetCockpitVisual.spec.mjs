@@ -93,6 +93,39 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the default shell layout — the committed document projected (fleet over stream, chrome tucked)', async ({page}) => {
         await bootSettledCockpit(page);
 
+        // #92: every inline dock header paints the cockpit's own plate and edge — never the
+        // theme's neutral-highlighted band. This is a COMPUTED-STYLE witness on purpose: the
+        // pixel comparator (pixelmatch at threshold 0.2, YIQ) reads the theme's rgb(41,45,40)
+        // and the cockpit's rgb(20,26,35) as the same pixel, so the golden alone cannot see
+        // this class of drift in the dark range.
+        const paint = await page.evaluate(() => {
+            const headers = [...document.querySelectorAll('.neo-tab-container-inline > .neo-tab-header-toolbar')],
+                  probe   = document.createElement('div'),
+                  resolve = token => {
+                      probe.style.background = `var(${token})`;
+                      document.body.appendChild(probe);
+                      const value = getComputedStyle(probe).backgroundColor;
+                      probe.remove();
+                      return value
+                  },
+                  panel = resolve('--fm-panel'),
+                  line  = resolve('--fm-line');
+
+            return {
+                count  : headers.length,
+                panel,
+                line,
+                grounds: [...new Set(headers.map(el => getComputedStyle(el).backgroundColor))],
+                edges  : [...new Set(headers.map(el => getComputedStyle(el).boxShadow))],
+                images : [...new Set(headers.map(el => getComputedStyle(el).backgroundImage))]
+            }
+        });
+
+        expect(paint.count, 'the shell projects its dock headers').toBeGreaterThanOrEqual(2);
+        expect(paint.grounds, 'every dock header sits on the cockpit panel plate').toEqual([paint.panel]);
+        expect(paint.edges, 'every dock header closes on the cockpit edge hairline').toEqual([`${paint.line} 0px -1px 0px 0px inset`]);
+        expect(paint.images, 'no theme gradient reaches a strip').toEqual(['none']);
+
         await expect(page.locator('.fm-fleet-cockpit')).toHaveScreenshot('cockpit-default-shell.png')
     });
 

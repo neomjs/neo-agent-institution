@@ -300,9 +300,12 @@
        chrome tier's designed density, down from the stock xlarge. The vertical keeper bar
        deliberately keeps its intrinsic sizing — a rotated label owns its main axis.
 
-       The Engine projects its dock tab containers with `ui: 'inline'`, and the theme lights that
-       family with a top-lit gradient on the strip. The cockpit's strips are flat panel surfaces
-       (the design gate's goldens): opt out at the token, keep the family's geometry. */
+       The Engine projects its dock tab containers with `ui: 'inline'`, and every theme states the
+       inline header's paint in full — ground, image and the bottom hairline — because a fallback is
+       not a reset (neomjs/neo#18141). The cockpit's strips are flat panel surfaces in the
+       cockpit's OWN palette (the design gate's goldens): all three paint tokens are declared here,
+       so the theme's neutral-highlighted band (a green-grey on this blue-black surface, #92) and
+       its top-lit gradient never reach a strip; the family's geometry is kept. */
     .neo-tab-header-toolbar.neo-dock-top {
         --tab-button-height                  : 30px;
         --tab-button-height-pressed          : 30px;
@@ -313,7 +316,9 @@
         --tab-button-glyph-color-pressed     : var(--fm-ink);
         --tab-button-background-color        : transparent;
         --tab-button-background-color-hover  : var(--fm-panel);
+        --tab-header-inline-background-color : var(--fm-panel);
         --tab-header-inline-background-image : none;
+        --tab-header-inline-box-shadow       : inset 0 -1px 0 var(--fm-line);
     }
 
     /* The active place is structural: signal indicator, full ink, weight — never hue-alone
