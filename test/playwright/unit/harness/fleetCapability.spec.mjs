@@ -7,15 +7,22 @@ import {
 } from '../../../../harness/fleetCapability.mjs';
 import {loadAgentOsModule} from '../../fixtures.mjs';
 
-const {
-    createFleetWireOffer,
-    createFleetWireRequest,
-    createFleetWireResponse,
-    FLEET_CREDENTIAL_METHODS,
-    FLEET_WIRE_METHODS,
-    FLEET_WIRE_RESPONSE_STATES,
-    inspectFleetWireResponse
-} = await loadAgentOsModule('ai/services/fleet/fleetWireMethods.mjs');
+// the wire vocabulary is the Brain's client-safe contract; the credential-bearing verb
+// classification is launcher-private and lives beside the other launcher trust inputs
+const [
+    {
+        createFleetWireOffer,
+        createFleetWireRequest,
+        createFleetWireResponse,
+        FLEET_WIRE_METHODS,
+        FLEET_WIRE_RESPONSE_STATES,
+        inspectFleetWireResponse
+    },
+    {FLEET_CREDENTIAL_METHODS}
+] = await Promise.all([
+    loadAgentOsModule('src/fleet/contract/wire.mjs'),
+    loadAgentOsModule('ai/services/fleet/fleetLaunchContract.mjs')
+]);
 
 const bearerToken = 'B'.repeat(43);
 
