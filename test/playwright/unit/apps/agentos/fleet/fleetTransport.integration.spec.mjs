@@ -31,7 +31,7 @@ const [
 ] = await Promise.all([
     loadAgentOsModule('ai/services/fleet/FleetRegistryService.mjs'),
     loadAgentOsModule('ai/services/fleet/fleetBridgeServer.mjs'),
-    loadAgentOsModule('src/fleet/contract/wire.mjs'),
+    import('neo-agent-brain/fleet-contract'),
     loadAgentOsModule('ai/mcp/server/shared/helpers/localBearer.mjs'),
     loadAgentOsModule('ai/mcp/server/shared/services/RequestContextService.mjs')
 ]);

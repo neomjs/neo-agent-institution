@@ -91,24 +91,33 @@ export function resolveLauncherRuntimeRoot({brainMode, env = process.env, packag
 }
 
 /**
- * Loads Fleet trust primitives from the selected organism instead of the shell bundle.
- * @summary Keeps checkout and packaged launchers on one canonical Fleet contract implementation.
- * The wire vocabulary comes from the Brain's client-safe contract (`src/fleet/contract/wire.mjs`);
- * the credential-bearing verb classification stays launcher-only and comes from the private
- * `ai/services/fleet/fleetLaunchContract.mjs`, never from a client-facing module.
- * @param {String} [repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain checkout or packaged organism root.
- * @returns {Promise<Object>}
+ * @summary Loads the product's installed public Fleet entry and the selected runtime's private
+ * launcher primitives. Each root is explicit; the packaged organism supplies the same root twice.
+ * The public entry never supplies credential classification or identity/probe authority.
+ * @param {Object} options
+ * @param {String} options.productRoot Absolute Institution checkout or packaged organism root.
+ * @param {String} options.runtimeRoot Absolute Brain checkout or packaged organism root.
+ * @returns {Promise<Object>} Cached by both root authorities.
  */
-export function loadFleetRuntimeContracts(repoRoot = resolveAgentOsRuntimeRoot()) {
-    const absoluteRoot = path.resolve(repoRoot);
+export function loadFleetRuntimeContracts({productRoot, runtimeRoot} = {}) {
+    for (const [name, root] of Object.entries({productRoot, runtimeRoot})) {
+        if (typeof root !== 'string' || !path.isAbsolute(root)) {
+            throw new TypeError(`Fleet contracts require an explicit absolute ${name}; no cwd or other-root fallback.`)
+        }
+    }
 
-    let contract = fleetRuntimeContracts.get(absoluteRoot);
+    const
+        absoluteProductRoot = path.resolve(productRoot),
+        absoluteRuntimeRoot = path.resolve(runtimeRoot),
+        cacheKey            = JSON.stringify([absoluteProductRoot, absoluteRuntimeRoot]);
+
+    let contract = fleetRuntimeContracts.get(cacheKey);
 
     if (!contract) {
         contract = Promise.all([
-            import(pathToFileURL(path.join(absoluteRoot, 'ai/graph/normalizeAgentIdentityNodeId.mjs')).href),
-            import(pathToFileURL(path.join(absoluteRoot, 'ai/services/fleet/fleetLaunchContract.mjs')).href),
-            import(pathToFileURL(path.join(absoluteRoot, 'src/fleet/contract/wire.mjs')).href)
+            import(pathToFileURL(path.join(absoluteRuntimeRoot, 'ai/graph/normalizeAgentIdentityNodeId.mjs')).href),
+            import(pathToFileURL(path.join(absoluteRuntimeRoot, 'ai/services/fleet/fleetLaunchContract.mjs')).href),
+            import(pathToFileURL(path.join(absoluteProductRoot, 'node_modules/neo-agent-brain/src/fleet/contract/index.mjs')).href)
         ]).then(([identityContract, fleetContract, wireContract]) => ({
             FLEET_CREDENTIAL_METHODS    : fleetContract.FLEET_CREDENTIAL_METHODS,
             FLEET_WIRE_METHODS          : wireContract.FLEET_WIRE_METHODS,
@@ -122,7 +131,7 @@ export function loadFleetRuntimeContracts(repoRoot = resolveAgentOsRuntimeRoot()
             resolveFleetBearer          : fleetContract.resolveFleetBearer
         }));
 
-        fleetRuntimeContracts.set(absoluteRoot, contract)
+        fleetRuntimeContracts.set(cacheKey, contract)
     }
 
     return contract
@@ -449,6 +458,7 @@ export function assertIsolatedProfile({resolved, isolationRoot, chromaPort}) {
  * contract. A listening socket is an observation about occupancy; only the authenticated
  * `/fleet/probe` envelope proves the listener is the expected Fleet process.
  * @param {Object} options
+ * @param {String} options.productRoot Absolute product root holding the installed public Fleet entry.
  * @param {Number|String} options.port
  * @param {String} options.bearerToken Main-owned process bearer.
  * @param {String} options.agentIdentityNodeId Trusted launcher's expected viewer node id.
@@ -458,6 +468,7 @@ export function assertIsolatedProfile({resolved, isolationRoot, chromaPort}) {
  * @returns {Promise<Object>} Canonical `{reusable, reason}` probe outcome.
  */
 export async function probeFleetServing({
+    productRoot,
     port,
     bearerToken,
     agentIdentityNodeId,
@@ -465,7 +476,7 @@ export async function probeFleetServing({
     timeoutMs = 2500,
     fetchFn = fetch
 }) {
-    const {normalizeAgentIdentityNodeId, probeExistingFleetServer} = await loadFleetRuntimeContracts(repoRoot);
+    const {normalizeAgentIdentityNodeId, probeExistingFleetServer} = await loadFleetRuntimeContracts({productRoot, runtimeRoot: repoRoot});
     const viewer                                                   = normalizeAgentIdentityNodeId(agentIdentityNodeId);
 
     if (typeof viewer !== 'string' || !/^@[^@:\s]+$/.test(viewer)) {
@@ -491,6 +502,7 @@ export async function probeFleetServing({
  * closed instead of masquerading as an attach target. Supplies observation to the config-first
  * product launch plan; it never decides whether a declared plane exists.
  * @param {Object} options
+ * @param {String} options.productRoot Absolute product root holding the installed public Fleet entry.
  * @param {String} options.orchestratorDataDir Resolved `AiConfig.orchestrator.dataDir`.
  * @param {Number|String} options.fleetPort Fleet transport port to probe.
  * @param {String} options.bearerToken Main-owned process bearer.
@@ -503,6 +515,7 @@ export async function probeFleetServing({
  * @returns {Promise<{orchestratorAlive: Boolean, orchestratorPid: Number|null, fleetServing: Boolean, fleetPortHeld: Boolean, fleetRefusalReason: String|null}>}
  */
 export async function detectLiveBrain({
+    productRoot,
     orchestratorDataDir,
     fleetPort,
     bearerToken,
@@ -516,7 +529,7 @@ export async function detectLiveBrain({
     const
         pidFile           = path.join(orchestratorDataDir, 'orchestrator-daemon.pid'),
         fleetPortHeld     = await probePortFn({port: fleetPort}),
-        fleetProbeOptions = {agentIdentityNodeId, bearerToken, port: fleetPort},
+        fleetProbeOptions = {agentIdentityNodeId, bearerToken, port: fleetPort, productRoot},
         fleetProbe        = fleetPortHeld
             ? await probeFleetFn(repoRoot ? {...fleetProbeOptions, repoRoot} : fleetProbeOptions)
             : {reusable: false, reason: null},
@@ -689,15 +702,17 @@ export function awaitOrchestratorReady({child, timeoutMs = 30000}) {
  * round-trip — the same negotiated surface the Fleet Manager consumes. An unversioned, malformed,
  * or skewed response never counts as ready.
  * @param {Object} options
+ * @param {String} options.productRoot Absolute product root holding the installed public Fleet entry.
  * @param {import('node:child_process').ChildProcess} options.child
  * @param {Number|String} options.port
  * @param {String} options.bearerToken Main-owned process bearer.
- * @param {String} [options.repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain root carrying the wire contract.
+ * @param {String} [options.repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain root for private launcher primitives.
  * @param {Number} [options.timeoutMs=15000]
  * @param {Function} [options.fetchFn=fetch] Injection seam for tests.
  * @returns {Promise<void>}
  */
 export function awaitFleetReady({
+    productRoot,
     child,
     port,
     bearerToken,
@@ -705,7 +720,7 @@ export function awaitFleetReady({
     timeoutMs = 15000,
     fetchFn = fetch
 }) {
-    const wireContract = loadFleetRuntimeContracts(repoRoot);
+    const wireContract = loadFleetRuntimeContracts({productRoot, runtimeRoot: repoRoot});
 
     return new Promise((resolve, reject) => {
         let settled = false;
@@ -902,6 +917,7 @@ export function registerOwnedChild({children, entry, watch, onUnobservedExit = n
  *   ownership≠observation invariant is wired here, not left to the caller — then real wire
  *   readiness gates `up: true`.
  * @param {Object} options
+ * @param {String} options.productRoot Absolute product root holding the installed public Fleet entry.
  * @param {String} options.bearerToken The shell-held process bearer the spawned/probed transport must match.
  * @param {Number} options.fleetPort Loopback fleet port.
  * @param {String|null} [options.agentIdentityNodeId] Viewer claim for the reuse probe.
@@ -915,6 +931,7 @@ export function registerOwnedChild({children, entry, watch, onUnobservedExit = n
  * @returns {Promise<{fleetPort: Number, mode: 'reuse'|'spawn'|'foreign-listener', reason?: String, up: Boolean}>}
  */
 export async function resolveUiFleetTransport({
+    productRoot,
     bearerToken,
     fleetPort,
     agentIdentityNodeId = null,
@@ -927,7 +944,7 @@ export async function resolveUiFleetTransport({
     onOutcome = () => {}
 }) {
     if (await probePortFn({port: fleetPort})) {
-        const probe = await probeServingFn({agentIdentityNodeId, bearerToken, port: fleetPort, repoRoot});
+        const probe = await probeServingFn({agentIdentityNodeId, bearerToken, port: fleetPort, productRoot, repoRoot});
 
         if (probe.reusable === true) {
             onOutcome(`reuse fleetPort=${fleetPort}`);
@@ -946,7 +963,7 @@ export async function resolveUiFleetTransport({
     const child = spawn({fleetPort});
 
     registerChild({child, label: 'fleet', observeBrain: false});
-    await awaitReady({bearerToken, child, port: fleetPort});
+    await awaitReady({bearerToken, child, port: fleetPort, productRoot, repoRoot});
     onOutcome(`spawn fleetPort=${fleetPort}`);
     return {fleetPort, mode: 'spawn', up: true}
 }

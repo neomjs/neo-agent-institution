@@ -1,5 +1,5 @@
 import {test, expect, loadAgentOsModule, loadNeuralLinkModules} from '../../fixtures.mjs';
-import {createFleetWireOffer, FLEET_WIRE_METHODS}               from '../../../../apps/agentos/config/fleetWireMethods.mjs';
+import {createFleetWireOffer, FLEET_WIRE_METHODS}               from 'neo-agent-brain/fleet-contract';
 import {
     authenticatedFleetOptions,
     fleetE2EFailure,

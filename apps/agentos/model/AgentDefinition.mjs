@@ -6,8 +6,8 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  *
  * @summary Public, Body-side shape for Fleet Manager agent definitions — the per-agent
  * configuration model every account surface binds: identity, ONE harness choice (a registered
- * `config/harnessTypes.mjs` key), the per-agent sparse MCP-server overrides (`mcpServers` — null
- * means every current catalog default applies; resolve via `config/mcpServers.mjs`, never persist
+ * public harness-catalog key), the per-agent sparse MCP-server overrides (`mcpServers` — null
+ * means every current catalog default applies; resolve via the public MCP catalog, never persist
  * the fully resolved matrix), the narrow MCP target (`mcpTarget` — null = resident services;
  * a tenant is only `{kind:'tenant', tenantId}`), and the operational toggles (honest
  * readback: null = state not read back yet, never an

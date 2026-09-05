@@ -20,7 +20,7 @@ import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/ins
 import {
     createFleetWireResponse,
     FLEET_WIRE_RESPONSE_STATES
-} from '../../../../../../../../apps/agentos/config/fleetWireMethods.mjs';
+} from 'neo-agent-brain/fleet-contract';
 
 /**
  * Covers the cockpit-owned tasks read (`loadTasks`): the wake-routes loader's three laws (typed
