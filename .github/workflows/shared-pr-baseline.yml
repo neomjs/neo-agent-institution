@@ -1,0 +1,32 @@
+# Agent Institution owns only the event trigger and the immutable Skills coordinate. The called
+# workflow owns base admission, materialization, source archaeology, substrate size and the agent
+# PR-body gate, so their implementation cannot drift in this consumer. Product CI (ci.yml — the
+# isolated and explicit-Brain suites) stays a separate workflow: governance never gates the build.
+
+name: Shared PR Baseline
+
+# The called workflow's PR-body job reads the pull request live (never the event snapshot), so it
+# declares `pull-requests: read` for itself — and a called job may not hold more than its caller
+# grants: with `contents: read` alone the run fails at startup before any job exists (measured on
+# this repository's first caller run). Both grants stay read-only.
+permissions:
+  contents: read
+  pull-requests: read
+
+# Deliberately unfiltered by branch or path: once these jobs become required contexts, every PR
+# must emit a terminal result — the called PR-base job rejects an unsupported base instead of
+# leaving a context pending. The activity types are explicit because the callee reads the pull
+# request LIVE and says so in its own header: a body-only `edited` and a draft's `ready_for_review`
+# must re-run the gate, and GitHub's default set carries neither.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+jobs:
+  baseline:
+    name: Shared PR Baseline
+    # An exact commit, never a branch or tag: the coordinate is the Skills `dev` head at adoption
+    # (2026-09-04) — the reusable workflow moved four times after the ticket's original pin (the
+    # PR-body job, the caller-root measurement, the version-that-exists fix). Moving it is a reviewed
+    # change here, one line.
+    uses: neomjs/neo-agent-skills/.github/workflows/reusable-pr-baseline.yml@7c9bd16f97a9b58309602431fc5b5741bf818e22
