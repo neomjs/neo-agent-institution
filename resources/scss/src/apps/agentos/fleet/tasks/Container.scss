@@ -5,6 +5,9 @@
    the --fm-* token layer, every text node from a --fm-text-* role, every gap from the
    --fm-space-* rhythm. */
 .fm-tasks-pane {
+    /* the pane is its own width-query context (the roster card's law, ADR 0029): the list's
+       narrow-band rules read the pane's width, never the viewport's */
+    container-type: inline-size;
 
     .fm-tasks-head {
         gap        : var(--fm-space-2);
