@@ -185,6 +185,22 @@
         }
     }
 
+    /* the beacon word: one chip beside the band when an ACTIVE seat's turn-presence beacon is
+       absent or stale — the seat is alive, its hooks are silent, so the idle mark carries it; the
+       stale form drops to dim ink. Hidden for fresh / unobserved, and for an older Brain that
+       sends no facet at all. */
+    .fm-card-beacon {
+        flex       : none;
+        font       : var(--fm-text-micro);
+        line-height: 1;
+        white-space: nowrap;
+        color      : var(--fm-state-idle);
+
+        &.fm-card-beacon-stale {
+            color: var(--fm-ink-dim);
+        }
+    }
+
     /* the open-lane count badge — right-pinned; openLaneCount ONLY, never the engine */
     .fm-card-lane-count {
         flex         : none;

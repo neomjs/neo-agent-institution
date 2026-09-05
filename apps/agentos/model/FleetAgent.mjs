@@ -85,12 +85,15 @@ class FleetAgent extends Model {
         }, {
             // The presence axis, same passthrough contract as `wake`/`throttle`: the
             // roster row's `{source, state, confidence, lastSeenAt, reason?, validationState?,
-            // since?}` observation, where `state` is the plane's who_is_online band embryo
+            // since?, beacon?}` observation, where `state` is the plane's who_is_online band embryo
             // (`online | idle | dark | benched | neverConnected | unknown`). The THIRD independent
             // signal — presence-fresh ≠ wake-route-healthy ≠ identity-bound — and the view never
             // re-derives or fuses it. `validationState`/`since` are the provider's validation
             // provenance (`stale-validated` + its onset): passed through verbatim for the card to
-            // PROJECT — never inferred, latched, or mutated downstream (#2).
+            // PROJECT — never inferred, latched, or mutated downstream (#2). `beacon` is the
+            // producer's turn-presence facet (`fresh | stale | absent | unobserved`) — the fact the
+            // band folds in; the card words `absent` / `stale` beside an active band, and a row
+            // without the field is an older Brain: no word, never a guess.
             name        : 'presence',
             defaultValue: null
         }, {

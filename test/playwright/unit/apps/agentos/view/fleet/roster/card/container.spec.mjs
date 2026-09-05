@@ -115,6 +115,80 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('the beacon facet: an active band with no beacon or a stale one earns ONE word beside the band; fresh, unobserved and an older Brain (no field) earn none — the band label untouched (#112)', () => {
+        const presenceOf = (state, beacon) => ({source: 'fleet:presenceState', state, confidence: 'observed', lastSeenAt: '2026-08-09T11:00:00.000Z', ...(beacon !== undefined && {beacon})}),
+              card       = createCard({agentId: 'clio', state: 'ok', presence: presenceOf('fresh', 'absent')}),
+              band       = () => card.down({reference: 'card-presence'}),
+              chip       = () => card.down({reference: 'card-beacon'});
+
+        // the seat graded fresh from durable activity while no hook ever beaconed
+        expect(band().text).toBe('◉ fresh');
+        expect(chip().hidden).toBe(false);
+        expect(chip().text).toBe('beacon absent');
+        expect(chip().cls).toEqual(['fm-card-beacon', 'fm-card-beacon-absent']);
+        expect(chip().vdom.title).toContain('no turn-presence beacon');
+
+        applySet(card, {presence: presenceOf('recent', 'stale')});
+        expect(chip().text).toBe('beacon stale');
+        expect(chip().cls).toEqual(['fm-card-beacon', 'fm-card-beacon-stale']);
+        expect(chip().vdom.title).toContain('past its horizon');
+        expect(band().text).toBe('◉ recent');
+
+        // the raw plane verdicts an older adapter still emits count as active too
+        applySet(card, {presence: presenceOf('idle', 'absent')});
+        expect(chip().text).toBe('beacon absent');
+
+        for (const [state, beacon] of [['active-turn', 'fresh'], ['fresh', 'unobserved'], ['fresh', undefined], ['fresh', 'glowing']]) {
+            applySet(card, {presence: presenceOf(state, beacon)});
+            expect(chip().hidden, `${state} / ${beacon}`).toBe(true);
+            expect(chip().text, `${state} / ${beacon}`).toBe('');
+            expect(band().hidden, 'the band is untouched by the facet').toBe(false)
+        }
+
+        card.destroy()
+    });
+
+    test('an inactive seat has no hook to be silent: the word never appears with dark, benched or never-connected, nor under a degraded producer — and a fresh beacon clears it without residue', () => {
+        const card = createCard({agentId: 'clio', state: 'off', presence: {source: 'fleet:presenceState', state: 'dark', confidence: 'observed', lastSeenAt: null, beacon: 'absent'}}),
+              chip = () => card.down({reference: 'card-beacon'});
+
+        for (const state of ['dark', 'benched', 'neverConnected']) {
+            applySet(card, {presence: {source: 'fleet:presenceState', state, confidence: 'observed', lastSeenAt: null, beacon: 'absent'}});
+            expect(chip().hidden, state).toBe(true)
+        }
+
+        // a degraded producer renders no band and no word — the facet is never read past a missing observation
+        applySet(card, {presence: {source: 'fleet:presenceState', state: 'unknown', confidence: 'none', lastSeenAt: null, reason: 'presence read failed', beacon: 'unobserved'}});
+        expect(chip().hidden).toBe(true);
+
+        // the seat comes alive without a beacon, then its hooks beacon: the word appears and clears
+        applySet(card, {presence: {source: 'fleet:presenceState', state: 'fresh', confidence: 'observed', lastSeenAt: null, beacon: 'absent'}});
+        expect(chip().hidden).toBe(false);
+        applySet(card, {presence: {source: 'fleet:presenceState', state: 'active-turn', confidence: 'observed', lastSeenAt: null, beacon: 'fresh'}});
+        expect(chip().hidden).toBe(true);
+        expect(chip().cls).toEqual(['fm-card-beacon']);
+        expect(chip().vdom.title).toBeFalsy();
+
+        card.destroy()
+    });
+
+    test('the pipeline: a fixture DTO row carrying the facet reaches the rendered word through the real roster mapping — nothing re-derived on the way', async () => {
+        const {default: FleetCockpitController} = await import('../../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs'),
+              mapped = FleetCockpitController.prototype.mapRosterRow({
+                  id       : 'clio',
+                  lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
+                  sources  : observedSources,
+                  presence : {source: 'fleet:presenceState', state: 'fresh', confidence: 'observed', lastSeenAt: '2026-09-04T22:00:00.000Z', beacon: 'absent'}
+              }),
+              card   = createCard(mapped);
+
+        expect(mapped.presence.beacon, 'the mapping passes the facet through untouched').toBe('absent');
+        expect(card.down({reference: 'card-beacon'}).text).toBe('beacon absent');
+        expect(card.down({reference: 'card-presence'}).text).toBe('◉ fresh');
+
+        card.destroy()
+    });
+
     // the provider-owned validation provenance, projected on the band: words + aria pair, and a
     // fresh observation clears class, text, aria-label AND title in one pass (#2)
     test('stale validation is a visible presence exception and clears without residue', () => {
