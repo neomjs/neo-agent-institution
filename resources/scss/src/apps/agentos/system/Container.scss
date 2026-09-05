@@ -1,0 +1,157 @@
+/* AgentOS.view.system.Container — the System keeper-view: the connected instance's engine room. Head
+   (title · scope · observe-only chip · freshness · the read's own observation) over the plane cards
+   (system/List.scss — the list owns the scroll), the maintenance strip (three lanes, one line each),
+   the logs region (honest absence until its verb exists) and the whole-view reason block. Every color
+   reads from the --fm-* token layer, every text node from a --fm-text-* role, every gap from the
+   --fm-space-* rhythm; nothing here mints a state color. */
+.fm-system-view {
+    padding: var(--fm-space-3);
+    gap    : var(--fm-space-3);
+
+    .fm-system-head {
+        flex-wrap  : wrap;
+        align-items: center;
+        gap        : var(--fm-space-2) var(--fm-space-3);
+    }
+
+    /* an h2 for the outline; the engine theme's `:root .neo-theme-* h2` headline rule outranks a
+       two-class selector, so the display role is anchored on the viewport root (see the tail) */
+    .fm-system-title {
+        margin: 0;
+    }
+
+    .fm-system-scope {
+        font : var(--fm-text-detail);
+        color: var(--fm-ink-dim);
+    }
+
+    /* the chip idiom: the mark rebinds one custom property */
+    .fm-system-chip {
+        --fm-chip    : var(--fm-signal);
+        display      : inline-flex;
+        align-items  : center;
+        gap          : 6px;
+        padding      : var(--fm-chip-pad-y) var(--fm-chip-pad-x);
+        border       : 1px solid var(--fm-line);
+        border-radius: var(--fm-chip-radius);
+        font         : var(--fm-text-micro);
+        color        : var(--fm-ink-dim);
+
+        &::before {
+            content      : "";
+            width        : var(--fm-chip-mark-w);
+            height       : 10px;
+            border-radius: 1px;
+            background   : var(--fm-chip);
+        }
+    }
+
+    .fm-system-fresh {
+        --fm-chip  : var(--fm-state-ok);
+        margin-left: auto;
+        display    : inline-flex;
+        align-items: center;
+        gap        : 6px;
+        font       : var(--fm-text-micro);
+        color      : var(--fm-ink-dim);
+
+        &::before {
+            content      : "";
+            width        : 6px;
+            height       : 6px;
+            border-radius: 50%;
+            background   : var(--fm-chip);
+        }
+
+        &.is-stale       { --fm-chip: var(--fm-state-idle);       color: var(--fm-ink); }
+        &.is-unavailable { --fm-chip: var(--fm-state-unobserved); }
+        &.is-cold        { --fm-chip: var(--fm-ink-faint); }
+    }
+
+    /* the read owner's own observation — connecting, refused, unreachable, timeout */
+    .fm-system-connection {
+        flex-basis: 100%;
+        font      : var(--fm-text-micro);
+        color     : var(--fm-state-idle);
+    }
+
+    .fm-system-empty {
+        padding: var(--fm-space-2) 0;
+        font   : var(--fm-text-detail);
+        color  : var(--fm-ink-dim);
+    }
+
+    .fm-system-strip {
+        display              : grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap                  : var(--fm-space-3);
+    }
+
+    /* the lanes sit one step back from the cards: panel-2, no elevation */
+    .fm-system-lane {
+        gap       : var(--fm-space-1);
+        padding   : var(--fm-space-2) var(--fm-space-3);
+        background: var(--fm-panel-2);
+        border    : 1px solid var(--fm-line-soft);
+    }
+
+    .fm-system-eyebrow {
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+        color         : var(--fm-ink-dim);
+    }
+
+    .fm-system-lane-word {
+        --lane: var(--fm-ink);
+        font  : var(--fm-text-display);
+        color : var(--lane);
+
+        &.is-ok    { --lane: var(--fm-state-ok); }
+        &.is-warn  { --lane: var(--fm-state-idle); }
+        &.is-bad   { --lane: var(--fm-state-wedged); }
+        &.is-quiet { --lane: var(--fm-ink-dim); }
+    }
+
+    .fm-system-lane-line {
+        font : var(--fm-text-detail);
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-system-logs {
+        gap    : var(--fm-space-1);
+        padding: var(--fm-space-3);
+        border : 1px dashed var(--fm-line);
+
+        .fm-system-lane-line {
+            max-width: 70ch;
+        }
+    }
+
+    /* one reason for the whole view — no card guesses on its own */
+    .fm-system-reason {
+        gap        : var(--fm-space-1);
+        padding    : var(--fm-space-3) var(--fm-space-4);
+        background : var(--fm-panel);
+        border     : 1px solid var(--fm-line-soft);
+        border-left: var(--fm-chip-mark-w) solid var(--fm-state-unobserved);
+    }
+
+    .fm-system-reason-word {
+        font : var(--fm-text-display);
+        color: var(--fm-ink);
+    }
+
+    .fm-system-reason-text {
+        max-width: 70ch;
+        font     : var(--fm-text-body);
+        color    : var(--fm-ink-dim);
+    }
+}
+
+/* the title's display role, three classes deep so the theme's headline rule (0,2,1) yields */
+.agent-os-viewport .fm-system-view .fm-system-title {
+    font          : var(--fm-text-display);
+    letter-spacing: 0;
+    color         : var(--fm-ink);
+}

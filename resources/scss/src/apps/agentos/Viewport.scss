@@ -372,6 +372,14 @@
         border-right: 1px solid var(--fm-line);
     }
 
+    /* The shell's tab body is a layout wrapper, never a frame: the stock theme's content border
+       (1px #454B42 on three sides — the cockpit strips the same value from its dock zones) sat as
+       a foreign bracket around every keeper-view that does not paint its own edge-to-edge ground.
+       The rail's hairline above is the ONE boundary; each keeper-view owns its surface. */
+    .agent-shell > .neo-tab-body-container {
+        border: 0;
+    }
+
     /* Home — the transient first-open welcome landing. */
     .agent-welcome {
         display    : grid;

@@ -1,0 +1,121 @@
+/* AgentOS.view.system.List — the plane cards of the System keeper-view: one card per service of the
+   connected instance's deployment-state picture, in a responsive grid. The left mark rebinds ONE
+   custom property per folded state (the chip idiom); every color reads from the --fm-* token layer,
+   every text node from a --fm-text-* role, every gap from the --fm-space-* rhythm. The 16px left pad
+   clears the 3px mark — the roster card's recorded exception, reused. */
+.fm-plane-list {
+    display              : grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap                  : var(--fm-space-3);
+    margin               : 0;
+    padding              : 0;
+    list-style           : none;
+    overflow             : auto;
+    min-height           : 0;
+    container-type       : inline-size;
+
+    .fm-plane-card {
+        --fm-plane   : var(--fm-state-unobserved);
+        display      : grid;
+        gap          : var(--fm-space-2);
+        padding      : var(--fm-space-3) var(--fm-space-3) var(--fm-space-3) var(--fm-space-4);
+        background   : var(--fm-panel);
+        border       : 1px solid var(--fm-line-soft);
+        border-left  : var(--fm-chip-mark-w) solid var(--fm-plane);
+
+        &.is-serving  { --fm-plane: var(--fm-state-ok); }
+        &.is-degraded { --fm-plane: var(--fm-state-wedged); }
+    }
+
+    .fm-plane-head {
+        display    : flex;
+        flex-wrap  : wrap;
+        align-items: baseline;
+        gap        : var(--fm-space-1) var(--fm-space-2);
+    }
+
+    .fm-plane-key {
+        font : var(--fm-text-display);
+        color: var(--fm-ink);
+    }
+
+    .fm-plane-id {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-plane-word {
+        font          : var(--fm-text-micro);
+        color         : var(--fm-plane);
+        text-transform: uppercase;
+        letter-spacing: var(--fm-text-chrome-tracking);
+    }
+
+    .fm-plane-seen {
+        margin-left: auto;
+        font       : var(--fm-text-micro);
+        color      : var(--fm-ink-dim);
+    }
+
+    .fm-plane-facts {
+        display              : grid;
+        grid-template-columns: max-content 1fr;
+        gap                  : 3px var(--fm-space-3);
+        margin               : 0;
+        font                 : var(--fm-text-detail);
+
+        dt {
+            color: var(--fm-ink-dim);
+        }
+
+        dd {
+            margin       : 0;
+            color        : var(--fm-ink);
+            overflow-wrap: anywhere;
+
+            &.is-quiet { color: var(--fm-ink-dim); }
+            &.is-hot   { color: var(--fm-state-wedged); }
+        }
+    }
+
+    .fm-plane-diag {
+        margin     : 0;
+        padding-top: var(--fm-space-2);
+        border-top : 1px solid var(--fm-line-soft);
+        font       : var(--fm-text-body);
+        color      : var(--fm-ink);
+
+        .fm-plane-diag-key {
+            margin-right  : 6px;
+            font          : var(--fm-text-micro);
+            color         : var(--fm-ink-dim);
+            text-transform: uppercase;
+            letter-spacing: var(--fm-text-chrome-tracking);
+        }
+
+        .is-quiet {
+            color: var(--fm-ink-dim);
+        }
+    }
+
+    /* the narrow band: the head stacks, the facts go single-column, nothing clips mid-word */
+    @container (max-width: 300px) {
+        .fm-plane-head {
+            flex-direction: column;
+            align-items   : flex-start;
+        }
+
+        .fm-plane-seen {
+            margin-left: 0;
+        }
+
+        .fm-plane-facts {
+            grid-template-columns: 1fr;
+            gap                  : 1px;
+
+            dt {
+                margin-top: var(--fm-space-1);
+            }
+        }
+    }
+}

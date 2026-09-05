@@ -178,8 +178,10 @@ export function installFleetBridge({
      * rejected before returning a response; validated `refused` and operation failure/degradation
      * mean `refused` and `failed-upstream`. Local launch failures, JSON decoding and protocol
      * validation failures remain unclassified. Neither error text nor a transport-supplied Error
-     * property can assert a remote outcome. Browser requests carry this realm's offer; shell
-     * requests rely on parity with main's independently owned offer.
+     * property can assert a remote outcome. `Error.fleetWireState` carries the validated envelope
+     * state on every non-`ok` answer: an older server's `unsupported-method` is an answer, not a
+     * transport failure. Browser requests carry this realm's offer; shell requests rely on parity
+     * with main's independently owned offer.
      * @param {String} method
      * @param {*} params
      * @returns {Promise<*>} The validated operation result.
@@ -226,6 +228,8 @@ export function installFleetBridge({
 
         if (envelope.state !== FLEET_WIRE_RESPONSE_STATES.ok) {
             const error = new Error(envelope.error || `fleet: '${method}' failed`);
+
+            error.fleetWireState = envelope.state;
 
             if (envelope.state === FLEET_WIRE_RESPONSE_STATES.refused) {
                 error.fleetConnectionState = 'refused'
