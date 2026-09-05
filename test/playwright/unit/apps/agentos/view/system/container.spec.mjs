@@ -59,7 +59,8 @@ test.describe('AgentOS.view.system.Container — the engine room reads the provi
                     boundProfileId  : null,
                     deploymentState : DeploymentStateRead.blank(),
                     instanceState   : 'off',
-                    systemConnection: {state: null, reason: null}
+                    systemConnection: {state: null, reason: null},
+                    systemTickAt    : null
                 },
                 stores: {fleetInstances: {module: FleetInstances}}
             },
@@ -300,6 +301,40 @@ test.describe('AgentOS.view.system.Container — the engine room reads the provi
             expect(view.getReference('fresh').cls).toContain('is-fresh');
             expect(laneWord(view, 'snapshot').text).toBe('current');
             expect(laneWord(view, 'snapshot').cls).toContain('is-ok')
+        } finally {
+            host.destroy()
+        }
+    });
+
+    test('reads hanging at the cap: the read owner\'s tick alone advances the age — no observation changes, no picture lands, and without the tick the view has no clock of its own', () => {
+        const {host, provider, view} = makeHost(),
+              rowAge = () => view.serviceStore.items.map(record => record.toJSON ? record.toJSON() : record)[0].observedAgeMs,
+              stuck  = 'last picture 44s ago — fleet read timeout · showing the last known picture';
+
+        try {
+            view.now = 1_788_568_970_000;
+            provider.setData({deploymentState: {...projection(), observedAt: 1_788_568_970_000}});
+
+            // two reads a cadence apart, both hanging past the bound: the second's timeout is the last observation
+            view.now += 32_000;
+            provider.setData({systemConnection: {state: 'timeout', reason: 'fleet read exceeded 10000ms'}});
+
+            expect(view.getReference('fresh').text).toBe(stuck);
+            expect(rowAge()).toBe(42_894);
+
+            // the clock alone moves nothing: the view recomputes on the provider's writes, never on a timer of its own
+            view.now += 300_000;
+            expect(view.getReference('fresh').text).toBe(stuck);
+            expect(rowAge()).toBe(42_894);
+
+            // the owner's tick at the cap: no read, no observation — the instant alone, and the age moves with it
+            provider.setData({systemTickAt: view.now});
+
+            expect(view.getReference('fresh').text).toBe('last picture 5m ago — fleet read timeout · showing the last known picture');
+            expect(rowAge()).toBe(342_894);
+            expect(view.systemConnection, 'the observation is untouched').toEqual({state: 'timeout', reason: 'fleet read exceeded 10000ms'});
+            expect(laneWord(view, 'snapshot').text).toBe('last known');
+            expect(view.serviceStore.getCount(), 'no picture landed, none was lost').toBe(2)
         } finally {
             host.destroy()
         }

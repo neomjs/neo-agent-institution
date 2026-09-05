@@ -729,7 +729,10 @@ class LivenessController extends ComponentController {
             if (me.gridReadInFlight        < cap) me.loadRoster();
             if (me.brainHealthReadInFlight < cap) me.loadBrainHealth();
             if (me.tasksReadInFlight       < cap) me.loadTasks();
-            if (me.deploymentStateReadInFlight < cap) me.loadDeploymentState();
+            // the system lane's cadence is also the System view's only clock: a tick its hung
+            // reads keep it from spending on a read still publishes its instant, so a retained
+            // picture's age keeps moving while nothing else can change
+            if (me.deploymentStateReadInFlight < cap) { me.loadDeploymentState() } else { me.tickSystemLane() }
 
             // no in-flight cap: this launches no wire read — it compares bridge identity (the
             // custody-heal rebuild trigger) and copies the consumer's local observations
@@ -742,6 +745,17 @@ class LivenessController extends ComponentController {
         me.loadDeploymentState();
 
         me.followCustodyHeal()
+    }
+
+    /**
+     * @summary Publish the system lane's cadence tick when its reads hang at the cap: the slots
+     * stay held (the wire's own settle frees them — the accumulation bound), no read launches and
+     * no observation changes, but the retained picture's age must keep moving from the reader's
+     * anchor. The tick instant is the only fact written.
+     * @protected
+     */
+    tickSystemLane() {
+        this.component.getStateProvider()?.setData({systemTickAt: Date.now()})
     }
 
     /**

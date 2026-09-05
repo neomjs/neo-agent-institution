@@ -721,6 +721,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             const provider = makeProviderFake({
                 deploymentState : blankPicture(),
                 systemConnection: {state: null, reason: null},
+                systemTickAt    : null,
                 gridConnection  : {state: 'connecting', reason: null}
             });
             const host = makeTimerHost();
@@ -798,6 +799,44 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             await new Promise(resolve => setTimeout(resolve, 5));
             expect(provider.data.deploymentState.ageMs, 'the stale wire cannot overwrite the newer answer').toBe(1);
             expect(host.deploymentStateReadInFlight, 'both wires settled, both slots free').toBe(0)
+        });
+
+        test('reads hanging at the cap: the cadence tick launches no read and publishes its instant alone; a free slot spends the tick on a read and publishes no instant', async () => {
+            const {host, provider} = makeSystemHost({timeout: 20});
+            let calls = 0, tick;
+
+            installWire(() => { calls++; return new Promise(() => {}) });   // EVERY read hangs forever
+
+            const originalSetInterval = globalThis.setInterval;
+            globalThis.setInterval = fn => { tick = fn; return 1 };
+
+            try {
+                host.startLiveness();                                     // the boot read: wire 1 hangs
+                await new Promise(resolve => setTimeout(resolve, 30));    // past the bound: timeout published, slot held
+                expect(provider.data.systemConnection).toEqual({state: 'timeout', reason: 'fleet read exceeded 20ms'});
+                expect(host.deploymentStateReadInFlight).toBe(1);
+
+                tick();                                                   // a free slot: the tick is spent on wire 2, no instant
+                await new Promise(resolve => setTimeout(resolve, 30));
+                expect(calls).toBe(2);
+                expect(provider.data.systemTickAt).toBeNull();
+                expect(host.deploymentStateReadInFlight, 'both hung wires hold the cap').toBe(2);
+
+                tick();                                                   // at the cap: no wire 3 — the instant alone
+                expect(calls, 'a hung lane launches no third read').toBe(2);
+                expect(provider.data.systemTickAt).toEqual(expect.any(Number));
+                expect(provider.data.systemConnection, 'the observation is untouched').toEqual({state: 'timeout', reason: 'fleet read exceeded 20ms'});
+                expect(provider.data.deploymentState, 'no picture is invented').toEqual(blankPicture());
+
+                const first = provider.data.systemTickAt;
+
+                await new Promise(resolve => setTimeout(resolve, 5));
+                tick();
+                expect(provider.data.systemTickAt, 'every capped tick moves the instant').toBeGreaterThan(first)
+            } finally {
+                globalThis.setInterval = originalSetInterval;
+                host.livenessTimerId   = null
+            }
         });
 
         test('a torn answer keeps the picture and clears the observation — nothing is invented', async () => {

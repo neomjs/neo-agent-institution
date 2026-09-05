@@ -94,7 +94,8 @@ class Container extends BaseContainer {
             boundProfileId  : data => data.boundProfileId,
             deploymentState : data => data.deploymentState,
             instanceStore   : 'stores.fleetInstances',
-            systemConnection: data => data.systemConnection
+            systemConnection: data => data.systemConnection,
+            systemTickAt    : data => data.systemTickAt
         },
         /**
          * The bound instance's profileId, mirrored from the switcher's truth.
@@ -121,12 +122,21 @@ class Container extends BaseContainer {
          */
         systemConnection_: null,
         /**
-         * Injected wall-clock (ms) for the freshness line and the row ages; `null` → the live
-         * `Date.now()`. Tests pin it so a retained picture ages deterministically from its anchor.
-         * @member {Number|null} now_=null
+         * The read owner's latest cadence tick that launched no read — its slots held by reads
+         * hanging past their bound. Nothing else changes on such a tick; the picture's age does.
+         * @member {Number|null} systemTickAt_=null
          * @reactive
          */
-        now_: null,
+        systemTickAt_: null,
+        /**
+         * Injected wall-clock (ms) for the freshness line and the row ages; `null` → the live
+         * `Date.now()`. Tests pin it so a retained picture ages deterministically from its anchor.
+         * Deliberately NOT reactive: the clock is read at paint time only, and a paint is owed to
+         * the read owner's writes (an observation, a picture, its tick) — a reactive clock would
+         * become a tracked dependency of the provider's binding effects and repaint on its own.
+         * @member {Number|null} now=null
+         */
+        now: null,
         /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
@@ -275,15 +285,24 @@ class Container extends BaseContainer {
         this.isConstructed && (this.applyConnection(), this.applyPicture())
     }
 
+    /** @param {Number|null} value @param {Number|null} oldValue */
+    afterSetSystemTickAt(value, oldValue) {
+        // the owner's tick while its reads hang at the cap: no observation, no picture — only the
+        // clock moved, and a retained picture's age must move with it
+        this.isConstructed && this.applyPicture()
+    }
+
     /**
      * @summary Render the picture: the freshness line, the whole-view reason (unavailable states only),
      * the plane cards (a wholesale replace — rows are a glance at one instant, never an accumulation),
      * and the three lanes. Two facts gate what the held picture may claim: its provenance — a picture
      * another instance's bridge answered is foreign under this scope and renders as nothing observed —
      * and the current read — a failed read makes a same-scope picture "last known", while its age
-     * keeps moving from the reader's observation anchor rather than freezing at the wire's number.
-     * A pending same-scope read is the routine poll and does not qualify the picture (it would flap
-     * the lane on every tick); a pending read for another instance is foreign by provenance already.
+     * keeps moving from the reader's observation anchor rather than freezing at the wire's number:
+     * on every observation, and on the owner's cadence tick when its reads hang at the cap and no
+     * observation can change (the view has no clock of its own). A pending same-scope read is the
+     * routine poll and does not qualify the picture (it would flap the lane on every tick); a pending
+     * read for another instance is foreign by provenance already.
      */
     applyPicture() {
         const

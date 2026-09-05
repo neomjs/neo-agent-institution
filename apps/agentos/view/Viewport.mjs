@@ -73,7 +73,11 @@ class Viewport extends BaseViewport {
                 // (a block declared null would stop the leaf bubble on its first real answer)
                 deploymentState: DeploymentStateRead.blank(),
                 // that read owner's connection observation, the System view's own surface
-                systemConnection: {state: null, reason: null}
+                systemConnection: {state: null, reason: null},
+                // the instant of that owner's latest cadence tick it could not spend on a read (its
+                // slots held by reads hanging past their bound): no observation changes on such a
+                // tick, but the retained picture's age must keep moving from the reader's anchor
+                systemTickAt: null
             },
             stores: {
                 agentDefinitions: {
