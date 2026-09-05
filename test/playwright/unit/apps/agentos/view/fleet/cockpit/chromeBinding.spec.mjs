@@ -198,57 +198,67 @@ test('RA-2 falsifier: the wake title moves while the visible text stays byte-ide
 // The leaf-complete witness the fakes cannot give: `setData` drills object values into leaf paths
 // and bubbles a new leaf up ONLY through object-valued parents — a parent declared `null` stops the
 // bubble, so a block that arrives as an object where the default was `null` would read `null`
-// forever. The picture therefore lands on the REAL provider through the real apply, nested blocks
-// included, and a later absent block clears back to the declared blank instead of vanishing.
-test('the deployment-state picture lands leaf-complete on the REAL provider — nested maintenance blocks read back, and an absent block clears', async () => {
-    const cockpit = Neo.create(FleetCockpit, {
-        stateProvider: {
-            module: CockpitStateProvider,
-            stores: {
-                fleetActivityEvents: {module: FleetActivityEvents},
-                fleetRoster        : {module: FleetRoster, autoLoad: false},
-                viewerWakeFeed     : {module: ViewerWakeFeed}
+// forever. The picture is declared on the VIEWPORT provider (the System keeper-view is the cockpit's
+// sibling) and written by the cockpit's read owner through setData's closest-owner walk, so the
+// witness composes the real parent/child pair: the landing must read back on the PARENT, nested
+// blocks included, and a later absent block clears back to the declared blank instead of vanishing.
+test('the deployment-state picture lands leaf-complete on the REAL parent provider — nested maintenance blocks read back, and an absent block clears', async () => {
+    const
+        parent  = Neo.create((await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default, {
+            data: {deploymentState: DeploymentStateRead.blank(), systemConnection: {state: null, reason: null}}
+        }),
+        cockpit = Neo.create(FleetCockpit, {
+            stateProvider: {
+                module: CockpitStateProvider,
+                parent,
+                stores: {
+                    fleetActivityEvents: {module: FleetActivityEvents},
+                    fleetRoster        : {module: FleetRoster, autoLoad: false},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
+                }
             }
-        }
-    });
+        });
 
     try {
         await cockpit.refreshPromise;
 
         const
-            provider   = cockpit.getStateProvider(),
             controller = cockpit.getController(),
             projection = {
                 state      : 'ok',
                 reason     : null,
                 generatedAt: 1_700_000_000_000,
                 ageMs      : 12_000,
-                services   : [{serviceKey: 'mc-server', status: {status: 'available'}}],
+                services   : [{serviceKey: 'mc-server', status: 'available'}],
                 maintenance: {
-                    backup    : {phase: 'unanchored', lastSuccessAt: null, lastSuccessAgeMs: null, lastBackup: {finishedAt: 1_699_999_000_000, kind: 'full', status: 'ok'}},
+                    backup    : {phase: 'exhausted', lastSuccessAt: null, lastSuccessAgeMs: null, health: {status: 'degraded', reasonCodes: ['backup-never-succeeded']}, lastBackup: {finishedAt: '2026-09-04T16:41:27.657Z', status: 'success', offHostSync: 'disabled'}},
                     starvation: {posture: 'degraded', breachCount: 5}
                 }
             };
 
         DeploymentStateRead.apply(controller, projection);
 
-        const landed = provider.data.deploymentState;
+        const landed = parent.data.deploymentState;
 
         expect(landed.state).toBe('ok');
         expect(landed.services, 'rows stay one atomic array').toEqual(projection.services);
-        expect(landed.maintenance.backup.phase, 'the nested block reads back through the proxy').toBe('unanchored');
-        expect(landed.maintenance.backup.lastBackup.status, 'two levels down as well').toBe('ok');
+        expect(landed.maintenance.backup.phase, 'the nested block reads back through the proxy').toBe('exhausted');
+        expect(landed.maintenance.backup.lastBackup.status, 'two levels down as well').toBe('success');
+        expect(landed.maintenance.backup.health.reasonCodes, 'the codes stay one atomic array').toEqual(['backup-never-succeeded']);
         expect(landed.maintenance.starvation.breachCount).toBe(5);
-        expect(provider.getData('deploymentState.maintenance.starvation.posture'), 'and by leaf path').toBe('degraded');
-        expect(provider.data.systemConnection, 'the answered surface carries no observation').toEqual({state: null, reason: null});
+        expect(parent.getData('deploymentState.maintenance.starvation.posture'), 'and by leaf path').toBe('degraded');
+        expect(parent.data.systemConnection, 'the answered surface carries no observation').toEqual({state: null, reason: null});
+        expect(cockpit.getStateProvider().getDataConfig?.('deploymentState.state') ?? null, 'the child declares no shadow of the parent truth').toBeNull();
 
         // the plane stops reporting its lanes: the blocks clear to the declared blank, never to `null`
         DeploymentStateRead.apply(controller, {...projection, maintenance: {backup: null, starvation: null}});
 
-        expect(provider.data.deploymentState.maintenance.backup.phase).toBeNull();
-        expect(provider.data.deploymentState.maintenance.backup.lastBackup.status).toBeNull();
-        expect(provider.data.deploymentState.maintenance.starvation.breachCount).toBeNull()
+        expect(parent.data.deploymentState.maintenance.backup.phase).toBeNull();
+        expect(parent.data.deploymentState.maintenance.backup.health.reasonCodes).toEqual([]);
+        expect(parent.data.deploymentState.maintenance.backup.lastBackup.status).toBeNull();
+        expect(parent.data.deploymentState.maintenance.starvation.breachCount).toBeNull()
     } finally {
-        cockpit.destroy()
+        cockpit.destroy();
+        parent.destroy()
     }
 });

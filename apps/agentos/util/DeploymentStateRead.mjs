@@ -42,6 +42,24 @@ class DeploymentStateRead extends Base {
     }
 
     /**
+     * @summary The picture's leaf-complete blank — the shape authority the Viewport provider declares
+     * and every landing pads to: `state` `null` = never answered, no rows, every maintenance leaf
+     * `null`. Leaf-complete on purpose: `setData` bubbles a new leaf only through object-valued
+     * parents, so a block declared `null` would read `null` forever after its first real answer.
+     * @returns {Object}
+     */
+    static blank() {
+        return {
+            state      : null,
+            reason     : null,
+            generatedAt: null,
+            ageMs      : null,
+            services   : [],
+            maintenance: DeploymentStateRead.toMaintenance(null)
+        }
+    }
+
+    /**
      * @summary Normalize the maintenance blocks onto their declared leaf shape. An absent block
      * (`null` on the wire: the plane has no such lane) becomes all-blank leaves — a `null` parent
      * would stop the provider's leaf bubble, and the block could never read back.
@@ -50,19 +68,26 @@ class DeploymentStateRead extends Base {
      */
     static toMaintenance(maintenance) {
         const
-            backup     = maintenance?.backup,
-            lastBackup = backup?.lastBackup,
-            starvation = maintenance?.starvation;
+            backup      = maintenance?.backup,
+            health      = backup?.health,
+            lastBackup  = backup?.lastBackup,
+            starvation  = maintenance?.starvation,
+            reasonCodes = Array.isArray(health?.reasonCodes) ? health.reasonCodes.filter(code => typeof code === 'string') : [];
 
         return {
             backup: {
                 phase           : leafOf(backup, 'phase'),
                 lastSuccessAt   : leafOf(backup, 'lastSuccessAt'),
                 lastSuccessAgeMs: leafOf(backup, 'lastSuccessAgeMs'),
+                health          : {
+                    status: leafOf(health, 'status'),
+                    // one atomic array: the lane's reason codes as the plane named them
+                    reasonCodes
+                },
                 lastBackup      : {
-                    finishedAt: leafOf(lastBackup, 'finishedAt'),
-                    kind      : leafOf(lastBackup, 'kind'),
-                    status    : leafOf(lastBackup, 'status')
+                    finishedAt : leafOf(lastBackup, 'finishedAt'),
+                    status     : leafOf(lastBackup, 'status'),
+                    offHostSync: leafOf(lastBackup, 'offHostSync')
                 }
             },
             starvation: {

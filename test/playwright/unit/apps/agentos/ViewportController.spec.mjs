@@ -19,8 +19,9 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
         const tabButtons = [
             {route: '/home',     index: 0},
             {route: '/fleet',    index: 1},
-            {route: '/accounts', index: 2},
-            {route: '/chat',     index: 3}
+            {route: '/system',   index: 2},
+            {route: '/accounts', index: 3},
+            {route: '/chat',     index: 4}
         ];
 
         const shell = {
@@ -40,7 +41,8 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
             '/accounts': 'onAccountsRoute',
             '/chat'    : 'onChatRoute',
             '/fleet'   : 'onFleetRoute',
-            '/home'    : 'onHomeRoute'
+            '/home'    : 'onHomeRoute',
+            '/system'  : 'onSystemRoute'
         })
     });
 
@@ -58,11 +60,14 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
         controller.onHomeRoute();
         expect(shell.activeIndex).toBe(0);
 
-        controller.onAccountsRoute();
+        controller.onSystemRoute();
         expect(shell.activeIndex).toBe(2);
 
+        controller.onAccountsRoute();
+        expect(shell.activeIndex).toBe(3);
+
         controller.onChatRoute();
-        expect(shell.activeIndex).toBe(3)
+        expect(shell.activeIndex).toBe(4)
     });
 
     test('leaves the active shell view unchanged when the route has no tab match', () => {
@@ -79,7 +84,7 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
         const shellConfig = Viewport.config.items.find(item => item.reference === 'shell'),
               routes      = shellConfig.items.map(item => item.header.route);
 
-        expect(routes).toEqual(['/home', '/fleet', '/accounts', '/chat']);
+        expect(routes).toEqual(['/home', '/fleet', '/system', '/accounts', '/chat']);
         expect(routes.sort()).toEqual(Object.keys(ViewportController.config.routes).sort())
     })
 });

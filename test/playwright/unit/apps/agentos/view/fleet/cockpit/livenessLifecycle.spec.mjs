@@ -18,6 +18,7 @@ import * as core                  from '../../../../../../../../node_modules/neo
 import                                 '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {makeActivityStoreHarness, makeProviderFake} from './cockpitFakes.mjs';
 import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import DeploymentStateRead  from '../../../../../../../../apps/agentos/util/DeploymentStateRead.mjs';
 import {
     createFleetWireResponse,
     FLEET_WIRE_RESPONSE_STATES
@@ -691,26 +692,22 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         // the provider leaf is declared leaf-complete (a `null` block would stop the leaf bubble), so
         // the wire's partial blocks land padded to the declared shape: `picture()` is what the wire
         // sends, `landed()` what the provider holds afterwards
-        const blankMaintenance = () => ({
-            backup    : {phase: null, lastSuccessAt: null, lastSuccessAgeMs: null, lastBackup: {finishedAt: null, kind: null, status: null}},
-            starvation: {posture: null, breachCount: null}
-        });
-        const blankPicture = () => ({state: null, reason: null, generatedAt: null, ageMs: null, services: [], maintenance: blankMaintenance()});
+        const blankPicture = () => DeploymentStateRead.blank();
         const picture      = () => ({
             state      : 'ok',
             reason     : null,
             generatedAt: 1_700_000_000_000,
             ageMs      : 12_000,
-            services   : [{serviceKey: 'mc-server', status: {status: 'available', disposition: 'at-cap'}}],
-            maintenance: {backup: {phase: 'unanchored'}, starvation: {posture: 'degraded', breachCount: 5}}
+            services   : [{serviceKey: 'mc-server', status: 'available', memoryPressure: {disposition: 'below', reason: null}}],
+            maintenance: {backup: {phase: 'exhausted', health: {status: 'degraded', reasonCodes: ['backup-never-succeeded']}}, starvation: {posture: 'degraded', breachCount: 5}}
         });
         const landed = () => {
-            const blank = blankMaintenance();
+            const blank = blankPicture().maintenance;
 
             return {
                 ...picture(),
                 maintenance: {
-                    backup    : {...blank.backup, phase: 'unanchored'},
+                    backup    : {...blank.backup, phase: 'exhausted', health: {status: 'degraded', reasonCodes: ['backup-never-succeeded']}},
                     starvation: {posture: 'degraded', breachCount: 5}
                 }
             }

@@ -2,11 +2,13 @@ import Accounts           from './accounts/Panel.mjs';
 import AgentDefinitions   from '../store/AgentDefinitions.mjs';
 import BaseViewport       from '../../../node_modules/neo.mjs/src/container/Viewport.mjs';
 import Dashboard          from '../../../node_modules/neo.mjs/src/dashboard/Container.mjs';
+import DeploymentStateRead from '../util/DeploymentStateRead.mjs';
 import FleetCockpit       from './fleet/cockpit/Container.mjs';
 import FleetInstances     from '../store/FleetInstances.mjs';
 import FleetTenants       from '../store/FleetTenants.mjs';
 import InstanceSwitcher   from './fleet/instances/SwitcherButton.mjs';
 import StateProvider      from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import SystemView         from './system/Container.mjs';
 import TabContainer       from '../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import ViewportController from './ViewportController.mjs';
 
@@ -17,8 +19,9 @@ import ViewportController from './ViewportController.mjs';
  * @summary The harness shell — the B3-hybrid keeper-view structure: a top chrome bar over a
  * stable-shell **left-rail keeper-view nav** (`tab.Container`, left tab-bar). The rail is how you
  * reach the keeper views — **Home** (the Welcome landing), **Fleet** (the FM mission-control
- * cockpit, the default), **Accounts** (identity setup), **Chat** (prompt → live pane, the dockable
- * work-area seam). The Fleet keeper-view renders the roster as CARDS (the design SSOT), not a
+ * cockpit, the default), **System** (the connected instance's engine room: plane health from the
+ * orchestrator's deployment-state picture, observe-only), **Accounts** (identity setup), **Chat**
+ * (prompt → live pane, the dockable work-area seam). The Fleet keeper-view renders the roster as CARDS (the design SSOT), not a
  * data-grid table. Renders through `neo-theme-neo-dark` / `neo-theme-neo-light`.
  *
  * The Viewport is also the composition authority between two deliberately separate projections:
@@ -63,7 +66,14 @@ class Viewport extends BaseViewport {
                 boundProfileId: null,
                 // the bound instance's connection state as a session-state key — written at the
                 // spine banner's sync point, so the chrome dot and the banner share ONE truth
-                instanceState: 'off'
+                instanceState: 'off',
+                // the connected instance's deployment-state picture — the System keeper-view's plane
+                // truth, written by the cockpit's read owner through setData's closest-owner walk and
+                // declared HERE so a sibling keeper-view can bind it; leaf-complete by construction
+                // (a block declared null would stop the leaf bubble on its first real answer)
+                deploymentState: DeploymentStateRead.blank(),
+                // that read owner's connection observation, the System view's own surface
+                systemConnection: {state: null, reason: null}
             },
             stores: {
                 agentDefinitions: {
@@ -140,6 +150,12 @@ class Viewport extends BaseViewport {
                 module   : FleetCockpit,
                 header   : {iconCls: 'fa-solid fa-satellite-dish', route: '/fleet', text: 'Fleet'},
                 reference: 'fleet-cockpit'
+            }, {
+                // the engine room beside mission control: what the planes are doing to the fleet's
+                // truth — a distinct subject, so a distinct place in the rail (never a cockpit pane)
+                module   : SystemView,
+                header   : {iconCls: 'fa-solid fa-server', route: '/system', text: 'System'},
+                reference: 'system-view'
             }, {
                 // Accounts is likewise a dashboard.Panel — its own dashboard.Container host so the
                 // identity panel keeps the pop-out affordance and stays structurally idiomatic.
