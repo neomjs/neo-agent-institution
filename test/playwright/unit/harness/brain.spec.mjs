@@ -32,7 +32,7 @@ import {
 } from '../../../../harness/brain.mjs';
 
 const {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} =
-    await loadAgentOsModule('ai/services/fleet/fleetWireMethods.mjs');
+    await loadAgentOsModule('src/fleet/contract/wire.mjs');
 
 /**
  * A stub supervised child: EventEmitter shape matching the ChildProcess surface the lifecycle
