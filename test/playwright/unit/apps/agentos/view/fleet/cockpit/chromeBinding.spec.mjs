@@ -9,13 +9,13 @@ import {test, expect}       from '@playwright/test';
 import Neo                  from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core            from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import                           '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
-import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
-import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
-import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
-import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
-import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
-import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
-import {createFleetWireResponse} from '../../../../../../../../apps/agentos/config/fleetWireMethods.mjs';
+import CockpitStateProvider      from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
+import FleetActivityEvents       from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
+import FleetCockpit              from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetRoster               from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
+import ViewerWakeFeed            from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import {installFleetBridge}      from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import {createFleetWireResponse} from 'neo-agent-brain/fleet-contract';
 
 /**
  * The chrome-binding REVEAL witness over a real constructed cockpit: the declared chrome slots

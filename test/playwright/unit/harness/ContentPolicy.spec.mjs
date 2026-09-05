@@ -10,6 +10,18 @@ import {
     parseHarnessUrl
 } from '../../../../harness/contentPolicy.mjs';
 
+const
+    fleetContractRoot = 'node_modules/neo-agent-brain/src/fleet/contract',
+    fleetModules      = ['cockpit', 'harnessTypes', 'index', 'mcpServers', 'wire'],
+    privateFleetPaths = [
+        'node_modules/neo-agent-brain/package.json',
+        'node_modules/neo-agent-brain/ai/config.mjs',
+        'node_modules/neo-agent-brain/ai/services/fleet/fleetLaunchContract.mjs',
+        'node_modules/neo-agent-brain/src/evolution/config.mjs',
+        fleetContractRoot + '/private.mjs',
+        fleetContractRoot + '/index.mjs.map'
+    ];
+
 test.describe('harness content policy', () => {
     let outsideRoot, repoRoot, resolveAsset;
 
@@ -23,6 +35,8 @@ test.describe('harness content policy', () => {
             'node_modules/@fortawesome/fontawesome-free/css/all.min.css',
             'node_modules/@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2',
             'node_modules/neo.mjs/src/Neo.mjs',
+            ...fleetModules.map(name => `${fleetContractRoot}/${name}.mjs`),
+            ...privateFleetPaths,
             'resources/images/logo/neo_logo_primary.svg',
             'resources/theme-map.json',
             'src/Neo.mjs'
@@ -92,6 +106,22 @@ test.describe('harness content policy', () => {
 
         expect(isAllowedHarnessAssetPath('/ai/config.mjs')).toBe(false);
         expect(isAllowedHarnessAssetPath('/package.json')).toBe(false)
+    });
+
+    test('serves the public Fleet contract graph while denying existing private and unclassified package files', async () => {
+        for (const name of fleetModules) {
+            await expect(resolveAsset(`app://neo/${fleetContractRoot}/${name}.mjs`)).resolves.toMatchObject({
+                contentType: 'text/javascript; charset=utf-8',
+                ok         : true
+            })
+        }
+
+        for (const file of privateFleetPaths) {
+            await expect(resolveAsset(`app://neo/${file}`), file).resolves.toMatchObject({
+                ok    : false,
+                reason: 'not-allowlisted'
+            })
+        }
     });
 
     test('denies repository secrets and unrelated content', async () => {

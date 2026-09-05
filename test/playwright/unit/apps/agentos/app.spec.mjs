@@ -164,7 +164,7 @@ test.describe('AgentOS packaged Fleet window routing', () => {
         test.beforeAll(async () => {
             ({establishFleetSessionCustody} = await import('../../../../../apps/agentos/app.mjs'));
             ({installFleetBridge}           = await import('../../../../../apps/agentos/fleet/installFleetBridge.mjs'));
-            ({createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} = await import('../../../../../apps/agentos/config/fleetWireMethods.mjs'))
+            ({createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} = await import('neo-agent-brain/fleet-contract'))
         });
 
         test('verified retire: the authenticated whoami succeeds, then and only then the ingress clears', async () => {

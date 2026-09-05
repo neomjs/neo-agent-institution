@@ -144,7 +144,7 @@ test.describe('harness pack stage', () => {
             'main.mjs'
         ]);
         expect(() => assertPackagedMainModulesDeclared({builderConfig, modules})).not.toThrow();
-        expect(mainSource).toContain('loadFleetRuntimeContracts(agentosRuntimeRoot)')
+        expect(mainSource).toContain('loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot})')
     });
 
     test('source-relative traversal rejects nested and normalized harness-root escapes', async () => {
@@ -533,6 +533,22 @@ test.describe('harness pack stage', () => {
 
     const NO_SUPPLEMENTAL = {brain: [], product: []};
 
+    test('the URL-imported Fleet contract stages the product pin even without a bare import, and a missing product declaration refuses', () => {
+        const
+            pin                = 'github:neomjs/neo-agent-brain#' + 'a'.repeat(40),
+            brainPackageJson   = {dependencies: {'@chroma-core/default-embed': '1.0.0', 'neo-agent-brain': 'wrong-owner'}},
+            productPackageJson = {dependencies: {'@fortawesome/fontawesome-free': '7.0.0', 'neo-agent-brain': pin}},
+            scanned            = {brain: [], product: []};
+
+        expect(extractBarePackages("import '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';")).toEqual([]);
+        expect(buildOrganismManifest({brainPackageJson, productPackageJson, scanned}).dependencies['neo-agent-brain']).toBe(pin);
+
+        delete productPackageJson.dependencies['neo-agent-brain'];
+
+        expect(() => buildOrganismManifest({brainPackageJson, productPackageJson, scanned}))
+            .toThrow(/no declared version.*neo-agent-brain \(product\)/)
+    });
+
     test('buildOrganismManifest pins each tree\'s imports by the owner that stages it, and fails loud on an import that owner never declared', () => {
         const
             productPackageJson = {dependencies: {'neo.mjs': 'github:neomjs/neo#abc'}, devDependencies: {webpack: '^5.0.0'}, version: '11.11.0'},
@@ -601,9 +617,9 @@ test.describe('harness pack stage', () => {
         // supplemental names belong to an owner too
         expect(buildOrganismManifest({
             brainPackageJson  : {...brainPackageJson, dependencies: {...brainPackageJson.dependencies, '@chroma-core/default-embed': '1.0.0'}},
-            productPackageJson: {...productPackageJson, devDependencies: {...productPackageJson.devDependencies, '@fortawesome/fontawesome-free': '7.0.0'}},
+            productPackageJson: {...productPackageJson, dependencies: {...productPackageJson.dependencies, 'neo-agent-brain': 'github:neomjs/neo-agent-brain#contract'}, devDependencies: {...productPackageJson.devDependencies, '@fortawesome/fontawesome-free': '7.0.0'}},
             scanned           : {brain: [], product: []}
-        }).dependencies).toEqual({'@chroma-core/default-embed': '1.0.0', '@fortawesome/fontawesome-free': '7.0.0'});
+        }).dependencies).toEqual({'@chroma-core/default-embed': '1.0.0', '@fortawesome/fontawesome-free': '7.0.0', 'neo-agent-brain': 'github:neomjs/neo-agent-brain#contract'});
 
         // No Brain authority, no manifest — never a silently broken artifact (the pre-split
         // package.brain.json was optional; the Brain root's package.json is not).

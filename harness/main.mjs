@@ -80,7 +80,7 @@ const
     // packaged artifact supplies one assembled organism root; a checkout with the Brain leg OFF and
     // no root boots as the UI alone — no root, no contracts, no transport (the resolver's rule).
     agentosRuntimeRoot    = resolveLauncherRuntimeRoot({brainMode, env: process.env, packaged: packagedMode, packagedOrganismRoot}),
-    fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts(agentosRuntimeRoot) : null,
+    fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot}) : null,
     // ONE main-owned secret per Electron boot. It crosses only into the Fleet child environment
     // and main-process Authorization headers; preload/renderer/App-Worker receive no getter or byte.
     // `null` when this boot carries no transport: nothing to protect, nothing to censor.
@@ -969,6 +969,7 @@ async function bootProductBrain() {
         fleetPort = Number(process.env.NEO_FLEET_PORT) || 8083,
         paths     = await resolveBrainPaths({env: packagedEnv, repoRoot: agentosRuntimeRoot}),
         live      = await detectLiveBrain({
+            productRoot,
             bearerToken        : fleetBearerToken,
             fleetPort,
             orchestratorDataDir: paths.orchestratorDataDir,
@@ -1018,7 +1019,7 @@ async function bootProductBrain() {
         });
 
         registerBrainChild({child: fleet, label: 'fleet'});
-        await awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, repoRoot: agentosRuntimeRoot})
+        await awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot})
     }
 
     console.log(`HARNESS_BRAIN_MODE ${mode}${plan.planeBase ? ` planeBase=${plan.planeBase}` : ''} fleetPort=${fleetPort} started=[${brainState.children.map(entry => entry.label).join(',') || 'none'}]`);
@@ -1053,6 +1054,7 @@ async function bootUiFleetTransport() {
     // composition (brain.mjs#resolveUiFleetTransport); this wrapper only binds the real
     // collaborators: env coordinates, the shell bearer, the child spawner, and the owner registry.
     return resolveUiFleetTransport({
+        productRoot,
         agentIdentityNodeId: process.env.NEO_AGENT_IDENTITY,
         awaitReady         : awaitFleetReady,
         bearerToken        : fleetBearerToken,
@@ -1125,7 +1127,7 @@ async function bootSmokeBrain() {
 
     await Promise.all([
         awaitOrchestratorReady({child: orchestrator}),
-        awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, repoRoot: agentosRuntimeRoot})
+        awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot})
     ]);
 
     return {

@@ -1,5 +1,5 @@
 import Base                    from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import {FLEET_COCKPIT_SOURCES} from '../config/cockpitSources.mjs';
+import {FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @summary Closed source-health contract shared by the Fleet cockpit's store-backed cards and
