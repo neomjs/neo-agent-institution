@@ -32,7 +32,7 @@ jobs:
                   cache: npm
 
             - name: Install dependencies
-              run: npm ci --foreground-scripts
+              run: npm ci
 
             - name: Install Chromium
               run: npx playwright install --with-deps chromium
@@ -83,7 +83,7 @@ jobs:
                   node-version: 24
 
             - name: Install Institution dependencies
-              run: npm ci --foreground-scripts
+              run: npm ci
               working-directory: institution
 
             - name: Install Brain dependencies
