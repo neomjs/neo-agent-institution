@@ -21,7 +21,7 @@ import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/ins
 import {
     createFleetWireResponse,
     FLEET_WIRE_RESPONSE_STATES
-} from '../../../../../../../../apps/agentos/config/fleetWireMethods.mjs';
+} from 'neo-agent-brain/fleet-contract';
 
 /**
  * The liveness owner's LIFECYCLE witness. A transition matrix proves the owner tells the truth while

@@ -1,11 +1,12 @@
-import {expect, test}                                       from '@playwright/test';
-import {EventEmitter}                                       from 'node:events';
-import {mkdtemp, rm, symlink}                               from 'node:fs/promises';
-import {readFileSync, writeFileSync, mkdirSync, existsSync} from 'node:fs';
-import net                                                  from 'node:net';
-import {tmpdir}                                             from 'node:os';
-import path                                                 from 'node:path';
-import {loadAgentOsModule}                                  from '../../fixtures.mjs';
+import {expect, test}                                        from '@playwright/test';
+import {EventEmitter}                                        from 'node:events';
+import {mkdtemp, rm, symlink}                                from 'node:fs/promises';
+import {readFileSync, writeFileSync, mkdirSync, existsSync}  from 'node:fs';
+import net                                                   from 'node:net';
+import {tmpdir}                                              from 'node:os';
+import path                                                  from 'node:path';
+import {fileURLToPath}                                       from 'node:url';
+import {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} from 'neo-agent-brain/fleet-contract';
 import {
     allocatePort,
     assertIsolatedProfile,
@@ -17,6 +18,7 @@ import {
     detectLiveBrain,
     FLEET_SERVER_ENTRY,
     ORCHESTRATOR_ENTRY,
+    loadFleetRuntimeContracts,
     probeFleetServing,
     probePort,
     registerOwnedChild,
@@ -31,8 +33,7 @@ import {
     writeRunState
 } from '../../../../harness/brain.mjs';
 
-const {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} =
-    await loadAgentOsModule('src/fleet/contract/wire.mjs');
+const productRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 
 /**
  * A stub supervised child: EventEmitter shape matching the ChildProcess surface the lifecycle
@@ -88,6 +89,45 @@ function createFakeGroup({pid, diesOn}) {
     return state
 }
 
+/**
+ * @summary Creates disjoint installed-public and private-runtime module fixtures, or both at the
+ * same explicitly supplied packaged root. The stale runtime wire path fails if accidentally loaded.
+ * @param {String} root
+ * @param {Object} options
+ * @param {Boolean} [options.product=false]
+ * @param {Boolean} [options.runtime=false]
+ */
+function writeFleetRootFixture(root, {product = false, runtime = false}) {
+    const
+        tag     = JSON.stringify(path.basename(root)),
+        modules = {
+            ...(product && {
+                'node_modules/neo-agent-brain/src/fleet/contract/index.mjs': [
+                    `export const FLEET_WIRE_METHODS = [${tag}];`,
+                    `export const FLEET_WIRE_RESPONSE_STATES = {ok: ${tag}};`,
+                    ...['createFleetWireOffer', 'createFleetWireRequest', 'createFleetWireResponse', 'inspectFleetWireResponse']
+                        .map(name => `export const ${name} = () => ${tag};`)
+                ].join('\n')
+            }),
+            ...(runtime && {
+                'ai/graph/normalizeAgentIdentityNodeId.mjs': 'export const normalizeAgentIdentityNodeId = value => value;',
+                'ai/services/fleet/fleetLaunchContract.mjs': [
+                    `export const FLEET_CREDENTIAL_METHODS = [${tag}];`,
+                    `export const probeExistingFleetServer = () => ${tag};`,
+                    `export const resolveFleetBearer = () => ${tag};`
+                ].join('\n'),
+                'src/fleet/contract/wire.mjs': "throw new Error('runtime vocabulary must not be imported');"
+            })
+        };
+
+    for (const [relativePath, source] of Object.entries(modules)) {
+        const target = path.join(root, relativePath);
+
+        mkdirSync(path.dirname(target), {recursive: true});
+        writeFileSync(target, source, 'utf8')
+    }
+}
+
 test.describe('harness brain lifecycle', () => {
     const
         agentIdentityNodeId = '@neo-gpt-emmy',
@@ -108,6 +148,62 @@ test.describe('harness brain lifecycle', () => {
         expect(() => resolveAgentOsRuntimeRoot({NEO_AGENTOS_RUNTIME_ROOT: '../neo-agent-brain'}))
             .toThrow(/absolute/);
         expect(resolveAgentOsRuntimeRoot({NEO_AGENTOS_RUNTIME_ROOT: workDir})).toBe(path.resolve(workDir))
+    });
+
+    test('Fleet contracts keep the public product and private runtime roots independent, cache both, and support the explicit packaged same-root case', async () => {
+        const
+            productA = path.join(workDir, 'product-a'),
+            productB = path.join(workDir, 'product-b'),
+            runtimeA = path.join(workDir, 'runtime-a'),
+            runtimeB = path.join(workDir, 'runtime-b'),
+            packaged = path.join(workDir, 'packaged');
+
+        for (const root of [productA, productB]) writeFleetRootFixture(root, {product: true});
+        for (const root of [runtimeA, runtimeB]) writeFleetRootFixture(root, {runtime: true});
+        writeFleetRootFixture(packaged, {product: true, runtime: true});
+
+        const first = loadFleetRuntimeContracts({productRoot: productA, runtimeRoot: runtimeA});
+
+        expect(loadFleetRuntimeContracts({productRoot: productA, runtimeRoot: runtimeA})).toBe(first);
+
+        const contracts = await first;
+
+        expect(contracts.FLEET_WIRE_METHODS).toEqual(['product-a']);
+        expect(contracts.FLEET_CREDENTIAL_METHODS).toEqual(['runtime-a']);
+        expect(contracts.resolveFleetBearer()).toBe('runtime-a');
+        expect(contracts.normalizeAgentIdentityNodeId('@viewer')).toBe('@viewer');
+
+        const otherProduct = await loadFleetRuntimeContracts({productRoot: productB, runtimeRoot: runtimeA});
+        const otherRuntime = await loadFleetRuntimeContracts({productRoot: productA, runtimeRoot: runtimeB});
+
+        expect(otherProduct.FLEET_WIRE_METHODS).toEqual(['product-b']);
+        expect(otherProduct.FLEET_CREDENTIAL_METHODS).toEqual(['runtime-a']);
+        expect(otherRuntime.FLEET_WIRE_METHODS).toEqual(['product-a']);
+        expect(otherRuntime.FLEET_CREDENTIAL_METHODS).toEqual(['runtime-b']);
+
+        const assembled = await loadFleetRuntimeContracts({productRoot: packaged, runtimeRoot: packaged});
+
+        expect(assembled.FLEET_WIRE_METHODS).toEqual(['packaged']);
+        expect(assembled.FLEET_CREDENTIAL_METHODS).toEqual(['packaged'])
+    });
+
+    test('Fleet contract roots reject omission, relative values, swapping and a missing installed public entry without using the runtime vocabulary', async () => {
+        const
+            productRoot = path.join(workDir, 'product'),
+            runtimeRoot = path.join(workDir, 'runtime');
+
+        writeFleetRootFixture(productRoot, {product: true});
+        writeFleetRootFixture(runtimeRoot, {runtime: true});
+
+        expect(() => loadFleetRuntimeContracts({runtimeRoot})).toThrow(/absolute productRoot/);
+        expect(() => loadFleetRuntimeContracts({productRoot})).toThrow(/absolute runtimeRoot/);
+        expect(() => loadFleetRuntimeContracts({productRoot: 'relative', runtimeRoot})).toThrow(/absolute productRoot/);
+        expect(() => loadFleetRuntimeContracts({productRoot, runtimeRoot: 'relative'})).toThrow(/absolute runtimeRoot/);
+
+        await expect(loadFleetRuntimeContracts({productRoot: runtimeRoot, runtimeRoot: productRoot}))
+            .rejects.toMatchObject({code: 'ERR_MODULE_NOT_FOUND'});
+        await expect(loadFleetRuntimeContracts({productRoot: path.join(workDir, 'missing'), runtimeRoot}))
+            .rejects.toMatchObject({code: 'ERR_MODULE_NOT_FOUND'})
     });
 
     test('buildBrainProfile binds every mutable path under the isolation root and gates every side lane off', () => {
@@ -247,11 +343,12 @@ test.describe('harness brain lifecycle', () => {
             return {ok: true, status: 200, json: async () => ({result: {agentIdentityNodeId, pid: 7}})}
         };
 
-        const admitted = await probeFleetServing({agentIdentityNodeId, bearerToken, fetchFn, port: 1});
+        const admitted = await probeFleetServing({productRoot, agentIdentityNodeId, bearerToken, fetchFn, port: 1});
 
         expect(admitted).toEqual({reusable: true, reason: 'same token, same viewer', viewer: agentIdentityNodeId, pid: 7});
 
         const wrongBearer = await probeFleetServing({
+            productRoot,
             agentIdentityNodeId,
             bearerToken,
             fetchFn: async () => ({ok: false, status: 401}),
@@ -262,6 +359,7 @@ test.describe('harness brain lifecycle', () => {
         expect(wrongBearer.reason).toContain('rejected our bearer');
 
         const wrongViewer = await probeFleetServing({
+            productRoot,
             agentIdentityNodeId,
             bearerToken,
             fetchFn: async () => ({ok: true, status: 200, json: async () => ({result: {agentIdentityNodeId: '@other', pid: 8}})}),
@@ -348,14 +446,14 @@ test.describe('harness brain lifecycle', () => {
             }
         };
 
-        await expect(awaitFleetReady({bearerToken, child, fetchFn, port: 18501, timeoutMs: 5000})).resolves.toBeUndefined();
+        await expect(awaitFleetReady({productRoot, bearerToken, child, fetchFn, port: 18501, timeoutMs: 5000})).resolves.toBeUndefined();
         expect(calls).toBeGreaterThanOrEqual(4)
     });
 
     test('awaitFleetReady rejects when the transport child dies first', async () => {
         const
             child = createFakeChild(),
-            ready = awaitFleetReady({bearerToken, child, fetchFn: async () => { throw new Error('ECONNREFUSED') }, port: 18501, timeoutMs: 5000});
+            ready = awaitFleetReady({productRoot, bearerToken, child, fetchFn: async () => { throw new Error('ECONNREFUSED') }, port: 18501, timeoutMs: 5000});
 
         child.exit(1);
         await expect(ready).rejects.toThrow(/fleet transport exited before ready/)
@@ -369,6 +467,7 @@ test.describe('harness brain lifecycle', () => {
         await rm(repoRoot, {recursive: true});
 
         await expect(awaitFleetReady({
+            productRoot,
             bearerToken,
             child,
             fetchFn  : async () => { throw new Error('fetch must not run') },
@@ -559,6 +658,7 @@ test.describe('harness brain lifecycle', () => {
         writeFileSync(path.join(dataDir, 'orchestrator-daemon.pid'), '8123', 'utf8');
 
         const live = await detectLiveBrain({
+            productRoot,
             agentIdentityNodeId,
             bearerToken,
             commandFn          : () => `node ${ORCHESTRATOR_ENTRY}`,
@@ -566,7 +666,7 @@ test.describe('harness brain lifecycle', () => {
             killFn             : () => true,
             orchestratorDataDir: dataDir,
             probeFleetFn       : async options => {
-                expect(options).toEqual({agentIdentityNodeId, bearerToken, port: 18501});
+                expect(options).toEqual({agentIdentityNodeId, bearerToken, port: 18501, productRoot});
                 return {reusable: true, reason: 'same token, same viewer'}
             },
             probePortFn        : async () => true
@@ -583,6 +683,7 @@ test.describe('harness brain lifecycle', () => {
         // A foreign HTTP server on the fleet port: occupied, but NOT the fleet protocol —
         // attach must not treat it as a reachable Brain surface.
         const squatted = await detectLiveBrain({
+            productRoot,
             agentIdentityNodeId,
             bearerToken,
             commandFn          : () => `node ${ORCHESTRATOR_ENTRY}`,
@@ -598,6 +699,7 @@ test.describe('harness brain lifecycle', () => {
         expect(squatted.fleetRefusalReason).toContain('rejected our bearer');
 
         const unresolvedViewer = await detectLiveBrain({
+            productRoot,
             agentIdentityNodeId: null,
             bearerToken,
             commandFn          : () => `node ${ORCHESTRATOR_ENTRY}`,
@@ -613,6 +715,7 @@ test.describe('harness brain lifecycle', () => {
 
         // A recycled pid running something else must NOT read as a live Brain.
         const foreign = await detectLiveBrain({
+            productRoot,
             agentIdentityNodeId,
             bearerToken,
             commandFn          : () => '/usr/bin/some-other-tool',
@@ -629,6 +732,7 @@ test.describe('harness brain lifecycle', () => {
 
         // No PID file at all.
         const missing = await detectLiveBrain({
+            productRoot,
             agentIdentityNodeId,
             bearerToken,
             fleetPort          : 18501,
@@ -732,6 +836,7 @@ test.describe('resolveUiFleetTransport — the reuse|spawn|foreign OWNER COMPOSI
             outcome = [];
 
         const result = await resolveUiFleetTransport({
+            productRoot,
             awaitReady    : async () => { throw new Error('awaitReady must not run on reuse') },
             bearerToken   : 'shell-held-bearer',
             fleetPort     : 18083,
@@ -754,6 +859,7 @@ test.describe('resolveUiFleetTransport — the reuse|spawn|foreign OWNER COMPOSI
             outcome = [];
 
         const result = await resolveUiFleetTransport({
+            productRoot,
             awaitReady    : async () => { throw new Error('awaitReady must not run on foreign') },
             bearerToken   : 'shell-held-bearer',
             fleetPort     : 18083,
@@ -779,13 +885,19 @@ test.describe('resolveUiFleetTransport — the reuse|spawn|foreign OWNER COMPOSI
             calls    = {registered: []};
 
         const result = await resolveUiFleetTransport({
-            awaitReady    : async ({bearerToken, port}) => sequence.push(`ready:${bearerToken}:${port}`),
+            productRoot,
+            awaitReady    : async ({bearerToken, port, productRoot: requestProductRoot, repoRoot}) => {
+                expect(requestProductRoot).toBe(productRoot);
+                expect(repoRoot).toBe('/fixture/runtime');
+                sequence.push(`ready:${bearerToken}:${port}`)
+            },
             bearerToken   : 'shell-held-bearer',
             fleetPort     : 18083,
             onOutcome     : line => sequence.push(line),
             probePortFn   : async () => false,
             probeServingFn: async () => { throw new Error('serving probe must not run on a free port') },
             registerChild : entry => { calls.registered.push(entry); sequence.push('registered') },
+            repoRoot      : '/fixture/runtime',
             spawn         : ({fleetPort}) => { sequence.push(`spawn:${fleetPort}`); return child }
         });
 

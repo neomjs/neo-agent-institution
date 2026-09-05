@@ -30,8 +30,8 @@ test.describe('FM account configuration model', () => {
 
     test.beforeAll(async () => {
         AgentDefinition = (await import('../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
-        harnessTypes    = await import('../../../../../../apps/agentos/config/harnessTypes.mjs');
-        mcpServers      = await import('../../../../../../apps/agentos/config/mcpServers.mjs');
+        harnessTypes    = await import('neo-agent-brain/fleet-contract');
+        mcpServers      = await import('neo-agent-brain/fleet-contract');
     });
 
     test('the harness registry: every entry carries {type, label}; resolution is registry-driven; unknown types fail closed to null', () => {

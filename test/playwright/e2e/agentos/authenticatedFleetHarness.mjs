@@ -12,7 +12,7 @@ const [
     loadAgentOsModule('ai/mcp/server/shared/helpers/localBearer.mjs'),
     loadAgentOsModule('ai/mcp/server/shared/services/RequestContextService.mjs'),
     loadAgentOsModule('ai/services/fleet/FleetManager.mjs'),
-    loadAgentOsModule('src/fleet/contract/wire.mjs')
+    import('neo-agent-brain/fleet-contract')
 ]);
 
 const E2E_MANAGED_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'institution-fleet-e2e-'));

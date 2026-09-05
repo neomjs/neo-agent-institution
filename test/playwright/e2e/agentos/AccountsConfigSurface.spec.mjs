@@ -1,6 +1,6 @@
 import {test, expect, loadAgentOsModule, loadNeuralLinkModules}  from '../../fixtures.mjs';
 import {authenticatedFleetOptions, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
-import {listHarnessTypes}                                        from '../../../../apps/agentos/config/harnessTypes.mjs';
+import {listHarnessTypes}                                        from 'neo-agent-brain/fleet-contract';
 import fs                                                        from 'fs';
 import os                                                        from 'os';
 import path                                                      from 'path';
