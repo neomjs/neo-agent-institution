@@ -85,12 +85,15 @@ class FleetAgent extends Model {
         }, {
             // The presence axis, same passthrough contract as `wake`/`throttle`: the
             // roster row's `{source, state, confidence, lastSeenAt, reason?, validationState?,
-            // since?}` observation, where `state` is the plane's who_is_online band embryo
+            // since?, beacon?}` observation, where `state` is the plane's who_is_online band embryo
             // (`online | idle | dark | benched | neverConnected | unknown`). The THIRD independent
             // signal — presence-fresh ≠ wake-route-healthy ≠ identity-bound — and the view never
             // re-derives or fuses it. `validationState`/`since` are the provider's validation
             // provenance (`stale-validated` + its onset): passed through verbatim for the card to
-            // PROJECT — never inferred, latched, or mutated downstream (#2).
+            // PROJECT — never inferred, latched, or mutated downstream (the validation-provenance contract). `beacon` is the
+            // producer's turn-presence facet (`fresh | stale | absent | unobserved`) — the fact the
+            // band folds in; the card words `absent` / `stale` beside an active band, and a row
+            // without the field is an older Brain: no word, never a guess.
             name        : 'presence',
             defaultValue: null
         }, {
@@ -142,9 +145,9 @@ class FleetAgent extends Model {
             // expressed as a calculated field so "online first" is a plain store sorter instead of
             // a render-time partition. The derivation itself lives in {@link #tierRankFor}: a
             // calculated field exists on RECORDS only, and the engine's unfiltered projection
-            // (`allItems`) carries a batch as raw rows until something hydrates them (#78,
-            // neomjs/neo#18269) — so the fold predicate derives the tier from `state` itself,
-            // the one field every row shape carries.
+            // (`allItems`) carries a batch as raw rows until something hydrates them — a raw row
+            // has no calculated field to sort on — so the fold predicate derives the tier from
+            // `state` itself, the one field every row shape carries.
             name     : 'tierRank',
             calculate: data => FleetAgent.tierRankFor(data.state)
         }, {

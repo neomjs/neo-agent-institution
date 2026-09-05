@@ -176,12 +176,28 @@
         white-space: nowrap;
         color      : var(--fm-ink-dim);
 
-        /* the provider-validation exception (#2): the WORDS carry it ("validation stale" in the
+        /* the provider-validation exception (the validation-provenance contract): the WORDS carry it ("validation stale" in the
            band text) — this modifier only adds the fm-state-hot emphasis pair (weight + full ink,
            never a hue on text), so geometry and the ordinary band stay untouched */
         &.fm-card-presence-stale {
             color      : var(--fm-ink);
             font-weight: 600;
+        }
+    }
+
+    /* the beacon word: one chip beside the band when an ACTIVE seat's turn-presence beacon is
+       absent or stale — the seat is alive, its hooks are silent, so the idle mark carries it; the
+       stale form drops to dim ink. Hidden for fresh / unobserved, and for an older Brain that
+       sends no facet at all. */
+    .fm-card-beacon {
+        flex       : none;
+        font       : var(--fm-text-micro);
+        line-height: 1;
+        white-space: nowrap;
+        color      : var(--fm-state-idle);
+
+        &.fm-card-beacon-stale {
+            color: var(--fm-ink-dim);
         }
     }
 

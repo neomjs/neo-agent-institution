@@ -26,6 +26,25 @@ const PRESENCE_BAND_LABEL = Object.freeze({
     idle  : 'idle'
 });
 
+/**
+ * The bands under which a seat is ALIVE — the only ones where a silent beacon means something: a
+ * dark, benched or never-connected seat has no hook to be silent. Graded and raw vocabularies
+ * both, for the same deployment-skew reason as the label map above.
+ * @type {Set<String>}
+ */
+const ACTIVE_PRESENCE_BANDS = new Set(['active-turn', 'fresh', 'recent', 'online', 'idle']);
+
+/**
+ * The beacon facets that earn a word, and the diagnostic each carries on the title: the facet is
+ * the producer's turn-presence fact beside the band (`fresh` and `unobserved` render nothing —
+ * a fresh beacon is the band itself, an unobserved one is absence of signal, never a verdict).
+ * @type {Object}
+ */
+const BEACON_WORDS = Object.freeze({
+    absent: 'Active with no turn-presence beacon: the seat writes durable activity, but no beacon from its hooks reached the plane — the hooks are not projected or fail open.',
+    stale : 'The seat\'s last turn-presence beacon is past its horizon: its hooks beaconed once and went quiet while the seat stayed active.'
+});
+
 import FamilyTokens from '../../../../util/FamilyTokens.mjs';
 import NameSlot     from '../../../../util/NameSlot.mjs';
 import SourceHealth from '../../../../util/SourceHealth.mjs';
@@ -206,6 +225,15 @@ class AgentCard extends Container {
                         flex     : 'none',
                         hidden   : true,
                         reference: 'card-presence'
+                    }, {
+                        // the beacon word: the producer's turn-presence facet beside the band — ONE
+                        // word for an active seat whose beacon is absent or stale, hidden otherwise
+                        // (a fresh beacon is the band; an unobserved one is absence of signal)
+                        ntype    : 'component',
+                        cls      : ['fm-card-beacon'],
+                        flex     : 'none',
+                        hidden   : true,
+                        reference: 'card-beacon'
                     }, {
                         // the open-lane count badge (openLaneCount ONLY — never the engine); right-pinned
                         // in the state-line (SCSS margin-left:auto). null count = no badge (never "0 lanes").
@@ -410,7 +438,7 @@ class AgentCard extends Container {
             presence         = record.presence ?? null,
             presenceObserved = presence?.confidence === 'observed' &&
                 Object.hasOwn(PRESENCE_BAND_LABEL, presence?.state),
-            // the provider-owned validation provenance, projected verbatim (#2): the card renders
+            // the provider-owned validation provenance, projected verbatim (the validation-provenance contract): the card renders
             // the exception, never infers, latches, or mutates it
             staleValidation  = presenceObserved && presence.validationState === 'stale-validated',
             bandLabel        = presenceObserved ? PRESENCE_BAND_LABEL[presence.state] : '',
@@ -429,6 +457,23 @@ class AgentCard extends Container {
         presenceBand.changeVdomRootKey('aria-label', staleValidation ? `Presence: ${bandLabel}. Provider validation stale.` : null);
         presenceBand.changeVdomRootKey('title', staleValidation && presence.since != null ?
             `Provider validation stale since ${new Date(presence.since).toISOString()}` : null);
+
+        // The beacon word: read only past an OBSERVED band on an ALIVE seat, and only for the two
+        // facets that say something the band cannot — absent (the hooks never beaconed while the
+        // seat stayed active: the failure that is invisible on every band) and stale (they went
+        // quiet). fresh and unobserved render nothing; an older Brain sends no facet at all and
+        // renders nothing either — never a guess. Cleared whole on every pass: class, text, title.
+        const
+            beacon     = presenceObserved && ACTIVE_PRESENCE_BANDS.has(presence.state) ? presence.beacon : null,
+            beaconWord = Object.hasOwn(BEACON_WORDS, beacon) ? beacon : null,
+            beaconChip = me.getReference('card-beacon');
+
+        beaconChip.set({
+            cls   : beaconWord ? ['fm-card-beacon', `fm-card-beacon-${beaconWord}`] : ['fm-card-beacon'],
+            hidden: !beaconWord,
+            text  : beaconWord ? `beacon ${beaconWord}` : ''
+        });
+        beaconChip.changeVdomRootKey('title', beaconWord ? BEACON_WORDS[beaconWord] : null);
 
         // the name slot: the folded display name as MUTABLE DISPLAY STATE over the durable id
         const
