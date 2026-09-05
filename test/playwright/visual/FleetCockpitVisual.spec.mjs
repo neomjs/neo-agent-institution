@@ -396,11 +396,22 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // the list owns the scroll inside the south strip: the golden witnesses the QUEUE — its head
         // with the counts, the lease line, the starved waiter — so the queued head leads the capture
         await page.evaluate(() => {
-            document.querySelector('.fm-tasks-pane .fm-tasks-section-head.is-queued').scrollIntoView({block: 'start'});
-            // a narrow band wraps the rows taller than the strip is high: keep the head where it fits,
-            // and scroll the starved waiter the rest of the way in
-            document.querySelector('.fm-tasks-pane .fm-task-state.is-starved').closest('.fm-task-row').scrollIntoView({block: 'nearest'})
+            const
+                pane = document.querySelector('.fm-tasks-pane'),
+                list = pane.querySelector('.fm-tasks-list'),
+                head = pane.querySelector('.fm-tasks-section-head.is-queued'),
+                row  = pane.querySelector('.fm-task-state.is-starved').closest('.fm-task-row');
+
+            head.scrollIntoView({block: 'start'});
+            // a narrow band wraps the rows taller than the strip is high: bring the starved waiter in,
+            // then give its first line (the name, in the band) back the room the sticky head covers
+            row.scrollIntoView({block: 'nearest'});
+
+            const covered = head.getBoundingClientRect().bottom - row.getBoundingClientRect().top;
+
+            if (covered > 0) { list.scrollTop -= covered }
         });
+        await expect(page.locator('.fm-tasks-pane .fm-task-row:has(.fm-task-state.is-starved) .fm-task-name')).toBeInViewport();
         await expect(page.locator('.fm-tasks-pane .fm-task-state.is-starved')).toBeInViewport()
     };
 
@@ -491,5 +502,39 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await switchToLightSkin(page);
         await expect(page.locator('.fm-tasks-pane')).toHaveScreenshot('tasks-pane-240-light.png')
+    });
+
+    test('the Tasks pane between the bands — 301 · 400 · 649: the dense rows wrap, no fact clips, every name keeps its floor (geometry asserted, no golden)', async ({page}) => {
+        // The widths the wrap band does not cover and the desktop does not reach: the cold spine's
+        // starved sample carries the live queue's density (an instant, both flags, a yield cause),
+        // and a row must fold its facts onto the next line before a name can lose its width. The
+        // pane is pinned through a stylesheet (the 240 arm's reason); each pin re-lays the rows live.
+        await page.setViewportSize({width: 720, height: 900});
+        await bootSettledCockpit(page);
+        await openTasksPane(page);
+
+        const nameFloorPx = await page.evaluate(() => {
+            const name = document.querySelector('.fm-tasks-pane .fm-task-name');
+
+            // 12ch of the name's own font — the floor the skin declares
+            return 12 * parseFloat(getComputedStyle(name).fontSize) * 0.5
+        });
+
+        for (const width of [649, 400, 301]) {
+            await page.addStyleTag({content: `.fm-tasks-pane { max-width: ${width}px; }`});
+            await page.evaluate(() => document.querySelector('.fm-tasks-pane .fm-task-state.is-starved').closest('.fm-task-row').scrollIntoView({block: 'nearest'}));
+
+            const geometry = await measureTasksPane(page),
+                  names    = await page.evaluate(() => [...document.querySelectorAll('.fm-tasks-pane .fm-task-row .fm-task-name')].map(name => ({
+                      text : name.textContent,
+                      width: Math.round(name.getBoundingClientRect().width)
+                  })));
+
+            expect(geometry.width, `pinned at ${width}`).toBe(width);
+            expect(geometry.noClip, `${width}: ${JSON.stringify(geometry)}`).toBe(true);
+            expect(geometry.spill, `${width}: ${JSON.stringify(geometry)}`).toBe(0);
+            expect(names.length, `${width}: rows rendered`).toBeGreaterThan(0);
+            names.forEach(name => expect(name.width, `${width}: "${name.text}" keeps its floor`).toBeGreaterThanOrEqual(nameFloorPx))
+        }
     });
 });

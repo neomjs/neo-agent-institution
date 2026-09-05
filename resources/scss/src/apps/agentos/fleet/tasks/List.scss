@@ -47,11 +47,15 @@
         font : var(--fm-text-detail);
     }
 
-    /* one row grammar: [time] [name] [state] [progress?] [provenance] on the sibling card plate */
+    /* one row grammar: [time] [name] [state] [progress?] [wait?] [cause?] [flags?] [provenance] on
+       the sibling card plate. The row WRAPS: the name keeps a floor, and the facts that no longer
+       fit beside it fall to the next line — between the narrow band and the desktop a fact is
+       never clipped and a name never collapses to nothing */
     .fm-task-row {
         align-items  : center;
         display      : flex;
-        gap          : var(--fm-space-2);
+        flex-wrap    : wrap;
+        gap          : var(--fm-space-1) var(--fm-space-2);
         padding      : var(--fm-space-2) var(--fm-space-3);
         border       : 1px solid var(--fm-line-soft);
         border-radius: var(--fm-chip-radius);
@@ -70,12 +74,14 @@
         white-space: nowrap;
     }
 
-    /* one line, ellipsis — the density-frozen-window rule; the detail rides the title */
+    /* one line, ellipsis — the density-frozen-window rule; the detail rides the title. The floor is
+       what makes the row wrap instead of eating the name: a zero basis would let the fixed cells
+       take the whole line first */
     .fm-task-name {
         color        : var(--fm-ink);
-        flex         : 1;
+        flex         : 1 1 12ch;
         font         : var(--fm-text-body);
-        min-width    : 0;
+        min-width    : 12ch;
         overflow     : hidden;
         text-overflow: ellipsis;
         white-space  : nowrap;
@@ -263,11 +269,6 @@
     /* the narrow band: the name leads on its own line, time · state share the second, the wait
        and the cause keep whole lines — text wraps, nothing is clipped, the meaning stays whole */
     @container (max-width: 300px) {
-        .fm-task-row {
-            flex-wrap: wrap;
-            row-gap  : var(--fm-space-1);
-        }
-
         .fm-task-name {
             flex-basis   : 100%;
             order        : -1;

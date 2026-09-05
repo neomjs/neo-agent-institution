@@ -26,8 +26,12 @@ const SECTIONS = Object.freeze([
 const SAMPLE_ROWS = Object.freeze([
     {id: 'sample:running', section: 'running', name: 'Tenant repo sync',       source: 'orchestrator', state: 'in progress', at: null, progressKind: 'determinate', progressDone: 42, progressTotal: 100, detail: null},
     {id: 'sample:queued',  section: 'queued',  name: 'Repo sync · 1a2b3c4d',   source: 'orchestrator', state: 'scheduled',   at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null},
-    // the queue's starved shape: a waiter behind the maintenance lease, its wait as text, its own cause
-    {id: 'sample:starved', section: 'queued',  name: 'core-corpus-projection', source: 'orchestrator', state: 'starved',     at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null, waitMs: 42_300_000, thresholdMs: 3_600_000, reasonCode: 'heavy-maintenance-lease-held', leaseOwner: 'summary'},
+    // the queue's starved shape at the live queue's density — the instant it was deferred, both
+    // flags, its own cause naming the task it yielded to: the pressure a real waiter puts on a row,
+    // so the cold spine teaches (and the goldens witness) the layout the plane will fill
+    {id: 'sample:starved', section: 'queued',  name: 'core-corpus-projection', source: 'orchestrator', state: 'starved',     at: '2026-07-05T06:13:43.059Z', progressKind: null, progressDone: null, progressTotal: null, detail: null, waitMs: 42_300_000, thresholdMs: 3_600_000, reasonCode: 'heavy-maintenance-yield-to-waiter', blockingTaskName: 'dream', leaseOwner: null, priorityZero: true, bootstrapCritical: true},
+    // the queue's second producer: the digest backlog is a queue fact under its own word, never a task
+    {id: 'sample:digest',  section: 'queued',  name: 'REM digest',             source: 'mc',           state: 'backlog',     at: null, progressKind: 'backlog',     progressDone: 1040, progressTotal: 2000, detail: '960 undigested · 1040 digested'},
     {id: 'sample:recent',  section: 'recent',  name: 'KB ingestion',           source: 'kb',           state: 'completed',   at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null}
 ]);
 
@@ -37,6 +41,36 @@ const SAMPLE_ROWS = Object.freeze([
  * @type {Object}
  */
 const SAMPLE_SCHEDULER = Object.freeze({leaseHolder: 'summary', leaseStatus: 'active', posture: 'degraded', checkedAt: null, degradeAfterMs: 3_600_000, starvedTotal: 1, unreadableCount: 0});
+
+/**
+ * @summary Whether the watchdog's reading left part of the queue unobserved: unreadable ledger
+ * entries, the `unknown` posture they produce, or a lease file the check could not read. An empty
+ * visible queue under such a reading is not an absence — the writer's own contract keeps a corrupt
+ * reading and a clean one apart, and the surface must too.
+ * @param {Object|null} scheduler The envelope's scheduler summary.
+ * @returns {Boolean}
+ */
+function isQueueUnobserved(scheduler) {
+    return Boolean(scheduler) && (
+        (Number.isInteger(scheduler.unreadableCount) && scheduler.unreadableCount > 0) ||
+        scheduler.posture === 'unknown' ||
+        scheduler.leaseStatus === 'unreadable' || scheduler.leaseStatus === 'malformed'
+    )
+}
+
+/**
+ * @summary The empty-queue line under an incomplete reading — what could not be read, in words,
+ * never "nothing scheduled".
+ * @param {Object} scheduler The envelope's scheduler summary.
+ * @returns {String}
+ */
+function unobservedQueueLine(scheduler) {
+    const count = scheduler.unreadableCount;
+
+    return Number.isInteger(count) && count > 0
+        ? `Queue not fully observed — ${count} ledger ${count === 1 ? 'entry' : 'entries'} unreadable.`
+        : 'Queue not fully observed — the lease could not be read.'
+}
 
 /**
  * The resident Fleet tasks surface: WHAT the deployment is doing — running, queued / next, and
@@ -287,7 +321,9 @@ class Container extends BaseContainer {
                         id     : `empty:${section.id}`,
                         rowKind: 'empty',
                         section: section.id,
-                        label  : wired ? section.empty : 'The task sources did not answer. Nothing here claims to be the deployment.'
+                        label  : !wired
+                            ? 'The task sources did not answer. Nothing here claims to be the deployment.'
+                            : queued && isQueueUnobserved(scheduler) ? unobservedQueueLine(scheduler) : section.empty
                     }])
                 ]
             });

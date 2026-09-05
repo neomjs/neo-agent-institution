@@ -320,13 +320,17 @@ class List extends BaseList {
     leaseLine(record) {
         const
             me      = this,
+            status  = record.leaseStatus,
             posture = record.posture,
-            count   = record.unreadableCount;
+            count   = record.unreadableCount,
+            // a null holder is an ABSENCE only when the lease file was read: unreadable or malformed
+            // means the holder is unknown, and the line must never claim that nobody holds it
+            unknown = !record.leaseHolder && (status === 'unreadable' || status === 'malformed');
 
         return [
             'maintenance lease',
-            record.leaseHolder ? `<b>${escapeHtml(record.leaseHolder)}</b>` : 'no active holder',
-            record.leaseStatus ? escapeHtml(record.leaseStatus) : null,
+            record.leaseHolder ? `<b>${escapeHtml(record.leaseHolder)}</b>` : unknown ? `lease ${escapeHtml(status)} — holder unknown` : 'no active holder',
+            status && !unknown ? escapeHtml(status) : null,
             posture ? `posture <span class="is-${escapeHtml(posture)}">${escapeHtml(posture)}</span>` : null,
             Number.isInteger(count) && count > 0 ? `<b>${count}</b> ${count === 1 ? 'entry' : 'entries'} unreadable` : null,
             record.checkedAt ? `checked <b>${escapeHtml(me.formatStamp(record.checkedAt))}</b>` : null,

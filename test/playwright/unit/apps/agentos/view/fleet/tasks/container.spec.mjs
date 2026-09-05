@@ -143,7 +143,7 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         }
 
         // provenance once per homogeneous section: the sample word sits on the head, never repeated per row
-        for (const [section, count] of [['running', 1], ['queued', 2], ['recent', 1]]) {
+        for (const [section, count] of [['running', 1], ['queued', 3], ['recent', 1]]) {
             const rows = rowsIn(pane, section);
 
             expect(rows, section).toHaveLength(count);
@@ -156,14 +156,23 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         expect(progress.cn[0]).toMatchObject({tag: 'progress', value: 42, max: 100});
         expect(progress.cn[1].text).toBe('42%');
 
-        // the queue's starved sample: the wait as text with its bound, the cause from its own code
+        // the queue's starved sample at the live queue's density: an instant, the wait as text with
+        // its bound, the cause from its own code naming the task it yielded to, both flags as words
         const starved = rowsIn(pane, 'queued')[1];
 
+        expect(cellOf(starved, 'fm-task-time').text, 'a deferred-since instant renders, never the dash').not.toBe('—');
         expect(cellOf(starved, 'fm-task-state').text).toBe('starved');
         expect(cellOf(starved, 'fm-task-state').cls).toContain('is-starved');
         expect(cellOf(starved, 'fm-task-wait').cn[0].text).toBe('waiting 11 h 45 min');
         expect(cellOf(starved, 'fm-task-wait').cn[1].text).toBe('threshold 1 h');
-        expect(cellOf(starved, 'fm-task-cause').html).toBe('lease held by <b>summary</b>');
+        expect(cellOf(starved, 'fm-task-cause').html).toBe('yielded to <b>dream</b>');
+        expect(cellsOf(starved).filter(cell => cell.cls?.includes('is-flag')).map(cell => cell.text)).toEqual(['priority zero', 'bootstrap critical']);
+
+        // the queue's second producer teaches the backlog gauge under its own word
+        const digest = rowsIn(pane, 'queued')[2];
+
+        expect(cellOf(digest, 'fm-task-state').text).toBe('backlog');
+        expect(cellsOf(digest).find(cell => cell.cls?.includes('fm-task-progress')).cn[0]).toMatchObject({tag: 'progress', value: 1040, max: 2000});
 
         // the lease line is part of the shape too — labeled sample by the head above it
         expect(metaIn(pane, 'queued').html).toContain('maintenance lease · <b>summary</b> · active · posture <span class="is-degraded">degraded</span>');
@@ -171,7 +180,7 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         // the Store is the full render projection now — sample rows enter LABELED (`sample: true`,
         // the pill word), never as deployment claims: zero unlabeled task records on the cold spine
         expect(taskCount(pane), 'no record claims to be the deployment').toBe(0);
-        expect(pane.taskStore.items.filter(record => record.sample && record.rowKind === 'task')).toHaveLength(4);
+        expect(pane.taskStore.items.filter(record => record.sample && record.rowKind === 'task')).toHaveLength(5);
 
         pane.destroy()
     });
@@ -189,7 +198,7 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
             expect(pillOf(header).text).toBe('sample')
         }
 
-        for (const [section, count] of [['running', 1], ['queued', 2], ['recent', 1]]) {
+        for (const [section, count] of [['running', 1], ['queued', 3], ['recent', 1]]) {
             expect(rowsIn(pane, section)).toHaveLength(count);
             rowsIn(pane, section).forEach(row => expect(cellOf(row, 'is-sample')).toBeUndefined())
         }
@@ -409,6 +418,62 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         expect(metaIn(pane, 'queued').html).toContain('posture <span class="is-unknown">unknown</span> · <b>2</b> entries unreadable');
         expect(rowsIn(pane, 'queued').filter(row => cellOf(row, 'fm-task-state').text === 'starved')).toHaveLength(0);
         expect(emptyIn(pane, 'queued'), 'three rows remain — the queue is not empty').toBeUndefined();
+
+        pane.destroy()
+    });
+
+    test('an unreadable reading is never an absence: an unreadable lease says the holder is unknown, and an empty visible queue over unreadable ledger entries says the queue was not fully observed — the writer\'s own distinction, kept', () => {
+        const checkedAt = '2026-09-05T12:49:36.362Z';
+
+        // the watchdog's reading with two unreadable waiter entries and a lease file it could not read; a
+        // retained completed backup under recent; the REM source unavailable → a valid PARTIAL envelope
+        // with zero queued rows
+        const {pane} = createPane({snapshot: starvedEnvelope({
+            capability: {state: 'partial', capturedAt: '2026-09-05T12:50:00.000Z'},
+            sources   : {
+                deployment: {state: 'wired', reason: null, observedAt: '2026-09-05T12:47:55.668Z'},
+                rem       : {state: 'unavailable', reason: 'get_rem_pipeline_state failed'},
+                ingestion : {state: 'unwired', reason: 'ingestion-verb-unreachable-from-this-process', scope: null}
+            },
+            scheduler: {leaseHolder: null, leaseStatus: 'unreadable', checkedAt, degradeAfterMs: 3600000, posture: 'unknown', starvedTotal: 0, unreadableCount: 2},
+            queued   : [],
+            recent   : [{id: 'orchestrator:maintenance:backup', section: 'recent', name: 'Backup lane', source: 'orchestrator', state: 'healthy', at: '2026-09-05T11:49:36.362Z', progress: null, detail: null}],
+            counts   : {running: 0, queued: 0, recent: 1, queuedKnown: 0}
+        })});
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · lease unreadable — holder unknown · posture <span class="is-unknown">unknown</span> · <b>2</b> entries unreadable');
+        expect(metaIn(pane, 'queued').html, 'the status word is not repeated after it was folded into the holder word').not.toContain('unknown · unreadable');
+        expect(emptyIn(pane, 'queued').text).toBe('Queue not fully observed — 2 ledger entries unreadable.');
+        expect(rowsIn(pane, 'recent')).toHaveLength(1);
+
+        // the lease unreadable but the ledger clean: the queue IS observed empty of readable waiters, the lease is not
+        pane.snapshot = starvedEnvelope({
+            scheduler: {leaseHolder: null, leaseStatus: 'unreadable', checkedAt, degradeAfterMs: 3600000, posture: 'healthy', starvedTotal: 0, unreadableCount: 0},
+            queued   : [],
+            counts   : {running: 0, queued: 0, recent: 0, queuedKnown: 0}
+        });
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · lease unreadable — holder unknown · posture <span class="is-healthy">healthy</span>');
+        expect(emptyIn(pane, 'queued').text).toBe('Queue not fully observed — the lease could not be read.');
+
+        // control: a lease file read as MISSING is the observed absence — no active holder, nothing scheduled
+        pane.snapshot = starvedEnvelope({
+            scheduler: {leaseHolder: null, leaseStatus: 'missing', checkedAt, degradeAfterMs: 3600000, posture: 'healthy', starvedTotal: 0, unreadableCount: 0},
+            queued   : [],
+            counts   : {running: 0, queued: 0, recent: 0, queuedKnown: 0}
+        });
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · no active holder · missing · posture <span class="is-healthy">healthy</span>');
+        expect(emptyIn(pane, 'queued').text).toBe('Nothing scheduled.');
+
+        // control: unreadable entries beside READABLE rows — the rows stay, the line stays on the lease, no empty line
+        pane.snapshot = starvedEnvelope({
+            scheduler: {leaseHolder: 'summary', leaseStatus: 'active', checkedAt, degradeAfterMs: 3600000, posture: 'degraded', starvedTotal: 3, unreadableCount: 1}
+        });
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · <b>summary</b> · active · posture <span class="is-degraded">degraded</span> · <b>1</b> entry unreadable');
+        expect(emptyIn(pane, 'queued')).toBeUndefined();
+        expect(rowsIn(pane, 'queued')).toHaveLength(6);
 
         pane.destroy()
     });
