@@ -93,6 +93,9 @@ export function resolveLauncherRuntimeRoot({brainMode, env = process.env, packag
 /**
  * Loads Fleet trust primitives from the selected organism instead of the shell bundle.
  * @summary Keeps checkout and packaged launchers on one canonical Fleet contract implementation.
+ * The wire vocabulary comes from the Brain's client-safe contract (`src/fleet/contract/wire.mjs`);
+ * the credential-bearing verb classification stays launcher-only and comes from the private
+ * `ai/services/fleet/fleetLaunchContract.mjs`, never from a client-facing module.
  * @param {String} [repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain checkout or packaged organism root.
  * @returns {Promise<Object>}
  */
@@ -105,9 +108,9 @@ export function loadFleetRuntimeContracts(repoRoot = resolveAgentOsRuntimeRoot()
         contract = Promise.all([
             import(pathToFileURL(path.join(absoluteRoot, 'ai/graph/normalizeAgentIdentityNodeId.mjs')).href),
             import(pathToFileURL(path.join(absoluteRoot, 'ai/services/fleet/fleetLaunchContract.mjs')).href),
-            import(pathToFileURL(path.join(absoluteRoot, 'ai/services/fleet/fleetWireMethods.mjs')).href)
+            import(pathToFileURL(path.join(absoluteRoot, 'src/fleet/contract/wire.mjs')).href)
         ]).then(([identityContract, fleetContract, wireContract]) => ({
-            FLEET_CREDENTIAL_METHODS    : wireContract.FLEET_CREDENTIAL_METHODS,
+            FLEET_CREDENTIAL_METHODS    : fleetContract.FLEET_CREDENTIAL_METHODS,
             FLEET_WIRE_METHODS          : wireContract.FLEET_WIRE_METHODS,
             FLEET_WIRE_RESPONSE_STATES  : wireContract.FLEET_WIRE_RESPONSE_STATES,
             createFleetWireOffer        : wireContract.createFleetWireOffer,
