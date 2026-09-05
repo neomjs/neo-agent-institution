@@ -13,10 +13,11 @@ setup({
     }
 });
 
-import {test, expect}          from '@playwright/test';
-import Neo                     from '../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core               from '../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import {createFleetCapability} from '../../../../../../harness/fleetCapability.mjs';
+import {test, expect}             from '@playwright/test';
+import Neo                        from '../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core                  from '../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import {createFleetCapability}    from '../../../../../../harness/fleetCapability.mjs';
+import {FLEET_CREDENTIAL_METHODS} from '../../../../../../node_modules/neo-agent-brain/ai/services/fleet/fleetLaunchContract.mjs';
 import {
     FLEET_LOCAL_TRANSPORT_ERRORS,
     installFleetBridge
@@ -26,12 +27,11 @@ import {
     createFleetWireProtocolStamp,
     createFleetWireRequest,
     createFleetWireResponse,
-    FLEET_CREDENTIAL_METHODS,
     FLEET_WIRE_CAPABILITIES,
     FLEET_WIRE_METHODS,
     FLEET_WIRE_RESPONSE_STATES,
     inspectFleetWireResponse
-} from '../../../../../../apps/agentos/config/fleetWireMethods.mjs';
+} from 'neo-agent-brain/fleet-contract';
 
 // installFleetBridge is the App-Worker wiring that publishes globalThis.AgentOS.fleet.registryBridge.
 // Tests inject a `target` object (instead of the real globalThis) + a stub `fetchImpl`, so the global

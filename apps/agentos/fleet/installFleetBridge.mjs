@@ -6,7 +6,7 @@ import {
     FLEET_WIRE_METHODS,
     FLEET_WIRE_RESPONSE_STATES,
     inspectFleetWireResponse
-} from '../config/fleetWireMethods.mjs';
+} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * Query-param names that would smuggle credential material through a URL. The Fleet launch
@@ -31,13 +31,12 @@ export const FLEET_LOCAL_TRANSPORT_ERRORS = Object.freeze({
  * @summary Wire one topology-owned app↔fleet transport into the App Worker. Direct-browser mode
  * builds a `fetch`-backed `send` against the Fleet URL; the packaged Electron shell injects a named
  * preload/main `send` whose bearer never enters this realm. Both feed the proxy map generated here
- * over the app's wire-method twin (`../config/fleetWireMethods.mjs`) and publish it at
+ * over the installed public Fleet contract and publish it at
  * `globalThis.AgentOS.fleet.registryBridge` — the exact slot the AgentOS
  * pane resolves (`apps/agentos/view/accounts/Panel.mjs:260`). Once this has run, the pane's fail-closed
  * `submitToFleetRegistryBridge` path goes live instead of throwing "Fleet Registry bridge unavailable".
  * The Node-side dual (`ai/services/fleet/createFleetRegistryBridge.mjs`, consumed by CLI tools)
- * binds the AUTHORITY list; the vocabulary-parity lint keeps the two lists identical, so the ends
- * of the wire cannot drift while neither realm imports across the boundary.
+ * consumes the same public vocabulary while keeping its authorization policy private.
  * Every call creates a fresh version/capability offer and validates the server-selected contract
  * before returning operation data. Direct-browser mode emits that offer itself; shell mode keeps
  * the IPC message at `{method, params}` so Electron main can attach its independently loaded,

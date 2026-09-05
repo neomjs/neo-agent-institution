@@ -2,7 +2,7 @@ import Button             from '../../../../../node_modules/neo.mjs/src/button/B
 import FormContainer      from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
 import PasswordField      from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
 import TextField          from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
-import {listHarnessTypes} from '../../../config/harnessTypes.mjs';
+import {listHarnessTypes} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 import AddAgentFlow       from '../../../util/AddAgentFlow.mjs';
 
 /**
@@ -109,7 +109,7 @@ class AddAgentForm extends FormContainer {
             reference      : 'field-credential',
             required       : true
         }, {
-            // one registration in config/harnessTypes.mjs = one more chip here — the row derives
+            // one registration in the public harness catalog = one more chip here — the row derives
             // from the registry, labels are the registry's product language (config-card twin)
             ntype    : 'container',
             cls      : ['fm-add-harness-row'],

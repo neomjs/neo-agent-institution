@@ -3,7 +3,7 @@ import DeploymentServices           from '../../store/DeploymentServices.mjs';
 import PlaneList                    from './List.mjs';
 import AgentFreshness               from '../../util/AgentFreshness.mjs';
 import ViewerTime                   from '../../util/ViewerTime.mjs';
-import {FLEET_WIRE_RESPONSE_STATES} from '../../config/fleetWireMethods.mjs';
+import {FLEET_WIRE_RESPONSE_STATES} from '../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @summary The whole-view reason copy per reason the wire names; any other reason prints itself.

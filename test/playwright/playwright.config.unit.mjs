@@ -16,9 +16,8 @@ process.env.UNIT_TEST_MODE = 'true';
  */
 export const crossRepoBrainTestIgnore = [
     /[\\/]harness[\\/](brain|fleetCapability)\.spec\.mjs$/,
-    /[\\/]apps[\\/]agentos[\\/]config[\\/]fleetVocabularyParity\.spec\.mjs$/,
     /[\\/]apps[\\/]agentos[\\/]fleet[\\/](connectionProfiles|fleetTransport\.integration|fleetWakeStreamConsumer(?:\.live)?)\.spec\.mjs$/,
-    /[\\/]apps[\\/]agentos[\\/]view[\\/]fleet[\\/](mailbox[\\/]operatorSeatConflationParity|util[\\/]kindRegistry)\.spec\.mjs$/
+    /[\\/]apps[\\/]agentos[\\/]view[\\/]fleet[\\/]mailbox[\\/]operatorSeatConflationParity\.spec\.mjs$/
 ];
 
 const reporter = [['json', {outputFile: path.join(dirname, 'test-results/unit/test-results.json')}]];

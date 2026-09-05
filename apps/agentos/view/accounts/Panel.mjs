@@ -4,7 +4,7 @@ import ConfigIntentRoundTrip from '../../util/ConfigIntentRoundTrip.mjs';
 import Button                from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import DashboardPanel        from '../../../../node_modules/neo.mjs/src/dashboard/Panel.mjs';
 import FormContainer         from '../../../../node_modules/neo.mjs/src/form/Container.mjs';
-import {listHarnessTypes}    from '../../config/harnessTypes.mjs';
+import {listHarnessTypes}    from '../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 import PasswordField         from '../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
 import Radio                 from '../../../../node_modules/neo.mjs/src/form/field/Radio.mjs';
 import TextField             from '../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
@@ -140,7 +140,7 @@ class Accounts extends DashboardPanel {
                 module: Toolbar,
                 cls   : ['agent-harness-picker'],
                 flex  : 'none',
-                // one registration in config/harnessTypes.mjs = one more radio here — the form
+                // one registration in the public harness catalog = one more radio here — the form
                 // derives from the registry, labels are the registry's product language
                 items : listHarnessTypes().map((entry, index) => ({
                     module        : Radio,

@@ -1,11 +1,11 @@
 import Component                              from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
-import {listHarnessTypes, resolveHarnessType} from '../../../config/harnessTypes.mjs';
+import {listHarnessTypes, resolveHarnessType} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 import {
     listMcpServers,
     normalizeMcpOverrides,
     resolveMcpMatrix,
     supportsTenantMcpTarget
-} from '../../../config/mcpServers.mjs';
+} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @class AgentOS.view.fleet.detail.AgentConfigComponent
@@ -13,7 +13,7 @@ import {
  *
  * @summary The per-agent configuration card — renders ONE selected agent's configuration from its
  * {@link AgentOS.model.AgentDefinition} record, entirely derived from the registries
- * (`config/harnessTypes.mjs` + `config/mcpServers.mjs`): the harness (registry label, fail-closed
+ * (Brain's public Fleet contract): the harness (registry label, fail-closed
  * "Unknown harness" for unregistered types), the MCP-server matrix (catalog order, effective
  * enable-state via `resolveMcpMatrix` — null matrix = catalog defaults), and the operational
  * toggles with tri-state honesty (On / Off / "Not read back yet" — never an optimistic guess).

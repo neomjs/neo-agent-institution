@@ -20,8 +20,8 @@ import * as core                                                        from '..
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                       '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {makeActivityStoreHarness, makeControllerFake, makeProviderFake} from './cockpitFakes.mjs';
-import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
-import {createFleetWireResponse} from '../../../../../../../../apps/agentos/config/fleetWireMethods.mjs';
+import {installFleetBridge}                                             from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import {createFleetWireResponse}                                        from 'neo-agent-brain/fleet-contract';
 
 /**
  * The slot-sync consumer witness: `syncSpineBanner` against a REAL recording banner slot — the
@@ -72,7 +72,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
     // …and the render half that remains component-local: the title mirror. The banner is
     // presentation-thin — the slot binds text/cls/hidden from the derived data, and afterSetText
     // carries the full sentence onto the vdom `title` (the drill-free detail).
-    // the status-word contract: text and title are independent channels now — the component's title write happens on
+    // Text and title are independent channels — the component's title write happens on
     // the bannerTitle beat, never as a text mirror. This drives the REAL afterSet path.
     const titleAfterBannerTitle = title => {
         const fake = Object.create(SpineBannerComponent.prototype);

@@ -108,11 +108,11 @@ export function assertNoInstanceOverlays(stageDir) {
 }
 
 // Dependencies the bare-import scan cannot see, each under the OWNER whose manifest declares it:
-// the CSS-linked fontawesome package (the product's allowlist serves its files) and the Chroma
-// embed provider the Brain resolves dynamically at runtime.
+// the product's CSS-linked fonts and URL-imported public Fleet contract, plus the Chroma embed
+// provider the Brain resolves dynamically at runtime. Renderer paths never widen runtime policy.
 export const SUPPLEMENTAL_DEPENDENCIES = Object.freeze({
     brain  : Object.freeze(['@chroma-core/default-embed']),
-    product: Object.freeze(['@fortawesome/fontawesome-free'])
+    product: Object.freeze(['@fortawesome/fontawesome-free', 'neo-agent-brain'])
 });
 
 // Shared names with ONE declared owner, whichever tree imports them: the Engine is the product's

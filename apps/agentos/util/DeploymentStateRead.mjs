@@ -1,5 +1,5 @@
 import Base                         from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import {FLEET_WIRE_RESPONSE_STATES} from '../config/fleetWireMethods.mjs';
+import {FLEET_WIRE_RESPONSE_STATES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @module apps/agentos/util/DeploymentStateRead
