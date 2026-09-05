@@ -72,7 +72,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
     // …and the render half that remains component-local: the title mirror. The banner is
     // presentation-thin — the slot binds text/cls/hidden from the derived data, and afterSetText
     // carries the full sentence onto the vdom `title` (the drill-free detail).
-    // #23: text and title are independent channels now — the component's title write happens on
+    // the status-word contract: text and title are independent channels now — the component's title write happens on
     // the bannerTitle beat, never as a text mirror. This drives the REAL afterSet path.
     const titleAfterBannerTitle = title => {
         const fake = Object.create(SpineBannerComponent.prototype);
