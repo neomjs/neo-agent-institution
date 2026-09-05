@@ -176,7 +176,7 @@
         white-space: nowrap;
         color      : var(--fm-ink-dim);
 
-        /* the provider-validation exception (#2): the WORDS carry it ("validation stale" in the
+        /* the provider-validation exception (the validation-provenance contract): the WORDS carry it ("validation stale" in the
            band text) — this modifier only adds the fm-state-hot emphasis pair (weight + full ink,
            never a hue on text), so geometry and the ordinary band stay untouched */
         &.fm-card-presence-stale {

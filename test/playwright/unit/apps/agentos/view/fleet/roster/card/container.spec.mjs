@@ -190,7 +190,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
     });
 
     // the provider-owned validation provenance, projected on the band: words + aria pair, and a
-    // fresh observation clears class, text, aria-label AND title in one pass (#2)
+    // fresh observation clears class, text, aria-label AND title in one pass (the validation-provenance contract)
     test('stale validation is a visible presence exception and clears without residue', () => {
         const since = Date.parse('2026-08-09T10:55:00.000Z'),
               card  = createCard({
@@ -401,8 +401,8 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         // read as "no one knows what that means", so the narrow row keeps the REAL Start/Stop + Restart
         // glyphs inline. They are icon-only (`.neo-button-text` is display:none), so the aria-label IS
         // their only accessible name — and it must reach the DOM through the vdom ROOT (changeVdomRootKey),
-        // because `ariaLabel` is undeclared in Neo and sets a memory property with ZERO DOM effect (Emmy
-        // RA-2 falsified the memory-only claim). The power verb is CONTEXTUAL, matching the toggle; every
+        // because `ariaLabel` is undeclared in Neo and sets a memory property with ZERO DOM effect (this
+        // arm falsifies the memory-only claim). The power verb is CONTEXTUAL, matching the toggle; every
         // verb names its subject (the FM roster names what it acts on).
         const card = createCard({agentId: 'vega', state: 'off'});
 

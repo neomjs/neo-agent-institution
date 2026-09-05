@@ -438,7 +438,7 @@ class AgentCard extends Container {
             presence         = record.presence ?? null,
             presenceObserved = presence?.confidence === 'observed' &&
                 Object.hasOwn(PRESENCE_BAND_LABEL, presence?.state),
-            // the provider-owned validation provenance, projected verbatim (#2): the card renders
+            // the provider-owned validation provenance, projected verbatim (the validation-provenance contract): the card renders
             // the exception, never infers, latches, or mutates it
             staleValidation  = presenceObserved && presence.validationState === 'stale-validated',
             bandLabel        = presenceObserved ? PRESENCE_BAND_LABEL[presence.state] : '',
