@@ -65,7 +65,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         ));
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
 
-        // #85's shared measure — the fleet head's no-clip geometry, read by the narrow arms below:
+        // the fleet head's shared no-clip measure — its geometry, read by the narrow arms below:
         // a legend that hides its last states says those states do not exist, so every band
         // asserts scrollWidth inside clientWidth and the last swatch inside the row.
         await page.evaluate(() => {
@@ -93,7 +93,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the default shell layout — the committed document projected (fleet over stream, chrome tucked)', async ({page}) => {
         await bootSettledCockpit(page);
 
-        // #92: every inline dock header paints the cockpit's own plate and edge — never the
+        // every inline dock header paints the cockpit's own plate and edge — never the
         // theme's neutral-highlighted band. This is a COMPUTED-STYLE witness on purpose: the
         // pixel comparator (pixelmatch at threshold 0.2, YIQ) reads the theme's rgb(41,45,40)
         // and the cockpit's rgb(20,26,35) as the same pixel, so the golden alone cannot see
@@ -201,7 +201,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         });
 
         expect(geometry.viewport, 'the viewport itself is the 314px vessel window').toBe(314);
-        // #85: the seven-state legend folds inside its bar at vessel width — never clips a state
+        // the seven-state legend folds inside its bar at vessel width — never clips a state
         expect(geometry.head.swatches, 'all seven legend states are rendered at vessel width').toBe(7);
         expect(geometry.head.scrollWidth, 'the head row hides nothing: no horizontal pressure').toBeLessThanOrEqual(geometry.head.clientWidth);
         expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
@@ -274,7 +274,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the 720 intermediate band — mark regime: no wrap, no overflow, state collapses to marks with titles (viewport capture, geometry asserted)', async ({page}) => {
         // The lattice's third point, between the 314 fit witness and the desktop baselines:
         // above the 570px vessel-narrow threshold (the @container block must stay silent — no bar
-        // wrap, no split stacking) but inside the #23 collapse order's narrow step (≤730): state
+        // wrap, no split stacking) but inside the cockpit bar's collapse order at its narrow step (≤730): state
         // drops its words and keeps its marks + T5 titles, action labels drop to their glyphs,
         // and the view labels never drop. The old shrink-only regime witnessed the banner
         // ellipsizing under pressure; its own receipt said a design fix widening the box must go
@@ -309,7 +309,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         });
 
         expect(geometry.viewport, 'the viewport is the 720px intermediate band').toBe(720);
-        // #85: the legend wraps under the title at this band instead of clipping its tail
+        // the legend wraps under the title at this band instead of clipping its tail
         expect(geometry.head.swatches, 'all seven legend states are rendered in the intermediate band').toBe(7);
         expect(geometry.head.scrollWidth, 'the head row hides nothing in the intermediate band').toBeLessThanOrEqual(geometry.head.clientWidth);
         expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
@@ -331,7 +331,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     });
 
     test('the Review preset at 1280×720 — the fleet head keeps its whole legend when the inspector docks beside it (geometry asserted)', async ({page}) => {
-        // #85's exact case: the shipped Review preset narrows the fleet pane to ~896px, which the
+        // the legend's exact case: the shipped Review preset narrows the fleet pane to ~896px, which the
         // seven-state health legend does not fit beside the title. The head row wraps (layout
         // wrap), so the legend takes the line under the title — every state stays readable, and
         // the wide presets (Overview, Focus) keep their one-line head. The capture pins the
@@ -379,7 +379,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
     /**
      * @summary Activates the Tasks tab (the south strip's second surface) and waits for the pane's
-     * cold spine — the committed sample shape, which since #113 includes the queue's starved
+     * cold spine — the committed sample shape, which now includes the queue's starved
      * waiter (its wait as text, its own cause) and the lease line under the queued head.
      * @param {Object} page
      */
@@ -471,7 +471,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     });
 
     test('the Tasks pane in the 240 px band — the sketch\'s Frame 4 pinned: name first, time · state second, the wait and the cause whole; both skins (#113)', async ({page}) => {
-        // The band is the pane's OWN width-query context (#113 at d95fce7), so it is pinned through
+        // The band is the pane's OWN width-query context (the approved sketch's Frame 4), so it is pinned through
         // the pane's inline size where the strip is wide enough to honour it exactly — through a
         // stylesheet, never an inline style: the vdom owns the element's `style` and rewrites it on
         // the next liveness render, which is how a pixel golden would silently capture the full strip.

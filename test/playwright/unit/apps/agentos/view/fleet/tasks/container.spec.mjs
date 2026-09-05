@@ -78,8 +78,8 @@ const
     taskCount = pane => pane.taskStore.items.filter(record => record.rowKind === 'task' && !record.sample).length;
 
 /**
- * @summary The live plane read at 2026-09-05T12:49:36Z as the `fleetTasks` producer (Brain PR
- * #329) emits it: three starved waiters behind the `summary` lease, the backup lane exhausted,
+ * @summary The live plane read at 2026-09-05T12:49:36Z as the `fleetTasks` producer emits it
+ * since its starvation reducer landed: three starved waiters behind the `summary` lease, the backup lane exhausted,
  * a queued repo and the REM backlog beside them — with two rows carrying reason codes so the
  * cause vocabulary renders (the running plane's writer sends none; the newer one does).
  * @param {Object} [overrides]

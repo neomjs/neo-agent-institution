@@ -111,7 +111,7 @@ class FleetTask extends Model {
             type        : 'Boolean',
             defaultValue: false
         }, {
-            // ── the heavy-maintenance queue (#113): a starved waiter's own facts as the producer's
+            // ── the heavy-maintenance queue: a starved waiter's own facts as the producer's
             // receipt carries them — the wait as numbers (rendered as TEXT, never a bar: a wait is
             // not completion), the row's own cause fields, the two flags; `null` where the wire
             // sent none, never inferred from the section's lease holder
