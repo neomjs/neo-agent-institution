@@ -65,7 +65,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         ));
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
 
-        // #85's shared measure — the fleet head's no-clip geometry, read by the narrow arms below:
+        // the fleet head's shared no-clip measure — its geometry, read by the narrow arms below:
         // a legend that hides its last states says those states do not exist, so every band
         // asserts scrollWidth inside clientWidth and the last swatch inside the row.
         await page.evaluate(() => {
@@ -93,7 +93,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the default shell layout — the committed document projected (fleet over stream, chrome tucked)', async ({page}) => {
         await bootSettledCockpit(page);
 
-        // #92: every inline dock header paints the cockpit's own plate and edge — never the
+        // every inline dock header paints the cockpit's own plate and edge — never the
         // theme's neutral-highlighted band. This is a COMPUTED-STYLE witness on purpose: the
         // pixel comparator (pixelmatch at threshold 0.2, YIQ) reads the theme's rgb(41,45,40)
         // and the cockpit's rgb(20,26,35) as the same pixel, so the golden alone cannot see
@@ -201,7 +201,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         });
 
         expect(geometry.viewport, 'the viewport itself is the 314px vessel window').toBe(314);
-        // #85: the seven-state legend folds inside its bar at vessel width — never clips a state
+        // the seven-state legend folds inside its bar at vessel width — never clips a state
         expect(geometry.head.swatches, 'all seven legend states are rendered at vessel width').toBe(7);
         expect(geometry.head.scrollWidth, 'the head row hides nothing: no horizontal pressure').toBeLessThanOrEqual(geometry.head.clientWidth);
         expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
@@ -210,7 +210,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(geometry.startRect, 'the Start fleet button is rendered').not.toBeNull();
         expect(geometry.startRect.right, 'the Start fleet button sits inside the vessel window — the interactive core is reachable').toBeLessThanOrEqual(geometry.viewport);
         expect(geometry.startRect.left, 'the Start fleet button is not clipped at the left edge either').toBeGreaterThanOrEqual(0);
-        // The RA-1 regression class: the narrow band's 44px touch pair once starved the identity
+        // The regression class this floor guards: the narrow band's 44px touch pair once starved the identity
         // column to 15px and every resident's name collapsed to two letters. The sub-narrow card
         // mode exists to prevent exactly that — this floor keeps it honest.
         expect(geometry.minIdentity, 'every card still NAMES its resident at vessel width — the identity column never collapses').toBeGreaterThanOrEqual(44);
@@ -274,7 +274,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the 720 intermediate band — mark regime: no wrap, no overflow, state collapses to marks with titles (viewport capture, geometry asserted)', async ({page}) => {
         // The lattice's third point, between the 314 fit witness and the desktop baselines:
         // above the 570px vessel-narrow threshold (the @container block must stay silent — no bar
-        // wrap, no split stacking) but inside the #23 collapse order's narrow step (≤730): state
+        // wrap, no split stacking) but inside the cockpit bar's collapse order at its narrow step (≤730): state
         // drops its words and keeps its marks + T5 titles, action labels drop to their glyphs,
         // and the view labels never drop. The old shrink-only regime witnessed the banner
         // ellipsizing under pressure; its own receipt said a design fix widening the box must go
@@ -309,7 +309,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         });
 
         expect(geometry.viewport, 'the viewport is the 720px intermediate band').toBe(720);
-        // #85: the legend wraps under the title at this band instead of clipping its tail
+        // the legend wraps under the title at this band instead of clipping its tail
         expect(geometry.head.swatches, 'all seven legend states are rendered in the intermediate band').toBe(7);
         expect(geometry.head.scrollWidth, 'the head row hides nothing in the intermediate band').toBeLessThanOrEqual(geometry.head.clientWidth);
         expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
@@ -331,7 +331,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     });
 
     test('the Review preset at 1280×720 — the fleet head keeps its whole legend when the inspector docks beside it (geometry asserted)', async ({page}) => {
-        // #85's exact case: the shipped Review preset narrows the fleet pane to ~896px, which the
+        // the legend's exact case: the shipped Review preset narrows the fleet pane to ~896px, which the
         // seven-state health legend does not fit beside the title. The head row wraps (layout
         // wrap), so the legend takes the line under the title — every state stays readable, and
         // the wide presets (Overview, Focus) keep their one-line head. The capture pins the
@@ -375,5 +375,166 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.evaluate(() => document.fonts.ready);
 
         await expect(page.locator('.agent-panel-accounts')).toHaveScreenshot('accounts-config-surface.png')
+    });
+
+    /**
+     * @summary Activates the Tasks tab (the south strip's second surface) and waits for the pane's
+     * cold spine — the committed sample shape, which now includes the queue's starved
+     * waiter (its wait as text, its own cause) and the lease line under the queued head.
+     * @param {Object} page
+     */
+    const openTasksPane = async page => {
+        const tab = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: /tasks/i});
+
+        await expect(tab).toBeVisible({timeout: 30000});
+        await tab.click();
+        await expect(page.locator('.fm-tasks-pane')).toBeVisible({timeout: 30000});
+        await expect(page.locator('.fm-tasks-pane .fm-tasks-section-meta')).toHaveCount(1);
+        await expect(page.locator('.fm-tasks-pane .fm-task-state.is-starved')).toHaveCount(1);
+        await page.evaluate(() => document.fonts.ready);
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        // the list owns the scroll inside the south strip: the golden witnesses the QUEUE — its head
+        // with the counts, the lease line, the starved waiter — so the queued head leads the capture
+        await page.evaluate(() => {
+            const
+                pane = document.querySelector('.fm-tasks-pane'),
+                list = pane.querySelector('.fm-tasks-list'),
+                head = pane.querySelector('.fm-tasks-section-head.is-queued'),
+                row  = pane.querySelector('.fm-task-state.is-starved').closest('.fm-task-row');
+
+            head.scrollIntoView({block: 'start'});
+            // a narrow band wraps the rows taller than the strip is high: bring the starved waiter in,
+            // then give its first line (the name, in the band) back the room the sticky head covers
+            row.scrollIntoView({block: 'nearest'});
+
+            const covered = head.getBoundingClientRect().bottom - row.getBoundingClientRect().top;
+
+            if (covered > 0) { list.scrollTop -= covered }
+        });
+        await expect(page.locator('.fm-tasks-pane .fm-task-row:has(.fm-task-state.is-starved) .fm-task-name')).toBeInViewport();
+        await expect(page.locator('.fm-tasks-pane .fm-task-state.is-starved')).toBeInViewport()
+    };
+
+    /** @summary The light skin on the viewport — the wordmark arm's click loop, shared. */
+    const switchToLightSkin = async page => {
+        for (let i = 0; i < 3; i++) {
+            await page.locator('.agent-theme-button').click();
+
+            if (await page.locator('.agent-os-viewport.neo-theme-neo-light').waitFor({timeout: 2000}).then(() => true, () => false)) {
+                break
+            }
+        }
+
+        await expect(page.locator('.agent-os-viewport.neo-theme-neo-light')).toBeVisible();
+        await page.evaluate(() => document.fonts.ready)
+    };
+
+    /** @summary The tasks pane's no-clip geometry: the pane and every structural row inside their own width. */
+    const measureTasksPane = page => page.evaluate(() => {
+        const pane  = document.querySelector('.fm-tasks-pane'),
+              right = pane.getBoundingClientRect().right,
+              rows  = [...pane.querySelectorAll('.fm-task-row, .fm-tasks-section-head, .fm-tasks-section-meta')];
+
+        return {
+            // the layout width — what the pane's own width-query context reads (a scaled ancestor
+            // shrinks the painted rect, never this)
+            width  : pane.clientWidth,
+            noClip : pane.scrollWidth <= pane.clientWidth && rows.every(row => row.scrollWidth <= row.clientWidth),
+            spill  : [...pane.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > right + 0.5).length,
+            // the receipt behind a red: which row overflows its own box, and by how much
+            clipped: rows.filter(row => row.scrollWidth > row.clientWidth).map(row => `${row.className}: ${row.scrollWidth} > ${row.clientWidth}`),
+            pane   : `${pane.scrollWidth} / ${pane.clientWidth}`
+        }
+    });
+
+    test('the Tasks pane at the 720 band — the queue\'s starved shape, the lease line, the counts; both skins (#113)', async ({page}) => {
+        await page.setViewportSize({width: 720, height: 900});
+        await bootSettledCockpit(page);
+        await openTasksPane(page);
+
+        const geometry = await measureTasksPane(page);
+
+        expect(geometry.noClip, 'nothing clips inside the pane').toBe(true);
+        expect(geometry.spill, 'no descendant leaves the pane').toBe(0);
+        await expect(page.locator('.fm-tasks-pane')).toHaveScreenshot('tasks-pane-720.png');
+
+        await switchToLightSkin(page);
+        await expect(page.locator('.fm-tasks-pane')).toHaveScreenshot('tasks-pane-720-light.png')
+    });
+
+    test('the Tasks pane in the 314 vessel window — the narrow-band regime is in force and nothing clips (geometry asserted, no golden)', async ({page}) => {
+        // The south strip hands the pane 224–243 CSS px here depending on whether the region grew a
+        // scrollbar (measured across runs), which is why this is a geometry witness and not a golden:
+        // a pixel comparator would only bless whichever width it saw first. Both widths sit inside
+        // the pane's narrow-band regime (its own width-query context, ≤ 300), so the rule that makes
+        // the name lead on its own line must be in force, and nothing may leave the border.
+        await page.setViewportSize({width: 314, height: 900});
+        await bootSettledCockpit(page);
+        await openTasksPane(page);
+
+        const geometry = await measureTasksPane(page),
+              narrow   = await page.evaluate(() => getComputedStyle(document.querySelector('.fm-tasks-pane .fm-task-state.is-starved').closest('.fm-task-row').querySelector('.fm-task-name')).order);
+
+        expect(geometry.width, JSON.stringify(geometry)).toBeLessThanOrEqual(300);
+        expect(narrow, 'the narrow-band rule leads with the name').toBe('-1');
+        expect(geometry.noClip, JSON.stringify(geometry)).toBe(true);
+        expect(geometry.spill, JSON.stringify(geometry)).toBe(0)
+    });
+
+    test('the Tasks pane in the 240 px band — the sketch\'s Frame 4 pinned: name first, time · state second, the wait and the cause whole; both skins (#113)', async ({page}) => {
+        // The band is the pane's OWN width-query context (the approved sketch's Frame 4), so it is pinned through
+        // the pane's inline size where the strip is wide enough to honour it exactly — through a
+        // stylesheet, never an inline style: the vdom owns the element's `style` and rewrites it on
+        // the next liveness render, which is how a pixel golden would silently capture the full strip.
+        await page.setViewportSize({width: 720, height: 900});
+        await bootSettledCockpit(page);
+        // the pin lands BEFORE the pane opens: its rows wrap taller in the band, and the capture's
+        // scroll position must be taken on that final layout, never on the wide one
+        await page.addStyleTag({content: '.fm-tasks-pane { max-width: 240px; }'});
+        await openTasksPane(page);
+
+        const geometry = await measureTasksPane(page);
+
+        expect(geometry.width, JSON.stringify(geometry)).toBe(240);
+        expect(geometry.noClip, JSON.stringify(geometry)).toBe(true);
+        expect(geometry.spill, JSON.stringify(geometry)).toBe(0);
+        await expect(page.locator('.fm-tasks-pane')).toHaveScreenshot('tasks-pane-240.png');
+
+        await switchToLightSkin(page);
+        await expect(page.locator('.fm-tasks-pane')).toHaveScreenshot('tasks-pane-240-light.png')
+    });
+
+    test('the Tasks pane between the bands — 301 · 400 · 649: the dense rows wrap, no fact clips, every name keeps its floor (geometry asserted, no golden)', async ({page}) => {
+        // The widths the wrap band does not cover and the desktop does not reach: the cold spine's
+        // starved sample carries the live queue's density (an instant, both flags, a yield cause),
+        // and a row must fold its facts onto the next line before a name can lose its width. The
+        // pane is pinned through a stylesheet (the 240 arm's reason); each pin re-lays the rows live.
+        await page.setViewportSize({width: 720, height: 900});
+        await bootSettledCockpit(page);
+        await openTasksPane(page);
+
+        const nameFloorPx = await page.evaluate(() => {
+            const name = document.querySelector('.fm-tasks-pane .fm-task-name');
+
+            // 12ch of the name's own font — the floor the skin declares
+            return 12 * parseFloat(getComputedStyle(name).fontSize) * 0.5
+        });
+
+        for (const width of [649, 400, 301]) {
+            await page.addStyleTag({content: `.fm-tasks-pane { max-width: ${width}px; }`});
+            await page.evaluate(() => document.querySelector('.fm-tasks-pane .fm-task-state.is-starved').closest('.fm-task-row').scrollIntoView({block: 'nearest'}));
+
+            const geometry = await measureTasksPane(page),
+                  names    = await page.evaluate(() => [...document.querySelectorAll('.fm-tasks-pane .fm-task-row .fm-task-name')].map(name => ({
+                      text : name.textContent,
+                      width: Math.round(name.getBoundingClientRect().width)
+                  })));
+
+            expect(geometry.width, `pinned at ${width}`).toBe(width);
+            expect(geometry.noClip, `${width}: ${JSON.stringify(geometry)}`).toBe(true);
+            expect(geometry.spill, `${width}: ${JSON.stringify(geometry)}`).toBe(0);
+            expect(names.length, `${width}: rows rendered`).toBeGreaterThan(0);
+            names.forEach(name => expect(name.width, `${width}: "${name.text}" keeps its floor`).toBeGreaterThanOrEqual(nameFloorPx))
+        }
     });
 });

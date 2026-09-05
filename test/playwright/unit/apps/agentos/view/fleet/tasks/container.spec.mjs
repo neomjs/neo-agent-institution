@@ -66,11 +66,50 @@ const
     nodesOf   = pane => pane.getReference('tasks-list').getVdomRoot().cn.filter(Boolean),
     headersOf = pane => nodesOf(pane).filter(node => node.cls?.includes('fm-tasks-section-head')),
     labelOf   = header => header.cn[0],
-    pillOf    = header => header.cn[1],
+    // the pill is the head's LAST cell — the counts and a hoisted source chip may sit before it
+    pillOf    = header => header.cn.at(-1),
+    countOf   = header => header.cn.find(cell => cell.cls?.includes('fm-tasks-section-count')),
+    chipOf    = header => header.cn.find(cell => cell.cls?.some(cls => cls.startsWith('is-source-'))),
+    metaIn    = (pane, section) => nodesOf(pane).find(node => node.cls?.includes('fm-tasks-section-meta') && node.cls?.includes(`is-${section}`))?.cn[0],
     rowsIn    = (pane, section) => nodesOf(pane).filter(node => node.cls?.includes('fm-task-row') && node.cls?.includes(`is-${section}`)),
     emptyIn   = (pane, section) => nodesOf(pane).find(node => node.cls?.includes('fm-tasks-empty-row') && node.cls?.includes(`is-${section}`))?.cn[0],
     cellsOf   = row => row.cn,
+    cellOf    = (row, cls) => row.cn.find(cell => cell.cls?.includes(cls)),
     taskCount = pane => pane.taskStore.items.filter(record => record.rowKind === 'task' && !record.sample).length;
+
+/**
+ * @summary The live plane read at 2026-09-05T12:49:36Z as the `fleetTasks` producer emits it
+ * since its starvation reducer landed: three starved waiters behind the `summary` lease, the backup lane exhausted,
+ * a queued repo and the REM backlog beside them — with two rows carrying reason codes so the
+ * cause vocabulary renders (the running plane's writer sends none; the newer one does).
+ * @param {Object} [overrides]
+ * @returns {Object}
+ */
+function starvedEnvelope(overrides = {}) {
+    const checkedAt = '2026-09-05T12:49:36.362Z';
+
+    return envelope({
+        capability: {state: 'wired', capturedAt: '2026-09-05T12:50:00.000Z'},
+        sources   : {
+            deployment: {state: 'wired', reason: null, observedAt: '2026-09-05T12:47:55.668Z'},
+            rem       : {state: 'wired', reason: null},
+            ingestion : {state: 'unwired', reason: 'ingestion-verb-unreachable-from-this-process', scope: null}
+        },
+        scheduler: {leaseHolder: 'summary', leaseStatus: null, checkedAt, degradeAfterMs: 3600000, posture: 'degraded', starvedTotal: 3, unreadableCount: 0},
+        running  : [],
+        queued   : [
+            {id: 'orchestrator:starvation:message-concept-harvest', section: 'queued', name: 'message-concept-harvest', source: 'orchestrator', state: 'starved', at: '2026-09-05T06:13:43.059Z', progress: null, detail: null, waitMs: 23753303, thresholdMs: 3600000, checkedAt, reasonCode: null, blockingTaskName: null, leaseOwner: null, priorityZero: false, bootstrapCritical: false},
+            {id: 'orchestrator:starvation:dream',                   section: 'queued', name: 'dream',                   source: 'orchestrator', state: 'starved', at: '2026-09-05T10:05:51.967Z', progress: null, detail: 'heavy-maintenance-lease-held · lease owner summary · priority zero', waitMs: 9824395, thresholdMs: 3600000, checkedAt, reasonCode: 'heavy-maintenance-lease-held', blockingTaskName: null, leaseOwner: 'summary', priorityZero: true, bootstrapCritical: false},
+            {id: 'orchestrator:starvation:kbSync',                  section: 'queued', name: 'kbSync',                  source: 'orchestrator', state: 'starved', at: '2026-09-05T11:29:12.439Z', progress: null, detail: 'heavy-maintenance-yield-to-waiter · behind dream', waitMs: 4823923, thresholdMs: 3600000, checkedAt, reasonCode: 'heavy-maintenance-yield-to-waiter', blockingTaskName: 'dream', leaseOwner: null, priorityZero: false, bootstrapCritical: false},
+            {id: 'orchestrator:tenant-sync:cbff435fe549', section: 'queued', name: 'Repo sync · cbff435f', source: 'orchestrator', state: 'scheduled', at: '2026-09-05T13:10:00.000Z', progress: null, detail: null},
+            {id: 'orchestrator:maintenance:backup',       section: 'queued', name: 'Backup lane',          source: 'orchestrator', state: 'exhausted', at: new Date(1788626336430).toISOString(), progress: null, detail: 'off host durability unmet · backup retry exhausted · backup never succeeded · 0 retries remaining'},
+            {id: 'mc:rem:digest', section: 'queued', name: 'REM digest', source: 'mc', state: 'backlog', at: null, progress: {kind: 'backlog', done: 1040, total: 2000}, detail: '960 undigested · 1040 digested'}
+        ],
+        recent: [],
+        counts: {running: 0, queued: 6, recent: 0, queuedKnown: 6},
+        ...overrides
+    })
+}
 
 test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', () => {
 
@@ -89,7 +128,7 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         pane.destroy()
     });
 
-    test('the cold spine renders one sample-labeled row per section — shape, never a claim', () => {
+    test('the cold spine renders sample-labeled rows per section — shape, never a claim; the sample pill sits once on the head, and the queue teaches its starved shape', () => {
         const {pane}  = createPane(),
               headers = headersOf(pane);
 
@@ -99,14 +138,16 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
 
         for (const header of headers) {
             expect(pillOf(header).text).toBe('sample');
-            expect(pillOf(header).cls).toContain('is-sample')
+            expect(pillOf(header).cls).toContain('is-sample');
+            expect(chipOf(header), 'the sample pill IS the section\'s provenance — no second chip').toBeUndefined()
         }
 
-        for (const section of ['running', 'queued', 'recent']) {
+        // provenance once per homogeneous section: the sample word sits on the head, never repeated per row
+        for (const [section, count] of [['running', 1], ['queued', 3], ['recent', 1]]) {
             const rows = rowsIn(pane, section);
 
-            expect(rows).toHaveLength(1);
-            expect(cellsOf(rows[0]).at(-1).text, 'the row pill says sample too').toBe('sample')
+            expect(rows, section).toHaveLength(count);
+            rows.forEach(row => expect(cellOf(row, 'is-sample'), 'no row repeats the sample pill').toBeUndefined())
         }
 
         // the running sample carries the determinate idiom: a native progress element PLUS the text
@@ -115,10 +156,31 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         expect(progress.cn[0]).toMatchObject({tag: 'progress', value: 42, max: 100});
         expect(progress.cn[1].text).toBe('42%');
 
+        // the queue's starved sample at the live queue's density: an instant, the wait as text with
+        // its bound, the cause from its own code naming the task it yielded to, both flags as words
+        const starved = rowsIn(pane, 'queued')[1];
+
+        expect(cellOf(starved, 'fm-task-time').text, 'a deferred-since instant renders, never the dash').not.toBe('—');
+        expect(cellOf(starved, 'fm-task-state').text).toBe('starved');
+        expect(cellOf(starved, 'fm-task-state').cls).toContain('is-starved');
+        expect(cellOf(starved, 'fm-task-wait').cn[0].text).toBe('waiting 11 h 45 min');
+        expect(cellOf(starved, 'fm-task-wait').cn[1].text).toBe('threshold 1 h');
+        expect(cellOf(starved, 'fm-task-cause').html).toBe('yielded to <b>dream</b>');
+        expect(cellsOf(starved).filter(cell => cell.cls?.includes('is-flag')).map(cell => cell.text)).toEqual(['priority zero', 'bootstrap critical']);
+
+        // the queue's second producer teaches the backlog gauge under its own word
+        const digest = rowsIn(pane, 'queued')[2];
+
+        expect(cellOf(digest, 'fm-task-state').text).toBe('backlog');
+        expect(cellsOf(digest).find(cell => cell.cls?.includes('fm-task-progress')).cn[0]).toMatchObject({tag: 'progress', value: 1040, max: 2000});
+
+        // the lease line is part of the shape too — labeled sample by the head above it
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · <b>summary</b> · active · posture <span class="is-degraded">degraded</span>');
+
         // the Store is the full render projection now — sample rows enter LABELED (`sample: true`,
         // the pill word), never as deployment claims: zero unlabeled task records on the cold spine
         expect(taskCount(pane), 'no record claims to be the deployment').toBe(0);
-        expect(pane.taskStore.items.filter(record => record.sample)).toHaveLength(3);
+        expect(pane.taskStore.items.filter(record => record.sample && record.rowKind === 'task')).toHaveLength(5);
 
         pane.destroy()
     });
@@ -136,9 +198,9 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
             expect(pillOf(header).text).toBe('sample')
         }
 
-        for (const section of ['running', 'queued', 'recent']) {
-            expect(rowsIn(pane, section)).toHaveLength(1);
-            expect(cellsOf(rowsIn(pane, section)[0]).at(-1).text).toBe('sample')
+        for (const [section, count] of [['running', 1], ['queued', 3], ['recent', 1]]) {
+            expect(rowsIn(pane, section)).toHaveLength(count);
+            rowsIn(pane, section).forEach(row => expect(cellOf(row, 'is-sample')).toBeUndefined())
         }
 
         expect(taskCount(pane)).toBe(0);
@@ -181,7 +243,14 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
             expect(pillOf(header).text).toBe('live')
         }
 
-        // running: time · name · state word · determinate bar + percent · source pill
+        // an older Brain reports no totals: each head counts what it can see — shown only, no lease line
+        const [runningHead, queuedHead, recentHead] = headersOf(pane);
+
+        expect(countOf(runningHead).html).toBe('<b>1</b> shown');
+        expect(countOf(queuedHead).html).toBe('<b>2</b> shown');
+        expect(metaIn(pane, 'queued'), 'no scheduler summary → no lease line').toBeUndefined();
+
+        // running: time · name · state word · determinate bar + percent — the one source rides the head
         const run = cellsOf(rowsIn(pane, 'running')[0]);
 
         expect(run[1].text).toBe('KB ingestion');
@@ -189,10 +258,13 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         expect(run[2].text).toBe('embedding');
         expect(run[3].cn[0]).toMatchObject({tag: 'progress', value: 100, max: 400});
         expect(run[3].cn[1].text).toBe('25%');
-        expect(run[4].text).toBe('knowledge base');
-        expect(run[4].cls).toContain('is-source-kb');
+        expect(run[4], 'a homogeneous section hoists its provenance to the head').toBeUndefined();
+        expect(chipOf(runningHead).text).toBe('knowledge base');
+        expect(chipOf(runningHead).cls).toContain('is-source-kb');
+        expect(chipOf(recentHead).text).toBe('orchestrator');
+        expect(chipOf(queuedHead), 'a mixed section keeps its chips on the rows').toBeUndefined();
 
-        // queued: the due repo (no bar) and the backlog gauge under its own word
+        // queued: the due repo (no bar) and the backlog gauge under its own word — a MIXED section, chips on the rows
         const [due, backlog] = rowsIn(pane, 'queued').map(cellsOf);
 
         expect(due[1].text).toBe('Repo sync · cbff435f');
@@ -248,6 +320,160 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         expect(emptyIn(pane, 'running').text).toBe('Nothing in flight.');
         expect(emptyIn(pane, 'queued').text).toBe('Nothing scheduled.');
         expect(rowsIn(pane, 'recent')).toHaveLength(1);
+
+        pane.destroy()
+    });
+
+    test('the heavy-maintenance queue: one row per starved waiter with its wait as text and its own cause, the lease line under the head, counts starved · known · shown', () => {
+        const {pane} = createPane({snapshot: starvedEnvelope()}),
+              head   = headersOf(pane)[1];
+
+        expect(countOf(head).html).toBe('<b>3</b> starved · <b>6</b> known · <b>6</b> shown');
+        expect(pillOf(head).text).toBe('live');
+
+        const lease = metaIn(pane, 'queued').html;
+
+        expect(lease).toContain('maintenance lease · <b>summary</b> · posture <span class="is-degraded">degraded</span> · checked <b>');
+        expect(lease).toContain('· threshold 1 h');
+        expect(lease, 'no acquisition time exists in the receipt, so no "since"').not.toContain('since');
+
+        const [harvest, dream, kbSync, repo, backup, digest] = rowsIn(pane, 'queued');
+
+        // the row's own cause: absent on the plane whose writer sends no code — said, never borrowed from the lease holder
+        expect(cellOf(harvest, 'fm-task-state').text).toBe('starved');
+        expect(cellOf(harvest, 'fm-task-state').cls).toContain('is-starved');
+        expect(cellOf(harvest, 'fm-task-wait').cn[0].text).toBe('waiting 6 h 35 min');
+        expect(cellOf(harvest, 'fm-task-wait').cn[1].text).toBe('threshold 1 h');
+        expect(cellOf(harvest, 'fm-task-cause').html).toBe('cause unknown');
+        expect(cellOf(harvest, 'fm-task-cause').cls).toContain('absent');
+        expect(cellOf(harvest, 'fm-task-progress'), 'a wait is never a bar').toBeUndefined();
+
+        // a lease hold names its owner; the priority flag rides as a pill; the raw code rides the title
+        expect(cellOf(dream, 'fm-task-wait').cn[0].text).toBe('waiting 2 h 43 min');
+        expect(cellOf(dream, 'fm-task-cause').html).toBe('lease held by <b>summary</b>');
+        expect(cellOf(dream, 'fm-task-cause').title).toBe('heavy-maintenance-lease-held · leaseOwner: summary');
+        expect(cellsOf(dream).find(cell => cell.cls?.includes('is-flag')).text).toBe('priority zero');
+
+        // a yield names the task it yielded to
+        expect(cellOf(kbSync, 'fm-task-wait').cn[0].text).toBe('waiting 1 h 20 min');
+        expect(cellOf(kbSync, 'fm-task-cause').html).toBe('yielded to <b>dream</b>');
+
+        // the backup lane and the repo carry no wait and no cause; the mixed section keeps its chips
+        expect(cellOf(backup, 'fm-task-state').text).toBe('exhausted');
+        expect(cellOf(backup, 'fm-task-wait')).toBeUndefined();
+        expect(cellOf(backup, 'fm-task-cause')).toBeUndefined();
+        expect(cellOf(backup, 'fm-task-name').title).toContain('backup never succeeded');
+        expect(cellsOf(repo).at(-1).text).toBe('orchestrator');
+        expect(cellsOf(digest).at(-1).text).toBe('memory core');
+
+        pane.destroy()
+    });
+
+    test('control (a): a fresh envelope with the same watchdog stamp changes nothing on screen; a new stamp with grown waits marks exactly the rows that moved', () => {
+        // the projection replaces the Store wholesale, so the list's internal record ids move on
+        // every envelope; what is rendered must not — compare the nodes with those ids normalized
+        const rendered = pane => nodesOf(pane).map(node => JSON.stringify(node).replace(/neo-record-\d+/g, 'neo-record'));
+
+        const {pane} = createPane({snapshot: starvedEnvelope()}),
+              before = rendered(pane);
+
+        pane.snapshot = starvedEnvelope({capability: {state: 'wired', capturedAt: '2026-09-05T12:51:00.000Z'}});
+
+        expect(rendered(pane), 'byte-identical rows and lease line').toEqual(before);
+        expect(pane.taskStore.items.some(record => record.changed)).toBe(false);
+
+        const later = starvedEnvelope({capability: {state: 'wired', capturedAt: '2026-09-05T12:52:00.000Z'}});
+
+        later.scheduler.checkedAt = '2026-09-05T12:51:36.362Z';
+        later.queued.forEach(row => { if (row.state === 'starved') { row.waitMs += 120_000; row.checkedAt = later.scheduler.checkedAt } });
+        pane.snapshot = later;
+
+        const changed = pane.taskStore.items.filter(record => record.changed).map(record => record.id);
+
+        expect(changed).toEqual(['orchestrator:starvation:message-concept-harvest', 'orchestrator:starvation:dream', 'orchestrator:starvation:kbSync']);
+        expect(rowsIn(pane, 'queued')[0].cls).toContain('is-changed');
+        expect(rowsIn(pane, 'queued')[4].cls, 'the backup lane did not move').not.toContain('is-changed');
+        expect(cellOf(rowsIn(pane, 'queued')[0], 'fm-task-wait').cn[0].text).toBe('waiting 6 h 37 min');
+
+        pane.destroy()
+    });
+
+    test('control (b): no active holder keeps the readable breaches and says so; an unknown posture with unreadable entries says exactly that — never "no waiting work"', () => {
+        const holderless = starvedEnvelope();
+
+        holderless.scheduler.leaseHolder = null;
+
+        const {pane} = createPane({snapshot: holderless});
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · no active holder · posture <span class="is-degraded">degraded</span>');
+        expect(rowsIn(pane, 'queued').filter(row => cellOf(row, 'fm-task-state').text === 'starved')).toHaveLength(3);
+
+        pane.snapshot = starvedEnvelope({
+            scheduler: {leaseHolder: null, leaseStatus: null, checkedAt: '2026-09-05T12:49:36.362Z', degradeAfterMs: 3600000, posture: 'unknown', starvedTotal: 0, unreadableCount: 2},
+            queued   : starvedEnvelope().queued.filter(row => row.state !== 'starved'),
+            counts   : {running: 0, queued: 3, recent: 0, queuedKnown: 3}
+        });
+
+        expect(countOf(headersOf(pane)[1]).html).toBe('<b>0</b> starved · <b>3</b> known · <b>3</b> shown');
+        expect(metaIn(pane, 'queued').html).toContain('posture <span class="is-unknown">unknown</span> · <b>2</b> entries unreadable');
+        expect(rowsIn(pane, 'queued').filter(row => cellOf(row, 'fm-task-state').text === 'starved')).toHaveLength(0);
+        expect(emptyIn(pane, 'queued'), 'three rows remain — the queue is not empty').toBeUndefined();
+
+        pane.destroy()
+    });
+
+    test('an unreadable reading is never an absence: an unreadable lease says the holder is unknown, and an empty visible queue over unreadable ledger entries says the queue was not fully observed — the writer\'s own distinction, kept', () => {
+        const checkedAt = '2026-09-05T12:49:36.362Z';
+
+        // the watchdog's reading with two unreadable waiter entries and a lease file it could not read; a
+        // retained completed backup under recent; the REM source unavailable → a valid PARTIAL envelope
+        // with zero queued rows
+        const {pane} = createPane({snapshot: starvedEnvelope({
+            capability: {state: 'partial', capturedAt: '2026-09-05T12:50:00.000Z'},
+            sources   : {
+                deployment: {state: 'wired', reason: null, observedAt: '2026-09-05T12:47:55.668Z'},
+                rem       : {state: 'unavailable', reason: 'get_rem_pipeline_state failed'},
+                ingestion : {state: 'unwired', reason: 'ingestion-verb-unreachable-from-this-process', scope: null}
+            },
+            scheduler: {leaseHolder: null, leaseStatus: 'unreadable', checkedAt, degradeAfterMs: 3600000, posture: 'unknown', starvedTotal: 0, unreadableCount: 2},
+            queued   : [],
+            recent   : [{id: 'orchestrator:maintenance:backup', section: 'recent', name: 'Backup lane', source: 'orchestrator', state: 'healthy', at: '2026-09-05T11:49:36.362Z', progress: null, detail: null}],
+            counts   : {running: 0, queued: 0, recent: 1, queuedKnown: 0}
+        })});
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · lease unreadable — holder unknown · posture <span class="is-unknown">unknown</span> · <b>2</b> entries unreadable');
+        expect(metaIn(pane, 'queued').html, 'the status word is not repeated after it was folded into the holder word').not.toContain('unknown · unreadable');
+        expect(emptyIn(pane, 'queued').text).toBe('Queue not fully observed — 2 ledger entries unreadable.');
+        expect(rowsIn(pane, 'recent')).toHaveLength(1);
+
+        // the lease unreadable but the ledger clean: the queue IS observed empty of readable waiters, the lease is not
+        pane.snapshot = starvedEnvelope({
+            scheduler: {leaseHolder: null, leaseStatus: 'unreadable', checkedAt, degradeAfterMs: 3600000, posture: 'healthy', starvedTotal: 0, unreadableCount: 0},
+            queued   : [],
+            counts   : {running: 0, queued: 0, recent: 0, queuedKnown: 0}
+        });
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · lease unreadable — holder unknown · posture <span class="is-healthy">healthy</span>');
+        expect(emptyIn(pane, 'queued').text).toBe('Queue not fully observed — the lease could not be read.');
+
+        // control: a lease file read as MISSING is the observed absence — no active holder, nothing scheduled
+        pane.snapshot = starvedEnvelope({
+            scheduler: {leaseHolder: null, leaseStatus: 'missing', checkedAt, degradeAfterMs: 3600000, posture: 'healthy', starvedTotal: 0, unreadableCount: 0},
+            queued   : [],
+            counts   : {running: 0, queued: 0, recent: 0, queuedKnown: 0}
+        });
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · no active holder · missing · posture <span class="is-healthy">healthy</span>');
+        expect(emptyIn(pane, 'queued').text).toBe('Nothing scheduled.');
+
+        // control: unreadable entries beside READABLE rows — the rows stay, the line stays on the lease, no empty line
+        pane.snapshot = starvedEnvelope({
+            scheduler: {leaseHolder: 'summary', leaseStatus: 'active', checkedAt, degradeAfterMs: 3600000, posture: 'degraded', starvedTotal: 3, unreadableCount: 1}
+        });
+
+        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · <b>summary</b> · active · posture <span class="is-degraded">degraded</span> · <b>1</b> entry unreadable');
+        expect(emptyIn(pane, 'queued')).toBeUndefined();
+        expect(rowsIn(pane, 'queued')).toHaveLength(6);
 
         pane.destroy()
     });

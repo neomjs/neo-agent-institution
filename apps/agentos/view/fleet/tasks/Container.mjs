@@ -24,10 +24,53 @@ const SECTIONS = Object.freeze([
  * @type {Object[]}
  */
 const SAMPLE_ROWS = Object.freeze([
-    {id: 'sample:running', section: 'running', name: 'Tenant repo sync',     source: 'orchestrator', state: 'in progress', at: null, progressKind: 'determinate', progressDone: 42, progressTotal: 100, detail: null},
-    {id: 'sample:queued',  section: 'queued',  name: 'Repo sync · 1a2b3c4d', source: 'orchestrator', state: 'scheduled',   at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null},
-    {id: 'sample:recent',  section: 'recent',  name: 'KB ingestion',         source: 'kb',           state: 'completed',   at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null}
+    {id: 'sample:running', section: 'running', name: 'Tenant repo sync',       source: 'orchestrator', state: 'in progress', at: null, progressKind: 'determinate', progressDone: 42, progressTotal: 100, detail: null},
+    {id: 'sample:queued',  section: 'queued',  name: 'Repo sync · 1a2b3c4d',   source: 'orchestrator', state: 'scheduled',   at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null},
+    // the queue's starved shape at the live queue's density — the instant it was deferred, both
+    // flags, its own cause naming the task it yielded to: the pressure a real waiter puts on a row,
+    // so the cold spine teaches (and the goldens witness) the layout the plane will fill
+    {id: 'sample:starved', section: 'queued',  name: 'core-corpus-projection', source: 'orchestrator', state: 'starved',     at: '2026-07-05T06:13:43.059Z', progressKind: null, progressDone: null, progressTotal: null, detail: null, waitMs: 42_300_000, thresholdMs: 3_600_000, reasonCode: 'heavy-maintenance-yield-to-waiter', blockingTaskName: 'dream', leaseOwner: null, priorityZero: true, bootstrapCritical: true},
+    // the queue's second producer: the digest backlog is a queue fact under its own word, never a task
+    {id: 'sample:digest',  section: 'queued',  name: 'REM digest',             source: 'mc',           state: 'backlog',     at: null, progressKind: 'backlog',     progressDone: 1040, progressTotal: 2000, detail: '960 undigested · 1040 digested'},
+    {id: 'sample:recent',  section: 'recent',  name: 'KB ingestion',           source: 'kb',           state: 'completed',   at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null}
 ]);
+
+/**
+ * @summary The cold-spine lease line — the queued section's summary shape, labeled sample by the
+ * section pill above it, never a claim about a real lease.
+ * @type {Object}
+ */
+const SAMPLE_SCHEDULER = Object.freeze({leaseHolder: 'summary', leaseStatus: 'active', posture: 'degraded', checkedAt: null, degradeAfterMs: 3_600_000, starvedTotal: 1, unreadableCount: 0});
+
+/**
+ * @summary Whether the watchdog's reading left part of the queue unobserved: unreadable ledger
+ * entries, the `unknown` posture they produce, or a lease file the check could not read. An empty
+ * visible queue under such a reading is not an absence — the writer's own contract keeps a corrupt
+ * reading and a clean one apart, and the surface must too.
+ * @param {Object|null} scheduler The envelope's scheduler summary.
+ * @returns {Boolean}
+ */
+function isQueueUnobserved(scheduler) {
+    return Boolean(scheduler) && (
+        (Number.isInteger(scheduler.unreadableCount) && scheduler.unreadableCount > 0) ||
+        scheduler.posture === 'unknown' ||
+        scheduler.leaseStatus === 'unreadable' || scheduler.leaseStatus === 'malformed'
+    )
+}
+
+/**
+ * @summary The empty-queue line under an incomplete reading — what could not be read, in words,
+ * never "nothing scheduled".
+ * @param {Object} scheduler The envelope's scheduler summary.
+ * @returns {String}
+ */
+function unobservedQueueLine(scheduler) {
+    const count = scheduler.unreadableCount;
+
+    return Number.isInteger(count) && count > 0
+        ? `Queue not fully observed — ${count} ledger ${count === 1 ? 'entry' : 'entries'} unreadable.`
+        : 'Queue not fully observed — the lease could not be read.'
+}
 
 /**
  * The resident Fleet tasks surface: WHAT the deployment is doing — running, queued / next, and
@@ -132,6 +175,13 @@ class Container extends BaseContainer {
     taskStore = null
 
     /**
+     * What each task row showed in the previous projection (`id` → `{state, waitMs}`), so the
+     * next projection can mark the rows whose facts moved — motion follows new evidence only.
+     * @member {Map|null} previousFacts=null
+     */
+    previousFacts = null
+
+    /**
      * @summary Create the pane-local projection Store, seat it on the list, and render held owner
      * state. No read fires here: the cockpit drives the tasks read at boot and on its liveness
      * tick, so a resident tab constructs on the owner-held snapshot and never queries the plane
@@ -162,11 +212,17 @@ class Container extends BaseContainer {
 
     /**
      * @summary Project the latest envelope into the Store as the full render set — one header
-     * record per section under its freshness pill, then that section's rows (sample on the cold
+     * record per section under its freshness pill and its counts, the queued section's lease line
+     * when the envelope carries the scheduler summary, then that section's rows (sample on the cold
      * spine, the mapped envelope rows on a wired read, the honest empty line otherwise). A
      * replace is wholesale — rows are a glance at one instant, never an accumulation — and the
      * meta line names every source axis by its own state word, so a partial read is readable as
-     * exactly that.
+     * exactly that. Provenance rides once per homogeneous section: the source chip sits on the
+     * head when every row shares it, and a row carries its own only where a section mixes sources
+     * (the cold spine's `sample` pill follows the same rule). A row is marked `changed` only when
+     * what it shows moved against the previous projection — a wait that grew under a new watchdog
+     * stamp, a state that changed — so neither the liveness tick nor a re-fetched envelope with the
+     * same stamp animates anything.
      */
     applySnapshot() {
         const
@@ -187,39 +243,92 @@ class Container extends BaseContainer {
 
         const
             pill      = cold ? 'sample' : wired ? 'live' : 'unavailable',
+            scheduler = cold ? SAMPLE_SCHEDULER : wired && snapshot.scheduler && typeof snapshot.scheduler === 'object' ? snapshot.scheduler : null,
+            counts    = wired && snapshot.counts && typeof snapshot.counts === 'object' ? snapshot.counts : null,
+            previous  = me.previousFacts,
+            facts     = new Map(),
             wiredRows = wired
                 ? ['running', 'queued', 'recent']
                     .flatMap(section => Array.isArray(snapshot[section]) ? snapshot[section] : [])
                     .filter(row => typeof row?.id === 'string' && row.id)
                     .map(row => ({
-                        id           : row.id,
-                        section      : row.section,
-                        name         : row.name,
-                        source       : row.source,
-                        state        : row.state,
-                        at           : row.at ?? null,
-                        progressKind : row.progress?.kind  ?? null,
-                        progressDone : row.progress?.done  ?? null,
-                        progressTotal: row.progress?.total ?? null,
-                        detail       : row.detail ?? null
+                        id               : row.id,
+                        section          : row.section,
+                        name             : row.name,
+                        source           : row.source,
+                        state            : row.state,
+                        at               : row.at ?? null,
+                        progressKind     : row.progress?.kind  ?? null,
+                        progressDone     : row.progress?.done  ?? null,
+                        progressTotal    : row.progress?.total ?? null,
+                        detail           : row.detail ?? null,
+                        waitMs           : row.waitMs ?? null,
+                        thresholdMs      : row.thresholdMs ?? null,
+                        checkedAt        : row.checkedAt ?? null,
+                        reasonCode       : row.reasonCode ?? null,
+                        blockingTaskName : row.blockingTaskName ?? null,
+                        leaseOwner       : row.leaseOwner ?? null,
+                        priorityZero     : row.priorityZero === true,
+                        bootstrapCritical: row.bootstrapCritical === true
                     }))
                 : [],
             records   = SECTIONS.flatMap(section => {
-                const rows = cold
-                    ? SAMPLE_ROWS.filter(row => row.section === section.id).map(row => ({...row, sample: true}))
-                    : wiredRows.filter(row => row.section === section.id);
+                const
+                    queued  = section.id === 'queued',
+                    rows    = cold
+                        ? SAMPLE_ROWS.filter(row => row.section === section.id).map(row => ({...row, sample: true}))
+                        : wiredRows.filter(row => row.section === section.id),
+                    sources = new Set(rows.map(row => row.sample ? 'sample' : (row.source ?? 'unknown'))),
+                    hoisted = rows.length > 0 && sources.size === 1 ? [...sources][0] : null,
+                    header  = {
+                        id          : `header:${section.id}`,
+                        isHeader    : true,
+                        rowKind     : 'header',
+                        section     : section.id,
+                        label       : section.label,
+                        pill,
+                        starvedTotal: queued ? (scheduler?.starvedTotal ?? null) : null,
+                        knownCount  : queued ? (counts?.queuedKnown ?? null) : null,
+                        shownCount  : counts?.[section.id] ?? null,
+                        // the cold spine's pill already says sample; a live homogeneous section hoists its source
+                        source      : hoisted && hoisted !== 'sample' && hoisted !== 'unknown' ? hoisted : null
+                    },
+                    meta    = queued && scheduler ? [{
+                        id             : 'meta:queued',
+                        rowKind        : 'meta',
+                        section        : 'queued',
+                        sample         : cold,
+                        leaseHolder    : scheduler.leaseHolder ?? null,
+                        leaseStatus    : scheduler.leaseStatus ?? null,
+                        posture        : scheduler.posture ?? null,
+                        checkedAt      : scheduler.checkedAt ?? null,
+                        thresholdMs    : scheduler.degradeAfterMs ?? null,
+                        unreadableCount: scheduler.unreadableCount ?? null
+                    }] : [];
+
+                rows.forEach(row => {
+                    const prev = previous?.get(row.id);
+
+                    row.sourceShown = hoisted === null;
+                    row.changed     = Boolean(prev) && (prev.state !== row.state || prev.waitMs !== (row.waitMs ?? null));
+                    facts.set(row.id, {state: row.state, waitMs: row.waitMs ?? null})
+                });
 
                 return [
-                    {id: `header:${section.id}`, isHeader: true, rowKind: 'header', section: section.id, label: section.label, pill},
+                    header,
+                    ...meta,
                     ...(rows.length > 0 ? rows : [{
                         id     : `empty:${section.id}`,
                         rowKind: 'empty',
                         section: section.id,
-                        label  : wired ? section.empty : 'The task sources did not answer. Nothing here claims to be the deployment.'
+                        label  : !wired
+                            ? 'The task sources did not answer. Nothing here claims to be the deployment.'
+                            : queued && isQueueUnobserved(scheduler) ? unobservedQueueLine(scheduler) : section.empty
                     }])
                 ]
             });
 
+        me.previousFacts = facts;
         me.taskStore.clear();
         me.taskStore.add(records);
 

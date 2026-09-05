@@ -47,11 +47,15 @@
         font : var(--fm-text-detail);
     }
 
-    /* one row grammar: [time] [name] [state] [progress?] [provenance] on the sibling card plate */
+    /* one row grammar: [time] [name] [state] [progress?] [wait?] [cause?] [flags?] [provenance] on
+       the sibling card plate. The row WRAPS: the name keeps a floor, and the facts that no longer
+       fit beside it fall to the next line — between the narrow band and the desktop a fact is
+       never clipped and a name never collapses to nothing */
     .fm-task-row {
         align-items  : center;
         display      : flex;
-        gap          : var(--fm-space-2);
+        flex-wrap    : wrap;
+        gap          : var(--fm-space-1) var(--fm-space-2);
         padding      : var(--fm-space-2) var(--fm-space-3);
         border       : 1px solid var(--fm-line-soft);
         border-radius: var(--fm-chip-radius);
@@ -70,12 +74,14 @@
         white-space: nowrap;
     }
 
-    /* one line, ellipsis — the density-frozen-window rule; the detail rides the title */
+    /* one line, ellipsis — the density-frozen-window rule; the detail rides the title. The floor is
+       what makes the row wrap instead of eating the name: a zero basis would let the fixed cells
+       take the whole line first */
     .fm-task-name {
         color        : var(--fm-ink);
-        flex         : 1;
+        flex         : 1 1 12ch;
         font         : var(--fm-text-body);
-        min-width    : 0;
+        min-width    : 12ch;
         overflow     : hidden;
         text-overflow: ellipsis;
         white-space  : nowrap;
@@ -161,5 +167,155 @@
         &.is-unavailable {
             color: var(--fm-state-wedged);
         }
+
+        /* the two receipt flags on a starved row — facts, in the idle amber */
+        &.is-flag {
+            color: var(--fm-state-idle);
+        }
+    }
+
+    /* ── the heavy-maintenance queue: counts, the lease line, the wait as text, the cause ── */
+
+    /* the section head's counts: starved · known · shown, each number distinct */
+    .fm-tasks-section-count {
+        color               : var(--fm-ink-dim);
+        font                : var(--fm-text-micro);
+        font-variant-numeric: tabular-nums;
+        white-space         : nowrap;
+
+        b {
+            color      : var(--fm-ink);
+            font-weight: 600;
+        }
+    }
+
+    /* the queued section's lease line — section metadata under the head, never a row; it wraps
+       (the list item's own no-wrap default would push it past a narrow pane) */
+    .fm-tasks-section-meta {
+        margin-top : calc(var(--fm-space-2) * -1 + var(--fm-space-1));
+        white-space: normal;
+    }
+
+    .fm-tasks-lease {
+        color        : var(--fm-ink-dim);
+        font         : var(--fm-text-detail);
+        overflow-wrap: anywhere;
+        white-space  : normal;
+
+        b {
+            color      : var(--fm-ink);
+            font-weight: 500;
+        }
+
+        .is-degraded {
+            color: var(--fm-state-wedged);
+        }
+
+        .is-unknown {
+            color: var(--fm-state-idle);
+        }
+    }
+
+    /* the state word of a starved waiter or an unanchored lane — the wedged ink, the receipt's posture */
+    .fm-task-state.is-starved,
+    .fm-task-state.is-unanchored {
+        color: var(--fm-state-wedged);
+    }
+
+    /* the wait as TEXT in the detail role, tabular digits, never a bar; the bound rides beside it
+       after a separator the skin draws */
+    .fm-task-wait {
+        color               : var(--fm-ink);
+        flex                : none;
+        font                : var(--fm-text-detail);
+        font-variant-numeric: tabular-nums;
+        white-space         : nowrap;
+
+        .threshold {
+            color: var(--fm-ink-dim);
+
+            &::before {
+                content: '· ';
+            }
+        }
+    }
+
+    /* the row's own cause: a short source-grounded label; the raw reason code rides the title */
+    .fm-task-cause {
+        color      : var(--fm-ink-dim);
+        cursor     : help;
+        flex       : none;
+        font       : var(--fm-text-micro);
+        white-space: nowrap;
+
+        b {
+            color      : var(--fm-ink);
+            font-weight: 500;
+        }
+
+        &.absent {
+            font-style: italic;
+        }
+    }
+
+    /* motion follows new evidence only: the projection marks a row whose facts moved under a new
+       watchdog stamp, and the row runs the card's one state-change pass — reduced motion removes it */
+    @media (prefers-reduced-motion: no-preference) {
+        .fm-task-row.is-changed {
+            animation: fm-task-changed var(--fm-motion-panel) var(--ease-out-soft) 1;
+        }
+    }
+
+    /* the narrow band: the name leads on its own line, time · state share the second, the wait
+       and the cause keep whole lines — text wraps, nothing is clipped, the meaning stays whole */
+    @container (max-width: 300px) {
+        .fm-task-name {
+            flex-basis   : 100%;
+            order        : -1;
+            overflow-wrap: anywhere;
+            white-space  : normal;
+        }
+
+        .fm-task-wait,
+        .fm-task-cause {
+            flex-basis   : 100%;
+            overflow-wrap: anywhere;
+            white-space  : normal;
+        }
+
+        .fm-task-wait {
+            order: 1;
+
+            .threshold {
+                display: block;
+
+                &::before {
+                    content: none;
+                }
+            }
+        }
+
+        .fm-task-cause {
+            order: 2;
+        }
+
+        .fm-tasks-section-head {
+            flex-wrap: wrap;
+            row-gap  : var(--fm-space-1);
+        }
+
+        .fm-tasks-section-count {
+            white-space: normal;
+        }
+    }
+}
+
+@keyframes fm-task-changed {
+    from {
+        background: color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel));
+    }
+
+    to {
+        background: var(--fm-panel);
     }
 }

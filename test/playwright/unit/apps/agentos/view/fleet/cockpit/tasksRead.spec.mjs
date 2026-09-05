@@ -16,6 +16,11 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                     '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
+import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import {
+    createFleetWireResponse,
+    FLEET_WIRE_RESPONSE_STATES
+} from 'neo-agent-brain/fleet-contract';
 
 /**
  * Covers the cockpit-owned tasks read (`loadTasks`): the wake-routes loader's three laws (typed
@@ -104,6 +109,61 @@ test.describe('Fleet cockpit — the tasks read (loadTasks)', () => {
             expect(host.tasksReadInFlight).toBe(0)
         } finally {
             clearFleetBridge()
+        }
+    });
+
+    test('the pipeline (#113): a starved-plane envelope through the REAL bridge lands on the live pane and renders — the wait as text, the row\'s own cause, the lease line, counts starved · known · shown', async () => {
+        const
+            TasksPane = (await import('../../../../../../../../apps/agentos/view/fleet/tasks/Container.mjs')).default,
+            checkedAt = '2026-09-05T12:49:36.362Z',
+            envelope  = {
+                capability: {state: 'wired', capturedAt: '2026-09-05T12:50:00.000Z'},
+                viewer    : '@neo-fable-clio',
+                sources   : {
+                    deployment: {state: 'wired', reason: null, observedAt: '2026-09-05T12:47:55.668Z'},
+                    rem       : {state: 'wired', reason: null},
+                    ingestion : {state: 'unwired', reason: 'ingestion-verb-unreachable-from-this-process', scope: null}
+                },
+                scheduler: {leaseHolder: 'summary', leaseStatus: null, checkedAt, degradeAfterMs: 3600000, posture: 'degraded', starvedTotal: 1, unreadableCount: 0},
+                running  : [],
+                queued   : [{id: 'orchestrator:starvation:dream', section: 'queued', name: 'dream', source: 'orchestrator', state: 'starved', at: '2026-09-05T10:05:51.967Z', progress: null, detail: null, waitMs: 9824395, thresholdMs: 3600000, checkedAt, reasonCode: 'heavy-maintenance-lease-held', blockingTaskName: null, leaseOwner: 'summary', priorityZero: false, bootstrapCritical: false}],
+                recent   : [],
+                counts   : {running: 0, queued: 1, recent: 0, queuedKnown: 1}
+            },
+            previous  = globalThis.AgentOS?.fleet;
+
+        // the production proxy over a controllable wire: the envelope rides a validated ok response
+        installFleetBridge({credentialIngress: 'shell', send: () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: envelope}), target: globalThis});
+
+        const pane = Neo.create(TasksPane),
+              host = makeHost(pane);
+
+        try {
+            const snapshot = await host.loadTasks();
+
+            expect(snapshot.scheduler).toEqual(envelope.scheduler);
+            // the reactive config holds its own copy of the envelope — same facts, not the same object
+            expect(pane.snapshot).toEqual(snapshot);
+
+            const
+                nodes = pane.getReference('tasks-list').getVdomRoot().cn.filter(Boolean),
+                head  = nodes.find(node => node.cls?.includes('fm-tasks-section-head') && node.cls?.includes('is-queued')),
+                lease = nodes.find(node => node.cls?.includes('fm-tasks-section-meta')),
+                row   = nodes.find(node => node.cls?.includes('fm-task-row') && node.cls?.includes('is-queued')),
+                cell  = cls => row.cn.find(child => child.cls?.includes(cls));
+
+            expect(head.cn.find(child => child.cls?.includes('fm-tasks-section-count')).html).toBe('<b>1</b> starved · <b>1</b> known · <b>1</b> shown');
+            expect(head.cn.find(child => child.cls?.includes('is-source-orchestrator')).text, 'one source → hoisted to the head').toBe('orchestrator');
+            expect(lease.cn[0].html).toContain('maintenance lease · <b>summary</b> · posture <span class="is-degraded">degraded</span>');
+            expect(cell('fm-task-state').text).toBe('starved');
+            expect(cell('fm-task-wait').cn[0].text).toBe('waiting 2 h 43 min');
+            expect(cell('fm-task-wait').cn[1].text).toBe('threshold 1 h');
+            expect(cell('fm-task-cause').html).toBe('lease held by <b>summary</b>');
+            expect(cell('is-source-orchestrator'), 'no row chip in a homogeneous section').toBeUndefined();
+            expect(host.tasksReadInFlight, 'released on settle').toBe(0)
+        } finally {
+            pane.destroy();
+            if (previous === undefined) { delete globalThis.AgentOS.fleet } else { globalThis.AgentOS.fleet = previous }
         }
     })
 });

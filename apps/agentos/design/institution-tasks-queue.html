@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tasks pane — the heavy-maintenance queue (design sketch v3, #113)</title>
+<style>
+  :root {
+    color-scheme: light;
+    --fm-ground: #f2f5f9; --fm-panel: #ffffff; --fm-panel-2: #f7f9fc; --fm-rail: #e9edf3;
+    --fm-line: #d3dae4; --fm-line-soft: #e4e9f0;
+    --fm-ink: #1f2733; --fm-ink-dim: #5a6b80; --fm-ink-faint: #8494a7; --fm-signal: #0f766e;
+    --fm-state-ok: #047857; --fm-state-idle: #b45309; --fm-state-wedged: #be123c; --fm-state-limited: #6d28d9;
+    --fm-state-unobserved: #5f6d7c; --fm-state-off: #7c889a;
+    --fm-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --fm-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --fm-text-display: 600 14px/1.3 var(--fm-font-sans);
+    --fm-text-body: 12px/1.45 var(--fm-font-sans);
+    --fm-text-detail: 11px/1.4 var(--fm-font-mono);
+    --fm-text-micro: 10px/1.3 var(--fm-font-mono);
+    --fm-text-chrome: 11px/1 var(--fm-font-mono);
+    --fm-text-chrome-tracking: .08em;
+    --fm-space-1: 4px; --fm-space-2: 8px; --fm-space-3: 12px; --fm-space-4: 16px;
+    --fm-chip-radius: 4px;
+    --fm-motion-fast: 120ms;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --fm-ground: #0b0e13; --fm-panel: #141a23; --fm-panel-2: #1a212c; --fm-rail: #0e131a;
+      --fm-line: #262f3d; --fm-line-soft: #1c242f;
+      --fm-ink: #d6dce6; --fm-ink-dim: #8b97a8; --fm-ink-faint: #5a6575; --fm-signal: #5eead4;
+      --fm-state-ok: #34d399; --fm-state-idle: #f5b544; --fm-state-wedged: #f4718b; --fm-state-limited: #a78bfa;
+      --fm-state-unobserved: #6b7f94; --fm-state-off: #616d7c;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --fm-ground: #0b0e13; --fm-panel: #141a23; --fm-panel-2: #1a212c; --fm-rail: #0e131a;
+    --fm-line: #262f3d; --fm-line-soft: #1c242f;
+    --fm-ink: #d6dce6; --fm-ink-dim: #8b97a8; --fm-ink-faint: #5a6575; --fm-signal: #5eead4;
+    --fm-state-ok: #34d399; --fm-state-idle: #f5b544; --fm-state-wedged: #f4718b; --fm-state-limited: #a78bfa;
+    --fm-state-unobserved: #6b7f94; --fm-state-off: #616d7c;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fm-ground); color: var(--fm-ink); font: var(--fm-text-body); }
+  a { color: var(--fm-signal); }
+  code { font: var(--fm-text-detail); }
+  .board { max-width: 1120px; margin: 0 auto; padding: var(--fm-space-4) var(--fm-space-4) 48px; display: grid; gap: 24px; }
+  .board-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--fm-space-2) var(--fm-space-4); border-bottom: 1px solid var(--fm-line); padding-bottom: var(--fm-space-3); }
+  .eyebrow { font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); text-transform: uppercase; color: var(--fm-ink-dim); }
+  h1 { font: 600 22px/1.2 var(--fm-font-sans); margin: var(--fm-space-1) 0 0; text-wrap: balance; }
+  .lede { max-width: 74ch; color: var(--fm-ink-dim); margin: var(--fm-space-2) 0 0; }
+  .delta { border-left: 3px solid var(--fm-signal); padding: var(--fm-space-1) var(--fm-space-3); color: var(--fm-ink-dim); max-width: 78ch; margin: var(--fm-space-2) 0 0; }
+  .delta b { color: var(--fm-ink); font-weight: 600; }
+  .theme { font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); text-transform: uppercase; background: var(--fm-panel); color: var(--fm-ink); border: 1px solid var(--fm-line); border-radius: var(--fm-chip-radius); padding: 6px 10px; cursor: pointer; }
+  .theme:focus-visible { outline: 2px solid var(--fm-signal); outline-offset: 2px; }
+
+  .frame { display: grid; gap: var(--fm-space-2); }
+  .frame-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--fm-space-2) var(--fm-space-3); }
+  .frame-label .eyebrow { color: var(--fm-signal); }
+  .frame-label p { margin: 0; color: var(--fm-ink-dim); max-width: 74ch; }
+  .viewport { background: var(--fm-ground); border: 1px solid var(--fm-line); padding: var(--fm-space-3); container-type: inline-size; }
+  .viewport.narrow { width: 240px; max-width: 240px; }
+  .annot { margin: 0; color: var(--fm-ink-dim); max-width: 78ch; }
+  .annot b { color: var(--fm-ink); font-weight: 600; }
+
+  /* ---- the pane's own classes, as the SCSS ships them (tasks/List.scss) ---- */
+  .fm-tasks-list { display: grid; gap: var(--fm-space-2); min-width: 0; }
+  .fm-tasks-section-head { display: flex; align-items: center; gap: var(--fm-space-2); margin-top: var(--fm-space-3); }
+  .fm-tasks-section-head:first-child { margin-top: 0; }
+  .fm-tasks-section-label { color: var(--fm-ink-dim); flex: 1; font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); text-transform: uppercase; }
+  .fm-tasks-section-count { font: var(--fm-text-micro); color: var(--fm-ink-dim); font-variant-numeric: tabular-nums; }
+  .fm-tasks-section-count b { color: var(--fm-ink); font-weight: 600; }
+  .fm-tasks-section-meta { font: var(--fm-text-detail); color: var(--fm-ink-dim); }
+  .fm-tasks-section-meta b { color: var(--fm-ink); font-weight: 500; }
+  .fm-tasks-section-meta .unknown { color: var(--fm-state-idle); }
+  .fm-tasks-section-meta .degraded { color: var(--fm-state-wedged); }
+  .fm-tasks-empty { font: var(--fm-text-detail); color: var(--fm-ink-dim); padding: var(--fm-space-1) 0; }
+  .fm-task-row { display: flex; align-items: center; gap: var(--fm-space-2); min-width: 0; padding: var(--fm-space-2) var(--fm-space-3); border: 1px solid var(--fm-line-soft); border-radius: var(--fm-chip-radius); background: var(--fm-panel); }
+  .fm-task-time, .fm-task-state, .fm-task-progress-text, .fm-task-cause { color: var(--fm-ink-dim); font: var(--fm-text-micro); }
+  .fm-task-time { flex: none; white-space: nowrap; }
+  .fm-task-name { color: var(--fm-ink); flex: 1; font: var(--fm-text-body); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fm-task-state { flex: none; white-space: nowrap; }
+  .fm-task-state.is-starved, .fm-task-state.is-unanchored { color: var(--fm-state-wedged); }
+  /* the one new cell: the wait as TEXT in the detail role, tabular digits, never a bar */
+  .fm-task-wait { flex: none; font: var(--fm-text-detail); color: var(--fm-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .fm-task-wait span { color: var(--fm-ink-dim); }
+  .fm-task-wait .threshold::before { content: '· '; }
+  /* the cause: a short source-grounded label; the raw reasonCode rides the title as diagnostic detail */
+  .fm-task-cause { flex: none; white-space: nowrap; cursor: help; }
+  .fm-task-cause b { color: var(--fm-ink); font-weight: 500; }
+  .fm-task-cause.absent { font-style: italic; }
+  .fm-task-progress { display: flex; align-items: center; gap: var(--fm-space-1); flex: none; }
+  .fm-task-bar { display: inline-block; width: 64px; height: var(--fm-space-1); border-radius: 999px; background: var(--fm-panel-2); overflow: hidden; }
+  .fm-task-bar i { display: block; height: 100%; background: var(--fm-signal); }
+  .fm-freshness { flex: none; font: var(--fm-text-micro); line-height: 1; white-space: nowrap; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, currentColor 12%, transparent); color: var(--fm-ink-dim); }
+  .fm-freshness.is-live, .fm-freshness.is-source-orchestrator { color: var(--fm-signal); }
+  .fm-freshness.is-source-kb { color: var(--fm-ink-dim); }
+  @container (max-width: 300px) {
+    /* the 240 px band: the name leads on its own line, time · state · source share the second, the wait and the cause keep whole lines — text wraps, nothing is clipped */
+    .fm-task-row { flex-wrap: wrap; row-gap: var(--fm-space-1); }
+    .fm-task-name { order: -1; white-space: normal; flex-basis: 100%; overflow-wrap: anywhere; }
+    .fm-task-wait { order: 1; white-space: normal; flex-basis: 100%; overflow-wrap: anywhere; }
+    .fm-task-wait .threshold { display: block; }
+    .fm-task-wait .threshold::before { content: none; }
+    .fm-task-cause { order: 2; white-space: normal; flex-basis: 100%; overflow-wrap: anywhere; }
+    .fm-tasks-section-head { flex-wrap: wrap; row-gap: var(--fm-space-1); }
+    .fm-tasks-section-count { white-space: normal; }
+  }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--fm-space-4); border-top: 1px solid var(--fm-line); padding-top: var(--fm-space-4); }
+  .notes h2 { font: var(--fm-text-display); margin: 0 0 var(--fm-space-2); }
+  .notes p, .notes li { color: var(--fm-ink-dim); margin: 0; }
+  .notes ul, .notes ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .notes b { color: var(--fm-ink); font-weight: 600; }
+  .notes .done { text-decoration: line-through; text-decoration-color: var(--fm-ink-faint); }
+  .tbl { overflow-x: auto; }
+  .tbl table { border-collapse: collapse; width: 100%; font: var(--fm-text-detail); }
+  .tbl th, .tbl td { text-align: left; padding: 5px var(--fm-space-2); border-bottom: 1px solid var(--fm-line-soft); vertical-align: top; }
+  .tbl th { font: var(--fm-text-micro); text-transform: uppercase; letter-spacing: var(--fm-text-chrome-tracking); color: var(--fm-ink-dim); }
+  .tbl td { color: var(--fm-ink); }
+  @media (prefers-reduced-motion: no-preference) { .theme { transition: background var(--fm-motion-fast); } }
+</style>
+</head>
+<body>
+<div class="board">
+  <header class="board-head">
+    <div>
+      <div class="eyebrow">Design sketch v3 · neomjs/neo-agent-institution#113 · AC-1 · the Tasks pane's own classes on the FM tokens · fixture: the 2026-09-04 evening plane, read 21:40 UTC</div>
+      <h1>Tasks pane — the orchestrator's heavy-maintenance queue</h1>
+      <p class="lede">The pane that already answers WHAT the deployment is doing gains the rows the plane was missing on 2026-09-04: every starved waiter behind the maintenance lease, the lease itself as a fact, the backup lane. Same three sections, same row grammar <code>[time] [name] [state] [progress?] [provenance]</code>, one more cell — the wait, as text. Rules from the peer input on #113 (Euclid, Emmy): the wait is unclamped text and never a progress kind; the state word is <em>starved</em>, never <em>wedged</em>; the lease is a summary fact with its observation time and no "since"; screen facts move only on a new watchdog stamp; the row cap stays per section with display priority labeled as such.</p>
+      <p class="delta"><b>v2 (2026-09-05), after Euclid's review.</b> Frame 1's causes come from the population the admission path actually registers — <code>heavy-maintenance-lease-held</code>, <code>heavy-maintenance-backpressure</code>, <code>heavy-maintenance-yield-to-waiter</code> — and each row's supporting field is chosen BY CAUSE (a lease hold names an owner, a backpressure conflict names a task). Frame 3 splits into the two producer states it had conflated: a missing holder with readable breaches is <em>degraded</em>; <em>unknown</em> is the no-readable-breach case, and it still says two entries are unreadable. The threshold reads the plane's own <code>degradeAfterMs</code> (60 min on 2026-09-05, not the 30 min v1 assumed). The cause cell renders a short label with the raw code as diagnostic detail; the lease stays section metadata; <em>known · shown</em> stays under the Queued head. The optional threshold marker stays out.</p>
+      <p class="delta"><b>v3 (2026-09-05), after Euclid's v2 review.</b> Frame 4 is a real 240 px frame, no longer a 272 px stand-in: the row wraps its name, wait and cause onto whole lines and nothing leaves the border — measured in both skins, <code>scrollWidth</code> equal to <code>clientWidth</code> on the frame and on every row. Frame 2 renders all seven queued rows, byte-identical to Frame 1. The pre-cap total is one wire field, <code>counts.queuedKnown</code> — every known queued row across starvation, backup and tenant sync before the per-section cap; <code>scheduler.starvedTotal</code> stays the pre-cap breach count, and <code>shownCount</code> is dropped because the post-cap number is the existing <code>counts.queued</code> (amended on neomjs/neo-agent-brain#322). After the operator's design read the source chip moved from every row to the section head: provenance once per homogeneous section, a row chip only where a section mixes sources.</p>
+    </div>
+    <button class="theme" type="button" id="themeToggle" aria-label="Toggle the skin">Skin: auto</button>
+  </header>
+
+  <!-- Frame 1 -->
+  <section class="frame" aria-labelledby="f1">
+    <div class="frame-label"><span class="eyebrow" id="f1">Frame 1 · the 09-04 evening plane · live</span><p>Five waiters starved 2 h 45 min to 11 h 45 min: four behind the <code>summary</code> lease, one behind a heavy task in its own process; no backup ever succeeded; a tenant sync queued beside them; ingestion running. Every row's cause is its own receipt field, the lease is one line on the section, the wait is text.</p></div>
+    <div class="viewport">
+      <div class="fm-tasks-list">
+        <div class="fm-tasks-section-head"><span class="fm-tasks-section-label">Running</span><span class="fm-tasks-section-count"><b>1</b> shown</span><span class="fm-freshness is-source-kb">knowledge base</span><span class="fm-freshness is-live">live · captured 21:40:19 UTC</span></div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T21:38:02Z">21:38</span>
+          <span class="fm-task-name">concept ingestion</span>
+          <span class="fm-task-state">in progress</span>
+          <span class="fm-task-progress"><span class="fm-task-bar"><i style="width: 62%"></i></span><span class="fm-task-progress-text">62%</span></span>
+          <span class="fm-task-cause" title="this-process-only">this process only</span>
+        </div>
+
+        <div class="fm-tasks-section-head"><span class="fm-tasks-section-label">Queued · next</span><span class="fm-tasks-section-count"><b>5</b> starved · <b>7</b> known · <b>7</b> shown</span><span class="fm-freshness is-source-orchestrator">orchestrator</span><span class="fm-freshness is-live">live · captured 21:40:19 UTC</span></div>
+        <div class="fm-tasks-section-meta">maintenance lease · <b>summary</b> · active · posture <span class="degraded">degraded</span> · checked <b>21:40:07 UTC</b> · threshold 60 min</div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T09:54:59Z">09:54</span>
+          <span class="fm-task-name">core-corpus-projection</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 11 h 45 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-lease-held · leaseOwner: summary">lease held by <b>summary</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T11:30:38Z">11:30</span>
+          <span class="fm-task-name">message-concept-harvest</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 10 h 10 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-lease-held · leaseOwner: summary">lease held by <b>summary</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T12:05:50Z">12:05</span>
+          <span class="fm-task-name">graphlog-compaction</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 9 h 34 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-backpressure · blockingTaskName: core-corpus-projection">behind <b>core-corpus-projection</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T13:08:16Z">13:08</span>
+          <span class="fm-task-name">dream</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 8 h 32 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-lease-held · leaseOwner: summary">lease held by <b>summary</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T18:55:31Z">18:55</span>
+          <span class="fm-task-name">kbSync</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 2 h 45 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-yield-to-waiter · blockingTaskName: dream">yielded to <b>dream</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time">—</span>
+          <span class="fm-task-name">backup lane</span>
+          <span class="fm-task-state is-unanchored">unanchored</span>
+          <span class="fm-task-wait"><span>no successful backup on record</span></span>
+          <span class="fm-task-cause" title="backup-never-succeeded · backup-retry-exhausted · off-host-durability-unmet">never succeeded · retries exhausted · off-host durability unmet</span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="next due 2026-09-04T22:10:00Z">next 22:10</span>
+          <span class="fm-task-name">tenant sync · neomjs/neo</span>
+          <span class="fm-task-state">queued</span>
+          <span class="fm-task-progress"><span class="fm-task-bar"><i style="width: 33%"></i></span><span class="fm-task-progress-text">backlog 4 / 12</span></span>
+          <span class="fm-task-cause"></span>
+        </div>
+
+        <div class="fm-tasks-section-head"><span class="fm-tasks-section-label">Recent</span><span class="fm-tasks-section-count"><b>1</b> shown</span><span class="fm-freshness is-source-orchestrator">orchestrator</span><span class="fm-freshness is-live">live · captured 21:40:19 UTC</span></div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T21:12:44Z">21:12</span>
+          <span class="fm-task-name">tenant sync · neomjs/neo-agent-brain</span>
+          <span class="fm-task-state">completed</span>
+          <span class="fm-task-progress-text">28 s</span>
+          <span class="fm-task-cause"></span>
+        </div>
+      </div>
+    </div>
+    <p class="annot"><b>Why no bar on the starved rows.</b> The receipt has no below-threshold phase: a breach exists only past <code>degradeAfterMs</code>, so a track "filling toward the line" would never be observed, and a full track past the line reads as 100% — completion, which a wait is not. The pane's bar and the reducer's <code>makeProgress</code> also clamp <code>done</code> to <code>total</code>; the text is unclamped by construction.</p>
+    <p class="annot"><b>Where the causes come from.</b> Only the three contention classes register a waiter (<code>MaintenanceBackpressureService.recordDeferral</code>: lease-held, backpressure, yield-to-waiter); a shed window or a dependency gate is policy, not competition, and never reaches the ledger. The 2026-09-04 evening ledger still carried <code>golden-path-*</code> codes written before that boundary — the sketch renders the reachable set, and an older code arriving on the wire renders as its raw code in the same cell, unlabeled.</p>
+  </section>
+
+  <!-- Frame 2 -->
+  <section class="frame" aria-labelledby="f2">
+    <div class="frame-label"><span class="eyebrow" id="f2">Frame 2 · a fresh envelope, the same watchdog stamp</span><p>The liveness tick fetched a new snapshot (captured 21:41:30 UTC) whose starvation verdict is the persisted one, verbatim. Nothing on the queue moves: the waits, the lease line and the rows are byte-identical to Frame 1; only the section's capture time advanced.</p></div>
+    <div class="viewport">
+      <div class="fm-tasks-list">
+        <div class="fm-tasks-section-head"><span class="fm-tasks-section-label">Queued · next</span><span class="fm-tasks-section-count"><b>5</b> starved · <b>7</b> known · <b>7</b> shown</span><span class="fm-freshness is-source-orchestrator">orchestrator</span><span class="fm-freshness is-live">live · captured 21:41:30 UTC</span></div>
+        <div class="fm-tasks-section-meta">maintenance lease · <b>summary</b> · active · posture <span class="degraded">degraded</span> · checked <b>21:40:07 UTC</b> · threshold 60 min</div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T09:54:59Z">09:54</span>
+          <span class="fm-task-name">core-corpus-projection</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 11 h 45 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-lease-held · leaseOwner: summary">lease held by <b>summary</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T11:30:38Z">11:30</span>
+          <span class="fm-task-name">message-concept-harvest</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 10 h 10 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-lease-held · leaseOwner: summary">lease held by <b>summary</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T12:05:50Z">12:05</span>
+          <span class="fm-task-name">graphlog-compaction</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 9 h 34 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-backpressure · blockingTaskName: core-corpus-projection">behind <b>core-corpus-projection</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T13:08:16Z">13:08</span>
+          <span class="fm-task-name">dream</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 8 h 32 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-lease-held · leaseOwner: summary">lease held by <b>summary</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T18:55:31Z">18:55</span>
+          <span class="fm-task-name">kbSync</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 2 h 45 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-yield-to-waiter · blockingTaskName: dream">yielded to <b>dream</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time">—</span>
+          <span class="fm-task-name">backup lane</span>
+          <span class="fm-task-state is-unanchored">unanchored</span>
+          <span class="fm-task-wait"><span>no successful backup on record</span></span>
+          <span class="fm-task-cause" title="backup-never-succeeded · backup-retry-exhausted · off-host-durability-unmet">never succeeded · retries exhausted · off-host durability unmet</span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="next due 2026-09-04T22:10:00Z">next 22:10</span>
+          <span class="fm-task-name">tenant sync · neomjs/neo</span>
+          <span class="fm-task-state">queued</span>
+          <span class="fm-task-progress"><span class="fm-task-bar"><i style="width: 33%"></i></span><span class="fm-task-progress-text">backlog 4 / 12</span></span>
+          <span class="fm-task-cause"></span>
+        </div>
+      </div>
+    </div>
+    <p class="annot"><b>Motion follows evidence.</b> A row transitions (the card's state-change vocabulary, one short pass, removed under reduced motion) only when a new <code>checkedAt</code> changes what it shows — a wait that grew, a waiter that left, a lease that moved. Neither the UI tick nor the envelope's capture time is an observation of the queue.</p>
+  </section>
+
+  <!-- Frame 3a -->
+  <section class="frame" aria-labelledby="f3a">
+    <div class="frame-label"><span class="eyebrow" id="f3a">Frame 3a · no active holder · posture degraded</span><p>The lease file is missing, two ledger entries were unreadable, and two entries read as breaches. The watchdog's precedence is the receipt's: one readable breach makes the posture <em>degraded</em> whatever the holder says. The section names the missing holder and the unreadable count; the readable breaches keep their own causes.</p></div>
+    <div class="viewport">
+      <div class="fm-tasks-list">
+        <div class="fm-tasks-section-head"><span class="fm-tasks-section-label">Queued · next</span><span class="fm-tasks-section-count"><b>2</b> starved · <b>2</b> unreadable · <b>3</b> known · <b>3</b> shown</span><span class="fm-freshness is-source-orchestrator">orchestrator</span><span class="fm-freshness is-live">live · captured 21:52:04 UTC</span></div>
+        <div class="fm-tasks-section-meta">maintenance lease · <b>none active</b> (missing) · posture <span class="degraded">degraded</span> · 2 ledger entries unreadable · checked <b>21:52:00 UTC</b> · threshold 60 min</div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T18:55:31Z">18:55</span>
+          <span class="fm-task-name">kbSync</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 2 h 57 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-backpressure · blockingTaskName: core-corpus-projection">behind <b>core-corpus-projection</b></span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T20:12:10Z">20:12</span>
+          <span class="fm-task-name">graphlog-compaction</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 1 h 40 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause absent" title="heavy-maintenance-lease-held · leaseOwner: null">lease held · holder not recorded</span>
+        </div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="next due 2026-09-04T22:10:00Z">next 22:10</span>
+          <span class="fm-task-name">tenant sync · neomjs/neo</span>
+          <span class="fm-task-state">queued</span>
+          <span class="fm-task-progress"><span class="fm-task-bar"><i style="width: 33%"></i></span><span class="fm-task-progress-text">backlog 4 / 12</span></span>
+          <span class="fm-task-cause"></span>
+        </div>
+      </div>
+    </div>
+    <p class="annot"><b>The supporting field follows the cause.</b> <code>heavy-maintenance-lease-held</code> reads <code>leaseOwner</code> ("lease held by summary"); <code>heavy-maintenance-backpressure</code> and <code>heavy-maintenance-yield-to-waiter</code> read <code>blockingTaskName</code> ("behind …", "yielded to …"). Only when the cause's OWN field is null does the cell say so — "holder not recorded" or "blocker not recorded" — an absence, never a guess from the other field. The words are the receipt's: <code>leaseStatus</code> ∈ active · missing · stale · unreadable · malformed; <code>posture</code> ∈ degraded · healthy · unknown · disabled.</p>
+  </section>
+
+  <!-- Frame 3b -->
+  <section class="frame" aria-labelledby="f3b">
+    <div class="frame-label"><span class="eyebrow" id="f3b">Frame 3b · posture unknown · no readable breach</span><p>Zero readable breaches and two unreadable entries: the watchdog cannot say whether anything is starving, so the posture is <em>unknown</em>. The section must not read as an empty queue — it says what it could not read.</p></div>
+    <div class="viewport">
+      <div class="fm-tasks-list">
+        <div class="fm-tasks-section-head"><span class="fm-tasks-section-label">Queued · next</span><span class="fm-tasks-section-count"><b>0</b> starved · <b>2</b> unreadable · <b>1</b> known · <b>1</b> shown</span><span class="fm-freshness is-source-orchestrator">orchestrator</span><span class="fm-freshness is-live">live · captured 21:55:12 UTC</span></div>
+        <div class="fm-tasks-section-meta">maintenance lease · <b>none active</b> (missing) · posture <span class="unknown">unknown</span> · 2 ledger entries unreadable · checked <b>21:55:00 UTC</b> · threshold 60 min</div>
+        <div class="fm-tasks-empty">No readable starvation receipt — 2 ledger entries could not be read. Not an empty queue.</div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="next due 2026-09-04T22:10:00Z">next 22:10</span>
+          <span class="fm-task-name">tenant sync · neomjs/neo</span>
+          <span class="fm-task-state">queued</span>
+          <span class="fm-task-progress"><span class="fm-task-bar"><i style="width: 33%"></i></span><span class="fm-task-progress-text">backlog 4 / 12</span></span>
+          <span class="fm-task-cause"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Frame 4 -->
+  <section class="frame" aria-labelledby="f4">
+    <div class="frame-label"><span class="eyebrow" id="f4">Frame 4 · the 240 px band</span><p>One of the seven queued rows, as an excerpt, in a frame that is really 240 px wide: the name leads on its own line, time · state share the second, the wait and the cause keep whole lines; the source sits once in the section head. Nothing leaves the border in either skin — the text carries the whole meaning, as the peer input required.</p></div>
+    <div class="viewport narrow">
+      <div class="fm-tasks-list">
+        <div class="fm-tasks-section-head"><span class="fm-tasks-section-label">Queued · next</span><span class="fm-tasks-section-count"><b>5</b> starved · <b>7</b> known · <b>7</b> shown</span><span class="fm-freshness is-source-orchestrator">orchestrator</span><span class="fm-freshness is-live">live · 21:40 UTC</span></div>
+        <div class="fm-tasks-section-meta">lease · <b>summary</b> · active · checked 21:40 UTC</div>
+        <div class="fm-task-row">
+          <span class="fm-task-time" title="2026-09-04T09:54:59Z">09:54</span>
+          <span class="fm-task-name">core-corpus-projection</span>
+          <span class="fm-task-state is-starved">starved</span>
+          <span class="fm-task-wait">waiting 11 h 45 min <span class="threshold">threshold 60 min</span></span>
+          <span class="fm-task-cause" title="heavy-maintenance-lease-held · leaseOwner: summary">lease held by <b>summary</b></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="notes" aria-label="Design notes">
+    <div>
+      <h2>Rules folded from the peer input</h2>
+      <ol>
+        <li><b>Wait as text, unclamped.</b> <code>waiting 11 h 45 min · threshold 60 min</code> in the detail role, tabular digits; no <code>&lt;progress&gt;</code>, no bar, no marker (a marker on a full track re-imports the completion reading the text was chosen to avoid).</li>
+        <li><b>State word <em>starved</em></b> in the wedged ink — the receipt's posture, not a diagnosis of the holder; <em>unanchored</em> for the backup lane.</li>
+        <li><b>The lease is a section fact</b> (<code>fm-tasks-section-meta</code>): holder · status · posture · the watchdog's <code>checkedAt</code> · threshold (<code>degradeAfterMs</code>, the plane's own value). No "since": the receipt has no acquisition time.</li>
+        <li><b>Each row's own cause</b>: a short label from <code>reasonCode</code> plus the field that cause carries — <code>leaseOwner</code> for a lease hold, <code>blockingTaskName</code> for backpressure and a yield; the raw code rides the cell's title. The check-time holder never explains a waiter.</li>
+        <li><b>Motion on a new stamp only</b>; the section's capture time may advance while the queue stands still (Frame 2).</li>
+        <li><b>Cap per section</b>: the count line keeps <em>starved</em>, <em>unreadable</em>, <em>known</em> and <em>shown</em> distinct under the Queued head — "known" is the pre-cap total the pane could read, never a claim to be the whole scheduler queue; blocked rows first as display order, never scheduler order.</li>
+        <li><b>Posture is the watchdog's precedence</b>: any readable breach → <em>degraded</em>; none readable but unreadable entries → <em>unknown</em>, said with the count (Frame 3a / 3b).</li>
+        <li><b>Provenance once per homogeneous section</b> (operator design read, 2026-09-05): the source chip sits in the section head when every row shares it — the queue is orchestrator-sourced by construction, while Running and Recent may carry <em>mc</em> or <em>kb</em> rows; a row carries its own chip only in a section that mixes sources. Pure function of the section's rows, no state; the cold spine's <em>sample</em> pill follows the same rule.</li>
+      </ol>
+    </div>
+    <div>
+      <h2>Tokens consumed, nothing minted</h2>
+      <ul>
+        <li><b>Type</b> — chrome for section labels, body for names, detail for the wait and the lease line, micro for time, state, cause and pills. No display role: nothing here is an identity.</li>
+        <li><b>Color</b> — the wedged ink for <em>starved</em> / <em>unanchored</em> / a <em>degraded</em> posture, the idle amber only for <em>unknown</em> posture; the signal ink stays on the existing progress bars. No new state color.</li>
+        <li><b>Rhythm</b> — the pane's own: row gap space-2, section gap space-3, row padding space-2/space-3, the pill geometry.</li>
+        <li><b>Motion</b> — the card's state-change transition on an observed change; <code>prefers-reduced-motion</code> removes it.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>What the wire carries (neomjs/neo-agent-brain#322)</h2>
+      <div class="tbl"><table>
+        <tr><th>surface</th><th>fields</th></tr>
+        <tr><td>starved row</td><td><code>source: orchestrator</code> · <code>state: starved</code> · <code>at = deferredSince</code> · <code>progress: null</code> · <code>waitMs</code> · <code>thresholdMs</code> · <code>checkedAt</code> · <code>reasonCode</code> · <code>blockingTaskName</code> · <code>leaseOwner</code> · flags</td></tr>
+        <tr><td>section summary</td><td><code>leaseHolder</code> · <code>leaseStatus</code> · <code>posture</code> · <code>checkedAt</code> · <code>degradeAfterMs</code> · <code>starvedTotal</code> · <code>unreadableCount</code></td></tr>
+        <tr><td>envelope counts</td><td><code>counts.queued</code> (post-cap · <em>shown</em>) · <code>counts.queuedKnown</code> (pre-cap · <em>known</em> — every queued row across starvation, backup and tenant sync)</td></tr>
+        <tr><td>backup row</td><td><code>maintenance.backup.phase</code> · <code>lastBackup</code></td></tr>
+      </table></div>
+      <p style="margin-top: 8px">Names, enums, durations and timestamps only. An older Brain sends none of it; the pane then shows no starvation rows and no lease line, and counts only what it can see.</p>
+    </div>
+    <div>
+      <h2>Deliberately absent</h2>
+      <ul>
+        <li><b>A progress kind for waiting.</b> Rejected on the receipt's shape and the clamp.</li>
+        <li><b>A threshold marker.</b> Offered by both peers as optional; rejected — see Frame 1's note.</li>
+        <li><b>"Since" on the holder, an ETA, "wedged".</b> None is in the receipt.</li>
+        <li><b>Verbs.</b> No release, no cancel, no re-run.</li>
+        <li><b>Priority-zero / bootstrap-critical pills.</b> Both false across the fixture; the pill exists in the vocabulary and appears only when a receipt sets the flag.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Review record</h2>
+      <ol>
+        <li class="done">The lease line as <code>fm-tasks-section-meta</code> under the section head — settled: section metadata (Euclid, 2026-09-05).</li>
+        <li class="done">The cause cell: a short source-grounded label with the raw <code>reasonCode</code> as diagnostic detail — settled (Euclid).</li>
+        <li class="done">The count line keeps <em>known · shown</em> beneath the Queued heading — settled (Euclid).</li>
+        <li class="done">Frames 1 and 3 corrected to the producer's precedence and registration boundary — v2; Euclid accepted the state/cause corrections (2026-09-05).</li>
+        <li class="done">Frame 4 contained at a real 240 px, Frame 2 carrying the seven rows, the pre-cap total as <code>counts.queuedKnown</code> — v3, after Euclid's v2 review.</li>
+        <li>Open: none.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<script>
+  (() => {
+    const root = document.documentElement, button = document.getElementById('themeToggle'), order = ['auto', 'dark', 'light'];
+    let index = 0;
+    try { const saved = localStorage.getItem('tasks-queue-sketch-theme'); if (saved && order.includes(saved)) index = order.indexOf(saved); } catch (e) {}
+    const apply = () => {
+      const mode = order[index];
+      if (mode === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', mode);
+      button.textContent = 'Skin: ' + mode;
+      try { localStorage.setItem('tasks-queue-sketch-theme', mode); } catch (e) {}
+    };
+    button.addEventListener('click', () => { index = (index + 1) % order.length; apply(); });
+    apply();
+  })();
+</script>
+</body>
+</html>
