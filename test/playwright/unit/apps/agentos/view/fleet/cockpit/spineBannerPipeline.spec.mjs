@@ -275,6 +275,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
             host = makeControllerFake(FleetCockpitController, {
                 loadActivity          : () => driven.push('activity'),
                 loadBrainHealth       : () => driven.push('brainHealth'),
+                loadDeploymentState   : () => driven.push('deploymentState'),
                 loadRoster            : () => driven.push('roster'),
                 // fleet-wide and owner-held: re-driven directly, not through a pane accessor, so a
                 // not-yet-materialized Tasks tab still reopens on post-reconnect truth
@@ -292,7 +293,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         host.reconnectFleet();
 
         expect(driven.sort()).toEqual([
-            'activity', 'brainHealth', 'catchUpHistory', 'memoriesHistory', 'roster', 'tasks', 'viewerWake', 'wakeRoutesHistory'
+            'activity', 'brainHealth', 'catchUpHistory', 'deploymentState', 'memoriesHistory', 'roster', 'tasks', 'viewerWake', 'wakeRoutesHistory'
         ])
     });
 
@@ -301,6 +302,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
               host   = makeControllerFake(FleetCockpitController, {
                   loadActivity          : () => driven.push('activity'),
                   loadBrainHealth       : () => driven.push('brainHealth'),
+                  loadDeploymentState   : () => driven.push('deploymentState'),
                   loadRoster            : () => driven.push('roster'),
                   loadTasks             : () => driven.push('tasks'),
                   ensureViewerWakeStream: () => driven.push('viewerWake'),
@@ -313,7 +315,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         host.reconnectFleet();
 
-        expect(driven.sort()).toEqual(['activity', 'brainHealth', 'roster', 'tasks', 'viewerWake'])
+        expect(driven.sort()).toEqual(['activity', 'brainHealth', 'deploymentState', 'roster', 'tasks', 'viewerWake'])
     });
 
     test('⭐ the shell transport fact reaches the cold copy through the health pull — daemon truth untouched', () => {

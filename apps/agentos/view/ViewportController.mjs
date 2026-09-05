@@ -20,7 +20,8 @@ class ViewportController extends Controller {
             '/accounts': 'onAccountsRoute',
             '/chat'    : 'onChatRoute',
             '/fleet'   : 'onFleetRoute',
-            '/home'    : 'onHomeRoute'
+            '/home'    : 'onHomeRoute',
+            '/system'  : 'onSystemRoute'
         }
     }
 
@@ -469,6 +470,13 @@ class ViewportController extends Controller {
      */
     onHomeRoute() {
         this.activateRoute('/home')
+    }
+
+    /**
+     * @summary Activates the System keeper-view from the route.
+     */
+    onSystemRoute() {
+        this.activateRoute('/system')
     }
 
     /**

@@ -18,6 +18,7 @@ import * as core                  from '../../../../../../../../node_modules/neo
 import                                 '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {makeActivityStoreHarness, makeProviderFake} from './cockpitFakes.mjs';
 import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import DeploymentStateRead  from '../../../../../../../../apps/agentos/util/DeploymentStateRead.mjs';
 import {
     createFleetWireResponse,
     FLEET_WIRE_RESPONSE_STATES
@@ -60,6 +61,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             brainReads             : 0,
             brainHealthReadGeneration: 0,
             brainHealthReadInFlight: 0,
+            deploymentStateReadGeneration: 0,
+            deploymentStateReadInFlight: 0,
             // the view-owned cadence configs live on the component seat now
             component              : {livenessPollInterval: 50, maxReadsInFlight: 2, getStateProvider: () => null},
             gridReadGeneration     : 0,
@@ -74,8 +77,9 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             // the third seam counts separately: the wire-read expectations stay untouched by it
             loadBrainHealth() { this.brainReads++; return Promise.resolve() },
             loadRoster()   { this.polls++; return Promise.resolve() },
-            // the tasks seam launches no counted wire read in these balance fixtures
+            // the tasks and deployment-state seams launch no counted wire read in these balance fixtures
             loadTasks()    { return Promise.resolve() },
+            loadDeploymentState() { return Promise.resolve() },
             // the wake rebind seam launches no wire read — modeled as a plain no-op so the
             // wire-read balance assertions stay exact
             ensureViewerWakeStream() {},
@@ -668,5 +672,226 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(host.applied, 'older news never overwrites newer truth').toEqual([{cause: null, state: 'running'}]);
             expect(host.brainHealthReadInFlight, 'both wires settled, both slots free').toBe(0)
         })
+    })
+
+    test.describe('deployment-state read owner through the real bridge and loader', () => {
+        let previousFleet;
+
+        test.beforeEach(() => {
+            previousFleet = globalThis.AgentOS?.fleet
+        });
+
+        test.afterEach(() => {
+            if (previousFleet === undefined) {
+                delete globalThis.AgentOS.fleet
+            } else {
+                globalThis.AgentOS.fleet = previousFleet
+            }
+        });
+
+        // the provider leaf is declared leaf-complete (a `null` block would stop the leaf bubble), so
+        // the wire's partial blocks land padded to the declared shape: `picture()` is what the wire
+        // sends, `landed()` what the provider holds afterwards
+        const blankPicture = () => DeploymentStateRead.blank();
+        const picture      = () => ({
+            state      : 'ok',
+            reason     : null,
+            generatedAt: 1_700_000_000_000,
+            ageMs      : 12_000,
+            services   : [{serviceKey: 'mc-server', status: 'available', memoryPressure: {disposition: 'below', reason: null}}],
+            maintenance: {backup: {phase: 'exhausted', health: {status: 'degraded', reasonCodes: ['backup-never-succeeded']}}, starvation: {posture: 'degraded', breachCount: 5}}
+        });
+        const landed = () => {
+            const blank = blankPicture().maintenance;
+
+            return {
+                ...picture(),
+                // the reader's stamp: the answering bridge (none configured here) and the landing clock
+                profileId  : null,
+                observedAt : expect.any(Number),
+                maintenance: {
+                    backup    : {...blank.backup, phase: 'exhausted', health: {status: 'degraded', reasonCodes: ['backup-never-succeeded']}},
+                    starvation: {posture: 'degraded', breachCount: 5}
+                }
+            }
+        };
+
+        /** @summary The real loader over the real bridge; the roster surface stands beside it as a witness. */
+        const makeSystemHost = ({timeout = 2000} = {}) => {
+            const provider = makeProviderFake({
+                deploymentState : blankPicture(),
+                systemConnection: {state: null, reason: null},
+                systemTickAt    : null,
+                gridConnection  : {state: 'connecting', reason: null}
+            });
+            const host = makeTimerHost();
+
+            Object.assign(host.component, {getStateProvider: () => provider, livenessReadTimeout: timeout});
+            delete host.loadDeploymentState;
+
+            return {host, provider}
+        };
+        const installWire = send => installFleetBridge({credentialIngress: 'shell', send, target: globalThis});
+        const okReply     = result => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result});
+
+        test('a cold read publishes connecting; a validated answer lands the picture and clears only its own observation', async () => {
+            const {host, provider} = makeSystemHost();
+            const wire = Promise.withResolvers();
+
+            installWire(() => wire.promise);
+            const read = host.loadDeploymentState();
+
+            expect(provider.data.systemConnection).toEqual({state: 'connecting', reason: null});
+            wire.resolve(okReply(picture()));
+            await read;
+
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+            expect(provider.data.deploymentState).toEqual(landed());
+            expect(provider.data.gridConnection, 'the sibling surface is untouched').toEqual({state: 'connecting', reason: null});
+            expect(host.deploymentStateReadInFlight).toBe(0)
+        });
+
+        test('a refusal keeps the last-known picture and publishes its own sanitized observation', async () => {
+            const {host, provider} = makeSystemHost();
+            let calls = 0;
+
+            installWire(() => ++calls === 1
+                ? okReply(picture())
+                : createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.refused, {error: 'Authorization: Bearer secret-value; request refused'}));
+
+            await host.loadDeploymentState();
+            await host.loadDeploymentState();
+
+            expect(provider.data.systemConnection.state).toBe('refused');
+            expect(provider.data.systemConnection.reason).toContain('[redacted]');
+            expect(provider.data.systemConnection.reason).not.toContain('secret-value');
+            expect(provider.data.deploymentState, 'the last-known picture survives a transport-class failure').toEqual(landed())
+        });
+
+        test('an older build answers unsupported-method: the picture carries the reason, the observation clears', async () => {
+            const {host, provider} = makeSystemHost();
+
+            installWire(() => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.unsupportedMethod, {
+                error: "fleet: method 'fleetDeploymentState' is not on the control surface"
+            }));
+            await host.loadDeploymentState();
+
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+            // an answer is an answer: the older build's refusal is stamped like any landing
+            expect(provider.data.deploymentState).toEqual({...blankPicture(), state: 'unavailable', reason: 'unsupported-method', observedAt: expect.any(Number)})
+        });
+
+        test('a timeout publishes the elapsed bound, keeps the picture, and a late reply cannot overwrite a newer answer', async () => {
+            const {host, provider} = makeSystemHost({timeout: 20});
+            const late = Promise.withResolvers();
+            let calls = 0;
+
+            installWire(() => ++calls === 1 ? late.promise : okReply({...picture(), ageMs: 1}));
+
+            await host.loadDeploymentState();
+            expect(provider.data.systemConnection).toEqual({state: 'timeout', reason: 'fleet read exceeded 20ms'});
+            expect(provider.data.deploymentState).toEqual(blankPicture());
+
+            await host.loadDeploymentState();
+            expect(provider.data.deploymentState.ageMs).toBe(1);
+
+            late.resolve(okReply(picture()));
+            await new Promise(resolve => setTimeout(resolve, 5));
+            expect(provider.data.deploymentState.ageMs, 'the stale wire cannot overwrite the newer answer').toBe(1);
+            expect(host.deploymentStateReadInFlight, 'both wires settled, both slots free').toBe(0)
+        });
+
+        test('reads hanging at the cap: the cadence tick launches no read and publishes its instant alone; a free slot spends the tick on a read and publishes no instant', async () => {
+            const {host, provider} = makeSystemHost({timeout: 20});
+            let calls = 0, tick;
+
+            installWire(() => { calls++; return new Promise(() => {}) });   // EVERY read hangs forever
+
+            const originalSetInterval = globalThis.setInterval;
+            globalThis.setInterval = fn => { tick = fn; return 1 };
+
+            try {
+                host.startLiveness();                                     // the boot read: wire 1 hangs
+                await new Promise(resolve => setTimeout(resolve, 30));    // past the bound: timeout published, slot held
+                expect(provider.data.systemConnection).toEqual({state: 'timeout', reason: 'fleet read exceeded 20ms'});
+                expect(host.deploymentStateReadInFlight).toBe(1);
+
+                tick();                                                   // a free slot: the tick is spent on wire 2, no instant
+                await new Promise(resolve => setTimeout(resolve, 30));
+                expect(calls).toBe(2);
+                expect(provider.data.systemTickAt).toBeNull();
+                expect(host.deploymentStateReadInFlight, 'both hung wires hold the cap').toBe(2);
+
+                tick();                                                   // at the cap: no wire 3 — the instant alone
+                expect(calls, 'a hung lane launches no third read').toBe(2);
+                expect(provider.data.systemTickAt).toEqual(expect.any(Number));
+                expect(provider.data.systemConnection, 'the observation is untouched').toEqual({state: 'timeout', reason: 'fleet read exceeded 20ms'});
+                expect(provider.data.deploymentState, 'no picture is invented').toEqual(blankPicture());
+
+                const first = provider.data.systemTickAt;
+
+                await new Promise(resolve => setTimeout(resolve, 5));
+                tick();
+                expect(provider.data.systemTickAt, 'every capped tick moves the instant').toBeGreaterThan(first)
+            } finally {
+                globalThis.setInterval = originalSetInterval;
+                host.livenessTimerId   = null
+            }
+        });
+
+        test('a torn answer keeps the picture and clears the observation — nothing is invented', async () => {
+            const {host, provider} = makeSystemHost();
+
+            installWire(() => okReply({services: 'not a projection'}));
+            await host.loadDeploymentState();
+
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+            expect(provider.data.deploymentState).toEqual(blankPicture())
+        });
+
+        test('an instance switch never lends A\'s picture to B: a picture is stamped by the bridge that answered it, B pending or refused keeps A\'s stamp, B\'s answer replaces it, and late settlements of both older reads are dropped', async () => {
+            const {host, provider} = makeSystemHost();
+            const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return {promise, resolve} };
+            const lateA = deferred(), pendingB = deferred();
+            let aCalls = 0, bCalls = 0;
+
+            // instance A: answers once, then hangs — the read that will settle late, after the switch
+            installFleetBridge({credentialIngress: 'shell', profileId: 'fleet-profile:v1:a', target: globalThis,
+                send: () => ++aCalls === 1 ? okReply(picture()) : lateA.promise});
+            await host.loadDeploymentState();
+            expect(provider.data.deploymentState).toEqual({...landed(), profileId: 'fleet-profile:v1:a'});
+
+            const lateRead = host.loadDeploymentState();   // A, in flight across the switch
+            expect(provider.data.systemConnection.state).toBe('connecting');
+
+            // the switch: B's bridge replaces A's; B hangs, then refuses, then answers a different plane
+            installFleetBridge({credentialIngress: 'shell', profileId: 'fleet-profile:v1:b', target: globalThis,
+                send: () => ++bCalls === 1
+                    ? pendingB.promise
+                    : bCalls === 2
+                        ? createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.refused, {error: 'B refused'})
+                        : okReply({...picture(), services: [{serviceKey: 'kb-server', status: 'available'}]})});
+
+            const pendingRead = host.loadDeploymentState();   // B pending
+            expect(provider.data.systemConnection.state).toBe('connecting');
+            expect(provider.data.deploymentState.profileId, 'the retained picture keeps A\'s stamp while B is pending — the view hides it under B').toBe('fleet-profile:v1:a');
+
+            await host.loadDeploymentState();   // B refused
+            expect(provider.data.systemConnection.state).toBe('refused');
+            expect(provider.data.deploymentState.profileId, 'still A\'s — a refusal never re-labels it').toBe('fleet-profile:v1:a');
+
+            await host.loadDeploymentState();   // B answers
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+            expect(provider.data.deploymentState.profileId).toBe('fleet-profile:v1:b');
+            expect(provider.data.deploymentState.services.map(row => row.serviceKey)).toEqual(['kb-server']);
+
+            // the late settlements: A's hung read and B's first read resolve now — older generations, dropped
+            lateA.resolve(okReply({...picture(), services: [{serviceKey: 'late-a', status: 'available'}]}));
+            pendingB.resolve(okReply({...picture(), services: [{serviceKey: 'late-b', status: 'available'}]}));
+            await Promise.all([lateRead, pendingRead]);
+            expect(provider.data.deploymentState.services.map(row => row.serviceKey)).toEqual(['kb-server']);
+            expect(provider.data.deploymentState.profileId).toBe('fleet-profile:v1:b');
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null})
+        });
     })
 });

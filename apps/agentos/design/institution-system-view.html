@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System keeper-view — the connected instance's engine room (design sketch v3, #21)</title>
+<style>
+  :root {
+    color-scheme: light;
+    --fm-ground: #f2f5f9; --fm-panel: #ffffff; --fm-panel-2: #f7f9fc; --fm-rail: #e9edf3;
+    --fm-line: #d3dae4; --fm-line-soft: #e4e9f0;
+    --fm-ink: #1f2733; --fm-ink-dim: #5a6b80; --fm-ink-faint: #8494a7; --fm-signal: #0f766e;
+    --fm-state-ok: #047857; --fm-state-idle: #b45309; --fm-state-wedged: #be123c; --fm-state-limited: #6d28d9;
+    --fm-state-unobserved: #5f6d7c; --fm-state-off: #7c889a;
+    --fm-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --fm-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --fm-text-display: 600 14px/1.3 var(--fm-font-sans);
+    --fm-text-body: 12px/1.45 var(--fm-font-sans);
+    --fm-text-detail: 11px/1.4 var(--fm-font-mono);
+    --fm-text-micro: 10px/1.3 var(--fm-font-mono);
+    --fm-text-chrome: 11px/1 var(--fm-font-mono);
+    --fm-text-chrome-tracking: .08em;
+    --fm-space-1: 4px; --fm-space-2: 8px; --fm-space-3: 12px; --fm-space-4: 16px;
+    --fm-chip-mark-w: 3px; --fm-chip-pad-y: 2px; --fm-chip-pad-x: 8px; --fm-chip-radius: 4px;
+    --fm-motion-fast: 120ms;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --fm-ground: #0b0e13; --fm-panel: #141a23; --fm-panel-2: #1a212c; --fm-rail: #0e131a;
+      --fm-line: #262f3d; --fm-line-soft: #1c242f;
+      --fm-ink: #d6dce6; --fm-ink-dim: #8b97a8; --fm-ink-faint: #5a6575; --fm-signal: #5eead4;
+      --fm-state-ok: #34d399; --fm-state-idle: #f5b544; --fm-state-wedged: #f4718b; --fm-state-limited: #a78bfa;
+      --fm-state-unobserved: #6b7f94; --fm-state-off: #616d7c;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --fm-ground: #0b0e13; --fm-panel: #141a23; --fm-panel-2: #1a212c; --fm-rail: #0e131a;
+    --fm-line: #262f3d; --fm-line-soft: #1c242f;
+    --fm-ink: #d6dce6; --fm-ink-dim: #8b97a8; --fm-ink-faint: #5a6575; --fm-signal: #5eead4;
+    --fm-state-ok: #34d399; --fm-state-idle: #f5b544; --fm-state-wedged: #f4718b; --fm-state-limited: #a78bfa;
+    --fm-state-unobserved: #6b7f94; --fm-state-off: #616d7c;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fm-ground); color: var(--fm-ink); font: var(--fm-text-body); }
+  a { color: var(--fm-signal); }
+  code { font: var(--fm-text-detail); }
+  .board { max-width: 1120px; margin: 0 auto; padding: var(--fm-space-4) var(--fm-space-4) 48px; display: grid; gap: 24px; }
+  .board-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--fm-space-2) var(--fm-space-4); border-bottom: 1px solid var(--fm-line); padding-bottom: var(--fm-space-3); }
+  .eyebrow { font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); text-transform: uppercase; color: var(--fm-ink-dim); }
+  h1 { font: 600 22px/1.2 var(--fm-font-sans); margin: var(--fm-space-1) 0 0; text-wrap: balance; }
+  .lede { max-width: 66ch; color: var(--fm-ink-dim); margin: var(--fm-space-2) 0 0; }
+  .theme { font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); text-transform: uppercase; background: var(--fm-panel); color: var(--fm-ink); border: 1px solid var(--fm-line); border-radius: var(--fm-chip-radius); padding: 6px 10px; cursor: pointer; }
+  .theme:focus-visible { outline: 2px solid var(--fm-signal); outline-offset: 2px; }
+  .delta { border-left: 3px solid var(--fm-signal); padding: var(--fm-space-1) var(--fm-space-3); color: var(--fm-ink-dim); max-width: 78ch; margin: var(--fm-space-2) 0 0; }
+  .delta b { color: var(--fm-ink); font-weight: 600; }
+
+  .frame { display: grid; gap: var(--fm-space-2); }
+  .frame-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--fm-space-2) var(--fm-space-3); }
+  .frame-label .eyebrow { color: var(--fm-signal); }
+  .frame-label p { margin: 0; color: var(--fm-ink-dim); max-width: 70ch; }
+  .viewport { background: var(--fm-ground); border: 1px solid var(--fm-line); padding: var(--fm-space-3); display: grid; gap: var(--fm-space-3); container-type: inline-size; }
+  .viewport.narrow { max-width: 272px; }
+
+  /* ---- the keeper view: head ---- */
+  .sv-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fm-space-2) var(--fm-space-3); }
+  .sv-title { font: var(--fm-text-display); color: var(--fm-ink); margin: 0; }
+  .sv-scope { font: var(--fm-text-detail); color: var(--fm-ink-dim); }
+  .sv-scope b { color: var(--fm-ink); font-weight: 500; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font: var(--fm-text-micro); color: var(--fm-ink-dim); padding: var(--fm-chip-pad-y) var(--fm-chip-pad-x); border: 1px solid var(--fm-line); border-radius: var(--fm-chip-radius); --fm-chip: var(--fm-ink-faint); }
+  .chip::before { content: ""; width: var(--fm-chip-mark-w); height: 10px; background: var(--fm-chip); border-radius: 1px; }
+  .chip.observe { --fm-chip: var(--fm-signal); }
+  .sv-fresh { margin-left: auto; font: var(--fm-text-micro); color: var(--fm-ink-dim); display: inline-flex; align-items: center; gap: 6px; --fm-chip: var(--fm-state-ok); }
+  .sv-fresh::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--fm-chip); }
+  .sv-fresh.stale { --fm-chip: var(--fm-state-idle); color: var(--fm-ink); }
+
+  /* ---- service cards ---- */
+  .planes { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--fm-space-3); }
+  .plane { background: var(--fm-panel); border: 1px solid var(--fm-line-soft); border-left: 3px solid var(--fm-plane); padding: var(--fm-space-3) var(--fm-space-3) var(--fm-space-3) var(--fm-space-4); display: grid; gap: var(--fm-space-2); --fm-plane: var(--fm-state-unobserved); }
+  .plane.serving { --fm-plane: var(--fm-state-ok); }
+  .plane.degraded { --fm-plane: var(--fm-state-wedged); }
+  .plane-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--fm-space-1) var(--fm-space-2); }
+  .plane-key { font: var(--fm-text-display); color: var(--fm-ink); }
+  .plane-id { font: var(--fm-text-micro); color: var(--fm-ink-dim); }
+  .plane-word { font: var(--fm-text-micro); color: var(--fm-plane); text-transform: uppercase; letter-spacing: var(--fm-text-chrome-tracking); }
+  .plane-seen { margin-left: auto; font: var(--fm-text-micro); color: var(--fm-ink-dim); }
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px var(--fm-space-3); font: var(--fm-text-detail); margin: 0; }
+  .facts dt { color: var(--fm-ink-dim); }
+  .facts dd { margin: 0; color: var(--fm-ink); overflow-wrap: anywhere; }
+  .facts dd.quiet { color: var(--fm-ink-dim); }
+  .facts dd.hot { color: var(--fm-state-wedged); }
+  .diag { font: var(--fm-text-body); color: var(--fm-ink); border-top: 1px solid var(--fm-line-soft); padding-top: var(--fm-space-2); margin: 0; }
+  .diag .k { font: var(--fm-text-micro); color: var(--fm-ink-dim); text-transform: uppercase; letter-spacing: var(--fm-text-chrome-tracking); margin-right: 6px; }
+  .diag .quiet { color: var(--fm-ink-dim); }
+  @container (max-width: 300px) {
+    .plane-head { flex-direction: column; align-items: flex-start; }
+    .plane-seen { margin-left: 0; }
+    .facts { grid-template-columns: 1fr; gap: 1px; }
+    .facts dt { margin-top: var(--fm-space-1); }
+  }
+
+  /* ---- maintenance strip + logs region ---- */
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--fm-space-3); }
+  .lane { background: var(--fm-panel-2); border: 1px solid var(--fm-line-soft); padding: var(--fm-space-2) var(--fm-space-3); display: grid; gap: var(--fm-space-1); }
+  .lane .eyebrow { color: var(--fm-ink-dim); }
+  .lane-word { font: var(--fm-text-display); color: var(--lane); --lane: var(--fm-ink); }
+  .lane-word.warn { --lane: var(--fm-state-idle); }
+  .lane-word.bad { --lane: var(--fm-state-wedged); }
+  .lane p { margin: 0; font: var(--fm-text-detail); color: var(--fm-ink-dim); }
+  .logs { border: 1px dashed var(--fm-line); padding: var(--fm-space-3); display: grid; gap: var(--fm-space-1); }
+  .logs .eyebrow { color: var(--fm-ink-dim); }
+  .logs p { margin: 0; color: var(--fm-ink-dim); max-width: 70ch; }
+  .logs code { color: var(--fm-ink); }
+
+  /* ---- whole-view reason ---- */
+  .reason { background: var(--fm-panel); border: 1px solid var(--fm-line-soft); border-left: 3px solid var(--fm-state-unobserved); padding: var(--fm-space-3) var(--fm-space-4); display: grid; gap: var(--fm-space-1); }
+  .reason .word { font: var(--fm-text-display); color: var(--fm-ink); }
+  .reason p { margin: 0; color: var(--fm-ink-dim); max-width: 70ch; }
+  .reason code { color: var(--fm-ink); }
+
+  /* ---- notes ---- */
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--fm-space-4); border-top: 1px solid var(--fm-line); padding-top: var(--fm-space-4); }
+  .notes h2 { font: var(--fm-text-display); margin: 0 0 var(--fm-space-2); }
+  .notes p, .notes li { color: var(--fm-ink-dim); margin: 0; }
+  .notes ul, .notes ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .notes b { color: var(--fm-ink); font-weight: 600; }
+  .notes .done { text-decoration: line-through; text-decoration-color: var(--fm-ink-faint); }
+  .tbl { overflow-x: auto; }
+  .tbl table { border-collapse: collapse; width: 100%; font: var(--fm-text-detail); }
+  .tbl th, .tbl td { text-align: left; padding: 5px var(--fm-space-2); border-bottom: 1px solid var(--fm-line-soft); vertical-align: top; }
+  .tbl th { font: var(--fm-text-micro); text-transform: uppercase; letter-spacing: var(--fm-text-chrome-tracking); color: var(--fm-ink-dim); }
+  .tbl td { color: var(--fm-ink); }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; background: var(--sw); }
+  @media (prefers-reduced-motion: no-preference) { .theme { transition: background var(--fm-motion-fast); } }
+</style>
+</head>
+<body>
+<div class="board">
+  <header class="board-head">
+    <div>
+      <div class="eyebrow">Design sketch v3 · neomjs/neo-agent-institution#21 · spec-first gate · sample data from the 2026-09-04 evening plane, read 21:40 UTC</div>
+      <h1>System — the connected instance's engine room</h1>
+      <p class="lede">A keeper view beside Home · Fleet · Accounts · Chat. It reads one thing: the <code>fleetDeploymentState</code> projection — the orchestrator's own observation of its planes, bounded and redacted at the wire. Observe-only by declaration: nothing on this surface can act on a plane.</p>
+      <p class="delta"><b>v3 (2026-09-05).</b> Servers' health first. The orchestrator scheduler is its own, larger surface — progress bars and animated views in the agent-card idiom, the Tasks-pane lineage — so v2's scheduler block moves there and this view keeps a one-line maintenance lane. Services carry their product name with the compose id beneath it.</p>
+      <p class="delta"><b>Implementation note (same day).</b> Read against the writer, two words fold: the orchestrator already folds sustained memory saturation into <code>degraded</code>, so "serving · pressured" never occurs on the wire (the memory fact stays on the card's facts line); and the backup lane's word is the retry phase the plane keeps — <code>healthy · retrying · unanchored · exhausted</code> — with the health verdict's reason codes beneath it. The live plane at 00:42 UTC read <em>exhausted</em>, not <em>unanchored</em>.</p>
+    </div>
+    <button class="theme" type="button" id="themeToggle" aria-label="Toggle the skin">Skin: auto</button>
+  </header>
+
+  <!-- Frame 1 -->
+  <section class="frame" aria-labelledby="f1">
+    <div class="frame-label"><span class="eyebrow" id="f1">Frame 1 · connected · fresh</span><p>The resting state. One head line answers which instance and how old the picture is; the cards answer "which service needs me"; the lanes say what the plane is failing to do, in one line each.</p></div>
+    <div class="viewport">
+      <div class="sv-head">
+        <h2 class="sv-title">System</h2>
+        <span class="sv-scope">diagnosing <b>local-agent-os</b> · via fleet-server</span>
+        <span class="chip observe">observe-only</span>
+        <span class="sv-fresh">snapshot 12s ago · orchestrator writes every 30 s</span>
+      </div>
+      <div class="planes">
+        <article class="plane degraded">
+          <div class="plane-head"><span class="plane-key">Memory Core</span><span class="plane-id">mc-server</span><span class="plane-word">degraded</span><span class="plane-seen">observed 12s ago</span></div>
+          <dl class="facts">
+            <dt>memory</dt><dd class="hot">at-cap · sustained-saturation</dd>
+            <dt>class</dt><dd>transient · threshold 90% · 12 samples</dd>
+            <dt>restart churn</dt><dd>baseline available · detecting</dd>
+          </dl>
+          <p class="diag"><span class="k">diagnosis</span>exhaustion · confidence 0.95 · action class restart</p>
+        </article>
+        <article class="plane serving">
+          <div class="plane-head"><span class="plane-key">Knowledge Base</span><span class="plane-id">kb-server</span><span class="plane-word">serving</span><span class="plane-seen">observed 12s ago</span></div>
+          <dl class="facts">
+            <dt>memory</dt><dd>unknown · heap-observation-unavailable</dd>
+            <dt>class</dt><dd>transient · threshold 90% · 2 samples</dd>
+            <dt>restart churn</dt><dd>baseline available · detecting</dd>
+          </dl>
+          <p class="diag"><span class="k">diagnosis</span><span class="quiet">healthy · no recovery diagnosis</span></p>
+        </article>
+        <article class="plane serving">
+          <div class="plane-head"><span class="plane-key">Chroma · vector store</span><span class="plane-id">chroma</span><span class="plane-word">serving</span><span class="plane-seen">observed 12s ago</span></div>
+          <dl class="facts">
+            <dt>memory</dt><dd>below</dd>
+            <dt>class</dt><dd>store · threshold 80% · 2 samples</dd>
+            <dt>restart churn</dt><dd>baseline available · detecting</dd>
+          </dl>
+          <p class="diag"><span class="k">diagnosis</span><span class="quiet">healthy · no recovery diagnosis</span></p>
+        </article>
+        <article class="plane serving">
+          <div class="plane-head"><span class="plane-key">Orchestrator</span><span class="plane-id">orchestrator</span><span class="plane-word">serving</span><span class="plane-seen">observed 12s ago</span></div>
+          <dl class="facts">
+            <dt>memory</dt><dd>unknown · heap-observation-unavailable</dd>
+            <dt>class</dt><dd>transient · threshold 90% · 2 samples</dd>
+            <dt>restart churn</dt><dd>baseline available · detecting</dd>
+          </dl>
+          <p class="diag"><span class="k">diagnosis</span><span class="quiet">healthy · no recovery diagnosis — the scheduler's own trouble is the maintenance lane's line, not a container fault</span></p>
+        </article>
+        <article class="plane serving">
+          <div class="plane-head"><span class="plane-key">Fleet server</span><span class="plane-id">fleet-server</span><span class="plane-word">serving</span><span class="plane-seen">observed 12s ago</span></div>
+          <dl class="facts">
+            <dt>memory</dt><dd>unknown · heap-observation-unavailable</dd>
+            <dt>class</dt><dd>transient · threshold 90% · 2 samples</dd>
+            <dt>restart churn</dt><dd>baseline available · detecting</dd>
+          </dl>
+          <p class="diag"><span class="k">diagnosis</span><span class="quiet">healthy · no recovery diagnosis</span></p>
+        </article>
+        <article class="plane">
+          <div class="plane-head"><span class="plane-key">Ingress · Caddy</span><span class="plane-id">ingress</span><span class="plane-word">unobserved</span><span class="plane-seen">no observation</span></div>
+          <dl class="facts">
+            <dt>memory</dt><dd class="quiet">not measured</dd>
+            <dt>class</dt><dd class="quiet">not classified</dd>
+            <dt>restart churn</dt><dd class="quiet">not detecting</dd>
+          </dl>
+          <p class="diag"><span class="k">diagnosis</span><span class="quiet">the orchestrator recorded no decision for this service — shown, not guessed</span></p>
+        </article>
+      </div>
+      <div class="strip">
+        <div class="lane"><span class="eyebrow">heavy maintenance</span><span class="lane-word bad">degraded · 5 tasks starved</span><p>the queue itself is the scheduler view's</p></div>
+        <div class="lane"><span class="eyebrow">backup lane</span><span class="lane-word bad">exhausted</span><p>backup never succeeded · backup retry exhausted · off-host durability unmet</p></div>
+        <div class="lane"><span class="eyebrow">snapshot</span><span class="lane-word">current</span><p>generated 21:40:07 · 6 services · read from the fleet server</p></div>
+      </div>
+      <div class="logs">
+        <span class="eyebrow">logs · per service</span>
+        <p>Not wired yet. Bounded, redacted plane-log reads arrive with the Brain's own verb (neomjs/neo-agent-brain issue 27); until then this region stays empty rather than showing a stream that is not the plane's.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Frame 2 -->
+  <section class="frame" aria-labelledby="f2">
+    <div class="frame-label"><span class="eyebrow" id="f2">Frame 2 · stale</span><p>The picture is older than the two-minute horizon. Cards keep the last known state and the head says how old — the operator sees a stopped clock, never a silently current one.</p></div>
+    <div class="viewport">
+      <div class="sv-head">
+        <h2 class="sv-title">System</h2>
+        <span class="sv-scope">diagnosing <b>local-agent-os</b> · via fleet-server</span>
+        <span class="chip observe">observe-only</span>
+        <span class="sv-fresh stale">snapshot 6m ago — past the horizon · showing the last known picture</span>
+      </div>
+      <div class="planes">
+        <article class="plane serving">
+          <div class="plane-head"><span class="plane-key">Knowledge Base</span><span class="plane-id">kb-server</span><span class="plane-word">serving</span><span class="plane-seen">observed 6m ago</span></div>
+          <dl class="facts"><dt>memory</dt><dd>unknown · heap-observation-unavailable</dd><dt>class</dt><dd>transient · threshold 90% · 2 samples</dd><dt>restart churn</dt><dd>baseline available · detecting</dd></dl>
+          <p class="diag"><span class="k">diagnosis</span><span class="quiet">healthy · no recovery diagnosis</span></p>
+        </article>
+        <article class="plane degraded">
+          <div class="plane-head"><span class="plane-key">Memory Core</span><span class="plane-id">mc-server</span><span class="plane-word">degraded</span><span class="plane-seen">observed 6m ago</span></div>
+          <dl class="facts"><dt>memory</dt><dd class="hot">at-cap · sustained-saturation</dd><dt>class</dt><dd>transient · threshold 90% · 12 samples</dd><dt>restart churn</dt><dd>baseline available · detecting</dd></dl>
+          <p class="diag"><span class="k">diagnosis</span>exhaustion · confidence 0.95 · action class restart</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Frame 3 -->
+  <section class="frame" aria-labelledby="f3">
+    <div class="frame-label"><span class="eyebrow" id="f3">Frame 3 · unavailable · unsupported</span><p>Two reasons the view can carry nothing. One reason line for the whole view; no card guesses on its own.</p></div>
+    <div class="viewport">
+      <div class="sv-head">
+        <h2 class="sv-title">System</h2>
+        <span class="sv-scope">diagnosing <b>local-agent-os</b> · via fleet-server</span>
+        <span class="chip observe">observe-only</span>
+      </div>
+      <div class="reason">
+        <span class="word">No deployment-state snapshot at the fleet server</span>
+        <p>The orchestrator has not written one at the mounted path yet, or the fleet server booted without a path. Nothing is shown because nothing was observed. Reason from the wire: <code>snapshot-missing</code>.</p>
+      </div>
+      <div class="reason">
+        <span class="word">This instance's fleet server predates the deployment-state verb</span>
+        <p>An older build answers <code>unsupported-method</code>. The view names the build gap instead of an empty plane; update the instance to see its engine room.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Frame 4 -->
+  <section class="frame" aria-labelledby="f4">
+    <div class="frame-label"><span class="eyebrow" id="f4">Frame 4 · narrow band</span><p>A service card in a 240-pixel band: the head stacks, the facts go single-column, nothing clips mid-word. There are no control verbs to wrap: a service card carries none.</p></div>
+    <div class="viewport narrow">
+      <article class="plane degraded">
+        <div class="plane-head"><span class="plane-key">Memory Core</span><span class="plane-id">mc-server</span><span class="plane-word">degraded</span><span class="plane-seen">observed 12s ago</span></div>
+        <dl class="facts"><dt>memory</dt><dd class="hot">at-cap · sustained-saturation</dd><dt>class</dt><dd>transient · threshold 90% · 12 samples</dd><dt>restart churn</dt><dd>baseline available · detecting</dd></dl>
+        <p class="diag"><span class="k">diagnosis</span>exhaustion · confidence 0.95 · action class restart</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="notes" aria-label="Design notes">
+    <div>
+      <h2>Tokens consumed, nothing minted</h2>
+      <ul>
+        <li><b>Type</b> — the five §04 roles only: display for the card names and lane words, body for the diagnosis line, detail for facts, micro for ids, chips and times, chrome for eyebrows.</li>
+        <li><b>Color</b> — ink tiers for text; the card's left mark rebinds one custom property per state, the chip idiom. Every card keeps its mark in the same place.</li>
+        <li><b>Rhythm</b> — space-1…4 for every gap; the card's 16px left pad clears the 3px mark, the roster card's recorded exception, reused.</li>
+        <li><b>Elevation</b> — none: in-flow panels stay border-carried; the lanes use panel-2 to sit one step back from the cards.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Names and state words, from the wire</h2>
+      <div class="tbl"><table>
+        <tr><th>compose id</th><th>name on the card</th><th>source</th></tr>
+        <tr><td>mc-server</td><td>Memory Core</td><td rowspan="6">a Fleet Manager vocabulary table, <code>label ?? id</code>; the deploy definitions carry no titles and the Brain has no service catalog — when it grows one, <code>label</code> rides the wire and the table retires</td></tr>
+        <tr><td>kb-server</td><td>Knowledge Base</td></tr>
+        <tr><td>chroma</td><td>Chroma · vector store</td></tr>
+        <tr><td>orchestrator</td><td>Orchestrator</td></tr>
+        <tr><td>fleet-server</td><td>Fleet server</td></tr>
+        <tr><td>ingress</td><td>Ingress · Caddy</td></tr>
+      </table></div>
+      <div class="tbl" style="margin-top: 12px"><table>
+        <tr><th>status (folded at the writer)</th><th>word</th><th>mark</th></tr>
+        <tr><td>available</td><td>serving</td><td><span class="swatch" style="--sw: var(--fm-state-ok)"></span>state-ok</td></tr>
+        <tr><td>degraded (errors, or memory at-cap)</td><td>degraded</td><td><span class="swatch" style="--sw: var(--fm-state-wedged)"></span>state-wedged</td></tr>
+        <tr><td>no status row</td><td>unobserved</td><td><span class="swatch" style="--sw: var(--fm-state-unobserved)"></span>state-unobserved</td></tr>
+        <tr><td>view · stale</td><td>past the horizon</td><td><span class="swatch" style="--sw: var(--fm-state-idle)"></span>state-idle (a wait, not an incident)</td></tr>
+      </table></div>
+      <p style="margin-top: 8px">The set is closed — no new state color is minted; the words are the snapshot's own <code>status</code>, <code>disposition</code>, <code>phase</code> and <code>posture</code>, spelled for a reader.</p>
+    </div>
+    <div>
+      <h2>Scope, by surface</h2>
+      <ul>
+        <li><b>This view (the wire today):</b> per-service status · memoryPressure · restartChurn · classification · diagnosis; the backup lane's retry phase, health verdict and last receipt; starvation as <code>posture</code> + <code>breachCount</code> — enough for the cards and the three lanes.</li>
+        <li><b>The scheduler view (its own surface, Tasks-pane lineage):</b> the deferred-task queue with waiting-since and starved-for, the lease holder and its status, the backup lane's attempts — see the Tasks-queue sketch (neomjs/neo-agent-institution#113).</li>
+        <li><b>The roster (not here):</b> seat hooks and presence beacons; per-service logs — the Brain's own verb.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Deliberately absent</h2>
+      <ul>
+        <li><b>Verbs.</b> No restart, no drain, no "fix": the actuator class stays off this surface.</li>
+        <li><b>Per-card guessing.</b> An unavailable or unsupported wire is one reason for the whole view; cards never invent a plane.</li>
+        <li><b>A fabricated log stream.</b> The logs region names its sibling and stays empty until the verb exists.</li>
+        <li><b>Host paths, config, container ids beyond the compose id.</b> Redacted at the wire; the card shows the name, the compose id, and what the orchestrator concluded.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Open for review</h2>
+      <ol>
+        <li>The keeper-tab name: <b>System</b> (reserved in the navigation model) — or Planes / Engine room?</li>
+        <li>Stale mapped to the idle amber: acceptable reuse, or does stale deserve its own word without a color?</li>
+        <li class="done">The lanes strip below or above the cards — resolved in v3: servers' health first, the lanes below; the scheduler's depth is its own view.</li>
+        <li>An unobserved service (ingress here) still gets a card — shown as absence — versus folding it into a one-line footnote.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<script>
+  (() => {
+    const root = document.documentElement, button = document.getElementById('themeToggle'), order = ['auto', 'dark', 'light'];
+    let index = 0;
+    try { const saved = localStorage.getItem('system-view-sketch-theme'); if (saved && order.includes(saved)) index = order.indexOf(saved); } catch (e) {}
+    const apply = () => {
+      const mode = order[index];
+      if (mode === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', mode);
+      button.textContent = 'Skin: ' + mode;
+      try { localStorage.setItem('system-view-sketch-theme', mode); } catch (e) {}
+    };
+    button.addEventListener('click', () => { index = (index + 1) % order.length; apply(); });
+    apply();
+  })();
+</script>
+</body>
+</html>
