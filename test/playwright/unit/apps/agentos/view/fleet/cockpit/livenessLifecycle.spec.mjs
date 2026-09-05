@@ -60,6 +60,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             brainReads             : 0,
             brainHealthReadGeneration: 0,
             brainHealthReadInFlight: 0,
+            deploymentStateReadGeneration: 0,
+            deploymentStateReadInFlight: 0,
             // the view-owned cadence configs live on the component seat now
             component              : {livenessPollInterval: 50, maxReadsInFlight: 2, getStateProvider: () => null},
             gridReadGeneration     : 0,
@@ -74,8 +76,9 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             // the third seam counts separately: the wire-read expectations stay untouched by it
             loadBrainHealth() { this.brainReads++; return Promise.resolve() },
             loadRoster()   { this.polls++; return Promise.resolve() },
-            // the tasks seam launches no counted wire read in these balance fixtures
+            // the tasks and deployment-state seams launch no counted wire read in these balance fixtures
             loadTasks()    { return Promise.resolve() },
+            loadDeploymentState() { return Promise.resolve() },
             // the wake rebind seam launches no wire read — modeled as a plain no-op so the
             // wire-read balance assertions stay exact
             ensureViewerWakeStream() {},
@@ -668,5 +671,142 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(host.applied, 'older news never overwrites newer truth').toEqual([{cause: null, state: 'running'}]);
             expect(host.brainHealthReadInFlight, 'both wires settled, both slots free').toBe(0)
         })
+    })
+
+    test.describe('deployment-state read owner through the real bridge and loader', () => {
+        let previousFleet;
+
+        test.beforeEach(() => {
+            previousFleet = globalThis.AgentOS?.fleet
+        });
+
+        test.afterEach(() => {
+            if (previousFleet === undefined) {
+                delete globalThis.AgentOS.fleet
+            } else {
+                globalThis.AgentOS.fleet = previousFleet
+            }
+        });
+
+        // the provider leaf is declared leaf-complete (a `null` block would stop the leaf bubble), so
+        // the wire's partial blocks land padded to the declared shape: `picture()` is what the wire
+        // sends, `landed()` what the provider holds afterwards
+        const blankMaintenance = () => ({
+            backup    : {phase: null, lastSuccessAt: null, lastSuccessAgeMs: null, lastBackup: {finishedAt: null, kind: null, status: null}},
+            starvation: {posture: null, breachCount: null}
+        });
+        const blankPicture = () => ({state: null, reason: null, generatedAt: null, ageMs: null, services: [], maintenance: blankMaintenance()});
+        const picture      = () => ({
+            state      : 'ok',
+            reason     : null,
+            generatedAt: 1_700_000_000_000,
+            ageMs      : 12_000,
+            services   : [{serviceKey: 'mc-server', status: {status: 'available', disposition: 'at-cap'}}],
+            maintenance: {backup: {phase: 'unanchored'}, starvation: {posture: 'degraded', breachCount: 5}}
+        });
+        const landed = () => {
+            const blank = blankMaintenance();
+
+            return {
+                ...picture(),
+                maintenance: {
+                    backup    : {...blank.backup, phase: 'unanchored'},
+                    starvation: {posture: 'degraded', breachCount: 5}
+                }
+            }
+        };
+
+        /** @summary The real loader over the real bridge; the roster surface stands beside it as a witness. */
+        const makeSystemHost = ({timeout = 2000} = {}) => {
+            const provider = makeProviderFake({
+                deploymentState : blankPicture(),
+                systemConnection: {state: null, reason: null},
+                gridConnection  : {state: 'connecting', reason: null}
+            });
+            const host = makeTimerHost();
+
+            Object.assign(host.component, {getStateProvider: () => provider, livenessReadTimeout: timeout});
+            delete host.loadDeploymentState;
+
+            return {host, provider}
+        };
+        const installWire = send => installFleetBridge({credentialIngress: 'shell', send, target: globalThis});
+        const okReply     = result => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result});
+
+        test('a cold read publishes connecting; a validated answer lands the picture and clears only its own observation', async () => {
+            const {host, provider} = makeSystemHost();
+            const wire = Promise.withResolvers();
+
+            installWire(() => wire.promise);
+            const read = host.loadDeploymentState();
+
+            expect(provider.data.systemConnection).toEqual({state: 'connecting', reason: null});
+            wire.resolve(okReply(picture()));
+            await read;
+
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+            expect(provider.data.deploymentState).toEqual(landed());
+            expect(provider.data.gridConnection, 'the sibling surface is untouched').toEqual({state: 'connecting', reason: null});
+            expect(host.deploymentStateReadInFlight).toBe(0)
+        });
+
+        test('a refusal keeps the last-known picture and publishes its own sanitized observation', async () => {
+            const {host, provider} = makeSystemHost();
+            let calls = 0;
+
+            installWire(() => ++calls === 1
+                ? okReply(picture())
+                : createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.refused, {error: 'Authorization: Bearer secret-value; request refused'}));
+
+            await host.loadDeploymentState();
+            await host.loadDeploymentState();
+
+            expect(provider.data.systemConnection.state).toBe('refused');
+            expect(provider.data.systemConnection.reason).toContain('[redacted]');
+            expect(provider.data.systemConnection.reason).not.toContain('secret-value');
+            expect(provider.data.deploymentState, 'the last-known picture survives a transport-class failure').toEqual(landed())
+        });
+
+        test('an older build answers unsupported-method: the picture carries the reason, the observation clears', async () => {
+            const {host, provider} = makeSystemHost();
+
+            installWire(() => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.unsupportedMethod, {
+                error: "fleet: method 'fleetDeploymentState' is not on the control surface"
+            }));
+            await host.loadDeploymentState();
+
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+            expect(provider.data.deploymentState).toEqual({...blankPicture(), state: 'unavailable', reason: 'unsupported-method'})
+        });
+
+        test('a timeout publishes the elapsed bound, keeps the picture, and a late reply cannot overwrite a newer answer', async () => {
+            const {host, provider} = makeSystemHost({timeout: 20});
+            const late = Promise.withResolvers();
+            let calls = 0;
+
+            installWire(() => ++calls === 1 ? late.promise : okReply({...picture(), ageMs: 1}));
+
+            await host.loadDeploymentState();
+            expect(provider.data.systemConnection).toEqual({state: 'timeout', reason: 'fleet read exceeded 20ms'});
+            expect(provider.data.deploymentState).toEqual(blankPicture());
+
+            await host.loadDeploymentState();
+            expect(provider.data.deploymentState.ageMs).toBe(1);
+
+            late.resolve(okReply(picture()));
+            await new Promise(resolve => setTimeout(resolve, 5));
+            expect(provider.data.deploymentState.ageMs, 'the stale wire cannot overwrite the newer answer').toBe(1);
+            expect(host.deploymentStateReadInFlight, 'both wires settled, both slots free').toBe(0)
+        });
+
+        test('a torn answer keeps the picture and clears the observation — nothing is invented', async () => {
+            const {host, provider} = makeSystemHost();
+
+            installWire(() => okReply({services: 'not a projection'}));
+            await host.loadDeploymentState();
+
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+            expect(provider.data.deploymentState).toEqual(blankPicture())
+        });
     })
 });

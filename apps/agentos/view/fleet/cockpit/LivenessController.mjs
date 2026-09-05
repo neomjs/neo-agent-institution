@@ -1,4 +1,5 @@
 import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import DeploymentStateRead from '../../../util/DeploymentStateRead.mjs';
 import SourceHealth        from '../../../util/SourceHealth.mjs';
 
 const
@@ -62,6 +63,18 @@ class LivenessController extends ComponentController {
      * @protected
      */
     brainHealthReadInFlight = 0
+    /**
+     * Monotonic read-fence for the deployment-state pulls — the System view's plane picture.
+     * @member {Number} deploymentStateReadGeneration=0
+     * @protected
+     */
+    deploymentStateReadGeneration = 0
+    /**
+     * Unsettled deployment-state reads on the wire, released on the read's OWN settle.
+     * @member {Number} deploymentStateReadInFlight=0
+     * @protected
+     */
+    deploymentStateReadInFlight = 0
     /**
      * Read-fence for the ROSTER surface — see the class summary's one discipline.
      * @member {Number} gridReadGeneration=0
@@ -438,6 +451,17 @@ class LivenessController extends ComponentController {
     }
 
     /**
+     * @summary The deployment-state read owner's pull — the System view's plane picture on the
+     * liveness cadence. The seam itself lives in `AgentOS.util.DeploymentStateRead` (this file
+     * holds its size bar); this method is the cadence's, the reconnect's and the fixtures' handle.
+     * @returns {Promise<void>}
+     * @protected
+     */
+    loadDeploymentState() {
+        return DeploymentStateRead.load(this)
+    }
+
+    /**
      * @summary Advance ONE wired surface to the degraded truth and retain the safe reason. A
      * surface that never reached `live` stays on its honest `sample` seed — advancing it to
      * `stale` would claim last-known data that never existed — and a transport failure RETRACTS
@@ -705,6 +729,7 @@ class LivenessController extends ComponentController {
             if (me.gridReadInFlight        < cap) me.loadRoster();
             if (me.brainHealthReadInFlight < cap) me.loadBrainHealth();
             if (me.tasksReadInFlight       < cap) me.loadTasks();
+            if (me.deploymentStateReadInFlight < cap) me.loadDeploymentState();
 
             // no in-flight cap: this launches no wire read — it compares bridge identity (the
             // custody-heal rebuild trigger) and copies the consumer's local observations
@@ -712,8 +737,9 @@ class LivenessController extends ComponentController {
         }, cockpit.livenessPollInterval);
 
         // the daemon surface has no other first read; waiting a full cadence would leave a
-        // boot-time fault invisible
+        // boot-time fault invisible — the plane picture has no other first read either
         me.loadBrainHealth();
+        me.loadDeploymentState();
 
         me.followCustodyHeal()
     }
@@ -767,6 +793,7 @@ class LivenessController extends ComponentController {
         me.loadActivity();
         me.loadRoster();
         me.loadBrainHealth();
+        me.loadDeploymentState();
         me.ensureViewerWakeStream();
 
         cockpit.getMemoriesPane()?.onRefreshClick();

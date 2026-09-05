@@ -559,6 +559,43 @@ test.describe('installFleetBridge — App-Worker wiring of the dev-server app<->
         }
     });
 
+    test('validated non-ok envelopes carry the wire state itself as fleetWireState; ok and malformed answers carry none', async () => {
+        const cases = [
+            [FLEET_WIRE_RESPONSE_STATES.refused, 'refused'],
+            [FLEET_WIRE_RESPONSE_STATES.operationFailed, 'operation-failed'],
+            [FLEET_WIRE_RESPONSE_STATES.unsupportedMethod, 'unsupported-method']
+        ];
+
+        for (const [state, expected] of cases) {
+            const bridge = installFleetBridge({
+                credentialIngress: 'shell',
+                send             : async () => createFleetWireResponse(state, {error: 'upstream report'}),
+                target           : {}
+            });
+            const error = await bridge.fleetDeploymentState().catch(error => error);
+
+            expect(error).toBeInstanceOf(Error);
+            expect(error.fleetWireState, state).toBe(expected)
+        }
+
+        const torn = await installFleetBridge({
+            credentialIngress: 'shell',
+            send             : async () => ({...createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.refused), state: 'unknown'}),
+            target           : {}
+        }).fleetDeploymentState().catch(error => error);
+
+        expect(torn).toBeInstanceOf(Error);
+        expect(torn, 'a malformed envelope is no evidence of a wire state').not.toHaveProperty('fleetWireState');
+
+        const healthy = installFleetBridge({
+            credentialIngress: 'shell',
+            send             : async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {state: 'ok'}}),
+            target           : {}
+        });
+
+        expect(await healthy.fleetDeploymentState()).toEqual({state: 'ok'})
+    });
+
     test('pre-response rejection is unreachable, and neither credentials nor an injected classification escape', async () => {
         const unsafe = Object.assign(new Error(`Authorization: Bearer ${testBearer}; refused at ${fleetUrl}`), {
             fleetConnectionState: 'refused'

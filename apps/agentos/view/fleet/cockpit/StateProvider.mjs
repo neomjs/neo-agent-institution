@@ -78,6 +78,28 @@ class StateProvider extends Provider {
              */
             daemonState: null,
             /**
+             * The orchestrator's deployment-state picture as the wire projected it — the System
+             * view's plane truth: `state` `'ok'|'stale'|'unavailable'`, the projection's own
+             * `reason`, `generatedAt`, `ageMs`, the per-service rows (one atomic array) and the
+             * maintenance blocks. `state` `null` = never answered; a transport failure never erases
+             * the last-known picture (its `generatedAt` still dates it) — only the read owner's own
+             * answer moves it. The blocks are declared LEAF-COMPLETE on purpose: `setData` bubbles a
+             * new leaf up only through object-valued parents, so a block declared `null` would read
+             * `null` forever after its first real answer.
+             * @member {Object} deploymentState
+             */
+            deploymentState: {
+                state      : null,
+                reason     : null,
+                generatedAt: null,
+                ageMs      : null,
+                services   : [],
+                maintenance: {
+                    backup    : {phase: null, lastSuccessAt: null, lastSuccessAgeMs: null, lastBackup: {finishedAt: null, kind: null, status: null}},
+                    starvation: {posture: null, breachCount: null}
+                }
+            },
+            /**
              * The grid surface's adapter state — `'sample'` is the honest cold-first-run badge;
              * absent-item materialization binds to HERE, so a layout commit can never reset a
              * live grid back to sample.
@@ -145,6 +167,13 @@ class StateProvider extends Provider {
              * @member {String|null} streamDegradedReason=null
              */
             streamDegradedReason: null,
+            /**
+             * The deployment-state read observation — the System view's surface; a validated
+             * answer (including an older build's `unsupported-method`) clears only this surface's
+             * fields.
+             * @member {Object} systemConnection={state:null,reason:null}
+             */
+            systemConnection: {state: null, reason: null},
             /**
              * The per-viewer wake-push truths, stamped from the stream consumer's OWN
              * observations: `stream` carries the consumer's liveness vocabulary verbatim;
