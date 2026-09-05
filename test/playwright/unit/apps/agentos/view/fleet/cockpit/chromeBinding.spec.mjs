@@ -47,7 +47,7 @@ test('the declared chrome binds the derived truths — banner revealed with the 
 
     expect(banner).toBeTruthy();
     expect(banner.hidden, 'the cold verdict reveals the banner').toBe(false);
-    // #23: the visible label is the STATUS WORD; the full sentence rides title + aria
+    // The visible label is the status word; the full sentence rides title + aria.
     expect(banner.text).toBe('fleet offline');
     expect(banner.cls).toContain('fm-spine-banner-cold');
     expect(banner.vdom.title).toContain('Fleet server offline');

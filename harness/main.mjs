@@ -1,6 +1,7 @@
 // The Electron harness main: boots the Agent OS app on the packaged origin the Electron-shell ADR
-// specifies (ADR 0034 — ticket-ref-ok: this file IS that contract's implementation; every §-ref
-// below resolves against it). Scope: harness skeleton + multi-window join + the supervised Brain
+// specifies (neomjs/neo: learn/agentos/decisions/0034-electron-shell-architecture.md).
+// Every section reference below resolves against that decision record.
+// Scope: harness skeleton + multi-window join + the supervised Brain
 // (the hosting-spike verdict: Arm B — see brain.mjs).
 //
 // ADR bindings implemented here:
