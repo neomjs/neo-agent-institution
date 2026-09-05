@@ -121,6 +121,13 @@ class Container extends BaseContainer {
          */
         systemConnection_: null,
         /**
+         * Injected wall-clock (ms) for the freshness line and the row ages; `null` → the live
+         * `Date.now()`. Tests pin it so a retained picture ages deterministically from its anchor.
+         * @member {Number|null} now_=null
+         * @reactive
+         */
+        now_: null,
+        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
@@ -245,7 +252,8 @@ class Container extends BaseContainer {
 
     /** @param {String|null} value @param {String|null} oldValue */
     afterSetBoundProfileId(value, oldValue) {
-        this.isConstructed && this.applyScope()
+        // the scope line AND the picture: a held picture is judged against the bound profile
+        this.isConstructed && (this.applyScope(), this.applyPicture())
     }
 
     /** @param {Object|null} value @param {Object|null} oldValue */
@@ -262,22 +270,37 @@ class Container extends BaseContainer {
 
     /** @param {Object|null} value @param {Object|null} oldValue */
     afterSetSystemConnection(value, oldValue) {
-        this.isConstructed && this.applyConnection()
+        // the observation line AND the picture: a failed read qualifies a retained picture, and
+        // every observation is a tick on which its age advances from the reader's anchor
+        this.isConstructed && (this.applyConnection(), this.applyPicture())
     }
 
     /**
      * @summary Render the picture: the freshness line, the whole-view reason (unavailable states only),
      * the plane cards (a wholesale replace — rows are a glance at one instant, never an accumulation),
-     * and the three lanes.
+     * and the three lanes. Two facts gate what the held picture may claim: its provenance — a picture
+     * another instance's bridge answered is foreign under this scope and renders as nothing observed —
+     * and the current read — a failed read makes a same-scope picture "last known", while its age
+     * keeps moving from the reader's observation anchor rather than freezing at the wire's number.
+     * A pending same-scope read is the routine poll and does not qualify the picture (it would flap
+     * the lane on every tick); a pending read for another instance is foreign by provenance already.
      */
     applyPicture() {
         const
             me          = this,
-            picture     = me.deploymentState,
+            held        = me.deploymentState,
+            heldState   = held?.state ?? null,
+            foreign     = heldState !== null && (held.profileId ?? null) !== (me.boundProfileId ?? null),
+            picture     = foreign ? null : held,
             state       = picture?.state ?? null,
             reason      = picture?.reason ?? null,
-            ageMs       = picture?.ageMs ?? null,
             generatedAt = picture?.generatedAt ?? null,
+            observedAt  = picture?.observedAt ?? null,
+            now         = me.now ?? Date.now(),
+            elapsedMs   = Number.isFinite(observedAt) ? Math.max(0, now - observedAt) : 0,
+            ageMs       = Number.isFinite(picture?.ageMs) ? picture.ageMs + elapsedMs : null,
+            contact     = me.systemConnection?.state ?? null,
+            lost        = contact !== null && contact !== 'connecting' && (state === 'ok' || state === 'stale'),
             services    = Array.isArray(picture?.services) ? picture.services.filter(row => row && typeof row === 'object' && typeof row.serviceKey === 'string') : [],
             unavailable = state === 'unavailable',
             age         = Number.isFinite(ageMs) ? AgentFreshness.formatAge(ageMs) : null,
@@ -285,14 +308,18 @@ class Container extends BaseContainer {
             reasonBlock = me.getReference('reason');
 
         // the freshness line — a stopped clock is said, never a silently current one
-        fresh.text = state === null
-            ? 'not observed yet'
-            : unavailable
-                ? 'no picture from the fleet server'
-                : state === 'stale'
-                    ? `snapshot ${age ?? 'of unknown age'} — past the horizon · showing the last known picture`
-                    : `snapshot ${age ?? 'of unknown age'}`;
-        fresh.cls = ['fm-system-fresh', state === null ? 'is-cold' : unavailable ? 'is-unavailable' : state === 'stale' ? 'is-stale' : 'is-fresh'];
+        fresh.text = foreign
+            ? 'no picture from this instance yet'
+            : state === null
+                ? 'not observed yet'
+                : unavailable
+                    ? 'no picture from the fleet server'
+                    : lost
+                        ? `last picture ${age ?? 'of unknown age'} — fleet read ${contact} · showing the last known picture`
+                        : state === 'stale'
+                            ? `snapshot ${age ?? 'of unknown age'} — past the horizon · showing the last known picture`
+                            : `snapshot ${age ?? 'of unknown age'}`;
+        fresh.cls = ['fm-system-fresh', foreign || state === null ? 'is-cold' : unavailable ? 'is-unavailable' : lost || state === 'stale' ? 'is-stale' : 'is-fresh'];
 
         // one reason for the whole view; the cards never invent a plane
         if (unavailable) {
@@ -331,15 +358,17 @@ class Container extends BaseContainer {
             })))
         }
 
-        me.applyLanes({picture, state, unavailable, generatedAt, serviceCount: services.length})
+        me.applyLanes({picture, state, unavailable, lost, contact, generatedAt, serviceCount: services.length})
     }
 
     /**
-     * @summary Word the three lanes from the maintenance blocks and the picture's own state.
+     * @summary Word the three lanes from the maintenance blocks and the picture's own state; the
+     * snapshot lane also carries the current read — a retained picture behind a failed read is
+     * "last known", never "current".
      * @param {Object} facts
      * @protected
      */
-    applyLanes({picture, state, unavailable, generatedAt, serviceCount}) {
+    applyLanes({picture, state, unavailable, lost, contact, generatedAt, serviceCount}) {
         const
             me         = this,
             backup     = picture?.maintenance?.backup ?? null,
@@ -372,10 +401,10 @@ class Container extends BaseContainer {
         );
 
         me.setLane('snapshot',
-            state === 'ok' ? 'current' : state === 'stale' ? 'past the horizon' : unavailable ? 'unavailable' : 'not observed',
-            PICTURE_TONES[state] ?? 'is-quiet',
+            state === 'ok' ? (lost ? 'last known' : 'current') : state === 'stale' ? 'past the horizon' : unavailable ? 'unavailable' : 'not observed',
+            lost && state === 'ok' ? 'is-warn' : PICTURE_TONES[state] ?? 'is-quiet',
             Number.isFinite(generatedAt)
-                ? `generated ${ViewerTime.formatViewerTime(generatedAt)?.text ?? 'at an unknown time'} · ${serviceCount} ${serviceCount === 1 ? 'service' : 'services'} · read from the fleet server`
+                ? `generated ${ViewerTime.formatViewerTime(generatedAt)?.text ?? 'at an unknown time'} · ${serviceCount} ${serviceCount === 1 ? 'service' : 'services'} · ${lost ? `fleet read ${contact}` : 'read from the fleet server'}`
                 : 'no picture yet'
         )
     }

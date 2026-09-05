@@ -211,5 +211,97 @@ test.describe('AgentOS.view.system.Container — the engine room reads the provi
         } finally {
             host.destroy()
         }
+    });
+
+    test('a picture another instance answered never renders under this scope — nothing observed for this instance until its own bridge answers', () => {
+        const {host, provider, view} = makeHost();
+
+        try {
+            view.now = 1_788_568_970_000;
+            provider.setData({boundProfileId: 'fleet-profile:v1:b'});
+            // the switcher moved to B while the provider still holds A's picture, stamped by A's bridge
+            provider.setData({deploymentState: {...projection(), profileId: 'fleet-profile:v1:a', observedAt: 1_788_568_970_000}});
+
+            expect(view.getReference('fresh').text).toBe('no picture from this instance yet');
+            expect(view.getReference('fresh').cls).toContain('is-cold');
+            expect(view.getReference('reason').hidden).toBe(true);
+            expect(view.getReference('empty').hidden, 'the honest empty line, never A\'s cards').toBe(false);
+            expect(view.serviceStore.getCount()).toBe(0);
+            expect(laneWord(view, 'maintenance').text).toBe('not observed');
+            expect(laneWord(view, 'backup').text).toBe('not observed');
+            expect(laneWord(view, 'snapshot').text).toBe('not observed');
+
+            // B's own bridge answers: the same plane facts, stamped B, render
+            provider.setData({deploymentState: {...projection(), profileId: 'fleet-profile:v1:b', observedAt: 1_788_568_970_000}});
+
+            expect(view.getReference('fresh').text).toBe('snapshot 12s ago');
+            expect(view.serviceStore.getCount()).toBe(2);
+            expect(laneWord(view, 'snapshot').text).toBe('current');
+
+            // the switcher moves on: the held picture is foreign again without any wire traffic
+            provider.setData({boundProfileId: 'fleet-profile:v1:a'});
+
+            expect(view.getReference('fresh').text).toBe('no picture from this instance yet');
+            expect(view.serviceStore.getCount()).toBe(0);
+
+            // an unstamped picture under no bound instance is this scope's — the dev harness without profiles.
+            // The provider merges leaves, so a landing must carry its stamp explicitly (as `toPicture` always does):
+            // a picture without the key would keep the previous stamp and stay foreign
+            provider.setData({boundProfileId: null, deploymentState: {...projection(), profileId: null, observedAt: 1_788_568_970_000}});
+
+            expect(view.getReference('fresh').text).toBe('snapshot 12s ago');
+            expect(view.serviceStore.getCount()).toBe(2)
+        } finally {
+            host.destroy()
+        }
+    });
+
+    test('lost contact qualifies the retained picture and its age keeps moving from the reader\'s anchor; a resumed observation restores current', () => {
+        const {host, provider, view} = makeHost();
+
+        try {
+            view.now = 1_788_568_970_000;
+            provider.setData({deploymentState: {...projection(), observedAt: 1_788_568_970_000}});
+
+            expect(view.getReference('fresh').text).toBe('snapshot 12s ago');
+            expect(laneWord(view, 'snapshot').text).toBe('current');
+            expect(laneWord(view, 'snapshot').cls).toContain('is-ok');
+
+            // the routine poll: a pending same-scope read keeps the picture current (no flap); the age advances
+            view.now += 15_000;
+            provider.setData({systemConnection: {state: 'connecting', reason: null}});
+
+            expect(view.getReference('fresh').text).toBe('snapshot 27s ago');
+            expect(view.getReference('fresh').cls).toContain('is-fresh');
+            expect(laneWord(view, 'snapshot').text).toBe('current');
+
+            provider.setData({systemConnection: {state: null, reason: null}});
+            expect(laneWord(view, 'snapshot').text).toBe('current');
+
+            // contact lost: the picture is said to be last known, and the clock does not stop
+            view.now += 60_000;
+            provider.setData({systemConnection: {state: 'unreachable', reason: 'fetch failed'}});
+
+            expect(view.getReference('fresh').text).toBe('last picture 1m ago — fleet read unreachable · showing the last known picture');
+            expect(view.getReference('fresh').cls).toContain('is-stale');
+            expect(laneWord(view, 'snapshot').text).toBe('last known');
+            expect(laneWord(view, 'snapshot').cls).toContain('is-warn');
+            expect(laneLine(view, 'snapshot').text).toContain('fleet read unreachable');
+            expect(view.serviceStore.getCount(), 'the source facts stay — they are just not current').toBe(2);
+            // the row's age moved with the anchor: 10 894 ms at landing + 75 000 ms since
+            const rows = view.serviceStore.items.map(record => record.toJSON ? record.toJSON() : record);
+            expect(rows[0].observedAgeMs).toBe(85_894);
+
+            // resumed: a new answer lands with a cleared observation — current again, on the new anchor
+            view.now += 5_000;
+            provider.setData({deploymentState: {...projection(), ageMs: 1_000, observedAt: view.now}, systemConnection: {state: null, reason: null}});
+
+            expect(view.getReference('fresh').text).toBe('snapshot 1s ago');
+            expect(view.getReference('fresh').cls).toContain('is-fresh');
+            expect(laneWord(view, 'snapshot').text).toBe('current');
+            expect(laneWord(view, 'snapshot').cls).toContain('is-ok')
+        } finally {
+            host.destroy()
+        }
     })
 });

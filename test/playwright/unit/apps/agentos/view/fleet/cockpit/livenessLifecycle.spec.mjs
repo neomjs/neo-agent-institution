@@ -706,6 +706,9 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
 
             return {
                 ...picture(),
+                // the reader's stamp: the answering bridge (none configured here) and the landing clock
+                profileId  : null,
+                observedAt : expect.any(Number),
                 maintenance: {
                     backup    : {...blank.backup, phase: 'exhausted', health: {status: 'degraded', reasonCodes: ['backup-never-succeeded']}},
                     starvation: {posture: 'degraded', breachCount: 5}
@@ -773,7 +776,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             await host.loadDeploymentState();
 
             expect(provider.data.systemConnection).toEqual({state: null, reason: null});
-            expect(provider.data.deploymentState).toEqual({...blankPicture(), state: 'unavailable', reason: 'unsupported-method'})
+            // an answer is an answer: the older build's refusal is stamped like any landing
+            expect(provider.data.deploymentState).toEqual({...blankPicture(), state: 'unavailable', reason: 'unsupported-method', observedAt: expect.any(Number)})
         });
 
         test('a timeout publishes the elapsed bound, keeps the picture, and a late reply cannot overwrite a newer answer', async () => {
@@ -804,6 +808,51 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
 
             expect(provider.data.systemConnection).toEqual({state: null, reason: null});
             expect(provider.data.deploymentState).toEqual(blankPicture())
+        });
+
+        test('an instance switch never lends A\'s picture to B: a picture is stamped by the bridge that answered it, B pending or refused keeps A\'s stamp, B\'s answer replaces it, and late settlements of both older reads are dropped', async () => {
+            const {host, provider} = makeSystemHost();
+            const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return {promise, resolve} };
+            const lateA = deferred(), pendingB = deferred();
+            let aCalls = 0, bCalls = 0;
+
+            // instance A: answers once, then hangs — the read that will settle late, after the switch
+            installFleetBridge({credentialIngress: 'shell', profileId: 'fleet-profile:v1:a', target: globalThis,
+                send: () => ++aCalls === 1 ? okReply(picture()) : lateA.promise});
+            await host.loadDeploymentState();
+            expect(provider.data.deploymentState).toEqual({...landed(), profileId: 'fleet-profile:v1:a'});
+
+            const lateRead = host.loadDeploymentState();   // A, in flight across the switch
+            expect(provider.data.systemConnection.state).toBe('connecting');
+
+            // the switch: B's bridge replaces A's; B hangs, then refuses, then answers a different plane
+            installFleetBridge({credentialIngress: 'shell', profileId: 'fleet-profile:v1:b', target: globalThis,
+                send: () => ++bCalls === 1
+                    ? pendingB.promise
+                    : bCalls === 2
+                        ? createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.refused, {error: 'B refused'})
+                        : okReply({...picture(), services: [{serviceKey: 'kb-server', status: 'available'}]})});
+
+            const pendingRead = host.loadDeploymentState();   // B pending
+            expect(provider.data.systemConnection.state).toBe('connecting');
+            expect(provider.data.deploymentState.profileId, 'the retained picture keeps A\'s stamp while B is pending — the view hides it under B').toBe('fleet-profile:v1:a');
+
+            await host.loadDeploymentState();   // B refused
+            expect(provider.data.systemConnection.state).toBe('refused');
+            expect(provider.data.deploymentState.profileId, 'still A\'s — a refusal never re-labels it').toBe('fleet-profile:v1:a');
+
+            await host.loadDeploymentState();   // B answers
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null});
+            expect(provider.data.deploymentState.profileId).toBe('fleet-profile:v1:b');
+            expect(provider.data.deploymentState.services.map(row => row.serviceKey)).toEqual(['kb-server']);
+
+            // the late settlements: A's hung read and B's first read resolve now — older generations, dropped
+            lateA.resolve(okReply({...picture(), services: [{serviceKey: 'late-a', status: 'available'}]}));
+            pendingB.resolve(okReply({...picture(), services: [{serviceKey: 'late-b', status: 'available'}]}));
+            await Promise.all([lateRead, pendingRead]);
+            expect(provider.data.deploymentState.services.map(row => row.serviceKey)).toEqual(['kb-server']);
+            expect(provider.data.deploymentState.profileId).toBe('fleet-profile:v1:b');
+            expect(provider.data.systemConnection).toEqual({state: null, reason: null})
         });
     })
 });
