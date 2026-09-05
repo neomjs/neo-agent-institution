@@ -6,7 +6,7 @@
         "resources/scss": "17956ab1dfebface8ba8ecf07fc7d36b8a90525f41f5980eebfdba8a7e12319e",
         "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs": "c459a5ea768be168243a62cdf83c11586719f551524b23f0f31dcf196125241e",
         "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots": "4745760abc6192d424b6a26853db152daabb4251918c4101ca2e6e4794d6dccd",
-        "test/playwright/visual/FleetCockpitVisual.spec.mjs": "d054c6cdd1c20fc55e5af565941400105b6834b702d63dc1e31d1dc9742e8276",
+        "test/playwright/visual/FleetCockpitVisual.spec.mjs": "2499f2aa6cd7e7b8eb5b99379e32a8c36c9dea2be178abe3f45b3d001b9e501f",
         "test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs": "3d5d9a62e216ff428fb6d7e7b9461e906309d0949adbf1a65ffa6e1cc89145d2"
     }
 }

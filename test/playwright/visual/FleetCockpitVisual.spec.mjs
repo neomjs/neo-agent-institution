@@ -210,7 +210,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(geometry.startRect, 'the Start fleet button is rendered').not.toBeNull();
         expect(geometry.startRect.right, 'the Start fleet button sits inside the vessel window — the interactive core is reachable').toBeLessThanOrEqual(geometry.viewport);
         expect(geometry.startRect.left, 'the Start fleet button is not clipped at the left edge either').toBeGreaterThanOrEqual(0);
-        // The RA-1 regression class: the narrow band's 44px touch pair once starved the identity
+        // The regression class this floor guards: the narrow band's 44px touch pair once starved the identity
         // column to 15px and every resident's name collapsed to two letters. The sub-narrow card
         // mode exists to prevent exactly that — this floor keeps it honest.
         expect(geometry.minIdentity, 'every card still NAMES its resident at vessel width — the identity column never collapses').toBeGreaterThanOrEqual(44);
