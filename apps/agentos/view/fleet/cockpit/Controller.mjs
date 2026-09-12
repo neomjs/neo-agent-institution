@@ -6,9 +6,8 @@ import SourceHealth                from '../../../util/SourceHealth.mjs';
 
 /**
  * @summary The cockpit's intent + command layer — the surface-fired intent relays, the per-pane
- * snapshot reads and the fleet-start batch, per the #50 architecture ruling: view logic lives on
- * the controller (lifecycle-bound, first-class `this.component` access), never on a util a view
- * object gets passed into. The wire-liveness half (roster/activity/Brain-health loads, cadence,
+ * snapshot reads and the fleet-start batch. View logic lives on the controller (lifecycle-bound,
+ * first-class `this.component` access), never on a util a view object gets passed into. The wire-liveness half (roster/activity/Brain-health loads, cadence,
  * reconnect, viewer-wake custody) is the inherited
  * {@link AgentOS.view.fleet.cockpit.LivenessController} layer.
  *

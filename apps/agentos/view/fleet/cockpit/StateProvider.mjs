@@ -21,8 +21,8 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
 
 /**
  * @summary The cockpit's state scope — every truth more than one surface reads lives here, so the
- * surfaces BIND instead of being synced (the operator's partial-provider ruling on #50: shared
- * render state moves to the provider; per-pane snapshots stay controller state).
+ * surfaces BIND instead of being synced: shared render state is provider data; per-pane snapshots
+ * stay controller state.
  *
  * The provider hosts three kinds of truth:
  * - **stores** — the roster (autoloaded from the honestly-labelled sample seed), the activity
