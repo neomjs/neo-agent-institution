@@ -11,6 +11,7 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import Authoring            from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Authoring.mjs';
+import Operations           from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Operations.mjs';
 import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
@@ -110,5 +111,67 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
         // revealed once more: the same instance, never a successor
         await reveal();
         expect(cockpit.getReference('agent-detail')).toBe(pane)
+    })
+});
+
+/**
+ * The built-in presets derive from the AUTHORED declaration, never from the active document: the
+ * engine lets a supplied `dockModel` (a restored perspective, a vessel host) win over `zones` and
+ * keeps it active — Overview / Focus / Review stay variants of `panes` + `zones` regardless, so a
+ * supplied document with a pane closed still boots, and a supplied resize never becomes the seed.
+ */
+test.describe('AgentOS.view.fleet.cockpit.Container — the presets derive from the declaration; a supplied document stays active', () => {
+    const
+        create         = config => Neo.create(FleetCockpit, {
+            stateProvider: {
+                module: CockpitStateProvider,
+                stores: {
+                    fleetActivityEvents: {module: FleetActivityEvents},
+                    fleetRoster        : {module: FleetRoster, autoLoad: false},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
+                }
+            },
+            ...config
+        }),
+        presetDocument = (cockpit, name) => cockpit.perspectiveStore.getPerspective(name).layout.dockZone;
+
+    let cockpit;
+
+    test.afterEach(() => {
+        cockpit?.destroy();
+        cockpit = null;
+        Neo.apps = {}
+    });
+
+    test('default boot: the presets are the shipped variants of the declaration', () => {
+        cockpit = create();
+
+        expect(presetDocument(cockpit, 'Overview')).toEqual(SHIPPED);
+        expect(presetDocument(cockpit, 'Focus').nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
+        expect(presetDocument(cockpit, 'Review').items.detail.autoHidden).toBe(false)
+    });
+
+    test('a supplied document with the inspector closed boots, stays active, and leaves the presets untouched', () => {
+        const {document: supplied, errors} = Operations.applyOperation(shippedDockDocument(), {operation: 'closeItem', itemId: 'detail'});
+
+        expect(errors).toEqual([]);
+        expect(supplied.items.detail, 'the supplied document has no inspector record').toBeUndefined();
+
+        cockpit = create({dockModel: supplied});
+
+        expect(cockpit.dockModel.items.detail, 'the supplied document wins over zones and stays active').toBeUndefined();
+        expect(presetDocument(cockpit, 'Overview'), 'Overview is the declaration, not the supplied state').toEqual(SHIPPED);
+        expect(presetDocument(cockpit, 'Review').items.detail.autoHidden, 'Review still opens the inspector').toBe(false)
+    });
+
+    test('a supplied resize stays active and never rewrites Overview\'s seed', () => {
+        const {document: supplied, errors} = Operations.applyOperation(shippedDockDocument(), {operation: 'resizeSplit', splitNodeId: 'primary-split', sizes: [0.2, 0.8]});
+
+        expect(errors).toEqual([]);
+
+        cockpit = create({dockModel: supplied});
+
+        expect(cockpit.dockModel.nodes['primary-split'].sizes, 'the supplied sizes are the active ones').toEqual([0.2, 0.8]);
+        expect(presetDocument(cockpit, 'Overview').nodes['primary-split'].sizes, 'the seed is the declaration\'s').toEqual([0.6078, 0.3922])
     })
 });

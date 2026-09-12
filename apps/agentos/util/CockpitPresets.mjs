@@ -1,3 +1,4 @@
+import Authoring          from '../../../node_modules/neo.mjs/src/dashboard/dock/model/Authoring.mjs';
 import Base               from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import Persistence        from '../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs';
 import PerspectiveLibrary from '../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
@@ -51,8 +52,9 @@ class CockpitPresets extends Base {
      * thrown loudly (an authored preset that fails validation is a build-time defect, not a
      * runtime condition).
      *
-     * @param {Object} document The cockpit's lowered dock document — the declaration the engine
-     *     seeded, so every preset is a variant of the document the cockpit actually renders.
+     * @param {Object} document The cockpit's AUTHORED dock document — `panes` + `zones` lowered
+     *     ({@link #fromDeclaration}), never the active `dockModel`: a supplied document wins over
+     *     `zones` in the engine and stays active, and no preset may inherit its state.
      * @returns {Object} a fresh `neo.dock.layoutCollection.v1` collection, `overview` active
      */
     static create(document) {
@@ -94,6 +96,26 @@ class CockpitPresets extends Base {
         }
 
         return collection
+    }
+
+    /**
+     * @summary The preset collection from the cockpit's AUTHORED declaration: `panes` + `zones`
+     * lowered here, independent of the active document. The engine lets a supplied `dockModel` (a
+     * restored perspective, a vessel host) win over `zones` and keeps it active — so the built-in
+     * presets derive from the declaration itself, never from that state: a supplied document with
+     * a pane closed still boots, and a supplied resize never becomes Overview's seed.
+     * @param {Object} panes The cockpit's pane declarations
+     * @param {Object} zones The cockpit's zone declaration
+     * @returns {Object} a fresh `neo.dock.layoutCollection.v1` collection, `overview` active
+     */
+    static fromDeclaration(panes, zones) {
+        const {document, errors} = Authoring.fromZones(panes, zones);
+
+        if (errors.length) {
+            throw new Error(`cockpitPresetCollection: the declaration does not lower: ${errors.join('; ')}`)
+        }
+
+        return this.create(document)
     }
 
     /**

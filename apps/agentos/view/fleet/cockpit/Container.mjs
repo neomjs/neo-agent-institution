@@ -514,13 +514,14 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
-     * @summary The first projection and the preset library, both over the LOWERED document — the
-     * engine has captured the declaration and seeded {@link #dockModel} by now. The cockpit is the
+     * @summary The first projection over the ACTIVE document and the preset library over the
+     * AUTHORED declaration. The engine has seeded {@link #dockModel} by now — the lowered `panes` +
+     * `zones`, or a supplied document, which wins over `zones` and stays active. The cockpit is the
      * app's main view, so its shell projects eagerly (the resident panes exist at boot, before the
      * bridge answers) into the slot `dockShellIndex` names after the control bar; the engine's
-     * mount-time pass finds it there and leaves it. Every preset is a variant of the document the
-     * cockpit actually renders, never a second authored copy of it; the drawer's binding source
-     * (the projected perspective list) is written once the library exists.
+     * mount-time pass finds it there and leaves it. The presets are variants of the declaration,
+     * never of the active document (a supplied resize or a closed pane is state, not a seed); the
+     * drawer's binding source (the projected perspective list) is written once the library exists.
      * @protected
      */
     onAfterConstructed() {
@@ -529,7 +530,7 @@ class FleetCockpit extends VesselContainer {
         let me = this;
 
         me.add(me.projectDockModel());
-        me.perspectiveStore = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.create(me.dockModel)});
+        me.perspectiveStore = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.fromDeclaration(me.panes, me.zones)});
         me.syncPresetButtons();
         me.publishPerspectives()
     }
