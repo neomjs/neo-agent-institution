@@ -5,8 +5,8 @@ import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard
 /**
  * @summary The cockpit's vessel + window-chrome layer — every pop-out / tear-out / return
  * affordance between the engine's {@link Neo.dashboard.dock.Workspace} tear-out owner and the
- * declared Fleet cockpit, factored per the #50 ruling (the container declares; the vessel
- * chrome is its own class).
+ * declared Fleet cockpit, factored per the container-declares ruling (the container declares;
+ * the vessel chrome is its own class).
  *
  * The engine owns the vessel lifecycle: admission, the one detach commit, adoption into the
  * connected window, the return on vessel death, and the pane handles in between
@@ -140,7 +140,7 @@ class VesselContainer extends Workspace {
      * @summary SHELL-owned pop-out affordance config for the inspector; {@link #syncVesselChrome}
      * keeps title + aria naming the action it will take.
      *
-     * Icon-only by design (#23, operator direction): the pane places this through its
+     * Icon-only by design (operator direction): the pane places this through its
      * layout-blind `shellTools` slot onto the tab header bar's ACTION seam — one icon at the
      * strip's trailing edge, outside the content flow. `contextual: false` keeps it persistent:
      * windowing the pane is a pane verb, not a per-tab one. The label lives on title + aria-label,
@@ -543,7 +543,7 @@ class VesselContainer extends Workspace {
 
         if (detailToggle) {
             detailToggle.set({disabled: detailPending});
-            // icon-only action (#23): the state-named label rides title + aria, byte-equal —
+            // icon-only action: the state-named label rides title + aria, byte-equal —
             // attribute strings, inert by construction
             detailToggle.vdom.title         = detailLabel;
             detailToggle.vdom['aria-label'] = detailLabel;

@@ -50,9 +50,8 @@ const declaredDockConfigs = (cls, stopAt) => {
  * The three spy-host facts that are fixture identity, not Engine contract: the projection stamps
  * the workspace `id` as the cross-zone motion boundary, the refresh awaits a mount only for
  * an unmounted host — the spy owner IS its own mounted dock host — and that host holds no
- * projected shell: the lock-rail sweep the engine runs at every commit boundary
- * (`Workspace#syncDockLockRails`, neomjs/neo#18185) walks an empty item list instead of the
- * `items` config a bare prototype cannot answer.
+ * projected shell: the per-commit sweeps the engine runs over the projected shell walk an
+ * empty item list instead of the `items` config a bare prototype cannot answer.
  */
 const spyHostIdentity = {
     id     : 'fleet-cockpit-spy-host',
@@ -170,7 +169,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
     });
 
     test('#17681 consumes the engine host without shadowing its holder or tear-out lifecycle', () => {
-        // the #50 factoring: the declared cockpit sits on its vessel layer, which sits on the
+        // the container-declares factoring: the declared cockpit sits on its vessel layer, which sits on the
         // engine host — one chain, no sideways copies
         const vesselLayer = Object.getPrototypeOf(FleetCockpit.prototype);
 

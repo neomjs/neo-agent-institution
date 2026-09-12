@@ -176,7 +176,7 @@ class FleetCockpit extends VesselContainer {
             },
             '->',
             {
-                // THE STATE BLOCK — the #23 structural law: state never sits between action
+                // THE STATE BLOCK — the bar's structural law: state never sits between action
                 // buttons; the two spine axes (fleet · wake) render as one right-aligned block
                 // before the action group. Wide bars stack the pills vertically (the band's
                 // vertical space is there), mid widths run them in a row, narrow widths drop to
