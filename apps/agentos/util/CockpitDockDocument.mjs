@@ -23,7 +23,7 @@ class CockpitDockDocument extends Base {
      * the fleet-scoped continuous reading surfaces an operator returns to many times per session),
      * with the right edge reserved for selection-scoped inspection (agent detail) and invoked tools,
      * declared `autoHidden` (the input the edge-rail auto-hide contract consumes). Roster-agnostic —
-     * the fleet zone is a `componentRef`, never a per-agent item list, so the document holds for any
+     * the fleet zone is one `reference`, never a per-agent item list, so the document holds for any
      * fleet size.
      *
      * The region jobs follow that model: south tabs are resident reading surfaces (never
@@ -32,13 +32,15 @@ class CockpitDockDocument extends Base {
      *
      * This is a **data leaf only**. The projection / render + resize-commit wiring is the sibling leaf;
      * nothing here reads a `DOMRect`, mounts a component, or touches the drag lifecycle. The document
-     * round-trips `Neo.dashboard.dock.model.Document.validate` (empty error list) and feeds
+     * round-trips `Neo.dashboard.dock.model.WorkspaceDocument.validate` (empty error list) and feeds
      * `Neo.dashboard.dock.projection.LayoutAdapter` unchanged. It is intentionally a factory returning a fresh
      * object per call — never a shared mutable singleton — so consumers and the semantic operations
      * (which deep-clone) never alias one authored default.
      *
-     * `componentRef` values name the `AgentOS.view.fleet.*` keeper-view surfaces; the exact
-     * secondary-pane inventory tracks the FM cockpit SSOT map and may be pinned as that map lands.
+     * `reference` values name the `AgentOS.view.fleet.*` keeper-view surfaces — the engine's own
+     * component-lookup key, so a projected pane answers `getReference()` by the name the record
+     * carries; the exact secondary-pane inventory tracks the FM cockpit SSOT map and may be pinned
+     * as that map lands.
      *
      * @returns {Object} a fresh `neo.dock.zone.v1` document
      */
@@ -47,22 +49,23 @@ class CockpitDockDocument extends Base {
             schema: 'neo.dock.zone.v1',
             root  : 'cockpit-root',
             items : {
-                fleet : {componentRef: 'fleet-grid',       title: 'Fleet',        kind: 'panel'},
-                stream: {componentRef: 'activity-stream',   title: 'Activity',     kind: 'panel'},
+                fleet : {reference: 'fleet-grid',       title: 'Fleet'},
+                stream: {reference: 'activity-stream',   title: 'Activity'},
                 // south reading surfaces: per-agent session-summary recall, the operator's own
                 // mailbox + compose surface, and the historical Bird-View complement to the
                 // bounded Activity stream — resident tabs beside it, never rail-squeezed
-                memories    : {componentRef: 'memories',          title: 'Memories',     kind: 'panel'},
+                memories    : {reference: 'memories',          title: 'Memories'},
                 // the WHAT axis of mission control: running / queued / recent work, beside the WHO grid
-                tasks       : {componentRef: 'tasks',             title: 'Tasks',        kind: 'panel'},
-                operator    : {componentRef: 'operator-mailbox',  title: 'Mailbox',      kind: 'panel'},
-                catchUp     : {componentRef: 'catch-up',          title: 'Catch up',     kind: 'panel'},
-                detail      : {componentRef: 'agent-detail',      title: 'Agent detail', kind: 'inspector', autoHidden: true},
-                perspectives: {componentRef: 'perspectives',      title: 'Perspectives', kind: 'tool',      autoHidden: true},
+                tasks       : {reference: 'tasks',             title: 'Tasks'},
+                operator    : {reference: 'operator-mailbox',  title: 'Mailbox'},
+                catchUp     : {reference: 'catch-up',          title: 'Catch up'},
+                // the inspector and the invoked tools: auto-hidden onto the right edge's rail
+                detail      : {reference: 'agent-detail',      title: 'Agent detail', autoHidden: true},
+                perspectives: {reference: 'perspectives',      title: 'Perspectives', autoHidden: true},
                 // S5 define-agent (design ruling on record: rail placement, invoked-not-ambient) —
                 // the add-agent flow rides the same autoHidden tool chrome as perspectives
-                defineAgent: {componentRef: 'define-agent',      title: 'Add agent',    kind: 'tool',      autoHidden: true},
-                wakeRoutes : {componentRef: 'wakeRoutes',        title: 'Wake routes',  kind: 'tool',      autoHidden: true}
+                defineAgent: {reference: 'define-agent',      title: 'Add agent',    autoHidden: true},
+                wakeRoutes : {reference: 'wakeRoutes',        title: 'Wake routes',  autoHidden: true}
             },
             nodes: {
                 // Root edge-zone: the primary split in the center; the right edge is a RESIZABLE band with a

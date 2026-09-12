@@ -1,5 +1,5 @@
 import Button    from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Document  from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs';
+import WorkspaceDocument from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 import Workspace from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs';
 
 /**
@@ -22,7 +22,7 @@ import Workspace from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Wo
  *   the live pane whatever phase it is in.
  *
  * Host slots this layer expects from its subclass (the template-method grammar the engine
- * already uses with us): `resolveDockComponentRef` (pane materialization),
+ * already uses with us): `resolveDockReference` (pane materialization),
  * `syncControlBar` (the full chrome pass; {@link #syncVesselChrome} is the half owned here).
  *
  * @class AgentOS.view.fleet.cockpit.VesselContainer
@@ -70,7 +70,7 @@ class VesselContainer extends Workspace {
      * popup-mounted pane lives in the vessel's view tree — out of this cockpit's `down()` /
      * `getReference` reach — so every detail consumer routes through {@link #getAgentDetailPane}.
      * `null` while docked (the projection owns the pane); survives one projection cycle past
-     * reattach so {@link #resolveDockComponentRef} re-adopts the SAME instance, never a recreation.
+     * reattach so {@link #resolveDockReference} re-adopts the SAME instance, never a recreation.
      * @member {Neo.container.Base|null} detachedDetailPane=null
      * @protected
      */
@@ -355,7 +355,7 @@ class VesselContainer extends Workspace {
 
     /**
      * Resolves a dock item's LIVE pane instance from the projected tree by the stable reference
-     * names {@link #resolveDockComponentRef} assigns. Items whose resolver yields an unreferenced
+     * names {@link #resolveDockReference} assigns. Items whose resolver yields an unreferenced
      * placeholder (sibling-leaf panes) resolve `null` — which is exactly the admission refusal:
      * a placeholder cannot embody into a vessel.
      * @param {String} itemId
@@ -363,8 +363,10 @@ class VesselContainer extends Workspace {
      * @protected
      */
     findProjectedDockPane(itemId) {
-        let componentRef = this.dockModel?.items?.[itemId]?.componentRef,
-            reference    = componentRef === 'define-agent' ? 'add-agent-form' : componentRef;
+        let reference = this.dockModel?.items?.[itemId]?.reference;
+
+        // the define-agent item's live view carries the form's own reference
+        reference = reference === 'define-agent' ? 'add-agent-form' : reference;
 
         return reference ? (this.getReference(reference) || null) : null
     }
@@ -388,7 +390,7 @@ class VesselContainer extends Workspace {
     async popOutAgentDetail() {
         let me   = this,
             pane = me.getReference('agent-detail'),
-            home = Document.findContainingTabsId(me.dockModel, 'detail');
+            home = WorkspaceDocument.findContainingTabsId(me.dockModel, 'detail');
 
         if (me.detachedDetail || !pane || !home) {
             return {detached: false, errors: ['agent-detail is not a docked, projected pane']}
@@ -485,7 +487,7 @@ class VesselContainer extends Workspace {
      *
      * `addTab` returns the `detail` item into its remembered tabs node at its remembered EXACT
      * index (first-tabs fallback with honest append when a preset retired the node); the parked
-     * instance is re-adopted by the projection ({@link #resolveDockComponentRef} hands back the
+     * instance is re-adopted by the projection ({@link #resolveDockReference} hands back the
      * SAME instance), and the vessel closes unless it already closed itself. Bookkeeping clears
      * BEFORE the async close — the cleared entry is the {@link #onWindowDisconnect} re-entrancy
      * guard. Increments {@link #detailVesselGeneration} first, so every in-flight admission
@@ -673,7 +675,7 @@ class VesselContainer extends Workspace {
             return {detached: false, errors: ['memories is already in a vessel']}
         }
 
-        if (!Document.findContainingTabsId(me.dockModel, itemId)) {
+        if (!WorkspaceDocument.findContainingTabsId(me.dockModel, itemId)) {
             return {detached: false, errors: ['memories is not a docked item']}
         }
 
@@ -709,7 +711,7 @@ class VesselContainer extends Workspace {
         // always project) materializes from owner-held state instead — same resolver,
         // vessel-bound rather than projection-bound
         if (!me.findProjectedDockPane(itemId)) {
-            me.tearOutPaneHandles[itemId] = Neo.create(me.resolveDockComponentRef(item?.componentRef, item, itemId))
+            me.tearOutPaneHandles[itemId] = Neo.create(me.resolveDockReference(item?.reference, item, itemId))
         }
 
         me.onTearOutDocumentChange(result.document, descriptor, vessel);

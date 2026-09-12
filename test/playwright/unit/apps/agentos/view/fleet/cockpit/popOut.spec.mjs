@@ -649,7 +649,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — memories click po
         expect(cockpit.getReference('memories')).toBeFalsy();
 
         // the memories selection + snapshot are CONTROLLER-held state now (the view materializes
-        // panes from them through resolveDockComponentRef)
+        // panes from them through resolveDockReference)
         cockpit.getController().memoriesTarget   = '@neo-fable-clio';
         cockpit.getController().memoriesSnapshot = wiredEnvelope('@neo-fable-clio', 'owner-held');
 

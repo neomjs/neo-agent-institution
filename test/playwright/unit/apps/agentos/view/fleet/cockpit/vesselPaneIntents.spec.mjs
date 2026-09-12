@@ -76,7 +76,7 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
                 // scope has no id, so the recorder must look alive
                 controller = {id: 'the-owning-controller'};
 
-            const config = proto.resolveDockComponentRef.call(
+            const config = proto.resolveDockReference.call(
                 ownerStub(controller, {
                     memoriesTarget           : null,
                     memoriesSnapshot         : null,

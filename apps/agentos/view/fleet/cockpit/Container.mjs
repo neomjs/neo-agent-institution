@@ -6,7 +6,7 @@ import Button                 from '../../../../../node_modules/neo.mjs/src/butt
 // the registration, and the named binding keeps the dependency visible.
 import TabContainer           from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import CatchUpPane            from '../catchup/Container.mjs';
-import Document               from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs';
+import WorkspaceDocument      from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 import DockService            from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
 import VesselContainer        from './VesselContainer.mjs';
 import PerspectiveLibrary     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
@@ -66,7 +66,7 @@ const livenessReadTimeoutDefault = 10000;
  * control-bar observers and the click-Memories verb that enters the same engine admission path.
  *
  * Reconciliation retains existing pane and tab-chrome identities. Runtime pane state still lives
- * on THIS owner, never only on instances: {@link #resolveDockComponentRef} materializes genuinely
+ * on THIS owner, never only on instances: {@link #resolveDockReference} materializes genuinely
  * absent panes from held state ({@link #gridAdapterState} / {@link #streamAdapterState}) and the
  * provider-owned activity Store, and the panes stay layout-blind per the docking design's pane contract —
  * ordinary configs only, no dock wiring reaches them.
@@ -448,7 +448,7 @@ class FleetCockpit extends VesselContainer {
      * reduced-motion collapsing through the token layer by construction.
      *
      * Pane continuity across a switch preserves component identity when the item already exists;
-     * genuinely absent surfaces materialize from OWNER-held state ({@link #resolveDockComponentRef}),
+     * genuinely absent surfaces materialize from OWNER-held state ({@link #resolveDockReference}),
      * while the provider-owned roster store never restarts.
      *
      * A perspective that reveals the inspector must not land on the empty state: a cold
@@ -500,7 +500,7 @@ class FleetCockpit extends VesselContainer {
      * @returns {Boolean}
      */
     isInspectorRevealed(document) {
-        const tabsId = Document.findContainingTabsId(document, 'detail'),
+        const tabsId = WorkspaceDocument.findContainingTabsId(document, 'detail'),
               node   = tabsId ? document.nodes[tabsId] : null;
 
         return !!node && !document.items.detail?.autoHidden
@@ -613,7 +613,7 @@ class FleetCockpit extends VesselContainer {
      * @returns {Object|Neo.component.Base}
      */
     resolvePane(itemId, item) {
-        return this.resolveDockComponentRef(item?.componentRef, item, itemId)
+        return this.resolveDockReference(item?.reference, item, itemId)
     }
 
     /**
@@ -702,7 +702,7 @@ class FleetCockpit extends VesselContainer {
 
 
     /**
-     * @summary Resolves a dock item's `componentRef` to its pane config — the cockpit's keeper
+     * @summary Resolves a dock item's `reference` to its pane config — the cockpit's keeper
      * surfaces for the live refs, honest placeholders for panes whose views are sibling leaves.
      *
      * A genuinely absent pane materializes from the OWNER's held runtime state (`adapterState`,
@@ -710,12 +710,12 @@ class FleetCockpit extends VesselContainer {
      * The flip marker class carries the stable item identity across both retained and new panes.
      * Panes stay layout-blind per the docking design's pane contract: nothing dock-specific is
      * threaded here beyond the marker class.
-     * @param {String} componentRef
+     * @param {String} reference
      * @param {Object} item The persisted item record.
      * @param {String} itemId The stable workspace identity from the item catalog.
      * @returns {Object}
      */
-    resolveDockComponentRef(componentRef, item, itemId) {
+    resolveDockReference(reference, item, itemId) {
         let me     = this,
             marker = `dock-flip-item-${encodeURIComponent(itemId)}`;
 
@@ -729,11 +729,11 @@ class FleetCockpit extends VesselContainer {
             return {
                 ntype: 'component',
                 cls  : [marker, 'fm-pane-placeholder'],
-                html : `${item?.title ?? componentRef ?? itemId} is open in its own window`
+                html : `${item?.title ?? reference ?? itemId} is open in its own window`
             }
         }
 
-        switch (componentRef) {
+        switch (reference) {
             case 'fleet-grid':
                 return {
                     module      : FleetGrid,
@@ -937,7 +937,7 @@ class FleetCockpit extends VesselContainer {
                 return {
                     ntype: 'component',
                     cls  : [marker, 'fm-pane-placeholder'],
-                    html : `${item?.title ?? componentRef} — this pane's view lands with its own leaf`
+                    html : `${item?.title ?? reference} — this pane's view lands with its own leaf`
                 }
         }
     }

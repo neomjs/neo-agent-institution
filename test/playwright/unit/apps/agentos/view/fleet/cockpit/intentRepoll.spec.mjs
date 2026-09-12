@@ -144,7 +144,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
 
         controller.onAgentSelect({agentId: 'vega'});
 
-        // owner-held selection (survives a later re-projection — resolveDockComponentRef reads it) +
+        // owner-held selection (survives a later re-projection — resolveDockReference reads it) +
         // the live pane updated in place
         expect(cockpit.detailRecord).toBe(record);
         expect(detail.record).toBe(record);

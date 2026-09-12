@@ -112,7 +112,7 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
 
         // ── AC1 precondition: the pane instance id is REQUIRED before the cycle — identity is
         // asserted unconditionally after return, never skipped behind a falsy capture. Polled
-        // because `resolveDockComponentRef` materializes a freshly un-railed pane asynchronously
+        // because `resolveDockReference` materializes a freshly un-railed pane asynchronously
         // (projection → tab render → instance); the requirement itself stays hard.
         await expect.poll(async () => (await queryPane(app, className))?.id ?? null, {
             message  : `the '${className}' pane id must be captured before the tear-out`,
