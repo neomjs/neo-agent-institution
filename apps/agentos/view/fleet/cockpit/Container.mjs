@@ -317,7 +317,7 @@ class FleetCockpit extends VesselContainer {
     /**
      * The bounded window (ms) ONE liveness read gets before it is treated as a degrade. Boundedness
      * is the contract — a read may fail, it may never hang — the same shape and the same reason as
-     * {@link #detailVesselConnectWindowMs}. Injectable so specs pin a short window instead of
+     * the engine's bounded vessel admission. Injectable so specs pin a short window instead of
      * sleeping on the production one.
      * @member {Number} livenessReadTimeout=livenessReadTimeoutDefault
      * @protected
@@ -719,13 +719,13 @@ class FleetCockpit extends VesselContainer {
         let me     = this,
             marker = `dock-flip-item-${encodeURIComponent(itemId)}`;
 
-        // a GESTURE-torn item's live pane is vessel-owned: a preset restore (or NL addTab)
-        // re-treeing the item while torn must not steal or duplicate the instance — an honest
-        // stand-in holds the slot (the same discipline as the click-detached inspector below);
-        // the vessel-death return path above swaps it for the live pane when the vessel dies.
-        // Optional-chained like every sibling
-        // field read: the projection specs drive these prototype methods over controlled state.
-        if (me.tearOutPaneHandles?.[itemId] && !me.tearOutPaneHandles[itemId].isDestroyed) {
+        // a vesseled item's live pane is owner-held (mid-gesture, mid-admission or adopted into
+        // its window): a preset restore (or NL addTab) re-treeing the item while away must not
+        // steal or duplicate the instance — an honest stand-in holds the slot, and the engine's
+        // return hands the SAME live pane back to the projection when the vessel dies. Optional-
+        // chained like every sibling field read: the projection specs drive these prototype
+        // methods over controlled state.
+        if (me.isVesselOwned?.(itemId) || me.isVesselPending?.(itemId)) {
             return {
                 ntype: 'component',
                 cls  : [marker, 'fm-pane-placeholder'],
@@ -764,26 +764,9 @@ class FleetCockpit extends VesselContainer {
                     reference: 'activity-stream'
                 };
             case 'agent-detail':
-                // the pane lives in its vessel window — a preset restore (or an NL-driven addTab)
-                // can re-tree the `detail` item while detached, and materializing here would STEAL
-                // the live instance out of its window: an honest stand-in instead. The reattach
-                // swaps it for the live pane post-projection (the reconciler prefers tree-live
-                // occupants over this resolver, so the swap cannot ride the normal adoption).
-                if (me.detachedDetail) {
-                    return {
-                        ntype    : 'component',
-                        cls      : [marker, 'fm-pane-placeholder'],
-                        html     : 'Agent detail is open in its own window',
-                        reference: 'agent-detail-standin'
-                    }
-                }
-
-                // reattach re-adoption: the parked LIVE instance returns to the projection —
-                // same instance id, same runtime state, never a recreation
-                if (me.detachedDetailPane) {
-                    return me.detachedDetailPane
-                }
-
+                // a vesseled inspector is answered by the stand-in branch above; a returning one
+                // is handed back by the engine before this resolver is asked — same instance id,
+                // same runtime state, never a recreation.
                 // the drill-in inspector; its selected resident is OWNER-held so a pane returning
                 // from true absence never drops the selection — null renders the view's honest
                 // "select an agent" empty state. The pane stays layout-blind: the pop-out verb is
