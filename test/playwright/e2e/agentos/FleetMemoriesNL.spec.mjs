@@ -128,7 +128,7 @@ async function startMemoriesFleet() {
 /**
  * @summary Native Fleet memories journey over session summaries: activating the resident
  * south-strip tab shows the pane; choosing an agent is the roster's selection (the pane carries
- * no chooser of its own since the #60 IA); the App Worker crosses the authenticated allowlisted
+ * no chooser of its own — the one-picker IA); the App Worker crosses the authenticated allowlisted
  * bridge; summary cards render with honest multi-agent attribution; the summary drain appends
  * the older pages until the producer's total is assembled (the paging chrome is retired); guarded
  * non-string titles/summaries are named; and the wire carries only the explicit target — never a
@@ -192,8 +192,8 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             let releaseAda;
             fleet.gates['@neo-opus-ada'] = new Promise(resolve => { releaseAda = resolve });
 
-            // choosing whose memories is the roster's selection since the #60 IA: the pane carries no
-            // agent chooser of its own — the card click selects the resident, the pane follows
+            // choosing whose memories is the roster's selection (the one-picker IA): the pane carries
+            // no agent chooser of its own — the card click selects the resident, the pane follows
             await page.locator('.fm-fleet-cards > .neo-list-item', {hasText: /\bAda\b/}).click();
             await expect(pane).toContainText('Reading @neo-opus-ada…');
 
@@ -223,6 +223,27 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await expect(pane.locator('.fm-memories-card').nth(0)).toContainText('feature · 61 memories · quality 95');
             // multi-agent session: attribution beyond the selected target renders explicitly
             await expect(pane.locator('.fm-memories-card').nth(0)).toContainText('with @neo-gpt-emmy');
+
+            // the registers wear no engine grid chrome: the card carries the only frame and surface —
+            // no cell lattice, no cell background, no cell padding around the height-normed card; and
+            // the row the engine's selection model marks after a card click paints nothing (the
+            // model cannot be opted out of at this pin, so its paint is neutralized at the skin layer)
+            const cellChrome = () => pane.locator('.fm-memories-summary-grid .neo-grid-cell').first().evaluate(cell => {
+                const style = getComputedStyle(cell);
+
+                return {
+                    background: style.backgroundColor,
+                    border    : [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].join(' '),
+                    padding   : [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].join(' '),
+                    selected  : cell.closest('.neo-grid-row')?.classList.contains('neo-selected') ?? null
+                }
+            });
+
+            expect(await cellChrome()).toEqual({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px', selected: false});
+            expect(await pane.locator('.fm-memories-summary-grid').evaluate(grid => getComputedStyle(grid).borderTopWidth), 'the register carries no container frame').toBe('0px');
+            await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-title').click();
+            await expect.poll(async () => (await cellChrome()).selected, {message: 'the engine row model marks the clicked row'}).toBe(true);
+            expect((await cellChrome()).background, 'the marked row paints no selection band').toBe('rgba(0, 0, 0, 0)');
             await expect(pane.locator('.fm-memories-card').nth(1)).not.toContainText('with @');
 
             // the paging chrome is retired: the drain did the append, and no "Older sessions"
