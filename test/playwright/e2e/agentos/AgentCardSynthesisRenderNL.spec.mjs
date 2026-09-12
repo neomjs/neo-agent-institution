@@ -150,7 +150,7 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
 
         await page.evaluate(() => document.fonts.ready);
 
-        // resolve the viewport's theme controller — the RA-3 both-theme gate renders the matrix in BOTH
+        // resolve the viewport's theme controller — the both-theme gate renders the matrix in BOTH
         // skins, driven through the real ViewportController#setTheme (never a CSS-class poke)
         const [viewport]    = await app.queryComponent({className: 'AgentOS.view.Viewport'}, ['id']),
               viewportState = await app.getComponent(viewport.properties.id, ['controller']),
@@ -298,7 +298,7 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
             await captureWidthMatrix(theme.replace('neo-theme-neo-', ''))
         }
 
-        // Motion contract (RA-2 delta): the ghost hover animates with the app's motion tokens, and the
+        // Motion contract: the ghost hover animates with the app's motion tokens, and the
         // reduced-motion contract is honored by construction — a reduced-motion user gets the instant state
         // (the wash is affordance feedback, not signal, so nothing informational is lost). A static golden
         // proves only the END state, so this is the deterministic motion witness: the animated background
