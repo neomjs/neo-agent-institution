@@ -14,8 +14,8 @@ import {test, expect} from '../../fixtures.mjs';
  * about the rendered tree, so the witness has to walk the rendered tree.
  *
  * **Why it asserts the invariant and not a tab SEQUENCE.** The old AC asked for
- * `grid → card → controls → stream → rails`. Dock zones are document-driven — `resolveDockComponentRef`
- * resolves each `componentRef` at runtime from `cockpitDockDocument` — so pinning an expected sequence
+ * `grid → card → controls → stream → rails`. Dock zones are document-driven — `resolveDockReference`
+ * resolves each `reference` at runtime from `cockpitDockDocument` — so pinning an expected sequence
  * would pin a *layout preset*: red on every preset change, silent on every real regression. The
  * invariant is preset-independent; the sequence never was.
  *

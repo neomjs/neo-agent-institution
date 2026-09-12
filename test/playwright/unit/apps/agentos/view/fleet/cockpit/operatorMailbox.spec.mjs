@@ -232,15 +232,20 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         expect(pane.snapshot).toBe(snapshot)
     });
 
-    test('inbox · a gesture-torn mailbox resolves through its owner-held vessel handle', async () => {
+    test('inbox · a gesture-torn mailbox resolves through the owner\'s held vessel handle', async () => {
         const docked  = {id: 'docked'},
               torn    = {id: 'torn'},
+              proto   = FleetCockpit.prototype,
               cockpit = {
-                  getReference      : reference => reference === 'operator-mailbox' ? docked : null,
-                  tearOutPaneHandles: {operator: torn}
+                  dockModel      : {items: {operator: {reference: 'operator-mailbox'}}},
+                  getReference   : reference => reference === 'operator-mailbox' ? docked : null,
+                  paneReference  : proto.paneReference,
+                  // the engine's tear-out owner holds the captured handle; the accessor asks it first
+                  tearOutHandlers: {heldPane: itemId => itemId === 'operator' ? torn : null, heldPanes: () => [torn]},
+                  vesselPane     : proto.vesselPane
               };
 
-        expect(FleetCockpit.prototype.getOperatorMailboxPane.call(cockpit)).toBe(torn)
+        expect(proto.getOperatorMailboxPane.call(cockpit)).toBe(torn)
     });
 
     test('inbox · a superseded read never overwrites newer news (generation fence)', async () => {

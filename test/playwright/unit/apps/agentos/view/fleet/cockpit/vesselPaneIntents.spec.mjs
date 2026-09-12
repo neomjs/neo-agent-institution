@@ -76,7 +76,7 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
                 // scope has no id, so the recorder must look alive
                 controller = {id: 'the-owning-controller'};
 
-            const config = proto.resolveDockComponentRef.call(
+            const config = proto.resolveDockReference.call(
                 ownerStub(controller, {
                     memoriesTarget           : null,
                     memoriesSnapshot         : null,
@@ -133,30 +133,37 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
         }
     });
 
-    test('the three accessors are phase-blind: handle → returning-parked → reference, in that order', () => {
+    test('the three accessors are phase-blind: the owner\'s held handle → a pane in flight home → reference, in that order', () => {
         const
-            handle    = {id: 'vessel-handle'},
-            returning = {id: 'returning-parked'},
-            docked    = {id: 'docked-reference'};
+            handle = {id: 'vessel-handle'},
+            docked = {id: 'docked-reference'};
 
-        for (const [accessor, key] of [
-            ['getOperatorMailboxPane', 'operator'],
-            ['getCatchUpPane',         'catchUp'],
-            ['getWakeRoutesPane',      'wakeRoutes']
+        for (const [accessor, key, reference] of [
+            ['getOperatorMailboxPane', 'operator',   'operator-mailbox'],
+            ['getCatchUpPane',         'catchUp',    'catch-up'],
+            ['getWakeRoutesPane',      'wakeRoutes', 'wakeRoutes']
         ]) {
-            const me = {
-                tearOutPaneHandles   : {[key]: handle},
-                returningTearOutPanes: {[key]: returning},
-                getReference         : () => docked
-            };
+            // a returning pane is known to the owner only as a live pane in flight home; the
+            // accessor recognizes it by the reference the record names
+            const returning = {id: 'returning-parked', reference},
+                  me        = {
+                      dockModel      : {items: {[key]: {reference}}},
+                      getReference   : () => docked,
+                      paneReference  : proto.paneReference,
+                      tearOutHandlers: {heldPane: itemId => itemId === key ? handle : null, heldPanes: () => [returning, handle]},
+                      vesselPane     : proto.vesselPane
+                  };
 
-            expect(proto[accessor].call(me), `${accessor}: the vessel handle wins`).toBe(handle);
+            expect(proto[accessor].call(me), `${accessor}: the owner's held handle wins`).toBe(handle);
 
-            me.tearOutPaneHandles = {};
-            expect(proto[accessor].call(me), `${accessor}: the returning-parked tier is reached`).toBe(returning);
+            me.tearOutHandlers = {heldPane: () => null, heldPanes: () => [returning]};
+            expect(proto[accessor].call(me), `${accessor}: the pane in flight home is reached`).toBe(returning);
 
-            me.returningTearOutPanes = {};
-            expect(proto[accessor].call(me), `${accessor}: the docked reference is the fallback`).toBe(docked)
+            me.tearOutHandlers = {heldPane: () => null, heldPanes: () => []};
+            expect(proto[accessor].call(me), `${accessor}: the docked reference is the fallback`).toBe(docked);
+
+            me.tearOutHandlers = null;
+            expect(proto[accessor].call(me), `${accessor}: no owner (the lifecycle off) still reaches the reference`).toBe(docked)
         }
     });
 

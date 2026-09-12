@@ -11,18 +11,18 @@ import Neo            from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
 test.describe('AgentOS.view.fleet cockpit dock document — neo.dock.zone.v1 default layout', () => {
-    let CockpitDockDocument, Document;
+    let CockpitDockDocument, WorkspaceDocument;
 
     test.beforeAll(async () => {
         CockpitDockDocument = (await import('../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default;
-        Document            = (await import('../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs')).default
+        WorkspaceDocument   = (await import('../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs')).default
     });
 
     test('validates against the dock Document model with the v1 schema (zero invariant violations)', () => {
         const doc = CockpitDockDocument.create();
 
         expect(doc.schema).toBe('neo.dock.zone.v1');
-        expect(Document.validate(doc)).toEqual([])
+        expect(WorkspaceDocument.validate(doc)).toEqual([])
     });
 
     test('the right edge is a resizable nested descriptor with a committed extent — the one authority the splitter and the reveal both read', () => {
@@ -32,8 +32,8 @@ test.describe('AgentOS.view.fleet cockpit dock document — neo.dock.zone.v1 def
         expect(zones.right).toEqual({nodeId: 'secondary-rail', extent: 0.25, resizable: true});
 
         // a string descriptor is the retired pre-cut shape: the final model reads nested records only
-        expect(Document.getZoneNodeId(zones.right)).toBe('secondary-rail');
-        expect(Document.getZoneNodeId('secondary-rail')).toBeNull()
+        expect(WorkspaceDocument.getZoneNodeId(zones.right)).toBe('secondary-rail');
+        expect(WorkspaceDocument.getZoneNodeId('secondary-rail')).toBeNull()
     });
 
     test('expresses the SSOT ~1.55fr / 1fr fleet-over-activity vertical split (activity docks to the bottom)', () => {
@@ -66,10 +66,9 @@ test.describe('AgentOS.view.fleet cockpit dock document — neo.dock.zone.v1 def
         const doc = CockpitDockDocument.create();
 
         expect(doc.items.defineAgent).toEqual({
-            componentRef: 'define-agent',
-            title       : 'Add agent',
-            kind        : 'tool',
-            autoHidden  : true
+            reference : 'define-agent',
+            title     : 'Add agent',
+            autoHidden: true
         });
 
         // rail membership: the zone collapses to the same secondary rail as the other invoked chrome —
@@ -82,10 +81,10 @@ test.describe('AgentOS.view.fleet cockpit dock document — neo.dock.zone.v1 def
     test('carries the south reading-surface family: resident tabs beside Activity, Activity active', () => {
         const doc = CockpitDockDocument.create();
 
-        expect(doc.items.tasks).toEqual({componentRef: 'tasks',               title: 'Tasks',    kind: 'panel'});
-        expect(doc.items.memories).toEqual({componentRef: 'memories',         title: 'Memories', kind: 'panel'});
-        expect(doc.items.operator).toEqual({componentRef: 'operator-mailbox', title: 'Mailbox',  kind: 'panel'});
-        expect(doc.items.catchUp).toEqual({componentRef: 'catch-up',          title: 'Catch up', kind: 'panel'});
+        expect(doc.items.tasks).toEqual({reference: 'tasks',               title: 'Tasks'});
+        expect(doc.items.memories).toEqual({reference: 'memories',         title: 'Memories'});
+        expect(doc.items.operator).toEqual({reference: 'operator-mailbox', title: 'Mailbox'});
+        expect(doc.items.catchUp).toEqual({reference: 'catch-up',          title: 'Catch up'});
 
         // the WHAT surface sits directly beside Activity — mission control's two halves adjacent
         expect(doc.nodes['stream-tabs'].items).toEqual(['stream', 'tasks', 'memories', 'operator', 'catchUp']);
@@ -107,8 +106,8 @@ test.describe('AgentOS.view.fleet cockpit dock document — neo.dock.zone.v1 def
     test('the pane inventory covers the two primary zones and every tabs item resolves to a record', () => {
         const doc = CockpitDockDocument.create();
 
-        expect(doc.items.fleet.componentRef).toBe('fleet-grid');
-        expect(doc.items.stream.componentRef).toBe('activity-stream');
+        expect(doc.items.fleet.reference).toBe('fleet-grid');
+        expect(doc.items.stream.reference).toBe('activity-stream');
 
         const tabItems = Object.values(doc.nodes).filter(n => n.type === 'tabs').flatMap(n => n.items);
         tabItems.forEach(id => expect(doc.items[id]).toBeDefined())

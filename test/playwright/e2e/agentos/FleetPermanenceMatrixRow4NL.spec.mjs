@@ -199,29 +199,26 @@ test.describe('matrix row 4 — AgentDetail permanence with live FleetRoster con
         expect(stored?.layout?.captureScope).toBe('window');
         expect(stored?.layout?.dockZone, 'the stored layout round-trips the live document byte-identically').toEqual(document);
 
-        // idempotent cleanup: the vessel-close terminal repeated against the RETIRED window id
-        // is a FULL no-op — snapshot the home state, repeat the terminal, and require byte-equal
-        // state (the row-7 sibling's settled-snapshot shape, through the cockpit's
-        // re-entrancy-disciplined path). The census rides both sides: a duplicate AgentDetail
-        // created by the repeated terminal would escape an id-only comparison.
-        const settledQuery = await queryDetail(),
-              settled      = {
-                  detailCount: settledQuery.count,
-                  detailId   : settledQuery.detail?.id,
-                  document,
-                  popupCount : page.context().pages().filter(candidate => candidate !== page && !candidate.isClosed()).length
-              };
-
-        await app.callMethod(holderId, 'onWindowDisconnect', [{windowId: vesselWindowId}]);
-
-        const repeatedQuery = await queryDetail();
+        // idempotent cleanup is the engine's: after the vessel retired, the Group holds no
+        // ownership record, the tear-out owner holds no pane handle, and no popup survives — the
+        // census rides beside it: a duplicate AgentDetail would escape an id-only comparison.
+        const settledQuery = await queryDetail();
 
         expect({
-            detailCount: repeatedQuery.count,
-            detailId   : repeatedQuery.detail?.id,
-            document   : (await app.getDockTopology(holderId))?.document ?? await app.getDockTopology(holderId),
+            detailCount: settledQuery.count,
+            detailId   : settledQuery.detail?.id,
+            owned      : await app.callMethod(holderId, 'isVesselOwned',   ['detail']),
+            pending    : await app.callMethod(holderId, 'isVesselPending', ['detail']),
+            heldPanes  : await app.callMethod(holderId, 'tearOutHandlers.heldPaneIds'),
             popupCount : page.context().pages().filter(candidate => candidate !== page && !candidate.isClosed()).length
-        }, 'a repeated disconnect terminal changes no state — same census, same instance, same document, same popups').toEqual(settled);
+        }, 'zero vessel residue after the return — one instance, nothing owned, nothing held, no popups').toEqual({
+            detailCount: 1,
+            detailId,
+            owned      : false,
+            pending    : false,
+            heldPanes  : [],
+            popupCount : 0
+        });
 
         expect(ledger.runtimeErrors, 'no worker runtime errors on the receipt path').toEqual([]);
         expect(ledger.pageErrors, 'no main-page errors on the receipt path').toEqual([]);

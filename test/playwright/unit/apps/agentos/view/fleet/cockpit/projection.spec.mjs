@@ -50,9 +50,8 @@ const declaredDockConfigs = (cls, stopAt) => {
  * The three spy-host facts that are fixture identity, not Engine contract: the projection stamps
  * the workspace `id` as the cross-zone motion boundary, the refresh awaits a mount only for
  * an unmounted host — the spy owner IS its own mounted dock host — and that host holds no
- * projected shell: the lock-rail sweep the engine runs at every commit boundary
- * (`Workspace#syncDockLockRails`, neomjs/neo#18185) walks an empty item list instead of the
- * `items` config a bare prototype cannot answer.
+ * projected shell: the per-commit sweeps the engine runs over the projected shell walk an
+ * empty item list instead of the `items` config a bare prototype cannot answer.
  */
 const spyHostIdentity = {
     id     : 'fleet-cockpit-spy-host',
@@ -115,19 +114,23 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 // OWN value: the inherited engine accessor walks real config state a bare fake
                 // does not carry (the #configs private-member throw)
                 getStateProvider     : () => null,
+                // the same throw class for every config the new engine reads directly on the host
+                // (the header state rides provider data; declared panes and the tear-out owner are
+                // consulted at every refresh) — own values, so a bare fake answers them honestly
+                stateProvider        : null,
+                panes                : null,
+                paneDeclarations     : null,
+                plugins              : [],
+                zones                : null,
+                nativeWindows        : null,
+                tearOutHandlers      : null,
                 detailRecord         : null,
                 dockModel            : CockpitDockDocument.create(),
                 gridAdapterState     : 'sample',
                 isDestroyed          : false,
                 refreshPromise       : null,
-                returningTearOutPanes: {},
                 streamAdapterState   : 'sample',
                 streamEvents         : [],
-                tearOutAdmissions    : new Map(),
-                tearOutConnects      : {},
-                tearOutPaneHandles   : {},
-                tearOutPanes         : {},
-                tearOutPlacements    : {},
                 timeout              : ms => new Promise(resolve => setTimeout(resolve, ms)),
                 ...spyHostIdentity,
                 ...declaredDockConfigs(FleetCockpit, Object.getPrototypeOf(Workspace)),
@@ -166,7 +169,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
     });
 
     test('#17681 consumes the engine host without shadowing its holder or tear-out lifecycle', () => {
-        // the #50 factoring: the declared cockpit sits on its vessel layer, which sits on the
+        // the container-declares factoring: the declared cockpit sits on its vessel layer, which sits on the
         // engine host — one chain, no sideways copies
         const vesselLayer = Object.getPrototypeOf(FleetCockpit.prototype);
 
@@ -174,20 +177,18 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         expect(Object.getPrototypeOf(vesselLayer) === Workspace.prototype).toBe(true);
 
         for (const method of [
-            'adoptTearOutPane',
+            'admitDockPopOut',
             'applyDockZoneOperation',
             'applyTearOutOperation',
-            'captureTearOutPane',
             'getDockZoneDocument',
+            'handleDockPopOutAction',
             'onDockCrossZoneDrop',
             'onDockZoneDocumentChange',
-            'onWindowConnect',
-            'onWindowDisconnect',
             'projectDockModel',
             'refreshDockWorkspace',
-            'reintegrateTearOutItem',
-            'releaseTearOutPane',
-            'reparentTearOutPane'
+            'reparentDockPane',
+            'resolveProjectedPane',
+            'settleDockPane'
         ]) {
             expect(Object.hasOwn(FleetCockpit.prototype, method), `${method} is inherited`).toBe(false);
             expect(Object.hasOwn(vesselLayer, method), `${method} is not shadowed by the vessel layer`).toBe(false)
@@ -314,7 +315,10 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             expect(absent.module).toBe(FleetGrid);
             expect(absent.header).toEqual({text: 'Fleet', dockItemId: 'fleet'});
             expect(absent.dockItemId).toBe('fleet');
-            expect(absent.data).toMatchObject({componentRef: 'fleet-grid', dockItemId: 'fleet'})
+            expect(absent.data).toMatchObject({dockItemId: 'fleet'});
+            // the record's reference and the pane's own reference are the same name — the engine's
+            // lookup key resolves the projected pane through getReference() by the name the record carries
+            expect(absent.reference).toBe('fleet-grid')
         } finally {
             options?.placeholders?.forEach(placeholder => !placeholder.isDestroyed && placeholder.destroy());
             Reconciler.reconcileProjection = original
@@ -358,7 +362,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 streamAdapterState: 'stale'
             });
 
-        const grid = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'fleet-grid', {title: 'Fleet'}, 'fleet');
+        const grid = FleetCockpit.prototype.resolveDockReference.call(host, 'fleet-grid', {title: 'Fleet'}, 'fleet');
 
         expect(grid.module).toBe(FleetGrid);
         // owner-held truth arrives through the provider BINDING now — the bind function IS the route
@@ -366,7 +370,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         expect(grid.bind.store).toBe('stores.fleetRoster');           // provider-scope binding survives projection depth
         expect(grid.cls).toContain('dock-flip-item-fleet');           // the stable FLIP correlation key
 
-        const stream = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'activity-stream', {title: 'Activity'}, 'stream');
+        const stream = FleetCockpit.prototype.resolveDockReference.call(host, 'activity-stream', {title: 'Activity'}, 'stream');
 
         expect(stream.module).toBe(ActivityStream);
         expect(stream.bind.adapterState({streamAdapterState: 'stale'})).toBe('stale');
@@ -376,7 +380,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
 
         // agent-detail now renders the real drill-in view from OWNER-held fallback state
         // (the selected record), so returning from true absence never drops the selection
-        const detail = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'agent-detail', {title: 'Agent detail'}, 'detail');
+        const detail = FleetCockpit.prototype.resolveDockReference.call(host, 'agent-detail', {title: 'Agent detail'}, 'detail');
 
         expect(detail.module).toBe(AgentDetail);
         expect(detail.record).toBe(host.detailRecord);   // owner-held selection survives re-projection
@@ -394,7 +398,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         // perspectives resolves to its own drawer — LAZY like the wake-routes sibling (a loader,
         // not a class), bound to the projected list, its intent relayed to the controller; the
         // honest placeholder now belongs only to a zone no case knows
-        const perspectives = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'perspectives', {title: 'Perspectives'}, 'perspectives');
+        const perspectives = FleetCockpit.prototype.resolveDockReference.call(host, 'perspectives', {title: 'Perspectives'}, 'perspectives');
 
         expect(typeof perspectives.module, 'a loader, resolved at first reveal').toBe('function');
         expect(perspectives.cls).toEqual(['dock-flip-item-perspectives']);
@@ -402,7 +406,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         expect(perspectives.listeners.perspectiveRequest).toBe('onPerspectiveRequest');
         expect(perspectives.html).toBeUndefined();
 
-        const unknown = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'no-such-zone', {title: 'Nowhere'}, 'no-such-zone');
+        const unknown = FleetCockpit.prototype.resolveDockReference.call(host, 'no-such-zone', {title: 'Nowhere'}, 'no-such-zone');
 
         expect(unknown.cls).toContain('fm-pane-placeholder');
         expect(unknown.cls).toContain('dock-flip-item-no-such-zone');
@@ -447,7 +451,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
  * control bar derives from store state.
  */
 test.describe('Fleet cockpit — perspective presets (the switch through the commit loop)', () => {
-    let PerspectiveLibrary, Persistence, Document, Workspace, FleetCockpit, FleetCockpitController, CockpitDockDocument, CockpitPresets, Neo;
+    let PerspectiveLibrary, Persistence, WorkspaceDocument, Workspace, FleetCockpit, FleetCockpitController, CockpitDockDocument, CockpitPresets, Neo;
 
     const makePresetHost = async (overrides = {}) => {
         const
@@ -517,7 +521,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         Neo                     = (await import('../../../../../../../../node_modules/neo.mjs/src/Neo.mjs')).default;
         PerspectiveLibrary      = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs')).default;
         Persistence             = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs')).default;
-        Document                = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Document.mjs')).default;
+        WorkspaceDocument       = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs')).default;
         Workspace               = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs')).default;
         FleetCockpit            = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
         FleetCockpitController  = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
@@ -580,7 +584,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         expect(host.streamEvents).toBe(events);
 
         // and a genuinely absent pane's next materialization binds that state from the provider
-        const grid = FleetCockpit.prototype.resolveDockComponentRef.call(host, 'fleet-grid', {title: 'Fleet'}, 'fleet');
+        const grid = FleetCockpit.prototype.resolveDockReference.call(host, 'fleet-grid', {title: 'Fleet'}, 'fleet');
         expect(grid.bind.adapterState({gridAdapterState: 'live'})).toBe('live');
 
         host.perspectiveStore.destroy()
@@ -649,7 +653,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         doc.nodes['secondary-rail'].items = doc.nodes['secondary-rail'].items.filter(id => id !== 'detail');
         doc.nodes['secondary-rail'].activeItemId = doc.nodes['secondary-rail'].items[0];
         delete doc.items.detail;
-        expect(Document.validate(doc)).toEqual([]);
+        expect(WorkspaceDocument.validate(doc)).toEqual([]);
         expect(FleetCockpit.prototype.isInspectorRevealed.call(host, doc)).toBe(false);
 
         host.perspectiveStore.destroy()
@@ -717,7 +721,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         // the operator read Memories: a live `activeIndex` change commits `setActiveItem`, so the
         // document — the only thing a perspective captures — already carries the selection
         live.nodes['stream-tabs'].activeItemId = 'memories';
-        expect(Document.validate(live)).toEqual([]);
+        expect(WorkspaceDocument.validate(live)).toEqual([]);
 
         const captured = Persistence.capturePerspective(live, {layoutId: 'memories-open', perspectiveName: 'Memories open', title: 'Memories open'});
 

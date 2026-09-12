@@ -42,20 +42,20 @@ test.describe('FleetCockpit — memories owner seam (pending selection + write-t
     test('the rebuilt pane receives the PENDING selection ahead of the accepted snapshot target', () => {
         const proto = FleetCockpit.prototype;
 
-        const pendingSwitch = proto.resolveDockComponentRef.call(
+        const pendingSwitch = proto.resolveDockReference.call(
             ownerStub({memoriesTarget: '@neo-fable-clio', memoriesSnapshot: {target: '@neo-opus-ada'}}),
             'memories', {title: 'Memories'}, 'memories'
         );
         expect(pendingSwitch.activeAgent).toBe('@neo-fable-clio');
         expect(pendingSwitch.snapshot.target).toBe('@neo-opus-ada');
 
-        const settled = proto.resolveDockComponentRef.call(
+        const settled = proto.resolveDockReference.call(
             ownerStub({memoriesTarget: null, memoriesSnapshot: {target: '@neo-opus-ada'}}),
             'memories', {title: 'Memories'}, 'memories'
         );
         expect(settled.activeAgent).toBe('@neo-opus-ada');
 
-        const untouched = proto.resolveDockComponentRef.call(
+        const untouched = proto.resolveDockReference.call(
             ownerStub(),
             'memories', {title: 'Memories'}, 'memories'
         );

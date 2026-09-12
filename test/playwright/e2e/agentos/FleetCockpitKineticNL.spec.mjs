@@ -71,11 +71,11 @@ async function glidePopup(popup, target, steps=24) {
  *
  *  1. drill — the production selection seam seats Mnemosyne's detail (real `onAgentSelect` object,
  *     the walkthrough cue's own path);
- *  2. pop-out — `popOutAgentDetail`'s vessel state machine `docked → windowed`; the SAME detail
+ *  2. pop-out — `popOutPane('detail')` on the engine's admission path; the Group records the vessel; the SAME detail
  *     instance renders in the real OS window (object permanence INTO the hop);
  *  3. glide — the vessel flights to the right-side space in smooth CDP steps (the kinetic beat);
  *  4. hold — two real windows, the detail live and mounted in the vessel;
- *  5. re-integration — `reattachAgentDetail` homes the SAME instance, vessel closes, dock truth
+ *  5. re-integration — `returnPane('detail')` closes the vessel and the engine homes the SAME instance, dock truth
  *     restored (zero residue = the between-takes contract).
  *
  * Mailbox tear-out: deliberately descoped in v1 — its path is proven (reveal → pin → scripted
@@ -126,11 +126,12 @@ test.describe('AgentOS Fleet Cockpit — kinetic multi-window choreography (#156
                 return (Array.isArray(details) ? details : [details]).filter(Boolean)[0]
             };
 
-            // baseline truth: the vessel machine starts docked with no detached bookkeeping
-            const baseline = await app.getComponent(cockpitId, ['detailVesselState', 'detachedDetail']);
+            // baseline truth: the Group records no vessel for the inspector — nothing owned, nothing in flight
+            const vesselOwned   = () => app.callMethod(cockpitId, 'isVesselOwned',   ['detail']),
+                  vesselPending = () => app.callMethod(cockpitId, 'isVesselPending', ['detail']);
 
-            expect(baseline.detailVesselState).toBe('docked');
-            expect(baseline.detachedDetail).toBeNull();
+            expect(await vesselOwned()).toBe(false);
+            expect(await vesselPending()).toBe(false);
 
             // ── beat 1: select through the production list seam (Playwright interaction → NL
             // validation: the semantic li is the target, the same path an operator drives) ──
@@ -153,20 +154,21 @@ test.describe('AgentOS Fleet Cockpit — kinetic multi-window choreography (#156
             expect(dockedDetail.properties.windowId, 'the detail starts in the main window')
                 .not.toBeUndefined();
 
-            // ── beat 2: pop the detail out — the vessel state machine, no hand input ─────────
+            // ── beat 2: pop the detail out — the engine's admission path, no hand input ──────
             const popupPromise = page.waitForEvent('popup', {timeout: 30000}),
-                  popResult    = await app.callMethod(cockpitId, 'popOutAgentDetail'),
+                  popResult    = await app.callMethod(cockpitId, 'popOutPane', ['detail']),
                   popup        = await popupPromise;
 
             expect(popResult.errors).toEqual([]);
             expect(popResult.detached).toBe(true);
 
-            await expect.poll(async () =>
-                (await app.getComponent(cockpitId, ['detailVesselState'])).detailVesselState, {
-                message  : 'the vessel must reach the windowed state (heap join, not just window open)',
+            // committed ownership is the heap join, not just the window open: the Group records the
+            // vessel once it binds and the engine adopts the pane
+            await expect.poll(vesselOwned, {
+                message  : 'the Group must record the vessel (heap join, not just window open)',
                 timeout  : 15000,
                 intervals: [100, 250]
-            }).toBe('windowed');
+            }).toBe(true);
 
             let vesselDetail;
 
@@ -198,23 +200,32 @@ test.describe('AgentOS Fleet Cockpit — kinetic multi-window choreography (#156
             expect(held.properties.mounted).toBe(true);
             beatLog.push({beat: 'hold', liveInVessel: true});
 
-            // ── beat 5: re-integration — same instance home, vessel closes, zero residue ─────
-            const closePromise   = popup.waitForEvent('close', {timeout: 30000}),
-                  reattachResult = await app.callMethod(cockpitId, 'reattachAgentDetail');
+            // ── beat 5: re-integration — the vessel closes, the engine homes the same instance ─
+            const closePromise = popup.waitForEvent('close', {timeout: 30000}),
+                  returnResult = await app.callMethod(cockpitId, 'returnPane', ['detail']);
 
-            expect(reattachResult.errors).toEqual([]);
-            expect(reattachResult.reattached).toBe(true);
+            expect(returnResult.errors).toEqual([]);
+            expect(returnResult.returned).toBe(true);
             await closePromise;
 
-            const restored = await app.getComponent(cockpitId, ['detailVesselState', 'detachedDetail']);
+            // zero residue: nothing owned, nothing in flight — the Group withdrew the record
+            await expect.poll(vesselOwned, {timeout: 15000, intervals: [100, 250]}).toBe(false);
+            expect(await vesselPending()).toBe(false);
 
-            expect(restored.detailVesselState).toBe('docked');
-            expect(restored.detachedDetail).toBeNull();
+            // the engine's return re-trees and re-mounts asynchronously after the release — the
+            // homed instance is polled to its mounted state, never read the instant the record clears
+            let homedDetail;
 
-            const homedDetail = await readDetail();
+            await expect.poll(async () => {
+                homedDetail = await readDetail();
+                return homedDetail?.properties?.mounted === true && homedDetail?.id
+            }, {
+                message  : 'the same detail instance must come home mounted in the main window',
+                timeout  : 15000,
+                intervals: [100, 250]
+            }).toBe(dockedDetail.id);
 
             expect(homedDetail.id, 'the return keeps the same instance').toBe(dockedDetail.id);
-            expect(homedDetail.properties.mounted).toBe(true);
             beatLog.push({beat: 'reattach', reattached: true, detailId: homedDetail.id});
 
             logs.push(beatLog);
