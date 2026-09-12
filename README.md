@@ -157,7 +157,10 @@ moves the focused node instead of replacing it (the Engine of #98 sorts a joiner
 is what exposed the positional ids). `FleetGridScaleNL` went green with #98 — the Engine writes its
 unfiltered projection inside the mutation (neomjs/neo#18269), so the roster's fold decides on the
 whole batch and the cards it renders are the records it holds; `AddAgentJourneyNL` went green with
-#74.
+#74. `FleetActivityStreamBurstNL` and the `FleetCockpitDockNL` presets arm went green with Engine
+pin 7 (#120), and the seven vessel witnesses (pop-out, tear-out, N-window, kinetic, drill,
+permanence) read the Engine's tear-out owner since that pin: ownership through `isVesselOwned` /
+`isVesselPending`, the return by closing the vessel window — never a consumer disconnect seam.
 
 Live maintainer seats also require their own local GitHub token, remote MCP bearer, and agent
 identity configuration. For Neo's team these include `GH_TOKEN`, `NEO_MCP_REMOTE_TOKEN`, and
