@@ -144,8 +144,12 @@
         color: color-mix(in srgb, var(--fm-ink-dim) 75%, transparent);
     }
 
-    /* ── the state line: dot · state-word · lane-count badge (right-pinned) · telltale ── */
+    /* ── the state line: dot · state-word · presence band · beacon words · lane-count badge (right-pinned) · telltale ──
+       The line is its OWN width-query context, NAMED so the card's unnamed queries keep resolving to
+       the card: it is the card's one nowrap row with optional members, and the one member allowed to
+       yield to its width is the beacon words (.fm-card-beacon). */
     .fm-card-state-line {
+        container: state-line / inline-size;
         gap      : var(--fm-space-2);
         min-width: 0;
     }
@@ -176,12 +180,48 @@
         white-space: nowrap;
         color      : var(--fm-ink-dim);
 
-        /* the provider-validation exception (#2): the WORDS carry it ("validation stale" in the
+        /* the provider-validation exception (the validation-provenance contract): the WORDS carry it ("validation stale" in the
            band text) — this modifier only adds the fm-state-hot emphasis pair (weight + full ink,
            never a hue on text), so geometry and the ordinary band stay untouched */
         &.fm-card-presence-stale {
             color      : var(--fm-ink);
             font-weight: 600;
+        }
+
+        /* the beacon exception (the turn-presence facet): the band's GLYPH carries it at every card
+           width — a dotted ring for a band with no beacon behind it, a bullseye for one whose beacon
+           went past its horizon — the title and the aria pair speak it, and the words beside the
+           band join where the line has room (.fm-card-beacon). Absent takes the same emphasis pair
+           as the validation exception (weight + full ink, never a hue on text): a live seat whose
+           hooks are silent is the failure no band shows. Stale keeps the dim ink; its glyph is the mark. */
+        &.fm-card-presence-beacon-absent {
+            color      : var(--fm-ink);
+            font-weight: 600;
+        }
+    }
+
+    /* the beacon words: "beacon absent" / "beacon stale" beside the band for an ACTIVE seat whose
+       turn-presence beacon is silent — the idle mark carries the absent form, dim ink the stale one.
+       The line is a nowrap row whose regular members (the longest state word, the longest active
+       band, a two-digit badge) already fill it below ~340px, so the words are the one member that
+       yields: they render only where the line holds them whole, and below that the band's glyph and
+       title carry the fact — never a clipped or overlapping word. Hidden outright for fresh /
+       unobserved, and for an older Brain that sends no facet at all. */
+    .fm-card-beacon {
+        flex       : none;
+        font       : var(--fm-text-micro);
+        line-height: 1;
+        white-space: nowrap;
+        color      : var(--fm-state-idle);
+
+        &.fm-card-beacon-stale {
+            color: var(--fm-ink-dim);
+        }
+    }
+
+    @container state-line (max-width: 339px) {
+        .fm-card-beacon {
+            display: none;
         }
     }
 
