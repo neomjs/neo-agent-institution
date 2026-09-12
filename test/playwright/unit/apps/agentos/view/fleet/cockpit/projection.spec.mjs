@@ -115,19 +115,23 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 // OWN value: the inherited engine accessor walks real config state a bare fake
                 // does not carry (the #configs private-member throw)
                 getStateProvider     : () => null,
+                // the same throw class for every config the new engine reads directly on the host
+                // (the header state rides provider data; declared panes and the tear-out owner are
+                // consulted at every refresh) — own values, so a bare fake answers them honestly
+                stateProvider        : null,
+                panes                : null,
+                paneDeclarations     : null,
+                plugins              : [],
+                zones                : null,
+                nativeWindows        : null,
+                tearOutHandlers      : null,
                 detailRecord         : null,
                 dockModel            : CockpitDockDocument.create(),
                 gridAdapterState     : 'sample',
                 isDestroyed          : false,
                 refreshPromise       : null,
-                returningTearOutPanes: {},
                 streamAdapterState   : 'sample',
                 streamEvents         : [],
-                tearOutAdmissions    : new Map(),
-                tearOutConnects      : {},
-                tearOutPaneHandles   : {},
-                tearOutPanes         : {},
-                tearOutPlacements    : {},
                 timeout              : ms => new Promise(resolve => setTimeout(resolve, ms)),
                 ...spyHostIdentity,
                 ...declaredDockConfigs(FleetCockpit, Object.getPrototypeOf(Workspace)),
@@ -174,20 +178,18 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         expect(Object.getPrototypeOf(vesselLayer) === Workspace.prototype).toBe(true);
 
         for (const method of [
-            'adoptTearOutPane',
+            'admitDockPopOut',
             'applyDockZoneOperation',
             'applyTearOutOperation',
-            'captureTearOutPane',
             'getDockZoneDocument',
+            'handleDockPopOutAction',
             'onDockCrossZoneDrop',
             'onDockZoneDocumentChange',
-            'onWindowConnect',
-            'onWindowDisconnect',
             'projectDockModel',
             'refreshDockWorkspace',
-            'reintegrateTearOutItem',
-            'releaseTearOutPane',
-            'reparentTearOutPane'
+            'reparentDockPane',
+            'resolveProjectedPane',
+            'settleDockPane'
         ]) {
             expect(Object.hasOwn(FleetCockpit.prototype, method), `${method} is inherited`).toBe(false);
             expect(Object.hasOwn(vesselLayer, method), `${method} is not shadowed by the vessel layer`).toBe(false)
