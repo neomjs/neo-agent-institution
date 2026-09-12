@@ -182,7 +182,7 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         expect(cockpit.perspectiveStore.collection.activeLayoutId, 'the library is not the selection').toBeNull()
     });
 
-    test('an unknown name is refused: the committed name, the document and the bar stay, the refusal renders', async () => {
+    test('an unknown name is refused, before and after a success: the committed name, the document and the bar stay, the refusal renders', async () => {
         cockpit = create();
 
         const before  = JSON.stringify(cockpit.dockModel),
@@ -193,7 +193,21 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         expect(cockpit.presetError).toContain('Ghost');
         expect(cockpit.activePerspective).toBe('Overview');
         expect(JSON.stringify(cockpit.dockModel)).toBe(before);
-        expect(pressed(cockpit)).toEqual([true, false, false])
+        expect(pressed(cockpit)).toEqual([true, false, false]);
+
+        // unknown AFTER a success: the unknown name never reaches the setter, so the accepted
+        // Focus write — its document, its published name, its pressed button — is what stays
+        expect(await cockpit.activatePerspective('Focus')).toEqual({errors: [], switched: true});
+        expect(cockpit.presetError).toBeNull();
+
+        const afterFocus = JSON.stringify(cockpit.dockModel);
+
+        expect((await cockpit.activatePerspective('Ghost')).switched).toBe(false);
+        expect(cockpit.presetError).toContain('Ghost');
+        expect(cockpit.activePerspective).toBe('Focus');
+        expect(cockpit.getStateProvider().getData('dock.perspective.active')).toBe('Focus');
+        expect(JSON.stringify(cockpit.dockModel)).toBe(afterFocus);
+        expect(pressed(cockpit)).toEqual([false, true, false])
     });
 
     test('re-applying the active duty resets its arrangement: a resized split returns to the declaration and modified clears', async () => {
