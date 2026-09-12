@@ -112,7 +112,7 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
 
         // ── AC1 precondition: the pane instance id is REQUIRED before the cycle — identity is
         // asserted unconditionally after return, never skipped behind a falsy capture. Polled
-        // because `resolveDockReference` materializes a freshly un-railed pane asynchronously
+        // because the projection materializes a freshly un-railed declared pane asynchronously
         // (projection → tab render → instance); the requirement itself stays hard.
         await expect.poll(async () => (await queryPane(app, className))?.id ?? null, {
             message  : `the '${className}' pane id must be captured before the tear-out`,
@@ -178,6 +178,15 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
         // is schedule-dependent (observed 4/4 under session load on 2026-07-24; idle-host controls
         // later ran the unfixed code green under every public-seam ordering).
         const popupClosed = popup.waitForEvent('close', {timeout: 30000});
+
+        // the return contract is a COMMITTED vessel's death: the Group must own the window (the
+        // adoption's owner merge carries its windowId) before it dies — a close that races the
+        // commit is the in-flight case, whose release hands no pane back (engine gap, defect-noted)
+        await expect.poll(() => app.callMethod(cockpitId, 'isVesselOwned', [itemId]), {
+            message  : `the Group must own the ${itemId} vessel before it dies`,
+            timeout  : 15000,
+            intervals: [100, 250]
+        }).toBe(true);
 
         await popup.evaluate(() => window.close());
         await popupClosed;

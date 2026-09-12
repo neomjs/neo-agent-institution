@@ -14,7 +14,7 @@ import {test, expect} from '../../fixtures.mjs';
  * about the rendered tree, so the witness has to walk the rendered tree.
  *
  * **Why it asserts the invariant and not a tab SEQUENCE.** The old AC asked for
- * `grid → card → controls → stream → rails`. Dock zones are document-driven — `resolveDockReference`
+ * `grid → card → controls → stream → rails`. Dock zones are document-driven — the cockpit's `panes` + `zones` declaration
  * resolves each `reference` at runtime from `cockpitDockDocument` — so pinning an expected sequence
  * would pin a *layout preset*: red on every preset change, silent on every real regression. The
  * invariant is preset-independent; the sequence never was.
@@ -22,10 +22,9 @@ import {test, expect} from '../../fixtures.mjs';
  * The `scanned` assertion is not decoration: a walk that reaches an empty tree also finds no tabindex,
  * so without proof the tree was really there, "no overrides" is a vacuous pass.
  *
- * @see apps/agentos/view/fleet/cockpit/Container.mjs
- * @see apps/agentos/util/CockpitDockDocument.mjs
+ * @see apps/agentos/view/fleet/cockpit/Container.mjs — the cockpit's `panes` + `zones` declaration
  * @see test/playwright/e2e/agentos/FleetGridKeyboardA11y.spec.mjs — AC2(b)/(d), the drill path
- * @see test/playwright/unit/apps/agentos/cockpitDockDocument.spec.mjs — AC2(c), the autoHidden zones
+ * @see test/playwright/unit/apps/agentos/view/fleet/cockpit/declaration.spec.mjs — AC2(c), the autoHidden zones
  */
 test.describe('AgentOS FM cockpit — focus order IS DOM order (#14619 AC2a)', () => {
     test.setTimeout(90000);

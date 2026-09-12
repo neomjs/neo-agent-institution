@@ -13,8 +13,8 @@ import Neo                 from '../../../../../../../../node_modules/neo.mjs/sr
 import * as core           from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import Instance            from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {resolveCallback}   from '../../../../../../../../node_modules/neo.mjs/src/util/Function.mjs';
-import CockpitDockDocument from '../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs';
 import CockpitPresets      from '../../../../../../../../apps/agentos/util/CockpitPresets.mjs';
+import {shippedDockDocument} from '../cockpit/shippedDockDocument.mjs';
 import PerspectivesPane    from '../../../../../../../../apps/agentos/view/fleet/perspectives/Container.mjs';
 
 /**
@@ -175,7 +175,7 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
 
 test.describe('AgentOS.util.CockpitPresets.captureSavedLayout — the live document as a named saved layout', () => {
     test('a named capture wraps the document under the folded name, titled by the name, stamped as a capture', () => {
-        const {layout, errors} = CockpitPresets.captureSavedLayout(CockpitDockDocument.create(), '  Triage view ');
+        const {layout, errors} = CockpitPresets.captureSavedLayout(shippedDockDocument(),'  Triage view ');
 
         expect(errors).toEqual([]);
         expect(layout.layoutId, 'the capture prefix keeps the id off the shipped presets').toBe('capture-triage-view');
@@ -187,7 +187,7 @@ test.describe('AgentOS.util.CockpitPresets.captureSavedLayout — the live docum
 
     test('an empty name is refused before the wrapper sees the document', () => {
         for (const name of ['', '   ', null, undefined]) {
-            const {layout, errors} = CockpitPresets.captureSavedLayout(CockpitDockDocument.create(), name);
+            const {layout, errors} = CockpitPresets.captureSavedLayout(shippedDockDocument(),name);
 
             expect(layout).toBeNull();
             expect(errors).toEqual(['a perspective needs a name'])
@@ -195,7 +195,7 @@ test.describe('AgentOS.util.CockpitPresets.captureSavedLayout — the live docum
     });
 
     test('a name of nothing but punctuation still gets an addressable id', () => {
-        const {layout, errors} = CockpitPresets.captureSavedLayout(CockpitDockDocument.create(), '***');
+        const {layout, errors} = CockpitPresets.captureSavedLayout(shippedDockDocument(),'***');
 
         expect(errors).toEqual([]);
         expect(layout.layoutId).toBe('capture-layout');

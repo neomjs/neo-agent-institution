@@ -12,6 +12,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import FleetCockpit           from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
+import {declaredPanes}        from '../cockpit/shippedDockDocument.mjs';
 
 /**
  * @summary The FleetCockpit owner seam for the memories selection, driven as prototype methods
@@ -21,11 +22,13 @@ import FleetCockpitController from '../../../../../../../../apps/agentos/view/fl
  * destroyed and rebuilt mid-flight still receives the truth.
  */
 function ownerStub({memoriesTarget = null, memoriesSnapshot = null, pane = null} = {}) {
-    return {
-        // the shell-owned window verb rides the resolver config; this seam test asserts
-        // selection travel, so an empty tool config is the honest minimal stub
+    // a prototype host: the engine's resolvePane and the cockpit's seeds are real prototype
+    // methods, so the stub carries the declaration the engine captures at construct as an OWN value
+    return Object.assign(Object.create(FleetCockpit.prototype), {
+        // the shell-owned window verb rides the seeds; this seam test asserts selection travel,
+        // so an empty tool config is the honest minimal stub
         buildMemoriesWindowToggle: () => ({}),
-        // the memories selection + snapshots are CONTROLLER-held state: the resolver reads them
+        // the memories selection + snapshots are CONTROLLER-held state: the seeds read them
         // through the controller seat, and string listeners scope to the same controller
         getController: () => ({
             memoriesDrillSession : null,
@@ -33,32 +36,35 @@ function ownerStub({memoriesTarget = null, memoriesSnapshot = null, pane = null}
             memoriesSnapshot,
             memoriesTarget
         }),
-        getMemoriesPane: () => pane,
-        getReference   : () => pane
-    }
+        getMemoriesPane : () => pane,
+        getReference    : () => pane,
+        nativeWindows   : null,
+        paneDeclarations: declaredPanes(FleetCockpit, Neo),
+        tearOutHandlers : null
+    })
 }
+
+/**
+ * A fresh memories pane CONFIG from the declaration + the owner's seeds — what the projection
+ * asks for when no live instance exists under the declaration's id.
+ * @param {Object} stub
+ * @returns {Object}
+ */
+const resolveMemories = stub => FleetCockpit.prototype.resolvePane.call(stub, 'memories', {reference: 'memories', title: 'Memories'});
 
 test.describe('FleetCockpit — memories owner seam (pending selection + write-time pane resolve)', () => {
     test('the rebuilt pane receives the PENDING selection ahead of the accepted snapshot target', () => {
-        const proto = FleetCockpit.prototype;
+        const pendingSwitch = resolveMemories(ownerStub({memoriesTarget: '@neo-fable-clio', memoriesSnapshot: {target: '@neo-opus-ada'}}));
 
-        const pendingSwitch = proto.resolveDockReference.call(
-            ownerStub({memoriesTarget: '@neo-fable-clio', memoriesSnapshot: {target: '@neo-opus-ada'}}),
-            'memories', {title: 'Memories'}, 'memories'
-        );
         expect(pendingSwitch.activeAgent).toBe('@neo-fable-clio');
         expect(pendingSwitch.snapshot.target).toBe('@neo-opus-ada');
 
-        const settled = proto.resolveDockReference.call(
-            ownerStub({memoriesTarget: null, memoriesSnapshot: {target: '@neo-opus-ada'}}),
-            'memories', {title: 'Memories'}, 'memories'
-        );
+        const settled = resolveMemories(ownerStub({memoriesTarget: null, memoriesSnapshot: {target: '@neo-opus-ada'}}));
+
         expect(settled.activeAgent).toBe('@neo-opus-ada');
 
-        const untouched = proto.resolveDockReference.call(
-            ownerStub(),
-            'memories', {title: 'Memories'}, 'memories'
-        );
+        const untouched = resolveMemories(ownerStub());
+
         expect(untouched.activeAgent).toBe(null)
     });
 

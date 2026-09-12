@@ -8,7 +8,7 @@ import {test, expect} from '../../fixtures.mjs';
  * 2. the READ half (`getDockZoneDocument`) serves Neural Link topology before any operation;
  * 3. a REAL pointer drag on the projected splitter commits `resizeSplit` through the reducer /
  *    view-sync split — the document advances, the reconciler takes its geometry fast path
- *    (`resizeSplit` declares the `geometry` change class, neomjs/neo#18206): the ONE live splitter
+ *    (`resizeSplit` declares the `geometry` change class): the ONE live splitter
  *    instance and its DOM node survive the commit, the pane sizes re-project from the committed
  *    ratio, and the toolbar plus keeper panes preserve component and DOM identity;
  * 4. the WRITE half (`executeDockOperation`) round-trips the same loop programmatically — a
@@ -140,7 +140,7 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
         }, {message: 'the splitter drag must COMMIT resizeSplit through the reducer', timeout: 10000, intervals: [100]}).not.toBe(sizes0[0]);
 
         // `resizeSplit` declares the `geometry` change class (`dock/model/Operations.mjs`), so the
-        // commit takes the reconciler's geometry fast path (neomjs/neo#18206): the ONE live splitter
+        // commit takes the reconciler's geometry fast path: the ONE live splitter
         // instance and its DOM node survive the commit — only the projected sizes move. The
         // pre-pin contract (a fresh splitter per commit) is gone with it.
         const splitterIds = () => page.locator('.fm-fleet-cockpit .neo-dashboard-dock-splitter').evaluateAll(elements =>
@@ -274,13 +274,6 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
               docReview  = topoReview?.document ?? topoReview;
         expect(docReview.items.detail.autoHidden, 'Review must open the detail band').toBe(false);
 
-        // Known Engine hold, kept failing-honest rather than skipped: at Engine dev@0659b0e42d the
-        // projection stages tab chrome with `hideMode: 'visibility'` and un-hides it on the FLIP
-        // settle. Under HEADLESS Chromium the settle never lands and this step times out on a pane
-        // that is mounted but `visibility: hidden`; headed it usually passes in ~2s but the same
-        // hold surfaced once in three full headed runs (2026-09-01), so a red here is the Engine
-        // race, not this journey. Ledger: neo-agent-institution#66; Engine defect-note on the A2A
-        // trail. `npm run test-e2e:nl -- --headed` is the honest receipt until the settle lands.
         await expect(page.locator('.fm-agent-detail'), 'Review materializes the genuinely absent detail pane')
             .toBeVisible({timeout: 10000});
         const details = await app.findInstances({className: 'AgentOS.view.fleet.detail.Container'}, ['id']),
@@ -293,11 +286,13 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
         await expect.poll(primarySizes, {message: 'the Fleet switch must restore the default split', timeout: 10000, intervals: [100]})
             .toEqual([0.6078, 0.3922]);
 
-        await expect(page.locator('.fm-agent-detail'), 'returning to Fleet retires the no-longer-projected detail pane')
+        await expect(page.locator('.fm-agent-detail'), 'returning to Fleet un-trees the no-longer-projected detail pane')
             .toHaveCount(0);
+        // a DECLARED pane is parked, never retired: the same instance survives out of the tree,
+        // so the next reveal or the next Review switch returns it — one instance, never a successor
         const detailsAfter = await app.findInstances({className: 'AgentOS.view.fleet.detail.Container'}, ['id']);
-        expect((Array.isArray(detailsAfter) ? detailsAfter : [detailsAfter]).filter(entry => entry?.id),
-            'the retired detail component leaves no worker-side corpse').toEqual([]);
+        expect((Array.isArray(detailsAfter) ? detailsAfter : [detailsAfter]).filter(entry => entry?.id).map(entry => entry.id),
+            'the un-treed inspector is the parked declared instance — the same one Review projected').toEqual([detail.id]);
 
         expect(await page.evaluate(ids => Object.fromEntries(Object.entries(ids).map(([key, id]) => [
             key,
