@@ -40,6 +40,31 @@ class VesselContainer extends Workspace {
     }
 
     /**
+     * The designed vessel composition per pane, where a pane has one — the inspector's own layout
+     * grammar (its four SSOT panes with the title + provenance row) is composed for 480px, so its
+     * vessel opens at that composition instead of the rail-revealed rect the click was measured on.
+     * Panes without a row open at their measured size, the engine's default.
+     * @member {Object} vesselCompositions
+     * @protected
+     */
+    static vesselCompositions = Object.freeze({
+        detail: {x: 160, y: 120, width: 480, height: 640}
+    })
+
+    /**
+     * The geometry the engine hands the vessel for a click pop-out: the measured pane rect, or
+     * the pane's designed composition when it has one ({@link #vesselCompositions}).
+     * @param {Neo.tab.Container|null} tabContainer
+     * @returns {Promise<Object|null>}
+     * @protected
+     */
+    async measureDockPaneRect(tabContainer) {
+        const composition = VesselContainer.vesselCompositions[this.getActiveDockItemId(tabContainer)];
+
+        return composition ? {...composition} : super.measureDockPaneRect(tabContainer)
+    }
+
+    /**
      * The engine's generic pane capability: the live pane the projected tree renders for an
      * item. The tear-out owner asks this AFTER its own held handles, so a captured or returning
      * pane never reaches here.

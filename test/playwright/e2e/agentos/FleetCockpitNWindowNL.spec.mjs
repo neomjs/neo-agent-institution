@@ -255,7 +255,7 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
             }).toBe('neo-fable');
 
             const detailPopupPromise = page.waitForEvent('popup', {timeout: 30000}),
-                  detailResult       = await app.callMethod(cockpitId, 'popOutAgentDetail'),
+                  detailResult       = await app.callMethod(cockpitId, 'popOutPane', ['detail']),
                   detailPopup        = await detailPopupPromise;
 
             detailPopup.on('pageerror', error => {
@@ -265,7 +265,7 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
             });
 
             expect(detailResult).toMatchObject({detached: true, errors: []});
-            await detailPopup.waitForURL(url => String(url).includes('detail='), {timeout: 30000});
+            await detailPopup.waitForURL(url => String(url).includes('tearout=detail'), {timeout: 30000});
 
             let detailWindowed;
 
@@ -391,10 +391,12 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
 
             let midGestureWindowId;
 
+            // the Group holds the vessel as a PROVISIONAL connection until the terminal commits —
+            // a window bound to its reserved slot while the source gesture is still live
             await expect.poll(async () => {
-                const state = await app.getComponent(cockpitId, ['tearOutConnects']);
+                const connection = await app.callMethod(cockpitId, 'nativeWindows.getConnection', [cockpitId, 'operator']);
 
-                midGestureWindowId = state.tearOutConnects?.operator?.windowId;
+                midGestureWindowId = connection?.windowId;
                 return midGestureWindowId || null
             }, {
                 message  : 'the mailbox vessel must connect before mouse-up',
@@ -432,24 +434,26 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
 
             let mailboxWindowed;
 
+            // the terminal commits and the engine adopts the SAME instance into the window that
+            // bound mid-gesture: the pane's own windowId is the vessel's, and the Group's record is
+            // committed ownership now, no longer a provisional connection
             await expect.poll(async () => {
                 mailboxWindowed = first(await app.queryComponent(
                     {className: 'AgentOS.view.fleet.mailbox.OperatorContainer'},
                     ['id', 'mounted', 'snapshot', 'windowId']
                 ));
 
-                const state = await app.getComponent(cockpitId, ['tearOutPanes']);
-
                 return {
                     id      : mailboxWindowed?.id,
                     mounted : mailboxWindowed?.properties?.mounted,
-                    windowId: state.tearOutPanes?.operator?.windowId
+                    owned   : await app.callMethod(cockpitId, 'isVesselOwned', ['operator']),
+                    windowId: mailboxWindowed?.properties?.windowId
                 }
             }, {
                 message  : 'the same mailbox instance must adopt the committed vessel',
                 timeout  : 15000,
                 intervals: [100, 250]
-            }).toEqual({id: mailboxBefore.id, mounted: true, windowId: midGestureWindowId});
+            }).toEqual({id: mailboxBefore.id, mounted: true, owned: true, windowId: midGestureWindowId});
 
             // The hold is not a static tableau. Advance the safe fixture once, then prove each
             // window applies a production data refresh while retaining its component identity.
@@ -512,10 +516,13 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
 
             await checkpoint(page, beats, 'three-window-live-refresh', {updated: ['main', 'detail', 'mailbox'], windows: 3});
 
-            // Drive the same App-Worker disconnect seam as the G4 vessel-death contract, while the
-            // popup tree is still live (the race-maximizing order pinned by FleetCockpitTearOutNL).
-            // Playwright's Page.close() bypasses Neo.Main and therefore is not a product close event.
-            await app.callMethod(cockpitId, 'onWindowDisconnect', [{windowId: midGestureWindowId}]);
+            // The REAL vessel death while the popup tree is still live (the race-maximizing order
+            // pinned by FleetCockpitTearOutNL): the window closes itself — a product close event the
+            // Group observes — and the engine's tear-out owner returns the pane to the main tree.
+            const mailboxClose = mailboxPopup.waitForEvent('close', {timeout: 30000});
+
+            await mailboxPopup.evaluate(() => window.close());
+            await mailboxClose;
 
             await expect.poll(async () => {
                 const
@@ -523,13 +530,13 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
                         {className: 'AgentOS.view.fleet.mailbox.OperatorContainer'},
                         ['id', 'mounted', 'windowId']
                     )),
-                    state   = await app.getComponent(cockpitId, ['dockModel', 'tearOutPanes']);
+                    state   = await app.getComponent(cockpitId, ['dockModel']);
 
                 return {
                     id      : mailbox?.id,
                     mounted : mailbox?.properties?.mounted,
                     reTreed : Object.values(state.dockModel.nodes).some(node => node.items?.includes('operator')),
-                    residue : Boolean(state.tearOutPanes?.operator),
+                    residue : await app.callMethod(cockpitId, 'isVesselOwned', ['operator']),
                     windowId: mailbox?.properties?.windowId
                 }
             }, {
@@ -544,30 +551,25 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
                 windowId: cockpit.properties.windowId
             });
 
-            const mailboxClose = mailboxPopup.waitForEvent('close', {timeout: 30000});
+            // the return verb closes the vessel; the Group observes the release and the engine
+            // homes the same instance — nothing owned, nothing in flight afterwards
+            const detailClose  = detailPopup.waitForEvent('close', {timeout: 30000}),
+                  detailReturn = await app.callMethod(cockpitId, 'returnPane', ['detail']);
 
-            await mailboxPopup.evaluate(() => window.close());
-            await mailboxClose;
-
-            const detailClose = detailPopup.waitForEvent('close', {timeout: 30000}),
-                  reattach    = await app.callMethod(cockpitId, 'reattachAgentDetail');
-
-            expect(reattach).toMatchObject({reattached: true, errors: []});
+            expect(detailReturn).toMatchObject({returned: true, errors: []});
             await detailClose;
 
             await expect.poll(async () => {
-                const
-                    detail = first(await app.queryComponent(
-                        {className: 'AgentOS.view.fleet.detail.Container'},
-                        ['id', 'mounted', 'windowId']
-                    )),
-                    state  = await app.getComponent(cockpitId, ['detailVesselState', 'detachedDetail']);
+                const detail = first(await app.queryComponent(
+                    {className: 'AgentOS.view.fleet.detail.Container'},
+                    ['id', 'mounted', 'windowId']
+                ));
 
                 return {
-                    detached: state.detachedDetail,
                     id      : detail?.id,
                     mounted : detail?.properties?.mounted,
-                    state   : state.detailVesselState,
+                    owned   : await app.callMethod(cockpitId, 'isVesselOwned',   ['detail']),
+                    pending : await app.callMethod(cockpitId, 'isVesselPending', ['detail']),
                     windowId: detail?.properties?.windowId
                 }
             }, {
@@ -575,10 +577,10 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
                 timeout  : 15000,
                 intervals: [100, 250]
             }).toEqual({
-                detached: null,
                 id      : detailBefore.id,
                 mounted : true,
-                state   : 'docked',
+                owned   : false,
+                pending : false,
                 windowId: cockpit.properties.windowId
             });
 

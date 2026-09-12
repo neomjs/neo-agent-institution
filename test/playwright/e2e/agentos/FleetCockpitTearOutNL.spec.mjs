@@ -7,10 +7,10 @@ import {test, expect} from '../../fixtures.mjs';
  * browser window on the ONE SharedWorker heap, the vessel adopts the SAME live instance, then the
  * vessel DIES — and the pane must come HOME to the cockpit tree, never strand in the dead
  * vessel's view (the defect: tab header returns, live pane orphaned under the dead vessel viewport).
- * The death is driven while the vessel view is live (the widest tree-live-occupant window), plus a
- * second disconnect delivery to pin no-op idempotency. The strand itself is schedule-dependent —
- * this spec gates the full return CONTRACT on every schedule, with the arm-time parking fix making
- * the handoff independent of which slot consumer (resolver vs refresh) serves the return.
+ * The death is the REAL one — the vessel window closes itself while its view is live (the widest
+ * tree-live-occupant window); the Group observes the release and the engine's tear-out owner returns
+ * the item. The strand itself is schedule-dependent — this spec gates the full return CONTRACT on
+ * every schedule, independent of which slot consumer (resolver vs refresh) serves the return.
  *
  * The return oracle binds every dimension of the return contract mechanically (no conditional identity, no
  * inequality stand-ins): the pane id is captured as a REQUIRED precondition and compared
@@ -136,7 +136,6 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
         // the vessel opens at a staged about:blank, then location.replace navigates to the widget
         // childapp (the same-origin warm-connect staging pattern) — wait for the real URL
         await popup.waitForURL(url => String(url).includes(`tearout=${itemId}`), {timeout: 30000});
-        expect(popup.url()).toContain('cockpitId=');
 
         const popupErrors = [];
 
@@ -150,15 +149,18 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
 
         expect(terminalResult, 'the terminal committed the detach').toBe(true);
 
-        // the REAL vessel connects and adopts the pane — wait for the record to carry its windowId
-        await expect.poll(async () => {
-            const {tearOutPanes} = await app.getComponent(cockpitId, ['tearOutPanes']);
-            return tearOutPanes?.[itemId]?.windowId || null;
-        }, {message: 'the vessel must join the heap and adopt the pane', timeout: 30000, intervals: [200, 500]})
-            .toBeTruthy();
+        // the REAL vessel binds to its reserved Group slot and the engine adopts the pane — the
+        // Group records committed ownership for the item, and the pane body renders in the vessel
+        await expect.poll(async () => app.callMethod(cockpitId, 'isVesselOwned', [itemId]), {
+            message: 'the vessel must join the heap and adopt the pane', timeout: 30000, intervals: [200, 500]
+        }).toBe(true);
+        await expect(popup.locator(domSelector).first(), 'the adopted pane body renders in the vessel').toBeVisible({timeout: 15000});
 
-        const {tearOutPanes} = await app.getComponent(cockpitId, ['tearOutPanes']),
-              vesselWindowId = tearOutPanes[itemId].windowId;
+        // the vessel's window identity, read from the ADOPTED pane: the live instance now renders in
+        // the vessel, so its own windowId names the window — never inferred from the cockpit
+        const vesselWindowId = (await queryPane(app, className))?.windowId;
+
+        expect(vesselWindowId, 'the adopted pane carries the vessel windowId').toBeTruthy();
 
         // document truth while detached: out of the tree, still in the catalog
         const docDetached = await readDoc();
@@ -168,19 +170,17 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
         expect(docDetached.items[itemId], 'detachItem keeps the catalog record').toBeTruthy();
 
         // ── the defect surface: vessel death while the vessel view is still LIVE ─────────────
-        // Driven with the vessel window open — the ordering that maximizes the tree-live-occupant
-        // window (the App Worker's disconnect handling legitimately races the vessel teardown).
-        // This witness is the return CONTRACT gate (same instance, exact cockpit windowId, main-tree
-        // parent, rendered body, records consumed) — not a deterministic red-gate for the strand:
-        // the strand is schedule-dependent (observed 4/4 under session load on 2026-07-24; idle-host
-        // controls later ran the unfixed code green under every public-seam ordering). The parking
-        // fix makes the handoff order-independent, so this contract holds on every schedule.
-        await app.callMethod(cockpitId, 'onWindowDisconnect', [{windowId: vesselWindowId}]);
+        // The REAL death: the vessel window closes itself with its view live — the ordering that
+        // maximizes the tree-live-occupant window (the App Worker's disconnect handling legitimately
+        // races the vessel teardown). The Group observes the release and the engine returns the item;
+        // this witness is the return CONTRACT gate (same instance, exact cockpit windowId, main-tree
+        // parent, rendered body, no residue) — not a deterministic red-gate for the strand: the strand
+        // is schedule-dependent (observed 4/4 under session load on 2026-07-24; idle-host controls
+        // later ran the unfixed code green under every public-seam ordering).
+        const popupClosed = popup.waitForEvent('close', {timeout: 30000});
 
-        // fired a second time on purpose: production can deliver the disconnect through two
-        // independent paths (port-close event + programmatic drive) — the consumed tear-out
-        // record must make the second arrival a harmless no-op, never a double reintegration
-        await app.callMethod(cockpitId, 'onWindowDisconnect', [{windowId: vesselWindowId}]);
+        await popup.evaluate(() => window.close());
+        await popupClosed;
 
         // ── the item must come HOME: tree-live again ─────────────────────────────────────────
         await expect.poll(async () => {
@@ -223,18 +223,11 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
         await expect(page.locator(domSelector).first(),
             'the returned pane body renders in the main window').toBeVisible({timeout: 10000});
 
-        // the tear-out records are consumed exact-once (no leaked capture / orphan bookkeeping)
-        const {tearOutPanes: after, returningTearOutPanes} = await app.getComponent(cockpitId,
-            ['tearOutPanes', 'returningTearOutPanes']);
-
-        expect(after?.[itemId], 'the tearOutPanes record is consumed').toBeFalsy();
-        expect(returningTearOutPanes?.[itemId], 'the returning slot is consumed').toBeFalsy();
-
-        // cleanup: the emptied vessel window closes (the return was already proven above)
-        const popupClosed = popup.waitForEvent('close', {timeout: 30000});
-
-        await popup.evaluate(() => window.close());
-        await popupClosed;
+        // the owner's records are consumed exact-once: no committed ownership, no held handle, no
+        // pane in flight (a leaked capture or orphan bookkeeping would surface here)
+        expect(await app.callMethod(cockpitId, 'isVesselOwned', [itemId]), 'the Group withdrew the ownership record').toBe(false);
+        expect(await app.callMethod(cockpitId, 'isVesselPending', [itemId]), 'no admission or handle survives the return').toBe(false);
+        expect(await app.callMethod(cockpitId, 'tearOutHandlers.heldPaneIds'), 'the owner holds no pane handle').toEqual([]);
 
         expect(pageErrors, 'zero main-window page errors').toEqual([]);
         expect(popupErrors, 'zero vessel page errors').toEqual([])

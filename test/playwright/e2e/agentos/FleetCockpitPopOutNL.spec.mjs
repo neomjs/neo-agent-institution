@@ -1,24 +1,24 @@
 import {test, expect} from '../../fixtures.mjs';
 
 /**
- * Whitebox-e2e for the Stage-1 cockpit pop-out: the agent-detail inspector detaches to a REAL
+ * Whitebox-e2e for the cockpit's click pop-out: the agent-detail inspector detaches to a REAL
  * second browser window while staying on the ONE SharedWorker App-Worker heap, and comes home —
- * reparent-never-recreate, live through every phase, with the SHELL owning every affordance
- * (the pane carries zero dock semantics):
+ * reparent-never-recreate, live through every phase, with the SHELL owning the affordance and the
+ * ENGINE owning the vessel lifecycle (the pane carries zero dock semantics):
  *
  * 1. drill: the controller seam seats a resident and reveals the detail inspector (the standard
  *    commit loop);
- * 2. detach: the cockpit toolbar's window-toggle opens the widget-childapp vessel — the dock
- *    document prunes the `detail` item but keeps its catalog record (Neural Link topology stays
- *    truthful), the admission state machine walks docked → opening → windowed, and the SAME
- *    AgentDetail instance (App-Worker id) renders in the popup;
+ * 2. detach: the pane's window-toggle enters the engine's own admission path (the same one the tab
+ *    header's pop-out action takes) — the widget-childapp vessel opens, the ONE detach commit prunes
+ *    the `detail` item but keeps its catalog record (Neural Link topology stays truthful), the vessel
+ *    binds to its reserved Group slot and the SAME AgentDetail instance (App-Worker id) renders in it;
  * 3. live continuity: selecting a DIFFERENT resident from the MAIN window re-renders the
  *    popped-out inspector — main-window intent → App Worker → popup render target, no remount;
- * 4. reattach: the SAME shell toggle brings the item home at its EXACT remembered tab index,
- *    closes the vessel, and the SAME instance renders docked with the state it gathered while
- *    windowed.
+ * 4. return: the SAME toggle closes the vessel — vessel death IS the return path — and the engine
+ *    brings the item home at its EXACT recorded index, the SAME instance rendering docked with the
+ *    state it gathered while windowed.
  *
- * The full gesture-driven drill tour (card → detail → pop-out → reattach as a narrated journey)
+ * The full gesture-driven drill tour (card → detail → pop-out → return as a narrated journey)
  * is the drill-e2e sibling leaf's scope; this witness proves the capability spine it builds on.
  *
  * Run: NEO_E2E_PORT=8119 npx playwright test agentos/FleetCockpitPopOutNL -c test/playwright/playwright.config.e2e.mjs --workers=1
@@ -26,7 +26,7 @@ import {test, expect} from '../../fixtures.mjs';
 test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural Link)', () => {
     test.setTimeout(120000);
 
-    test('detach → own OS window on the shared heap → live update while windowed → reattach home', async ({page, neuralLink}) => {
+    test('detach → own OS window on the shared heap → live update while windowed → return home', async ({page, neuralLink}) => {
         const pageErrors = [];
 
         page.on('pageerror', error => {
@@ -86,15 +86,13 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
             return (Array.isArray(matches) ? matches : [matches]).find(candidate => candidate?.id === detailId)
         };
 
-        const queryVesselState = async () => {
-            const matches = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['detailVesselState', 'id']);
-            return (Array.isArray(matches) ? matches : [matches]).find(candidate => candidate?.id === holderId)?.properties?.detailVesselState
-        };
+        // the Group's committed ownership for the item — the one vessel truth the shell reads
+        const queryVesselOwned = () => app.callMethod(holderId, 'isVesselOwned', ['detail']);
 
         const drilledAgentId = (await queryDetail())?.properties?.record?.agentId;
 
         expect(drilledAgentId, 'the drill seated a resident record').toBeTruthy();
-        expect(await queryVesselState()).toBe('docked');
+        expect(await queryVesselOwned()).toBe(false);
 
         const topoDocked = await app.getDockTopology(holderId),
               docDocked  = topoDocked?.document ?? topoDocked;
@@ -103,7 +101,7 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
 
         const homeIndexBefore = docDocked.nodes['secondary-rail'].items.indexOf('detail');
 
-        // 2) detach: ONE shell-toggle click opens the REAL vessel window
+        // 2) detach: ONE shell-toggle click enters the engine's admission and opens the REAL vessel window
         const popupPromise = page.waitForEvent('popup', {timeout: 30000});
 
         await toggle.click();
@@ -117,7 +115,7 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         await popup.waitForLoadState('domcontentloaded');
         await expect(popup.locator('.fm-agent-detail')).toBeVisible({timeout: 30000});
         expect(popup.url()).toContain('childapps/widget/index.html');
-        expect(popup.url()).toContain('cockpitId=');
+        expect(popup.url()).toContain('tearout=detail');
 
         const popupErrors = [];
 
@@ -130,9 +128,10 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         await expect(popup.locator('.fm-agent-detail')).toBeVisible({timeout: 30000});
         await expect(page.locator('.fm-agent-detail')).toHaveCount(0);
 
-        // the admission machine reached its settled windowed state
-        await expect.poll(queryVesselState, {timeout: 15000}).toBe('windowed');
-        await expect(toggle).toContainText('Reattach detail');
+        // the Group recorded committed ownership: the vessel owns the item, and the traveling
+        // toggle names the way home
+        await expect.poll(queryVesselOwned, {timeout: 15000}).toBe(true);
+        await expect(popup.locator('.fm-detail-window-toggle')).toHaveAttribute('aria-label', 'Return detail');
 
         // document truth while detached: out of the tree, still in the catalog
         const topoDetached = await app.getDockTopology(holderId),
@@ -166,16 +165,16 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
             .poll(async () => (await popup.locator('.fm-detail-id').textContent())?.trim(), {timeout: 15000})
             .toBe(reseatedAgentId);
 
-        // 4) reattach via the SAME shell toggle: the item re-trees at its EXACT remembered index,
-        // the vessel closes as an effect, and the SAME instance renders docked with the state it
-        // gathered while windowed
+        // 4) return via the SAME toggle, now in the vessel: it closes the vessel window, the Group
+        // observes the release, and the engine re-trees the item at its EXACT recorded index — the
+        // SAME instance renders docked with the state it gathered while windowed
         const popupClosed = popup.waitForEvent('close', {timeout: 30000});
 
-        await toggle.click();
+        await popup.locator('.fm-detail-window-toggle').click();
         await popupClosed;
 
         await expect(page.locator('.fm-agent-detail')).toBeVisible({timeout: 30000});
-        await expect.poll(queryVesselState, {timeout: 15000}).toBe('docked');
+        await expect.poll(queryVesselOwned, {timeout: 15000}).toBe(false);
 
         const topoHome = await app.getDockTopology(holderId),
               docHome  = topoHome?.document ?? topoHome;
