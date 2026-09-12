@@ -459,7 +459,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             // the REAL View selection surface: applySelection, the phase-blind pane accessors and
             // the store-load guard run as production code over this fake — no stub drift
             view         = wireDetailRecord({
-                detachedDetailPane    : null,
+                // no vessel on this fake: the phase-blind accessors fall through to the reference
+                vesselPane            : () => null,
                 detailRecord          : null,
                 getAgentDetailPane    : FleetCockpit.prototype.getAgentDetailPane,
                 getCatchUpPane        : () => null,
@@ -680,7 +681,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             detail   = {set(config) { setCalls.push(config) }},
             makeHost = (detailRecord, storeGet) => {
                 const view = wireDetailRecord({
-                          detachedDetailPane: null,
+                          vesselPane        : () => null,
                           detailRecord,
                           getAgentDetailPane: FleetCockpit.prototype.getAgentDetailPane,
                           getMemoriesPane   : () => null,
