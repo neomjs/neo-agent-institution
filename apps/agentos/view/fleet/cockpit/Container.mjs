@@ -16,7 +16,6 @@ import MemoriesPane           from '../memories/Container.mjs';
 import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
 import CockpitStateProvider   from './StateProvider.mjs';
-import CockpitDockDocument    from '../../../util/CockpitDockDocument.mjs';
 import CockpitPresets         from '../../../util/CockpitPresets.mjs';
 import SpineBannerComponent   from './SpineBannerComponent.mjs';
 import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
@@ -38,8 +37,6 @@ const livenessPollDefault = 15000;
  * @type {Number}
  */
 const livenessReadTimeoutDefault = 10000;
-
-
 
 
 
@@ -65,11 +62,11 @@ const livenessReadTimeoutDefault = 10000;
  * only product policy: platform window open/close, live-pane resolution, click-detail continuation,
  * control-bar observers and the click-Memories verb that enters the same engine admission path.
  *
- * Reconciliation retains existing pane and tab-chrome identities. Runtime pane state still lives
- * on THIS owner, never only on instances: {@link #resolveDockReference} materializes genuinely
- * absent panes from held state ({@link #gridAdapterState} / {@link #streamAdapterState}) and the
- * provider-owned activity Store, and the panes stay layout-blind per the docking design's pane contract —
- * ordinary configs only, no dock wiring reaches them.
+ * Reconciliation retains existing pane and tab-chrome identities; the panes are DECLARED
+ * ({@link #panes} / {@link #zones}) and the engine parks a pane that leaves the tree. Runtime pane
+ * state still lives on THIS owner, never only on instances: {@link #seedPane} hands a pane created
+ * now the held state it reopens on, the provider bindings carry the rest, and the panes stay
+ * layout-blind per the docking design's pane contract — ordinary configs only, no dock wiring.
  *
  * The roster data layer is ONE {@link AgentOS.store.FleetRoster} Store of
  * {@link AgentOS.model.FleetAgent} records, hosted by THIS view's `state.Provider` (`stores`
@@ -129,6 +126,144 @@ class FleetCockpit extends VesselContainer {
          * @reactive
          */
         presetError_: null,
+        /**
+         * The cockpit's pane catalog, DECLARED: one component config per stable dock item id. The
+         * engine lowers the catalog fields (`reference`, `header.text` → `title`, `autoHidden`)
+         * into the dock document, instantiates a pane the first time the projection needs it, and
+         * parks one that leaves the tree (a released reveal, a perspective switch) — returned,
+         * never re-created. `reference` is the record's own name, lowered onto the pane.
+         *
+         * Static by construction: modules, provider bindings and string handlers. What a pane
+         * needs only at its FIRST creation is instance-bound and joins through {@link #seedPane}.
+         * @member {Object} panes
+         */
+        panes: {
+            fleet: {
+                module   : FleetGrid,
+                header   : {text: 'Fleet'},
+                reference: 'fleet-grid',
+                bind     : {
+                    adapterState      : data => data.gridAdapterState,
+                    daemonFault       : data => data.daemonFault,
+                    presenceCapability: data => data.presenceCapability,
+                    store             : 'stores.fleetRoster'
+                },
+                // the bootstrap CTA (an empty fleet's path to its first agent) and the selection
+                // seam's drill (the roster controller wrote the provider truth pair; this listener
+                // drives the detail reveal)
+                listeners: {addAgentRequest: 'onAddAgentRequest', agentSelect: 'onAgentSelect'}
+            },
+            stream: {
+                module   : ActivityStream,
+                header   : {text: 'Activity'},
+                reference: 'activity-stream',
+                bind     : {
+                    adapterState: data => data.streamAdapterState,
+                    counts      : data => data.activityCounts,
+                    store       : 'stores.fleetActivityEvents'
+                }
+            },
+            // south reading surfaces: per-agent session-summary recall, the WHAT axis of mission
+            // control, the operator's own mailbox + compose surface, and the historical Bird-View
+            // complement to the bounded Activity stream — resident tabs beside it, never rail-squeezed
+            memories: {
+                module   : MemoriesPane,
+                header   : {text: 'Memories'},
+                reference: 'memories',
+                listeners: {
+                    memoriesRequest     : 'onMemoriesRequest',
+                    sessionDetailRequest: 'onSessionDetailRequest',
+                    sessionDetailClosed : 'onSessionDetailClosed'
+                }
+            },
+            tasks: {
+                module   : TasksPane,
+                header   : {text: 'Tasks'},
+                reference: 'tasks',
+                listeners: {tasksRequest: 'onTasksRequest'}
+            },
+            operator: {
+                module   : OperatorMailbox,
+                header   : {text: 'Mailbox'},
+                reference: 'operator-mailbox',
+                listeners: {compose: 'onOperatorCompose', inboxPageRequest: 'onOperatorInboxPageRequest'}
+            },
+            catchUp: {
+                module   : CatchUpPane,
+                header   : {text: 'Catch up'},
+                reference: 'catch-up',
+                listeners: {
+                    historyRequest     : 'onCatchUpHistoryRequest',
+                    markCaughtUpRequest: 'onCatchUpMarkRequest',
+                    liveSurfaceRequest : 'onCatchUpLiveSurfaceRequest'
+                }
+            },
+            // the inspector and the invoked tools: auto-hidden onto the right edge's rail
+            detail: {
+                // EAGER by contract: the vessel layer adopts and re-adopts THIS live instance
+                // synchronously (park → window → reattach); a lazy module resolves through an async
+                // placeholder the vessel flow cannot carry
+                module    : AgentDetail,
+                header    : {text: 'Agent detail'},
+                reference : 'agent-detail',
+                autoHidden: true
+            },
+            perspectives: {
+                module    : () => import('../perspectives/Container.mjs'),
+                header    : {text: 'Perspectives'},
+                reference : 'perspectives',
+                autoHidden: true,
+                bind      : {perspectives: data => data.perspectives},
+                listeners : {perspectiveRequest: 'onPerspectiveRequest'}
+            },
+            // S5 define-agent (design ruling on record: rail placement, invoked-not-ambient) — the
+            // add-agent flow rides the same autoHidden tool chrome as perspectives; the pane answers
+            // to the record's own name, the former `add-agent-form` alias is gone with the resolver
+            defineAgent: {
+                module    : () => import('../instances/AddAgentForm.mjs'),
+                header    : {text: 'Add agent'},
+                reference : 'define-agent',
+                autoHidden: true,
+                listeners : {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'}
+            },
+            wakeRoutes: {
+                module    : () => import('../wake/Container.mjs'),
+                header    : {text: 'Wake routes'},
+                reference : 'wakeRoutes',
+                autoHidden: true,
+                listeners : {wakeRoutesRequest: 'onWakeRoutesRequest'}
+            }
+        },
+        /**
+         * The cockpit's arrangement, DECLARED — the SSOT §01 mission-control split: the fleet zone
+         * (~1.55fr: the density-ranked roster + the health bar) above the south reading-surface
+         * tabs (1fr: Activity · Tasks · Memories · Mailbox · Catch up), with the right edge a
+         * RESIZABLE band at a committed extent carrying the inspector and the invoked tools —
+         * every member auto-hidden at boot, so the engine projects the band rail-only until one is
+         * pinned open (the Review preset), when the same descriptor renders the real splitter.
+         *
+         * Node ids are explicit: the presets and every persisted perspective key these names, and
+         * the engine retains an explicit id through lowering.
+         * @member {Object} zones
+         */
+        zones: {
+            id    : 'cockpit-root',
+            center: {
+                id         : 'primary-split',
+                orientation: 'vertical',
+                sizes      : [0.6078, 0.3922],
+                children   : [
+                    {id: 'fleet-tabs',  items: ['fleet']},
+                    {id: 'stream-tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp']}
+                ]
+            },
+            right: {
+                id       : 'secondary-rail',
+                items    : ['detail', 'perspectives', 'defineAgent', 'wakeRoutes'],
+                extent   : 0.25,
+                resizable: true
+            }
+        },
         /**
          * The B4÷C2 composition root: catches each card's `lifecycleIntent` and the whole-fleet
          * "▶ Start fleet" click, driving both through the C2 adapter to honest per-card
@@ -284,10 +419,18 @@ class FleetCockpit extends VesselContainer {
          * Preserve the shipped widget-vessel URL contract while the engine remains product-neutral.
          * @member {String} tearOutHostParam='cockpitId'
          */
-        tearOutHostParam: 'cockpitId'
-        // the persistent chrome is DECLARED in `items` above; only the dock projection joins at
-        // construct() — it carries the instance-bound applyDockZoneOperation +
-        // onDockZoneDocumentChange callbacks the resize commit loop needs.
+        tearOutHostParam: 'cockpitId',
+        /**
+         * The projected dock shell sits after the control bar (`items[0]`); every committed
+         * document re-projects it in place there.
+         * @member {Number} dockShellIndex=1
+         */
+        dockShellIndex: 1,
+        /**
+         * The shell fills the column under the control bar.
+         * @member {Object} dockProjectionConfig={flex:1}
+         */
+        dockProjectionConfig: {flex: 1}
     }
 
     /**
@@ -359,22 +502,36 @@ class FleetCockpit extends VesselContainer {
     publishedPerspectives = null
 
     /**
-     * @summary Seed the layout SSOT and add the ONE instance-bound member — the dock projection
-     * (its commit-loop callbacks bind this instance, so it cannot live in the static config; the
-     * persistent chrome is declared there).
+     * @summary The one service member the cockpit composes at construct. The layout SSOT is the
+     * engine's: `panes` + `zones` lower into {@link #dockModel} in `onAfterConstructed`; nothing
+     * is seeded here.
      * @param {Object} config
      */
     construct(config) {
         super.construct(config);
 
+        this.dockService = Neo.create(DockService, {})
+    }
+
+    /**
+     * @summary The first projection and the preset library, both over the LOWERED document — the
+     * engine has captured the declaration and seeded {@link #dockModel} by now. The cockpit is the
+     * app's main view, so its shell projects eagerly (the resident panes exist at boot, before the
+     * bridge answers) into the slot `dockShellIndex` names after the control bar; the engine's
+     * mount-time pass finds it there and leaves it. Every preset is a variant of the document the
+     * cockpit actually renders, never a second authored copy of it; the drawer's binding source
+     * (the projected perspective list) is written once the library exists.
+     * @protected
+     */
+    onAfterConstructed() {
+        super.onAfterConstructed();
+
         let me = this;
 
-        me.dockService         = Neo.create(DockService, {});
-        me.perspectiveStore    = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.create()});
-        me.dockModel           = me.dockModel || CockpitDockDocument.create();
-
-        me.add(Object.assign(me.projectDockModel(), {flex: 1}));
-        me.syncPresetButtons()
+        me.add(me.projectDockModel());
+        me.perspectiveStore = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.create(me.dockModel)});
+        me.syncPresetButtons();
+        me.publishPerspectives()
     }
 
     /**
@@ -447,9 +604,10 @@ class FleetCockpit extends VesselContainer {
      * loop — the switch re-projects FLIP-animated exactly like any committed operation, with
      * reduced-motion collapsing through the token layer by construction.
      *
-     * Pane continuity across a switch preserves component identity when the item already exists;
-     * genuinely absent surfaces materialize from OWNER-held state ({@link #resolveDockReference}),
-     * while the provider-owned roster store never restarts.
+     * Pane continuity across a switch preserves component identity — a declared pane the switch
+     * un-trees is parked, one it re-trees returns as the same instance; a surface created now
+     * reopens on OWNER-held state ({@link #seedPane}) — while the provider-owned roster store
+     * never restarts.
      *
      * A perspective that reveals the inspector must not land on the empty state: a cold
      * entry (nothing inspected yet) defaults {@link #detailRecord} to the roster's first resident
@@ -562,11 +720,6 @@ class FleetCockpit extends VesselContainer {
 
         let me = this;
 
-        // the boot projection of the perspective list: `construct` seats the preset buttons before
-        // the provider chain is complete, so the drawer's binding source is written here, once
-        // everything the projection reads exists
-        me.publishPerspectives();
-
         // the listener authority is the provider-owned Store, same as every roster read/write —
         // it exists (and keeps reconciling) whether or not the grid projection currently does
         const controller0 = me.getController();
@@ -604,26 +757,6 @@ class FleetCockpit extends VesselContainer {
      */
     afterRefreshDockWorkspace(data) {
         this.publishPerspectives()
-    }
-
-    /**
-     * Resolves one Fleet catalog item through the engine workspace hook.
-     * @param {String} itemId
-     * @param {Object} item
-     * @returns {Object|Neo.component.Base}
-     */
-    resolvePane(itemId, item) {
-        return this.resolveDockReference(item?.reference, item, itemId)
-    }
-
-    /**
-     * Fleet reveal panes use the same owner-held resolver as ordinary projected tabs.
-     * @param {String} itemId
-     * @param {Object} item
-     * @returns {Object|Neo.component.Base}
-     */
-    resolveRevealPane(itemId, item) {
-        return this.resolvePane(itemId, item)
     }
 
     /**
@@ -672,259 +805,162 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
-     * @summary Resolve the provider-hosted `AgentDefinitions` store for the detail pane's
-     * configuration tab — the sanctioned `getStateProvider().getStore()` access (the store's own
-     * JSDoc names it), degraded to `null` when no chain or no hosting provider exists (bare unit
-     * mounts): the tab renders its honest no-definition state rather than demanding a provider.
+     * @summary Resolve one provider-hosted Store by name for the inspector's configuration tab
+     * (`agentDefinitions`, the Viewport's exact public `fleetTenants`) — the sanctioned
+     * `getStateProvider().getStore()` access, degraded to `null` when no chain or no hosting
+     * provider exists (bare unit mounts): the tab renders its honest empty state rather than
+     * demanding a provider, and no cockpit-local copy is invented.
+     * @param {String} name
      * @returns {Neo.data.Store|null}
      */
-    resolveAgentDefinitionsStore() {
+    resolveProviderStore(name) {
         try {
-            return this.getStateProvider()?.getStore('agentDefinitions') ?? null
+            return this.getStateProvider()?.getStore(name) ?? null
         } catch {
             return null
         }
     }
 
     /**
-     * @summary Resolve the Viewport provider's exact public FleetTenants Store for every composed
-     * configuration card. Bare mounts degrade to `null`; no cockpit-local tenant copy is invented.
-     * @returns {Neo.data.Store|null}
-     */
-    resolveFleetTenantsStore() {
-        try {
-            return this.getStateProvider()?.getStore('fleetTenants') ?? null
-        } catch {
-            return null
-        }
-    }
-
-
-
-    /**
-     * @summary Resolves a dock item's `reference` to its pane config — the cockpit's keeper
-     * surfaces for the live refs, honest placeholders for panes whose views are sibling leaves.
+     * @summary Resolves one dock item to its pane — the engine's declared instance while it is
+     * alive (parked or projected), a fresh config from the declaration when it is not — with the
+     * two responsibilities that stay the cockpit's:
      *
-     * A genuinely absent pane materializes from the OWNER's held runtime state (`adapterState`,
-     * events); ordinary reconciliations discover the existing pane before consulting this resolver.
-     * The flip marker class carries the stable item identity across both retained and new panes.
-     * Panes stay layout-blind per the docking design's pane contract: nothing dock-specific is
-     * threaded here beyond the marker class.
-     * @param {String} reference
-     * @param {Object} item The persisted item record.
+     * 1. a vesseled item's live pane is owner-held (mid-gesture, mid-admission or adopted into
+     *    its window): a preset restore (or NL addTab) re-treeing the item while away must not
+     *    steal or duplicate the instance — an honest stand-in holds the slot, and the engine's
+     *    return hands the SAME live pane back to the projection when the vessel dies;
+     * 2. a pane created NOW carries its instance-bound seeds ({@link #seedPane}).
+     *
+     * Panes stay layout-blind per the docking design's pane contract; the FLIP marker is the
+     * engine's decoration around this hook. Optional-chained like every sibling field read: the
+     * projection specs drive these prototype methods over controlled state.
      * @param {String} itemId The stable workspace identity from the item catalog.
-     * @returns {Object}
+     * @param {Object} item The persisted item record.
+     * @returns {Object|Neo.component.Base}
      */
-    resolveDockReference(reference, item, itemId) {
-        let me     = this,
-            marker = `dock-flip-item-${encodeURIComponent(itemId)}`;
+    resolvePane(itemId, item) {
+        let me = this;
 
-        // a vesseled item's live pane is owner-held (mid-gesture, mid-admission or adopted into
-        // its window): a preset restore (or NL addTab) re-treeing the item while away must not
-        // steal or duplicate the instance — an honest stand-in holds the slot, and the engine's
-        // return hands the SAME live pane back to the projection when the vessel dies. Optional-
-        // chained like every sibling field read: the projection specs drive these prototype
-        // methods over controlled state.
         if (me.isVesselOwned?.(itemId) || me.isVesselPending?.(itemId)) {
             return {
                 ntype: 'component',
-                cls  : [marker, 'fm-pane-placeholder'],
-                html : `${item?.title ?? reference ?? itemId} is open in its own window`
+                cls  : ['fm-pane-placeholder'],
+                html : `${item?.title ?? item?.reference ?? itemId} is open in its own window`
             }
         }
 
-        switch (reference) {
-            case 'fleet-grid':
-                return {
-                    module      : FleetGrid,
-                    bind: {
-                        adapterState      : data => data.gridAdapterState,
-                        daemonFault       : data => data.daemonFault,
-                        presenceCapability: data => data.presenceCapability,
-                        store             : 'stores.fleetRoster'
-                    },
-                    cls         : [marker],
-                    // two roster intents: the bootstrap CTA (an empty fleet's one path to its
-                    // first agent — the controller opens the S5 define-agent zone) and the
-                    // selection seam's drill (`agentSelect` — the roster controller already wrote
-                    // the provider truth pair; this listener drives the detail reveal)
-                    listeners: {addAgentRequest: 'onAddAgentRequest', agentSelect: 'onAgentSelect'},
-                    reference: 'fleet-grid'
-                };
-            case 'activity-stream':
-                return {
-                    module        : ActivityStream,
-                    actorDirectory: me.getController().buildActivityActorDirectory(),
-                    bind          : {
-                        adapterState: data => data.streamAdapterState,
-                        counts      : data => data.activityCounts,
-                        store       : 'stores.fleetActivityEvents'
-                    },
-                    cls      : [marker],
-                    reference: 'activity-stream'
-                };
-            case 'agent-detail':
-                // a vesseled inspector is answered by the stand-in branch above; a returning one
-                // is handed back by the engine before this resolver is asked — same instance id,
-                // same runtime state, never a recreation.
-                // the drill-in inspector; its selected resident is OWNER-held so a pane returning
-                // from true absence never drops the selection — null renders the view's honest
-                // "select an agent" empty state. The pane stays layout-blind: the pop-out verb is
-                // SHELL-owned config placed through the pane's `shellTools` slot (pane verbs are
-                // pane-scoped per the navigation model; a windowed pane carries its return verb).
-                return {
-                    // EAGER by contract, not by accident: the vessel state machine adopts and
-                    // re-adopts THIS live instance synchronously (park → window → reattach), and
-                    // a lazy module resolves through an async placeholder the vessel flow cannot
-                    // hold — the define-agent zone below is the lazy reference case
-                    module   : AgentDetail,
-                    // the configuration tab's data surface, resolved imperatively at composition
-                    // time (the store instance is app-stable) so the view stays provider-agnostic:
-                    // a bare mount or a chain without the store degrades to null — the tab's honest
-                    // empty state — instead of a bind demanding a provider chain that may not exist
-                    agentDefinitions: me.resolveAgentDefinitionsStore(),
-                    fleetTenants    : me.resolveFleetTenantsStore(),
-                    cls             : [marker],
-                    record          : me.detailRecord,
-                    reference       : 'agent-detail',
-                    shellTools      : [me.buildDetailWindowToggle()]
-                };
-            case 'define-agent':
-                // the S5 add-agent flow (rail tool, invoked-not-ambient per the design ruling).
-                // `agentDefinitionAccepted` walks up the component chain to the Viewport's roster
-                // seam — the same consumer Accounts feeds, so both entry points write one truth.
-                //
-                // LAZY, like the wake-routes sibling: the zone is an auto-hidden rail tool, so its
-                // module loads on the first reveal — the engine's rail resolves a loader function on
-                // reveal exactly as a card layout does on tab activation, and an eager import would
-                // pay the form's class load, construction and initAsync at app boot.
-                return {
-                    module   : () => import('../instances/AddAgentForm.mjs'),
-                    cls      : [marker],
-                    listeners: {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'},
-                    reference: 'add-agent-form'
-                };
-            case 'operator-mailbox':
-                // the operator's own inbox + compose surface. record / snapshot / recipientOptions are
-                // OWNER-held (materialized from state the cockpit already polls), so a pane returning from
-                // true absence re-materializes at current truth — the {@link #detailRecord} precedent. The
-                // surface is transport-blind: it fires intent-only `compose` / `inboxPageRequest`, routed up
-                // to the controller which holds the bridge (the authenticated ingress + Brain write seam).
-                return {
-                    module          : OperatorMailbox,
-                    cls             : [marker],
-                    record          : me.getController().operatorRecord,
-                    snapshot        : me.getController().operatorSnapshot,
-                    recipientOptions: me.getController().buildOperatorRecipientOptions(),
-                    identityPosture : me.getController().operatorIdentityPosture,
-                    listeners       : {
-                        compose         : 'onOperatorCompose',
-                        inboxPageRequest: 'onOperatorInboxPageRequest',
-                        scope           : me.getController()
-                    },
-                    reference       : 'operator-mailbox'
-                };
-            case 'catch-up':
-                // S3 invoked history: the pane renders owner-held source envelopes and fires intent;
-                // this cockpit owns the authenticated bridge. Partition choices derive from the same
-                // provider-owned roster as the cards — no second resident list.
-                return {
-                    module          : CatchUpPane,
-                    cls             : [marker],
-                    snapshot        : me.getController().catchUpSnapshot,
-                    markOutcome     : me.getController().catchUpMarkOutcome,
-                    partitionOptions: me.getController().buildCatchUpPartitionOptions(),
-                    listeners       : {
-                        historyRequest     : 'onCatchUpHistoryRequest',
-                        markCaughtUpRequest: 'onCatchUpMarkRequest',
-                        liveSurfaceRequest : 'onCatchUpLiveSurfaceRequest',
-                        scope              : me.getController()
-                    },
-                    reference: 'catch-up'
-                };
-            case 'memories':
-                // resident per-agent session-summary recall (a south reading-surface tab): the pane renders the owner-held
-                // source envelope and fires intent; this cockpit owns the authenticated bridge.
-                // The selected target travels WITH the snapshot (one coherent state key), so a
-                // rematerialized pane never shows cards no selection points at. The target is the
-                // roster SELECTION's write-through ({@link #applySelection}) — the cockpit's one
-                // picker; the pane renders no chooser of its own.
-                // The listener scope is bound EXPLICITLY to the owning controller: string handlers
-                // resolve through the component's controller chain at fire time, and a vesseled
-                // pane (click pop-out / gesture tear-out) has no controller above it — an
-                // unscoped string resolves dead in the vessel (a TypeError per fire; the miss is
-                // NOT cached: getController's fast path is truthy-only, so it re-walks once docked).
-                return {
-                    module       : MemoriesPane,
-                    cls          : [marker],
-                    activeAgent  : me.getController().memoriesTarget ?? me.getController().memoriesSnapshot?.target ?? null,
-                    snapshot     : me.getController().memoriesSnapshot,
-                    drillSession : me.getController().memoriesDrillSession,
-                    drillSnapshot: me.getController().memoriesDrillSnapshot,
-                    shellTools   : [me.buildMemoriesWindowToggle()],
-                    listeners    : {
-                        memoriesRequest     : 'onMemoriesRequest',
-                        sessionDetailRequest: 'onSessionDetailRequest',
-                        sessionDetailClosed : 'onSessionDetailClosed',
-                        scope               : me.getController()
-                    },
-                    reference: 'memories'
-                };
-            case 'wakeRoutes':
-                // The snapshot travels with rematerialization like the memories sibling: a torn or
-                // re-projected pane reopens on the last ACCEPTED envelope, never a blank claim.
-                return {
-                    // LAZY: the wake-routes pane is auto-hidden and unresolved at boot — its
-                    // module loads at first reveal (define-agent is the sibling case; the detail
-                    // pane is the stated eager exception for vessel identity)
-                    module   : () => import('../wake/Container.mjs'),
-                    cls      : [marker],
-                    snapshot : me.getController().wakeRoutesSnapshot,
-                    listeners: {
-                        wakeRoutesRequest: 'onWakeRoutesRequest',
-                        scope            : me.getController()
-                    },
-                    reference: 'wakeRoutes'
-                };
-            case 'tasks':
-                // the resident WHAT surface beside the WHO grid: the pane renders the owner-held
-                // envelope (running / queued / recent) and fires intent; this cockpit owns the
-                // authenticated bridge and drives the read at boot and on every liveness tick.
-                return {
-                    module   : TasksPane,
-                    cls      : [marker],
-                    snapshot : me.getController().tasksSnapshot,
-                    listeners: {
-                        tasksRequest: 'onTasksRequest',
-                        scope       : me.getController()
-                    },
-                    reference: 'tasks'
-                };
-            case 'perspectives':
-                // LAZY like the wake-routes sibling: the drawer loads at first reveal. It binds
-                // the projected perspective list from the provider and fires intent; the library
-                // stays owner-held (this cockpit + the controller relay).
-                return {
-                    module   : () => import('../perspectives/Container.mjs'),
-                    cls      : [marker],
-                    bind     : {perspectives: data => data.perspectives},
-                    listeners: {
-                        perspectiveRequest: 'onPerspectiveRequest',
-                        scope             : me.getController()
-                    },
-                    reference: 'perspectives'
-                };
-            default:
-                // a zone the document names but no case resolves — an honest labelled placeholder,
-                // never a blank pane masquerading as a finished surface (no shipped zone takes it)
-                return {
-                    ntype: 'component',
-                    cls  : [marker, 'fm-pane-placeholder'],
-                    html : `${item?.title ?? reference} — this pane's view lands with its own leaf`
-                }
-        }
+        return me.seedPane(itemId, super.resolvePane(itemId, item))
     }
 
+    /**
+     * @summary The recreate path (a failed projection's fresh candidate) seeds like a first
+     * creation — a rebuilt pane reopens on the owner's held state, never a blank claim.
+     * @param {String} itemId
+     * @param {Object} item
+     * @returns {Object|Neo.component.Base}
+     */
+    resolveFreshPane(itemId, item) {
+        return this.seedPane(itemId, super.resolveFreshPane(itemId, item))
+    }
+
+    /**
+     * @summary Which declared panes the projection PARKS when they leave the tree — kept, returned
+     * as the same instance — rather than retires: the rail's inspector and invoked tools, so a
+     * perspective switch or a reveal/hide cycle never rebuilds the inspector. The south reading
+     * surfaces rematerialize from their seeds instead: their engine grids repaint the row pool
+     * they last painted when a parked pane remounts after its store emptied (grid remount,
+     * defect-noted), so until that lands a closed reading surface is rebuilt on reopen — the
+     * pre-declaration behavior, seeded by {@link #seedPane}. The engine merges the tear-out
+     * owner's held panes separately, so a vesseled pane stays preserved whatever this answers.
+     * @returns {String[]}
+     * @protected
+     */
+    getPreservedItemIds() {
+        return ['detail', 'perspectives', 'defineAgent', 'wakeRoutes'].filter(itemId => this.dockModel?.items?.[itemId])
+    }
+
+    /**
+     * @summary The instance-bound half of a declared pane's config, applied to a fresh CONFIG only
+     * (a live instance, parked or projected, keeps its own state): the owner-held snapshots a
+     * pane reopens on — never a blank claim —, the selected resident, the inspector's stores, the
+     * shell-owned window toggles, and the listener scope. The scope is load-bearing: a vesseled
+     * pane (click pop-out / gesture tear-out) has no controller above it, so an unscoped string
+     * handler resolves dead there (a TypeError per fire). The roster's intents resolve through
+     * the roster's own controller chain and `define-agent` walks the component chain (`up.`), so
+     * those two stay unscoped.
+     * @param {String} itemId
+     * @param {Object|Neo.component.Base} candidate The engine's answer.
+     * @returns {Object|Neo.component.Base} The candidate, seeded when it is a fresh config.
+     * @protected
+     */
+    seedPane(itemId, candidate) {
+        if (!candidate || candidate.constructor !== Object) {
+            return candidate
+        }
+
+        let me         = this,
+            controller = me.getController(),
+            seeds      = null;
+
+        switch (itemId) {
+            case 'stream':
+                seeds = {actorDirectory: controller.buildActivityActorDirectory()};
+                break;
+            case 'detail':
+                // the stores resolved imperatively keep the view provider-agnostic; the selected
+                // resident is OWNER-held so a pane created from true absence never drops the
+                // selection; the pop-out verb is SHELL-owned config through the `shellTools` slot
+                seeds = {
+                    agentDefinitions: me.resolveProviderStore('agentDefinitions'),
+                    fleetTenants    : me.resolveProviderStore('fleetTenants'),
+                    record          : me.detailRecord,
+                    shellTools      : [me.buildDetailWindowToggle()]
+                };
+                break;
+            case 'operator':
+                seeds = {
+                    record          : controller.operatorRecord,
+                    snapshot        : controller.operatorSnapshot,
+                    recipientOptions: controller.buildOperatorRecipientOptions(),
+                    identityPosture : controller.operatorIdentityPosture
+                };
+                break;
+            case 'catchUp':
+                seeds = {
+                    snapshot        : controller.catchUpSnapshot,
+                    markOutcome     : controller.catchUpMarkOutcome,
+                    partitionOptions: controller.buildCatchUpPartitionOptions()
+                };
+                break;
+            case 'memories':
+                // the selected target travels WITH the snapshot (one coherent state key), so a
+                // rematerialized pane never shows cards no selection points at; the target is the
+                // roster SELECTION's write-through ({@link #applySelection}), the cockpit's one picker
+                seeds = {
+                    activeAgent  : controller.memoriesTarget ?? controller.memoriesSnapshot?.target ?? null,
+                    snapshot     : controller.memoriesSnapshot,
+                    drillSession : controller.memoriesDrillSession,
+                    drillSnapshot: controller.memoriesDrillSnapshot,
+                    shellTools   : [me.buildMemoriesWindowToggle()]
+                };
+                break;
+            case 'wakeRoutes':
+                seeds = {snapshot: controller.wakeRoutesSnapshot};
+                break;
+            case 'tasks':
+                seeds = {snapshot: controller.tasksSnapshot};
+                break;
+        }
+
+        seeds && Object.assign(candidate, seeds);
+
+        if (candidate.listeners && itemId !== 'fleet' && itemId !== 'defineAgent') {
+            candidate.listeners = {...candidate.listeners, scope: controller}
+        }
+
+        return candidate
+    }
 
     /**
      * @summary Detach Fleet-owned feeds and layout services; the inherited vessel layer retires
@@ -945,34 +981,6 @@ class FleetCockpit extends VesselContainer {
         me.perspectiveStore = null;
         super.destroy(...args)
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
 
 export default Neo.setupClass(FleetCockpit);

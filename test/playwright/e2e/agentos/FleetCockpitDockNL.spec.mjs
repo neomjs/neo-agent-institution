@@ -293,11 +293,13 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
         await expect.poll(primarySizes, {message: 'the Fleet switch must restore the default split', timeout: 10000, intervals: [100]})
             .toEqual([0.6078, 0.3922]);
 
-        await expect(page.locator('.fm-agent-detail'), 'returning to Fleet retires the no-longer-projected detail pane')
+        await expect(page.locator('.fm-agent-detail'), 'returning to Fleet un-trees the no-longer-projected detail pane')
             .toHaveCount(0);
+        // a DECLARED pane is parked, never retired: the same instance survives out of the tree,
+        // so the next reveal or the next Review switch returns it — one instance, never a successor
         const detailsAfter = await app.findInstances({className: 'AgentOS.view.fleet.detail.Container'}, ['id']);
-        expect((Array.isArray(detailsAfter) ? detailsAfter : [detailsAfter]).filter(entry => entry?.id),
-            'the retired detail component leaves no worker-side corpse').toEqual([]);
+        expect((Array.isArray(detailsAfter) ? detailsAfter : [detailsAfter]).filter(entry => entry?.id).map(entry => entry.id),
+            'the un-treed inspector is the parked declared instance — the same one Review projected').toEqual([detail.id]);
 
         expect(await page.evaluate(ids => Object.fromEntries(Object.entries(ids).map(([key, id]) => [
             key,

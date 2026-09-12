@@ -24,7 +24,7 @@ import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard
  *   the live pane whatever phase it is in.
  *
  * Host slots this layer expects from its subclass (the template-method grammar the engine
- * already uses with us): `resolveDockReference` (pane materialization), `syncControlBar` (the
+ * already uses with us): `resolvePane` (pane materialization), `syncControlBar` (the
  * full chrome pass; {@link #syncVesselChrome} is the half owned here).
  *
  * @class AgentOS.view.fleet.cockpit.VesselContainer
@@ -160,16 +160,15 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * @summary The reference a dock item's live view carries — the record's own `reference`, with
-     * the one deliberate remap: the define-agent item's view is the add-agent form.
+     * @summary The reference a dock item's live view carries — the record's own `reference`: the
+     * engine lowers the declared pane's reference into the record and back onto the pane, so the
+     * two are one name by construction.
      * @param {String} itemId
      * @returns {String|null}
      * @protected
      */
     paneReference(itemId) {
-        const reference = this.dockModel?.items?.[itemId]?.reference ?? null;
-
-        return reference === 'define-agent' ? 'add-agent-form' : reference
+        return this.dockModel?.items?.[itemId]?.reference ?? null
     }
 
     /**

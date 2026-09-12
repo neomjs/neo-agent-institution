@@ -518,7 +518,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
         lifecycle.owners.set('detail', {itemId: 'detail', windowName: 'w'});
 
-        const standIn = cockpit.resolveDockReference(item.reference, item, 'detail');
+        const standIn = cockpit.resolvePane('detail', item);
 
         expect(standIn.cls).toContain('fm-pane-placeholder');
         expect(standIn.html).toBe('Agent detail is open in its own window');
@@ -527,11 +527,11 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         // the pending phase leaves the same stand-in
         lifecycle.owners.clear();
         lifecycle.connections.set('detail', {windowId: 'w1'});
-        expect(cockpit.resolveDockReference(item.reference, item, 'detail').cls).toContain('fm-pane-placeholder');
+        expect(cockpit.resolvePane('detail', item).cls).toContain('fm-pane-placeholder');
 
-        // docked again: the real pane config
+        // docked again: the SAME live instance — the declared pane is parked, never re-created
         lifecycle.connections.clear();
-        expect(cockpit.resolveDockReference(item.reference, item, 'detail').reference).toBe('agent-detail')
+        expect(cockpit.resolvePane('detail', item)).toBe(detailPane)
     });
 
     test('the observation hooks re-sync the chrome after the engine acts, and the return stays observable on the engine\'s channel', () => {

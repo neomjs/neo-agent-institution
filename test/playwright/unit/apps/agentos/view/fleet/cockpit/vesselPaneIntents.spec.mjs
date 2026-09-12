@@ -13,6 +13,7 @@ import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import Component    from '../../../../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import FleetCockpit           from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
+import {declaredPanes}        from './shippedDockDocument.mjs';
 
 // the pane loads are CONTROLLER methods — a prototype host with the write-time accessor on the
 // component seat drives them as production code
@@ -32,8 +33,8 @@ const controllerHost = (component, overrides = {}) => Object.assign(Object.creat
  * still receives the truth.
  */
 function ownerStub(controller, overrides = {}) {
-    // the resolver reads owner snapshots + option builders through the controller seat — enrich
-    // the passed controller in place (its identity is the scope the fire path binds)
+    // the seeds read owner snapshots + option builders through the controller seat — enrich the
+    // passed controller in place (its identity is the scope the fire path binds)
     controller && Object.entries({
         buildCatchUpPartitionOptions : () => [],
         buildOperatorRecipientOptions: () => [],
@@ -50,23 +51,28 @@ function ownerStub(controller, overrides = {}) {
         wakeRoutesSnapshot           : null
     }).forEach(([key, value]) => { key in controller || (controller[key] = value) });
 
-    return {
-        getController: () => controller,
+    // a prototype host: the engine's resolvePane and the cockpit's seeds are real prototype
+    // methods, so the stub carries the declaration the engine captures at construct as an OWN value
+    return Object.assign(Object.create(FleetCockpit.prototype), {
+        getController   : () => controller,
+        nativeWindows   : null,
+        paneDeclarations: declaredPanes(FleetCockpit, Neo),
+        tearOutHandlers : null,
         ...overrides
-    }
+    })
 }
 
 test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pushes', () => {
     const proto = FleetCockpit.prototype;
 
     test('vessel-fired intents reach the scoped controller through the REAL fire path — and die without the scope', () => {
-        // every configured intent name per pane, from the resolver's own listener configs
+        // every configured intent name per pane, from the declaration's own listener configs
         const paneIntents = {
-            'operator-mailbox': ['compose', 'inboxPageRequest'],
-            'catch-up'        : ['historyRequest', 'markCaughtUpRequest', 'liveSurfaceRequest'],
-            'memories'        : ['memoriesRequest', 'sessionDetailRequest', 'sessionDetailClosed'],
-            'wakeRoutes'      : ['wakeRoutesRequest'],
-            'perspectives'    : ['perspectiveRequest']
+            operator    : ['compose', 'inboxPageRequest'],
+            catchUp     : ['historyRequest', 'markCaughtUpRequest', 'liveSurfaceRequest'],
+            memories    : ['memoriesRequest', 'sessionDetailRequest', 'sessionDetailClosed'],
+            wakeRoutes  : ['wakeRoutesRequest'],
+            perspectives: ['perspectiveRequest']
         };
 
         for (const [ref, events] of Object.entries(paneIntents)) {
@@ -76,7 +82,8 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
                 // scope has no id, so the recorder must look alive
                 controller = {id: 'the-owning-controller'};
 
-            const config = proto.resolveDockReference.call(
+            // a fresh CONFIG (no live instance under the declaration's id): the seeds bind the scope
+            const config = proto.resolvePane.call(
                 ownerStub(controller, {
                     memoriesTarget           : null,
                     memoriesSnapshot         : null,
@@ -84,7 +91,7 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
                     memoriesDrillSnapshot    : null,
                     buildMemoriesWindowToggle: () => ({})
                 }),
-                ref, {title: ref}, ref
+                ref, {reference: FleetCockpit.config.panes[ref].reference, title: ref}
             );
 
             // the recorder learns each handler NAME from the resolver's own config — the witness

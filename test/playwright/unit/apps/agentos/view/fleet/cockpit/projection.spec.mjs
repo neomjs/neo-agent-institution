@@ -13,6 +13,7 @@ setup({
 import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import {declaredPanes, shippedDockDocument} from './shippedDockDocument.mjs';
 
 /**
  * The engine Workspace reads its own configs on the projection + view-sync paths (the action-rail
@@ -72,7 +73,7 @@ const spyHostIdentity = {
  * docking design's pane contract, and owner-held pane state surviving re-projection.
  */
 test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)', () => {
-    let ActivityStream, AgentDetail, CatchUpPane, Reconciler, Workspace, Operations, FleetCockpit, FleetCockpitController, FleetGrid, MemoriesPane, OperatorMailbox, CockpitDockDocument;
+    let ActivityStream, AgentDetail, CatchUpPane, Reconciler, Workspace, Operations, FleetCockpit, FleetCockpitController, FleetGrid, MemoriesPane, OperatorMailbox;
 
     // a projection-capable spy owner: the REAL prototype methods over controlled state, without
     // provider/store/bridge wiring (their routing has its own suite in fleetCockpit.spec.mjs)
@@ -119,13 +120,15 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 // consulted at every refresh) — own values, so a bare fake answers them honestly
                 stateProvider        : null,
                 panes                : null,
-                paneDeclarations     : null,
+                // the declaration as the engine captures it at construct: a fresh config per pane
+                // with a runtime id, so the engine's resolvePane answers the way a live cockpit's does
+                paneDeclarations     : declaredPanes(FleetCockpit, Neo),
                 plugins              : [],
                 zones                : null,
                 nativeWindows        : null,
                 tearOutHandlers      : null,
                 detailRecord         : null,
-                dockModel            : CockpitDockDocument.create(),
+                dockModel            : shippedDockDocument(),
                 gridAdapterState     : 'sample',
                 isDestroyed          : false,
                 refreshPromise       : null,
@@ -164,8 +167,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         Operations          = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Operations.mjs')).default;
         FleetCockpit        = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
         FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
-        FleetGrid           = (await import('../../../../../../../../apps/agentos/view/fleet/roster/Container.mjs')).default;
-        CockpitDockDocument = (await import('../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default
+        FleetGrid           = (await import('../../../../../../../../apps/agentos/view/fleet/roster/Container.mjs')).default
     });
 
     test('#17681 consumes the engine host without shadowing its holder or tear-out lifecycle', () => {
@@ -243,7 +245,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
 
         const host = makeHost({refreshDockWorkspace() { refreshed++ }});
 
-        FleetCockpit.prototype.onDockZoneDocumentChange.call(host, CockpitDockDocument.create());
+        FleetCockpit.prototype.onDockZoneDocumentChange.call(host, shippedDockDocument());
         host.isDestroyed = true;
 
         await host.refreshPromise;
@@ -252,7 +254,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
 
     test('two rapid commits serialize their captured document snapshots instead of overlapping shells', async () => {
         const
-            first = Operations.applyOperation(CockpitDockDocument.create(), {
+            first = Operations.applyOperation(shippedDockDocument(), {
                 operation: 'resizeSplit', splitNodeId: 'primary-split', sizes: [0.3, 0.7]
             }).document,
             second = Operations.applyOperation(first, {
@@ -283,7 +285,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
 
     test('refresh reconciles shell index 1, preserves flex, and decorates a genuinely absent pane', async () => {
         const
-            document = CockpitDockDocument.create(),
+            document = shippedDockDocument(),
             original = Reconciler.reconcileProjection,
             preset   = {reference: 'fleet-preset-overview', set(values) { Object.assign(this, values) }},
             error    = {set(values) { Object.assign(this, values) }},
@@ -362,25 +364,31 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 streamAdapterState: 'stale'
             });
 
-        const grid = FleetCockpit.prototype.resolveDockReference.call(host, 'fleet-grid', {title: 'Fleet'}, 'fleet');
+        // the engine's decorated seam: the cockpit's resolvePane (declaration + seeds) under the
+        // engine's FLIP marker — what a projection actually asks for
+        const resolve = (itemId, item) => FleetCockpit.prototype.resolveProjectedPane.call(host, itemId, item);
+
+        const grid = resolve('fleet', {reference: 'fleet-grid', title: 'Fleet'});
 
         expect(grid.module).toBe(FleetGrid);
         // owner-held truth arrives through the provider BINDING now — the bind function IS the route
         expect(grid.bind.adapterState({gridAdapterState: 'live'})).toBe('live');
         expect(grid.bind.store).toBe('stores.fleetRoster');           // provider-scope binding survives projection depth
         expect(grid.cls).toContain('dock-flip-item-fleet');           // the stable FLIP correlation key
+        expect(grid.reference, 'the record\'s own name').toBe('fleet-grid');
 
-        const stream = FleetCockpit.prototype.resolveDockReference.call(host, 'activity-stream', {title: 'Activity'}, 'stream');
+        const stream = resolve('stream', {reference: 'activity-stream', title: 'Activity'});
 
         expect(stream.module).toBe(ActivityStream);
         expect(stream.bind.adapterState({streamAdapterState: 'stale'})).toBe('stale');
         expect(stream.bind.counts({activityCounts: [1]})).toEqual([1]);
         expect(stream.bind.store).toBe('stores.fleetActivityEvents');
         expect(stream.cls).toContain('dock-flip-item-stream');
+        expect(stream.actorDirectory, 'an instance-bound seed joins the declared config').toEqual({});
 
-        // agent-detail now renders the real drill-in view from OWNER-held fallback state
-        // (the selected record), so returning from true absence never drops the selection
-        const detail = FleetCockpit.prototype.resolveDockReference.call(host, 'agent-detail', {title: 'Agent detail'}, 'detail');
+        // agent-detail renders the real drill-in view from OWNER-held fallback state (the
+        // selected record), so returning from true absence never drops the selection
+        const detail = resolve('detail', {reference: 'agent-detail', title: 'Agent detail'});
 
         expect(detail.module).toBe(AgentDetail);
         expect(detail.record).toBe(host.detailRecord);   // owner-held selection survives re-projection
@@ -396,21 +404,22 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         }
 
         // perspectives resolves to its own drawer — LAZY like the wake-routes sibling (a loader,
-        // not a class), bound to the projected list, its intent relayed to the controller; the
-        // honest placeholder now belongs only to a zone no case knows
-        const perspectives = FleetCockpit.prototype.resolveDockReference.call(host, 'perspectives', {title: 'Perspectives'}, 'perspectives');
+        // not a class), bound to the projected list, its intent scoped to the controller
+        const perspectives = resolve('perspectives', {reference: 'perspectives', title: 'Perspectives'});
 
         expect(typeof perspectives.module, 'a loader, resolved at first reveal').toBe('function');
         expect(perspectives.cls).toEqual(['dock-flip-item-perspectives']);
         expect(perspectives.bind.perspectives({perspectives: 'projected'})).toBe('projected');
         expect(perspectives.listeners.perspectiveRequest).toBe('onPerspectiveRequest');
+        expect(perspectives.listeners.scope, 'the seeds bind the owning controller as the fire scope').toBe(host.getController());
         expect(perspectives.html).toBeUndefined();
 
-        const unknown = FleetCockpit.prototype.resolveDockReference.call(host, 'no-such-zone', {title: 'Nowhere'}, 'no-such-zone');
+        // an item the declaration does not know: the ENGINE's honest placeholder, never a blank
+        const unknown = resolve('no-such-zone', {title: 'Nowhere'});
 
-        expect(unknown.cls).toContain('fm-pane-placeholder');
+        expect(unknown.cls).toContain('neo-dock-workspace-placeholder');
         expect(unknown.cls).toContain('dock-flip-item-no-such-zone');
-        expect(unknown.html).toContain('Nowhere')
+        expect(unknown.text).toBe('Nowhere')
     });
 
     test('the projected tree renders the document\'s zones: every live pane present, exactly once each', () => {
@@ -455,7 +464,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
 
     const makePresetHost = async (overrides = {}) => {
         const
-            store = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.create()}),
+            store = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.create(shippedDockDocument())}),
             host  = Object.create(FleetCockpit.prototype),
             // the cold controller surface, roster resolving through the host's provider seat as
             // the real controller does (the Review-switch default-selection path reads it)
@@ -490,7 +499,8 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
                 // OWN value — same #configs guard as makeHost
                 getStateProvider: () => null,
                 detailRecord    : null,
-                dockModel       : (await import('../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default.create(),
+                dockModel       : shippedDockDocument(),
+                paneDeclarations: declaredPanes(FleetCockpit, Neo),
                 gridAdapterState: 'sample',
                 isDestroyed     : false,
                 perspectiveStore: store,
@@ -525,12 +535,11 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         Workspace               = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs')).default;
         FleetCockpit            = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
         FleetCockpitController  = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
-        CockpitDockDocument     = (await import('../../../../../../../../apps/agentos/util/CockpitDockDocument.mjs')).default;
         CockpitPresets          = (await import('../../../../../../../../apps/agentos/util/CockpitPresets.mjs')).default
     });
 
     test('the seeded library validates whole and lists the three duty presets, Overview active', () => {
-        const collection = CockpitPresets.create();
+        const collection = CockpitPresets.create(shippedDockDocument());
 
         expect(PerspectiveLibrary.validateSavedLayoutCollection(collection)).toEqual([]);
         expect(collection.activeLayoutId).toBe('overview');
@@ -584,7 +593,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         expect(host.streamEvents).toBe(events);
 
         // and a genuinely absent pane's next materialization binds that state from the provider
-        const grid = FleetCockpit.prototype.resolveDockReference.call(host, 'fleet-grid', {title: 'Fleet'}, 'fleet');
+        const grid = FleetCockpit.prototype.resolvePane.call(host, 'fleet', {reference: 'fleet-grid', title: 'Fleet'});
         expect(grid.bind.adapterState({gridAdapterState: 'live'})).toBe('live');
 
         host.perspectiveStore.destroy()
@@ -716,7 +725,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
 
     test('a captured perspective carries a NON-FIRST active south tab and a switch restores it exactly — the active item rides the document, never app state', async () => {
         const host = await makePresetHost({refreshDockWorkspace() {}}),
-              live = CockpitDockDocument.create();
+              live = shippedDockDocument();
 
         // the operator read Memories: a live `activeIndex` change commits `setActiveItem`, so the
         // document — the only thing a perspective captures — already carries the selection

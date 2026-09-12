@@ -1,7 +1,7 @@
-import Base                from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import CockpitDockDocument from './CockpitDockDocument.mjs';
-import Persistence         from '../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs';
-import PerspectiveLibrary  from '../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
+import Base               from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import Persistence        from '../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs';
+import PerspectiveLibrary from '../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
+import WorkspaceDocument  from '../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 
 /**
  * What a captured perspective's id folds away: everything but lowercase letters and digits
@@ -51,15 +51,17 @@ class CockpitPresets extends Base {
      * thrown loudly (an authored preset that fails validation is a build-time defect, not a
      * runtime condition).
      *
+     * @param {Object} document The cockpit's lowered dock document — the declaration the engine
+     *     seeded, so every preset is a variant of the document the cockpit actually renders.
      * @returns {Object} a fresh `neo.dock.layoutCollection.v1` collection, `overview` active
      */
-    static create() {
-        const overviewDoc = CockpitDockDocument.create();
+    static create(document) {
+        const overviewDoc = WorkspaceDocument.clone(document);
 
-        const focusDoc = CockpitDockDocument.create();
+        const focusDoc = WorkspaceDocument.clone(document);
         focusDoc.nodes['primary-split'].sizes = [0.85, 0.15];
 
-        const reviewDoc = CockpitDockDocument.create();
+        const reviewDoc = WorkspaceDocument.clone(document);
         reviewDoc.nodes['primary-split'].sizes = [0.45, 0.55];
         reviewDoc.items.detail.autoHidden      = false;
 
