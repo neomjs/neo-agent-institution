@@ -362,22 +362,20 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * Platform retirement hook: closes a vessel the gesture no longer needs (re-entry, cancel,
-     * timeout or refused model commit). The engine releases admission/connection records only
-     * after this hook settles non-false; Fleet's void success preserves the existing best-effort
-     * window-close contract.
+     * Platform retirement hook: closes a vessel the engine no longer needs (re-entry, cancel,
+     * timeout, a refused model commit, a return). The platform's answer IS the retirement signal:
+     * `Neo.Main.windowClose` resolves `true` only when it closed that window; `false` (no such
+     * window, already closed, not closable) and a rejection both reach the Group's lifecycle
+     * unchanged, which keeps its retry authority for that exact vessel until a later close or the
+     * window's own release settles it. Nothing here infers absence from a failure.
      * @param {Object} vessel
      * @param {String} vessel.itemId
      * @param {String} vessel.windowName
-     * @returns {Promise<void>}
+     * @returns {Promise<Boolean>}
      * @protected
      */
-    async closeTearOutVessel({windowName}) {
-        try {
-            await Neo.Main.windowClose({names: [windowName], windowId: this.windowId})
-        } catch (error) {
-            // best-effort retirement
-        }
+    closeTearOutVessel({windowName}) {
+        return Neo.Main.windowClose({names: [windowName], windowId: this.windowId})
     }
 
     /**
@@ -427,27 +425,35 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * @summary Bring a vesseled pane home by closing its OS window: vessel death IS the return
-     * path — the Group observes the close, the engine returns the SAME live instance to its
-     * recorded home. Closing by the immutable window NAME covers the not-yet-bound window too.
+     * @summary Bring a vesseled pane home by retiring its exact vessel through the Group: the
+     * engine closes the OS window through {@link #closeTearOutVessel}, and vessel death IS the
+     * return path — the Group observes the release and the engine returns the SAME live instance
+     * to its recorded home. The verdict is the Group's: `returned: true` only when the platform
+     * confirmed the close on this call; a refused or failed close leaves the retirement pending in
+     * the Group (its retry authority — the next return or the next admission for this item tries
+     * again), keeps the owner, and is reported as not returned. An attempted close is never a
+     * return, and no window is ever closed around the Group's back.
      * @param {String} itemId
      * @returns {Promise<{returned: Boolean, errors: String[]}>}
      */
     async returnPane(itemId) {
         let me    = this,
-            owner = me.nativeWindows?.getOwner(me.id, itemId);
+            owner = me.nativeWindows?.getOwner(me.id, itemId),
+            retired;
 
         if (!owner) {
             return {returned: false, errors: [`${itemId} is not in a vessel`]}
         }
 
         try {
-            await Neo.Main.windowClose({names: [owner.windowName], windowId: me.windowId})
+            retired = await me.nativeWindows.retire(me.id, {...owner, itemId})
         } catch (error) {
-            // best-effort: an already-gone window still fires (or already fired) the disconnect
+            return {returned: false, errors: [`the vessel window did not close: ${error?.message ?? error}`]}
         }
 
-        return {returned: true, errors: []}
+        return retired === true
+            ? {returned: true, errors: []}
+            : {returned: false, errors: ['the vessel window did not close']}
     }
 
     /**

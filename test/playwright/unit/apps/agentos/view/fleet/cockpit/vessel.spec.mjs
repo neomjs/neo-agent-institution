@@ -20,12 +20,15 @@ import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/Vie
 /**
  * @summary Installs deterministic platform seams for the vessel window — `Neo.Main.windowOpen`
  * resolves a **Boolean** (a blocked popup resolves `false`, never throws), `windowClose` records
- * its call, and the window data the geometry reads is fixed.
+ * its call and answers with `closeResult` (`true` only when it closed that window), and the
+ * window data the geometry reads is fixed.
  * @param {Object} [options={}]
  * @param {Boolean|Function} [options.openResult=true]
+ * @param {Boolean|Function} [options.closeResult=true] The platform's close answer — a Boolean, or a
+ *     function of the call returning one (or throwing).
  * @returns {Object} spy state + `restore()`.
  */
-function installWindowVessel({openResult = true} = {}) {
+function installWindowVessel({openResult = true, closeResult = true} = {}) {
     let previous = {
             getByPath    : Neo.Main.getByPath,
             getWindowData: Neo.Main.getWindowData,
@@ -44,7 +47,8 @@ function installWindowVessel({openResult = true} = {}) {
         return typeof openResult === 'function' ? openResult(data) : Promise.resolve(openResult)
     };
     Neo.Main.windowClose   = async data => {
-        state.closeCalls.push(data)
+        state.closeCalls.push(data);
+        return typeof closeResult === 'function' ? closeResult(data) : closeResult
     };
 
     return {
@@ -59,21 +63,34 @@ function installWindowVessel({openResult = true} = {}) {
 
 /**
  * @summary A Group native lifecycle reduced to the three reads the cockpit makes — committed
- * ownership, a pending admission, a provisional connection — writable by the arms. The real
- * lifecycle's own contract is the engine's spec territory; here it is the input.
+ * ownership, a pending admission, a provisional connection — writable by the arms, plus the one
+ * write it routes: `retire`, which asks the cockpit's close effect and answers with the engine's
+ * documented grammar (`false` or a rejection retains the retirement, anything else retires). The
+ * real lifecycle's own contract is the engine's spec territory, met by the coupling arm below;
+ * here it is the input.
+ * @param {Neo.component.Base} cockpit
  * @returns {Object}
  */
-const fakeLifecycle = () => {
-    const owners = new Map(), admissions = new Map(), connections = new Map();
+const fakeLifecycle = cockpit => {
+    const owners = new Map(), admissions = new Map(), connections = new Map(), retirements = [];
 
     return {
-        admissions, connections, owners,
+        admissions, connections, owners, retirements,
         getAdmission    : (sourceId, itemId) => admissions.get(itemId)  ?? null,
         getConnection   : (sourceId, itemId) => connections.get(itemId) ?? null,
         getOwner        : (sourceId, itemId) => owners.get(itemId)      ?? null,
         // the engine registers and withdraws its effects on construct/destroy; inert here
         registerSource  : () => {},
-        unregisterSource: () => {}
+        unregisterSource: () => {},
+        retire          : async (sourceId, vessel) => {
+            let closed;
+
+            retirements.push(vessel);
+
+            try { closed = await cockpit.closeTearOutVessel(vessel) } catch { closed = false }
+
+            return closed !== false
+        }
     }
 };
 
@@ -123,15 +140,19 @@ const fakeHandlers = (cockpit, {commits = true, exitResult = true} = {}) => {
  *
  * 1. the platform seams — `openTearOutVessel` fails closed on the cockpit's preconditions and
  *    opens the widget-childapp window carrying the Group's reserved slot; `closeTearOutVessel`
- *    retires by the immutable window name;
+ *    retires by the immutable window name and hands the platform's verdict to the Group
+ *    unchanged (`false` and a rejection retain its retry authority);
  * 2. the vessel composition — the inspector opens at its designed 480×640, every other pane at
  *    its measured size;
- * 3. the ownership reads over the Group — owned, pending, or docked — and the one toggle grammar
- *    they route (return / refuse / pop out);
+ * 3. the ownership reads over the Group — owned, pending, or docked — the one toggle grammar
+ *    they route (return / refuse / pop out), and `returnPane` as the Group's retirement of the
+ *    owner's exact vessel, reported as the platform answered;
  * 4. `popOutPane` — refusals before any admission, and the happy path through the engine's
  *    exit → terminal pair;
  * 5. the chrome truth per phase and the stand-in a vesseled item leaves in the tree;
- * 6. the observation hooks that keep the chrome truthful after the engine acts.
+ * 6. the observation hooks that keep the chrome truthful after the engine acts;
+ * 7. the coupling to the REAL Group lifecycle — a refused or failed close retains retirement,
+ *    admission and connection and gates the next admission; the confirmed close retires them.
  */
 test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel layer over the engine\'s tear-out owner', () => {
     let cockpit, lifecycle, vessel;
@@ -164,7 +185,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
             }
         });
 
-        lifecycle             = fakeLifecycle();
+        lifecycle             = fakeLifecycle(cockpit);
         cockpit.nativeWindows = lifecycle
     });
 
@@ -223,8 +244,18 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
         expect(floored).toEqual({popupHeight: 240, popupWidth: 320, windowName: `fm-tearout-stream-${cockpit.id}`});
 
-        await cockpit.closeTearOutVessel({itemId: 'stream', windowName: 'fm-tearout-stream-x'});
+        expect(await cockpit.closeTearOutVessel({itemId: 'stream', windowName: 'fm-tearout-stream-x'}), 'the platform confirmed the close').toBe(true);
         expect(vessel.closeCalls).toEqual([{names: ['fm-tearout-stream-x'], windowId: cockpit.windowId}])
+    });
+
+    test('closeTearOutVessel hands the platform\'s verdict to the Group unchanged — false stays false, a rejection propagates — never an inferred absence', async () => {
+        vessel = installWindowVessel({closeResult: false});
+        expect(await cockpit.closeTearOutVessel({itemId: 'stream', windowName: 'gone'}), 'no such window / already closed is NOT a close').toBe(false);
+
+        vessel.restore();
+        vessel = installWindowVessel({closeResult: () => { throw new Error('platform exploded') }});
+        await expect(cockpit.closeTearOutVessel({itemId: 'stream', windowName: 'gone'})).rejects.toThrow('platform exploded');
+        expect(vessel.closeCalls, 'the platform WAS asked').toHaveLength(1)
     });
 
     test('the vessel composition: the inspector opens at its designed 480×640; every other pane opens at the engine\'s measured rect', async () => {
@@ -289,6 +320,95 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
         // returnPane on a docked pane names the refusal
         expect(await cockpit.returnPane('detail')).toEqual({returned: false, errors: ['detail is not in a vessel']})
+    });
+
+    test('returnPane reports the Group\'s retirement of the owner\'s exact vessel: a refused or failed close is not a return, and the owner stays for the retry', async () => {
+        const owner = {itemId: 'memories', windowName: `fm-tearout-memories-${cockpit.id}`, generationToken: 'gen-1'};
+
+        lifecycle.owners.set('memories', owner);
+
+        // the platform refuses (no such window, already closed, not closable)
+        vessel = installWindowVessel({closeResult: false});
+        expect(await cockpit.returnPane('memories')).toEqual({returned: false, errors: ['the vessel window did not close']});
+        expect(lifecycle.retirements, 'the return IS a retirement of the exact vessel — never a close around the Group').toEqual([owner]);
+        expect(vessel.closeCalls).toEqual([{names: [owner.windowName], windowId: cockpit.windowId}]);
+        expect(cockpit.isVesselOwned('memories'), 'an attempted close is never a return').toBe(true);
+
+        // the platform fails
+        vessel.restore();
+        vessel = installWindowVessel({closeResult: () => { throw new Error('platform exploded') }});
+        expect(await cockpit.returnPane('memories')).toEqual({returned: false, errors: ['the vessel window did not close']});
+        expect(cockpit.isVesselOwned('memories')).toBe(true);
+
+        // the platform confirms
+        vessel.restore();
+        vessel = installWindowVessel({closeResult: true});
+        expect(await cockpit.returnPane('memories')).toEqual({returned: true, errors: []});
+        expect(lifecycle.retirements).toHaveLength(3)
+    });
+
+    test('over the REAL Group lifecycle: a refused or failed platform close retains the retirement, the admission and the connection, gates the next admission, and the return reports it; the confirmed close retires all three', async () => {
+        const manager   = (await import('../../../../../../../../node_modules/neo.mjs/src/manager/Transaction.mjs')).default,
+              {groupId} = manager.bind({windowId: 'fm-vessel-unit'}),
+              group     = manager.getNativeLifecycle(groupId),
+              name      = `fm-tearout-stream-${cockpit.id}`;
+
+        let answer = () => false;
+
+        vessel = installWindowVessel({closeResult: () => answer()});
+
+        try {
+            // the three effects the engine's Workspace registers, bound to this cockpit
+            group.registerSource(cockpit.id, {
+                keyFor: itemId => cockpit.tearOutWorkspaceKey(itemId),
+                open  : cockpit.openTearOutVessel.bind(cockpit),
+                close : cockpit.closeTearOutVessel.bind(cockpit)
+            });
+            cockpit.nativeWindows = group;
+
+            const identity = await group.acquire(cockpit.id, {itemId: 'stream', proxyRect: {x: 0, y: 0, width: 640, height: 420}});
+
+            expect(identity, 'admitted through the cockpit\'s open effect').toMatchObject({itemId: 'stream', windowName: name, workspaceKey: 'popup:stream'});
+            await group.onBind({...identity, windowId: 'vessel-1', generation: 1});
+            expect(group.getAdmission(cockpit.id, 'stream')).toBeTruthy();
+            expect(group.getConnection(cockpit.id, 'stream')).toBeTruthy();
+
+            // refused: the Group keeps its retry authority over the exact vessel; nothing is cleared
+            expect(await group.retire(cockpit.id, identity)).toBe(false);
+            expect(group.pendingRetirements(cockpit.id)).toEqual([identity]);
+            expect(group.getAdmission(cockpit.id, 'stream'), 'admission retained').toBeTruthy();
+            expect(group.getConnection(cockpit.id, 'stream'), 'connection retained').toBeTruthy();
+            expect(vessel.closeCalls).toEqual([{names: [name], windowId: cockpit.windowId}]);
+
+            // failed: the rejection reaches the Group unchanged and is the same refusal
+            answer = () => { throw new Error('platform exploded') };
+            expect(await group.retire(cockpit.id, identity)).toBe(false);
+            expect(group.pendingRetirements(cockpit.id)).toEqual([identity]);
+
+            // the pending retirement gates the next admission for the item: one window, never two
+            expect(await group.acquire(cockpit.id, {itemId: 'stream', proxyRect: null})).toBeNull();
+            expect(vessel.openCalls).toHaveLength(1);
+
+            // confirmed: retired, and the admission + connection it matched are gone
+            answer = () => true;
+            expect(await group.retire(cockpit.id, identity)).toBe(true);
+            expect(group.pendingRetirements(cockpit.id)).toEqual([]);
+            expect(group.getAdmission(cockpit.id, 'stream')).toBeNull();
+            expect(group.getConnection(cockpit.id, 'stream')).toBeNull();
+
+            // committed ownership: the return is that same retirement, reported
+            group.recordOwner(cockpit.id, 'stream', {...identity, windowId: 'vessel-1'});
+            answer = () => false;
+            expect(await cockpit.returnPane('stream')).toEqual({returned: false, errors: ['the vessel window did not close']});
+            expect(group.pendingRetirements(cockpit.id)).toHaveLength(1);
+            expect(cockpit.isVesselOwned('stream'), 'the owner stays for the retry').toBe(true);
+            answer = () => true;
+            expect(await cockpit.returnPane('stream')).toEqual({returned: true, errors: []});
+            expect(group.pendingRetirements(cockpit.id)).toEqual([])
+        } finally {
+            cockpit.nativeWindows = null;
+            manager.retireGroup(groupId)
+        }
     });
 
     test('popOutPane: refusals before any admission, then the happy path through the engine\'s exit → terminal pair with the composed rect', async () => {
