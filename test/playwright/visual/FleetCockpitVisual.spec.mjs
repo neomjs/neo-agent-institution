@@ -462,6 +462,55 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.fm-tasks-pane')).toHaveScreenshot('tasks-pane-720-light.png')
     });
 
+    /**
+     * @summary Activates the Memories tab (the south strip's third surface) and waits for its cold
+     * spine — the head, the authority words, the null-selection meta line. No seat is selected in
+     * the fixture boot, so the registers stay empty: the golden witnesses the pane's own rhythm and
+     * the registers' chrome, never a card (the cards' chrome is the Neural Link witness's arm).
+     * @param {Object} page
+     */
+    const openMemoriesPane = async page => {
+        const tab = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: /memories/i});
+
+        await expect(tab).toBeVisible({timeout: 30000});
+        await tab.click();
+        await expect(page.locator('.fm-memories-pane')).toBeVisible({timeout: 30000});
+        await expect(page.locator('.fm-memories-pane .fm-memories-title')).toHaveText('What they remember');
+        await expect(page.locator('.fm-memories-pane')).toContainText('Select an agent card in the roster');
+        await page.evaluate(() => document.fonts.ready);
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)
+    };
+
+    test('the Memories pane at the 720 band — the head on the panel rhythm, the registers without grid chrome; both skins', async ({page}) => {
+        await page.setViewportSize({width: 720, height: 900});
+        await bootSettledCockpit(page);
+        await openMemoriesPane(page);
+
+        // the rhythm the roster root declares too: the panel padding, one gap between the head and
+        // the meta line. The registers are not in the DOM until a seat is chosen, so their chrome
+        // (the container frame, the cell lattice) is the Neural Link witness's arm on live cards.
+        const rhythm = await page.evaluate(() => {
+            const pane  = document.querySelector('.fm-memories-pane'),
+                  head  = pane.querySelector('.fm-memories-head'),
+                  meta  = pane.querySelector('.fm-memories-meta'),
+                  style = getComputedStyle(pane);
+
+            return {
+                paddingTop: style.paddingTop,
+                rowGap    : style.rowGap,
+                headToMeta: Math.round(meta.getBoundingClientRect().top - head.getBoundingClientRect().bottom)
+            }
+        });
+
+        expect(rhythm.paddingTop, 'the panel padding (--fm-space-4)').toBe('16px');
+        expect(rhythm.rowGap, 'the panel gap (--fm-space-3)').toBe('12px');
+        expect(rhythm.headToMeta, 'the meta line sits one gap under the head').toBe(12);
+        await expect(page.locator('.fm-memories-pane')).toHaveScreenshot('memories-pane-720.png');
+
+        await switchToLightSkin(page);
+        await expect(page.locator('.fm-memories-pane')).toHaveScreenshot('memories-pane-720-light.png')
+    });
+
     test('the Tasks pane in the 314 vessel window — the narrow-band regime is in force and nothing clips (geometry asserted, no golden)', async ({page}) => {
         // The south strip hands the pane 224–243 CSS px here depending on whether the region grew a
         // scrollbar (measured across runs), which is why this is a geometry witness and not a golden:

@@ -86,6 +86,42 @@ function memoriesResult(params = {}) {
     }
 }
 
+/**
+ * @summary The drill envelope for one session — the `fleetSessionMemories` source contract over
+ * authored turns: two turns, one with a miniSummary headline and one without, both attributed,
+ * so the turn register renders every row form the skin styles.
+ * @param {Object} params
+ * @returns {Object}
+ */
+function sessionMemoriesResult(params = {}) {
+    const sessionId = params.sessionId;
+
+    return {
+        capability: {state: 'wired', capturedAt: CAPTURED_AT},
+        viewer    : '@e2e-operator',
+        sessionId,
+        page      : {offset: params.offset ?? 0, limit: 20},
+        turns     : [
+            {
+                id: 'turn-2', sessionId, timestamp: '2026-08-02T20:40:00.000Z', agentIdentity: '@neo-opus-ada', amountToolCalls: 14,
+                miniSummary: 'Wake transport verified end to end',
+                prompt     : 'Verify the wake transport between plane and host.',
+                thought    : 'Ran the integrity probe twice.',
+                response   : 'The wake transport holds: both probes returned signed receipts, and the host replayed them in order.'
+            },
+            {
+                id: 'turn-1', sessionId, timestamp: '2026-08-02T19:10:00.000Z', agentIdentity: '@neo-opus-ada', amountToolCalls: 3,
+                miniSummary: null,
+                prompt     : 'Read the integrity contract.',
+                thought    : null,
+                response   : 'The contract names two receipts per wake; the second one is the host\'s.'
+            }
+        ],
+        count: 2,
+        total: 2
+    }
+}
+
 async function startMemoriesFleet() {
     const {startFleetBridgeServer} = await loadAgentOsModule('ai/services/fleet/fleetBridgeServer.mjs'),
           requests                 = [],
@@ -107,6 +143,8 @@ async function startMemoriesFleet() {
                           return fleetE2ESuccess({capability: {state: 'wired'}, events: []});
                       case 'fleetMemories':
                           return fleetE2ESuccess(memoriesResult(request.params));
+                      case 'fleetSessionMemories':
+                          return fleetE2ESuccess(sessionMemoriesResult(request.params));
                       case 'getBootIdentity':
                           return fleetE2ESuccess({fact: null, classification: 'unknown', advisory: true});
                       default:
@@ -128,7 +166,7 @@ async function startMemoriesFleet() {
 /**
  * @summary Native Fleet memories journey over session summaries: activating the resident
  * south-strip tab shows the pane; choosing an agent is the roster's selection (the pane carries
- * no chooser of its own since the #60 IA); the App Worker crosses the authenticated allowlisted
+ * no chooser of its own — the one-picker IA); the App Worker crosses the authenticated allowlisted
  * bridge; summary cards render with honest multi-agent attribution; the summary drain appends
  * the older pages until the producer's total is assembled (the paging chrome is retired); guarded
  * non-string titles/summaries are named; and the wire carries only the explicit target — never a
@@ -192,8 +230,8 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             let releaseAda;
             fleet.gates['@neo-opus-ada'] = new Promise(resolve => { releaseAda = resolve });
 
-            // choosing whose memories is the roster's selection since the #60 IA: the pane carries no
-            // agent chooser of its own — the card click selects the resident, the pane follows
+            // choosing whose memories is the roster's selection (the one-picker IA): the pane carries
+            // no agent chooser of its own — the card click selects the resident, the pane follows
             await page.locator('.fm-fleet-cards > .neo-list-item', {hasText: /\bAda\b/}).click();
             await expect(pane).toContainText('Reading @neo-opus-ada…');
 
@@ -223,6 +261,27 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await expect(pane.locator('.fm-memories-card').nth(0)).toContainText('feature · 61 memories · quality 95');
             // multi-agent session: attribution beyond the selected target renders explicitly
             await expect(pane.locator('.fm-memories-card').nth(0)).toContainText('with @neo-gpt-emmy');
+
+            // the registers wear no engine grid chrome: the card carries the only frame and surface —
+            // no cell lattice, no cell background, no cell padding around the height-normed card; and
+            // the row the engine's selection model marks after a card click paints nothing (the
+            // model cannot be opted out of at this pin, so its paint is neutralized at the skin layer)
+            const cellChrome = () => pane.locator('.fm-memories-summary-grid .neo-grid-cell').first().evaluate(cell => {
+                const style = getComputedStyle(cell);
+
+                return {
+                    background: style.backgroundColor,
+                    border    : [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].join(' '),
+                    padding   : [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].join(' '),
+                    selected  : cell.closest('.neo-grid-row')?.classList.contains('neo-selected') ?? null
+                }
+            });
+
+            expect(await cellChrome()).toEqual({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px', selected: false});
+            expect(await pane.locator('.fm-memories-summary-grid').evaluate(grid => getComputedStyle(grid).borderTopWidth), 'the register carries no container frame').toBe('0px');
+            await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-title').click();
+            await expect.poll(async () => (await cellChrome()).selected, {message: 'the engine row model marks the clicked row'}).toBe(true);
+            expect((await cellChrome()).background, 'the marked row paints no selection band').toBe('rgba(0, 0, 0, 0)');
             await expect(pane.locator('.fm-memories-card').nth(1)).not.toContainText('with @');
 
             // the paging chrome is retired: the drain did the append, and no "Older sessions"
@@ -284,6 +343,124 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             expect(memoriesRequests.every(request =>
                 request.params.viewerIdentity === undefined && request.params.projection === undefined
             )).toBe(true)
+        } finally {
+            await fleet.close()
+        }
+    });
+
+    /**
+     * The populated registers, both skins: the summary cards over Ada's three sessions and, one
+     * drill down, the turn cards — every pooled cell (even rows included) wears no engine grid
+     * chrome, the pointer tints nothing, the row the engine's selection model marks paints
+     * nothing, the registers carry no container frame; goldens of both registers in both skins
+     * through the real ViewportController#setTheme. The empty pane's rhythm is the visual
+     * config's golden; the cards' chrome lives here because only the wire populates them.
+     *
+     * Run: NEO_E2E_PORT=49223 NEO_TEST_SKIP_CI=true npx playwright test agentos/FleetMemoriesNL -c test/playwright/playwright.config.e2e.mjs --workers=1 --update-snapshots
+     */
+    test('populated registers: the summary and turn cards wear no grid chrome — lattice, stripe, hover, selection paint, frame — in both skins', async ({page, neuralLink}) => {
+        const fleet = await startMemoriesFleet();
+
+        // taller than the journey's viewport: the south register shows three summary cards and
+        // both turns whole, so the goldens carry cards, not a sliver of one
+        await page.setViewportSize({width: 1600, height: 1400});
+
+        try {
+            await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl: fleet.endpoint})}`);
+            await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+            const app = await neuralLink.connectToApp('AgentOS');
+            await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken: fleet.bearerToken});
+
+            const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
+            await app.callMethod(cockpit.properties.id, 'controller.loadRoster');
+            await page.getByRole('tab', {name: 'Memories', exact: true}).click();
+
+            const pane = page.locator('.fm-memories-pane');
+            await expect(pane).toBeVisible({timeout: 10000});
+            await page.locator('.fm-fleet-cards > .neo-list-item', {hasText: /\bAda\b/}).click();
+            await expect(pane.locator('.fm-memories-card')).toHaveCount(3, {timeout: 10000});
+            await expect(pane).toContainText(/@neo-opus-ada · 3 of 3 sessions/);
+            await page.evaluate(() => document.fonts.ready);
+
+            // the roster selection revealed the inspector on the right rail; a mousedown outside the
+            // rail dismisses the reveal (Rail#onAppMouseDown → the machine's outsideClick) — the
+            // register must be uncovered for the drill button and for the goldens
+            await pane.locator('.fm-memories-title').click();
+            await expect(page.locator('.neo-dashboard-dock-rail-tab.pressed'), 'the reveal is dismissed').toHaveCount(0, {timeout: 10000});
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+            const
+                settleForGolden = async () => {
+                    await page.mouse.move(8, 8);
+                    await page.evaluate(() => document.querySelectorAll('.fm-memories-pane *').forEach(el => { if (el.scrollTop) { el.scrollTop = 0 } }));
+                    await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                    await page.evaluate(() => document.fonts.ready)
+                },
+                chromeOf = selector => page.locator(selector).evaluateAll(cells => cells.map(cell => {
+                    const style = getComputedStyle(cell),
+                          row   = cell.closest('.neo-grid-row');
+
+                    return {
+                        background: style.backgroundColor,
+                        border    : [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].join(' '),
+                        padding   : [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].join(' '),
+                        even      : row?.classList.contains('neo-even') ?? null,
+                        selected  : row?.classList.contains('neo-selected') ?? null
+                    }
+                })),
+                frameOf  = selector => page.locator(selector).evaluate(grid => getComputedStyle(grid).borderTopWidth),
+                bare     = {background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px'},
+                assertBareRegister = async (name, selector) => {
+                    const cells = await chromeOf(`${selector} .neo-grid-cell`);
+
+                    expect(cells.length, `${name}: the pool is populated`).toBeGreaterThanOrEqual(2);
+                    expect(cells.some(cell => cell.even), `${name}: the pool covers an even row`).toBe(true);
+                    cells.forEach((cell, index) => expect(cell, `${name} cell ${index}`).toMatchObject(bare));
+                    expect(await frameOf(selector), `${name}: no container frame`).toBe('0px')
+                },
+                [viewport] = await app.queryComponent({className: 'AgentOS.view.Viewport'}, ['id']),
+                viewportState = await app.getComponent(viewport.properties.id, ['controller']),
+                controllerId  = viewportState.controller.id,
+                skins         = [['dark', 'neo-theme-neo-dark'], ['light', 'neo-theme-neo-light']],
+                setSkin       = async theme => {
+                    await app.callMethod(controllerId, 'setTheme', [theme, false]);
+                    await expect(page.locator('.agent-os-viewport')).toHaveClass(new RegExp(`(?:^|\\s)${theme}(?:\\s|$)`));
+                    await page.evaluate(() => document.fonts.ready)
+                };
+
+            // ── the summary register ──
+            await assertBareRegister('summary', '.fm-memories-summary-grid');
+
+            // the pointer over a card tints nothing (the engine's hover rule is re-bound to transparent)
+            await pane.locator('.fm-memories-card').nth(1).hover();
+            expect((await chromeOf('.fm-memories-summary-grid .neo-grid-cell'))[1].background, 'the hovered cell paints no tint').toBe('rgba(0, 0, 0, 0)');
+
+            for (const [skin, theme] of skins) {
+                await setSkin(theme);
+                await settleForGolden();
+                await expect(pane).toHaveScreenshot(`memories-summary-${skin}.png`)
+            }
+
+            // ── one drill down: the turn register ──
+            await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-open').click();
+            await expect(pane.locator('.fm-memories-turn-cell')).toHaveCount(2, {timeout: 10000});
+            await expect(pane.locator('.fm-memories-turn').nth(0)).toContainText('Wake transport verified end to end');
+            await expect(pane.locator('.fm-memories-turn').nth(1)).not.toContainText('Response unavailable');
+            await page.evaluate(() => document.fonts.ready);
+
+            await assertBareRegister('turns', '.fm-memories-turn-grid');
+
+            // the row the engine's selection model marks after a click paints nothing, one level down too
+            await pane.locator('.fm-memories-turn').nth(1).click();
+            await expect.poll(async () => (await chromeOf('.fm-memories-turn-grid .neo-grid-cell')).some(cell => cell.selected), {message: 'the engine row model marks the clicked turn row'}).toBe(true);
+            (await chromeOf('.fm-memories-turn-grid .neo-grid-cell')).forEach((cell, index) => expect(cell.background, `turn cell ${index} paints no selection band`).toBe('rgba(0, 0, 0, 0)'));
+
+            for (const [skin, theme] of [...skins].reverse()) {
+                await setSkin(theme);
+                await settleForGolden();
+                await expect(pane).toHaveScreenshot(`memories-turns-${skin}.png`)
+            }
         } finally {
             await fleet.close()
         }

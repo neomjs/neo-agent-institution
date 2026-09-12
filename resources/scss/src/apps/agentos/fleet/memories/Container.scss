@@ -1,12 +1,15 @@
-/* AgentOS.view.fleet.MemoriesPane — invoked per-agent session-summary recall in the pinned drawer.
-   Head (title · authority) over the meta line, the agent chip row, the session cards, and the
-   actions rail. Mount-agnostic by the drawer-shell contract: the HOST owns surface, padding, and
-   rhythm — this root declares no frame; every color reads from the --fm-* token layer.
+/* AgentOS.view.fleet.MemoriesPane — the per-agent session-summary recall in the cockpit's south
+   register (and, torn out, in its own window). Head (title · authority) over the meta line, the
+   session cards, the drill, and the actions rail. Neither host hands the pane a rhythm, so the root
+   carries the panel rhythm the roster declares too (padding --fm-space-4, gap --fm-space-3); every
+   color reads from the --fm-* token layer.
    §04 rhythm record (#17265): off-rhythm survivors — agent-chip gap 6, rows gap 10, card gap 7 +
    pad 10, empty pad 14/4, provenance pill pad 1/6, turn gap 6 + pad 9/10 — recorded here,
    deferred to the #17268 pane-composition pass. Affordance buttons ride the chip family's
    recorded voice rule (detail metrics, inherited family — Chips.scss). */
 .fm-memories-pane {
+    padding: var(--fm-space-4);   /* the spec-named panel padding — the roster root's, in both hosts */
+    gap    : var(--fm-space-3);   /* head · meta · registers · actions on one rhythm */
 
     .fm-memories-head {
         gap        : var(--fm-space-2);
@@ -156,6 +159,34 @@
    never loads. The pane's own Container.css is always present when the registers render. */
 .fm-memories-summary-grid,
 .fm-memories-turn-grid {
+
+    /* a designed list, not a data table: the engine grid's chrome is reset at the skin layer — the
+       container frame, the cell lattice (border-bottom / border-right / the first cell's
+       border-left), the even-row stripe, the hover tint and the row-selection paint — so the card
+       carries the only frame and surface. The colors are the engine's own custom properties,
+       re-bound per surface; the 1 px lattice and the cell padding are structural rules and are
+       overridden (a transparent border still costs its pixel in the row lattice, and the cell
+       padding ate 4 px of the height-normed card). The row selection itself stays: the engine
+       instantiates a RowModel for a null `selectionModel` (grid.Body#beforeSetSelectionModel), so a
+       consumer cannot opt out today — its paint is neutralized here, its class is not (retirement
+       trigger: an engine-side opt-out). */
+    --grid-container-border-color                 : transparent;
+    --grid-container-cell-background-color        : transparent;
+    --grid-container-cell-background-color-even   : transparent;
+    --grid-cell-background-color-hover            : transparent;
+    --grid-rowmodel-selected-cell-background-color: transparent;
+    --grid-rowmodel-selected-cell-color           : var(--fm-ink);
+
+    &.neo-grid-container {
+        border: 0;
+    }
+
+    /* specificity, not order: the engine's lattice rule is `.neo-grid-body .neo-grid-row
+       .neo-grid-cell` (three classes) and the per-class CSS load order is not a contract */
+    .neo-grid-body .neo-grid-row .neo-grid-cell {
+        border : 0;
+        padding: 0;
+    }
 
     /* a headerless designed list, not a data table: the single component column needs no header
        row — COLLAPSED at the skin layer, never display:none: the header toolbar is the engine's
