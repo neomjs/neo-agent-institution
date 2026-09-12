@@ -315,4 +315,125 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
 
         await page.emulateMedia({reducedMotion: null})
     });
+
+    test('the beacon facet across the card-width matrix: the band glyph carries it at every width, the words yield to the state line, and nothing overlaps or clips beyond the fresh control (#112)', async ({page, neuralLink}) => {
+        // Each beacon row has a control sharing every other fact, so any geometry delta is the facet's
+        // own. The widest pair carries the widest ordinary state line an active seat can render (the
+        // longest state word, the longest active band, a two-digit badge): the words' threshold must
+        // hold it whole. Geometry-asserted, no golden — the matrix goldens above keep the fresh case.
+        const presenceOf    = (state, beacon) => ({source: 'fleet:presenceState', state, confidence: 'observed', lastSeenAt: '2026-09-04T22:00:00.000Z', beacon}),
+              seat          = (id, displayName, extra) => ({
+                  agentId : id, githubUsername: `@${id}`, displayName, engineTag: 'fable-5', family: 'claude',
+                  laneLine: 'awaiting review', avatarUrl: avatar('#c0873a'),
+                  sources : {roster: roster('wired', 'observed'), repoStatus: repo('not-wired'), runtime: runtime('wired', 'observed')},
+                  ...extra
+              }),
+              BEACON_ROSTER = [
+                  seat('beacon-control',        'Aa control',        {state: 'ok',      openLaneCount: 1,  presence: presenceOf('fresh',       'fresh')}),
+                  seat('beacon-absent',         'Ab beacon absent',  {state: 'ok',      openLaneCount: 1,  presence: presenceOf('fresh',       'absent')}),
+                  seat('beacon-stale',          'Ac beacon stale',   {state: 'ok',      openLaneCount: 1,  presence: presenceOf('recent',      'stale')}),
+                  seat('beacon-widest-control', 'Ad widest control', {state: 'limited', openLaneCount: 23, presence: presenceOf('active-turn', 'fresh')}),
+                  seat('beacon-widest-absent',  'Ae widest absent',  {state: 'limited', openLaneCount: 23, presence: presenceOf('active-turn', 'absent')})
+              ],
+              PAIRS         = [
+                  ['Ab beacon absent', 'Aa control',        'absent', '◌'],
+                  ['Ac beacon stale',  'Aa control',        'stale',  '◎'],
+                  ['Ae widest absent', 'Ad widest control', 'absent', '◌']
+              ],
+              // the sub-narrow band, the vessel window, the first regular width, the roster's own
+              // multi-column floor, the last width whose line is below the words' threshold, the first
+              // at it, and the roomy AC width
+              WIDTHS        = [240, 314, 320, 410, 498, 500, 720],
+              WORDS_FROM    = 340;
+
+        await page.setViewportSize({width: 900, height: 1000});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
+
+        const app           = await neuralLink.connectToApp('AgentOS'),
+              [rosterStore] = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
+              storeId       = (Array.isArray(rosterStore) ? rosterStore[0] : rosterStore)?.id;
+
+        expect(storeId, 'the provider-owned FleetRoster store must exist').toBeTruthy();
+
+        await app.callMethod(storeId, 'clear');
+        await app.callMethod(storeId, 'add', [BEACON_ROSTER]);
+
+        await expect.poll(async () => page.locator('.fm-agent-card').count(), {
+            message: 'the grid renders one card per beacon row', timeout: 15000, intervals: [250]
+        }).toBe(BEACON_ROSTER.length);
+        await page.evaluate(() => document.fonts.ready);
+
+        for (const width of WIDTHS) {
+            await page.evaluate(({count, width}) => {
+                const list = document.querySelector('.fm-fleet-cards');
+
+                list.style.width = list.style.minWidth = list.style.maxWidth = `${width + 20}px`;
+                list.style.height    = `${10 + count * 136}px`;
+                list.style.maxHeight = 'none'
+            }, {count: BEACON_ROSTER.length, width});
+
+            await expect.poll(async () => page.evaluate(() => Math.round(document.querySelector('.fm-agent-card').getBoundingClientRect().width)), {
+                message: `[${width}] Animate re-seats the card at exactly ${width}px`, timeout: 15000, intervals: [100, 250]
+            }).toBe(width);
+            await page.evaluate(() => document.fonts.ready);
+
+            const cards = await page.evaluate(() => {
+                const rect    = el => el?.getBoundingClientRect(),
+                      overlap = (a, b) => a && b
+                          ? Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+                          : 0;
+
+                return Object.fromEntries([...document.querySelectorAll('.fm-agent-card')].map(card => {
+                    const q     = sel => card.querySelector(sel),
+                          line  = q('.fm-card-state-line'),
+                          band  = q('.fm-card-presence'),
+                          words = q('.fm-card-beacon'),
+                          shown = !!words && getComputedStyle(words).display !== 'none';
+
+                    return [q('.fm-card-name').textContent, {
+                        clip            : card.scrollHeight - card.clientHeight,
+                        lineWidth       : Math.round(rect(line).width),
+                        lineHeight      : Math.round(rect(line).height),
+                        glyph           : band.textContent[0],
+                        bandTitle       : band.getAttribute('title'),
+                        bandAria        : band.getAttribute('aria-label'),
+                        wordsShown      : shown,
+                        wordsInLine     : shown ? rect(words).right <= rect(line).right + 0.5 : null,
+                        wordsBeforeBadge: shown ? rect(words).right <= rect(q('.fm-card-lane-count')).left : null,
+                        wordsUnderVerbs : shown ? overlap(rect(words), rect(q('.fm-card-control-verbs'))) : 0
+                    }]
+                }))
+            });
+
+            for (const [name, controlName, facet, glyph] of PAIRS) {
+                const card    = cards[name],
+                      control = cards[controlName],
+                      scope   = `[${width}] ${name}`;
+
+                expect(control.glyph, `[${width}] ${controlName}: the ring is filled`).toBe('◉');
+                expect(control.wordsShown, `[${width}] ${controlName}: renders no words`).toBe(false);
+
+                // the glyph, title and aria pair carry the facet at EVERY width
+                expect(card.glyph, `${scope}: the band's glyph marks the ${facet} beacon`).toBe(glyph);
+                expect(card.bandTitle, `${scope}: the band's title names the diagnostic`).toContain(facet === 'absent' ? 'no turn-presence beacon' : 'past its horizon');
+                expect(card.bandAria, `${scope}: the band speaks the facet`).toContain(facet === 'absent' ? 'No turn-presence beacon' : 'beacon stale');
+
+                // the words render exactly where the line holds the widest ordinary line plus them
+                expect(card.wordsShown, `${scope}: the words ${card.lineWidth >= WORDS_FROM ? 'render on' : 'yield to'} a ${card.lineWidth}px line`).toBe(card.lineWidth >= WORDS_FROM);
+
+                // where they render they sit inside the line, before the badge, never under the verbs
+                if (card.wordsShown) {
+                    expect(card.wordsInLine,      `${scope}: the words end inside the state line`).toBe(true);
+                    expect(card.wordsBeforeBadge, `${scope}: the words sit before the right-pinned badge`).toBe(true);
+                    expect(card.wordsUnderVerbs,  `${scope}: the words never run under the verbs`).toBe(0)
+                }
+
+                // no delta against the control: the same clip, the same line height
+                expect(card.clip,       `${scope}: no clipping beyond its control`).toBe(control.clip);
+                expect(card.lineHeight, `${scope}: the state line keeps its control's height — no row added`).toBe(control.lineHeight)
+            }
+        }
+    });
 });

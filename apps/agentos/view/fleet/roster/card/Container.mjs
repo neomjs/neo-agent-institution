@@ -35,15 +35,31 @@ const PRESENCE_BAND_LABEL = Object.freeze({
 const ACTIVE_PRESENCE_BANDS = new Set(['active-turn', 'fresh', 'recent', 'online', 'idle']);
 
 /**
- * The beacon facets that earn a word, and the diagnostic each carries on the title: the facet is
- * the producer's turn-presence fact beside the band (`fresh` and `unobserved` render nothing —
- * a fresh beacon is the band itself, an unobserved one is absence of signal, never a verdict).
+ * The beacon facets that earn a mark, and what each carries: the band's GLYPH (the carrier present
+ * at every card width — a filled ring is a band with its beacon, a dotted ring one with no beacon
+ * behind it, a bullseye one whose beacon went past its horizon), the clause the band speaks to
+ * assistive tech, and the diagnostic sentence on the title. `fresh` and `unobserved` earn nothing —
+ * a fresh beacon is the band itself, an unobserved one is absence of signal, never a verdict.
  * @type {Object}
  */
-const BEACON_WORDS = Object.freeze({
-    absent: 'Active with no turn-presence beacon: the seat writes durable activity, but no beacon from its hooks reached the plane — the hooks are not projected or fail open.',
-    stale : 'The seat\'s last turn-presence beacon is past its horizon: its hooks beaconed once and went quiet while the seat stayed active.'
+const BEACON_FACETS = Object.freeze({
+    absent: {
+        glyph: '◌',
+        aria : 'No turn-presence beacon.',
+        title: 'Active with no turn-presence beacon: the seat writes durable activity, but no beacon from its hooks reached the plane — the hooks are not projected or fail open.'
+    },
+    stale: {
+        glyph: '◎',
+        aria : 'Turn-presence beacon stale.',
+        title: 'The seat\'s last turn-presence beacon is past its horizon: its hooks beaconed once and went quiet while the seat stayed active.'
+    }
 });
+
+/**
+ * The band glyph of a beacon that is present — or of a band whose facet is not read at all.
+ * @type {String}
+ */
+const BEACON_PRESENT_GLYPH = '◉';
 
 import FamilyTokens from '../../../../util/FamilyTokens.mjs';
 import NameSlot     from '../../../../util/NameSlot.mjs';
@@ -67,8 +83,8 @@ const nameSeparators = /[\s\-_.]+/;
  * Anatomy (top-to-bottom, the family rail a left accent owned by FamilyRail):
  * - **head** — avatar (the face image, or a family-inked monogram in the same slot when the record
  *   carries no face — a src-less `<img>` never mounts) spanning a two-line **identity** column: `name-line` (name · provenance ·
- *   engine) over `state-line` (dot · state-word · lane-count badge · telltale), with the contextual
- *   lifecycle **actions** right-aligned;
+ *   engine) over `state-line` (dot · state-word · presence band · beacon words · lane-count badge ·
+ *   telltale), with the contextual lifecycle **actions** right-aligned;
  * - **work-row** — the current lane, two-line clamped with head+tail middle elision so two lanes
  *   sharing a prefix still distinguish by their preserved tail (the narrow-density falsifier);
  * - **strip** — the exception-only source word-line: nominal renders NOTHING (zero-pixel doctrine);
@@ -226,14 +242,18 @@ class AgentCard extends Container {
                         hidden   : true,
                         reference: 'card-presence'
                     }, {
-                        // the beacon word: the producer's turn-presence facet beside the band — ONE
-                        // word for an active seat whose beacon is absent or stale, hidden otherwise
-                        // (a fresh beacon is the band; an unobserved one is absence of signal)
+                        // the beacon words: the producer's turn-presence facet spelled out beside the
+                        // band for an active seat whose beacon is absent or stale, hidden otherwise
+                        // (a fresh beacon is the band; an unobserved one is absence of signal). The
+                        // band's glyph carries the facet at every width and its aria pair speaks it,
+                        // so these words are presentational — and the SCSS renders them only where
+                        // the state line has the room to hold them whole
                         ntype    : 'component',
                         cls      : ['fm-card-beacon'],
                         flex     : 'none',
                         hidden   : true,
-                        reference: 'card-beacon'
+                        reference: 'card-beacon',
+                        vdom     : {'aria-hidden': 'true'}
                     }, {
                         // the open-lane count badge (openLaneCount ONLY — never the engine); right-pinned
                         // in the state-line (SCSS margin-left:auto). null count = no badge (never "0 lanes").
@@ -444,36 +464,49 @@ class AgentCard extends Container {
             bandLabel        = presenceObserved ? PRESENCE_BAND_LABEL[presence.state] : '',
             presenceBand     = me.getReference('card-presence');
 
-        presenceBand.set({
-            hidden: !presenceObserved,
-            text  : presenceObserved ? `◉ ${bandLabel}${staleValidation ? ' · validation stale' : ''}` : ''
-        });
-
-        // colour alone cannot carry the exception (WCAG 1.4.1): the words render it, the aria pair
-        // speaks it, and a fresh observation without the provenance clears every residue — class,
-        // text, aria-label, title — in the same pass. `since` is optional provenance: absent means
-        // no title, never a fabricated timestamp.
-        presenceBand[staleValidation ? 'addCls' : 'removeCls']('fm-card-presence-stale');
-        presenceBand.changeVdomRootKey('aria-label', staleValidation ? `Presence: ${bandLabel}. Provider validation stale.` : null);
-        presenceBand.changeVdomRootKey('title', staleValidation && presence.since != null ?
-            `Provider validation stale since ${new Date(presence.since).toISOString()}` : null);
-
-        // The beacon word: read only past an OBSERVED band on an ALIVE seat, and only for the two
+        // The beacon facet: read only past an OBSERVED band on an ALIVE seat, and only for the two
         // facets that say something the band cannot — absent (the hooks never beaconed while the
         // seat stayed active: the failure that is invisible on every band) and stale (they went
         // quiet). fresh and unobserved render nothing; an older Brain sends no facet at all and
-        // renders nothing either — never a guess. Cleared whole on every pass: class, text, title.
+        // renders nothing either — never a guess. The band's glyph is the carrier present at every
+        // card width; the words beside the band render only where the state line has room (SCSS).
         const
-            beacon     = presenceObserved && ACTIVE_PRESENCE_BANDS.has(presence.state) ? presence.beacon : null,
-            beaconWord = Object.hasOwn(BEACON_WORDS, beacon) ? beacon : null,
-            beaconChip = me.getReference('card-beacon');
+            beacon      = presenceObserved && ACTIVE_PRESENCE_BANDS.has(presence.state) ? presence.beacon : null,
+            beaconWord  = Object.hasOwn(BEACON_FACETS, beacon) ? beacon : null,
+            beaconFacet = beaconWord ? BEACON_FACETS[beaconWord] : null,
+            beaconChip  = me.getReference('card-beacon');
 
+        presenceBand.set({
+            cls: [
+                'fm-card-presence',
+                ...(staleValidation ? ['fm-card-presence-stale'] : []),
+                ...(beaconWord ? [`fm-card-presence-beacon-${beaconWord}`] : [])
+            ],
+            hidden: !presenceObserved,
+            text  : presenceObserved ? `${beaconFacet?.glyph ?? BEACON_PRESENT_GLYPH} ${bandLabel}${staleValidation ? ' · validation stale' : ''}` : ''
+        });
+
+        // colour alone cannot carry an exception (WCAG 1.4.1): the words render the validation
+        // exception, the glyph renders the beacon one, the aria pair speaks both, and an observation
+        // without either clears every residue — class, text, aria-label, title — in the same pass.
+        // `since` is optional provenance: absent means no validation title, never a fabricated timestamp.
+        const
+            ariaClauses  = [staleValidation && 'Provider validation stale.', beaconFacet?.aria].filter(Boolean),
+            titleClauses = [
+                staleValidation && presence.since != null && `Provider validation stale since ${new Date(presence.since).toISOString()}`,
+                beaconFacet?.title
+            ].filter(Boolean);
+
+        presenceBand.changeVdomRootKey('aria-label', ariaClauses.length ? `Presence: ${bandLabel}. ${ariaClauses.join(' ')}` : null);
+        presenceBand.changeVdomRootKey('title', titleClauses.length ? titleClauses.join(' ') : null);
+
+        // the words, cleared whole on every pass: class, text, title
         beaconChip.set({
             cls   : beaconWord ? ['fm-card-beacon', `fm-card-beacon-${beaconWord}`] : ['fm-card-beacon'],
             hidden: !beaconWord,
             text  : beaconWord ? `beacon ${beaconWord}` : ''
         });
-        beaconChip.changeVdomRootKey('title', beaconWord ? BEACON_WORDS[beaconWord] : null);
+        beaconChip.changeVdomRootKey('title', beaconFacet?.title ?? null);
 
         // the name slot: the folded display name as MUTABLE DISPLAY STATE over the durable id
         const
