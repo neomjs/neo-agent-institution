@@ -9,9 +9,10 @@ import TextField from '../../../../../node_modules/neo.mjs/src/form/field/Text.m
  *
  * @summary Renders the perspective list the owning FleetCockpit projects into provider data
  * (`perspectives`) and fires intent (`perspectiveRequest`); it never reaches the perspective
- * library itself. The three built-in presets ship with the cockpit (`AgentOS.util.CockpitPresets`);
- * a captured layout joins them under the operator's name and appears in the top bar's preset
- * switcher the same way, because both surfaces read the same projected list.
+ * library itself. The three duties are the cockpit's declared `perspectives`, projected as the
+ * first rows; a captured layout (`AgentOS.util.CockpitPerspectives`) joins them under the operator's
+ * name. The live row is the engine's committed name — `dock.perspective.active`, bound here
+ * directly — so the drawer and the top bar's preset buttons follow the same published truth.
  *
  * Honest states: no projected list renders as exactly that (never an empty list posing as "no
  * layouts"), the active perspective is named in the meta line and marked on its card, and a
@@ -38,13 +39,23 @@ class PerspectivesPane extends Container {
         baseCls: ['fm-perspectives-pane'],
         /**
          * The projected perspective list, as the cockpit publishes it:
-         * `{items: [{layoutId, perspectiveName, title, captureScope}], activeLayoutId, captureNote}` —
-         * the note is the latest capture verdict as one sentence, or `null`.
+         * `{items: [{layoutId, perspectiveName, title, captureScope}], captureNote}` — the declared
+         * duties first, the captures after them; the note is the latest capture verdict as one
+         * sentence, or `null`.
          * `null` (or an empty `items`) is unobserved — nothing projected yet — never "no layouts".
          * @member {Object|null} perspectives_=null
          * @reactive
          */
         perspectives_: null,
+        /**
+         * The engine's committed perspective name — bound to `dock.perspective.active`, the leaf
+         * the owning Workspace publishes post-commit. The card carrying this name is the live one;
+         * a capture is never live by this leaf (applying one keeps the declared name committed and
+         * marks it modified).
+         * @member {String|null} activePerspective_=null
+         * @reactive
+         */
+        activePerspective_: null,
         /**
          * The name the capture verb will file the live layout under — the field's last reported
          * value, trimmed; `null` while empty. The verb arms on this and uses exactly this, so the
@@ -164,6 +175,17 @@ class PerspectivesPane extends Container {
     }
 
     /**
+     * Triggered after the activePerspective config changed — the engine committed another duty;
+     * the marker and the meta line move in place.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetActivePerspective(value, oldValue) {
+        this.isConstructed && this.applyPerspectives()
+    }
+
+    /**
      * @summary The content identity of a projected list: what the drawer renders from, and nothing
      * else — a reference change without a content change is a no-op.
      * @param {Object|null} list
@@ -171,22 +193,22 @@ class PerspectivesPane extends Container {
      */
     projectionIdentity(list) {
         return JSON.stringify({
-            active: list?.activeLayoutId ?? null,
-            note  : list?.captureNote ?? null,
-            items : (Array.isArray(list?.items) ? list.items : []).map(item => [item.layoutId, item.perspectiveName, item.title, item.captureScope])
+            note : list?.captureNote ?? null,
+            items: (Array.isArray(list?.items) ? list.items : []).map(item => [item.layoutId, item.perspectiveName, item.title, item.captureScope])
         })
     }
 
     /**
-     * @summary Project the list into the meta line and the cards — in place. The capture verdict,
-     * when the projection carries one, is named on the meta line rather than flashed and lost.
+     * @summary Project the list into the meta line and the cards — in place. The live card is the
+     * one carrying the engine's committed name; the capture verdict, when the projection carries
+     * one, is named on the meta line rather than flashed and lost.
      */
     applyPerspectives() {
         const
             me       = this,
             list     = me.perspectives,
             items    = Array.isArray(list?.items) ? list.items : [],
-            active   = items.find(item => item.layoutId === list?.activeLayoutId) ?? null,
+            active   = items.find(item => item.layoutId === me.activePerspective) ?? null,
             note     = list?.captureNote ?? null,
             metaEl   = me.getReference('perspectives-meta'),
             target   = me.getReference('perspectives-rows');

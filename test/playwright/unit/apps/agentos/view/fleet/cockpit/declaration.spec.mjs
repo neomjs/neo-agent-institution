@@ -55,13 +55,13 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
         Neo.apps = {}
     });
 
-    test('the declaration lowers to the shipped document node-for-node: ids, sizes, the resizable right edge, active items, auto-hidden records', () => {
-        const {panes, zones} = cockpit;
+    test('the Overview declaration lowers to the shipped document node-for-node: ids, sizes, the resizable right edge, active items, auto-hidden records', () => {
+        const {panes, perspectives} = cockpit;
 
         expect(panes, 'the cockpit declares its panes').toBeTruthy();
-        expect(zones, 'the cockpit declares its zones').toBeTruthy();
+        expect(Object.keys(perspectives), 'the cockpit declares its duties as perspectives').toEqual(['Overview', 'Focus', 'Review']);
 
-        const {document, errors} = Authoring.fromZones(panes, zones);
+        const {document, errors} = Authoring.fromZones(panes, perspectives.Overview);
 
         expect(errors).toEqual([]);
         expect(document).toEqual(SHIPPED);
@@ -97,13 +97,13 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
 
         expect(pane, 'the revealed inspector is projected').toBeTruthy();
 
-        // Review pins the inspector open: the switch re-trees the same instance
-        expect(cockpit.activatePerspective('Review').errors).toEqual([]);
+        // Review docks the inspector as a column: the switch re-trees the same instance
+        expect((await cockpit.activatePerspective('Review')).errors).toEqual([]);
         await cockpit.refreshPromise;
         expect(cockpit.getReference('agent-detail')).toBe(pane);
 
         // Overview auto-hides it again: parked — alive and registered, not projected
-        expect(cockpit.activatePerspective('Overview').errors).toEqual([]);
+        expect((await cockpit.activatePerspective('Overview')).errors).toEqual([]);
         await cockpit.refreshPromise;
         expect(pane.isDestroyed, 'parked, not retired').toBeFalsy();
         expect(Neo.get(pane.id)).toBe(pane);
@@ -115,12 +115,14 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
 });
 
 /**
- * The built-in presets derive from the AUTHORED declaration, never from the active document: the
- * engine lets a supplied `dockModel` (a restored perspective, a vessel host) win over `zones` and
- * keeps it active — Overview / Focus / Review stay variants of `panes` + `zones` regardless, so a
- * supplied document with a pane closed still boots, and a supplied resize never becomes the seed.
+ * The duties are DECLARED perspectives the engine captures at construction, never the active
+ * document: the engine lets a supplied `dockModel` (a restored perspective, a vessel host) win over
+ * the declaration and keeps it active — Overview / Focus / Review stay lowered from `panes` + their
+ * zones regardless, so a supplied document with a pane closed still boots, and a supplied resize
+ * never becomes the seed. Selection is the engine's `activePerspective` write, and the bar and the
+ * drawer follow its published `dock.perspective.active`.
  */
-test.describe('AgentOS.view.fleet.cockpit.Container — the presets derive from the declaration; a supplied document stays active', () => {
+test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared perspectives; a supplied document stays active', () => {
     const
         create         = config => Neo.create(FleetCockpit, {
             stateProvider: {
@@ -133,7 +135,8 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the presets derive from 
             },
             ...config
         }),
-        presetDocument = (cockpit, name) => cockpit.perspectiveStore.getPerspective(name).layout.dockZone;
+        presetDocument = (cockpit, name) => cockpit.perspectiveSelection.document(name),
+        pressed        = cockpit => ['overview', 'focus', 'review'].map(id => cockpit.getReference(`fleet-preset-${id}`).pressed);
 
     let cockpit;
 
@@ -143,12 +146,72 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the presets derive from 
         Neo.apps = {}
     });
 
-    test('default boot: the presets are the shipped variants of the declaration', () => {
+    test('default boot: the duties are the shipped variants of the declaration, Review a center column', () => {
         cockpit = create();
 
         expect(presetDocument(cockpit, 'Overview')).toEqual(SHIPPED);
         expect(presetDocument(cockpit, 'Focus').nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
-        expect(presetDocument(cockpit, 'Review').items.detail.autoHidden).toBe(false)
+
+        const review = presetDocument(cockpit, 'Review');
+
+        expect(review.nodes['primary-split'].sizes).toEqual([0.45, 0.55]);
+        expect(WorkspaceDocument.findContainingTabsId(review, 'detail'), 'Review docks the inspector as a center column').toBe('detail-tabs');
+        expect(review.nodes['review-split']).toMatchObject({type: 'split', orientation: 'horizontal', sizes: [0.75, 0.25], children: ['primary-split', 'detail-tabs']});
+        expect(review.nodes['secondary-rail'].items, 'the band keeps the three tools').toEqual(['perspectives', 'defineAgent', 'wakeRoutes']);
+        expect(WorkspaceDocument.validate(review)).toEqual([]);
+        // the placement decides, not the shared autoHidden flag
+        expect(cockpit.isInspectorRevealed(review), 'a center member reveals the inspector').toBe(true);
+        expect(cockpit.isInspectorRevealed(presetDocument(cockpit, 'Overview')), 'a railed member does not').toBe(false)
+    });
+
+    test('the bar and the drawer follow the engine\'s published name: boot presses Overview, a settled switch presses Focus, the library never enters it', async () => {
+        cockpit = create();
+
+        const provider = cockpit.getStateProvider();
+
+        expect(provider.getData('dock.perspective.active')).toBe('Overview');
+        expect(pressed(cockpit)).toEqual([true, false, false]);
+        expect(provider.data.perspectives.items.map(item => item.layoutId), 'the duties lead the projected list').toEqual(['Overview', 'Focus', 'Review']);
+
+        expect(await cockpit.activatePerspective('Focus')).toEqual({errors: [], switched: true});
+
+        expect(provider.getData('dock.perspective.active')).toBe('Focus');
+        expect(provider.getData('dock.perspective.pending')).toBeNull();
+        expect(cockpit.dockModel.nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
+        expect(pressed(cockpit)).toEqual([false, true, false]);
+        expect(cockpit.perspectiveStore.collection.activeLayoutId, 'the library is not the selection').toBeNull()
+    });
+
+    test('an unknown name is refused: the committed name, the document and the bar stay, the refusal renders', async () => {
+        cockpit = create();
+
+        const before  = JSON.stringify(cockpit.dockModel),
+              verdict = await cockpit.activatePerspective('Ghost');
+
+        expect(verdict.switched).toBe(false);
+        expect(verdict.errors.join(' ')).toContain('Ghost');
+        expect(cockpit.presetError).toContain('Ghost');
+        expect(cockpit.activePerspective).toBe('Overview');
+        expect(JSON.stringify(cockpit.dockModel)).toBe(before);
+        expect(pressed(cockpit)).toEqual([true, false, false])
+    });
+
+    test('re-applying the active duty resets its arrangement: a resized split returns to the declaration and modified clears', async () => {
+        cockpit = create();
+
+        const provider = cockpit.getStateProvider();
+
+        cockpit.onDockZoneDocumentChange(cockpit.applyDockZoneOperation({operation: 'resizeSplit', splitNodeId: 'primary-split', sizes: [0.2, 0.8]}).document);
+        await cockpit.refreshPromise;
+
+        expect(cockpit.dockModel.nodes['primary-split'].sizes).toEqual([0.2, 0.8]);
+        expect(provider.getData('dock.perspective.modified')).toBe(true);
+        expect(provider.getData('dock.perspective.active'), 'a resize keeps the committed name').toBe('Overview');
+
+        expect(await cockpit.activatePerspective('Overview')).toEqual({errors: [], switched: true});
+
+        expect(cockpit.dockModel.nodes['primary-split'].sizes).toEqual([0.6078, 0.3922]);
+        expect(provider.getData('dock.perspective.modified')).toBe(false)
     });
 
     test('a supplied document with the inspector closed boots, stays active, and leaves the presets untouched', () => {
@@ -161,7 +224,7 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the presets derive from 
 
         expect(cockpit.dockModel.items.detail, 'the supplied document wins over zones and stays active').toBeUndefined();
         expect(presetDocument(cockpit, 'Overview'), 'Overview is the declaration, not the supplied state').toEqual(SHIPPED);
-        expect(presetDocument(cockpit, 'Review').items.detail.autoHidden, 'Review still opens the inspector').toBe(false)
+        expect(WorkspaceDocument.findContainingTabsId(presetDocument(cockpit, 'Review'), 'detail'), 'Review still docks the inspector').toBe('detail-tabs')
     });
 
     test('a supplied resize stays active and never rewrites Overview\'s seed', () => {
