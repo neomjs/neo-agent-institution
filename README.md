@@ -146,12 +146,13 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e:nl
 
 The script reaches every Neural Link witness under `test/playwright/e2e/agentos/` — a suffix
 match, not a prefix, so a new witness joins the battery by its name, and a red one announces
-itself instead of falling outside the glob. Add `-- --headed` for the honest receipt. One red is
-stated, not masked, and it has an owner: `FleetCockpitDockNL`'s Review-preset arm, the FLIP-settle
-hold (#103) — the projection stages the detail pane and un-hides it on the settle, which does not
-always land within the wait (red 3/3 while pinning the current Engine, headless and headed; 34/34
-green one run later on the same Engine; the rail-drawer witness's Escape dismissal rides the same
-settle). A red there is the race, not the battery: re-run before triage. `FleetGridKeyboardA11y`'s
+itself instead of falling outside the glob. Add `-- --headed` for the honest receipt. The battery's
+one long-standing red has closed: `FleetCockpitDockNL`'s Review-preset arm, the FLIP-settle hold
+(#103) — the projection staged the detail pane in the right band and un-hid it on the settle, which
+did not always land within the wait — is green headless and headed at engine pin `7e8b32e421`, since
+Review docks the inspector as a center column (#133), a real split child rather than a revealed rail
+member; the engine half of the settle was neomjs/neo#18297. A red there is a regression to triage,
+not a race to re-run. `FleetGridKeyboardA11y`'s
 reorder step went green with #99 — cards and list items key by record, so a joiner sorting ahead
 moves the focused node instead of replacing it (the Engine of #98 sorts a joiner by its tier, which
 is what exposed the positional ids). `FleetGridScaleNL` went green with #98 — the Engine writes its
