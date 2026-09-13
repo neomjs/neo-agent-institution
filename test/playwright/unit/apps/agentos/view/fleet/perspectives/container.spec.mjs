@@ -13,7 +13,7 @@ import Neo                 from '../../../../../../../../node_modules/neo.mjs/sr
 import * as core           from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import Instance            from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {resolveCallback}   from '../../../../../../../../node_modules/neo.mjs/src/util/Function.mjs';
-import CockpitPresets      from '../../../../../../../../apps/agentos/util/CockpitPresets.mjs';
+import CockpitPerspectives from '../../../../../../../../apps/agentos/util/CockpitPerspectives.mjs';
 import {shippedDockDocument} from '../cockpit/shippedDockDocument.mjs';
 import PerspectivesPane    from '../../../../../../../../apps/agentos/view/fleet/perspectives/Container.mjs';
 
@@ -24,14 +24,11 @@ import PerspectivesPane    from '../../../../../../../../apps/agentos/view/fleet
  * layout. The rendered drawer (rail reveal, both themes) is read by eye on the running cockpit.
  */
 
-const projected = (activeLayoutId = 'overview', captureNote = null) => ({
-    activeLayoutId,
+// the list the cockpit publishes: the declared duties as rows (`captureScope` null); which one is
+// live is the engine's own leaf, bound into the pane as `activePerspective`
+const projected = (captureNote = null) => ({
     captureNote,
-    items: [
-        {layoutId: 'overview', perspectiveName: 'Overview', title: 'Overview — mission control', captureScope: 'window'},
-        {layoutId: 'focus',    perspectiveName: 'Focus',    title: 'Focus — roster dominant',    captureScope: 'window'},
-        {layoutId: 'review',   perspectiveName: 'Review',   title: 'Review — one agent + the trail', captureScope: 'window'}
-    ]
+    items: CockpitPerspectives.rows()
 });
 
 const cardsOf = pane => pane.getReference('perspectives-rows').items;
@@ -54,7 +51,7 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
     });
 
     test('a projected list renders one card per perspective, marks the live one and names it in the meta', () => {
-        pane = Neo.create(PerspectivesPane, {appName, perspectives: projected('focus')});
+        pane = Neo.create(PerspectivesPane, {appName, activePerspective: 'Focus', perspectives: projected()});
 
         const cards = cardsOf(pane);
 
@@ -76,11 +73,13 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
     });
 
     test('a re-projection moves the cards in place — object permanence: the instances survive, the marker and the verbs move, a new perspective inserts, a departed one removes', () => {
-        pane = Neo.create(PerspectivesPane, {appName, perspectives: projected('overview')});
+        pane = Neo.create(PerspectivesPane, {appName, activePerspective: 'Overview', perspectives: projected()});
 
         const before = cardsOf(pane).slice();
 
-        pane.perspectives = projected('review', 'captured "triage" — apply it from its card');
+        // the engine committed another duty: the marker moves on the bound leaf alone
+        pane.activePerspective = 'Review';
+        pane.perspectives      = projected('captured "triage" — apply it from its card');
 
         const cards = cardsOf(pane);
 
@@ -94,7 +93,7 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
         expect(pane.getReference('perspectives-meta').text).toBe('3 layouts · Review active · captured "triage" — apply it from its card');
 
         // a capture joins as a FOURTH card; the three keep their instances
-        const grown = projected('review');
+        const grown = projected();
 
         grown.items.push({layoutId: 'capture-triage', perspectiveName: 'Triage', title: 'Triage', captureScope: 'window'});
         pane.perspectives = grown;
@@ -106,7 +105,7 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
         expect(cardsOf(pane)[3].items[1].presetName).toBe('Triage');
 
         // a departed perspective removes its card; the rest keep their instances
-        pane.perspectives = projected('review');
+        pane.perspectives = projected();
 
         expect(cardsOf(pane)).toHaveLength(3);
         expect(cardsOf(pane).every((card, index) => card === before[index])).toBe(true);
@@ -115,17 +114,17 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
         // provider that re-hands the list on every leaf touch can never re-enter the projection
         const rowsBefore = cardsOf(pane);
 
-        pane.perspectives = projected('review', 'captured "triage" — apply it from its card');
+        pane.perspectives = projected('captured "triage" — apply it from its card');
 
         expect(cardsOf(pane)[0], 'a reference-only change re-renders nothing').toBe(rowsBefore[0]);
 
-        pane.perspectives = projected('review', 'capture refused: "Overview" is already held by Overview — mission control');
+        pane.perspectives = projected('capture refused: "Overview" is a declared perspective — a capture needs its own name');
 
-        expect(pane.getReference('perspectives-meta').text).toContain('capture refused: "Overview" is already held by Overview — mission control')
+        expect(pane.getReference('perspectives-meta').text).toContain('capture refused: "Overview" is a declared perspective — a capture needs its own name')
     });
 
     test('the verbs fire intent only: apply names the card, capture names the typed layout and arms with it', () => {
-        pane = Neo.create(PerspectivesPane, {appName, perspectives: projected('overview')});
+        pane = Neo.create(PerspectivesPane, {appName, activePerspective: 'Overview', perspectives: projected()});
 
         const fired = [];
 
@@ -173,9 +172,9 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
     });
 });
 
-test.describe('AgentOS.util.CockpitPresets.captureSavedLayout — the live document as a named saved layout', () => {
+test.describe('AgentOS.util.CockpitPerspectives.captureSavedLayout — the live document as a named saved layout', () => {
     test('a named capture wraps the document under the folded name, titled by the name, stamped as a capture', () => {
-        const {layout, errors} = CockpitPresets.captureSavedLayout(shippedDockDocument(),'  Triage view ');
+        const {layout, errors} = CockpitPerspectives.captureSavedLayout(shippedDockDocument(),'  Triage view ');
 
         expect(errors).toEqual([]);
         expect(layout.layoutId, 'the capture prefix keeps the id off the shipped presets').toBe('capture-triage-view');
@@ -187,7 +186,7 @@ test.describe('AgentOS.util.CockpitPresets.captureSavedLayout — the live docum
 
     test('an empty name is refused before the wrapper sees the document', () => {
         for (const name of ['', '   ', null, undefined]) {
-            const {layout, errors} = CockpitPresets.captureSavedLayout(shippedDockDocument(),name);
+            const {layout, errors} = CockpitPerspectives.captureSavedLayout(shippedDockDocument(),name);
 
             expect(layout).toBeNull();
             expect(errors).toEqual(['a perspective needs a name'])
@@ -195,10 +194,17 @@ test.describe('AgentOS.util.CockpitPresets.captureSavedLayout — the live docum
     });
 
     test('a name of nothing but punctuation still gets an addressable id', () => {
-        const {layout, errors} = CockpitPresets.captureSavedLayout(shippedDockDocument(),'***');
+        const {layout, errors} = CockpitPerspectives.captureSavedLayout(shippedDockDocument(),'***');
 
         expect(errors).toEqual([]);
         expect(layout.layoutId).toBe('capture-layout');
         expect(layout.perspectiveName).toBe('***')
+    });
+
+    test('a reserved name — a declared duty — is refused before the document is read', () => {
+        const {layout, errors} = CockpitPerspectives.captureSavedLayout(null, ' Overview ', Object.keys(CockpitPerspectives.declare()));
+
+        expect(layout).toBeNull();
+        expect(errors).toEqual(['"Overview" is a declared perspective — a capture needs its own name'])
     });
 });

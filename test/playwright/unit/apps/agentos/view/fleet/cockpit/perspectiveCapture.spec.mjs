@@ -43,64 +43,71 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         cockpit = null
     });
 
-    test('boot projects the three shipped presets with Overview active', async () => {
+    test('boot projects the three declared duties ahead of an empty capture library; the live row is the engine\'s own leaf', async () => {
         cockpit = createCockpit();
         await cockpit.refreshPromise;
 
         const list = projected(cockpit);
 
-        expect(list.items.map(item => item.layoutId)).toEqual(['overview', 'focus', 'review']);
-        expect(list.items.map(item => item.perspectiveName)).toEqual(['Overview', 'Focus', 'Review']);
-        expect(list.activeLayoutId).toBe('overview');
-        expect(list.captureNote).toBeNull()
+        expect(list.items.map(item => item.layoutId)).toEqual(['Overview', 'Focus', 'Review']);
+        expect(list.items.map(item => item.captureScope), 'the duties are declared rows, not captures').toEqual([null, null, null]);
+        expect(list.captureNote).toBeNull();
+        expect(cockpit.perspectiveStore.list(), 'the capture library starts empty').toEqual([]);
+        // seeded by the Workspace onto the cockpit's own provider — the bar and the drawer bind it
+        expect(cockpit.getStateProvider().getData('dock.perspective.active')).toBe('Overview');
+        expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(true)
     });
 
-    test('capture files the live layout under the name, seats its preset button and projects the verdict — filed, never activated', async () => {
+    test('capture files the live layout under the name and projects the verdict — filed, never activated, and never a bar button', async () => {
         cockpit = createCockpit();
         await cockpit.refreshPromise;
 
         const verdict = cockpit.getController().onPerspectiveRequest({action: 'capture', name: 'Triage'});
 
         expect(verdict).toEqual({saved: true, layoutId: 'capture-triage', name: 'Triage', errors: []});
-        expect(cockpit.perspectiveStore.list().map(item => item.layoutId)).toEqual(['overview', 'focus', 'review', 'capture-triage']);
+        expect(cockpit.perspectiveStore.list().map(item => item.layoutId)).toEqual(['capture-triage']);
         // activating would restore the capture as a new document, and a perspective restore
         // releases every open reveal — the drawer would close on its own verdict; the live layout
-        // already IS this document, so the store's active pointer stays where it was
-        expect(cockpit.perspectiveStore.collection.activeLayoutId, 'a capture is filed, not restored').toBe('overview');
+        // already IS this document, so the engine's committed name stays where it was
+        expect(cockpit.getStateProvider().getData('dock.perspective.active'), 'a capture is filed, not restored').toBe('Overview');
 
         const list = projected(cockpit);
 
         expect(list.items.map(item => item.perspectiveName)).toEqual(['Overview', 'Focus', 'Review', 'Triage']);
-        expect(list.activeLayoutId).toBe('overview');
         expect(list.captureNote).toBe('captured "Triage" — apply it from its card');
 
-        const button = cockpit.getReference('fleet-preset-capture-triage');
-
-        expect(button, 'the capture joins the preset switcher').toBeTruthy();
-        expect(button.text).toBe('Triage');
-        expect(button.pressed, 'seated, not pressed — Apply is the switch').toBe(false);
+        // the bar carries the declared duties only — a capture is applied from its card
+        expect(cockpit.getReference('fleet-preset-capture-triage')).toBeFalsy();
         expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(true)
     });
 
-    test('a held name is refused with the library\'s collision verdict — nothing replaced, the refusal projected', async () => {
+    test('a duty\'s name is refused by the wrapper — nothing filed, the refusal projected; a re-capture under a held name updates that capture in place', async () => {
         cockpit = createCockpit();
         await cockpit.refreshPromise;
 
         const verdict = cockpit.getController().onPerspectiveRequest({action: 'capture', name: 'Overview'});
 
-        // a capture's id carries the `capture-` prefix, so the preset's OWN id never absorbs it:
-        // the library sees a different record claiming a held name and refuses
+        // a duty is not a library record: the refusal comes before the document is read
         expect(verdict.saved).toBe(false);
         expect(verdict.layoutId).toBeNull();
-        expect(verdict.name).toBe('Overview');
-        expect(verdict.errors).toEqual(['"Overview" is already held by Overview — mission control']);
-        expect(cockpit.perspectiveStore.list()).toHaveLength(3);
-        expect(cockpit.perspectiveStore.getPerspective('Overview').layout.metadata.source, 'the shipped preset is untouched').toBe('fm-cockpit-presets');
+        expect(verdict.errors).toEqual(['"Overview" is a declared perspective — a capture needs its own name']);
+        expect(cockpit.perspectiveStore.list(), 'nothing filed').toEqual([]);
+        expect(projected(cockpit).captureNote).toBe('capture refused: "Overview" is a declared perspective — a capture needs its own name');
 
-        const list = projected(cockpit);
+        // a re-capture under a held name folds to the SAME id, and the library's own-id update
+        // flow replaces the record in place — one capture, the latest document, never two rows
+        // answering to one name (the collision verdict guards a FOREIGN id holding the name: an
+        // imported artifact's)
+        expect(cockpit.getController().onPerspectiveRequest({action: 'capture', name: 'Triage'}).saved).toBe(true);
 
-        expect(list.captureNote).toBe('capture refused: "Overview" is already held by Overview — mission control');
-        expect(list.activeLayoutId).toBe('overview')
+        cockpit.onDockZoneDocumentChange(cockpit.applyDockZoneOperation({operation: 'resizeSplit', splitNodeId: 'primary-split', sizes: [0.2, 0.8]}).document);
+
+        const again = cockpit.getController().onPerspectiveRequest({action: 'capture', name: 'Triage'});
+
+        expect(again).toEqual({saved: true, layoutId: 'capture-triage', name: 'Triage', errors: []});
+        expect(cockpit.perspectiveStore.list()).toHaveLength(1);
+        expect(cockpit.perspectiveStore.getPerspective('Triage').layout.dockZone.nodes['primary-split'].sizes, 'the latest document').toEqual([0.2, 0.8]);
+        expect(projected(cockpit).captureNote).toBe('captured "Triage" — apply it from its card')
     });
 
     test('a capture that throws inside the library still projects a verdict — never a silent nothing', async () => {
@@ -117,7 +124,7 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
 
             expect(verdict).toEqual({saved: false, layoutId: null, name: 'Triage', errors: ['capture failed: collection storage refused']});
             expect(projected(cockpit).captureNote).toBe('capture refused: capture failed: collection storage refused');
-            expect(cockpit.perspectiveStore.list()).toHaveLength(3)
+            expect(cockpit.perspectiveStore.list()).toHaveLength(0)
         } finally {
             console.error = originalError
         }
@@ -130,29 +137,29 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         const verdict = cockpit.getController().onPerspectiveRequest({action: 'capture', name: '   '});
 
         expect(verdict).toEqual({saved: false, layoutId: null, name: null, errors: ['a perspective needs a name']});
-        expect(cockpit.perspectiveStore.list()).toHaveLength(3)
+        expect(cockpit.perspectiveStore.list()).toHaveLength(0)
     });
 
-    test('apply switches through the preset path: the store activates the layout and the switcher presses its button', async () => {
+    test('apply on a declared duty is the engine\'s activePerspective write: the document commits and the name publishes synchronously, the request stays pending until the refresh settles', async () => {
         cockpit = createCockpit();
         await cockpit.refreshPromise;
 
-        const verdict = cockpit.getController().onPerspectiveRequest({action: 'apply', name: 'Focus'});
+        const provider = cockpit.getStateProvider(),
+              settled  = cockpit.getController().onPerspectiveRequest({action: 'apply', name: 'Focus'});
 
-        expect(verdict).toEqual({errors: [], switched: true});
-        expect(cockpit.perspectiveStore.collection.activeLayoutId).toBe('focus');
-
-        // The switch's refresh does not settle in this harness (no main thread lands the
-        // re-projection, so neither refresh hook runs), and the SETTLED-refresh republish —
-        // `afterRefreshDockWorkspace` → `publishPerspectives` — is the running cockpit's witness:
-        // the drawer re-projects the new active layout after a switch there. What the harness CAN
-        // pin is the projection itself: one publish over the switched store reaches the list the
-        // drawer binds to, and the control bar's reconcile presses the switched preset.
-        cockpit.publishPerspectives();
-        cockpit.syncControlBar();
-
-        expect(projected(cockpit).activeLayoutId).toBe('focus');
+        // Like every dock commit: stored and published synchronously, re-projected deferred. The
+        // switch's refresh does not settle in this harness (no main thread lands the
+        // re-projection), so the settled verdict and the cleared request are the declaration
+        // spec's witness over a settling cockpit; what this harness CAN pin is the write and the
+        // publication — and the bar following the published name with no reconcile.
+        expect(settled).toBeInstanceOf(Promise);
+        expect(cockpit.activePerspective).toBe('Focus');
+        expect(cockpit.dockModel.nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
+        expect(provider.getData('dock.perspective.active')).toBe('Focus');
+        expect(provider.getData('dock.perspective.modified')).toBe(false);
+        expect(provider.getData('dock.perspective.pending'), 'the request clears with the refresh, which never lands here').toBe('Focus');
+        expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(false);
         expect(cockpit.getReference('fleet-preset-focus').pressed).toBe(true);
-        expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(false)
+        expect(cockpit.perspectiveStore.collection.activeLayoutId, 'the library is not the selection').toBeNull()
     });
 });

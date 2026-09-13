@@ -21,8 +21,8 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
 
 /**
  * @summary The cockpit's state scope — every truth more than one surface reads lives here, so the
- * surfaces BIND instead of being synced (the operator's partial-provider ruling on #50: shared
- * render state moves to the provider; per-pane snapshots stay controller state).
+ * surfaces BIND instead of being synced: shared render state is provider data; per-pane snapshots
+ * stay controller state.
  *
  * The provider hosts three kinds of truth:
  * - **stores** — the roster (autoloaded from the honestly-labelled sample seed), the activity
@@ -97,14 +97,15 @@ class StateProvider extends Provider {
              */
             gridDegradedReason: null,
             /**
-             * The cockpit's projected perspective list — every saved layout (the shipped presets
-             * plus captures), the active one, and the latest capture verdict — written by the
-             * cockpit's `publishPerspectives`; the perspectives drawer binds to it. Empty `items`
+             * The cockpit's projected perspective list — the declared duties, then every capture,
+             * and the latest capture verdict — written by the cockpit's `publishPerspectives`; the
+             * perspectives drawer binds to it. Which row is live is the engine's own leaf
+             * (`dock.perspective.active`, seeded by the Workspace), not this list. Empty `items`
              * means "not projected yet", never "no layouts"; `captureNote` is the latest capture
              * verdict as one sentence (a string leaf — nested objects drill into leaf paths here).
-             * @member {Object} perspectives={activeLayoutId:null,captureNote:null,items:[]}
+             * @member {Object} perspectives={captureNote:null,items:[]}
              */
-            perspectives: {activeLayoutId: null, captureNote: null, items: []},
+            perspectives: {captureNote: null, items: []},
             /**
              * The presence-capability envelope riding every admitted roster snapshot — the grid's
              * chip names a degraded producer and clears on recovery; `null` claims nothing.

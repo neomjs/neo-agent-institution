@@ -13,6 +13,7 @@ setup({
 import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import                     '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {declaredPanes, shippedDockDocument} from './shippedDockDocument.mjs';
 
 /**
@@ -48,16 +49,26 @@ const declaredDockConfigs = (cls, stopAt) => {
 };
 
 /**
- * The three spy-host facts that are fixture identity, not Engine contract: the projection stamps
+ * The spy-host facts that are fixture identity, not Engine contract: the projection stamps
  * the workspace `id` as the cross-zone motion boundary, the refresh awaits a mount only for
  * an unmounted host — the spy owner IS its own mounted dock host — and that host holds no
  * projected shell: the per-commit sweeps the engine runs over the projected shell walk an
- * empty item list instead of the `items` config a bare prototype cannot answer.
+ * empty item list instead of the `items` config a bare prototype cannot answer. The same goes
+ * for the declaration the engine's post-commit publication reads (`PerspectiveState.read`:
+ * `perspectives`, `panes`, `zones`, `activePerspective`, the selection owner, the provider):
+ * a bare prototype declares nothing, so every switch here is the snapshot path and nothing is
+ * published.
  */
 const spyHostIdentity = {
-    id     : 'fleet-cockpit-spy-host',
-    items  : [],
-    mounted: true
+    id                  : 'fleet-cockpit-spy-host',
+    items               : [],
+    mounted             : true,
+    activePerspective   : null,
+    panes               : null,
+    perspectiveSelection: null,
+    perspectives        : null,
+    stateProvider       : null,
+    zones               : null
 };
 
 /**
@@ -452,19 +463,35 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
 });
 
 /**
- * Covers the perspective presets — named workspace-scope layouts switching the committed
- * document through the SAME commit loop every other dock gesture uses. The units: the seeded
- * library validates and adopts, a switch restores fail-closed and commits deferred, pane
- * continuity is STATE continuity (owner-held fields and the preset library untouched by a
- * switch), a refused switch renders visibly with the live layout byte-untouched, and the
- * control bar derives from store state.
+ * Covers the SNAPSHOT half of perspective switching on a spy host — a stored capture restoring
+ * through the library's fail-closed path and the SAME commit loop every other dock gesture uses.
+ * The host has no engine selection owner, so every switch here takes that path; the declared
+ * duties (the `activePerspective` write, the bound bar) are the declaration spec's witness over a
+ * real cockpit. The units: the empty capture library validates, three spec snapshots stand in for
+ * the duties, a switch restores fail-closed and commits deferred, pane continuity is STATE
+ * continuity (owner-held fields and the library untouched by a switch), a refused switch renders
+ * visibly with the live layout byte-untouched, and a control-bar sync never touches the buttons.
  */
-test.describe('Fleet cockpit — perspective presets (the switch through the commit loop)', () => {
-    let PerspectiveLibrary, Persistence, WorkspaceDocument, Workspace, FleetCockpit, FleetCockpitController, CockpitDockDocument, CockpitPresets, Neo;
+test.describe('Fleet cockpit — perspective snapshots (the switch through the commit loop)', () => {
+    let PerspectiveLibrary, Persistence, WorkspaceDocument, Workspace, FleetCockpit, FleetCockpitController, CockpitDockDocument, CockpitPerspectives, Neo;
+
+    // three captures named like the duties, so the arms below read as the duties they stand in for
+    const snapshotCollection = () => {
+        const overview = shippedDockDocument(), focus = shippedDockDocument(), review = shippedDockDocument();
+
+        focus.nodes['primary-split'].sizes  = [0.85, 0.15];
+        review.nodes['primary-split'].sizes = [0.45, 0.55];
+        review.items.detail.autoHidden      = false;
+
+        const layouts = [['overview', 'Overview', overview], ['focus', 'Focus', focus], ['review', 'Review', review]]
+            .map(([layoutId, perspectiveName, document]) => Persistence.createSavedLayout(document, {layoutId, perspectiveName, title: perspectiveName, metadata: {source: 'spec-snapshot'}}).layout);
+
+        return PerspectiveLibrary.createSavedLayoutCollection(layouts, {activeLayoutId: 'overview', metadata: {owner: 'spec'}}).collection
+    };
 
     const makePresetHost = async (overrides = {}) => {
         const
-            store = Neo.create(PerspectiveLibrary, {collection: CockpitPresets.create(shippedDockDocument())}),
+            store = Neo.create(PerspectiveLibrary, {collection: snapshotCollection()}),
             host  = Object.create(FleetCockpit.prototype),
             // the cold controller surface, roster resolving through the host's provider seat as
             // the real controller does (the Review-switch default-selection path reads it)
@@ -535,14 +562,21 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         Workspace               = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs')).default;
         FleetCockpit            = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
         FleetCockpitController  = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
-        CockpitPresets          = (await import('../../../../../../../../apps/agentos/util/CockpitPresets.mjs')).default
+        CockpitPerspectives     = (await import('../../../../../../../../apps/agentos/util/CockpitPerspectives.mjs')).default
     });
 
-    test('the seeded library validates whole and lists the three duty presets, Overview active', () => {
-        const collection = CockpitPresets.create(shippedDockDocument());
+    test('the empty capture library validates whole and lists nothing; the spec snapshots validate too', () => {
+        const empty      = CockpitPerspectives.emptyCollection(),
+              emptyStore = Neo.create(PerspectiveLibrary, {collection: empty});
+
+        expect(PerspectiveLibrary.validateSavedLayoutCollection(empty)).toEqual([]);
+        expect(empty.activeLayoutId).toBeNull();
+        expect(emptyStore.list()).toEqual([]);
+        emptyStore.destroy();
+
+        const collection = snapshotCollection();
 
         expect(PerspectiveLibrary.validateSavedLayoutCollection(collection)).toEqual([]);
-        expect(collection.activeLayoutId).toBe('overview');
 
         const store = Neo.create(PerspectiveLibrary, {collection});
 
@@ -550,28 +584,68 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         store.destroy()
     });
 
-    test('a switch restores the preset document through the standard commit loop — stored synchronously, re-projected deferred', async () => {
+    test('a snapshot switch restores the stored document through the standard commit loop — stored synchronously, re-projected deferred', async () => {
         let refreshed = 0;
 
         const host = await makePresetHost({refreshDockWorkspace() { refreshed++ }});
 
-        const verdict = FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
+        // the snapshot path commits synchronously; the settled verdict follows
+        const pending = FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
 
-        expect(verdict).toEqual({errors: [], switched: true});
-        expect(host.presetError).toBeNull();
         // the restored document is the live SSOT immediately, with Focus geometry
         expect(host.dockModel.nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
-        // the preset library tracks the active record
+        // the library tracks the active record
         expect(host.perspectiveStore.collection.activeLayoutId).toBe('focus');
         // deferred view-sync, same as every commit
         expect(refreshed).toBe(0);
+        expect(await pending).toEqual({errors: [], switched: true});
+        expect(host.presetError).toBeNull();
         await host.refreshPromise;
         expect(refreshed).toBe(1);
 
-        // Review opens the detail band and leans the split toward the trail
-        FleetCockpit.prototype.activatePerspective.call(host, 'Review');
+        // the Review snapshot opens the detail band and leans the split toward the trail
+        await FleetCockpit.prototype.activatePerspective.call(host, 'Review');
         expect(host.dockModel.nodes['primary-split'].sizes).toEqual([0.45, 0.55]);
         expect(host.dockModel.items.detail.autoHidden).toBe(false);
+
+        host.perspectiveStore.destroy()
+    });
+
+    test('a capture switch settles with its projection: no verdict while the refresh is held, the success once it lands', async () => {
+        let release, verdict = null;
+
+        const held = new Promise(resolve => { release = resolve }),
+              host = await makePresetHost({refreshDockWorkspace() { return held }});
+
+        const pending = FleetCockpit.prototype.activatePerspective.call(host, 'Focus').then(result => verdict = result);
+
+        // the document commits synchronously; the verdict waits for the projection
+        expect(host.dockModel.nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
+        await host.timeout(20);
+        expect(verdict, 'no success while the projection is outstanding').toBeNull();
+
+        release();
+        await pending;
+        expect(verdict).toEqual({errors: [], switched: true});
+
+        host.perspectiveStore.destroy()
+    });
+
+    test('a capture switch whose projection rejects is a refusal: the verdict carries the reason, the bar re-renders it, the commit itself stood', async () => {
+        let synced = 0;
+
+        const host = await makePresetHost({
+            refreshDockWorkspace() { return Promise.reject(new Error('shell adoption refused')) },
+            syncControlBar() { synced++ }
+        });
+
+        const verdict = await FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
+
+        expect(verdict).toEqual({errors: ['shell adoption refused'], switched: false});
+        expect(host.presetError).toBe('Focus: shell adoption refused');
+        expect(synced).toBe(1);
+        // the reducer wrote the document before the projection ran — a failed shell is not a rolled-back commit
+        expect(host.dockModel.nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
 
         host.perspectiveStore.destroy()
     });
@@ -585,7 +659,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
                   streamEvents      : events
               });
 
-        FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
+        await FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
 
         // the switch touched the LAYOUT SSOT only — held pane state is not its surface
         expect(host.gridAdapterState).toBe('live');
@@ -599,7 +673,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         host.perspectiveStore.destroy()
     });
 
-    test('#17451: a Review switch on a cold seat defaults the selection from the PROVIDER roster before the commit, and lands it on the live pane', async () => {
+    test('#17451: a Review switch on a cold seat defaults the selection from the PROVIDER roster before the commit — the owner config and the provider pair, ahead of the deferred re-projection', async () => {
         const record = {agentId: 'vega', githubUsername: 'neo-opus-vega'},
               sets   = [],
               detail = {record: null, set(values) { Object.assign(this, values); sets.push(values) }},
@@ -610,7 +684,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
                   refreshDockWorkspace() {}
               });
 
-        const verdict = FleetCockpit.prototype.activatePerspective.call(host, 'Review');
+        const verdict = await FleetCockpit.prototype.activatePerspective.call(host, 'Review');
 
         expect(verdict).toEqual({errors: [], switched: true});
         // held owner-side BEFORE the deferred re-projection — the materializing resolver reads it
@@ -619,8 +693,9 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
             selectedAgentId      : 'vega',
             selectedAgentIdentity: '@neo-opus-vega'
         });
-        // and the live docked/popped pane updates through the select seam's owner accessor
-        expect(sets).toEqual([{record}]);
+        // the live pane is the detailRecord hook's business on a real instance (the declaration
+        // spec's parity arms read it there); the wrapper itself writes no pane
+        expect(sets).toEqual([]);
 
         host.perspectiveStore.destroy()
     });
@@ -635,10 +710,10 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
                   refreshDockWorkspace() {}
               });
 
-        FleetCockpit.prototype.activatePerspective.call(host, 'Review');
+        await FleetCockpit.prototype.activatePerspective.call(host, 'Review');
 
         expect(host.detailRecord).toBe(prior);
-        expect(sets).toEqual([{record: prior}]);
+        expect(sets).toEqual([]);
 
         host.perspectiveStore.destroy()
     });
@@ -652,7 +727,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         });
 
         // Focus keeps the inspector rail-hidden — a valid, non-revealing switch stays selection-silent
-        FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
+        await FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
         expect(host.detailRecord).toBe(null);
 
         // the round-1 falsifier, pinned at the predicate: a VALIDATOR-CLEAN document with the
@@ -663,12 +738,12 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         doc.nodes['secondary-rail'].activeItemId = doc.nodes['secondary-rail'].items[0];
         delete doc.items.detail;
         expect(WorkspaceDocument.validate(doc)).toEqual([]);
-        expect(FleetCockpit.prototype.isInspectorRevealed.call(host, doc)).toBe(false);
+        expect(CockpitPerspectives.revealsInspector(doc)).toBe(false);
 
         host.perspectiveStore.destroy()
     });
 
-    test('the persistent control bar keeps identities while preset and refusal state change', async () => {
+    test('the persistent control bar keeps identities while refusal state changes — the preset buttons are bound, a sync never writes them', async () => {
         const
             buttons = ['overview', 'focus', 'review'].map(layoutId => ({
                 pressed  : false,
@@ -689,14 +764,14 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
             identities = [...buttons];
 
         FleetCockpit.prototype.syncControlBar.call(host);
-        expect(buttons.map(button => button.pressed)).toEqual([true, false, false]);
+        expect(buttons.map(button => button.pressed), 'pressed is the binding\'s to write, never a reconcile\'s').toEqual([false, false, false]);
 
         host.perspectiveStore.loadPerspective('Focus');
         host.presetError = 'refused visibly';
         FleetCockpit.prototype.syncControlBar.call(host);
 
         expect(buttons).toEqual(identities);
-        expect(buttons.map(button => button.pressed)).toEqual([false, true, false]);
+        expect(buttons.map(button => button.pressed)).toEqual([false, false, false]);
         expect(error).toMatchObject({hidden: false, text: 'refused visibly'});
 
         host.perspectiveStore.destroy()
@@ -708,7 +783,7 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         const host   = await makePresetHost({syncControlBar() { synced++ }}),
               before = JSON.stringify(host.dockModel);
 
-        const verdict = FleetCockpit.prototype.activatePerspective.call(host, 'ghost');
+        const verdict = await FleetCockpit.prototype.activatePerspective.call(host, 'ghost');
 
         expect(verdict.switched).toBe(false);
         expect(verdict.errors.join(' ')).toContain('no perspective named');
@@ -738,11 +813,11 @@ test.describe('Fleet cockpit — perspective presets (the switch through the com
         expect(host.perspectiveStore.savePerspective(captured.layout, {activate: false}).saved).toBe(true);
 
         // a Focus switch restores Focus's own recorded selection (the seeded first tab)...
-        FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
+        await FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
         expect(host.dockModel.nodes['stream-tabs'].activeItemId).toBe('stream');
 
         // ...and the captured perspective brings Memories back exactly — no tab-one reset
-        const verdict = FleetCockpit.prototype.activatePerspective.call(host, 'Memories open');
+        const verdict = await FleetCockpit.prototype.activatePerspective.call(host, 'Memories open');
 
         expect(verdict).toEqual({errors: [], switched: true});
         expect(host.dockModel.nodes['stream-tabs'].activeItemId).toBe('memories');

@@ -1,14 +1,13 @@
 import LivenessController          from './LivenessController.mjs';
-import CockpitPresets              from '../../../util/CockpitPresets.mjs';
+import CockpitPerspectives         from '../../../util/CockpitPerspectives.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
 
 /**
  * @summary The cockpit's intent + command layer — the surface-fired intent relays, the per-pane
- * snapshot reads and the fleet-start batch, per the #50 architecture ruling: view logic lives on
- * the controller (lifecycle-bound, first-class `this.component` access), never on a util a view
- * object gets passed into. The wire-liveness half (roster/activity/Brain-health loads, cadence,
+ * snapshot reads and the fleet-start batch. View logic lives on the controller (lifecycle-bound,
+ * first-class `this.component` access), never on a util a view object gets passed into. The wire-liveness half (roster/activity/Brain-health loads, cadence,
  * reconnect, viewer-wake custody) is the inherited
  * {@link AgentOS.view.fleet.cockpit.LivenessController} layer.
  *
@@ -326,11 +325,11 @@ class Controller extends LivenessController {
 
     /**
      * @summary Capture the live dock document as a named perspective — the drawer's capture verb.
-     * The wrapped record saves WITHOUT replacing: a name a shipped preset (or an earlier capture)
-     * holds is refused with the library's collision verdict, never silently overwritten. A saved
-     * capture is FILED, not activated: it joins the preset switcher through the view's ordinary
-     * control-bar sync and reaches the drawer through the projected list, verdict included, while
-     * the live layout stays what it is — the card's Apply is the switch.
+     * A name a declared duty holds is refused by the wrapper; a name an earlier capture holds
+     * updates that capture in place (the same folded id — the library's collision verdict guards
+     * a foreign record's name, an imported artifact's). A saved capture is FILED, not activated:
+     * it reaches the drawer through the projected list, verdict included, while the live layout
+     * stays what it is — the card's Apply is the switch.
      * @param {String} name The operator's name for the layout.
      * @returns {{saved: Boolean, layoutId: String|null, name: String|null, errors: String[]}}
      */
@@ -341,16 +340,16 @@ class Controller extends LivenessController {
         // A capture that throws is still a verdict the drawer must show — a silent failure would
         // read as "nothing happened", the one outcome a capture verb may never produce.
         try {
-            let {layout, errors} = CockpitPresets.captureSavedLayout(view.getDockZoneDocument(), name);
+            let {layout, errors} = CockpitPerspectives.captureSavedLayout(view.getDockZoneDocument(), name, Object.keys(view.perspectives ?? {}));
 
             verdict = {saved: false, layoutId: null, name: layout?.perspectiveName ?? null, errors};
 
             if (!errors.length) {
-                // Never activate here: activating restores the capture as a new document, and a
-                // perspective restore releases every open reveal — the drawer the operator is
-                // looking at would close on its own verdict (measured: the pane left the DOM 50ms
-                // after the click). The live layout already IS this document; Apply switches to it.
-                const outcome = view.perspectiveStore.savePerspective(layout, {activate: false});
+                // `activate` moves the library's pointer, nothing more: a collection invariant
+                // (a library holding records must name one), never the selection — the engine's
+                // published name is. Nothing restores here: the live layout already IS this
+                // document, and the card's Apply is the switch.
+                const outcome = view.perspectiveStore.savePerspective(layout, {activate: true});
 
                 verdict = {
                     saved   : outcome.saved,
@@ -360,9 +359,7 @@ class Controller extends LivenessController {
                     errors  : outcome.collision
                         ? [`"${layout.perspectiveName}" is already held by ${outcome.collision.holderTitle ?? outcome.collision.holderLayoutId}`]
                         : outcome.errors
-                };
-
-                outcome.saved && view.syncControlBar()
+                }
             }
         } catch (error) {
             console.error('FleetCockpit: capturing the live layout failed', error);

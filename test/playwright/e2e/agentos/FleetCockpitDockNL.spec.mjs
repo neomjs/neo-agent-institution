@@ -226,7 +226,7 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
 
-        // the boot bar renders the three seeded presets, Fleet pressed
+        // the boot bar renders the three declared duties, Overview pressed by the engine's published name
         const focusButton = page.locator('.fm-preset-button', {hasText: 'Focus'}).first();
         await expect(focusButton, 'the preset bar must render on the boot surface').toBeVisible({timeout: 30000});
 
@@ -272,7 +272,8 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
 
         const topoReview = await app.getDockTopology(holderId),
               docReview  = topoReview?.document ?? topoReview;
-        expect(docReview.items.detail.autoHidden, 'Review must open the detail band').toBe(false);
+        expect(docReview.nodes['review-split']?.children, 'Review docks the inspector as a center column beside the split').toEqual(['primary-split', 'detail-tabs']);
+        expect(docReview.nodes['detail-tabs']?.items).toEqual(['detail']);
 
         await expect(page.locator('.fm-agent-detail'), 'Review materializes the genuinely absent detail pane')
             .toBeVisible({timeout: 10000});
