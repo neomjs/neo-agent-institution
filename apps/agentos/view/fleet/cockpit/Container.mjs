@@ -424,10 +424,10 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
-     * The named preset library — a {@link Neo.dashboard.dock.persistence.PerspectiveLibrary} over the seeded
-     * workspace-scope collection ({@link module:cockpitPresets}). The library is the preset SSOT;
-     * {@link #dockModel} stays the LIVE layout SSOT — presets are snapshots the switch restores
-     * from, never live-bound mirrors.
+     * The capture library — a {@link Neo.dashboard.dock.persistence.PerspectiveLibrary} over a
+     * workspace-scope collection that seeds EMPTY and holds what the operator captures from the live
+     * layout. The duties are declared perspectives the engine selects, never records here;
+     * {@link #dockModel} stays the LIVE layout SSOT — a capture is a snapshot the switch restores from.
      * @member {Neo.dashboard.dock.persistence.PerspectiveLibrary|null} perspectiveStore=null
      * @protected
      */
@@ -550,26 +550,38 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
+     * Triggered after the activePerspective config got changed — the accepted intent's hook,
+     * reached by every writer (a preset click, the Neural Link, a peer's code), so the app's
+     * preparation runs here, BEFORE the engine restores: a declared arrangement that reveals the
+     * inspector seats a cold selection ({@link #seatInspector}).
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetActivePerspective(value, oldValue) {
+        this.seatInspector(this.perspectiveSelection?.document(value));
+        super.afterSetActivePerspective(value, oldValue)
+    }
+
+    /**
      * @summary Switches the cockpit to a named perspective. A DECLARED name is an
      * {@link #activePerspective} write: the engine restores it through the ordinary commit path
      * (the switch re-projects FLIP-animated like any committed operation, reduced motion
-     * collapsing through the token layer), refuses a document that would duplicate a pane a
-     * vessel owns — the pane stays where it is, the refusal renders in the bar — and treats the
-     * active name as a reset of its arrangement. A stored SNAPSHOT (a capture) restores through
-     * the library's fail-closed path instead: validate everything before mutating anything, so a
-     * refused restore leaves the live layout byte-untouched. An unknown name is a refusal too.
+     * collapsing through the token layer) and treats the active name as a reset of its
+     * arrangement. A stored SNAPSHOT (a capture) restores through the library's fail-closed path
+     * instead: validate everything before mutating anything, so a refused restore leaves the live
+     * layout byte-untouched. An unknown name is a refusal too, and so is a projection that
+     * rejects: on both paths the verdict settles with the commit's projection and never claims a
+     * switch the shell did not make.
      *
      * Pane continuity across a switch preserves component identity — a declared pane the switch
      * un-trees is parked, one it re-trees returns as the same instance; a surface created now
      * reopens on OWNER-held state ({@link #seedPane}) — while the provider-owned roster store
-     * never restarts.
-     *
-     * A perspective that reveals the inspector must not land on the empty state: a cold
-     * entry (nothing inspected yet) defaults {@link #detailRecord} to the roster's first resident
-     * BEFORE the commit re-projects, so the pane materializes loaded; a prior selection stays the
-     * owner-held truth. A live pane updates in place through the select seam's owner accessor.
+     * never restarts. A perspective that reveals the inspector seats a cold selection first
+     * ({@link #seatInspector}); a live pane updates in place through the select seam's owner
+     * accessor.
      * @param {String} name A declared perspective's name, or a capture's `perspectiveName` / `layoutId`.
-     * @returns {Promise<{switched: Boolean, errors: String[]}>} settled with the commit
+     * @returns {Promise<{switched: Boolean, errors: String[]}>} settled with the commit's projection
      */
     async activatePerspective(name) {
         let me       = this,
@@ -585,37 +597,30 @@ class FleetCockpit extends VesselContainer {
             }
         }
 
-        const revealsInspector = me.isInspectorRevealed(document);
-
-        if (revealsInspector && !me.detailRecord) {
-            // seat through the ONE selection-write site so the provider pair + memories
-            // write-through follow the cold default exactly like an operator click would
-            me.getController().applySelection(me.getController().resolveFleetRosterStore()?.first() ?? null)
-        }
-
         me.presetError = null;
 
         if (declared) {
             if (name === me.activePerspective) {
+                // a reset never writes the config, so the setter hook does not seat for it
+                me.seatInspector(document);
                 ({errors} = await me.resetPerspective())
             } else {
+                // the write reaches afterSetActivePerspective, which seats before the engine restores
                 me.activePerspective = name;
                 ({errors} = await me.perspectiveSelection.pending)
             }
-
-            if (errors.length) {
-                return me.refusePerspective(name, errors)
-            }
         } else {
-            me.onDockZoneDocumentChange(document)
+            me.seatInspector(document);
+
+            try {
+                await me.onDockZoneDocumentChange(document)
+            } catch (error) {
+                errors = [error.message]
+            }
         }
 
-        if (revealsInspector && me.detailRecord) {
-            const pane = me.getAgentDetailPane();
-
-            // A cold default already reached an existing pane through applySelection(). A pane
-            // materialized by the projection still needs the write; an already-current one does not.
-            pane && pane.record !== me.detailRecord && pane.set({record: me.detailRecord})
+        if (errors.length) {
+            return me.refusePerspective(name, errors)
         }
 
         return {errors: [], switched: true}
@@ -636,13 +641,23 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
-     * @summary TRUE only when a document actually REVEALS the inspector — the placement decides,
-     * not the shared `autoHidden` flag ({@link AgentOS.util.CockpitPerspectives#revealsInspector}).
-     * @param {Object} document A committed `neo.dock.zone.v1` document.
-     * @returns {Boolean}
+     * @summary A perspective that reveals the inspector must not land on the empty state: a cold
+     * entry (nothing inspected yet) seats the roster's first resident through the ONE
+     * selection-write site, so the provider pair and the memories write-through follow exactly
+     * like an operator click would; a prior selection stays the owner-held truth. Runs before the
+     * commit re-projects, so the materializing pane reads the seat — a parked one takes it through
+     * the {@link #detailRecord} hook. The placement decides what reveals, not the shared
+     * `autoHidden` flag ({@link AgentOS.util.CockpitPerspectives#revealsInspector}).
+     * @param {Object|null} document The document about to commit; nothing declared seats nothing.
+     * @protected
      */
-    isInspectorRevealed(document) {
-        return CockpitPerspectives.revealsInspector(document)
+    seatInspector(document) {
+        let me = this, controller;
+
+        if (document && CockpitPerspectives.revealsInspector(document) && !me.detailRecord) {
+            controller = me.getController();
+            controller.applySelection(controller.resolveFleetRosterStore()?.first() ?? null)
+        }
     }
 
     /**

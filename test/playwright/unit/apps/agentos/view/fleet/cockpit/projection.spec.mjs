@@ -611,6 +611,45 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
         host.perspectiveStore.destroy()
     });
 
+    test('a capture switch settles with its projection: no verdict while the refresh is held, the success once it lands', async () => {
+        let release, verdict = null;
+
+        const held = new Promise(resolve => { release = resolve }),
+              host = await makePresetHost({refreshDockWorkspace() { return held }});
+
+        const pending = FleetCockpit.prototype.activatePerspective.call(host, 'Focus').then(result => verdict = result);
+
+        // the document commits synchronously; the verdict waits for the projection
+        expect(host.dockModel.nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
+        await host.timeout(20);
+        expect(verdict, 'no success while the projection is outstanding').toBeNull();
+
+        release();
+        await pending;
+        expect(verdict).toEqual({errors: [], switched: true});
+
+        host.perspectiveStore.destroy()
+    });
+
+    test('a capture switch whose projection rejects is a refusal: the verdict carries the reason, the bar re-renders it, the commit itself stood', async () => {
+        let synced = 0;
+
+        const host = await makePresetHost({
+            refreshDockWorkspace() { return Promise.reject(new Error('shell adoption refused')) },
+            syncControlBar() { synced++ }
+        });
+
+        const verdict = await FleetCockpit.prototype.activatePerspective.call(host, 'Focus');
+
+        expect(verdict).toEqual({errors: ['shell adoption refused'], switched: false});
+        expect(host.presetError).toBe('Focus: shell adoption refused');
+        expect(synced).toBe(1);
+        // the reducer wrote the document before the projection ran — a failed shell is not a rolled-back commit
+        expect(host.dockModel.nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
+
+        host.perspectiveStore.destroy()
+    });
+
     test('pane continuity across a switch is STATE continuity: owner-held fields and the resolver output survive untouched', async () => {
         const events = [{type: 'pr-activity', payload: {text: 'live-held'}}],
               host   = await makePresetHost({
@@ -634,7 +673,7 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
         host.perspectiveStore.destroy()
     });
 
-    test('#17451: a Review switch on a cold seat defaults the selection from the PROVIDER roster before the commit, and lands it on the live pane', async () => {
+    test('#17451: a Review switch on a cold seat defaults the selection from the PROVIDER roster before the commit — the owner config and the provider pair, ahead of the deferred re-projection', async () => {
         const record = {agentId: 'vega', githubUsername: 'neo-opus-vega'},
               sets   = [],
               detail = {record: null, set(values) { Object.assign(this, values); sets.push(values) }},
@@ -654,8 +693,9 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
             selectedAgentId      : 'vega',
             selectedAgentIdentity: '@neo-opus-vega'
         });
-        // and the live docked/popped pane updates through the select seam's owner accessor
-        expect(sets).toEqual([{record}]);
+        // the live pane is the detailRecord hook's business on a real instance (the declaration
+        // spec's parity arms read it there); the wrapper itself writes no pane
+        expect(sets).toEqual([]);
 
         host.perspectiveStore.destroy()
     });
@@ -673,7 +713,7 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
         await FleetCockpit.prototype.activatePerspective.call(host, 'Review');
 
         expect(host.detailRecord).toBe(prior);
-        expect(sets).toEqual([{record: prior}]);
+        expect(sets).toEqual([]);
 
         host.perspectiveStore.destroy()
     });
@@ -698,7 +738,7 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
         doc.nodes['secondary-rail'].activeItemId = doc.nodes['secondary-rail'].items[0];
         delete doc.items.detail;
         expect(WorkspaceDocument.validate(doc)).toEqual([]);
-        expect(FleetCockpit.prototype.isInspectorRevealed.call(host, doc)).toBe(false);
+        expect(CockpitPerspectives.revealsInspector(doc)).toBe(false);
 
         host.perspectiveStore.destroy()
     });

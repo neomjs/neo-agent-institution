@@ -16,6 +16,7 @@ import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/s
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
+import CockpitPerspectives  from '../../../../../../../../apps/agentos/util/CockpitPerspectives.mjs';
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
 import {shippedDockDocument} from './shippedDockDocument.mjs';
@@ -160,8 +161,8 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         expect(review.nodes['secondary-rail'].items, 'the band keeps the three tools').toEqual(['perspectives', 'defineAgent', 'wakeRoutes']);
         expect(WorkspaceDocument.validate(review)).toEqual([]);
         // the placement decides, not the shared autoHidden flag
-        expect(cockpit.isInspectorRevealed(review), 'a center member reveals the inspector').toBe(true);
-        expect(cockpit.isInspectorRevealed(presetDocument(cockpit, 'Overview')), 'a railed member does not').toBe(false)
+        expect(CockpitPerspectives.revealsInspector(review), 'a center member reveals the inspector').toBe(true);
+        expect(CockpitPerspectives.revealsInspector(presetDocument(cockpit, 'Overview')), 'a railed member does not').toBe(false)
     });
 
     test('the bar and the drawer follow the engine\'s published name: boot presses Overview, a settled switch presses Focus, the library never enters it', async () => {
@@ -226,6 +227,73 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
 
         expect(cockpit.dockModel.nodes['primary-split'].sizes).toEqual([0.6078, 0.3922]);
         expect(provider.getData('dock.perspective.modified')).toBe(false)
+    });
+
+    const seatRoster = cockpit => {
+              const store = cockpit.getController().resolveFleetRosterStore();
+
+              store.add([
+                  {agentId: 'ada',  displayName: 'Ada',  githubUsername: 'neo-opus-ada'},
+                  {agentId: 'vega', displayName: 'Vega', githubUsername: 'neo-opus-vega'}
+              ]);
+
+              return store
+          },
+          // the three places the selection lives: the owner config, the live pane, the provider pair
+          inspectorTruth = cockpit => ({
+              owner   : cockpit.detailRecord?.agentId ?? null,
+              pane    : cockpit.getAgentDetailPane()?.record?.agentId ?? null,
+              provider: cockpit.getStateProvider().getData('selectedAgentId')
+          });
+
+    test('a direct activePerspective write into Review seats the cold inspector before the engine restores: owner, pane and provider name the roster\'s first resident', async () => {
+        cockpit = create();
+        seatRoster(cockpit);
+
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+
+        cockpit.activePerspective = 'Review';
+
+        // seated synchronously, ahead of the deferred re-projection the materializing pane reads
+        expect(cockpit.detailRecord?.agentId).toBe('ada');
+
+        expect((await cockpit.perspectiveSelection.pending).errors).toEqual([]);
+        await cockpit.refreshPromise;
+
+        expect(cockpit.getStateProvider().getData('dock.perspective.active')).toBe('Review');
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'})
+    });
+
+    test('the wrapper\'s Review entry lands the same three truths: parity between the two advertised writers', async () => {
+        cockpit = create();
+        seatRoster(cockpit);
+
+        expect(await cockpit.activatePerspective('Review')).toEqual({errors: [], switched: true});
+        await cockpit.refreshPromise;
+
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'})
+    });
+
+    test('a prior selection survives a direct Review write; a write that hides the inspector or names nothing declared seats nobody', async () => {
+        cockpit = create();
+
+        const store = seatRoster(cockpit);
+
+        cockpit.getController().applySelection(store.get('vega'));
+        cockpit.activePerspective = 'Review';
+        expect((await cockpit.perspectiveSelection.pending).errors).toEqual([]);
+        await cockpit.refreshPromise;
+
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'vega', pane: 'vega', provider: 'vega'});
+
+        cockpit.getController().applySelection(null);
+        cockpit.activePerspective = 'Focus';
+        expect((await cockpit.perspectiveSelection.pending).errors).toEqual([]);
+        expect(cockpit.detailRecord, 'Focus hides the inspector').toBeNull();
+
+        cockpit.activePerspective = 'Ghost';
+        expect(cockpit.activePerspective, 'the engine turns an unknown name back before the hook').toBe('Focus');
+        expect(cockpit.detailRecord).toBeNull()
     });
 
     test('a supplied document with the inspector closed boots, stays active, and leaves the presets untouched', () => {
