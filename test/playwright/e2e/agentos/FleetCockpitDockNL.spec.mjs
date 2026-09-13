@@ -281,6 +281,34 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
               detail  = Array.isArray(details) ? details[0] : details;
         expect(detail?.id, 'the absent-item resolver returns one live AgentDetail component').toBeTruthy();
 
+        // After the second commit in a row (Focus by click, Review through the seam) the host holds
+        // ONE shell at its shell index — no staged shell survives the projection — and that shell is
+        // visible; every item the committed document shows resolves to exactly one live pane, mounted
+        // and in the DOM, and no item is ever duplicated by a successor — an item a tab or a collapsed
+        // rail keeps back may not exist yet (the rail tools are lazy until their first reveal).
+        const host = await app.getComponent(holderId, ['dockShellIndex', 'items.length', 'items.1.id']);
+
+        expect(host.dockShellIndex).toBe(1);
+        expect(host['items.length'], 'the control bar and one shell, nothing staged left behind').toBe(2);
+        await expect(page.locator(`#${host['items.1.id']}`), 'the shell at shellIndex is visible').toBeVisible();
+
+        const edgeNodes = Object.entries(docReview.nodes[docReview.root].zones).filter(([zone]) => zone !== 'center').map(([, zone]) => zone.nodeId),
+              tabsOf    = itemId => Object.keys(docReview.nodes).find(nodeId => docReview.nodes[nodeId].items?.includes(itemId));
+
+        for (const [itemId, item] of Object.entries(docReview.items)) {
+            const found     = (await app.findInstances({reference: item.reference}, ['id', 'mounted'])).filter(entry => entry?.className?.startsWith('AgentOS.view.')),
+                  tabs      = docReview.nodes[tabsOf(itemId)],
+                  shown     = tabs && (tabs.activeItemId === itemId || tabs.items.length === 1) && !(item.autoHidden === true && edgeNodes.includes(tabsOf(itemId)));
+
+            expect(found.length, `${itemId}: never a successor beside a live pane`).toBeLessThanOrEqual(1);
+
+            if (shown) {
+                expect(found.length, `${itemId}: the pane the document shows exists`).toBe(1);
+                expect(found[0].properties.mounted, `${itemId}: mounted where the document shows it`).toBe(true);
+                await expect(page.locator(`#${found[0].id}`), `${itemId}: reachable in the DOM`).toBeAttached()
+            }
+        }
+
         // ...and back to the default duty
         await app.callMethod(holderId, 'activatePerspective', ['Overview']);
 
