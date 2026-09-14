@@ -2,17 +2,17 @@ import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Containe
 import RowComponent  from './RowComponent.mjs';
 
 /**
- * The mailbox surface as a real buffered grid — the #24 law-0 destination ("mailbox surfaces,
- * memories and catch-up → grid.Container") scored against the merged information-design sketch
- * (`apps/agentos/design/institution-mailbox-pane.html`, #36/#38).
+ * The mailbox surface as a real buffered grid — the view-layer conformance's law-0 destination
+ * ("mailbox surfaces, memories and catch-up → grid.Container") scored against the merged
+ * information-design sketch (`apps/agentos/design/institution-mailbox-pane.html`).
  *
  * @summary A headerless, single-column `Neo.grid.Container`: one pooled
  * {@link AgentOS.view.fleet.mailbox.RowComponent} per rendered row (the component-column pool is
  * the buffering — `bufferRowRange` bounds and recycles mounted rows; it fetches nothing), fed from
  * the injected {@link AgentOS.store.AgentMailbox} store. No paging chrome exists on this surface
  * (operator direction 2026-08-28): the corpus scrolls, and its honest end is the only end — data
- * acquisition stays the owning controller's scroll-edge contract until neomjs/neo#17835 lands the
- * engine seam.
+ * acquisition stays the owning controller's scroll-edge contract until the engine lands its
+ * scroll-edge seam.
  *
  * **ONE data path.** Every mutation of this surface — wholesale projection, window append, thread
  * toggle — flows through {@link #applyBags}: plain row bags get their thread facts stamped
