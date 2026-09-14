@@ -264,8 +264,8 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             // the registers wear no engine grid chrome: the card carries the only frame and surface —
             // no cell lattice, no cell background, no cell padding around the height-normed card; and
-            // the row the engine's selection model marks after a card click paints nothing (the
-            // model cannot be opted out of at this pin, so its paint is neutralized at the skin layer)
+            // a card click marks no row: the register declares no selection model (`viewConfig:
+            // {selectionModel: null}`), so there is no selection paint to neutralize at the skin layer
             const cellChrome = () => pane.locator('.fm-memories-summary-grid .neo-grid-cell').first().evaluate(cell => {
                 const style = getComputedStyle(cell);
 
@@ -280,9 +280,9 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             expect(await cellChrome()).toEqual({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px', selected: false});
             expect(await pane.locator('.fm-memories-summary-grid').evaluate(grid => getComputedStyle(grid).borderTopWidth), 'the register carries no container frame').toBe('0px');
             await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-title').click();
-            await expect.poll(async () => (await cellChrome()).selected, {message: 'the engine row model marks the clicked row'}).toBe(true);
-            expect((await cellChrome()).background, 'the marked row paints no selection band').toBe('rgba(0, 0, 0, 0)');
             await expect(pane.locator('.fm-memories-card').nth(1)).not.toContainText('with @');
+            expect(await cellChrome(), 'a card click marks no row and paints no band: the register has no selection model').toEqual({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px', selected: false});
+            expect(await pane.locator('.fm-memories-summary-grid .neo-grid-view').evaluate(view => [...view.classList].filter(cls => cls.startsWith('neo-selection'))), 'no selection model registered on the register').toEqual([]);
 
             // the paging chrome is retired: the drain did the append, and no "Older sessions"
             // affordance exists to click — corpus exhaustion is the settled "3 of 3" line above
@@ -451,10 +451,13 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             await assertBareRegister('turns', '.fm-memories-turn-grid');
 
-            // the row the engine's selection model marks after a click paints nothing, one level down too
+            // a click marks no row one level down either: the turn register has no selection model
             await pane.locator('.fm-memories-turn').nth(1).click();
-            await expect.poll(async () => (await chromeOf('.fm-memories-turn-grid .neo-grid-cell')).some(cell => cell.selected), {message: 'the engine row model marks the clicked turn row'}).toBe(true);
-            (await chromeOf('.fm-memories-turn-grid .neo-grid-cell')).forEach((cell, index) => expect(cell.background, `turn cell ${index} paints no selection band`).toBe('rgba(0, 0, 0, 0)'));
+            await expect(pane.locator('.fm-memories-turn').nth(1)).toBeVisible();
+            (await chromeOf('.fm-memories-turn-grid .neo-grid-cell')).forEach((cell, index) => {
+                expect(cell.selected,   `turn cell ${index} sits in no marked row`).toBe(false);
+                expect(cell.background, `turn cell ${index} paints no selection band`).toBe('rgba(0, 0, 0, 0)')
+            });
 
             for (const [skin, theme] of [...skins].reverse()) {
                 await setSkin(theme);

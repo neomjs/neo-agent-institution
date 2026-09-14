@@ -67,7 +67,14 @@ class Grid extends GridContainer {
          * The injected mailbox store is pane/controller-owned — a renderer never destroys it.
          * @member {Boolean} autoDestroyStore=false
          */
-        autoDestroyStore: false
+        autoDestroyStore: false,
+        /**
+         * A read-only mirror selects nothing: the engine's View owns the grid's selection model, and
+         * `null` instantiates none — no row is marked by a click or an arrow key, no handler is
+         * installed. The thread toggle stays the row's own native button.
+         * @member {Object} viewConfig={selectionModel: null}
+         */
+        viewConfig: {selectionModel: null}
     }
 
     /**

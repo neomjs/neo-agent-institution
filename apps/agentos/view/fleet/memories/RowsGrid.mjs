@@ -33,7 +33,14 @@ class RowsGrid extends GridContainer {
          * The injected store is pane-owned — a renderer never destroys it.
          * @member {Boolean} autoDestroyStore=false
          */
-        autoDestroyStore: false
+        autoDestroyStore: false,
+        /**
+         * A designed list selects nothing: a register's only act is a click inside a card. The
+         * engine's View owns the grid's selection model, and `null` instantiates none — no row is
+         * ever marked, no selection handler is installed, nothing to neutralize in the skin.
+         * @member {Object} viewConfig={selectionModel: null}
+         */
+        viewConfig: {selectionModel: null}
     }
 
     /**

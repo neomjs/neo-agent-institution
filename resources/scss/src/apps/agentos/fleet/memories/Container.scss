@@ -162,20 +162,16 @@
 
     /* a designed list, not a data table: the engine grid's chrome is reset at the skin layer — the
        container frame, the cell lattice (border-bottom / border-right / the first cell's
-       border-left), the even-row stripe, the hover tint and the row-selection paint — so the card
-       carries the only frame and surface. The colors are the engine's own custom properties,
-       re-bound per surface; the 1 px lattice and the cell padding are structural rules and are
-       overridden (a transparent border still costs its pixel in the row lattice, and the cell
-       padding ate 4 px of the height-normed card). The row selection itself stays: the engine
-       instantiates a RowModel for a null `selectionModel` (grid.Body#beforeSetSelectionModel), so a
-       consumer cannot opt out today — its paint is neutralized here, its class is not (retirement
-       trigger: an engine-side opt-out). */
-    --grid-container-border-color                 : transparent;
-    --grid-container-cell-background-color        : transparent;
-    --grid-container-cell-background-color-even   : transparent;
-    --grid-cell-background-color-hover            : transparent;
-    --grid-rowmodel-selected-cell-background-color: transparent;
-    --grid-rowmodel-selected-cell-color           : var(--fm-ink);
+       border-left), the even-row stripe and the hover tint — so the card carries the only frame
+       and surface. The colors are the engine's own custom properties, re-bound per surface; the
+       1 px lattice and the cell padding are structural rules and are overridden (a transparent
+       border still costs its pixel in the row lattice, and the cell padding ate 4 px of the
+       height-normed card). Row selection is off at the source (the registers' `viewConfig:
+       {selectionModel: null}`), so there is no selection paint to neutralize. */
+    --grid-container-border-color              : transparent;
+    --grid-container-cell-background-color     : transparent;
+    --grid-container-cell-background-color-even: transparent;
+    --grid-cell-background-color-hover         : transparent;
 
     &.neo-grid-container {
         border: 0;
