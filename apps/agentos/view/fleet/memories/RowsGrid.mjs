@@ -1,9 +1,9 @@
 import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Container.mjs';
 
 /**
- * The memories pane's shared grid base — #24 law 0 ("mailbox surfaces, memories and catch-up →
- * `grid.Container`") applied to both memories registers, carrying the ONE-data-path contract the
- * mailbox grid established (Institution #40/#41).
+ * The memories pane's shared grid base — the view-layer conformance's law 0 ("mailbox surfaces,
+ * memories and catch-up → `grid.Container`") applied to both memories registers, carrying the
+ * ONE-data-path contract the mailbox grid established.
  *
  * @summary A headerless, single-component-column `Neo.grid.Container` whose every content
  * mutation flows through {@link #applyBags}: plain row bags get their derived display facts
@@ -16,8 +16,8 @@ import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Containe
  * the mailbox surface — the architecture here is the fix, not a style).
  *
  * The component-column pool is the buffering (`bufferRowRange` bounds and recycles mounted
- * rows; it fetches nothing) — data acquisition stays the owning pane's drain contract until
- * neomjs/neo#17835 lands the engine's scroll-edge seam.
+ * rows; it fetches nothing) — data acquisition stays the owning pane's drain contract until the
+ * engine lands its scroll-edge seam.
  *
  * @class AgentOS.view.fleet.memories.RowsGrid
  * @extends Neo.grid.Container
@@ -33,7 +33,14 @@ class RowsGrid extends GridContainer {
          * The injected store is pane-owned — a renderer never destroys it.
          * @member {Boolean} autoDestroyStore=false
          */
-        autoDestroyStore: false
+        autoDestroyStore: false,
+        /**
+         * A designed list selects nothing: a register's only act is a click inside a card. The
+         * engine's View owns the grid's selection model, and `null` instantiates none — no row is
+         * ever marked, no selection handler is installed, nothing to neutralize in the skin.
+         * @member {Object} viewConfig={selectionModel: null}
+         */
+        viewConfig: {selectionModel: null}
     }
 
     /**

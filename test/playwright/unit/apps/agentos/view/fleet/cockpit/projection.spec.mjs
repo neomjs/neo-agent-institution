@@ -325,13 +325,20 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
 
             const absent = options.resolveItem('fleet');
 
+            // resolution is the cockpit's: the pane's module, its header in the cockpit's own words
             expect(absent.module).toBe(FleetGrid);
-            expect(absent.header).toEqual({text: 'Fleet', dockItemId: 'fleet'});
-            expect(absent.dockItemId).toBe('fleet');
-            expect(absent.data).toMatchObject({dockItemId: 'fleet'});
+            expect(absent.header).toMatchObject({text: 'Fleet'});
             // the record's reference and the pane's own reference are the same name — the engine's
             // lookup key resolves the projected pane through getReference() by the name the record carries
-            expect(absent.reference).toBe('fleet-grid')
+            expect(absent.reference).toBe('fleet-grid');
+
+            // the item identity is stamped when the pane is prepared for its slot — the engine's
+            // `prepareItem` seam, kept apart from resolution so a live header keeps its own words
+            const prepared = options.prepareItem(absent, 'fleet', {});
+
+            expect(prepared.dockItemId).toBe('fleet');
+            expect(prepared.data).toMatchObject({dockItemId: 'fleet'});
+            expect(prepared.header).toMatchObject({text: 'Fleet', dockItemId: 'fleet'})
         } finally {
             options?.placeholders?.forEach(placeholder => !placeholder.isDestroyed && placeholder.destroy());
             Reconciler.reconcileProjection = original
