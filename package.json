@@ -67,7 +67,7 @@
     },
     "dependencies": {
         "neo-agent-brain": "github:neomjs/neo-agent-brain#bd5417155be455b59983de2a6e5bd8249b113d2b",
-        "neo.mjs": "github:neomjs/neo#123bbe14c19f2c831960e805fa230e1fab6f6027"
+        "neo.mjs": "github:neomjs/neo#337c9fd5d10a9647efe9c487f54e677f94b468cb"
     },
     "devDependencies": {
         "@fortawesome/fontawesome-free": "^7.3.0",
