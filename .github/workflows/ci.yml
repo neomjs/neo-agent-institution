@@ -23,10 +23,10 @@ jobs:
 
         steps:
             - name: Checkout Institution
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
 
             - name: Set up Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: 24
                   cache: npm
@@ -66,19 +66,19 @@ jobs:
 
         steps:
             - name: Checkout Institution
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
               with:
                   path: institution
 
             - name: Checkout Brain
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
               with:
                   repository: neomjs/neo-agent-brain
                   ref: bd5417155be455b59983de2a6e5bd8249b113d2b
                   path: brain
 
             - name: Set up Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: 24
 
