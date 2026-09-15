@@ -25,8 +25,8 @@ on:
 jobs:
   baseline:
     name: Shared PR Baseline
-    # An exact commit, never a branch or tag: the coordinate is the Skills `dev` head at adoption
-    # (2026-09-04) — the reusable workflow moved four times after the ticket's original pin (the
-    # PR-body job, the caller-root measurement, the version-that-exists fix). Moving it is a reviewed
-    # change here, one line.
-    uses: neomjs/neo-agent-skills/.github/workflows/reusable-pr-baseline.yml@7c9bd16f97a9b58309602431fc5b5741bf818e22
+    # An exact commit, never a branch or tag, so a pull request cannot weaken the gate it is judged
+    # by: the called workflow hardcodes the guard release it installs, and this line is the only way
+    # a newer one reaches this repository. The coordinate is Skills 0.1.5 (2026-09-15), whose
+    # archaeology rules stop reading CSS colour literals and numeric entities as ticket references.
+    uses: neomjs/neo-agent-skills/.github/workflows/reusable-pr-baseline.yml@27e151d9c427e07c674fcccaff1382d2a33d0b24
