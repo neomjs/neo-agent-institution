@@ -611,4 +611,110 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
             width === 410 && expect(cards['Ac dense'].members.every(member => member.visible), '[410] the widest active line with both axes shows every member').toBe(true)
         }
     });
+
+    test('the name line\'s fit across the card-width matrix: a long name ellipsizes inside its line, the chip and the engine tag are whole or absent, and the card\'s height never follows the name', async ({page, neuralLink}) => {
+        const LONG        = 'Alexander Constantine Maximilianus',
+              SHORT       = 'Ada',
+              seat        = (id, displayName, engineTag) => ({
+                  agentId : id, githubUsername: `@${id}`, displayName, engineTag, family: 'claude',
+                  laneLine: 'awaiting review', avatarUrl: avatar('#c0873a'), state: 'ok', openLaneCount: 3,
+                  sources : {roster: roster('wired', 'observed'), repoStatus: repo('not-wired'), runtime: runtime('wired', 'observed')}
+              }),
+              NAME_ROSTER = [
+                  seat('name-long',  LONG,  'opus-4.8-experimental-preview-turbo'),
+                  seat('name-short', SHORT, 'opus-5')
+              ],
+              // the vessel card, the narrow band, the operator's realistic case, the column floor, roomy
+              WIDTHS      = [191, 294, 328, 410, 720];
+
+        await page.setViewportSize({width: 900, height: 1200});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
+
+        const app           = await neuralLink.connectToApp('AgentOS'),
+              [rosterStore] = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
+              storeId       = (Array.isArray(rosterStore) ? rosterStore[0] : rosterStore)?.id;
+
+        expect(storeId, 'the provider-owned FleetRoster store must exist').toBeTruthy();
+
+        await app.callMethod(storeId, 'clear');
+        await app.callMethod(storeId, 'add', [NAME_ROSTER]);
+
+        await expect.poll(async () => page.locator('.fm-agent-card').count(), {
+            message: 'the grid renders one card per row', timeout: 15000, intervals: [250]
+        }).toBe(NAME_ROSTER.length);
+        await page.evaluate(() => document.fonts.ready);
+
+        const lineHeights = new Set();
+
+        for (const width of WIDTHS) {
+            await page.evaluate(({width}) => {
+                const list = document.querySelector('.fm-fleet-cards');
+
+                list.style.width = list.style.minWidth = list.style.maxWidth = `${width + 20}px`;
+                list.style.height    = '1000px';
+                list.style.maxHeight = 'none'
+            }, {width});
+
+            await expect.poll(async () => page.evaluate(() => Math.round(document.querySelector('.fm-agent-card').getBoundingClientRect().width)), {
+                message: `[${width}] Animate re-seats the card at exactly ${width}px`, timeout: 15000, intervals: [100, 250]
+            }).toBe(width);
+            await page.evaluate(() => document.fonts.ready);
+
+            const cards = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.fm-agent-card')].map(card => {
+                const q      = sel => card.querySelector(sel),
+                      rect   = el => el.getBoundingClientRect(),
+                      line   = q('.fm-card-name-line'),
+                      name   = q('.fm-card-name'),
+                      member = sel => {
+                          const el = q(sel);
+
+                          // on the line's row, or on a row the line does not show
+                          return el && getComputedStyle(el).display !== 'none'
+                              ? {visible: rect(el).top - rect(line).top < rect(line).height, pastLine: Math.round((rect(el).right - rect(line).right) * 10) / 10}
+                              : null
+                      };
+
+                return [name.textContent, {
+                    cardHeight  : Math.round(rect(card).height),
+                    chip        : member('.fm-name-provenance'),
+                    engine      : member('.fm-card-engine'),
+                    lineHeight  : Math.round(rect(line).height * 10) / 10,
+                    namePastLine: Math.round((rect(name).right - rect(line).right) * 10) / 10,
+                    nameClient  : name.clientWidth,
+                    nameScroll  : name.scrollWidth,
+                    textOverflow: getComputedStyle(name).textOverflow,
+                    title       : name.getAttribute('title')
+                }]
+            })));
+
+            const long = cards[LONG], short = cards[SHORT];
+
+            // the name never leaves its line: where it cannot fit it overflows ITSELF — the only
+            // state in which its ellipsis renders — instead of being cut by an ancestor
+            for (const name of [LONG, SHORT]) {
+                const card = cards[name];
+
+                expect(card.namePastLine, `[${width}] ${name}: the name ends inside the name line`).toBeLessThanOrEqual(0.5);
+                expect(card.textOverflow, `[${width}] ${name}: the name's overflow form is the ellipsis`).toBe('ellipsis');
+                expect(card.title,        `[${width}] ${name}: the title keeps the name whole`).toBe(name);
+
+                for (const [label, member] of [['the chip', card.chip], ['the engine tag', card.engine]]) {
+                    member?.visible && expect(member.pastLine, `[${width}] ${name}: ${label} is whole — it ends inside the line`).toBeLessThanOrEqual(0.5)
+                }
+
+                lineHeights.add(card.lineHeight)
+            }
+
+            // 245px of name against a 118–168px line: ellipsized below the column floor, whole from it
+            expect(long.nameScroll > long.nameClient, `[${width}] the long name ${width < 410 ? 'ellipsizes' : 'renders whole'} (scroll ${long.nameScroll} / client ${long.nameClient})`).toBe(width < 410);
+
+            // a short name keeps its chip at every width, and the card's height is the name's business at none
+            expect(short.chip?.visible, `[${width}] the short name keeps its provenance chip`).toBe(true);
+            expect(long.cardHeight, `[${width}] both cards share one height`).toBe(short.cardHeight)
+        }
+
+        expect([...lineHeights], 'the name line is one row at every width').toHaveLength(1)
+    });
 });

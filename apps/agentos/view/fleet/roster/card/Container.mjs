@@ -187,10 +187,14 @@ class AgentCard extends Container {
                 layout   : {ntype: 'vbox', align: 'stretch'},
 
                 items: [{
+                    // ONE row, the state line's policy: the line wraps and the SCSS shows its first
+                    // row only, so the chip and the engine tag stay where they fit beside the name
+                    // and leave WHOLE where they do not. Item order = priority.
                     ntype    : 'container',
                     cls      : ['fm-card-name-line'],
+                    flex     : 'none',
                     reference: 'name-line',
-                    layout   : {ntype: 'hbox', align: 'center'},
+                    layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
 
                     items: [{
                         // the resident's name — plain identity text. The card's host list item (`li`)
@@ -198,9 +202,11 @@ class AgentCard extends Container {
                         // select, Navigator owns arrow focus), so the name carries no interactive
                         // affordance of its own; lifecycle toggle/restart stay the card's only
                         // native Buttons in ordinary Tab order.
+                        // The row's subject and its one shrinkable member: a `flex` config is an
+                        // inline style, so 'none' here would silence the stylesheet's ellipsis.
                         ntype    : 'component',
                         cls      : ['fm-card-name'],
-                        flex     : 'none',
+                        flex     : '0 1 auto',
                         reference: 'card-name'
                     }, {
                         // the name-slot provenance chip, density-calibrated (applyRecord writes it)
@@ -525,6 +531,8 @@ class AgentCard extends Container {
 
         nameEl.text = nameSlot.text;
         nameEl[nameSlot.isFallback ? 'addCls' : 'removeCls']('fm-card-name-id');
+        // a name the line cannot hold ellipsizes (SCSS) — the title keeps it whole
+        nameEl.changeVdomRootKey('title', nameSlot.text);
 
         provenance.set({cls: chip.cls, hidden: chip.hidden, text: chip.text});
 

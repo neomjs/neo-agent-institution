@@ -322,6 +322,28 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('the name line is ONE wrapping row whose first member may shrink: the name ellipsizes, the chip and the tag leave whole', () => {
+        const card = createCard({agentId: 'vega', displayName: 'Alexander Constantine Maximilianus', state: 'ok'}),
+              line = card.down({reference: 'name-line'}),
+              name = () => card.down({reference: 'card-name'});
+
+        expect(line.layout.wrap).toBe('wrap');
+        expect(line.flex).toBe('none');
+        expect(line.items.map(item => item.reference)).toEqual(['card-name', 'name-provenance', 'card-engine']);
+
+        // a flex config is an inline style: 'none' on the name silenced the stylesheet's ellipsis at
+        // every card width, and an ancestor cut the name mid-glyph instead
+        expect(name().flex).toBe('0 1 auto');
+
+        // an ellipsized name stays reachable in full, and follows a rename in place
+        expect(name().vdom.title).toBe('Alexander Constantine Maximilianus');
+
+        applySet(card, {displayName: 'Alex'});
+        expect(name().vdom.title).toBe('Alex');
+
+        card.destroy()
+    });
+
     test('the badge and the chip carry their narrow forms beside the whole text — the stylesheet picks the form, never the card', () => {
         const card = createCard({
             agentId      : 'vega',
