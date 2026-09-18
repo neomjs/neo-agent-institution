@@ -169,9 +169,9 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                     list.style.width     = `${width + 20}px`;
                     list.style.minWidth  = `${width + 20}px`;
                     list.style.maxWidth  = `${width + 20}px`;
-                    // Absolute plugin items do not establish flow height. Give the capture one full
-                    // column (top margin + N × [126px item + 10px margin]) so no card is scroll-clipped.
-                    list.style.height    = `${10 + count * 136}px`;
+                    // Absolute plugin items do not establish flow height, and the row is measured: a
+                    // generous column until the row has settled, sized to the rendered one below.
+                    list.style.height    = `${10 + count * 400}px`;
                     list.style.maxHeight = 'none'
                 }, {count: PATHOLOGICAL_ROSTER.length, width});
 
@@ -193,6 +193,25 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                 expect(settledWidth, `[${scope}] the measured list renders the card at ~${width}px`).toBeLessThanOrEqual(width + 4);
 
                 await page.evaluate(() => document.fonts.ready);
+
+                // The row is measured after the width lands: wait until every card carries the one
+                // row height, then size the capture to the rendered column so no card is scroll-clipped.
+                await expect.poll(async () => page.evaluate(() => {
+                    const heights = [...document.querySelectorAll('.fm-fleet-cards .neo-list-item')].map(item => item.style.visibility === 'hidden' ? '' : item.style.height);
+                    return heights.length > 0 && heights.every(Boolean) ? new Set(heights).size : 0
+                }), {
+                    message  : `[${scope}] every card takes the one measured row height`,
+                    timeout  : 15000,
+                    intervals: [100, 250]
+                }).toBe(1);
+
+                await page.evaluate(() => {
+                    const list   = document.querySelector('.fm-fleet-cards'),
+                          top    = list.getBoundingClientRect().top - list.scrollTop,
+                          bottom = Math.max(...[...list.querySelectorAll('.neo-list-item')].map(item => item.getBoundingClientRect().bottom));
+
+                    list.style.height = `${Math.ceil(bottom - top) + 10}px`
+                });
 
                 // render-fit + contrast guards (repaired-semantics pins, not just snapshot-green): every card
                 // must CONTAIN its full anatomy (no overflow clip), the source strip must sit inside the card
