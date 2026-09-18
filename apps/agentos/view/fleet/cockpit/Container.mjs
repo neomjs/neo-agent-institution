@@ -706,6 +706,15 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
+     * @summary The cockpit's public roster re-poll, for an owner outside it: the Viewport calls it
+     * when a definition is accepted, so a parent never reaches into this view's controller.
+     * @returns {Promise<*>} Settles with the controller's idempotent, fail-closed re-read.
+     */
+    loadRoster() {
+        return this.getController().loadRoster()
+    }
+
+    /**
      * @summary On construct, bind the fleet surfaces to their live feeds, and guard the roster
      * store's async seed load against clobbering a faster live source.
      * @param {...*} args

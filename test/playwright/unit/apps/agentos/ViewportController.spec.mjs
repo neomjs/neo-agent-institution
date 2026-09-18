@@ -10,6 +10,7 @@ import {test, expect}     from '@playwright/test';
 import Neo                from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core          from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import AgentDefinitions   from '../../../../../apps/agentos/store/AgentDefinitions.mjs';
+import FleetCockpit       from '../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetTenants       from '../../../../../apps/agentos/store/FleetTenants.mjs';
 import Viewport           from '../../../../../apps/agentos/view/Viewport.mjs';
 import ViewportController from '../../../../../apps/agentos/view/ViewportController.mjs';
@@ -111,7 +112,11 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
     test('refreshes the separate Fleet roster only for a valid accepted definition', async () => {
         const
             calls   = [],
-            cockpit = {loadRoster: async () => calls.push('loadRoster')},
+            // the REAL cockpit's surface over a stubbed controller: a hand-written cockpit once kept
+            // answering for a method the class had lost, and the handler failed closed on every call
+            cockpit = Object.assign(Object.create(FleetCockpit.prototype), {
+                getController: () => ({loadRoster: async () => calls.push('loadRoster')})
+            }),
             stub    = {getReference: reference => reference === 'fleet-cockpit' ? cockpit : null};
 
         await expect(Viewport.prototype.onAgentDefinitionAccepted.call(stub, {agent: {id: 'resident-42'}}))
