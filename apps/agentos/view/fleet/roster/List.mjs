@@ -54,21 +54,22 @@ class List extends ComponentList {
          */
         autoDestroyStore: false,
         /**
-         * The measured card anatomy constant (the uniform 126px row the shipped grid rendered) —
-         * the fixed row height the plugin's translate geometry requires.
-         * @member {Number} itemHeight=126
+         * No fixed row: the plugin measures the rendered cards and every card takes the tallest
+         * one's height, so the roster is a grid of equal cards that is exactly as tall as what the
+         * fleet's cards show today.
+         * @member {Number|null} itemHeight=null
          * @reactive
          */
-        itemHeight: 126,
+        itemHeight: null,
         /**
          * Fluid columns from the LIST's own rendered surface, preserving the pane-layout-blindness
          * contract: this leaf knows neither its dock placement nor the viewport. The
          * plugin derives the column count from `minItemWidth` and writes the fluid per-item width
          * back — one squeezed column on a narrow dock slot, two at the shipped default, three on
-         * the wide fleet view.
-         * @member {Object} pluginAnimateConfig={minItemWidth:410}
+         * the wide fleet view. `measureItemHeight` is the height twin: the row follows the cards.
+         * @member {Object} pluginAnimateConfig={measureItemHeight:true,minItemWidth:410}
          */
-        pluginAnimateConfig: {minItemWidth: 410},
+        pluginAnimateConfig: {measureItemHeight: true, minItemWidth: 410},
         /**
          * Selection is the product contract (one selected resident drives detail + memories), with
          * the lifecycle-control carve-out.

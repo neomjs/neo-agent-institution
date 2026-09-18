@@ -64,7 +64,7 @@ test.describe('AgentOS FleetGrid — roster scroll ownership', () => {
         expect(metrics.headTopAfter, 'the summary header must not move with the scroll')
             .toBe(metrics.headTopBefore);
         // "above the roster" is the cards REGION's top edge, not the lowest card's: at this stage
-        // height the region is shorter than one 126px card row, so the reachable last card is
+        // height the region is shorter than one card row, so the reachable last card is
         // legitimately clipped at the region's top while its bottom sits on the region's bottom.
         expect(metrics.headBottom, 'the summary header must stay visible above the roster')
             .toBeLessThanOrEqual(metrics.regionTop)
