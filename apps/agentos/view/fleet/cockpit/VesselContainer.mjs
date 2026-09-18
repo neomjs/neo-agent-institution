@@ -90,12 +90,12 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * Projects the current instance title into a newly admitted Fleet tear-out window.
+     * Titles a newly admitted Fleet tear-out window by the pane it holds.
      * @param {Object} data
      * @protected
      */
-    afterTearOutWindowConnect({connection}) {
-        this.pushInstanceTitle(connection.windowId)
+    afterTearOutWindowConnect({connection, itemId}) {
+        this.pushVesselTitle(itemId, connection.windowId)
     }
 
     /**
@@ -509,26 +509,42 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * @summary Pushes the bound instance's label into one torn-out window's `document.title` —
-     * the scope rule made mechanical: a torn-out window has no chrome switcher and no spine
-     * banner, so its OS title is the one place its scope can live. Reads the SAME provider truth
-     * the banner composes from (bound profileId → roster row → label-or-endpoint); a missing
-     * roster row pushes nothing — absence stays absence, never an invented name. Rides the
+     * @summary Titles one vessel window: the PANE first — two vessels open at once must be
+     * tellable apart in the window switcher —, then the resident the inspector shows, then the
+     * bound instance. A torn-out window has no chrome switcher and no spine banner, so its OS
+     * title is the one place its scope can live; the instance reads the SAME provider truth the
+     * banner composes from (bound profileId → roster row → label-or-endpoint), and a missing
+     * roster row adds nothing — absence stays absence, never an invented name. Rides the
      * DocumentHead addon per target window; deliberately NOT the torn-out pane's controller chain,
      * so the known torn-out handler-loss class (a vessel's controller resolving to a cached null)
      * cannot reach it.
+     * @param {String} itemId The pane the window holds.
      * @param {String} windowId The torn-out window to title.
      */
-    pushInstanceTitle(windowId) {
-        let provider = this.getStateProvider(),
+    pushVesselTitle(itemId, windowId) {
+        let me       = this,
+            provider = me.getStateProvider(),
             boundId  = provider?.getData('boundProfileId'),
             record   = boundId ? provider.getStore('fleetInstances')?.get(boundId) : null,
-            label    = record ? (record.label || String(record.canonicalEndpoint).replace(/^https?:\/\//, '')) : null;
+            label    = record ? (record.label || String(record.canonicalEndpoint).replace(/^https?:\/\//, '')) : null,
+            pane     = [me.dockModel?.items?.[itemId]?.title ?? itemId, itemId === 'detail' && me.detailRecord?.displayName];
 
-        label && windowId && Neo.main.addon.DocumentHead.setTitle({
-            value: `${label} — Agent OS`,
+        windowId && Neo.main.addon.DocumentHead.setTitle({
+            value: [pane.filter(Boolean).join(' · '), label].filter(Boolean).join(' — '),
             windowId
         })
+    }
+
+    /**
+     * @summary Re-titles every window a vessel holds or is still connecting — an instance switch
+     * and a new inspected resident both change what those titles must say. The Group's native
+     * lifecycle is the one record of vessel windows.
+     */
+    pushVesselTitles() {
+        let me = this;
+
+        [...(me.nativeWindows?.ownerEntries(me.id) ?? []), ...(me.nativeWindows?.connectionEntries(me.id) ?? [])]
+            .forEach(([itemId, {windowId}]) => me.pushVesselTitle(itemId, windowId))
     }
 
     /**

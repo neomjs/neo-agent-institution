@@ -10,16 +10,19 @@
        onto a second swatch line at vessel width. Without it the wrap above never engages (#85). */
     max-width : 100%;
 
-    /* The aggregate verdict dot: ONE glanceable header signal ahead of the counts — green when no
+    /* The aggregate verdict: ONE glanceable header signal ahead of the counts — green when no
        state needs an operator (the default-state contract: a fleet of un-managed seats is CALM),
        attention-toned only when an actionable bucket is non-zero. Colors ride the existing state
-       tokens — zero new hues; the counts beside it remain the accessible non-colour carrier. */
+       tokens — zero new hues; the counts beside it remain the accessible non-colour carrier.
+       A BAR, not a dot: a verdict dot flush against the first swatch's dot read as a doubled
+       glyph; the bar is the cards' own state accent. */
     &::before {
-        border-radius: 50%;
+        border-radius: 2px;
         content      : '';
         flex         : none;
-        height       : 8px;
-        width        : 8px;
+        height       : 12px;
+        margin-right : var(--fm-space-1);
+        width        : 3px;
     }
 
     &.fm-health-nominal::before {

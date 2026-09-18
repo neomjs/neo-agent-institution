@@ -271,6 +271,44 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(light.contrast, 'the wordmark reads on the light band — it measured 1.04:1 before the ink binding').toBeGreaterThanOrEqual(4.5);
     });
 
+    test('a hovered preset never reads as the pressed one (computed styles, no golden)', async ({page}) => {
+        // hover and pressed once set the identical border · background · ink trio, so a mouse resting
+        // on an inactive preset painted it as the active one. A computed receipt: a golden cannot hover.
+        await page.setViewportSize({width: 1280, height: 720});
+        await bootSettledCockpit(page);
+
+        const pressed = page.locator('.fm-preset-button.pressed'),
+              idle    = page.locator('.fm-preset-button:not(.pressed)').first(),
+              paint   = locator => locator.evaluate(node => {
+                  const style = getComputedStyle(node);
+
+                  return {border: style.borderTopColor, shadow: style.boxShadow}
+              });
+
+        await expect(pressed, 'the pressed preset is unique on the bar').toHaveCount(1);
+
+        const rest = await paint(idle);
+        let   last;
+
+        await idle.hover();
+
+        // the lift is a transition: read it once it stopped moving, or the comparison races it
+        await expect.poll(async () => {
+            const now     = (await paint(idle)).border,
+                  settled = now === last && now !== rest.border;
+
+            last = now;
+            return settled
+        }, {message: 'hover lifts the border and settles', intervals: [120]}).toBe(true);
+
+        const hovered  = await paint(idle),
+              selected = await paint(pressed);
+
+        expect(hovered.border, 'a hovered inactive preset does not wear the pressed border').not.toBe(selected.border);
+        expect(hovered.shadow).toBe('none');
+        expect(selected.shadow, 'selected carries the chrome\'s underline').not.toBe('none')
+    });
+
     test('the 720 intermediate band — mark regime: no wrap, no overflow, state collapses to marks with titles (viewport capture, geometry asserted)', async ({page}) => {
         // The lattice's third point, between the 314 fit witness and the desktop baselines:
         // above the 570px vessel-narrow threshold (the @container block must stay silent — no bar

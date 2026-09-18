@@ -526,14 +526,15 @@ class FleetCockpit extends VesselContainer {
 
     /**
      * Triggered after the detailRecord config got changed — push the LIVE detail pane in place
-     * (docked or vesseled, through the phase-blind accessor). Dock rematerialization reads the
-     * config directly at projection time.
+     * (docked or vesseled, through the phase-blind accessor) and re-title its vessel window, which
+     * names the resident. Dock rematerialization reads the config directly at projection time.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
      */
     afterSetDetailRecord(value, oldValue) {
-        oldValue !== undefined && this.getAgentDetailPane()?.set({record: value ?? null})
+        oldValue !== undefined && this.getAgentDetailPane()?.set({record: value ?? null});
+        this.pushVesselTitles()
     }
 
     /**
