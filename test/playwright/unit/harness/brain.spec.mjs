@@ -92,33 +92,35 @@ function createFakeGroup({pid, diesOn}) {
 /**
  * @summary Creates disjoint installed-public and private-runtime module fixtures, or both at the
  * same explicitly supplied packaged root. The stale runtime wire path fails if accidentally loaded.
+ * Every module answers with the name of the root it was LOADED from, read off its own location:
+ * the source text is a constant, and no value is ever built into code.
  * @param {String} root
  * @param {Object} options
  * @param {Boolean} [options.product=false]
  * @param {Boolean} [options.runtime=false]
  */
 function writeFleetRootFixture(root, {product = false, runtime = false}) {
-    const
-        tag     = JSON.stringify(path.basename(root)),
-        modules = {
-            ...(product && {
-                'node_modules/neo-agent-brain/src/fleet/contract/index.mjs': [
-                    `export const FLEET_WIRE_METHODS = [${tag}];`,
-                    `export const FLEET_WIRE_RESPONSE_STATES = {ok: ${tag}};`,
-                    ...['createFleetWireOffer', 'createFleetWireRequest', 'createFleetWireResponse', 'inspectFleetWireResponse']
-                        .map(name => `export const ${name} = () => ${tag};`)
-                ].join('\n')
-            }),
-            ...(runtime && {
-                'ai/graph/normalizeAgentIdentityNodeId.mjs': 'export const normalizeAgentIdentityNodeId = value => value;',
-                'ai/services/fleet/fleetLaunchContract.mjs': [
-                    `export const FLEET_CREDENTIAL_METHODS = [${tag}];`,
-                    `export const probeExistingFleetServer = () => ${tag};`,
-                    `export const resolveFleetBearer = () => ${tag};`
-                ].join('\n'),
-                'src/fleet/contract/wire.mjs': "throw new Error('runtime vocabulary must not be imported');"
-            })
-        };
+    const modules = {
+        ...(product && {
+            'node_modules/neo-agent-brain/src/fleet/contract/index.mjs': [
+                "const tag = new URL('../../../../../', import.meta.url).pathname.split('/').at(-2);",
+                'export const FLEET_WIRE_METHODS = [tag];',
+                'export const FLEET_WIRE_RESPONSE_STATES = {ok: tag};',
+                ...['createFleetWireOffer', 'createFleetWireRequest', 'createFleetWireResponse', 'inspectFleetWireResponse']
+                    .map(name => `export const ${name} = () => tag;`)
+            ].join('\n')
+        }),
+        ...(runtime && {
+            'ai/graph/normalizeAgentIdentityNodeId.mjs': 'export const normalizeAgentIdentityNodeId = value => value;',
+            'ai/services/fleet/fleetLaunchContract.mjs': [
+                "const tag = new URL('../../../', import.meta.url).pathname.split('/').at(-2);",
+                'export const FLEET_CREDENTIAL_METHODS = [tag];',
+                'export const probeExistingFleetServer = () => tag;',
+                'export const resolveFleetBearer = () => tag;'
+            ].join('\n'),
+            'src/fleet/contract/wire.mjs': "throw new Error('runtime vocabulary must not be imported');"
+        })
+    };
 
     for (const [relativePath, source] of Object.entries(modules)) {
         const target = path.join(root, relativePath);

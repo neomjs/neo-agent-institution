@@ -630,6 +630,37 @@ test.describe('harness pack stage', () => {
         })).toThrow(/Brain package\.json/)
     });
 
+    test('buildOrganismManifest repeats the owners\' npm overrides: the stage installs without a lock, so a forced resolution reaches the artifact only through the staged manifest', () => {
+        const
+            sharpOverride      = {'@huggingface/transformers': {sharp: '^0.35.4'}},
+            productPackageJson = {dependencies: {'neo.mjs': 'github:neomjs/neo#pin'}, overrides: {...sharpOverride, 'lodash-es': '^4.18.0'}},
+            brainPackageJson   = {dependencies: {chromadb: '3.5.0'}, overrides: {...sharpOverride, 'gray-matter': {'js-yaml': '^3.15.2'}}},
+            scanned            = {brain: ['chromadb'], product: ['neo.mjs']};
+
+        // both owners' entries ride along; a key both declare with one value is one entry
+        expect(buildOrganismManifest({brainPackageJson, productPackageJson, scanned, supplemental: NO_SUPPLEMENTAL}).overrides).toEqual({
+            '@huggingface/transformers': {sharp: '^0.35.4'},
+            'gray-matter'              : {'js-yaml': '^3.15.2'},
+            'lodash-es'                : '^4.18.0'
+        });
+
+        // the red control: one key, two values — never a silent winner
+        expect(() => buildOrganismManifest({
+            brainPackageJson  : {...brainPackageJson, overrides: {'@huggingface/transformers': {sharp: '^0.36.0'}}},
+            productPackageJson,
+            scanned,
+            supplemental      : NO_SUPPLEMENTAL
+        })).toThrow(/owners disagree on the override @huggingface\/transformers/);
+
+        // owners that force nothing stage the manifest they always staged
+        expect(buildOrganismManifest({
+            brainPackageJson  : {dependencies: brainPackageJson.dependencies},
+            productPackageJson: {dependencies: productPackageJson.dependencies},
+            scanned,
+            supplemental      : NO_SUPPLEMENTAL
+        })).not.toHaveProperty('overrides')
+    });
+
     test('describeOwners ships role, name, version, pin and revision — no build-host coordinate survives in the staged metadata', () => {
         const
             roots = {brainRoot: '/Users/someone/checkouts/neo-agent-brain', enginePackageRoot: '/Users/someone/checkouts/product/node_modules/neo.mjs', productRoot: '/Users/someone/checkouts/product'},
