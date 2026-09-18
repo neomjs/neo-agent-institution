@@ -36,7 +36,7 @@
         "url": "https://github.com/neomjs/neo-agent-institution.git"
     },
     "scripts": {
-        "postinstall": "node ./buildScripts/linkMarkedForWorkerScope.mjs && neo-agent-skills-materialize",
+        "postinstall": "neo-agent-skills-materialize",
         "add-config": "node ./node_modules/neo.mjs/buildScripts/create/addConfig.mjs",
         "build-all": "node ./node_modules/neo.mjs/buildScripts/build/all.mjs -n",
         "build-all-questions": "node ./node_modules/neo.mjs/buildScripts/build/all.mjs",
