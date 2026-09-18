@@ -4,8 +4,7 @@ import {fileURLToPath} from 'url';
 /**
  * @summary The cockpit container specs' shared fakes — the provider, controller and activity-store
  * collaborators plus the roster seed path — one module the concern-named specs import by name, so
- * each carries only the seams it drives. Moved verbatim from the former `container.spec.mjs`
- * catch-all (#97); the fakes' own JSDoc travels with them.
+ * each carries only the seams it drives. The fakes' own JSDoc travels with them.
  */
 export const seedPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../../../../apps/agentos/resources/data/fleetRoster.json');
 
@@ -61,10 +60,13 @@ export const makeProviderFake = (data = {}) => ({
 /**
  * Wires the REAL `detailRecord` reactive semantics onto a plain view fake: assignment runs the
  * class's afterSetDetailRecord hook (the pane push), exactly like the config system does on a
- * real instance. Returns the fake for chaining.
+ * real instance. The hook's vessel re-title is the class's own method too — real code over a
+ * fake that holds no vessel, never a stub that could drift. Returns the fake for chaining.
  */
 export const wireDetailRecord = (view, ViewClass) => {
     let record = view.detailRecord ?? null;
+
+    view.pushVesselTitles ??= ViewClass.prototype.pushVesselTitles;
 
     Object.defineProperty(view, 'detailRecord', {
         configurable: true,

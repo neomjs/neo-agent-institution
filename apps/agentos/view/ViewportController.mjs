@@ -203,17 +203,13 @@ class ViewportController extends Controller {
     }
 
     /**
-     * @summary Re-pushes the bound instance's label into every torn-out window's title after a
-     * switch — the §7 gate decision (scope is a per-window fact). Composition lives with the
-     * cockpit's `pushInstanceTitle` (one title authority); this just sweeps the owner-held
-     * `tearOutConnects` map. Runs AFTER `syncBoundInstance`, so the titles speak the NEW binding.
+     * @summary Re-titles every torn-out window after a switch — the §7 gate decision (scope is a
+     * per-window fact). Composition AND the sweep live with the cockpit (one title authority,
+     * over the Group's own record of vessel windows). Runs AFTER `syncBoundInstance`, so the
+     * titles speak the NEW binding.
      */
     pushTearOutTitles() {
-        let cockpit = this.getReference('fleet-cockpit');
-
-        cockpit && Object.values(cockpit.tearOutConnects ?? {}).forEach(({windowId}) => {
-            windowId && cockpit.pushInstanceTitle(windowId)
-        })
+        this.getReference('fleet-cockpit')?.pushVesselTitles()
     }
 
     /**

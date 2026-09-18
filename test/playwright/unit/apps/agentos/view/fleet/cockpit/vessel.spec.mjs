@@ -16,6 +16,7 @@ import FleetCockpit         from '../../../../../../../../apps/agentos/view/flee
 import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import ViewportController   from '../../../../../../../../apps/agentos/view/ViewportController.mjs';
 
 /**
  * @summary Installs deterministic platform seams for the vessel window — `Neo.Main.windowOpen`
@@ -79,6 +80,8 @@ const fakeLifecycle = cockpit => {
         getAdmission    : (sourceId, itemId) => admissions.get(itemId)  ?? null,
         getConnection   : (sourceId, itemId) => connections.get(itemId) ?? null,
         getOwner        : (sourceId, itemId) => owners.get(itemId)      ?? null,
+        connectionEntries: () => [...connections],
+        ownerEntries     : () => [...owners],
         // the engine registers and withdraws its effects on construct/destroy; inert here
         registerSource  : () => {},
         unregisterSource: () => {},
@@ -548,5 +551,74 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
         expect(synced, 'owner change · disconnect · the return\'s after phase').toHaveLength(3);
         expect(returns.map(data => data.phase)).toEqual(['before', 'after'])
+    });
+
+    test.describe('the vessel window\'s title', () => {
+        let previousAddon, titles;
+
+        test.beforeEach(() => {
+            const provider = cockpit.getStateProvider(),
+                  getStore = provider.getStore.bind(provider);
+
+            titles        = [];
+            previousAddon = Neo.main?.addon?.DocumentHead;
+
+            Neo.main                    = Neo.main       || {};
+            Neo.main.addon              = Neo.main.addon || {};
+            Neo.main.addon.DocumentHead = {setTitle: data => titles.push(data)};
+
+            // the bound instance is Viewport-provider truth; the cockpit reads it up the chain
+            provider.getData  = key  => key  === 'boundProfileId' ? 'local' : undefined;
+            provider.getStore = name => name === 'fleetInstances' ? {get: () => ({label: 'Local fleet'})} : getStore(name)
+        });
+
+        test.afterEach(() => {
+            Neo.main.addon.DocumentHead = previousAddon
+        });
+
+        test('names the pane first, then the resident it shows, then the instance — two vessels never share a title', () => {
+            lifecycle.owners.set('detail',   {windowId: 'w-detail'});
+            lifecycle.owners.set('memories', {windowId: 'w-memories'});
+            cockpit.detailRecord = {agentId: 'neo-fable-clio', displayName: 'Clio'};
+            titles.length        = 0;
+
+            cockpit.pushVesselTitles();
+
+            expect(titles).toEqual([
+                {value: 'Agent detail · Clio — Local fleet', windowId: 'w-detail'},
+                {value: 'Memories — Local fleet',            windowId: 'w-memories'}
+            ])
+        });
+
+        test('a window still connecting is titled by its connection, and without a bound instance the pane alone names it', () => {
+            cockpit.getStateProvider().getData = () => undefined;
+
+            cockpit.afterTearOutWindowConnect({connection: {windowId: 'w-tasks'}, itemId: 'tasks'});
+            lifecycle.connections.set('operator', {windowId: 'w-operator'});
+            cockpit.pushVesselTitles();
+
+            expect(titles).toEqual([
+                {value: 'Tasks',   windowId: 'w-tasks'},
+                {value: 'Mailbox', windowId: 'w-operator'}
+            ])
+        });
+
+        test('the inspector\'s window follows the resident it shows', () => {
+            lifecycle.owners.set('detail', {windowId: 'w-detail'});
+            cockpit.detailRecord = {agentId: 'neo-opus-ada', displayName: 'Ada'};
+
+            expect(titles.at(-1)).toEqual({value: 'Agent detail · Ada — Local fleet', windowId: 'w-detail'})
+        });
+
+        test('an instance switch re-titles through the cockpit\'s own sweep — a method the real class has', () => {
+            const swept = [];
+
+            expect(typeof FleetCockpit.prototype.pushVesselTitles).toBe('function');
+
+            cockpit.pushVesselTitles = () => swept.push(true);
+            ViewportController.prototype.pushTearOutTitles.call({getReference: name => name === 'fleet-cockpit' ? cockpit : null});
+
+            expect(swept).toEqual([true])
+        })
     })
 });

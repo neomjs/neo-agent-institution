@@ -518,6 +518,12 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
 
             await checkpoint(page, beats, 'three-window-live-refresh', {updated: ['main', 'detail', 'mailbox'], windows: 3});
 
+            // two vessels open at once: the window switcher tells them apart by the PANE, the
+            // inspector's names its resident, and both end on the one bound instance
+            await expect.poll(() => detailPopup.title(),  {timeout: 10000}).toMatch(/^Agent detail · Mnemosyne — \S/);
+            await expect.poll(() => mailboxPopup.title(), {timeout: 10000}).toMatch(/^Mailbox — \S/);
+            expect((await detailPopup.title()).split(' — ')[1]).toBe((await mailboxPopup.title()).split(' — ')[1]);
+
             // The REAL vessel death while the popup tree is still live (the race-maximizing order
             // pinned by FleetCockpitTearOutNL): the window closes itself — a product close event the
             // Group observes — and the engine's tear-out owner returns the pane to the main tree.

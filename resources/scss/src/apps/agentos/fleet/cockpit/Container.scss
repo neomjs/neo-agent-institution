@@ -133,9 +133,11 @@
                 color     : var(--fm-ink);
             }
 
+            /* Selected is the chrome's underline — the active dock tab's idiom — never the hover
+               lift: a mouse resting on an inactive preset must not paint it as the active one. */
             &.pressed {
-                border-color: var(--fm-ink-dim);
                 background: var(--fm-panel);
+                box-shadow: inset 0 -2px 0 var(--fm-signal);
                 color     : var(--fm-ink);
             }
 
