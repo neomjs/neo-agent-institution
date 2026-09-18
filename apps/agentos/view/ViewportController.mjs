@@ -162,7 +162,9 @@ class ViewportController extends Controller {
      * deliberate establish (bearer-less publishes the chosen instance FAIL-CLOSED — honest state,
      * never the old instance impersonating the choice), bound-fact re-mirror, tear-out title push
      * (scope is a per-window fact), and the cockpit's own full re-drive behind its generation
-     * fences (no cross-instance bleed by construction).
+     * fences (no cross-instance bleed by construction). An endpoint the bridge refuses (remote,
+     * malformed) is a verdict, not a crash: custody is established BEFORE any state is written, so
+     * a refusal binds nothing, changes nothing and answers `false`.
      * @param {Object} record            A `fleetInstances` row.
      * @param {Object} [opts]
      * @param {String} [opts.bearerToken=null] Session-only fleet bearer — used once, never stored.
@@ -170,15 +172,20 @@ class ViewportController extends Controller {
      */
     async switchToProfile(record, {bearerToken = null} = {}) {
         let me       = this,
-            provider = me.component.stateProvider;
+            provider = me.component.stateProvider,
+            verified;
+
+        try {
+            ({verified} = establishFleetSessionCustody({
+                deliberate: true,
+                fleetUrl  : record.canonicalEndpoint,
+                redeemed  : bearerToken ? {bearerToken} : null
+            }))
+        } catch (error) {
+            return false
+        }
 
         provider.setData({instanceState: 'starting'});
-
-        const {verified} = establishFleetSessionCustody({
-            deliberate: true,
-            fleetUrl  : record.canonicalEndpoint,
-            redeemed  : bearerToken ? {bearerToken} : null
-        });
 
         me.syncBoundInstance();
         me.pushTearOutTitles();

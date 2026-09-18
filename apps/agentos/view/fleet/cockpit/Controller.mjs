@@ -890,8 +890,8 @@ class Controller extends LivenessController {
      * @summary BOOT: resolve the operator's OWN identity (whoami) and hold it owner-side — the
      * mirror read requires an EXPLICIT subject (a self-default at a trust boundary is
      * spoof-adjacent). Fail-closed: an unwired source / unbound context leaves the record null
-     * and the pane honestly unobserved. A bridge throw propagates — absence IS the state, no
-     * fallback envelope exists to fabricate.
+     * and the pane honestly unobserved. A bridge throw (no bearer injected) ends HERE the same way:
+     * the boot call is fire-and-forget, so a rejection would be an unhandled App Worker error.
      * @protected
      */
     async loadOperatorIdentity() {
@@ -903,7 +903,13 @@ class Controller extends LivenessController {
             return
         }
 
-        const outcome = await bridge.resolveViewerIdentity();
+        let outcome;
+
+        try {
+            outcome = await bridge.resolveViewerIdentity()
+        } catch (error) {
+            return
+        }
 
         if (outcome?.ok && outcome.agentIdentityNodeId && !me.isDestroyed) {
             const nodeId = outcome.agentIdentityNodeId;

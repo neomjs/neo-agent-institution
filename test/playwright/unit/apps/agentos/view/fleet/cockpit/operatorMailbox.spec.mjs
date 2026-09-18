@@ -342,6 +342,18 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         expect(cockpit.operatorRecord, 'a refusal leaves the pane honestly unobserved, never a fallback identity').toBe(null)
     });
 
+    test('identity · a bridge throw (no bearer injected) ends in the loader: the boot call is fire-and-forget, so a rejection would surface as an unhandled App Worker error', async () => {
+        setBridge({resolveViewerIdentity: async () => { throw new Error('fleet bearer not injected') }});
+
+        const cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
+            component: {getOperatorMailboxPane: () => ({set() {}})}, isDestroyed: false, operatorRecord: null
+        });
+
+        await expect(cockpit.loadOperatorIdentity()).resolves.toBeUndefined();
+
+        expect(cockpit.operatorRecord, 'a throw is absence, never a fallback identity').toBe(null)
+    });
+
     test('identity · a not-yet-materialized pane (torn, or dropped by a custom document) still seeds the record for a projection-time read', async () => {
         setBridge({resolveViewerIdentity: async () => ({ok: true, agentIdentityNodeId: '@neo-opus-grace'})});
 

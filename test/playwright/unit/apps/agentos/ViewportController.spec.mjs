@@ -233,5 +233,19 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
 
         await expect(Viewport.prototype.onAgentDefinitionAccepted.call(stub, {agent: {id: 'resident-42'}}))
             .resolves.toBe(false)
+    });
+
+    test('switchToProfile answers an endpoint the bridge refuses as a verdict: a remote row resolves false and touches no state — never a throw that strands the switcher in "starting"', async () => {
+        const
+            writes     = [],
+            controller = Object.assign(Object.create(ViewportController.prototype), {
+                component   : {stateProvider: {setData: data => writes.push(data)}},
+                getReference: () => null
+            });
+
+        await expect(controller.switchToProfile({canonicalEndpoint: 'https://switcher-test.example/fleet'}))
+            .resolves.toBe(false);
+
+        expect(writes, 'nothing was bound, so nothing changes').toEqual([])
     })
 });
