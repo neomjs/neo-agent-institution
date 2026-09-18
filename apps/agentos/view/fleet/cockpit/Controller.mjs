@@ -324,8 +324,8 @@ class Controller extends LivenessController {
     }
 
     /**
-     * @summary Capture the live dock document as a named perspective — the drawer's capture verb.
-     * A name a declared duty holds is refused by the wrapper; a name an earlier capture holds
+     * @summary Capture the perspective document under a name — the drawer's capture verb; a pane
+     * away in its vessel files in its home. A duty's name is refused by the wrapper; a held name
      * updates that capture in place (the same folded id — the library's collision verdict guards
      * a foreign record's name, an imported artifact's). A saved capture is FILED, not activated:
      * it reaches the drawer through the projected list, verdict included, while the live layout
@@ -340,7 +340,7 @@ class Controller extends LivenessController {
         // A capture that throws is still a verdict the drawer must show — a silent failure would
         // read as "nothing happened", the one outcome a capture verb may never produce.
         try {
-            let {layout, errors} = CockpitPerspectives.captureSavedLayout(view.getDockZoneDocument(), name, Object.keys(view.perspectives ?? {}));
+            let {layout, errors} = CockpitPerspectives.captureSavedLayout(view.getPerspectiveDocument(), name, Object.keys(view.perspectives ?? {}));
 
             verdict = {saved: false, layoutId: null, name: layout?.perspectiveName ?? null, errors};
 
