@@ -20,7 +20,7 @@ const edgeHyphens = /^-+|-+$/g;
 /**
  * The declared duties, in bar order: the name the engine selects by, the title the drawer shows,
  * and the arrangement each one is.
- * @type {{name: String, title: String, zones: Object}[]}
+ * @type {Array<{name: String, title: String, zones: Object}>}
  */
 const duties = [
     {name: 'Overview', title: 'Overview — mission control',     zones: {}},
