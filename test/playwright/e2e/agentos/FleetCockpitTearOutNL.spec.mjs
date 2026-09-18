@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {departedWindowSends, test, expect} from '../../fixtures.mjs';
 
 /**
  * Whitebox-e2e for the Fleet cockpit's GESTURE tear-out vessel-death return leg — the
@@ -242,7 +242,9 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
         expect(popupErrors, 'zero vessel page errors').toEqual([])
     };
 
-    test('stream: tear out → own OS window → vessel death → same instance comes HOME, no orphan', async ({page, neuralLink}) => {
+    test('stream: tear out → own OS window → vessel death → same instance comes HOME, no orphan', async ({page, neuralLink, workerErrors}) => {
+        workerErrors.expect(departedWindowSends);
+
         await runVesselDeathCycle(page, neuralLink, {
             itemId     : 'stream',
             className  : 'AgentOS.view.fleet.activity.Container',
@@ -250,7 +252,9 @@ test.describe('AgentOS Fleet cockpit — gesture tear-out vessel-death return (N
         })
     });
 
-    test('operator (rail-pinned first): the item-keyed return branch holds beyond the default tree', async ({page, neuralLink}) => {
+    test('operator (rail-pinned first): the item-keyed return branch holds beyond the default tree', async ({page, neuralLink, workerErrors}) => {
+        workerErrors.expect(departedWindowSends);
+
         await runVesselDeathCycle(page, neuralLink, {
             itemId     : 'operator',
             className  : 'AgentOS.view.fleet.mailbox.OperatorContainer',

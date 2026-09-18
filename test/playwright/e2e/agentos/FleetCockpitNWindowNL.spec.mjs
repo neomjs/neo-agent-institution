@@ -1,4 +1,4 @@
-import {test, expect, loadAgentOsModule}  from '../../fixtures.mjs';
+import {departedWindowSends, test, expect, loadAgentOsModule} from '../../fixtures.mjs';
 import {
     authenticatedFleetOptions,
     fleetE2EFailure,
@@ -171,7 +171,9 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
         viewport      : {height: 720, width: 1100}
     });
 
-    test('detail vessel + mailbox mid-gesture vessel stay live, update and return as the same instances', async ({page, neuralLink}, testInfo) => {
+    test('detail vessel + mailbox mid-gesture vessel stay live, update and return as the same instances', async ({page, neuralLink, workerErrors}, testInfo) => {
+        workerErrors.expect(departedWindowSends);
+
         const fleet       = await startNWindowFleet(),
               beats       = [],
               pageErrors  = [],
