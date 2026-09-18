@@ -14,6 +14,7 @@ import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/Fle
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 
 /**
  * The perspectives drawer's two verbs, driven through the cockpit's REAL relay over a real
@@ -79,6 +80,23 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         // the bar carries the declared duties only — a capture is applied from its card
         expect(cockpit.getReference('fleet-preset-capture-triage')).toBeFalsy();
         expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(true)
+    });
+
+    test('a capture taken while the inspector is away in its vessel files it in its home, not as closed', async () => {
+        cockpit = createCockpit();
+        await cockpit.refreshPromise;
+
+        const home = WorkspaceDocument.findContainingTabsId(cockpit.dockModel, 'detail');
+
+        // the engine's own detach: its wrapper records the home with the tear-out owner
+        cockpit.onDockZoneDocumentChange(cockpit.applyTearOutOperation({operation: 'detachItem', itemId: 'detail'}).document);
+
+        expect(home, 'the inspector has a home to return to').toBeTruthy();
+        expect(WorkspaceDocument.findContainingTabsId(cockpit.dockModel, 'detail'), 'the live document places it nowhere').toBeNull();
+
+        expect(cockpit.getController().onPerspectiveRequest({action: 'capture', name: 'Away'}).saved).toBe(true);
+
+        expect(WorkspaceDocument.findContainingTabsId(cockpit.perspectiveStore.getPerspective('Away').layout.dockZone, 'detail')).toBe(home)
     });
 
     test('a duty\'s name is refused by the wrapper — nothing filed, the refusal projected; a re-capture under a held name updates that capture in place', async () => {
