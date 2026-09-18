@@ -24,6 +24,7 @@ import fs                                           from 'node:fs';
 import {builtinModules}                             from 'node:module';
 import path                                         from 'node:path';
 import {fileURLToPath}                              from 'node:url';
+import {isDeepStrictEqual}                          from 'node:util';
 import {parse}                                      from 'acorn';
 import {resolveAgentOsRuntimeRoot}                  from './brain.mjs';
 import {ALLOWED_EXACT_PATHS, ALLOWED_PATH_PREFIXES} from './contentPolicy.mjs';
@@ -326,6 +327,11 @@ export function collectBarePackages({files, rootDir}) {
  * the Engine is the product's pin). Both manifests are required: a scan that cannot see the Brain's
  * hard-errors exactly where a broken artifact would otherwise ship. An import its own owner never
  * declared is a hard error too — the checkout would have failed the same way.
+ *
+ * Both owners' npm `overrides` ride along under the same rule (one key, one value, or the pack
+ * fails): the stage installs WITHOUT a lock, so a resolution an owner forces outside its parent's
+ * declared range reaches the artifact only if the staged manifest repeats it. An entry naming a
+ * package outside the organism's tree is inert.
  * @param {Object} options
  * @param {{brain: String[], product: String[]}} options.scanned Bare package names per staging owner.
  * @param {Object} options.productPackageJson Parsed product package.json.
@@ -333,7 +339,7 @@ export function collectBarePackages({files, rootDir}) {
  * @param {{brain: String[], product: String[]}} [options.supplemental=SUPPLEMENTAL_DEPENDENCIES]
  * @param {String[]} [options.optionalLazy=OPTIONAL_LAZY_PACKAGES]
  * @param {Object} [options.ownerExceptions=OWNER_EXCEPTIONS]
- * @returns {Object} `{name, private, type, version, dependencies}` — the staged package.json.
+ * @returns {Object} `{name, private, type, version, dependencies, [overrides]}` — the staged package.json.
  */
 export function buildOrganismManifest({
     scanned,
@@ -395,8 +401,20 @@ export function buildOrganismManifest({
         throw new Error(`organism manifest: the owners disagree on ${disagreements.join('; ')} — align the declarations or name a governing owner in OWNER_EXCEPTIONS`)
     }
 
+    const
+        brainOverrides   = brainPackageJson.overrides   ?? {},
+        productOverrides = productPackageJson.overrides ?? {},
+        overrides        = {...brainOverrides, ...productOverrides},
+        contested        = Object.keys(brainOverrides)
+            .filter(name => name in productOverrides && !isDeepStrictEqual(brainOverrides[name], productOverrides[name]));
+
+    if (contested.length > 0) {
+        throw new Error(`organism manifest: the owners disagree on the override ${contested.map(name => `${name}: brain ${JSON.stringify(brainOverrides[name])} vs product ${JSON.stringify(productOverrides[name])}`).join('; ')} — align the declarations`)
+    }
+
     return {
         dependencies,
+        ...(Object.keys(overrides).length > 0 && {overrides}),
         name   : 'neo-harness-organism',
         private: true,
         type   : 'module',
