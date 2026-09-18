@@ -171,13 +171,21 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                   label    = rect(document.querySelector('.fm-instance-switcher .fm-instance-label')),
                   title    = rect(document.querySelector('.agent-shell-title')),
                   // the no-mid-word-clipping law on the densest card — every state word ends inside its
-                  // own state line and never runs under the verbs (it once lost "rved" under them)
+                  // own state line and never runs under the verbs (it once lost "rved" under them).
+                  // The law holds for EVERY member on the line's row: the badge, the band and the
+                  // telltale once ran under the verbs while only the word was guarded. A member the
+                  // row cannot hold sits on a row the line does not show, so it is not measured.
                   cards    = [...document.querySelectorAll('.fm-agent-card')].map(card => {
-                      const word  = rect(card.querySelector('.fm-card-state')),
-                            line  = rect(card.querySelector('.fm-card-state-line')),
-                            verbs = rect(card.querySelector('.fm-card-control-verbs'));
+                      const line  = rect(card.querySelector('.fm-card-state-line')),
+                            verbs = rect(card.querySelector('.fm-card-control-verbs')),
+                            word  = rect(card.querySelector('.fm-card-state'));
 
                       return {
+                          lineHeight    : Math.round(line.height),
+                          members       : [...card.querySelectorAll('.fm-card-state-line > *')]
+                              .map(el => ({cls: el.className, box: rect(el)}))
+                              .filter(({box}) => box.width > 0 && box.top - line.top < line.height)
+                              .map(({cls, box}) => ({cls, pastLine: Math.round(box.right - line.right), underVerbs: Math.round(overlap(box, verbs))})),
                           wordPastLine  : word && line ? Math.round(word.right - line.right) : 0,
                           wordUnderVerbs: Math.round(overlap(word, verbs))
                       }
@@ -223,6 +231,12 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         for (const card of geometry.cards) {
             expect(card.wordPastLine, 'the state word ends inside its own state line').toBeLessThanOrEqual(0);
             expect(card.wordUnderVerbs, 'the state word never runs under the verbs').toBe(0);
+            expect(card.lineHeight, 'the state line is one row at vessel width').toBe(16);
+
+            for (const member of card.members) {
+                expect(member.pastLine, `${member.cls} ends inside the state line`).toBeLessThanOrEqual(0);
+                expect(member.underVerbs, `${member.cls} never runs under the verbs`).toBe(0)
+            }
         }
 
         await expect(page).toHaveScreenshot('cockpit-vessel-314.png')

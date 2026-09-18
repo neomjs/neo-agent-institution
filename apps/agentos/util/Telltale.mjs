@@ -146,11 +146,14 @@ class Telltale extends Base {
      * a11y row, and both are derived here rather than in the view: they are statements about the
      * taxonomy, and a second renderer must not be able to word them differently.
      *
+     * `mark` is the chip's narrow form — the deviating axes' initials in the same order (`w`, `t`,
+     * `w·t`) — for a line too short for the words; which form renders is the stylesheet's decision.
+     *
      * @param {Object} options={}
      * @param {Object|null} [options.throttle] The record's throttle observation.
      * @param {Object|null} [options.wake] The record's wake observation.
-     * @returns {{ariaLabel: String|null, hidden: Boolean, text: String, title: String|null}} `hidden`
-     *     when nothing is worth reporting; `ariaLabel`/`title` are `null` exactly when hidden.
+     * @returns {{ariaLabel: String|null, hidden: Boolean, mark: String, text: String, title: String|null}}
+     *     `hidden` when nothing is worth reporting; `ariaLabel`/`title` are `null` exactly when hidden.
      */
     static describeTelltale({throttle = null, wake = null} = {}) {
         const
@@ -169,6 +172,8 @@ class Telltale extends Base {
         return {
             ariaLabel: hidden ? null : `Telltale: ${reportable.join(', ')}`,
             hidden,
+            // every deviation opens with its axis' name, so its first letter is the axis' initial
+            mark     : reportable.map(deviation => deviation[0]).join('·'),
             text     : reportable.join(' · '),
             // The full readout the chip could not fit — both axes, including the nominal and the blind
             // ones, worded exactly as the detail words them.
