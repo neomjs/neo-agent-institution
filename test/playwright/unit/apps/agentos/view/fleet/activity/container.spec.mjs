@@ -15,15 +15,16 @@ setup({
     }
 });
 
-import {test, expect}                           from '@playwright/test';
-import Neo                                      from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core                                from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import DomApiVnodeCreator                       from '../../../../../../../../node_modules/neo.mjs/src/vdom/util/DomApiVnodeCreator.mjs';
-import Instance                                 from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
-import VdomHelper                               from '../../../../../../../../node_modules/neo.mjs/src/vdom/Helper.mjs';
-import ActivityStream, {describeActivityCounts} from '../../../../../../../../apps/agentos/view/fleet/activity/Container.mjs';
-import {getActivityObjectText}                  from '../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs';
-import FleetActivityEvents                      from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
+import {test, expect}                                               from '@playwright/test';
+import Neo                                                          from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core                                                    from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import DomApiVnodeCreator                                           from '../../../../../../../../node_modules/neo.mjs/src/vdom/util/DomApiVnodeCreator.mjs';
+import Instance                                                     from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
+import VdomHelper                                                   from '../../../../../../../../node_modules/neo.mjs/src/vdom/Helper.mjs';
+import ActivityStream, {describeActivityCounts, describeQuietSince} from '../../../../../../../../apps/agentos/view/fleet/activity/Container.mjs';
+import {getActivityObjectText}                                      from '../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs';
+import FleetActivityEvents                                          from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
+import ViewerTime                                                   from '../../../../../../../../apps/agentos/util/ViewerTime.mjs';
 
 test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', () => {
     let sequence = 0,
@@ -287,5 +288,64 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(stream.getReference('header').cls).toContain('is-stale');
         expect(stream.getReference('state').text).toBe('stale — reconnecting');
         expect(list.items.filter(Boolean)).toHaveLength(mounted)
+    });
+
+    test('describeQuietSince states an old newest event, and claims nothing it cannot read', () => {
+        const
+            now   = Date.UTC(2026, 8, 19, 12),
+            old   = new Date(now - 25 * 60 * 60 * 1000).toISOString(),
+            fresh = new Date(now - 60 * 60 * 1000).toISOString(),
+            quiet = describeQuietSince(old, now);
+
+        expect(quiet.text).toBe(`quiet since ${ViewerTime.formatViewerTime(old, {now}).text}`);
+        expect(quiet.title).toContain(old);
+        expect(quiet.title).toContain('the fleet was quiet, or an activity source stopped delivering');
+
+        expect(describeQuietSince(fresh, now)).toBeNull();
+        expect(describeQuietSince(null, now)).toBeNull();
+        expect(describeQuietSince('not a date', now)).toBeNull()
+    });
+
+    test('a live feed over old rows says so beside its connection word', async () => {
+        await createStream({count: 20});
+
+        stream.adapterState = 'live';
+
+        const
+            state  = stream.getReference('state'),
+            newest = store.getAt(0).occurredAt;
+
+        expect(state.text).toBe(`● streaming · quiet since ${ViewerTime.formatViewerTime(newest).text}`);
+        expect(state.vdom.title).toContain(newest);
+        expect(stream.getReference('header').cls).toEqual(expect.arrayContaining(['is-live', 'is-quiet']))
+    });
+
+    test('a live feed with a fresh newest event, or with no rows, keeps the bare connection word', async () => {
+        await createStream({count: 20});
+
+        stream.adapterState = 'live';
+        store.add(event(900, 0, {occurredAt: new Date(Date.now() - 60 * 1000).toISOString()}));
+
+        expect(stream.getReference('state').text).toBe('● streaming');
+        expect(stream.getReference('state').vdom.title ?? null).toBeNull();
+        expect(stream.getReference('header').cls).toContain('is-live');
+        expect(stream.getReference('header').cls).not.toContain('is-quiet');
+
+        store.clear();
+
+        expect(stream.getReference('state').text).toBe('● streaming');
+        expect(stream.getReference('header').cls).not.toContain('is-quiet')
+    });
+
+    test('sample and stale keep their own words over old rows', async () => {
+        await createStream({count: 20});
+
+        expect(stream.getReference('state').text).toBe('sample · live feed pending');
+        expect(stream.getReference('header').cls).not.toContain('is-quiet');
+
+        stream.adapterState = 'stale';
+
+        expect(stream.getReference('state').text).toBe('stale — reconnecting');
+        expect(stream.getReference('header').cls).not.toContain('is-quiet')
     })
 });

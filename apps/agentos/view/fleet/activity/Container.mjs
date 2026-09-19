@@ -3,8 +3,12 @@ import Button       from '../../../../../node_modules/neo.mjs/src/button/Base.mj
 import Component    from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import Container    from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import RowContainer from './RowContainer.mjs';
+import ViewerTime   from '../../../util/ViewerTime.mjs';
 
-const COUNT_SCOPES = new Set(['last24h', 'total']);
+const
+    COUNT_SCOPES   = new Set(['last24h', 'total']),
+    // a live feed whose newest event is older than this says so
+    QUIET_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /**
  * @summary Formats only complete, source-qualified activity count rows.
@@ -52,6 +56,29 @@ export function describeActivityCounts(counts) {
         title: complete
             .map(row => `${row.source} ${row.scope}=${row.value} captured ${row.capturedAt}`)
             .join('\n')
+    }
+}
+
+/**
+ * @summary States that a connected feed's newest event is old — a fact the connection word cannot carry.
+ *
+ * A successful read of old rows is still a live feed. The header cannot know whether the fleet was
+ * quiet or a source stopped delivering, so it names the instant and both readings, and guesses neither.
+ * The instant is absolute: a relative age would re-render every golden that shows this header.
+ * @param {String|Number|Date|null} occurredAt The newest retained event's instant.
+ * @param {Number} [now=Date.now()]
+ * @returns {{text:String,title:String}|null} `null` for a fresh, absent or unparseable instant.
+ */
+export function describeQuietSince(occurredAt, now = Date.now()) {
+    const stamp = ViewerTime.formatViewerTime(occurredAt, {now});
+
+    if (!stamp || now - Date.parse(stamp.title) <= QUIET_AFTER_MS) {
+        return null
+    }
+
+    return {
+        text : `quiet since ${stamp.text}`,
+        title: `The feed is connected, and its newest event is from ${stamp.title}: the fleet was quiet, or an activity source stopped delivering.`
     }
 }
 
@@ -326,6 +353,7 @@ class ActivityStream extends Container {
 
     /**
      * @summary Updates stable header components from liveness, source-count and local-retention truth.
+     * A live feed over an old newest event says so beside its connection word ({@link describeQuietSince}).
      * @protected
      */
     updateHeader() {
@@ -337,14 +365,17 @@ class ActivityStream extends Container {
             retained   = me.store?.count ?? 0,
             dropped    = me.store?.droppedCount ?? 0,
             countView  = describeActivityCounts(me.counts),
-            stateText  = {sample: 'sample · live feed pending', stale: 'stale — reconnecting'}[me.adapterState] ?? '● streaming',
-            stateCls   = {sample: 'is-sample', stale: 'is-stale'}[me.adapterState] ?? 'is-live';
+            stateWord  = {sample: 'sample · live feed pending', stale: 'stale — reconnecting'}[me.adapterState],
+            stateCls   = {sample: 'is-sample', stale: 'is-stale'}[me.adapterState] ?? 'is-live',
+            // sample and stale already say their rows are not current; only a live feed can mislead
+            quiet      = stateWord ? null : describeQuietSince(me.store?.getAt(0)?.occurredAt),
+            stateText  = stateWord ?? (quiet ? `● streaming · ${quiet.text}` : '● streaming');
 
         if (!header || !countsCell || !stateCell) {
             return
         }
 
-        header.cls = ['fm-stream-head', stateCls];
+        header.cls = ['fm-stream-head', stateCls, ...(quiet ? ['is-quiet'] : [])];
 
         countsCell.vdom.title = countView?.title ?? null;
         countsCell.set({
@@ -353,7 +384,9 @@ class ActivityStream extends Container {
         });
 
         me.getReference('retention').text = `${retained} retained${dropped ? ` · ${dropped} dropped` : ''}`;
-        stateCell.text = stateText
+
+        stateCell.vdom.title = quiet?.title ?? null;
+        stateCell.text       = stateText
     }
 
     /**
