@@ -455,4 +455,160 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
             }
         }
     });
+
+    test('the state line\'s fit across the card-width matrix: one row, members leave whole from the end, nothing past the line or under the verbs, and the card\'s height never follows its resident\'s data', async ({page, neuralLink}) => {
+        // The closed vocabularies' long rows beside the ordinary ones. Geometry-asserted, no golden.
+        const presenceOf = (state, beacon = 'fresh') => ({source: 'fleet:presenceState', state, confidence: 'observed', lastSeenAt: '2026-09-04T22:00:00.000Z', beacon}),
+              seat       = (id, displayName, extra) => ({
+                  agentId : id, githubUsername: `@${id}`, displayName, engineTag: 'fable-5', family: 'claude',
+                  laneLine: 'awaiting review', avatarUrl: avatar('#c0873a'),
+                  sources : {roster: roster('wired', 'observed'), repoStatus: repo('not-wired'), runtime: runtime('wired', 'observed')},
+                  ...extra
+              }),
+              bothAxes   = {
+                  wake    : {source: 'fleet:wake', state: 'suppressed', confidence: 'observed'},
+                  throttle: {source: 'fleet:throttle', state: 'rate-limited', confidence: 'observed'}
+              },
+              CONTROL    = seat('fit-control', 'Aa control', {state: 'ok', openLaneCount: 1, presence: presenceOf('fresh')}),
+              FIT_ROSTER = [
+                  CONTROL,
+                  seat('fit-widest',   'Ab widest',   {state: 'limited', openLaneCount: 23, presence: presenceOf('active-turn')}),
+                  seat('fit-dense',    'Ac dense',    {state: 'limited', openLaneCount: 23, presence: presenceOf('active-turn'), ...bothAxes}),
+                  seat('fit-one-axis', 'Ad one axis', {state: 'ok',      openLaneCount: 3,  presence: presenceOf('fresh'),
+                      throttle: {source: 'fleet:throttle', state: 'overage', confidence: 'observed'}}),
+                  seat('fit-benched',  'Ae benched',  {state: 'off',     openLaneCount: 12, presence: presenceOf('neverConnected')}),
+                  seat('fit-beacon',   'Af beacon',   {state: 'limited', openLaneCount: 23, presence: presenceOf('active-turn', 'absent'), ...bothAxes}),
+                  seat('fit-bare',     'Ag bare',     {state: 'idle',    openLaneCount: null})
+              ],
+              // the vessel card, the sub-narrow band, both ends of the narrow band, the vessel window,
+              // the first regular width, the roster's column floor, and the first widths whose line
+              // holds the badge's noun (283) and the telltale's words (508)
+              WIDTHS     = [191, 240, 271, 294, 314, 319, 320, 410, 443, 500, 668],
+              ROW        = 16,
+              NOUN_FROM  = 283,
+              WORDS_FROM = 508,
+              ORDER      = ['state', 'telltale', 'presence', 'beacon', 'lane-count'];
+
+        await page.setViewportSize({width: 900, height: 1600});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
+
+        const app           = await neuralLink.connectToApp('AgentOS'),
+              [rosterStore] = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
+              storeId       = (Array.isArray(rosterStore) ? rosterStore[0] : rosterStore)?.id;
+
+        expect(storeId, 'the provider-owned FleetRoster store must exist').toBeTruthy();
+
+        const seatRoster = async rows => {
+                  await app.callMethod(storeId, 'clear');
+                  await app.callMethod(storeId, 'add', [rows]);
+                  await expect.poll(async () => page.locator('.fm-agent-card').count(), {
+                      message: 'the grid renders one card per row', timeout: 15000, intervals: [250]
+                  }).toBe(rows.length)
+              },
+              pinWidth   = async width => {
+                  await page.evaluate(({width}) => {
+                      const list = document.querySelector('.fm-fleet-cards');
+
+                      list.style.width = list.style.minWidth = list.style.maxWidth = `${width + 20}px`;
+                      list.style.height    = '1500px';
+                      list.style.maxHeight = 'none'
+                  }, {width});
+
+                  await expect.poll(async () => page.evaluate(() => Math.round(document.querySelector('.fm-agent-card').getBoundingClientRect().width)), {
+                      message: `[${width}] Animate re-seats the card at exactly ${width}px`, timeout: 15000, intervals: [100, 250]
+                  }).toBe(width);
+                  await page.evaluate(() => document.fonts.ready)
+              },
+              cardHeight = () => page.evaluate(() => Math.round(document.querySelector('.fm-agent-card').getBoundingClientRect().height));
+
+        // the control alone gives each width its height: what a card measures when no resident is dense
+        const controlHeights = {};
+
+        await seatRoster([CONTROL]);
+
+        for (const width of WIDTHS) {
+            await pinWidth(width);
+            controlHeights[width] = await cardHeight()
+        }
+
+        await seatRoster(FIT_ROSTER);
+
+        for (const width of WIDTHS) {
+            await pinWidth(width);
+
+            // the measured row settles after the re-seat: every card takes one height
+            await expect.poll(async () => page.evaluate(() => new Set([...document.querySelectorAll('.fm-agent-card')].map(card => Math.round(card.getBoundingClientRect().height))).size), {
+                message: `[${width}] the cards settle on one height`, timeout: 15000, intervals: [100, 250]
+            }).toBe(1);
+
+            const cards = await page.evaluate(({ORDER, ROW}) => {
+                const rect    = el => el.getBoundingClientRect(),
+                      overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+
+                return Object.fromEntries([...document.querySelectorAll('.fm-agent-card')].map(card => {
+                    const q     = sel => card.querySelector(sel),
+                          line  = q('.fm-card-state-line'),
+                          verbs = q('.fm-card-control-verbs'),
+                          form  = el => el && {before: getComputedStyle(el, '::before').content, fontSize: getComputedStyle(el).fontSize};
+
+                    return [q('.fm-card-name').textContent, {
+                        badge     : form(q('.fm-card-lane-count')),
+                        cardHeight: Math.round(rect(card).height),
+                        lineHeight: Math.round(rect(line).height),
+                        lineWidth : Math.round(rect(line).width),
+                        telltale  : form(q('.fm-card-telltale')),
+                        members   : ORDER.map(name => [name, q(`.fm-card-${name}`)])
+                            .filter(([, el]) => el && getComputedStyle(el).display !== 'none')
+                            .map(([name, el]) => {
+                                const visible = rect(el).top - rect(line).top < ROW;
+
+                                return {
+                                    name,
+                                    visible,
+                                    pastLine  : visible ? Math.max(0, Math.round((rect(el).right - rect(line).right) * 10) / 10) : 0,
+                                    underVerbs: visible ? overlap(rect(el), rect(verbs)) : 0
+                                }
+                            })
+                    }]
+                }))
+            }, {ORDER, ROW});
+
+            for (const [name, card] of Object.entries(cards)) {
+                const scope   = `[${width}] ${name}`,
+                      visible = card.members.map(member => member.visible);
+
+                // one row, and the card's height is the control's: no resident's data reaches it
+                expect(card.lineHeight, `${scope}: the state line is one row`).toBe(ROW);
+                expect(card.cardHeight, `${scope}: the card keeps the control-only height`).toBe(controlHeights[width]);
+
+                // the word is the 1.4.1 carrier: visible at every width
+                expect(card.members[0], `${scope}: the state word is on the row`).toMatchObject({name: 'state', visible: true});
+
+                // members leave from the END: past the first one that left, none is visible
+                expect(visible.indexOf(false) === -1 || !visible.slice(visible.indexOf(false)).includes(true),
+                    `${scope}: a member that left takes every later member with it (${JSON.stringify(card.members.map(m => `${m.name}:${m.visible}`))})`).toBe(true);
+
+                for (const member of card.members) {
+                    expect(member.pastLine,   `${scope}: ${member.name} ends inside the line`).toBeLessThanOrEqual(0.5);
+                    expect(member.underVerbs, `${scope}: ${member.name} never runs under the verbs`).toBe(0)
+                }
+
+                // the forms follow the line's width: words and noun where the line holds them, the mark and the number below
+                if (card.telltale) {
+                    expect(card.telltale.fontSize, `${scope}: the telltale renders its ${card.lineWidth >= WORDS_FROM ? 'words' : 'mark'} on a ${card.lineWidth}px line`).toBe(card.lineWidth >= WORDS_FROM ? '10px' : '0px');
+                    card.lineWidth < WORDS_FROM && expect(card.telltale.before, `${scope}: the mark names the axes`).toMatch(/^"(w|t|w·t)"$/)
+                }
+
+                if (card.badge) {
+                    expect(card.badge.fontSize, `${scope}: the badge renders its ${card.lineWidth >= NOUN_FROM ? 'phrase' : 'number'} on a ${card.lineWidth}px line`).toBe(card.lineWidth >= NOUN_FROM ? '10px' : '0px');
+                    card.lineWidth < NOUN_FROM && expect(card.badge.before, `${scope}: the number is the count`).toMatch(/^"\d+"$/)
+                }
+            }
+
+            // the roster's column floor holds the widest active line whole, both telltale axes included
+            width === 410 && expect(cards['Ac dense'].members.every(member => member.visible), '[410] the widest active line with both axes shows every member').toBe(true)
+        }
+    });
 });

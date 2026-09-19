@@ -306,6 +306,63 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('the state line is ONE wrapping row in priority order: the exception follows the word, the badge leaves first', () => {
+        const card = createCard({agentId: 'vega', state: 'ok'}),
+              line = card.down({reference: 'state-line'});
+
+        // the stylesheet shows the wrapped line's first row only, so a member the row cannot hold
+        // leaves whole from the END: the item order IS the priority, and the row's height is the
+        // stylesheet's only while the identity column does not stretch the line
+        expect(line.layout.wrap).toBe('wrap');
+        expect(line.flex).toBe('none');
+        expect(line.items.map(item => item.reference)).toEqual([
+            'state-dot', 'card-state', 'card-telltale', 'card-presence', 'card-beacon', 'card-lane-count'
+        ]);
+
+        card.destroy()
+    });
+
+    test('the badge and the chip carry their narrow forms beside the whole text — the stylesheet picks the form, never the card', () => {
+        const card = createCard({
+            agentId      : 'vega',
+            openLaneCount: 23,
+            state        : 'ok',
+            wake         : {source: 'fleet:wakeState', state: 'suppressed', confidence: 'observed'},
+            throttle     : {source: 'fleet:throttleState', state: 'overage', confidence: 'observed'}
+        });
+
+        const badge = () => card.down({reference: 'card-lane-count'}),
+              chip  = () => card.down({reference: 'card-telltale'});
+
+        // the text stays the whole phrase at every width; the number alone is the narrow form, and
+        // the title and aria pair speak the phrase in both
+        expect(badge().text).toBe('23 lanes');
+        expect(badge().vdom['data-count']).toBe(23);
+        expect(badge().vdom['aria-label']).toBe('23 open lanes');
+        expect(badge().vdom.title).toBe('23 open lanes');
+
+        expect(chip().text).toBe('wake suppressed · throttle overage');
+        expect(chip().vdom['data-mark']).toBe('w·t');
+
+        applySet(card, {openLaneCount: 1, wake: {source: 'fleet:wakeState', state: 'on', confidence: 'observed'}});
+
+        expect(badge().vdom['data-count']).toBe(1);
+        expect(badge().vdom.title).toBe('1 open lane');
+        expect(chip().vdom['data-mark']).toBe('t');
+
+        // a withdrawn report and a recovered agent leave no residue a narrow form could render
+        applySet(card, {openLaneCount: null, throttle: {source: 'fleet:throttleState', state: 'none', confidence: 'observed'}});
+
+        expect(badge().hidden).toBe(true);
+        expect(badge().vdom['data-count']).toBeFalsy();
+        expect(badge().vdom['aria-label']).toBeFalsy();
+        expect(badge().vdom.title).toBeFalsy();
+        expect(chip().hidden).toBe(true);
+        expect(chip().vdom['data-mark']).toBeFalsy();
+
+        card.destroy()
+    });
+
     test('the source strip summarizes health in place; absent runtime renders the dot unobserved and never pulses (#15536)', () => {
         const card     = createCard({agentId: 'vega', state: 'ok'}),
               beforeId = card.id,

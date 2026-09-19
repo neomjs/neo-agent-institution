@@ -144,23 +144,34 @@
         color: color-mix(in srgb, var(--fm-ink-dim) 75%, transparent);
     }
 
-    /* ── the state line: dot · state-word · presence band · beacon words · lane-count badge (right-pinned) · telltale ──
-       The line is its OWN width-query context, NAMED so the card's unnamed queries keep resolving to
-       the card: it is the card's one nowrap row with optional members, and the one member allowed to
-       yield to its width is the beacon words (.fm-card-beacon). */
+    /* ── the state line: dot · state-word · telltale · presence band · beacon words · lane-count badge (right-pinned) ──
+       ONE row at every width, and the fit is the content's own: the line wraps (its layout config)
+       and shows its first row only, so a member the row cannot hold leaves WHOLE, from the end —
+       never cut, never under the verbs — and a card's height never depends on its resident's data.
+       The order is therefore the priority: the exception follows the word and leaves last. Only
+       the block axis clips; the dot's halo needs the inline one. What a member LOOKS like at a
+       width is the forms' business below: the line is its OWN width-query context, NAMED so the
+       card's unnamed queries keep resolving to the card. */
     .fm-card-state-line {
-        container: state-line / inline-size;
-        gap      : var(--fm-space-2);
-        min-width: 0;
+        --fm-state-line-row: 16px;   /* a chip's height: the micro text, its 2px pads, its 1px borders */
+
+        container : state-line / inline-size;
+        gap       : var(--fm-space-2);
+        height    : var(--fm-state-line-row);
+        min-width : 0;
+        overflow-x: visible;
+        overflow-y: clip;
     }
 
     /* the visible State line (WCAG 1.4.1). --fm-ink-dim, NEVER a --fm-state-* hue (dot-tuned to the
        3:1 non-text floor). Severity adds WEIGHT + full ink via fm-state-hot — never a hue on the
-       word (the 1.4.1→1.4.3 trap avoided by construction). Literal lowercase from stateLabel(). */
+       word (the 1.4.1→1.4.3 trap avoided by construction). Literal lowercase from stateLabel().
+       The word is on the first row by construction, so its line box gives that row its full height
+       whether or not a chip shares it — the hidden rows start below the clip either way. */
     .fm-card-state {
         flex       : none;
         font       : var(--fm-text-micro);
-        line-height: 1;
+        line-height: var(--fm-state-line-row);
         white-space: nowrap;
         color      : var(--fm-ink-dim);
 
@@ -225,6 +236,11 @@
         }
     }
 
+    /* an exception chip outranks the presentational words: they are priced against a line without one */
+    .fm-card-state-line:has(.fm-card-telltale) .fm-card-beacon {
+        display: none;
+    }
+
     /* the open-lane count badge — right-pinned; openLaneCount ONLY, never the engine */
     .fm-card-lane-count {
         flex         : none;
@@ -237,6 +253,22 @@
         border-radius: 999px;
         padding      : 2px 7px;
         white-space  : nowrap;
+    }
+
+    /* the badge's narrow form: the number alone (data-count; the title and aria pair keep the
+       phrase). The noun renders where the widest active line holds it beside a telltale mark:
+       dot 8 + rate-limited 80.3 + mark 36.1 + active turn 86.3 + a two-digit badge 72.2 (each
+       member with its gap) = 282.9. */
+    @container state-line (max-width: 282px) {
+        .fm-card-lane-count {
+            font-size: 0;
+
+            &::before {
+                content    : attr(data-count);
+                font       : var(--fm-text-micro);
+                line-height: 1;
+            }
+        }
     }
 
     /* the S2 telltale chip — hidden while nominal; any pixels mean a deviation on ≥1 axis */
@@ -257,6 +289,24 @@
         border-radius: var(--fm-chip-radius);
         padding      : var(--fm-chip-pad-y) var(--fm-chip-pad-x);
         white-space  : nowrap;
+    }
+
+    /* the telltale's narrow form: the deviating axes' initials (data-mark: w · t · w·t), the words
+       on the title and aria pair — the cockpit bar's marks-with-titles, with a letter where an empty
+       chip beside a state word would read as a checkbox. The words render where the widest active
+       line holds them: dot 8 + rate-limited 80.3 + both axes 260.8 + active turn 86.3 + a two-digit
+       badge 72.2 = 507.6. */
+    @container state-line (max-width: 507px) {
+        .fm-card-telltale {
+            font-size     : 0;
+            padding-inline: var(--fm-space-1);
+
+            &::before {
+                content    : attr(data-mark);
+                font       : var(--fm-text-micro);
+                line-height: 1;
+            }
+        }
     }
 
     /* ── actions: native buttons, contextual, never dominant. 32px regular, one 44px target narrow ── */
@@ -444,13 +494,7 @@
             justify-content: flex-end;
         }
 
-        /* with the verbs below, the state line owns the identity width; under pressure the badge /
-           presence band / telltale take a second row here — a word is never cut. The narrow band
-           keeps its single line: its card wall is height-constrained and a second row clips. */
-        .fm-card-state-line {
-            flex-wrap: wrap;
-            gap      : var(--fm-space-1) var(--fm-space-2);
-        }
+        /* with the verbs below, the state line owns the identity width — and keeps its one row */
 
         .fm-card-avatar,
         .fm-card-monogram {

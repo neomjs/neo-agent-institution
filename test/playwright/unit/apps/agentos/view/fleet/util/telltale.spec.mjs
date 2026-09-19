@@ -23,7 +23,7 @@ import Telltale from '../../../../../../../../apps/agentos/util/Telltale.mjs';
 test.describe('AgentOS.view.fleet.telltale — two orthogonal axes, one compound chip', () => {
     test('nominal on both axes earns ZERO card pixels', () => {
         expect(Telltale.describeTelltale({wake: {state: 'on'}, throttle: {state: 'none'}}))
-            .toEqual({ariaLabel: null, hidden: true, text: '', title: null})
+            .toEqual({ariaLabel: null, hidden: true, mark: '', text: '', title: null})
     });
 
     test('the nominal vocabulary is the producers\', not this module\'s invention', () => {
@@ -42,10 +42,10 @@ test.describe('AgentOS.view.fleet.telltale — two orthogonal axes, one compound
         // Measured against the default adapter: 3 agents, 3 `unknown`s, 3 chips. "The producers
         // landed" was true and did not imply the producers can see.
         expect(Telltale.describeTelltale({wake: {state: 'unknown'}, throttle: {state: 'none'}}))
-            .toEqual({ariaLabel: null, hidden: true, text: '', title: null});
+            .toEqual({ariaLabel: null, hidden: true, mark: '', text: '', title: null});
 
         expect(Telltale.describeTelltale({wake: {state: 'on'}, throttle: {state: 'unknown'}}))
-            .toEqual({ariaLabel: null, hidden: true, text: '', title: null});
+            .toEqual({ariaLabel: null, hidden: true, mark: '', text: '', title: null});
 
         // …and the fact still reaches the operator, unhidden, where there is room for it
         expect(Telltale.describeTelltaleReadout({wake: {state: 'on'}, throttle: {state: 'unknown', reason: 'no reader'}}))
@@ -60,16 +60,16 @@ test.describe('AgentOS.view.fleet.telltale — two orthogonal axes, one compound
         expect(Telltale.TELLTALE_CARD_DEVIANT).toEqual({throttle: ['overage', 'rate-limited'], wake: ['off', 'suppressed']});
 
         // an out-of-contract answer earns no card pixels — but is still stated verbatim in the detail
-        expect(Telltale.describeTelltale({wake: {state: 'wat'}, throttle: {state: 'none'}})).toEqual({ariaLabel: null, hidden: true, text: '', title: null});
+        expect(Telltale.describeTelltale({wake: {state: 'wat'}, throttle: {state: 'none'}})).toEqual({ariaLabel: null, hidden: true, mark: '', text: '', title: null});
         expect(Telltale.describeTelltaleReadout({wake: {state: 'wat'}, throttle: null})[0].state).toBe('wat')
     });
 
     test('`null` is the ABSENCE of an observation — no chip, and no manufactured unknown', () => {
         // The row carried no axis. Defaulting to 'unknown' here would report blindness the producer
         // never claimed — an invented observation, which is the inverse defect of hiding a real one.
-        expect(Telltale.describeTelltale({wake: null, throttle: null})).toEqual({ariaLabel: null, hidden: true, text: '', title: null});
-        expect(Telltale.describeTelltale({})).toEqual({ariaLabel: null, hidden: true, text: '', title: null});
-        expect(Telltale.describeTelltale()).toEqual({ariaLabel: null, hidden: true, text: '', title: null})
+        expect(Telltale.describeTelltale({wake: null, throttle: null})).toEqual({ariaLabel: null, hidden: true, mark: '', text: '', title: null});
+        expect(Telltale.describeTelltale({})).toEqual({ariaLabel: null, hidden: true, mark: '', text: '', title: null});
+        expect(Telltale.describeTelltale()).toEqual({ariaLabel: null, hidden: true, mark: '', text: '', title: null})
     });
 
     test('a null axis alongside a non-nominal one reports ONLY what was observed', () => {
@@ -78,6 +78,7 @@ test.describe('AgentOS.view.fleet.telltale — two orthogonal axes, one compound
             .toEqual({
                 ariaLabel: 'Telltale: wake suppressed',
                 hidden   : false,
+                mark     : 'w',
                 text     : 'wake suppressed',
                 // the title states BOTH axes — including the one that reported nothing, which is a
                 // different fact from a nominal one and must not read as "throttle is fine"
@@ -96,9 +97,20 @@ test.describe('AgentOS.view.fleet.telltale — two orthogonal axes, one compound
             .toEqual({
                 ariaLabel: 'Telltale: wake off, throttle rate-limited',
                 hidden   : false,
+                mark     : 'w·t',
                 text     : 'wake off · throttle rate-limited',
                 title    : 'wake: off · throttle: rate-limited'
             })
+    });
+
+    test('the mark is the chip\'s narrow form: the deviating axes\' initials, in the chip\'s order', () => {
+        // a line too short for the words still says WHICH axis deviates — an anonymous mark could not
+        expect(Telltale.describeTelltale({wake: {state: 'off'}}).mark).toBe('w');
+        expect(Telltale.describeTelltale({throttle: {state: 'overage'}}).mark).toBe('t');
+        expect(Telltale.describeTelltale({wake: {state: 'suppressed'}, throttle: {state: 'overage'}}).mark).toBe('w·t');
+
+        // a silent axis contributes no initial, exactly as it contributes no words
+        expect(Telltale.describeTelltale({wake: {state: 'unknown'}, throttle: {state: 'rate-limited'}}).mark).toBe('t')
     });
 
     test('the full predicate matrix: every ACTIONABLE deviation chips, and every unactionable state does not', () => {
@@ -127,7 +139,7 @@ test.describe('AgentOS.view.fleet.telltale — two orthogonal axes, one compound
         // the detail readout; a chip that changed with confidence would make two different producers'
         // 'unknown' render differently for no operator-visible reason.
         expect(Telltale.describeTelltale({wake: {state: 'on', confidence: 'none', reason: 'noisy'}}))
-            .toEqual({ariaLabel: null, hidden: true, text: '', title: null})
+            .toEqual({ariaLabel: null, hidden: true, mark: '', text: '', title: null})
     })
 
     test('the DETAIL readout states BOTH axes — the opposite of the card, deliberately', () => {

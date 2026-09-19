@@ -83,8 +83,9 @@ const nameSeparators = /[\s\-_.]+/;
  * Anatomy (top-to-bottom, the family rail a left accent owned by FamilyRail):
  * - **head** — avatar (the face image, or a family-inked monogram in the same slot when the record
  *   carries no face — a src-less `<img>` never mounts) spanning a two-line **identity** column: `name-line` (name · provenance ·
- *   engine) over `state-line` (dot · state-word · presence band · beacon words · lane-count badge ·
- *   telltale), with the contextual lifecycle **actions** right-aligned;
+ *   engine) over `state-line` (dot · state-word · telltale · presence band · beacon words ·
+ *   lane-count badge — ONE row in priority order: a member the row cannot hold leaves whole, from
+ *   the end), with the contextual lifecycle **actions** right-aligned;
  * - **work-row** — the current lane, two-line clamped with head+tail middle elision so two lanes
  *   sharing a prefix still distinguish by their preserved tail (the narrow-density falsifier);
  * - **strip** — the exception-only source word-line: nominal renders NOTHING (zero-pixel doctrine);
@@ -214,10 +215,15 @@ class AgentCard extends Container {
                         reference: 'card-engine'
                     }]
                 }, {
+                    // ONE row at every width: the line wraps, and the SCSS shows its first row only — a
+                    // member the row cannot hold leaves WHOLE, from the end, never under the verbs. So
+                    // the item order below is the line's priority order, and `flex: 'none'` keeps the
+                    // row's height the SCSS's (the vbox would stretch the line otherwise).
                     ntype    : 'container',
                     cls      : ['fm-card-state-line'],
+                    flex     : 'none',
                     reference: 'state-line',
-                    layout   : {ntype: 'hbox', align: 'center'},
+                    layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
 
                     items: [{
                         module   : StateDot,
@@ -232,6 +238,14 @@ class AgentCard extends Container {
                         cls      : ['fm-card-state'],
                         flex     : 'none',
                         reference: 'card-state'
+                    }, {
+                        // the S2 telltale: ONE compound chip for both axes, hidden while nominal. An
+                        // exception outranks the ordinary facts, so it follows the word and leaves last.
+                        ntype    : 'component',
+                        cls      : ['fm-card-telltale'],
+                        flex     : 'none',
+                        hidden   : true,
+                        reference: 'card-telltale'
                     }, {
                         // the presence band: the plane's who_is_online observation, the THIRD
                         // independent axis — never fused into the session-state word. Hidden unless
@@ -257,18 +271,12 @@ class AgentCard extends Container {
                     }, {
                         // the open-lane count badge (openLaneCount ONLY — never the engine); right-pinned
                         // in the state-line (SCSS margin-left:auto). null count = no badge (never "0 lanes").
+                        // The line's last member: the first to leave a row that cannot hold it.
                         ntype    : 'component',
                         cls      : ['fm-card-lane-count'],
                         flex     : 'none',
                         hidden   : true,
                         reference: 'card-lane-count'
-                    }, {
-                        // the S2 telltale: ONE compound chip for both axes, hidden while nominal
-                        ntype    : 'component',
-                        cls      : ['fm-card-telltale'],
-                        flex     : 'none',
-                        hidden   : true,
-                        reference: 'card-telltale'
                     }]
                 }]
             }, {
@@ -546,21 +554,31 @@ class AgentCard extends Container {
             ];
         lane.update();
 
-        // a badge only for a REPORTED positive count: null/absent = no stamped count → no badge
-        const laneCount = Number.isInteger(record.openLaneCount) && record.openLaneCount > 0 ? record.openLaneCount : null;
+        // a badge only for a REPORTED positive count: null/absent = no stamped count → no badge.
+        // The text is always the whole phrase; `data-count` is the narrow form the SCSS renders where
+        // the line cannot hold the noun, and the title and aria pair speak the phrase in both forms.
+        const
+            laneCount  = Number.isInteger(record.openLaneCount) && record.openLaneCount > 0 ? record.openLaneCount : null,
+            lanePhrase = laneCount === null ? null : `${laneCount} open ${laneCount === 1 ? 'lane' : 'lanes'}`,
+            laneBadge  = me.getReference('card-lane-count');
 
-        me.getReference('card-lane-count').set({
+        laneBadge.set({
             hidden: laneCount === null,
             text  : laneCount === null ? '' : `${laneCount} ${laneCount === 1 ? 'lane' : 'lanes'}`
         });
+        laneBadge.changeVdomRootKey('aria-label', lanePhrase);
+        laneBadge.changeVdomRootKey('data-count', laneCount);
+        laneBadge.changeVdomRootKey('title', lanePhrase);
 
-        // the S2 telltale: both axes passed WHOLE (unknown ≠ null — the card never collapses the two)
+        // the S2 telltale: both axes passed WHOLE (unknown ≠ null — the card never collapses the two).
+        // `data-mark` is the narrow form, worded by the same resolver and rendered by the SCSS.
         const
-            telltale                         = me.getReference('card-telltale'),
-            {ariaLabel, hidden, text, title} = Telltale.describeTelltale({throttle: record.throttle, wake: record.wake});
+            telltale                               = me.getReference('card-telltale'),
+            {ariaLabel, hidden, mark, text, title} = Telltale.describeTelltale({throttle: record.throttle, wake: record.wake});
 
         telltale.set({hidden, text});
         telltale.changeVdomRootKey('aria-label', ariaLabel);
+        telltale.changeVdomRootKey('data-mark', hidden ? null : mark);
         telltale.changeVdomRootKey('title', title);
 
         // the source strip: ONE honest word-line, a PURE role=status — no ▸/disclosure affordance on a
