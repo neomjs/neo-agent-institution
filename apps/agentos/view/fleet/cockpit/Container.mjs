@@ -6,8 +6,7 @@ import Button                 from '../../../../../node_modules/neo.mjs/src/butt
 // the registration, and the named binding keeps the dependency visible.
 import TabContainer           from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import CatchUpPane            from '../catchup/Container.mjs';
-import WorkspaceDocument      from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
-import DockService            from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
+import DockService           from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
 import VesselContainer        from './VesselContainer.mjs';
 import PerspectiveLibrary     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 import FleetCockpitController from './Controller.mjs';
@@ -713,6 +712,14 @@ class FleetCockpit extends VesselContainer {
      */
     loadRoster() {
         return this.getController().loadRoster()
+    }
+
+    /**
+     * @summary The cockpit's public re-drive, for an owner outside it: the Viewport's controller
+     * calls it after an instance switch and after a tenant connects.
+     */
+    reconnectFleet() {
+        this.getController().reconnectFleet()
     }
 
     /**
