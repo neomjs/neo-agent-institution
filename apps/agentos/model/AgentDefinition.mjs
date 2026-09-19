@@ -44,6 +44,12 @@ class AgentDefinition extends Model {
             name: 'lifecycleState',
             type: 'String'
         }, {
+            // who launches the seat: 'fleet' (this fleet is its only launcher) or 'external' (its own
+            // harness); null = the Brain did not report it, never a guess
+            name        : 'launchOwner',
+            type        : 'String',
+            defaultValue: null
+        }, {
             // sparse per-agent MCP overrides {serverKey: Boolean}; null = all live defaults apply
             name        : 'mcpServers',
             type        : 'Object',

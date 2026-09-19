@@ -139,6 +139,19 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(partitionOne({agentId: 'inferred-down', state: 'off', sources: wiredRuntime('inferred')}).eligible).toHaveLength(1)
     });
 
+    test('launch ownership reaches the plan only through the runtime record: a fleet that has run a seat starts it, whatever its owner reads now', () => {
+        const
+            unmanaged            = {...wiredRuntime(), runtime: {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}},
+            {eligible, excluded} = FleetStartPlan.partitionFleetStart([
+                {agentId: 'external-never-run', state: 'off', sources: unmanaged},              // no record, its own harness: `unmanaged`
+                {agentId: 'fleet-never-run',    state: 'off', sources: wiredRuntime('inferred')}, // no record, fleet-owned: stopped, inferred
+                {agentId: 'released-after-run', state: 'off', sources: wiredRuntime('observed')}  // the fleet ran it, then it was released
+            ]);
+
+        expect(eligible.map(record => record.agentId)).toEqual(['fleet-never-run', 'released-after-run']);
+        expect(excluded.map(entry => entry.agentId)).toEqual(['external-never-run'])
+    });
+
     test('unknown timeout state is not silently retried by a later fleet activation; explicit non-timeout failures remain eligible', () => {
         const {eligible, excluded} = FleetStartPlan.partitionFleetStart([
             {

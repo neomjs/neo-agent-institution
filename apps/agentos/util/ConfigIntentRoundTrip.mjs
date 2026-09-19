@@ -1,7 +1,7 @@
 import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
- * @summary The one `configIntent` → `configureAgent` bridge round-trip, shared by every surface
+ * @summary The one `configIntent` → `configureAgent` (or launch-owner) bridge round-trip, shared by every surface
  * that mounts the per-agent configuration card (the Accounts keeper-view and the AgentDetail
  * configuration tab): the registry validates + persists, and the RESPONSE — the canonical public
  * readback — is the only thing that mutates the local record. Fail-closed: without a bridge
@@ -51,6 +51,16 @@ const RECORD_GENERATIONS = new WeakMap();
 const STORE_WRITE_GENERATIONS = new WeakMap();
 
 /**
+ * The facet verb per launch owner the cockpit may set. Launch ownership authorizes a fleet-credentialed
+ * spawn, so the Brain keeps it out of `configureAgent`'s allowlist: an intent carrying it takes its own
+ * verb. Adoption is the one: a release would not stop a fleet that has run the seat from starting it
+ * again, so an intent for any other owner sends nothing.
+ * @type {Readonly<Object<String,String>>}
+ * @private
+ */
+const LAUNCH_OWNER_VERBS = Object.freeze({fleet: 'adoptAgent'});
+
+/**
  * Static shared-state arbitration for AgentOS configuration intents.
  * @class AgentOS.util.ConfigIntentRoundTrip
  * @extends Neo.core.Base
@@ -78,7 +88,7 @@ class ConfigIntentRoundTrip extends Base {
      * @summary Run one configuration round-trip and render its truth through the caller's sink.
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam) — the DI discipline shared with `addAgentFlow`.
-     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}` (+ event envelope noise, stripped here).
+     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}` or `{id, launchOwner: 'fleet'}` (+ event envelope noise, stripped here).
      * @param {Object|null}   [config.owner]          The calling view — an opaque identity token for cross-owner supersede honesty. Omitting it degrades stale drops to silent.
      * @param {Function}      config.setSaveStatus    `(agentId, state, reason)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch).
      * @param {Neo.data.Store|null} config.store      The shared definitions store — record resolution, the arbitration keys, and the write-generation bump all derive from it.
@@ -94,9 +104,11 @@ class ConfigIntentRoundTrip extends Base {
         const
             agentId    = intent.id,
             bridge     = bridgeResolver ? bridgeResolver() : globalThis.AgentOS?.fleet?.registryBridge,
+            launch     = Object.hasOwn(intent, 'launchOwner'),
+            method     = launch ? LAUNCH_OWNER_VERBS[intent.launchOwner] : 'configureAgent',
             wireIntent = {id: agentId};
 
-        if (!agentId) {
+        if (!agentId || (launch && !Object.hasOwn(LAUNCH_OWNER_VERBS, intent.launchOwner))) {
             return
         }
 
@@ -152,13 +164,16 @@ class ConfigIntentRoundTrip extends Base {
 
         setSaveStatus(agentId, 'pending', 'Saving configuration…');
 
-        if (typeof bridge?.configureAgent !== 'function') {
+        if (typeof bridge?.[method] !== 'function') {
             setSaveStatus(agentId, 'rejected', 'Configuration is unavailable in dev-server mode. Nothing was changed.');
             return
         }
 
         try {
-            const outcome = await bridge.configureAgent(wireIntent);
+            const
+                outcome = await bridge[method](wireIntent),
+                // a facet verb answers with the public definition itself; configure wraps it
+                agent   = launch ? outcome : outcome?.status === 'accepted' ? outcome.agent : null;
 
             const staleBy = staleAuthority();
 
@@ -167,7 +182,7 @@ class ConfigIntentRoundTrip extends Base {
                 return
             }
 
-            if (outcome?.status === 'accepted' && outcome.agent?.id === agentId) {
+            if (agent?.id === agentId) {
                 const record = store?.get(agentId);
 
                 if (!record) {
@@ -188,7 +203,7 @@ class ConfigIntentRoundTrip extends Base {
                 STORE_WRITE_GENERATIONS.set(store, ConfigIntentRoundTrip.getDefinitionsWriteGeneration(store) + 1);
 
                 // only the RESPONSE mutates the durable Body projection
-                record.set(outcome.agent);
+                record.set(agent);
                 setSaveStatus(agentId, 'accepted', 'Configuration saved.')
             } else {
                 const reason = outcome?.status === 'rejected'

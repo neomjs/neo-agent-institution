@@ -244,12 +244,16 @@ test.describe('harness Fleet capability', () => {
         expect(projectPublicAgentIntent({
             githubUsername: ' alice ',
             harnessType   : ' codex ',
-            id            : ' agent-alice '
+            id            : ' agent-alice ',
+            launchOwner   : ' fleet '
         })).toEqual({
             githubUsername: 'alice',
             harnessType   : 'codex',
-            id            : 'agent-alice'
-        })
+            id            : 'agent-alice',
+            launchOwner   : 'fleet'
+        });
+        expect(projectPublicAgentIntent({githubUsername: 'alice', harnessType: 'codex', launchOwner: {fleet: true}}))
+            .toEqual({githubUsername: 'alice', harnessType: 'codex'})
     });
 
     test('projects connectTenant onto tenantUrl only before attaching the provider credential', async () => {

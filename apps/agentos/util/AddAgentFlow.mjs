@@ -136,6 +136,8 @@ class AddAgentFlow extends Base {
      * @summary Project a form payload onto the exact define-agent request allowed across the bridge.
      * Shell mode carries public intent only; direct-browser mode preserves the credential-bearing
      * request. Explicit projection prevents unrelated form or caller fields from crossing either mode.
+     * A seat added here is born fleet-launched: this cockpit is its only launcher, so its first Start
+     * can come from here. Every other registration stays `external` until the operator adopts it.
      * @param {Object}      payload
      * @param {Object|null} bridge
      * @returns {Object}
@@ -143,7 +145,8 @@ class AddAgentFlow extends Base {
     static createDefineAgentIntent(payload={}, bridge=null) {
         const intent = {
             githubUsername: payload.githubUsername?.trim(),
-            harnessType   : payload.harnessType
+            harnessType   : payload.harnessType,
+            launchOwner   : 'fleet'
         };
 
         if (!AddAgentFlow.isShellCredentialIngress(bridge)) {
