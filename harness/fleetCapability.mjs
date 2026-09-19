@@ -32,7 +32,8 @@ function containsSensitiveValue(value, sensitiveValues, visited=new WeakSet()) {
 /**
  * @summary Projects the Body-authored Add-Peer intent onto the shell's explicit public field set.
  * Unknown fields are dropped by construction: command, args, env, executable paths, viewer claims,
- * and credential-shaped extras therefore have no route into the Brain request.
+ * and credential-shaped extras therefore have no route into the Brain request. `launchOwner` is a
+ * public declaration; the Brain owns its vocabulary and refuses any other value before a write.
  * @param {*} intent
  * @returns {Object|null}
  */
@@ -42,14 +43,16 @@ export function projectPublicAgentIntent(intent) {
     const
         githubUsername = typeof intent.githubUsername === 'string' ? intent.githubUsername.trim() : '',
         harnessType    = typeof intent.harnessType === 'string' ? intent.harnessType.trim() : '',
-        id             = typeof intent.id === 'string' ? intent.id.trim() : '';
+        id             = typeof intent.id === 'string' ? intent.id.trim() : '',
+        launchOwner    = typeof intent.launchOwner === 'string' ? intent.launchOwner.trim() : '';
 
     if (!githubUsername || !harnessType) return null;
 
     return {
         ...(id ? {id} : {}),
         githubUsername,
-        harnessType
+        harnessType,
+        ...(launchOwner ? {launchOwner} : {})
     }
 }
 

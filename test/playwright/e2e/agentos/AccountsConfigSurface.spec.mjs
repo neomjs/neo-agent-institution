@@ -78,8 +78,8 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             await expect(page.locator('.agent-selector-button').filter({hasText: agentId})).toHaveCount(1);
 
             await expect(page.locator('.fm-agent-config-card')).toBeVisible();
-            // the harness chips only: the memory-target choices below them are chips too
-            const harnessChips = page.locator('.fm-config-chips:not(.fm-config-targets) .fm-chip');
+            // the harness chips only: the launch-owner and memory-target choices are chips too
+            const harnessChips = page.locator('.fm-config-harness .fm-chip');
 
             await expect(harnessChips).toHaveCount(listHarnessTypes().length);
             await expect(harnessChips.and(page.locator('.is-selected'))).toHaveCount(1);

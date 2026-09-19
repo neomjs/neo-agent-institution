@@ -48,9 +48,17 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         )).toEqual({valid: true, reason: ''});
         expect(AddAgentFlow.createDefineAgentIntent({...cleanPayload(), command: 'must-not-cross'}, bridge)).toEqual({
             githubUsername: 'neo-kimi-phoebe',
-            harnessType   : 'opencode'
+            harnessType   : 'opencode',
+            launchOwner   : 'fleet'
         });
-        expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), {})).toEqual(cleanPayload())
+        expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), {})).toEqual({...cleanPayload(), launchOwner: 'fleet'})
+    });
+
+    test('a seat added here is fleet-launched in both modes, and a caller cannot declare it external', () => {
+        const payload = {...cleanPayload(), launchOwner: 'external'};
+
+        expect(AddAgentFlow.createDefineAgentIntent(payload, {credentialIngress: 'shell'}).launchOwner).toBe('fleet');
+        expect(AddAgentFlow.createDefineAgentIntent(payload, {}).launchOwner).toBe('fleet')
     });
 
     test('the readback guard fails closed on every poisoned shape and passes the canonical one', () => {
@@ -134,7 +142,8 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
 
         expect(received).toEqual({
             githubUsername: 'neo-kimi-phoebe',
-            harnessType   : 'opencode'
+            harnessType   : 'opencode',
+            launchOwner   : 'fleet'
         });
         expect(JSON.stringify(received)).not.toContain(CREDENTIAL);
         expect(confirmed.state).toBe('readback-confirmed')
@@ -180,7 +189,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.flowStatus.state).toBe('readback-confirmed');
         expect(fired).toHaveLength(1);
         expect(fired[0].agent).toEqual(cleanReadback());
-        expect(calls).toEqual([cleanPayload()]);
+        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet'}]);
         // the settle rule: no terminal state leaves credential bytes in the field
         expect(credentialField.value ?? '').toBe('');
 
@@ -213,7 +222,8 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         expect(received).toEqual({
             githubUsername: 'neo-kimi-phoebe',
-            harnessType   : 'opencode'
+            harnessType   : 'opencode',
+            launchOwner   : 'fleet'
         });
         expect(form.flowStatus.state).toBe('readback-confirmed');
 

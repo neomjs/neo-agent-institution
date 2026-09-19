@@ -648,6 +648,9 @@ class AgentCard extends Container {
         // aria-label IS their only accessible name. The FM roster names its subject on every verb.
         toggle.changeVdomRootKey('aria-label', `${recordState === 'off' ? 'Start' : 'Stop'} ${nameSlot.text}`);
         restart.changeVdomRootKey('aria-label', `Restart ${nameSlot.text}`);
+        // a runtime fact that closes the verb, or infers its state, says why on the verb itself, in the
+        // producer's words: a seat outside fleet supervision, or a fleet-launched seat that never ran
+        toggle.changeVdomRootKey('title', !runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null);
 
         // While a control round-trip is live, the second work line belongs to the status row: the
         // lane clamps to ONE line (SCSS keys off this root cls), so a reason-carrying card still

@@ -58,7 +58,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
         expect(calls[0]).toEqual(['submit', {
             credential    : 'ghp_should_not_escape',
             githubUsername: 'submitted-login',
-            harnessType   : 'codex'
+            harnessType   : 'codex',
+            launchOwner   : 'fleet'
         }]);
         expect(calls[1]).toEqual(['upsert', canonical, 'ghp_should_not_escape']);
         expect(calls[2]).toEqual(['fire', 'agentDefinitionAccepted', {agent: canonical}]);
@@ -117,7 +118,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
 
         expect(calls[0]).toEqual(['submit', {
             githubUsername: 'submitted-login',
-            harnessType   : 'opencode'
+            harnessType   : 'opencode',
+            launchOwner   : 'fleet'
         }]);
         expect(JSON.stringify(calls[0])).not.toContain(credential);
         expect(calls[1]).toEqual(['upsert', canonical, undefined]);
@@ -692,6 +694,38 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         // the record itself is untouched — the owning view writes only from the bridge RESPONSE
         expect(record.mcpServers).toEqual({'memory-core': false});
         expect(record.harnessType).toBe('codex');
+
+        card.destroy();
+        store.destroy()
+    });
+
+    test('launch ownership is a declared choice: the recorded owner selected, the other fires {id, launchOwner}; an unreported owner offers none', () => {
+        const store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex', launchOwner: 'external'},
+            {id: 'old', githubUsername: 'old', harnessType: 'codex'}
+        ]});
+        const card     = Neo.create(AgentConfigCard, {record: store.get('ada')});
+        const intents  = [];
+        const findNode = (node, id) => node?.id === id ? node : (node?.cn || []).map(child => findNode(child, id)).find(Boolean);
+
+        card.on('configIntent', data => intents.push(data));
+
+        expect(cardText(card)).toContain('Launched by · declared');
+        expect(findNode(card.vdom, `${card.id}__launch__external`).cls).toContain('is-selected');
+        expect(findNode(card.vdom, `${card.id}__launch__fleet`).cls).toContain('is-selectable');
+        expect(findNode(card.vdom, `${card.id}__launch__fleet`).title).toContain('do not also run it by hand');
+
+        card.onCardClick({path: [{id: `${card.id}__launch__external`}]});   // the recorded owner → no intent
+        card.onCardClick({path: [{id: `${card.id}__launch__fleet`}]});
+        card.onCardClick({path: [{id: `${card.id}__launch__anyone`}]});     // not an owner → no intent
+
+        expect(intents).toHaveLength(1);
+        expect(intents[0]).toMatchObject({id: 'ada', launchOwner: 'fleet'});
+        expect(store.get('ada').launchOwner).toBe('external');              // only the bridge RESPONSE writes
+
+        card.record = store.get('old');
+        expect(cardText(card)).not.toContain('__launch__');
+        expect(cardText(card)).toContain('"text":"Not reported"');
 
         card.destroy();
         store.destroy()

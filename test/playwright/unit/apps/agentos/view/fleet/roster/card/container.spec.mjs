@@ -443,6 +443,32 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('the toggle states the runtime fact\'s own reason when that fact closes it or infers its state; an observed runtime needs none', () => {
+        const
+            external = 'no fleet process record: this agent runs outside fleet supervision',
+            inferred = 'no fleet process record: this fleet is the seat\'s only launcher, so it is stopped',
+            card     = createCard({agentId: 'vega', state: 'off', sources: {
+                ...observedSources,
+                runtime: {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none', reason: external}
+            }}),
+            toggle   = card.down({reference: 'control-toggle'});
+
+        expect(toggle.disabled).toBe(true);
+        expect(toggle.vdom.title).toBe(external);
+
+        applySet(card, {sources: {
+            ...observedSources,
+            runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'inferred', reason: inferred}
+        }});
+        expect(toggle.disabled).toBe(false);
+        expect(toggle.vdom.title).toBe(inferred);
+
+        applySet(card, {sources: observedSources, state: 'ok'});
+        expect(toggle.vdom.title).toBeFalsy();
+
+        card.destroy()
+    });
+
     test('ADR-0032: avatar/name/engine are display state over the durable id — a record write re-renders in place, never a re-key', () => {
         const card     = createCard({agentId: 'vega', displayName: 'Vega', avatarUrl: 'a.png', engineTag: 'opus-4.8', state: 'ok'});
         const beforeId = card.id;
