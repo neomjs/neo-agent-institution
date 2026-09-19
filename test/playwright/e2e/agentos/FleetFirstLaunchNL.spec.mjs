@@ -41,7 +41,8 @@ class RecordedChild extends EventEmitter {
  * the cockpit status, served over the authenticated bridge exactly as the dev fleet server serves them.
  * One seam is replaced: the process spawn, by a recorder. A seat added in the cockpit is fleet-launched,
  * so its first Start comes from the cockpit and launches exactly once; a seat registered anywhere else
- * runs outside fleet supervision, so neither its Start nor "Start fleet" may launch a second session.
+ * runs outside fleet supervision, so neither its Start nor "Start fleet" may launch a second session —
+ * until the operator adopts it in its configuration.
  */
 test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neural Link)', () => {
     // the Brain services are process singletons: one arm at a time
@@ -94,6 +95,7 @@ test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neu
     /**
      * @summary Boot the cockpit, flip its fail-closed bridge live, and re-read the roster that raced it.
      * @param {Object} fixtures `{page, neuralLink}`.
+     * @returns {Promise<Object>} The Neural Link app handle.
      */
     async function bootCockpit({page, neuralLink}) {
         await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl: fleet.fleetUrl})}`);
@@ -102,7 +104,9 @@ test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neu
         const app = await neuralLink.connectToApp('AgentOS');
 
         await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.fleetUrl, bearerToken: fleet.bearerToken});
-        await reloadRoster(app)
+        await reloadRoster(app);
+
+        return app
     }
 
     test('a seat added in the cockpit starts from the cockpit: one click, exactly one launch, the card reaches running', async ({page, neuralLink}) => {
@@ -153,5 +157,45 @@ test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neu
         await page.locator('.fm-fleet-start').click();
         await expect(page.locator('.fm-fleet-start-summary')).toContainText('1 excluded', {timeout: 15000});
         expect(launches).toHaveLength(0)
+    });
+
+    test('a seat registered elsewhere, once adopted in its configuration, starts from the cockpit: exactly one launch', async ({page, neuralLink}) => {
+        FleetRegistryService.defineAgent({credential: PAT, githubUsername: EXTERNAL_SEAT, harnessType: 'codex'});
+
+        const app = await bootCockpit({page, neuralLink});
+
+        await expect(page.locator('.fm-fleet-title')).toHaveText('Fleet · 1 agents', {timeout: 30000});
+
+        const
+            card      = page.locator('.fm-fleet-cards .fm-agent-card'),
+            fleetChip = page.locator('.fm-agent-config-card .fm-config-launch .fm-chip', {hasText: 'This fleet'}),
+            toggle    = card.locator('.fm-card-control-verbs button').first();
+
+        await expect(card).toHaveCount(1, {timeout: 30000});
+        await expect(toggle).toBeDisabled();
+
+        // Accounts owns the definitions its configuration card reads. It constructed at shell boot, so its
+        // cold hydrate raced the fail-closed bridge: re-run the idempotent hydrate, as AccountsConfigSurface does
+        await page.locator('.agent-shell').getByText('Accounts', {exact: true}).click();
+
+        const [accounts] = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id']);
+
+        await app.callMethod(accounts.properties.id, 'loadAgentDefinitions');
+        await expect(fleetChip).toHaveClass(/is-selectable/, {timeout: 30000});
+        await fleetChip.click();
+        await expect(fleetChip, 'the readback, not the click, selects the owner').toHaveClass(/is-selected/, {timeout: 15000});
+        expect(FleetRegistryService.listAgents().map(agent => agent.launchOwner)).toEqual(['fleet']);
+        expect(launches, 'adoption itself launches nothing').toHaveLength(0);
+
+        // the cockpit's cadence re-reads the roster on its own; the sanctioned re-read skips the wait
+        await page.getByRole('tab', {name: 'Fleet', exact: true}).click();
+        await reloadRoster(app);
+        await expect(toggle).toBeEnabled({timeout: 30000});
+        await expect(toggle).toHaveAttribute('title', /only launcher/);
+
+        await toggle.click();
+
+        await expect(toggle.locator('.fa-stop')).toBeVisible({timeout: 30000});
+        expect(launches).toHaveLength(1)
     });
 });
