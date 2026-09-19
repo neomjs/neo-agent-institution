@@ -306,44 +306,40 @@ test.describe('configIntentRoundTrip — cross-owner supersession authority (#15
         store.destroy()
     })
 
-    test('a launch-owner intent takes its own facet verb by id alone, never configureAgent, and its readback is the only write', async () => {
+    test('an adoption takes its own facet verb by id alone, never configureAgent, and its readback is the only write', async () => {
         const
             store    = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex', launchOwner: 'external'}]),
             calls    = [],
             statuses = [],
             bridge   = {
                 adoptAgent    : async intent => (calls.push(['adoptAgent', intent]),   {id: 'ada', githubUsername: 'ada', harnessType: 'codex', launchOwner: 'fleet'}),
-                configureAgent: async intent => (calls.push(['configureAgent', intent]), {status: 'accepted', agent: {id: 'ada'}}),
-                releaseAgent  : async intent => (calls.push(['releaseAgent', intent]), {id: 'ada', githubUsername: 'ada', harnessType: 'codex', launchOwner: 'external'})
-            },
-            run      = launchOwner => ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-                bridgeResolver: () => bridge,
-                intent        : {id: 'ada', launchOwner, source: 'component-event-envelope'},
-                owner         : {},
-                setSaveStatus : (agentId, state) => statuses.push(state),
-                store
-            });
+                configureAgent: async intent => (calls.push(['configureAgent', intent]), {status: 'accepted', agent: {id: 'ada'}})
+            };
 
-        await run('fleet');
+        await ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            bridgeResolver: () => bridge,
+            intent        : {id: 'ada', launchOwner: 'fleet', source: 'component-event-envelope'},
+            owner         : {},
+            setSaveStatus : (agentId, state) => statuses.push(state),
+            store
+        });
+
         expect(calls).toEqual([['adoptAgent', {id: 'ada'}]]);
         expect(store.get('ada').launchOwner).toBe('fleet');
-
-        await run('external');
-        expect(calls.at(-1)).toEqual(['releaseAgent', {id: 'ada'}]);
-        expect(store.get('ada').launchOwner).toBe('external');
-        expect(statuses).toEqual(['pending', 'accepted', 'pending', 'accepted']);
+        expect(statuses).toEqual(['pending', 'accepted']);
 
         store.destroy()
     })
 
-    test('an unknown launch owner sends nothing, and a facet verb that answers no definition changes nothing', async () => {
+    test('an owner the cockpit may not set sends nothing, a release included, and a facet verb that answers no definition changes nothing', async () => {
         const
             store    = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex', launchOwner: 'external'}]),
             calls    = [],
             statuses = [],
             bridge   = {
                 adoptAgent    : async intent => (calls.push(intent), null),
-                configureAgent: async intent => (calls.push(intent), {status: 'accepted', agent: {id: 'ada'}})
+                configureAgent: async intent => (calls.push(intent), {status: 'accepted', agent: {id: 'ada'}}),
+                releaseAgent  : async intent => (calls.push(intent), {id: 'ada', launchOwner: 'external'})
             },
             run      = launchOwner => ConfigIntentRoundTrip.runConfigIntentRoundTrip({
                 bridgeResolver: () => bridge,
@@ -354,6 +350,7 @@ test.describe('configIntentRoundTrip — cross-owner supersession authority (#15
             });
 
         await run('toString');
+        await run('external');
         expect(calls).toEqual([]);
         expect(statuses).toEqual([]);
 

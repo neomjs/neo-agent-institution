@@ -8,13 +8,15 @@ import {
 } from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
- * Who launches the seat, in chip order, each with the promise the choice makes: the fleet cannot see a
- * session it did not start, so the words carry the trust boundary the operator's choice draws.
+ * Who launches the seat, in chip order, each with what that owner means here: the fleet cannot see a
+ * session it did not start, so the words carry the trust boundary. The operator's one act is adoption.
+ * A seat's own harness is not offered back: the fleet starts a seat it has run from that run's record,
+ * whatever the seat's owner reads.
  * @type {Readonly<Object<String,{text: String, title: String}>>}
  */
 const LAUNCH_OWNERS = Object.freeze({
     fleet   : {text: 'This fleet',      title: 'This fleet is the seat\'s only launcher, so the cockpit starts it. The fleet cannot see a session started elsewhere: do not also run it by hand.'},
-    external: {text: 'Its own harness', title: 'The seat runs outside fleet supervision, so the cockpit never starts it: a start here could launch a second session of a live resident.'}
+    external: {text: 'Its own harness', title: 'The seat runs in a harness this fleet does not start. Unless the fleet has run it before, the cockpit offers no Start: a start here could launch a second session of a live resident.'}
 });
 
 /**
@@ -189,7 +191,7 @@ class AgentConfigCard extends Component {
             me.fire('configIntent', {id: record.id, mcpServers: normalizeMcpOverrides(matrix)})
         } else if (kind === 'harness' && key !== record.harnessType) {
             me.fire('configIntent', {id: record.id, harnessType: key})
-        } else if (kind === 'launch' && key !== record.launchOwner && Object.hasOwn(LAUNCH_OWNERS, key)) {
+        } else if (kind === 'launch' && key === 'fleet' && record.launchOwner === 'external') {
             me.fire('configIntent', {id: record.id, launchOwner: key})
         } else if (kind === 'target') {
             if (key === 'local') {
@@ -329,22 +331,26 @@ class AgentConfigCard extends Component {
     }
 
     /**
-     * @summary The launch-owner choices: the recorded owner selected, the other one the operator's act.
-     * An owner the Brain did not report renders no choice, so nothing can be flipped from a guess.
+     * @summary The launch-owner choices: the recorded owner selected, and adoption offered to a seat in its
+     * own harness. An owner the Brain did not report renders no choice, so nothing can be flipped from a guess.
      * @param {Object} record
      * @returns {Object[]}
      */
     createLaunchOwnerChoices(record) {
-        if (!Object.hasOwn(LAUNCH_OWNERS, record.launchOwner)) {
+        const {launchOwner} = record;
+
+        if (!Object.hasOwn(LAUNCH_OWNERS, launchOwner)) {
             return [{cls: ['fm-chip', 'is-unavailable'], text: 'Not reported'}]
         }
 
-        return Object.entries(LAUNCH_OWNERS).map(([owner, {text, title}]) => ({
-            id : `${this.id}__launch__${owner}`,
-            cls: ['fm-chip', owner === record.launchOwner ? 'is-selected' : 'is-selectable'],
-            text,
-            title
-        }))
+        return Object.entries(LAUNCH_OWNERS)
+            .filter(([owner]) => owner === launchOwner || owner === 'fleet')
+            .map(([owner, {text, title}]) => ({
+                id : `${this.id}__launch__${owner}`,
+                cls: ['fm-chip', owner === launchOwner ? 'is-selected' : 'is-selectable'],
+                text,
+                title
+            }))
     }
 
     /**

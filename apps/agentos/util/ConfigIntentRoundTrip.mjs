@@ -51,12 +51,14 @@ const RECORD_GENERATIONS = new WeakMap();
 const STORE_WRITE_GENERATIONS = new WeakMap();
 
 /**
- * The facet verb per launch owner. Launch ownership authorizes a fleet-credentialed spawn, so the
- * Brain keeps it out of `configureAgent`'s allowlist: an intent carrying it takes its own verb.
+ * The facet verb per launch owner the cockpit may set. Launch ownership authorizes a fleet-credentialed
+ * spawn, so the Brain keeps it out of `configureAgent`'s allowlist: an intent carrying it takes its own
+ * verb. Adoption is the one: a release would not stop a fleet that has run the seat from starting it
+ * again, so an intent for any other owner sends nothing.
  * @type {Readonly<Object<String,String>>}
  * @private
  */
-const LAUNCH_OWNER_VERBS = Object.freeze({external: 'releaseAgent', fleet: 'adoptAgent'});
+const LAUNCH_OWNER_VERBS = Object.freeze({fleet: 'adoptAgent'});
 
 /**
  * Static shared-state arbitration for AgentOS configuration intents.
@@ -86,7 +88,7 @@ class ConfigIntentRoundTrip extends Base {
      * @summary Run one configuration round-trip and render its truth through the caller's sink.
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam) — the DI discipline shared with `addAgentFlow`.
-     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}` or `{id, launchOwner}` (+ event envelope noise, stripped here).
+     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}` or `{id, launchOwner: 'fleet'}` (+ event envelope noise, stripped here).
      * @param {Object|null}   [config.owner]          The calling view — an opaque identity token for cross-owner supersede honesty. Omitting it degrades stale drops to silent.
      * @param {Function}      config.setSaveStatus    `(agentId, state, reason)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch).
      * @param {Neo.data.Store|null} config.store      The shared definitions store — record resolution, the arbitration keys, and the write-generation bump all derive from it.
