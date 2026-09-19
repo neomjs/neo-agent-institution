@@ -252,5 +252,71 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
             .resolves.toBe(false);
 
         expect(writes, 'nothing was bound, so nothing changes').toEqual([])
+    });
+
+    /**
+     * @summary A controller over the REAL cockpit's surface: only the cockpit's `getController` and
+     * the controller's own collaborators are stubbed, so a method the class lacks throws here as it
+     * does in the app.
+     * @param {Object} options
+     * @param {String[]} options.calls  Receives the cockpit-side calls.
+     * @param {Object[]} options.writes Receives the provider writes.
+     * @returns {Object} The controller.
+     */
+    function createControllerOverRealCockpit({calls, writes}) {
+        const cockpit = Object.assign(Object.create(FleetCockpit.prototype), {
+            getController: () => ({reconnectFleet: () => calls.push('reconnectFleet')})
+        });
+
+        return Object.assign(Object.create(ViewportController.prototype), {
+            component        : {stateProvider: {setData: data => writes.push(data)}},
+            getReference     : reference => reference === 'fleet-cockpit' ? cockpit : null,
+            pushTearOutTitles: () => calls.push('pushTearOutTitles'),
+            syncBoundInstance: () => calls.push('syncBoundInstance')
+        })
+    }
+
+    test('an instance switch re-drives the cockpit and settles its verdict — it never stays "starting"', async () => {
+        const
+            calls      = [],
+            writes     = [],
+            controller = createControllerOverRealCockpit({calls, writes}),
+            original   = globalThis.AgentOS;
+
+        try {
+            // bearer-less and deliberate: the fail-closed bridge is published, verification answers false
+            await expect(controller.switchToProfile({canonicalEndpoint: 'http://127.0.0.1:8083/fleet'}))
+                .resolves.toBe(false)
+        } finally {
+            globalThis.AgentOS = original
+        }
+
+        expect(calls).toEqual(['syncBoundInstance', 'pushTearOutTitles', 'reconnectFleet']);
+        expect(writes).toEqual([{instanceState: 'starting'}, {instanceState: 'off'}])
+    });
+
+    test('a connected tenant re-drives the cockpit after its success notice', async () => {
+        const
+            calls      = [],
+            controller = createControllerOverRealCockpit({calls, writes: []}),
+            original   = globalThis.AgentOS,
+            source     = {};
+
+        globalThis.AgentOS = {fleet: {registryBridge: {connectTenant: async () => ({id: 'tenant-7', status: 'connected'})}}};
+
+        try {
+            await controller.onConnectPlane({credential: 'forge-credential', source, tenantUrl: 'https://forge.example/acme'})
+        } finally {
+            globalThis.AgentOS = original
+        }
+
+        expect(source.notice).toEqual({tone: 'ok', text: 'tenant connected — tenant-7'});
+        expect(calls).toEqual(['reconnectFleet'])
+    });
+
+    test('every method the Viewport and its controller call on the cockpit exists on the real class', () => {
+        ['loadRoster', 'pushVesselTitles', 'reconnectFleet'].forEach(method => {
+            expect(typeof FleetCockpit.prototype[method], method).toBe('function')
+        })
     })
 });
