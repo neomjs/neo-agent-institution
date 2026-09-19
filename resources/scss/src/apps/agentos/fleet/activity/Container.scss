@@ -23,6 +23,11 @@
             color: var(--fm-signal);
         }
 
+        // connected, and the newest event is old: the whole cell leaves the healthy ink
+        &.is-live.is-quiet .fm-stream-state {
+            color: var(--fm-state-idle);
+        }
+
         &.is-stale .fm-stream-state {
             color: var(--fm-state-wedged);
         }
