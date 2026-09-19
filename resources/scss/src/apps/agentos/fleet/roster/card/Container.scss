@@ -95,14 +95,23 @@
         gap      : var(--fm-space-1);
     }
 
+    /* ── the name line: name · provenance chip · engine tag — ONE row, the state line's policy:
+       the line wraps (its layout config) and shows its first row only, so the chip and the tag
+       stay where they fit beside the name and leave WHOLE where they do not. The line takes the
+       name's font, so `1lh` is the name's row. */
     .fm-card-name-line {
-        gap      : var(--fm-space-2);
-        min-width: 0;
+        font      : var(--fm-text-display);
+        gap       : var(--fm-space-2);
+        height    : 1lh;
+        min-width : 0;
+        overflow-y: clip;
     }
 
     /* the resident NAME — plain identity text reading as the card title. The card's host list
        item is the selection/drill target now, so the name carries no interactive chrome of its
-       own (no cursor, no hover affordance — the row signals selection, not the word). */
+       own (no cursor, no hover affordance — the row signals selection, not the word). The row's
+       subject and its one shrinkable member (the component's flex config says the same — an
+       inline style would otherwise win): alone on the row it takes the line and ellipsizes. */
     .fm-card-name {
         flex         : 0 1 auto;
         min-width    : 0;
