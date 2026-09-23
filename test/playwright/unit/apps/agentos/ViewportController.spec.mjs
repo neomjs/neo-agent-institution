@@ -12,6 +12,7 @@ import * as core          from '../../../../../node_modules/neo.mjs/src/core/_ex
 import AgentDefinitions   from '../../../../../apps/agentos/store/AgentDefinitions.mjs';
 import FleetCockpit       from '../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetTenants       from '../../../../../apps/agentos/store/FleetTenants.mjs';
+import {deriveFleetProfileId} from '../../../../../apps/agentos/fleet/connectionProfiles.mjs';
 import Viewport           from '../../../../../apps/agentos/view/Viewport.mjs';
 import ViewportController from '../../../../../apps/agentos/view/ViewportController.mjs';
 
@@ -429,5 +430,29 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
             expect(manager.notice).toEqual({tone: 'refused', text: 'forge said no'});
             expect(direct.notice).toEqual({tone: 'refused', text: 'forge said no'})
         })
+    });
+
+    test('wireFleetBridge stamps the endpoint\'s canonical profile identity onto the injected bridge; an explicit identity passes through', () => {
+        const
+            original    = globalThis.AgentOS,
+            bearerToken = 'A'.repeat(43),
+            url         = 'http://127.0.0.1:8095/fleet',
+            controller  = Object.create(ViewportController.prototype);
+
+        try {
+            expect(controller.wireFleetBridge({url, bearerToken})).toBe(true);
+            expect(globalThis.AgentOS.fleet.registryBridge.profileId, 'the custody switch\'s own identity contract').toBe(deriveFleetProfileId(url));
+            expect(globalThis.AgentOS.fleet.registryBridge.selected).toBe(true);
+
+            // the same endpoint wired again is the same target — one identity, not a new one
+            controller.wireFleetBridge({url, bearerToken});
+            expect(globalThis.AgentOS.fleet.registryBridge.profileId).toBe(deriveFleetProfileId(url));
+
+            // a caller that already holds the identity keeps it
+            controller.wireFleetBridge({url, bearerToken, profileId: 'fleet-profile:v1:explicit'});
+            expect(globalThis.AgentOS.fleet.registryBridge.profileId).toBe('fleet-profile:v1:explicit')
+        } finally {
+            globalThis.AgentOS = original
+        }
     })
 });

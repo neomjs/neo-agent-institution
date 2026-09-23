@@ -1,6 +1,6 @@
 import Controller                                      from '../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import InstanceManager                                 from './fleet/instances/ManagerContainer.mjs';
-import {createFleetProfile}                            from '../fleet/connectionProfiles.mjs';
+import {createFleetProfile, deriveFleetProfileId}      from '../fleet/connectionProfiles.mjs';
 import {establishFleetSessionCustody, resolveFleetUrl} from '../fleet/fleetSessionCustody.mjs';
 import {installFleetBridge}                            from '../fleet/installFleetBridge.mjs';
 import {
@@ -454,7 +454,14 @@ class ViewportController extends Controller {
         // The injector IS the selection act: Neural Link, tests, and dev tooling wiring a bridge
         // here means "this source was deliberately chosen" — its empty registry renders the true
         // zero state. The packaged/default boot installs elsewhere and keeps the sample flagship.
-        installFleetBridge({...config, selected: true});
+        // The bridge carries the canonical profile identity of its endpoint (the custody switch's
+        // own contract), so the cockpit's target binding can tell one injected endpoint from the
+        // next; a caller that already holds the identity passes it through.
+        installFleetBridge({
+            ...config,
+            profileId: config.profileId ?? deriveFleetProfileId(config.url),
+            selected : true
+        });
         return true
     }
 
