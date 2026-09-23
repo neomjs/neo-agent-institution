@@ -1,6 +1,8 @@
-import AgentCard      from './card/Container.mjs';
-import ComponentList  from '../../../../../node_modules/neo.mjs/src/list/Component.mjs';
-import SelectionModel from './SelectionModel.mjs';
+import AgentCard       from './card/Container.mjs';
+import ClassSystemUtil from '../../../../../node_modules/neo.mjs/src/util/ClassSystem.mjs';
+import ComponentList   from '../../../../../node_modules/neo.mjs/src/list/Component.mjs';
+import SelectionModel  from './SelectionModel.mjs';
+import Store           from '../../../../../node_modules/neo.mjs/src/data/Store.mjs';
 
 /**
  * The fleet roster as a real animated list — the store-driven replacement for the destroy/recreate
@@ -213,6 +215,20 @@ class List extends ComponentList {
      * @param {Neo.data.Store|null} oldValue
      * @protected
      */
+    /**
+     * @summary The base list retires the store it held on every re-seat; this list OWNS no store
+     * (`autoDestroyStore: false` — the provider or the roster container does), so a re-seat only
+     * unbinds. A provider-owned store replaced through the container therefore survives, as does
+     * one the container created and retires itself. The instantiation contract stays the base one.
+     * @param {Object|Neo.data.Store} value
+     * @param {Object|Neo.data.Store} oldValue
+     * @returns {Neo.data.Store}
+     * @protected
+     */
+    beforeSetStore(value, oldValue) {
+        return ClassSystemUtil.beforeSetInstance(value, Store)
+    }
+
     afterSetStore(value, oldValue) {
         let me = this;
 

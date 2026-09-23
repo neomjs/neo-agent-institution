@@ -285,8 +285,8 @@ class FleetGrid extends Container {
             controller.syncRosterDerived()
         }
 
-        // a replaced store this container created leaves now — the list retires the one it held on
-        // re-seat, so the guard keeps a second retirement out; an injected store is not touched
+        // a replaced store this container created leaves now; an injected one is its owner's to
+        // keep — the children (list, health bar) only unbind on a re-seat, never retire
         if (oldValue && me.ownedStores.delete(oldValue) && !oldValue.isDestroyed) {
             oldValue.destroy()
         }

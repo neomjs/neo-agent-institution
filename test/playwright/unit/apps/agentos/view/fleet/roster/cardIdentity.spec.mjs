@@ -351,8 +351,23 @@ test.describe('Fleet roster — cards and list items keep their identity across 
               holder   = Neo.create(FleetGrid, {appName, store: injected});
 
         expect(holder.ownedStores.size).toBe(0);
+        expect(cards(await readyList(holder))).toHaveLength(3);
+
+        // an injected store REPLACED by another injected store survives the re-seat: the list and
+        // the health bar unbind, nothing retires what the provider owns (the base list would)
+        const injectedNext = makeStore(roster(['ok']));
+
+        holder.store = injectedNext;
+
+        expect(injected.isDestroyed, 'the replaced provider-owned store is still alive').toBeFalsy();
+        expect(injected.getCount()).toBe(3);
+        expect(holder.getReference('roster-list').store).toBe(injectedNext);
+        expect(cards(holder.getReference('roster-list'))).toHaveLength(1);
+        expect(holder.ownedStores.size).toBe(0);
+
         holder.destroy();
         expect(injected.isDestroyed, 'an injected store is never the grid\'s to destroy').toBeFalsy();
+        expect(injectedNext.isDestroyed).toBeFalsy();
         expect(injected.getCount()).toBe(3)
     })
 });
