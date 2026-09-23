@@ -274,5 +274,41 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         expect(seatOf(before[2].key)).toBe(seats[before[0].key]);
 
         grid.destroy()
+    });
+
+    test('a retired card leaves WITH its vnode reference — destroy asks the parent to forget it, so a returning key is patched, never doubled', async () => {
+        const rows  = roster(['ok', 'ok', 'ok']),
+              store = makeStore(rows),
+              grid  = Neo.create(FleetGrid, {appName, store}),
+              list  = await readyList(grid),
+              calls = [];
+
+        // the mechanism, pinned where the unit tier can see it: a card destroyed WITHOUT
+        // `updateParentVdom` leaves the li's vnode naming a component the registry no longer knows;
+        // the fresh card a returning key gets under the SAME id is then inserted beside the old DOM
+        // node instead of patching it — two cards per li after the cockpit's first live admission,
+        // three after an instance switch (measured live 2026-09-23). Only a mounted tree shows the
+        // doubled node; this arm holds the contract that prevents it.
+        cards(list).forEach(card => {
+            const destroy = card.destroy.bind(card);
+
+            card.destroy = (...args) => { calls.push({id: card.id, args}); return destroy(...args) }
+        });
+
+        // the writers' shape: one mutation removes every record, the next re-adds the same keys
+        store.clear();
+
+        expect(calls.map(call => call.id).sort(), 'every pooled card retired on the clear').toEqual(rows.map(row => `${list.id}__card-${row.agentId}`).sort());
+        calls.forEach(({id, args}) => expect(args[0], `${id}: destroy(updateParentVdom=true) — the li's vnode stops naming it`).toBe(true));
+        expect(list.items.length, 'the pool empties with the fleet').toBe(0);
+        expect(liIds(list), 'no li survives a cleared store').toEqual([]);
+
+        store.add(rows.map(row => ({...row})));
+
+        expect(liIds(list).sort(), 'one li per key').toEqual(rows.map(row => list.getItemId(row.agentId)).sort());
+        expect(list.items.length).toBe(3);
+        cards(list).forEach(card => expect(card.isDestroyed, `${card.id} is a live fresh instance`).toBeFalsy());
+
+        grid.destroy()
     })
 });

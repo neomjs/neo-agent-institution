@@ -1,9 +1,11 @@
 import Button           from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import ClassSystemUtil  from '../../../../../node_modules/neo.mjs/src/util/ClassSystem.mjs';
 import Component        from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import Container        from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import HealthBar        from '../health/Container.mjs';
 import RosterController from './Controller.mjs';
 import RosterList       from './List.mjs';
+import Store            from '../../../../../node_modules/neo.mjs/src/data/Store.mjs';
 
 /**
  * @summary The fleet roster — the cockpit's default view (SSOT §01 fleet zone): a health-summary
@@ -228,6 +230,19 @@ class FleetGrid extends Container {
 
         me.applyAdapterState();
         controller.syncRosterDerived()
+    }
+
+    /**
+     * A store CONFIG becomes the instance the wire needs — the list's own contract — so a declarative
+     * roster (a seam witness, a demo page) seats the same way the provider-hosted instance does.
+     * `null` stays `null`: the cockpit binds its store later, and no interim instance is minted.
+     * @param {Neo.data.Store|Object|null} value
+     * @param {Neo.data.Store|null} oldValue
+     * @returns {Neo.data.Store|null}
+     * @protected
+     */
+    beforeSetStore(value, oldValue) {
+        return value ? ClassSystemUtil.beforeSetInstance(value, Store) : value
     }
 
     /**

@@ -246,7 +246,10 @@ class List extends ComponentList {
                 const key    = card.record && me.getRecordId(card.record),
                       retire = key !== null && key !== undefined && removed.has(key) && !readded.has(key);
 
-                retire && card.destroy();
+                // `updateParentVdom`: the li's vnode must stop naming this instance, or a returning
+                // key's fresh card under the SAME id is inserted beside the old node instead of
+                // patching it — two cards in one li. Silent: the store's `load` rebuilds right after.
+                retire && card.destroy(true, true);
 
                 return !retire
             })
