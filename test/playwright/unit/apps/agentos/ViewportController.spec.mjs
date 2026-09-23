@@ -318,5 +318,116 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
         ['loadRoster', 'pushVesselTitles', 'reconnectFleet'].forEach(method => {
             expect(typeof FleetCockpit.prototype[method], method).toBe('function')
         })
+    });
+
+    /**
+     * The engine's `fire` stamps the firer's ID onto every object-format event, so the manager's
+     * intents reach these handlers with `source` as a STRING; each handler writes its notice onto
+     * the instance, so it resolves it first. A registered stand-in is the manager: `Neo.getComponent`
+     * must find it by id, exactly as it finds the real drawer.
+     */
+    test.describe('instance manager intents — `source` arrives as the firer\'s id', () => {
+        let manager;
+
+        const makeController = ({calls, records = {}, boundProfileId = null, verified = true}) => Object.assign(Object.create(ViewportController.prototype), {
+            component: {stateProvider: {
+                getData : key => key === 'boundProfileId' ? boundProfileId : null,
+                getStore: name => name === 'fleetInstances' ? {
+                    get   : id => records[id] ?? null,
+                    add   : record => calls.push(['add', record.profileId]),
+                    remove: record => calls.push(['remove', record.profileId])
+                } : null
+            }},
+            getReference         : () => null,
+            persistInstanceRoster: () => calls.push(['persist']),
+            switchToProfile      : async (record, opts) => { calls.push(['switch', record.profileId, opts.bearerToken]); return verified }
+        });
+
+        test.beforeEach(() => {
+            manager = Neo.create(Neo.ns('Neo.component.Base'), {id: 'seam-instance-manager'});
+            manager.onClearClick       = () => manager.cleared = (manager.cleared ?? 0) + 1;
+            manager.updateInstanceList = () => manager.refreshed = (manager.refreshed ?? 0) + 1
+        });
+
+        test.afterEach(() => {
+            manager.destroy();
+            manager = null
+        });
+
+        test('Add: the row is added, the editor cleared and the notice lands on the manager instance', () => {
+            const calls = [], controller = makeController({calls});
+
+            controller.onSaveInstance({endpoint: 'http://127.0.0.1:8096/fleet', label: 'second', source: manager.id});
+
+            expect(calls.map(call => call[0])).toEqual(['add', 'persist']);
+            expect(manager.cleared, 'the editor cleared through the instance').toBe(1);
+            expect(manager.refreshed, 'the roster consumers re-rendered through the instance').toBe(1);
+            expect(manager.notice?.tone).toBe('ok');
+            expect(manager.notice?.text).toMatch(/^added — /)
+        });
+
+        test('Connect + switch: the bearer reaches the custody switch and the verdict lands on the instance', async () => {
+            const calls = [], records = {p1: {profileId: 'p1', canonicalEndpoint: 'http://127.0.0.1:8095/fleet'}};
+
+            await makeController({calls, records}).onConnectInstance({profileId: 'p1', bearerToken: 'process-bearer', source: manager.id});
+
+            expect(calls).toEqual([['switch', 'p1', 'process-bearer']]);
+            expect(manager.notice).toEqual({tone: 'ok', text: 'connected — custody verified, ingress retired'});
+
+            // no bearer: refused on the instance, no switch attempted
+            calls.length = 0;
+            await makeController({calls, records}).onConnectInstance({profileId: 'p1', bearerToken: null, source: manager.id});
+
+            expect(calls).toEqual([]);
+            expect(manager.notice?.tone).toBe('refused')
+        });
+
+        test('Retire: an unbound row leaves, the bound one refuses — both notices on the instance', () => {
+            const calls = [], records = {p1: {profileId: 'p1'}};
+
+            makeController({calls, records}).onRetireInstance({profileId: 'p1', source: manager.id});
+
+            expect(calls).toEqual([['remove', 'p1'], ['persist']]);
+            expect(manager.notice).toEqual({tone: 'ok', text: 'retired'});
+            expect(manager.refreshed).toBe(1);
+
+            calls.length = 0;
+            makeController({calls, records, boundProfileId: 'p1'}).onRetireInstance({profileId: 'p1', source: manager.id});
+
+            expect(calls).toEqual([]);
+            expect(manager.notice?.tone).toBe('refused')
+        });
+
+        test('Probe: the reachability verdict lands on the instance', async () => {
+            const priorFetch = globalThis.fetch, records = {p1: {profileId: 'p1', canonicalEndpoint: 'http://127.0.0.1:8095/fleet'}};
+
+            globalThis.fetch = async () => ({status: 401});
+
+            try {
+                await makeController({calls: [], records}).onProbeInstance({profileId: 'p1', source: manager.id})
+            } finally {
+                globalThis.fetch = priorFetch
+            }
+
+            expect(manager.notice).toEqual({tone: 'ok', text: 'reachable — HTTP 401 (authentication required)'})
+        });
+
+        test('Plane admission: the tenant verdict lands on the instance (the instance form still passes through)', async () => {
+            const original = globalThis.AgentOS, direct = {};
+
+            globalThis.AgentOS = {fleet: {registryBridge: {connectTenant: async () => ({status: 'rejected', reason: 'forge said no'})}}};
+
+            try {
+                const controller = makeController({calls: []});
+
+                await controller.onConnectPlane({credential: 'c', source: manager.id, tenantUrl: 'https://forge.example/acme'});
+                await controller.onConnectPlane({credential: 'c', source: direct, tenantUrl: 'https://forge.example/acme'})
+            } finally {
+                globalThis.AgentOS = original
+            }
+
+            expect(manager.notice).toEqual({tone: 'refused', text: 'forge said no'});
+            expect(direct.notice).toEqual({tone: 'refused', text: 'forge said no'})
+        })
     })
 });

@@ -259,6 +259,19 @@ class ViewportController extends Controller {
     }
 
     /**
+     * @summary The manager instance behind an intent's `source`. The engine's `fire` stamps the
+     * firer's ID onto every object-format event, so a handler that writes a notice or clears the
+     * editor resolves the instance first; an instance handed in directly (a test, a direct call)
+     * passes through.
+     * @param {String|Neo.component.Base} source
+     * @returns {Neo.component.Base|null}
+     * @protected
+     */
+    resolveIntentSource(source) {
+        return Neo.isString(source) ? Neo.getComponent(source) : source
+    }
+
+    /**
      * @summary Create or label-edit one instance over the C1 module — the ONLY write authority.
      * Refusals surface the module's own message verbatim (its vocabulary is the contract).
      * @param {Object} data `{endpoint, label, profileId, source}`
@@ -267,6 +280,8 @@ class ViewportController extends Controller {
         let me    = this,
             store = me.component.stateProvider.getStore('fleetInstances'),
             record;
+
+        source = me.resolveIntentSource(source);
 
         if (profileId) {
             // label edit — the endpoint IS the identity and never mutates on an existing row
@@ -311,6 +326,8 @@ class ViewportController extends Controller {
             store    = provider.getStore('fleetInstances'),
             record   = store.get(profileId);
 
+        source = me.resolveIntentSource(source);
+
         if (!record) return;
 
         if (profileId === provider.getData('boundProfileId')) {
@@ -334,6 +351,8 @@ class ViewportController extends Controller {
     async onProbeInstance({profileId, source}) {
         let record = this.component.stateProvider.getStore('fleetInstances').get(profileId);
 
+        source = this.resolveIntentSource(source);
+
         if (!record) return;
 
         try {
@@ -356,6 +375,8 @@ class ViewportController extends Controller {
     async onConnectInstance({profileId, bearerToken, source}) {
         let me     = this,
             record = me.component.stateProvider.getStore('fleetInstances').get(profileId);
+
+        source = me.resolveIntentSource(source);
 
         if (!record) return;
 
@@ -381,6 +402,8 @@ class ViewportController extends Controller {
     async onConnectPlane({tenantUrl, credential, source}) {
         let me     = this,
             bridge = globalThis.AgentOS?.fleet?.registryBridge;
+
+        source = me.resolveIntentSource(source);
 
         if (!bridge) {
             source.notice = {tone: 'refused', text: 'no live instance bridge — connect the instance first'};
