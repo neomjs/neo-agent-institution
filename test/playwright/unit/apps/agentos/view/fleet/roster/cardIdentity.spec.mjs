@@ -90,7 +90,7 @@ test.describe('Fleet roster — cards and list items keep their identity across 
     const joiner = {agentId: 'agent-00', displayName: 'AAA', githubUsername: 'neo-agent-00', state: 'ok'};
 
     // the joiner must sort AHEAD on every engine this repo pins: the shipped "online first" order
-    // ranks by the calculated `tierRank`, which a raw row lacks on engines before neomjs/neo#18269
+    // ranks by the calculated `tierRank`, which a raw row lacks on older engines
     // (a raw joiner sorted last there, which is how this defect stayed hidden). Name order reads a
     // plain field, so `AAA` leads on either engine — the tier axis is the pin battery's witness.
     const byName = store => {

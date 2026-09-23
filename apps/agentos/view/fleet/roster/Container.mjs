@@ -120,7 +120,7 @@ class FleetGrid extends Container {
             flex     : 'none',
             // wrap: the head answers its OWN width — the pane's width is dock-owned (preset,
             // splitter, vessel), so the legend drops under the title once the row cannot hold all
-            // seven states, instead of clipping the last ones (#85). Wide rows stay one line.
+            // seven states, instead of clipping the last ones. Wide rows stay one line.
             layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             reference: 'fleet-head',
 
@@ -170,7 +170,7 @@ class FleetGrid extends Container {
         }, {
             // THE CARD REGION: the list is the scroll owner, and the bootstrap CTA renders inside
             // the same box as the cards it stands in for — centered over it (the design ruling's
-            // "real button in the card region", #69) instead of trailing the empty list at the
+            // "real button in the card region") instead of trailing the empty list at the
             // pane bottom. The wrapper keeps the flex chain: only the cards scroll.
             ntype    : 'container',
             cls      : ['fm-fleet-card-region'],
