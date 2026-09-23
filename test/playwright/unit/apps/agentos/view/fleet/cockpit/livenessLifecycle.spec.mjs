@@ -19,6 +19,8 @@ import                                 '../../../../../../../../node_modules/neo
 import {makeActivityStoreHarness, makeProviderFake} from './cockpitFakes.mjs';
 import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
 import DeploymentStateRead  from '../../../../../../../../apps/agentos/util/DeploymentStateRead.mjs';
+import ViewportController   from '../../../../../../../../apps/agentos/view/ViewportController.mjs';
+import {deriveFleetProfileId} from '../../../../../../../../apps/agentos/fleet/connectionProfiles.mjs';
 import {
     createFleetWireResponse,
     FLEET_WIRE_RESPONSE_STATES
@@ -59,6 +61,9 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             cleared,
             polls                  : 0,
             brainReads             : 0,
+            // the target-binding pair mirrors the class defaults too: an unbound surface reads null
+            activityProfileId      : null,
+            rosterProfileId        : null,
             brainHealthReadGeneration: 0,
             brainHealthReadInFlight: 0,
             deploymentStateReadGeneration: 0,
@@ -235,6 +240,53 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
                 expect(host.gridReadInFlight).toBe(0)
             })
         }
+
+        test('an endpoint wired through the product injector carries its canonical identity: a switch to another endpoint retires the roster, the same endpoint keeps it', async () => {
+            const {host, provider, store} = makeRosterHost();
+            const
+                bearerToken = 'A'.repeat(43),
+                endpointA   = 'http://127.0.0.1:8095/fleet',
+                endpointB   = 'http://127.0.0.1:8096/fleet',
+                // the browser transport's own reply shape: a Response whose json() is the wire envelope
+                answering   = rows => async () => ({json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {rows}})}),
+                refusing    = async () => { throw new Error('connection refused') },
+                // the REAL injector (Neural Link, tests and dev tooling wire here) over the REAL installer;
+                // only the network is a stub
+                wire        = (url, fetchImpl) => ViewportController.prototype.wireFleetBridge.call({}, {url, bearerToken, fetchImpl});
+            let seedReloads = 0;
+
+            // the retirement asks the store for its seed through the url pipeline — the one seam stubbed
+            store.load = async () => { seedReloads++ };
+
+            wire(endpointA, answering([{id: 'a1', displayName: 'A1'}]));
+            await host.loadRoster();
+
+            expect(globalThis.AgentOS.fleet.registryBridge.profileId).toBe(deriveFleetProfileId(endpointA));
+            expect(host.rosterProfileId, 'the roster is bound to the endpoint that answered').toBe(deriveFleetProfileId(endpointA));
+            expect(store.get('a1')).toBeTruthy();
+            expect(provider.data.gridAdapterState).toBe('live');
+
+            // the same endpoint, wired again, failing: last-known rows stay as stale — no retirement
+            wire(endpointA, refusing);
+            await host.loadRoster();
+
+            expect(store.get('a1')).toBeTruthy();
+            expect(provider.data.gridAdapterState).toBe('stale');
+            expect(seedReloads).toBe(0);
+
+            // another endpoint through the same injector: A's rows retire BEFORE B is read
+            wire(endpointB, refusing);
+            await host.loadRoster();
+
+            expect(globalThis.AgentOS.fleet.registryBridge.profileId).toBe(deriveFleetProfileId(endpointB));
+            expect(store.get('a1'), 'the previous endpoint\'s resident is gone').toBeFalsy();
+            expect(store.getCount()).toBe(0);
+            expect(seedReloads, 'the seed reload was asked for').toBe(1);
+            expect(host.rosterWired).toBe(false);
+            expect(host.rosterProfileId).toBeNull();
+            expect(provider.data.gridAdapterState, 'B\'s failure is B\'s own cold truth').toBe('sample');
+            expect(provider.data.gridConnection.state).toBe('unreachable')
+        });
 
         test('bridge absence clears a pending roster observation without releasing or admitting its old wire', async () => {
             const {host, provider, store} = makeRosterHost();

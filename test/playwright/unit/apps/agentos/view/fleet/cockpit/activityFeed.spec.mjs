@@ -156,4 +156,75 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
         // recovery clears the retained cause — a stale reason on a live feed would outlive its truth
         expect(provider.data.streamDegradedReason ?? null).toBe(null)
     });
+
+    test.describe('target binding — retained events belong to the profile that answered (#181)', () => {
+        // one host, two profiles: `bridge` resolves fresh per call, so an instance switch is the next
+        // read finding a registryBridge with another profileId (what the custody path installs)
+        const installBridge = bridge => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: bridge} };
+        const pageOf        = (...ids) => ids.map(eventId => ({eventId, type: 'a2a-activity', occurredAt: '2026-09-23T08:00:00.000Z', payload: {subject: eventId}}));
+        const counts        = [{source: 'memory-core:mailbox', scope: 'total', value: 2, complete: true, capturedAt: '2026-09-23T08:00:00.000Z'}];
+        const wired         = (profileId, events) => ({profileId, fleetActivity: async () => ({capability: {state: 'wired'}, counts, events})});
+        const refused       = profileId => ({profileId, fleetActivity: async () => {
+            throw Object.assign(new Error('connection refused'), {fleetConnectionState: 'refused'})
+        }});
+
+        // profile A's page admitted as the first live snapshot (replace), the feed bound to 'a'
+        const admittedA = async () => {
+            const host = await routeLoadActivity(wired('a', pageOf('a:1')));
+
+            expect(host.store.pages).toEqual([{events: pageOf('a:1'), options: {replace: true}}]);
+            expect(host.controller.activityProfileId).toBe('a');
+            expect(host.provider.data.activityCounts).toEqual(counts);
+
+            return host
+        };
+
+        test('a reachable new profile is admitted as a FIRST snapshot — the previous profile\'s events never merge in', async () => {
+            const host = await admittedA();
+
+            installBridge(wired('b', pageOf('b:1')));
+            await host.controller.loadActivity();
+
+            expect(host.store.cleared).toBe(1);
+            expect(host.store.pages[1]).toEqual({events: pageOf('b:1'), options: {replace: true}});
+            expect(host.controller.activityProfileId).toBe('b');
+            expect(host.stream.adapterState).toBe('live')
+        });
+
+        test('a switch to a profile whose read fails retires the previous events — never `stale` over another instance', async () => {
+            const host = await admittedA();
+
+            installBridge(refused('b'));
+            await host.controller.loadActivity();
+
+            expect(host.store.cleared).toBe(1);
+            expect(host.controller.activityWired).toBe(false);
+            expect(host.controller.activityProfileId).toBeNull();
+            // B's failure is B's own cold truth: sample, no cause claimed, A's counts gone, the
+            // typed observation names the failure
+            expect(host.provider.data.streamAdapterState).toBe('sample');
+            expect(host.provider.data.streamDegradedReason).toBeNull();
+            expect(host.provider.data.activityCounts).toEqual([]);
+            expect(host.stream.adapterState).toBe('sample');
+            expect(host.provider.data.streamConnection).toEqual({state: 'refused', reason: 'connection refused'})
+        });
+
+        test('control: the same profile keeps its semantics — a later page merges, a transient failure keeps last-known rows as `stale`', async () => {
+            const merged = await admittedA();
+
+            installBridge(wired('a', pageOf('a:2')));
+            await merged.controller.loadActivity();
+            expect(merged.store.cleared).toBe(0);
+            expect(merged.store.pages[1].options).toEqual({replace: false});
+
+            const failed = await admittedA();
+
+            installBridge(refused('a'));
+            await failed.controller.loadActivity();
+            expect(failed.store.cleared).toBe(0);
+            expect(failed.controller.activityWired).toBe(true);
+            expect(failed.provider.data.streamAdapterState).toBe('stale');
+            expect(failed.stream.adapterState).toBe('stale')
+        })
+    })
 });

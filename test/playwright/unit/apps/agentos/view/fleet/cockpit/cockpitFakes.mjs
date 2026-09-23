@@ -23,7 +23,9 @@ export const wiredSources = () => ({
  */
 export const makeActivityStoreHarness = () => {
     const activityStore = {
-              pages: [],
+              cleared: 0,
+              pages  : [],
+              clear() { this.cleared++ },
               ingestSnapshot(events, options) {
                   this.pages.push({events, options});
                   return {added: events.length, dropped: 0, retained: events.length, newEventIds: events.map(event => event.eventId)}
@@ -87,11 +89,13 @@ export const wireDetailRecord = (view, ViewClass) => {
  * under test owns. `component` carries the configs the controller reads from its view.
  */
 export const makeControllerFake = (Controller, overrides = {}) => Object.assign(Object.create(Controller.prototype), {
+    activityProfileId   : null,
     activityWired       : false,
     component           : null,
     gridReadGeneration  : 0,
     gridReadInFlight    : 0,
     isDestroyed         : false,
+    rosterProfileId     : null,
     rosterWired         : false,
     streamReadGeneration: 0,
     streamReadInFlight  : 0,

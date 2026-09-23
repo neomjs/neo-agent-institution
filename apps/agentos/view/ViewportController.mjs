@@ -1,6 +1,6 @@
 import Controller                                      from '../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import InstanceManager                                 from './fleet/instances/ManagerContainer.mjs';
-import {createFleetProfile}                            from '../fleet/connectionProfiles.mjs';
+import {createFleetProfile, deriveFleetProfileId}      from '../fleet/connectionProfiles.mjs';
 import {establishFleetSessionCustody, resolveFleetUrl} from '../fleet/fleetSessionCustody.mjs';
 import {installFleetBridge}                            from '../fleet/installFleetBridge.mjs';
 import {
@@ -162,7 +162,8 @@ class ViewportController extends Controller {
      * deliberate establish (bearer-less publishes the chosen instance FAIL-CLOSED — honest state,
      * never the old instance impersonating the choice), bound-fact re-mirror, tear-out title push
      * (scope is a per-window fact), and the cockpit's own full re-drive behind its generation
-     * fences (no cross-instance bleed by construction). An endpoint the bridge refuses (remote,
+     * fences (a late answer from the old bridge never lands) and its target binding (rows the old
+     * bridge answered are retired before the new one is read). An endpoint the bridge refuses (remote,
      * malformed) is a verdict, not a crash: custody is established BEFORE any state is written, so
      * a refusal binds nothing, changes nothing and answers `false`.
      * @param {Object} record            A `fleetInstances` row.
@@ -453,7 +454,14 @@ class ViewportController extends Controller {
         // The injector IS the selection act: Neural Link, tests, and dev tooling wiring a bridge
         // here means "this source was deliberately chosen" — its empty registry renders the true
         // zero state. The packaged/default boot installs elsewhere and keeps the sample flagship.
-        installFleetBridge({...config, selected: true});
+        // The bridge carries the canonical profile identity of its endpoint (the custody switch's
+        // own contract), so the cockpit's target binding can tell one injected endpoint from the
+        // next; a caller that already holds the identity passes it through.
+        installFleetBridge({
+            ...config,
+            profileId: config.profileId ?? deriveFleetProfileId(config.url),
+            selected : true
+        });
         return true
     }
 

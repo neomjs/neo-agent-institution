@@ -1,6 +1,8 @@
 import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import BrainHealthRead     from '../../../util/BrainHealthRead.mjs';
 import DeploymentStateRead from '../../../util/DeploymentStateRead.mjs';
 import SourceHealth        from '../../../util/SourceHealth.mjs';
+import TargetBinding       from '../../../util/TargetBinding.mjs';
 
 const
     /**
@@ -9,12 +11,6 @@ const
      * @type {Number}
      */
     maxDegradedReasonLength = 120,
-    /**
-     * The recognized Brain daemon states — anything else (a transport envelope, a rejection
-     * mapped to null, a malformed payload) renders NOTHING rather than a fabricated verdict.
-     * @type {String[]}
-     */
-    brainHealthStates = ['running', 'degraded', 'stopped'],
     /**
      * Credential-redaction patterns for wire-borne failure text, scheme rule FIRST — or
      * `Authorization: Bearer x` matches the pair rule, stops at the space, and republishes the
@@ -125,6 +121,12 @@ class LivenessController extends ComponentController {
      */
     rosterWired = false
     /**
+     * The profile whose roster answer the store holds — {@link AgentOS.util.TargetBinding}.
+     * @member {String|null} rosterProfileId=null
+     * @protected
+     */
+    rosterProfileId = null
+    /**
      * Read-fence for the ACTIVITY surface.
      * @member {Number} streamReadGeneration=0
      * @protected
@@ -142,6 +144,12 @@ class LivenessController extends ComponentController {
      * @protected
      */
     activityWired = false
+    /**
+     * The profile whose activity answer the store holds — {@link AgentOS.util.TargetBinding}.
+     * @member {String|null} activityProfileId=null
+     * @protected
+     */
+    activityProfileId = null
     /**
      * The live wake-stream consumer + the bridge identity it was opened against (custody heals
      * swap the bridge; a kept consumer would outlive its authority).
@@ -221,7 +229,8 @@ class LivenessController extends ComponentController {
             stream     = me.getReference('activity-stream'),
             {bridge}   = me,
             provider   = me.component.getStateProvider(),
-            generation = ++me.streamReadGeneration;
+            generation = ++me.streamReadGeneration,
+            profileId  = bridge?.profileId ?? null;
 
         if (!store || typeof bridge?.fleetActivity !== 'function') {
             // no bridge/verb IS the cold truth; a never-wired surface's retained answered cause
@@ -230,6 +239,8 @@ class LivenessController extends ComponentController {
                 ? {streamDegradedReason: null} : {}});
             return
         }
+
+        TargetBinding.retireActivity(me, {store, stream, profileId});
 
         try {
             me.publishConnection('stream', {pending: true});
@@ -251,7 +262,8 @@ class LivenessController extends ComponentController {
 
             if (capability?.state === 'wired') {
                 store.ingestSnapshot(Array.isArray(events) ? events : [], {replace: !me.activityWired});
-                me.activityWired = true;
+                me.activityWired     = true;
+                me.activityProfileId = profileId;
                 me.publishConnection('stream', {data: {
                     activityCounts      : Array.isArray(counts) ? counts : [],
                     streamAdapterState  : 'live',
@@ -300,13 +312,16 @@ class LivenessController extends ComponentController {
             {bridge}   = me,
             cockpit    = me.component,
             provider   = cockpit.getStateProvider(),
-            generation = ++me.gridReadGeneration;
+            generation = ++me.gridReadGeneration,
+            profileId  = bridge?.profileId ?? null;
 
         if (!store || typeof bridge?.fleetRoster !== 'function') {
             me.publishConnection('grid', {data: provider?.getData('gridAdapterState') === 'sample'
                 ? {gridDegradedReason: null} : {}});
             return
         }
+
+        TargetBinding.retireRoster(me, {store, grid, profileId});
 
         try {
             me.publishConnection('grid', {pending: true});
@@ -340,7 +355,8 @@ class LivenessController extends ComponentController {
                 return
             }
 
-            me.lastLiveRows = mapped;
+            me.lastLiveRows    = mapped;
+            me.rosterProfileId = profileId;
 
             if (me.rosterWired) {
                 me.reconcileRoster(store, mapped)
@@ -362,17 +378,7 @@ class LivenessController extends ComponentController {
             }});
             grid && (grid.adapterState = 'live');
 
-            // roster-derived consumer refreshes: resident panes snapshot their options at
-            // projection time, which can precede this first live answer (pane-first, so a
-            // non-materialized pane costs no option rebuild)
-            const
-                catchUpPane = cockpit.getCatchUpPane(),
-                stream      = me.getReference('activity-stream'),
-                mailboxPane = cockpit.getOperatorMailboxPane();
-
-            catchUpPane && catchUpPane.set({partitionOptions: me.buildCatchUpPartitionOptions()});
-            stream      && stream.set({actorDirectory: me.buildActivityActorDirectory()});
-            mailboxPane && mailboxPane.set({recipientOptions: me.buildOperatorRecipientOptions()});
+            TargetBinding.refreshRosterConsumers(me);
 
             if (me.operatorRecord) {
                 me.operatorIdentityPosture = me.deriveOperatorIdentityPosture(me.operatorRecord.agentIdentityNodeId);
@@ -391,63 +397,24 @@ class LivenessController extends ComponentController {
     }
 
     /**
-     * @summary Pull whole-Brain health from the shell's lifecycle owner on the liveness cadence —
-     * pull, never push, so a fault arriving after mount still surfaces and a recovery still
-     * clears. Transport failure reaches {@link #applyBrainHealth} as `null` and moves nothing.
+     * @summary The Brain-health read owner's pull — the daemon surface on the liveness cadence.
+     * The seam lives in `AgentOS.util.BrainHealthRead` (this file holds its size bar); this method
+     * is the cadence's, the reconnect's and the fixtures' handle.
+     * @returns {Promise<void>}
      * @protected
      */
-    async loadBrainHealth() {
-        const
-            me         = this,
-            generation = ++me.brainHealthReadGeneration;
-
-        try {
-            me.brainHealthReadInFlight++;
-
-            const response = await me.boundedRead(
-                Promise.resolve().then(() => Neo.Main.brainHealth()),
-                () => { me.brainHealthReadInFlight-- }
-            );
-
-            if (generation !== me.brainHealthReadGeneration || me.isDestroyed) return;
-
-            me.applyBrainHealth(response)
-        } catch (error) {
-            if (generation !== me.brainHealthReadGeneration || me.isDestroyed) return;
-
-            me.applyBrainHealth(null)
-        }
+    loadBrainHealth() {
+        return BrainHealthRead.load(this)
     }
 
     /**
-     * @summary Apply one Brain-health wire answer onto the provider-held daemon surface. An
-     * unrecognized state renders NOTHING (transport trouble is the transport surface's story) —
-     * and never ERASES a last-known fault: only the lifecycle owner's own answer moves this
-     * surface. The shell transport fact is its own truth, valid on payloads whose daemon state
-     * never validates and dropped when the pull failed.
+     * @summary Apply one Brain-health wire answer — the banner pipeline's and the fixtures' handle;
+     * the rule lives in `AgentOS.util.BrainHealthRead`.
      * @param {Object|null} response The lifecycle owner's `{state, cause, transport?}` payload.
      * @protected
      */
     applyBrainHealth(response) {
-        const
-            me       = this,
-            provider = me.component.getStateProvider(),
-            state    = brainHealthStates.includes(response?.state) ? response.state : null;
-
-        if (me.isDestroyed || !provider) return;
-
-        provider.setData('shellTransport', Neo.isObject(response?.transport) ? response.transport : null);
-
-        if (!state) {
-            return
-        }
-
-        provider.setData({
-            daemonState         : state,
-            daemonDegradedReason: state !== 'running' && response.cause
-                ? (response.cause.detail || response.cause.source || null)
-                : null
-        })
+        BrainHealthRead.apply(this, response)
     }
 
     /**
