@@ -140,7 +140,7 @@ class RowContainer extends Container {
          * flexbox layout would stamp `neo-flex-align-stretch` on the row — outranking the grid's
          * `align-items: center` and stretching every cell to the pool height — and write
          * `flex: 1 1 0%` onto each cell, which stretches a kind chip to the row width whenever a
-         * pooled row is not a grid at paint time (#63).
+         * pooled row is not a grid at paint time.
          * @member {Object} layout={ntype: 'layout-base'}
          */
         layout: {ntype: 'layout-base'},
