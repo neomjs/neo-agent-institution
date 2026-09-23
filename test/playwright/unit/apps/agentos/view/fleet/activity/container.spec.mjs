@@ -22,7 +22,7 @@ import DomApiVnodeCreator                                           from '../../
 import Instance                                                     from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import VdomHelper                                                   from '../../../../../../../../node_modules/neo.mjs/src/vdom/Helper.mjs';
 import ActivityStream, {describeActivityCounts, describeQuietSince} from '../../../../../../../../apps/agentos/view/fleet/activity/Container.mjs';
-import {getActivityObjectText}                                      from '../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs';
+import {formatConversationRef, getActivityObjectText, getActivityObjectTitle} from '../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs';
 import FleetActivityEvents                                          from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import ViewerTime                                                   from '../../../../../../../../apps/agentos/util/ViewerTime.mjs';
 
@@ -223,6 +223,48 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(getActivityObjectText({type: 'issue-activity', payload: {number: 17550, title: 'Buffered history'}})).toBe('#17550 · Buffered history');
         expect(getActivityObjectText({type: 'work-stall', payload: {findingClass: 'ownership-gap', subject: {id: 'LANE:x'}}})).toBe('stalled · LANE:x');
         expect(getActivityObjectText({type: 'a2a-activity', payload: {subject: {unexpected: true}}})).toBe('a2a-activity')
+    });
+
+    test('object refs name their repository: bare at home, a declared short slug across origins, the full slug in the title', () => {
+        // AC-1: a home row, with or without the field, renders exactly as before
+        expect(getActivityObjectText({type: 'issue-activity', payload: {number: 7, repoSlug: 'neo', title: 'home'}})).toBe('#7 · home');
+        expect(getActivityObjectText({type: 'issue-activity', payload: {number: 7, title: 'no field'}})).toBe('#7 · no field');
+        // AC-2: a foreign origin renders its declared short name; an unknown slug renders itself
+        expect(getActivityObjectText({type: 'pr-activity', payload: {number: 410, repoSlug: 'neo-agent-brain', title: 'leaf'}})).toBe('brain#410 · leaf');
+        expect(getActivityObjectText({type: 'lane-claim', payload: {issueNumber: 178, repoSlug: 'neo-agent-institution', issueTitle: 'learn tree'}})).toBe('institution#178 · learn tree');
+        expect(getActivityObjectText({type: 'issue-activity', payload: {number: 3, repoSlug: 'neo-unknown-repo', title: 'x'}})).toBe('neo-unknown-repo#3 · x');
+        expect(getActivityObjectText({type: 'work-stall', payload: {findingClass: 'STALE_DEFER', subject: {number: 9, repoSlug: 'neo-agent-skills', title: 't'}}})).toBe('stalled · skills#9 · t');
+        expect(formatConversationRef(null, 12)).toBe('#12');
+        // AC-3: the title carries the full slug, home included; rows without a number carry none
+        expect(getActivityObjectTitle({type: 'issue-activity', payload: {number: 7}})).toBe('neomjs/neo#7');
+        expect(getActivityObjectTitle({type: 'pr-activity', payload: {number: 410, repoSlug: 'neo-agent-brain'}})).toBe('neomjs/neo-agent-brain#410');
+        expect(getActivityObjectTitle({type: 'work-stall', payload: {subject: {number: 9, repoSlug: 'devindex'}}})).toBe('neomjs/devindex#9');
+        expect(getActivityObjectTitle({type: 'a2a-activity', payload: {subject: 'hello'}})).toBeNull()
+    });
+
+    test('a foreign-origin row carries the short ref in its object cell and the full slug in that cell\'s title', async () => {
+        const pr = event('pr-brain-410', 10, {
+            eventId: 'github-workflow:pull-requests:neo-agent-brain#410',
+            type   : 'pr-activity',
+            agentId: 'neo-fable-clio',
+            payload: {number: 410, repoSlug: 'neo-agent-brain', title: 'the activity feed reads a declared content root'}
+        });
+
+        store = Neo.create(FleetActivityEvents, {data: [pr], id: `fleet-activity-events-test-${++sequence}`});
+        stream = Neo.create(ActivityStream, {
+            actorDirectory: {'neo-fable-clio': {displayName: 'Clio'}},
+            appName,
+            id            : `fleet-activity-stream-test-${sequence}`,
+            store
+        });
+        await stream.initVnode();
+
+        const row    = stream.getReference('list').items[0],
+              object = row.getReference('object');
+
+        expect(object.text).toBe('brain#410 · the activity feed reads a declared content root');
+        expect(object.vdom.title).toBe('neomjs/neo-agent-brain#410');
+        expect(row.vdom['aria-label']).toContain('brain#410')
     });
 
     test('count header labels producer truth and ignores incomplete rows', () => {

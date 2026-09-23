@@ -5,6 +5,62 @@ import EventChip  from './EventChipComponent.mjs';
 import ViewerTime from '../../../util/ViewerTime.mjs';
 
 /**
+ * @summary The home repository whose conversations render bare (`#N`).
+ *
+ * Mirrors the Brain's `CORPUS_PROJECTION_ORIGIN`; the cockpit consumes the DTO's `repoSlug` field and
+ * never derives an origin itself. A row without the field is a home row by the same contract.
+ * @type {String}
+ */
+export const HOME_ORIGIN = 'neo';
+
+/**
+ * @summary The one declared map from a corpus origin slug to the short name a 20 px row can afford.
+ *
+ * GitHub's own convention, compressed: bare `#N` inside the home repository, `<short>#N` across
+ * repositories, the full `neomjs/<repoSlug>#N` in the row title. An unknown slug renders itself,
+ * never nothing — a new origin is legible on the day it joins the corpus.
+ * @type {Object}
+ */
+export const SHORT_ORIGIN_NAMES = Object.freeze({
+    'devindex'             : 'devindex',
+    'neo-agent-brain'      : 'brain',
+    'neo-agent-institution': 'institution',
+    'neo-agent-skills'     : 'skills'
+});
+
+/**
+ * @summary Formats a conversation reference for the row: `#N` at home, `<short>#N` elsewhere.
+ * @param {String|null} repoSlug The conversation's origin repository slug; absent means home.
+ * @param {Number|String} number The conversation number inside that origin.
+ * @returns {String}
+ */
+export function formatConversationRef(repoSlug, number) {
+    const origin = normalizeOrigin(repoSlug);
+
+    return origin && origin !== HOME_ORIGIN ? `${SHORT_ORIGIN_NAMES[origin] ?? origin}#${number}` : `#${number}`
+}
+
+/**
+ * @summary Resolves the full `neomjs/<repoSlug>#N` a row's object cell carries as its title, so hover
+ * answers what the short reference compresses. Rows without a conversation number carry none.
+ * @param {Object} event Record or record-shaped object.
+ * @returns {String|null}
+ */
+export function getActivityObjectTitle(event) {
+    const
+        payload = event?.payload || {},
+        subject = Neo.typeOf(payload.subject) === 'Object' ? payload.subject : null,
+        number  = payload.number ?? payload.issueNumber ?? subject?.number ?? null,
+        origin  = normalizeOrigin(payload.repoSlug ?? subject?.repoSlug) ?? HOME_ORIGIN;
+
+    return number !== null ? `neomjs/${origin}#${number}` : null
+}
+
+function normalizeOrigin(value) {
+    return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+/**
  * @summary Resolves the producer-owned object/message carried by one activity event.
  *
  * Actor and recipient render in their own fixed cells, so this function never repeats them. PR,
@@ -20,7 +76,7 @@ export function getActivityObjectText(event) {
         subject = Neo.typeOf(payload.subject) === 'Object' ? payload.subject : null,
         number  = payload.number ?? payload.issueNumber ?? subject?.number ?? null,
         id      = number === null ? (subject?.id ?? null) : null,
-        ref     = number !== null ? `#${number}` : id,
+        ref     = number !== null ? formatConversationRef(payload.repoSlug ?? subject?.repoSlug, number) : id,
         title   = payload.title ?? payload.issueTitle ?? subject?.title ?? null,
         object  = [ref, title].filter(value => typeof value === 'string' && value || typeof value === 'number').join(' · '),
         text    = [payload.text, payload.summary, typeof payload.subject === 'string' ? payload.subject : null, payload.reason]
@@ -175,6 +231,7 @@ class RowContainer extends Container {
             text  : recipient?.text ?? ''
         });
 
+        textCell.vdom.title = getActivityObjectTitle(event);
         textCell.setSilent({text});
 
         me.vdom['aria-label'] = [time?.text, event?.type, agentId, recipient?.text, text].filter(Boolean).join(' · ');
