@@ -90,7 +90,7 @@ test.describe('Fleet roster — cards and list items keep their identity across 
     const joiner = {agentId: 'agent-00', displayName: 'AAA', githubUsername: 'neo-agent-00', state: 'ok'};
 
     // the joiner must sort AHEAD on every engine this repo pins: the shipped "online first" order
-    // ranks by the calculated `tierRank`, which a raw row lacks on engines before neomjs/neo#18269
+    // ranks by the calculated `tierRank`, which a raw row lacks on older engines
     // (a raw joiner sorted last there, which is how this defect stayed hidden). Name order reads a
     // plain field, so `AAA` leads on either engine — the tier axis is the pin battery's witness.
     const byName = store => {
@@ -274,5 +274,100 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         expect(seatOf(before[2].key)).toBe(seats[before[0].key]);
 
         grid.destroy()
+    });
+
+    test('a retired card leaves WITH its vnode reference — destroy asks the parent to forget it, so a returning key is patched, never doubled', async () => {
+        const rows  = roster(['ok', 'ok', 'ok']),
+              store = makeStore(rows),
+              grid  = Neo.create(FleetGrid, {appName, store}),
+              list  = await readyList(grid),
+              calls = [];
+
+        // the mechanism, pinned where the unit tier can see it: a card destroyed WITHOUT
+        // `updateParentVdom` leaves the li's vnode naming a component the registry no longer knows;
+        // the fresh card a returning key gets under the SAME id is then inserted beside the old DOM
+        // node instead of patching it — two cards per li after the cockpit's first live admission,
+        // three after an instance switch (measured live 2026-09-23). Only a mounted tree shows the
+        // doubled node; this arm holds the contract that prevents it.
+        cards(list).forEach(card => {
+            const destroy = card.destroy.bind(card);
+
+            card.destroy = (...args) => { calls.push({id: card.id, args}); return destroy(...args) }
+        });
+
+        // the writers' shape: one mutation removes every record, the next re-adds the same keys
+        store.clear();
+
+        expect(calls.map(call => call.id).sort(), 'every pooled card retired on the clear').toEqual(rows.map(row => `${list.id}__card-${row.agentId}`).sort());
+        calls.forEach(({id, args}) => expect(args[0], `${id}: destroy(updateParentVdom=true) — the li's vnode stops naming it`).toBe(true));
+        expect(list.items.length, 'the pool empties with the fleet').toBe(0);
+        expect(liIds(list), 'no li survives a cleared store').toEqual([]);
+
+        store.add(rows.map(row => ({...row})));
+
+        expect(liIds(list).sort(), 'one li per key').toEqual(rows.map(row => list.getItemId(row.agentId)).sort());
+        expect(list.items.length).toBe(3);
+        cards(list).forEach(card => expect(card.isDestroyed, `${card.id} is a live fresh instance`).toBeFalsy());
+
+        grid.destroy()
+    });
+
+    test('a store CONFIG becomes an instance the grid owns and retires; an injected instance stays its owner\'s', async () => {
+        const storeConfig = (id, rows) => ({module: Store, id, keyProperty: 'agentId', model: FleetAgent, data: rows});
+
+        // the declarative form: the grid instantiates and registers the store, and retires it with itself
+        const declared = Neo.create(FleetGrid, {appName, store: storeConfig('roster-owned-store', roster(['ok']))}),
+              owned    = declared.store;
+
+        expect(owned?.getCount(), 'the config became a live store').toBe(1);
+        expect(Neo.get('roster-owned-store')).toBe(owned);
+        expect(declared.ownedStores.has(owned)).toBe(true);
+        expect(cards(await readyList(declared))).toHaveLength(1);
+
+        // a replacement config retires the previous owned store and owns the next
+        declared.store = storeConfig('roster-owned-store-next', roster(['ok', 'ok']));
+
+        const next = declared.store;
+
+        expect(owned.isDestroyed, 'the replaced store this grid created is gone').toBe(true);
+        expect(Neo.get('roster-owned-store')).toBeFalsy();
+        expect(next.getCount()).toBe(2);
+        expect(declared.ownedStores.size).toBe(1);
+
+        declared.destroy();
+
+        expect(next.isDestroyed, 'the grid took its own store with it').toBe(true);
+        expect(Neo.get('roster-owned-store-next')).toBeFalsy();
+
+        // a second mount under the same fixed id is clean — the registry no longer holds the first
+        const again = Neo.create(FleetGrid, {appName, store: storeConfig('roster-owned-store', roster(['ok', 'ok', 'ok']))});
+
+        expect(again.store.getCount()).toBe(3);
+        again.destroy();
+        expect(Neo.get('roster-owned-store')).toBeFalsy();
+
+        // the injected form: the store outlives the grid — its owner (the provider, this test) keeps it
+        const injected = makeStore(roster(['ok', 'ok', 'ok'])),
+              holder   = Neo.create(FleetGrid, {appName, store: injected});
+
+        expect(holder.ownedStores.size).toBe(0);
+        expect(cards(await readyList(holder))).toHaveLength(3);
+
+        // an injected store REPLACED by another injected store survives the re-seat: the list and
+        // the health bar unbind, nothing retires what the provider owns (the base list would)
+        const injectedNext = makeStore(roster(['ok']));
+
+        holder.store = injectedNext;
+
+        expect(injected.isDestroyed, 'the replaced provider-owned store is still alive').toBeFalsy();
+        expect(injected.getCount()).toBe(3);
+        expect(holder.getReference('roster-list').store).toBe(injectedNext);
+        expect(cards(holder.getReference('roster-list'))).toHaveLength(1);
+        expect(holder.ownedStores.size).toBe(0);
+
+        holder.destroy();
+        expect(injected.isDestroyed, 'an injected store is never the grid\'s to destroy').toBeFalsy();
+        expect(injectedNext.isDestroyed).toBeFalsy();
+        expect(injected.getCount()).toBe(3)
     })
 });

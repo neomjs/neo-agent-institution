@@ -1,9 +1,11 @@
 import Button           from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import ClassSystemUtil  from '../../../../../node_modules/neo.mjs/src/util/ClassSystem.mjs';
 import Component        from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import Container        from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import HealthBar        from '../health/Container.mjs';
 import RosterController from './Controller.mjs';
 import RosterList       from './List.mjs';
+import Store            from '../../../../../node_modules/neo.mjs/src/data/Store.mjs';
 
 /**
  * @summary The fleet roster — the cockpit's default view (SSOT §01 fleet zone): a health-summary
@@ -118,7 +120,7 @@ class FleetGrid extends Container {
             flex     : 'none',
             // wrap: the head answers its OWN width — the pane's width is dock-owned (preset,
             // splitter, vessel), so the legend drops under the title once the row cannot hold all
-            // seven states, instead of clipping the last ones (#85). Wide rows stay one line.
+            // seven states, instead of clipping the last ones. Wide rows stay one line.
             layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             reference: 'fleet-head',
 
@@ -168,7 +170,7 @@ class FleetGrid extends Container {
         }, {
             // THE CARD REGION: the list is the scroll owner, and the bootstrap CTA renders inside
             // the same box as the cards it stands in for — centered over it (the design ruling's
-            // "real button in the card region", #69) instead of trailing the empty list at the
+            // "real button in the card region") instead of trailing the empty list at the
             // pane bottom. The wrapper keeps the flex chain: only the cards scroll.
             ntype    : 'container',
             cls      : ['fm-fleet-card-region'],
@@ -199,6 +201,14 @@ class FleetGrid extends Container {
      * @member {Boolean} idleShown=false
      */
     idleShown = false
+    /**
+     * The Store instances THIS container created from a config (the declarative form of the
+     * `store` config) — it retires them on replacement and on its own destroy. An injected
+     * instance is never in here: its owner (the provider, a test) keeps it.
+     * @member {Set<Neo.data.Store>} ownedStores
+     * @protected
+     */
+    ownedStores = new Set()
 
     /**
      * @summary Seat the roster-derived surfaces once constructed (the chrome exists from static
@@ -231,6 +241,26 @@ class FleetGrid extends Container {
     }
 
     /**
+     * A store CONFIG becomes an instance THIS container owns — the list's own contract — so a
+     * declarative roster (a seam witness, a demo page) seats the same way the provider-hosted
+     * instance does, and leaves with the container ({@link #ownedStores}). An injected instance
+     * passes through untouched; `null` stays `null`: the cockpit binds its store later, and no
+     * interim instance is minted.
+     * @param {Neo.data.Store|Object|null} value
+     * @param {Neo.data.Store|null} oldValue
+     * @returns {Neo.data.Store|null}
+     * @protected
+     */
+    beforeSetStore(value, oldValue) {
+        if (value && Neo.typeOf(value) === 'Object') {
+            value = ClassSystemUtil.beforeSetInstance(value, Store);
+            this.ownedStores.add(value)
+        }
+
+        return value
+    }
+
+    /**
      * Triggered after the store config changed — re-seats the reactive wire: the health bar and
      * the list read the same instance, the controller re-seats ordering + filters and re-derives
      * the counts, and this container listens for the load / tier-move edges the controller owns.
@@ -253,6 +283,12 @@ class FleetGrid extends Container {
 
             controller.seatViewOrdering(value);
             controller.syncRosterDerived()
+        }
+
+        // a replaced store this container created leaves now; an injected one is its owner's to
+        // keep — the children (list, health bar) only unbind on a re-seat, never retire
+        if (oldValue && me.ownedStores.delete(oldValue) && !oldValue.isDestroyed) {
+            oldValue.destroy()
         }
     }
 
@@ -383,7 +419,13 @@ class FleetGrid extends Container {
      *
      */
     destroy() {
-        this.store?.un(this.getStoreListeners());
+        let me = this;
+
+        me.store?.un(me.getStoreListeners());
+
+        // the stores this container created leave with it; an injected one stays its owner's
+        me.ownedStores.forEach(store => !store.isDestroyed && store.destroy());
+        me.ownedStores.clear();
 
         super.destroy()
     }
