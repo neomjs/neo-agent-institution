@@ -47,9 +47,11 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         const store = {
             added  : [],
             cleared: 0,
+            loads  : 0,
             removed: [],
             items,
             clear() { this.cleared++ },
+            load() { this.loads++ },
             add(rows) { this.added.push(...[].concat(rows)) },
             get(id) { return known[id] ?? null },
             remove(id) { this.removed.push(id) }
@@ -735,4 +737,95 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         noneHost.reconcileSelection();
         expect(setCalls).toEqual([])
     });
+
+    test.describe('target binding — retained rows belong to the profile that answered (#181)', () => {
+        // one host, two profiles: `bridge` resolves fresh per call, so an instance switch is the next
+        // read finding a registryBridge with another profileId (what the custody path installs)
+        const installBridge = bridge => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: bridge} };
+        const rowsOf        = (...ids) => ids.map(id => ({id, displayName: id.toUpperCase()}));
+        const answering     = (profileId, rows) => ({profileId, selected: true, fleetRoster: async () => ({rows, capabilities: {presence: {state: 'wired'}}})});
+        const refused       = profileId => ({profileId, selected: true, fleetRoster: async () => {
+            throw Object.assign(new Error('connection refused'), {fleetConnectionState: 'refused'})
+        }});
+
+        // profile A's two residents admitted: the seed cleared once, the store bound to 'a'
+        const admittedA = async () => {
+            installBridge(answering('a', rowsOf('ada', 'vega')));
+
+            const host = makeRosterHost(makeGrid());
+
+            await host.controller.loadRoster();
+            expect(host.grid.store.cleared).toBe(1);
+            expect(host.grid.store.added).toHaveLength(2);
+            expect(host.controller.rosterProfileId).toBe('a');
+            expect(host.provider.data.presenceCapability).toEqual({state: 'wired'});
+
+            return host
+        };
+
+        // the retirement, asserted once: A's rows leave through the store's own seed reload, the
+        // surface returns to its honestly-labelled sample, nothing of A survives for a re-apply
+        const expectRetired = host => {
+            expect(host.grid.store.cleared).toBe(2);
+            expect(host.grid.store.loads).toBe(1);
+            expect(host.controller.rosterWired).toBe(false);
+            expect(host.controller.lastLiveRows).toBeNull();
+            expect(host.controller.rosterProfileId).toBeNull();
+            expect(host.provider.data.gridAdapterState).toBe('sample');
+            expect(host.provider.data.gridDegradedReason).toBeNull();
+            expect(host.provider.data.presenceCapability).toBeNull();
+            expect(host.grid.adapterState).toBe('sample')
+        };
+
+        test('a switch to a profile whose read fails retires the previous residents — never `stale` over another instance', async () => {
+            const host = await admittedA();
+
+            installBridge(refused('b'));
+            await host.controller.loadRoster();
+
+            expectRetired(host);
+            // B's failure is B's own cold truth: the typed observation names it, no rows claim anything
+            expect(host.provider.data.gridConnection).toEqual({state: 'refused', reason: 'connection refused'})
+        });
+
+        test('a malformed answer from the new profile retires the previous residents the same way', async () => {
+            const host = await admittedA();
+
+            installBridge(answering('b', 'not an array'));
+            await host.controller.loadRoster();
+
+            expectRetired(host)
+        });
+
+        test('a reachable new profile is admitted as a FIRST snapshot — cleared and added, never reconciled onto the previous residents', async () => {
+            const host = await admittedA(), {store} = host.grid;
+
+            installBridge(answering('b', rowsOf('emmy')));
+            await host.controller.loadRoster();
+
+            // retirement clear + first-admission clear; the reconcile path never clears
+            expect(store.cleared).toBe(3);
+            expect(store.loads).toBe(1);
+            expect(store.added).toHaveLength(3);
+            expect(host.controller.rosterWired).toBe(true);
+            expect(host.controller.lastLiveRows).toHaveLength(1);
+            expect(host.controller.rosterProfileId).toBe('b');
+            expect(host.provider.data.gridAdapterState).toBe('live')
+        });
+
+        test('control: the same profile keeps its semantics — a transient failure keeps last-known rows as `stale`', async () => {
+            const host = await admittedA(), {store} = host.grid;
+
+            installBridge(refused('a'));
+            await host.controller.loadRoster();
+
+            expect(store.cleared).toBe(1);
+            expect(store.loads).toBe(0);
+            expect(host.controller.rosterWired).toBe(true);
+            expect(host.controller.lastLiveRows).toHaveLength(2);
+            expect(host.controller.rosterProfileId).toBe('a');
+            expect(host.provider.data.gridAdapterState).toBe('stale');
+            expect(host.grid.adapterState).toBe('stale')
+        })
+    })
 });

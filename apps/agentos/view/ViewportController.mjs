@@ -162,7 +162,8 @@ class ViewportController extends Controller {
      * deliberate establish (bearer-less publishes the chosen instance FAIL-CLOSED — honest state,
      * never the old instance impersonating the choice), bound-fact re-mirror, tear-out title push
      * (scope is a per-window fact), and the cockpit's own full re-drive behind its generation
-     * fences (no cross-instance bleed by construction). An endpoint the bridge refuses (remote,
+     * fences (a late answer from the old bridge never lands) and its target binding (rows the old
+     * bridge answered are retired before the new one is read). An endpoint the bridge refuses (remote,
      * malformed) is a verdict, not a crash: custody is established BEFORE any state is written, so
      * a refusal binds nothing, changes nothing and answers `false`.
      * @param {Object} record            A `fleetInstances` row.

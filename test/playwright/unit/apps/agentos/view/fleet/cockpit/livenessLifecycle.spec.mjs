@@ -59,6 +59,9 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             cleared,
             polls                  : 0,
             brainReads             : 0,
+            // the target-binding pair mirrors the class defaults too: an unbound surface reads null
+            activityProfileId      : null,
+            rosterProfileId        : null,
             brainHealthReadGeneration: 0,
             brainHealthReadInFlight: 0,
             deploymentStateReadGeneration: 0,
