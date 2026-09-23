@@ -310,5 +310,49 @@ test.describe('Fleet roster — cards and list items keep their identity across 
         cards(list).forEach(card => expect(card.isDestroyed, `${card.id} is a live fresh instance`).toBeFalsy());
 
         grid.destroy()
+    });
+
+    test('a store CONFIG becomes an instance the grid owns and retires; an injected instance stays its owner\'s', async () => {
+        const storeConfig = (id, rows) => ({module: Store, id, keyProperty: 'agentId', model: FleetAgent, data: rows});
+
+        // the declarative form: the grid instantiates and registers the store, and retires it with itself
+        const declared = Neo.create(FleetGrid, {appName, store: storeConfig('roster-owned-store', roster(['ok']))}),
+              owned    = declared.store;
+
+        expect(owned?.getCount(), 'the config became a live store').toBe(1);
+        expect(Neo.get('roster-owned-store')).toBe(owned);
+        expect(declared.ownedStores.has(owned)).toBe(true);
+        expect(cards(await readyList(declared))).toHaveLength(1);
+
+        // a replacement config retires the previous owned store and owns the next
+        declared.store = storeConfig('roster-owned-store-next', roster(['ok', 'ok']));
+
+        const next = declared.store;
+
+        expect(owned.isDestroyed, 'the replaced store this grid created is gone').toBe(true);
+        expect(Neo.get('roster-owned-store')).toBeFalsy();
+        expect(next.getCount()).toBe(2);
+        expect(declared.ownedStores.size).toBe(1);
+
+        declared.destroy();
+
+        expect(next.isDestroyed, 'the grid took its own store with it').toBe(true);
+        expect(Neo.get('roster-owned-store-next')).toBeFalsy();
+
+        // a second mount under the same fixed id is clean — the registry no longer holds the first
+        const again = Neo.create(FleetGrid, {appName, store: storeConfig('roster-owned-store', roster(['ok', 'ok', 'ok']))});
+
+        expect(again.store.getCount()).toBe(3);
+        again.destroy();
+        expect(Neo.get('roster-owned-store')).toBeFalsy();
+
+        // the injected form: the store outlives the grid — its owner (the provider, this test) keeps it
+        const injected = makeStore(roster(['ok', 'ok', 'ok'])),
+              holder   = Neo.create(FleetGrid, {appName, store: injected});
+
+        expect(holder.ownedStores.size).toBe(0);
+        holder.destroy();
+        expect(injected.isDestroyed, 'an injected store is never the grid\'s to destroy').toBeFalsy();
+        expect(injected.getCount()).toBe(3)
     })
 });

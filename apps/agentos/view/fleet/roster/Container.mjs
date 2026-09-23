@@ -201,6 +201,14 @@ class FleetGrid extends Container {
      * @member {Boolean} idleShown=false
      */
     idleShown = false
+    /**
+     * The Store instances THIS container created from a config (the declarative form of the
+     * `store` config) — it retires them on replacement and on its own destroy. An injected
+     * instance is never in here: its owner (the provider, a test) keeps it.
+     * @member {Set<Neo.data.Store>} ownedStores
+     * @protected
+     */
+    ownedStores = new Set()
 
     /**
      * @summary Seat the roster-derived surfaces once constructed (the chrome exists from static
@@ -233,16 +241,23 @@ class FleetGrid extends Container {
     }
 
     /**
-     * A store CONFIG becomes the instance the wire needs — the list's own contract — so a declarative
-     * roster (a seam witness, a demo page) seats the same way the provider-hosted instance does.
-     * `null` stays `null`: the cockpit binds its store later, and no interim instance is minted.
+     * A store CONFIG becomes an instance THIS container owns — the list's own contract — so a
+     * declarative roster (a seam witness, a demo page) seats the same way the provider-hosted
+     * instance does, and leaves with the container ({@link #ownedStores}). An injected instance
+     * passes through untouched; `null` stays `null`: the cockpit binds its store later, and no
+     * interim instance is minted.
      * @param {Neo.data.Store|Object|null} value
      * @param {Neo.data.Store|null} oldValue
      * @returns {Neo.data.Store|null}
      * @protected
      */
     beforeSetStore(value, oldValue) {
-        return value ? ClassSystemUtil.beforeSetInstance(value, Store) : value
+        if (value && Neo.typeOf(value) === 'Object') {
+            value = ClassSystemUtil.beforeSetInstance(value, Store);
+            this.ownedStores.add(value)
+        }
+
+        return value
     }
 
     /**
@@ -268,6 +283,12 @@ class FleetGrid extends Container {
 
             controller.seatViewOrdering(value);
             controller.syncRosterDerived()
+        }
+
+        // a replaced store this container created leaves now — the list retires the one it held on
+        // re-seat, so the guard keeps a second retirement out; an injected store is not touched
+        if (oldValue && me.ownedStores.delete(oldValue) && !oldValue.isDestroyed) {
+            oldValue.destroy()
         }
     }
 
@@ -398,7 +419,13 @@ class FleetGrid extends Container {
      *
      */
     destroy() {
-        this.store?.un(this.getStoreListeners());
+        let me = this;
+
+        me.store?.un(me.getStoreListeners());
+
+        // the stores this container created leave with it; an injected one stays its owner's
+        me.ownedStores.forEach(store => !store.isDestroyed && store.destroy());
+        me.ownedStores.clear();
 
         super.destroy()
     }
