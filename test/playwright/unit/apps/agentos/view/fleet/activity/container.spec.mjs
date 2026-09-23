@@ -235,6 +235,11 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(getActivityObjectText({type: 'issue-activity', payload: {number: 3, repoSlug: 'neo-unknown-repo', title: 'x'}})).toBe('neo-unknown-repo#3 · x');
         expect(getActivityObjectText({type: 'work-stall', payload: {findingClass: 'STALE_DEFER', subject: {number: 9, repoSlug: 'neo-agent-skills', title: 't'}}})).toBe('stalled · skills#9 · t');
         expect(formatConversationRef(null, 12)).toBe('#12');
+        // only the map's OWN entries are aliases: a slug that names an inherited key renders itself
+        for (const inherited of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+            expect(formatConversationRef(inherited, 410)).toBe(`${inherited}#410`);
+        }
+        expect(formatConversationRef('neo-agent-brain', 410)).toBe('brain#410');
         // AC-3: the title carries the full slug, home included; rows without a number carry none
         expect(getActivityObjectTitle({type: 'issue-activity', payload: {number: 7}})).toBe('neomjs/neo#7');
         expect(getActivityObjectTitle({type: 'pr-activity', payload: {number: 410, repoSlug: 'neo-agent-brain'}})).toBe('neomjs/neo-agent-brain#410');

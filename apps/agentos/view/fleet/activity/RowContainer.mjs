@@ -37,7 +37,13 @@ export const SHORT_ORIGIN_NAMES = Object.freeze({
 export function formatConversationRef(repoSlug, number) {
     const origin = normalizeOrigin(repoSlug);
 
-    return origin && origin !== HOME_ORIGIN ? `${SHORT_ORIGIN_NAMES[origin] ?? origin}#${number}` : `#${number}`
+    if (!origin || origin === HOME_ORIGIN) {
+        return `#${number}`
+    }
+
+    // Own entries only: the map is a plain object, and a slug that happens to name an inherited
+    // key (`constructor`, `toString`, `__proto__`) must render itself, never the prototype's value.
+    return `${Object.hasOwn(SHORT_ORIGIN_NAMES, origin) ? SHORT_ORIGIN_NAMES[origin] : origin}#${number}`
 }
 
 /**
