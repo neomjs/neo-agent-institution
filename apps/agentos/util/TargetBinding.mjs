@@ -10,9 +10,8 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * seed, the feed empties, the surface reads `sample`, the roster-derived consumers re-snapshot —
  * so the new profile's first live answer is a first admission, and its failure shows its own cold
  * truth instead of another instance's residents labelled `stale`. The generation fences only drop
- * a LATE answer from the previous bridge; nothing else touched rows already admitted (the
- * 2026-09-19 witness on #173, D#18965's target-binding invariant). A same-profile failure keeps
- * its last-known rows as `stale`, unchanged.
+ * a LATE answer from the previous bridge; nothing else touched rows already admitted. A
+ * same-profile failure keeps its last-known rows as `stale`, unchanged.
  */
 class TargetBinding extends Base {
     static config = {
