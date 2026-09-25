@@ -28,6 +28,7 @@ import {isDeepStrictEqual}                          from 'node:util';
 import {parse}                                      from 'acorn';
 import {resolveAgentOsRuntimeRoot}                  from './brain.mjs';
 import {ALLOWED_EXACT_PATHS, ALLOWED_PATH_PREFIXES} from './contentPolicy.mjs';
+import {THEME_BUILD_ARGS}                           from './prepareAssets.mjs';
 
 const
     harnessDir = path.dirname(fileURLToPath(import.meta.url)),
@@ -63,6 +64,17 @@ export const TREE_EXCLUDES = Object.freeze([
 // (the product's own `build-themes` is the same path), resolved inside the pinned install — the
 // product root carries no buildScripts/build of its own since the split.
 export const ENGINE_THEME_BUILD = 'buildScripts/build/themes.mjs';
+
+/**
+ * @summary The stage's theme-build argv: the pinned Engine builder with the workspace argv
+ * `prepareAssets` owns — every theme, one dev build, never `-f` (`--framework` parses the engine's
+ * SCSS only and the product's classes drop out of the theme map).
+ * @param {String} enginePackageRoot Absolute root of the pinned `neo.mjs` install.
+ * @returns {String[]}
+ */
+export function themeBuildArgv(enginePackageRoot) {
+    return [path.join(enginePackageRoot, ENGINE_THEME_BUILD), ...THEME_BUILD_ARGS]
+}
 
 /**
  * @summary True when a repo-relative path is a checkout-instance CONFIG OVERLAY — a `config.mjs`
@@ -677,9 +689,10 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     // Deterministic asset freshness: the stage copies dist/development/css AS-IS, and a stale
     // build renders the packaged window fully broken while every existence probe stays green
     // (live incident: a theming merge landed after the last local theme build). The artifact
-    // never trusts checkout state — it rebuilds.
+    // never trusts checkout state — it rebuilds, with the workspace argv (a second live incident:
+    // `-f` here shipped a cockpit without one of its own styles).
     console.log('[pack] building dev themes from current SCSS');
-    run('node', [path.join(roots.enginePackageRoot, ENGINE_THEME_BUILD), '-f', '-n', '-e', 'dev', '-t', 'all'], {cwd: roots.productRoot});
+    run('node', themeBuildArgv(roots.enginePackageRoot), {cwd: roots.productRoot});
 
     const
         {copied, scanned} = stageOwners({roots, stageDir}),
