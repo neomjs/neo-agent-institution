@@ -62,6 +62,7 @@ import {
     sweepStaleRunState,
     writeRunState
 } from './brain.mjs';
+import {createMainLog}                                        from './mainLog.mjs';
 import {createPlaneBroker, planeEnvFragment, readPlaneConfig} from './planeConfig.mjs';
 
 const
@@ -109,7 +110,22 @@ let
     // answer so the renderer can name WHICH shell case is live instead of guessing "offline".
     // `null` = no transport story this run (plain UI-only smoke spawns nothing by isolation
     // contract); `{phase: 'starting'}` while a boot is in flight; the normalized settle after.
-    uiTransportFact = null;
+    uiTransportFact = null,
+    // The plane record's bearer once the product boot has read it; the log redacts it with the others.
+    storedPlaneBearer = null;
+
+// A Finder launch has no terminal: every line main prints also lands in ~/Library/Logs/neo-harness/main.log,
+// with each secret main holds redacted at the file boundary. A logs path the platform refuses leaves the
+// boot running without a file, never failing it.
+try {
+    app.setAppLogsPath();
+    createMainLog({
+        dir    : app.getPath('logs'),
+        secrets: () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer]
+    }).install()
+} catch (error) {
+    console.error(`HARNESS_MAIN_LOG_UNAVAILABLE ${error?.message ?? error}`)
+}
 
 /**
  * @summary Normalizes a settled transport/Brain boot outcome into the wire-safe banner fact.
@@ -963,10 +979,14 @@ async function bootProductBrain() {
     // per-user data root, and Brain children (plus shebang grandchildren via the organism's node
     // shim) run on the BUNDLED Electron runtime — a stranger's machine carries no Node. A plane the
     // user attached from the cockpit joins as the env the launcher would export; set env still wins.
+    const storedPlane = packagedMode ? readPlaneConfig({dir: app.getPath('userData'), safeStorage}) : null;
+
+    storedPlaneBearer = storedPlane?.bearer ?? null;
+
     const packagedEnv = packagedMode
         ? {
             ...buildPackagedBrainEnv({dataRoot: path.join(app.getPath('userData'), 'brain')}),
-            ...planeEnvFragment({env: process.env, planeConfig: readPlaneConfig({dir: app.getPath('userData'), safeStorage})}),
+            ...planeEnvFragment({env: process.env, planeConfig: storedPlane}),
             ELECTRON_RUN_AS_NODE    : '1',
             NEO_HARNESS_ELECTRON_BIN: process.execPath
         }
