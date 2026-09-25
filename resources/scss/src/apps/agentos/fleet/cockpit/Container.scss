@@ -38,9 +38,12 @@
        PROJECTED class the adapter stamps onto every zone, and the engine re-declares its `--dock-*`
        defaults there — so a value set on an outer scope is shadowed by the nested projected one.
        Overriding at the same element with higher specificity is what actually lands, and it is the
-       common ancestor of BOTH readers: the rail's width and the reveal overlay's reserved inset. */
+       common ancestor of BOTH readers: the rail's width and the reveal overlay's reserved inset.
+
+       The number itself lives in `--fm-frame-gutter` (Viewport.scss): every full-width chrome row
+       ends its last control on the rail's line, so the rail and the rows read one token. */
     .neo-dashboard {
-        --dock-edge-rail-size: 20px;
+        --dock-edge-rail-size: var(--fm-frame-gutter);
     }
 
     /* The dock projection's tab zones are NAVIGATION vessels inside the FM tonal stack — the generic
@@ -108,18 +111,18 @@
         --button-border-radius : 6px;
         --button-text-font-size: 13px;
 
-        /* THE STATE BLOCK (#23): the two spine axes as ONE right-aligned group before the action
-           buttons — state never sits between actions. The declared collapse order lives in the
-           container queries at the end of this file: wide stacks the pills vertically (the band's
-           vertical space is there), mid runs them in a row, narrow drops to marks-with-titles.
-           `min-width: 0` lets the block yield before it ever forces bar width. */
+        /* THE STATE BLOCK: the two spine axes as ONE right-aligned group before the action
+           buttons — state never sits between actions. The pills run in a row at every width that
+           carries their words: the row is the block's own hbox layout (declared in the view), so
+           this rule adds only the rhythm gap and the shrink floor. A stacked form once used the
+           vertical space the engine's 48px buttons left in the bar; on the chrome scale the stack
+           would be the bar's tallest child and grow the row by 9px exactly where the bar has the
+           most width to spare. The declared collapse order (the record at the end of this file)
+           drops the words to marks below 760. `min-width: 0` lets the block yield before it ever
+           forces bar width. */
         .fm-bar-state {
-            display        : flex;
-            flex-direction : column;
-            align-items    : flex-end;
-            justify-content: center;
-            gap            : 2px;
-            min-width      : 0;
+            gap      : var(--fm-space-2);
+            min-width: 0;
         }
 
         /* Button hierarchy (ledger D1): the SSOT's quiet, panel-toned base — the default theme's
@@ -268,27 +271,18 @@
         --dock-transition-duration-fast  : var(--fm-motion-fast);
     }
 
-    /* ── the #23 declared collapse order — three designed forms, no mid-word clipping ever:
-       (1) wide (default rules above): the two state pills stack vertically, right-aligned;
-       (2) mid: the same pills, one row;
-       (3) narrow: state text drops to marks-with-titles, action labels drop to icons.
+    /* ── the declared collapse order — two designed forms, no mid-word clipping ever:
+       (1) wide (default rules above): the two state pills in one row, right-aligned;
+       (2) narrow: state text drops to marks-with-titles, action labels drop to icons.
        Every step is a designed form and the T5 titles carry the full truth at every width.
 
-       The mid→narrow step sits at 760px, not the first-cut 730px: measured on the live bar, the
+       The row→narrow step sits at 760px, not the first-cut 730px: measured on the live bar, the
        two pills need 179px at their content widths ("fleet offline" 102 + "wake off" 69 + gap)
        and the state block yields to the buttons first (`min-width: 0`), so at a 749px container
        (an 800px viewport) it holds 170px — no honest row form fits there, and a pill cut short
        is the exact form this order forbids. 760 gives the row form its floor; below it the marks
        form carries the words in the T5 titles. (The content widths are the cockpit's doing: the
        state block's items opt out of the layout's equal `flex: 1 1 0%` split.) */
-    @container fm-cockpit (max-width: 1180px) {
-        .fm-cockpit-bar .fm-bar-state {
-            flex-direction: row;
-            align-items   : center;
-            gap           : var(--fm-space-2);
-        }
-    }
-
     @container fm-cockpit (max-width: 760px) {
         .fm-cockpit-bar {
             /* state drops its words, keeps its marks: the chip's left-mark geometry IS the dot

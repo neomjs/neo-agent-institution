@@ -106,20 +106,7 @@
   </table>
   <p class="note"><b>Label-language law:</b> a chrome label is one status word or word pair from the existing pill vocabulary — the axis word (<span class="mono">fleet</span>, <span class="mono">wake</span>) plus a state word. The live capture's <span class="mono">"wake: wake stream disconnected (connec…"</span> shows the failure mode of prose-in-chrome twice at once: the axis word duplicates itself, and the sentence clips mid-word. The typed connection-state vocabulary (its own ticket) slots into the pill TEXT when it lands; this sketch fixes the container the vocabulary renders into.</p>
 
-  <div class="col-label">the cockpit bar, declared — wide (≥ ~1180px container): state stacks vertically</div>
-  <div class="bar">
-    <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
-    <span class="spacer"></span>
-    <span class="statebox">
-      <span class="pill" title="127.0.0.1:8083/fleet — fleet server offline; showing the static roster"><span class="dot dot-bad"></span>fleet offline</span>
-      <span class="pill" title="wake stream disconnected (connect refused)"><span class="dot dot-off"></span>wake off</span>
-    </span>
-    <span class="btn">⟳ Reconnect</span>
-    <span class="btn primary">▶ Start fleet</span>
-  </div>
-  <p class="barw">wide — the operator's observation applied: the 50px band has the vertical space, so the two state axes stack, right-aligned, before the actions</p>
-
-  <div class="col-label">mid (~900–1180px): the same pills, one row</div>
+  <div class="col-label">the cockpit bar, declared — wide (> 760px container): the two state pills in one row</div>
   <div class="bar">
     <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
     <span class="spacer"></span>
@@ -130,8 +117,9 @@
     <span class="btn">⟳ Reconnect</span>
     <span class="btn primary">▶ Start fleet</span>
   </div>
+  <p class="barw">wide — the pills keep their row, right-aligned, before the actions. The first cut stacked them here on the operator's observation that the 50px band had the vertical space; that space was the engine's 48px buttons, and on the chrome scale a stack would grow the bar by 9px exactly where it has the most width to spare</p>
 
-  <div class="col-label">narrow (≤ ~730px): dots with titles — full truth stays one hover away</div>
+  <div class="col-label">narrow (≤ 760px container): dots with titles — full truth stays one hover away</div>
   <div class="bar" style="max-width:560px">
     <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
     <span class="spacer"></span>
