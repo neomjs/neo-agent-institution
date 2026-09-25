@@ -21,6 +21,7 @@ const
 
     // src base → the family word a subclass suffix must end with
     FAMILIES = [
+        ['src/app/SharedCanvas.mjs',    'Canvas'],
         ['src/grid/Container.mjs',      'Grid'],
         ['src/tab/Container.mjs',       'Container'],
         ['src/form/Container.mjs',      'Form'],

@@ -388,7 +388,9 @@ class LivenessController extends ComponentController {
             // a resident CatchUp can emit its construction-time request BEFORE the bridge wires;
             // that one-shot miss recovers the moment the bridge answers, through the pane's own
             // guarded refresh path
-            me.catchUpSnapshot?.capability?.state === 'unavailable' && cockpit.getCatchUpPane()?.onRefreshClick()
+            me.catchUpSnapshot?.capability?.state === 'unavailable' && cockpit.getCatchUpPane()?.onRefreshClick();
+            // the Golden Path read has the same construction-time miss; its leaf is the owner's own truth
+            provider?.getData('goldenPathEnvelope.capability.state') === 'unavailable' && me.loadGoldenPath()
         } catch (error) {
             if (generation === me.gridReadGeneration && !me.isDestroyed) {
                 me.degradeWiredSurface('grid', error, grid)
@@ -775,6 +777,7 @@ class LivenessController extends ComponentController {
         me.loadRoster();
         me.loadBrainHealth();
         me.loadDeploymentState();
+        me.loadGoldenPath();
         me.ensureViewerWakeStream();
 
         cockpit.getMemoriesPane()?.onRefreshClick();

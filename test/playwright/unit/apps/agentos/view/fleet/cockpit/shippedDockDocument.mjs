@@ -19,6 +19,8 @@ export function shippedDockDocument() {
             tasks       : {reference: 'tasks',            title: 'Tasks'},
             operator    : {reference: 'operator-mailbox', title: 'Mailbox'},
             catchUp     : {reference: 'catch-up',         title: 'Catch up'},
+            goldenPath  : {reference: 'golden-path',      title: 'Golden Path'},
+            goldenPathGraph: {reference: 'golden-path-graph', title: 'Route graph'},
             detail      : {reference: 'agent-detail',     title: 'Agent detail', autoHidden: true},
             perspectives: {reference: 'perspectives',     title: 'Perspectives', autoHidden: true},
             defineAgent : {reference: 'define-agent',     title: 'Add agent',    autoHidden: true},
@@ -28,7 +30,7 @@ export function shippedDockDocument() {
             'cockpit-root'  : {type: 'edge-zone', zones: {center: {nodeId: 'primary-split'}, right: {nodeId: 'secondary-rail', extent: 0.25, resizable: true}}},
             'primary-split' : {type: 'split', orientation: 'vertical', children: ['fleet-tabs', 'stream-tabs'], sizes: [0.6078, 0.3922]},
             'fleet-tabs'    : {type: 'tabs', items: ['fleet'], activeItemId: 'fleet'},
-            'stream-tabs'   : {type: 'tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp'], activeItemId: 'stream'},
+            'stream-tabs'   : {type: 'tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp', 'goldenPath', 'goldenPathGraph'], activeItemId: 'stream'},
             'secondary-rail': {type: 'tabs', items: ['detail', 'perspectives', 'defineAgent', 'wakeRoutes'], activeItemId: 'detail'}
         }
     }
