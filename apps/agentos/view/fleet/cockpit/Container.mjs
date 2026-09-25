@@ -279,8 +279,8 @@ class FleetCockpit extends VesselContainer {
          * first-class config); handlers are controller-resolved strings. Static child items bind
          * under the child provider (reviewer positive control + live re-measurement, 2026-08-29
          * — the earlier add()-path workaround rested on a misattributed root cause). The preset
-         * buttons are declared too, pressed by the engine's published `dock.perspective.active`
-         * ({@link AgentOS.util.CockpitPerspectives#buttons}); runtime injection stays limited to
+         * switch is declared too, one segmented group pressed by the engine's published
+         * `dock.perspective.active` ({@link AgentOS.util.CockpitPerspectives#group}); runtime injection stays limited to
          * the one genuinely dynamic member, the dock projection shell (document-derived,
          * instance-bound callbacks).
          * @member {Object[]} items
@@ -290,7 +290,7 @@ class FleetCockpit extends VesselContainer {
             cls      : ['fm-cockpit-bar'],
             flex     : 'none',
             reference: 'fleet-control-bar',
-            items    : [...CockpitPerspectives.buttons(), {
+            items    : [CockpitPerspectives.group(), {
                 // exception chrome for the VIEW class: the perspective-restore refusal line
                 // renders beside its source, the declared preset buttons
                 ntype    : 'component',

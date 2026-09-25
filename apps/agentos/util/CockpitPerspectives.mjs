@@ -139,6 +139,24 @@ class CockpitPerspectives extends Base {
     }
 
     /**
+     * @summary The switch itself: the three declared buttons as ONE segmented group — a container
+     * with an hbox layout — so the row reads as one choice with one value, not as three actions
+     * beside the bar's real actions. Geometry is the cockpit SCSS's (`.fm-preset-group`); the
+     * buttons keep their class, reference and `presetName`, so every consumer of
+     * {@link AgentOS.util.CockpitPerspectives#buttons} reads them unchanged.
+     * @returns {Object} a fresh container config
+     */
+    static group() {
+        return {
+            ntype : 'container',
+            cls   : ['fm-preset-group'],
+            role  : 'group',
+            layout: {ntype: 'hbox', align: 'center'},
+            items : this.buttons()
+        }
+    }
+
+    /**
      * @summary A fresh, empty `neo.dock.layoutCollection.v1` collection for the cockpit's capture
      * library, validated by the same wrapper a capture saves through, so an empty library never
      * differs in shape from a filled one.
