@@ -303,10 +303,9 @@
             text-transform: uppercase;
         }
 
-        /* the glyph decorates, never carries (§04 T3): one step below the label — a recorded
-           exception, glyph scale is not a type role */
+        /* the glyph decorates, never carries (§04 T3): one step below the label */
         .neo-button-glyph {
-            font-size: 12px;
+            font-size: 12px;   /* §04 recorded exception: glyph scale is not a type role */
         }
 
         &:hover {
@@ -402,9 +401,9 @@
 
         .agent-welcome-eyebrow {
             font-family   : var(--fm-font-mono);
-            /* §04 recorded exception: the chrome role's voice one step up (11 → 12px) with its own
-               wide tracking — the welcome surface's eyebrow above a 26–42px display line */
-            font-size     : 12px;
+            /* the chrome role's voice one step up, with its own wide tracking — the welcome
+               surface's eyebrow above a 26–42px display line */
+            font-size     : 12px;   /* §04 recorded exception: chrome 11 → 12px */
             letter-spacing: .22em;
             text-transform: uppercase;
             color         : var(--fm-signal);

@@ -288,6 +288,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('a hovered preset never reads as the pressed one (computed styles, no golden)', async ({page}) => {
         // hover and pressed once set the identical border · background · ink trio, so a mouse resting
         // on an inactive preset painted it as the active one. A computed receipt: a golden cannot hover.
+        // The segments own no border (the group does), so the hover lift is the ground: a half step
+        // toward the pressed ground, never onto it.
         await page.setViewportSize({width: 1280, height: 720});
         await bootSettledCockpit(page);
 
@@ -296,10 +298,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
               paint   = locator => locator.evaluate(node => {
                   const style = getComputedStyle(node);
 
-                  return {border: style.borderTopColor, shadow: style.boxShadow}
+                  return {ground: style.backgroundColor, shadow: style.boxShadow}
               });
 
         await expect(pressed, 'the pressed preset is unique on the bar').toHaveCount(1);
+        await expect(page.locator('.fm-preset-group'), 'the three presets sit in one group').toHaveCount(1);
 
         const rest = await paint(idle);
         let   last;
@@ -308,17 +311,17 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         // the lift is a transition: read it once it stopped moving, or the comparison races it
         await expect.poll(async () => {
-            const now     = (await paint(idle)).border,
-                  settled = now === last && now !== rest.border;
+            const now     = (await paint(idle)).ground,
+                  settled = now === last && now !== rest.ground;
 
             last = now;
             return settled
-        }, {message: 'hover lifts the border and settles', intervals: [120]}).toBe(true);
+        }, {message: 'hover lifts the ground and settles', intervals: [120]}).toBe(true);
 
         const hovered  = await paint(idle),
               selected = await paint(pressed);
 
-        expect(hovered.border, 'a hovered inactive preset does not wear the pressed border').not.toBe(selected.border);
+        expect(hovered.ground, 'a hovered inactive preset does not wear the pressed ground').not.toBe(selected.ground);
         expect(hovered.shadow).toBe('none');
         expect(selected.shadow, 'selected carries the chrome\'s underline').not.toBe('none')
     });
