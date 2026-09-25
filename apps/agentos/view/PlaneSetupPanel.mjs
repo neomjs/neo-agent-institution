@@ -48,6 +48,7 @@ class PlaneSetupPanel extends Panel {
                 text : 'Connect this shell to a plane'
             }, '->', {
                 module   : Button,
+                cls      : ['agent-plane-setup-dismiss'],
                 handler  : 'up.onDismissClick',
                 reference: 'dismiss-button',
                 text     : 'Not now'
@@ -72,6 +73,7 @@ class PlaneSetupPanel extends Panel {
                 value    : 'http://127.0.0.1:3102'
             }, {
                 module   : Button,
+                cls      : ['agent-plane-setup-connect'],
                 handler  : 'up.onConnectClick',
                 reference: 'connect-button',
                 text     : 'Connect'
