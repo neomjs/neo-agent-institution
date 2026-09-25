@@ -101,15 +101,21 @@
         gap    : var(--fm-space-2);
 
         /* The bar's control scale: a chrome row between the top toolbar and the pane headers, not a
-           touch surface. The engine's button reads these five at the element (button/Base.scss:
-           height, min-width, padding, border-radius, the text's font-size), so re-valuing them on
-           the bar's scope sizes every button in it — the presets, the state remedies, the toggles,
-           Start fleet — without a per-selector rule each. 32 = 2 × 16 on the spacing rhythm. */
-        --button-height        : 32px;
-        --button-min-width     : 32px;
-        --button-padding       : 0 var(--fm-space-3);
-        --button-border-radius : 6px;
-        --button-text-font-size: 13px;
+           touch surface. The engine's button reads these four at the element (button/Base.scss:
+           height, min-width, padding, border-radius), so re-valuing them on the bar's scope sizes
+           every button in it — the presets, the state remedies, the toggles, Start fleet — without
+           a per-selector rule each. 32 = 2 × 16 on the spacing rhythm. The label takes the body
+           ROLE at its reader (.neo-button-text, where the engine sets the size from
+           --button-text-font-size): a role, never a pixel (§04). */
+        --button-height       : 32px;
+        --button-min-width    : 32px;
+        --button-padding      : 0 var(--fm-space-3);
+        --button-border-radius: 6px;
+
+        .neo-button-text {
+            font       : var(--fm-text-body);
+            font-weight: inherit;   /* the weight is the button's hierarchy (500 quiet, 600 primary), declared on the button */
+        }
 
         /* THE STATE BLOCK: the two spine axes as ONE right-aligned group before the action
            buttons — state never sits between actions. The pills run in a row at every width that
