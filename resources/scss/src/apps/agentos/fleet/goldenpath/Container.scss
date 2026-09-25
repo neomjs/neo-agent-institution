@@ -1,0 +1,88 @@
+/* The Golden Path reading pane. The currency line leads and carries the state colour, so a route that
+   is not current never reads as one. Items and provenance stay neutral. Every value comes from the
+   Fleet token layer: spacing from --fm-space-*, type from --fm-text-*, the corner from
+   --fm-chip-radius, and hairlines use the `thin` keyword. The host owns surface, padding and rhythm,
+   per the drawer-shell contract. */
+.fm-golden-path-pane {
+    gap     : var(--fm-space-2);
+    overflow: auto;
+
+    .fm-golden-path-head,
+    .fm-golden-path-item-head {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-golden-path-title {
+        color      : var(--fm-ink);
+        font-weight: 700;
+    }
+
+    .fm-golden-path-currency {
+        border       : thin solid var(--fm-line-soft);
+        border-radius: var(--fm-chip-radius);
+        color        : var(--fm-ink);
+        font         : var(--fm-text-body);
+        font-weight  : 600;
+        padding      : var(--fm-space-1) var(--fm-space-2);
+
+        &.is-current {
+            border-color: var(--fm-state-ok);
+        }
+
+        &.is-withheld,
+        &.is-degraded {
+            border-color: var(--fm-state-limited);
+        }
+
+        &.is-unavailable {
+            border-color: var(--fm-state-wedged);
+        }
+
+        &.is-unobserved {
+            color      : var(--fm-ink-dim);
+            font-weight: 500;
+        }
+    }
+
+    .fm-golden-path-rem,
+    .fm-golden-path-provenance,
+    .fm-golden-path-item-meta,
+    .fm-golden-path-item-score {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);
+    }
+
+    .fm-golden-path-items {
+        gap: var(--fm-space-2);
+
+        /* a withheld route stays readable, but its titles drop to the dim ink: it is the last known
+           good route, not the day's */
+        &.is-withheld .fm-golden-path-item-title {
+            color: var(--fm-ink-dim);
+        }
+    }
+
+    .fm-golden-path-item {
+        background   : var(--fm-panel);
+        border       : thin solid var(--fm-line-soft);
+        border-radius: var(--fm-chip-radius);
+        gap          : var(--fm-space-1);
+        padding      : var(--fm-space-2);
+    }
+
+    .fm-golden-path-item-rank {
+        color      : var(--fm-signal);
+        font       : var(--fm-text-detail);
+        font-weight: 700;
+    }
+
+    .fm-golden-path-item-title {
+        color: var(--fm-ink);
+        font : var(--fm-text-body);
+    }
+
+    .fm-golden-path-empty {
+        color  : var(--fm-ink-dim);
+        padding: var(--fm-space-3) var(--fm-space-1);
+    }
+}

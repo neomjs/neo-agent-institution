@@ -11,6 +11,7 @@ import VesselContainer        from './VesselContainer.mjs';
 import PerspectiveLibrary     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
+import GoldenPathPane         from '../goldenpath/Container.mjs';
 import MemoriesPane           from '../memories/Container.mjs';
 import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
@@ -196,6 +197,13 @@ class FleetCockpit extends VesselContainer {
                     markCaughtUpRequest: 'onCatchUpMarkRequest',
                     liveSurfaceRequest : 'onCatchUpLiveSurfaceRequest'
                 }
+            },
+            goldenPath: {
+                module   : GoldenPathPane,
+                header   : {text: 'Golden Path'},
+                reference: 'golden-path',
+                bind     : {envelope: data => data.goldenPathEnvelope},
+                listeners: {goldenPathRequest: 'onGoldenPathRequest'}
             },
             // the inspector and the invoked tools: auto-hidden onto the right edge's rail
             detail: {
@@ -661,48 +669,28 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
-     * @summary The share beat's EXPORT half: serializes the named stored perspective to the v1
-     * artifact — one copyable JSON string held on the instance (no backend by design; the e2e
-     * leg asserts round-trip fingerprint equality through it).
+     * @summary The share beat's EXPORT half ({@link AgentOS.util.CockpitPerspectives#exportArtifact}).
+     * The artifact is held on the instance.
      * @param {String} name The stored perspective's name.
      * @returns {{exported: Boolean, errors: String[]}}
      */
     exportPerspectiveArtifact(name) {
-        let me     = this,
-            stored = me.perspectiveStore.getPerspective(name);
+        const {artifact, ...result} = CockpitPerspectives.exportArtifact(this.perspectiveStore, name);
 
-        if (!stored) {
-            return {errors: [`perspective "${name}" is not stored`], exported: false}
-        }
-
-        me.sharedPerspectiveArtifact = JSON.stringify(stored.layout);
-        return {errors: [], exported: true}
+        artifact && (this.sharedPerspectiveArtifact = artifact);
+        return result
     }
 
     /**
-     * @summary The share beat's IMPORT half: admits the held JSON artifact back through the
-     * store's full validation path (`savePerspective` re-validates via the landed restore
-     * gate — a malformed artifact is refused, the live layout untouched).
+     * @summary The share beat's IMPORT half ({@link AgentOS.util.CockpitPerspectives#importArtifact}).
+     * An admitted artifact re-syncs the control bar.
      * @returns {{imported: Boolean, errors: String[]}}
      */
     importPerspectiveArtifact() {
-        let me = this,
-            record;
+        const result = CockpitPerspectives.importArtifact(this.perspectiveStore, this.sharedPerspectiveArtifact);
 
-        if (!me.sharedPerspectiveArtifact) {
-            return {errors: ['no exported artifact is held'], imported: false}
-        }
-
-        try {
-            record = JSON.parse(me.sharedPerspectiveArtifact)
-        } catch (e) {
-            return {errors: [`artifact is not valid JSON: ${e.message}`], imported: false}
-        }
-
-        let {saved, errors} = me.perspectiveStore.savePerspective(record, {replace: true});
-
-        saved && me.syncControlBar();
-        return {errors, imported: saved}
+        result.imported && this.syncControlBar();
+        return result
     }
 
     /**

@@ -46,7 +46,7 @@ function arrangement({sizes = [0.6078, 0.3922], detailColumn = false} = {}) {
         sizes,
         children   : [
             {id: 'fleet-tabs',  items: ['fleet']},
-            {id: 'stream-tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp']}
+            {id: 'stream-tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp', 'goldenPath']}
         ]
     };
 
@@ -241,6 +241,48 @@ class CockpitPerspectives extends Base {
             title   : perspectiveName,
             metadata: {source: 'fm-cockpit-capture'}
         })
+    }
+
+    /**
+     * @summary The share beat's EXPORT half: serializes one stored perspective's layout to the v1
+     * artifact, a copyable JSON string. There is no backend by design; the e2e leg asserts round-trip
+     * fingerprint equality through it.
+     * @param {Neo.dashboard.dock.persistence.PerspectiveLibrary} store The perspective store.
+     * @param {String} name The stored perspective's name.
+     * @returns {{artifact: (String|null), errors: String[], exported: Boolean}}
+     */
+    static exportArtifact(store, name) {
+        const stored = store.getPerspective(name);
+
+        return stored
+            ? {artifact: JSON.stringify(stored.layout), errors: [], exported: true}
+            : {artifact: null, errors: [`perspective "${name}" is not stored`], exported: false}
+    }
+
+    /**
+     * @summary The share beat's IMPORT half: admits a held JSON artifact through the store's full
+     * validation path. `savePerspective` re-validates through the landed restore gate, so a malformed
+     * artifact is refused and the live layout stays untouched.
+     * @param {Neo.dashboard.dock.persistence.PerspectiveLibrary} store The perspective store.
+     * @param {String|null} artifact The held artifact.
+     * @returns {{errors: String[], imported: Boolean}}
+     */
+    static importArtifact(store, artifact) {
+        if (!artifact) {
+            return {errors: ['no exported artifact is held'], imported: false}
+        }
+
+        let record;
+
+        try {
+            record = JSON.parse(artifact)
+        } catch (e) {
+            return {errors: [`artifact is not valid JSON: ${e.message}`], imported: false}
+        }
+
+        const {saved, errors} = store.savePerspective(record, {replace: true});
+
+        return {errors, imported: saved}
     }
 }
 
