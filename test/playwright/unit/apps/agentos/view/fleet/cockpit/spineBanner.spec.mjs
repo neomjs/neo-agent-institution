@@ -14,7 +14,7 @@ import SpineBanner    from '../../../../../../../../apps/agentos/util/SpineBanne
  * verdict may only speak for the surface that produced it) beats `live`; ONLY the fully
  * live spine hides the pill (nominal earns zero pixels).
  *
- * Channel contract (#23): `text` is the pill's STATUS WORD — chrome labels are never sentences —
+ * Channel contract: `text` is the pill's STATUS WORD — chrome labels are never sentences —
  * while `title` carries the full honesty sentence (cause AND remedy) and `ariaLabel` mirrors it
  * for screen readers. Every sentence-doctrine witness below therefore reads `title`; the word
  * witnesses read `text`; the aria mirror is pinned once and spot-checked per family.
@@ -241,7 +241,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         expect(title).toContain('the static roster');
         expect(title).toContain('neo-agent-brain checkout');
         // the sentence must never leak into the visible chrome label, and the aria mirror must
-        // carry it — the two halves of the #23 label-content law
+        // carry it — the two halves of the label-content law
         expect(text).not.toContain('—');
         expect(ariaLabel).toBe(title)
     });
