@@ -412,6 +412,22 @@ export function buildOrganismManifest({
         throw new Error(`organism manifest: the owners disagree on the override ${contested.map(name => `${name}: brain ${JSON.stringify(brainOverrides[name])} vs product ${JSON.stringify(productOverrides[name])}`).join('; ')} — align the declarations`)
     }
 
+    // ONE engine in the organism. The Brain declares its own `neo.mjs` pin; when it differs from the
+    // product's, npm nests a second engine under node_modules/neo-agent-brain — and that copy's install
+    // lifecycle runs in the stage (an older engine's postinstall materializes its skills façade into
+    // INIT_CWD, the stage root, and races the Brain's own postinstall). The Engine is the product's pin
+    // (OWNER_EXCEPTIONS), so the manifest forces every `neo.mjs` edge onto it; a declared override that
+    // names another engine is a disagreement, never a silent winner.
+    const enginePin = dependencies['neo.mjs'];
+
+    if (enginePin) {
+        if ('neo.mjs' in overrides && overrides['neo.mjs'] !== enginePin) {
+            throw new Error(`organism manifest: an owner overrides neo.mjs to ${JSON.stringify(overrides['neo.mjs'])}, but the Engine is the product's pin ${enginePin}`)
+        }
+
+        overrides['neo.mjs'] = enginePin
+    }
+
     return {
         dependencies,
         ...(Object.keys(overrides).length > 0 && {overrides}),
