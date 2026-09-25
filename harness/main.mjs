@@ -114,6 +114,9 @@ let
     // The plane record's bearer once the product boot has read it; the log redacts it with the others.
     storedPlaneBearer = null;
 
+// Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
+const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer];
+
 // A Finder launch has no terminal: every line main prints also lands in ~/Library/Logs/neo-harness/main.log,
 // with each secret main holds redacted at the file boundary. A logs path the platform refuses leaves the
 // boot running without a file, never failing it.
@@ -121,7 +124,7 @@ try {
     app.setAppLogsPath();
     createMainLog({
         dir    : app.getPath('logs'),
-        secrets: () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer]
+        secrets: mainSecrets
     }).install()
 } catch (error) {
     console.error(`HARNESS_MAIN_LOG_UNAVAILABLE ${error?.message ?? error}`)
@@ -1053,7 +1056,7 @@ async function bootProductBrain() {
             child     : fleet,
             lastLine  : () => fleetLastLine,
             mode,
-            secrets   : [fleetBearerToken, packagedEnv.NEO_FLEET_PLANE_BEARER, process.env.NEO_FLEET_PLANE_BEARER]
+            secrets   : mainSecrets()
         })
     }
 

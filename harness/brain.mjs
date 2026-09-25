@@ -33,6 +33,7 @@ import fs                              from 'node:fs';
 import net                             from 'node:net';
 import path                            from 'node:path';
 import {pathToFileURL}                 from 'node:url';
+import {carriesSecret}                 from './mainLog.mjs';
 
 export const ORCHESTRATOR_ENTRY = 'ai/daemons/orchestrator/daemon.mjs';
 export const FLEET_SERVER_ENTRY = 'ai/services/fleet/devFleetServer.mjs';
@@ -217,7 +218,7 @@ export const PLANE_REFUSAL_DETAIL_MAX = 240;
 export function planeRefusal(lastLine, secrets = []) {
     const
         line   = typeof lastLine === 'string' ? lastLine.trim() : '',
-        secret = secrets.some(value => typeof value === 'string' && value.length > 0 && line.includes(value)),
+        secret = carriesSecret(line, secrets),
         detail = line && !secret ? line.slice(0, PLANE_REFUSAL_DETAIL_MAX) : null,
         error  = new Error(`the plane refused this shell's fleet child${detail ? `: ${detail}` : ''}`);
 
