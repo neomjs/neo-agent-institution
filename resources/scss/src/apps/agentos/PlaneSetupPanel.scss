@@ -1,6 +1,9 @@
 /* The packaged shell's "connect to a plane" card: inline under the top chrome, never a modal gate,
    so it reads as a quiet panel on the frame ground rather than an alert. It only exists while a
-   packaged shell has no plane configured. */
+   packaged shell has no plane configured. Every control inside speaks the FM tokens: the engine's
+   button scale and label role are re-valued at this scope (the mechanism the bar and the band use),
+   the field takes the FM font, and the two buttons carry the product's hierarchy — Not now quiet,
+   Connect in the signal, the add-agent form's idiom. */
 .agent-plane-setup.neo-panel {
     margin       : var(--fm-space-2) var(--fm-space-3) 0;
     border       : 1px solid var(--fm-line);
@@ -9,13 +12,82 @@
     background   : var(--fm-panel);
     color        : var(--fm-ink);
 
+    /* the engine reads these four at the button element; the label's ROLE is set at its reader,
+       .neo-button-text, where the engine sets the size from --button-text-font-size */
+    --button-height       : 32px;
+    --button-min-width    : 32px;
+    --button-padding      : 0 var(--fm-space-3);
+    --button-border-radius: 6px;
+
+    /* the field: the FM font in the body role instead of the theme's Arial, on the same control
+       scale and radius as the button beside it, so the row reads as one line of controls */
+    --textfield-input-font   : var(--fm-text-body);
+    --textfield-input-height : var(--button-height);
+    --textfield-border-radius: var(--button-border-radius);
+    --textfield-label-color  : var(--fm-ink-dim);
+
     .neo-toolbar {
         background: transparent;
+        gap       : var(--fm-space-2);
         padding   : var(--fm-space-2) var(--fm-space-3) 0;
+
+        .neo-label {
+            color      : var(--fm-ink);
+            font       : var(--fm-text-body);
+            font-weight: 600;
+        }
     }
 
-    .agent-plane-setup-lede,
-    .agent-plane-setup-status {
+    .neo-button {
+        box-shadow: none;
+
+        .neo-button-text {
+            font       : var(--fm-text-body);
+            font-weight: inherit;   /* the weight is the button's hierarchy, declared on the button */
+        }
+    }
+
+    /* Not now: the quiet action — panel lift + ink, never a slab */
+    .neo-button.agent-plane-setup-dismiss {
+        border     : 1px solid var(--fm-line);
+        background : var(--fm-panel-2);
+        color      : var(--fm-ink);
+        font-weight: 500;
+
+        &:hover {
+            border-color: var(--fm-ink-dim);
+            background  : var(--fm-panel);
+        }
+
+        .neo-button-glyph,
+        .neo-button-text {
+            color: inherit;
+        }
+    }
+
+    /* Connect: the card's one primary action carries the signal */
+    .neo-button.agent-plane-setup-connect {
+        border     : 1px solid color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
+        background : color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
+        color      : var(--fm-signal);
+        font-weight: 600;
+
+        &:hover {
+            border-color: var(--fm-signal);
+            background  : color-mix(in srgb, var(--fm-signal) 24%, var(--fm-panel-2));
+        }
+
+        &[disabled] {
+            cursor: default;
+        }
+
+        .neo-button-glyph,
+        .neo-button-text {
+            color: inherit;
+        }
+    }
+
+    .agent-plane-setup-lede {
         padding: var(--fm-space-2) var(--fm-space-3) 0;
         color  : var(--fm-ink-dim);
         font   : var(--fm-text-body);
@@ -24,11 +96,22 @@
     .agent-plane-setup-row {
         gap    : var(--fm-space-2);
         padding: var(--fm-space-2) var(--fm-space-3) 0;
+
+        /* the inline-label field rides the row's own gap; its label speaks the body role */
+        .neo-textfield {
+            margin: 0;
+
+            .neo-textfield-label {
+                color: var(--fm-ink-dim);
+                font : var(--fm-text-body);
+            }
+        }
     }
 
     .agent-plane-setup-status {
-        min-height    : 1.5em;
-        padding-bottom: var(--fm-space-2);
-        color         : var(--fm-ink);
+        min-height: 1.5em;
+        padding   : var(--fm-space-2) var(--fm-space-3) var(--fm-space-2);
+        color     : var(--fm-ink);
+        font      : var(--fm-text-detail);
     }
 }

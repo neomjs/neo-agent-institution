@@ -730,4 +730,90 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await feedGoldenPath(page, 'unavailable', /^Unavailable · fleet golden path source not wired$/);
         await expect(page.locator('.fm-goldenpath-graph-pane')).toHaveScreenshot('goldenpath-pane-unavailable-light.png')
     });
+
+    /**
+     * @summary Creates the packaged shell's plane-setup card in the viewport above the shell, the way
+     * `ViewportController#mountPlaneSetup` inserts it on an unconfigured packaged boot. The harness
+     * never boots packaged, so this is the card's only render witness; the App worker creates it
+     * through the same seam the component specs drive stores through.
+     * @param {Object} page
+     */
+    const mountPlaneSetupCard = async page => {
+        const result = await page.evaluate(() => Neo.worker.App.createNeoInstance({
+            importPath : '../../../../apps/agentos/view/PlaneSetupPanel.mjs',
+            className  : 'AgentOS.view.PlaneSetupPanel',
+            parentId   : document.querySelector('.agent-os-viewport').id,
+            parentIndex: 1,
+            flex       : 'none',
+            reference  : 'plane-setup'
+        }));
+
+        expect(result?.id, `the card was created: ${JSON.stringify(result)}`).toBeTruthy();
+        await expect(page.locator('.agent-plane-setup')).toBeVisible({timeout: 15000});
+        await expect(page.locator('.agent-plane-setup .agent-plane-setup-connect')).toBeVisible();
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(300)
+    };
+
+    /**
+     * @summary The card's control facts: the button scale, the label role, the hierarchy weights, the
+     * field font — and the row's geometry, because an element's own box says nothing about what shows:
+     * a row squeezed by its column and clipping its hidden overflow reports 32 px controls with their
+     * tops cut off, so every control must lie inside the row and share its line.
+     */
+    const measurePlaneSetupCard = page => page.evaluate(() => {
+        const
+            cs      = el => getComputedStyle(el),
+            rect    = el => { const r = el.getBoundingClientRect(); return {top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height)} },
+            card    = document.querySelector('.agent-plane-setup'),
+            dismiss = card.querySelector('.agent-plane-setup-dismiss'),
+            connect = card.querySelector('.agent-plane-setup-connect'),
+            label   = card.querySelector('.neo-toolbar .neo-label'),
+            input   = card.querySelector('.neo-textfield-input'),
+            row     = card.querySelector('.agent-plane-setup-row');
+
+        return {
+            dismissHeight: rect(dismiss).height,
+            connectHeight: rect(connect).height,
+            radius       : cs(connect).borderTopLeftRadius,
+            textSize     : cs(connect.querySelector('.neo-button-text')).fontSize,
+            connectWeight: cs(connect.querySelector('.neo-button-text')).fontWeight,
+            dismissWeight: cs(dismiss.querySelector('.neo-button-text')).fontWeight,
+            labelWeight  : cs(label).fontWeight,
+            inputFont    : cs(input).fontFamily,
+            row          : rect(row),
+            connect      : rect(connect),
+            input        : rect(input)
+        }
+    });
+
+    test('the plane-setup card — the packaged shell\'s first surface reads the FM tokens: the 32 px button scale, the body role, Not now quiet and Connect in the signal; both skins', async ({page}) => {
+        await bootSettledCockpit(page);
+        await mountPlaneSetupCard(page);
+
+        const paint = await measurePlaneSetupCard(page);
+
+        expect(paint.dismissHeight, 'the quiet button on the 32 px scale').toBe(32);
+        expect(paint.connectHeight, 'the primary button on the 32 px scale').toBe(32);
+        expect(paint.radius).toBe('6px');
+        expect(paint.textSize, 'the button label in the body role').toBe('12px');
+        expect(paint.connectWeight, 'the primary carries the 600 weight').toBe('600');
+        expect(paint.dismissWeight, 'the quiet action keeps 500').toBe('500');
+        expect(paint.labelWeight, 'the card title at 600').toBe('600');
+        expect(paint.inputFont, 'the field in the FM font, not the theme\'s Arial').not.toMatch(/Arial/);
+        // what shows, not what the element claims: the row holds both controls whole, on one line
+        for (const control of ['connect', 'input']) {
+            expect(paint[control].top, `${control} starts inside the row ${JSON.stringify(paint.row)}`).toBeGreaterThanOrEqual(paint.row.top);
+            expect(paint[control].bottom, `${control} ends inside the row ${JSON.stringify(paint.row)}`).toBeLessThanOrEqual(paint.row.bottom)
+        }
+        expect(paint.connect.top, 'Connect and the field share a top').toBe(paint.input.top);
+
+        await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card.png');
+
+        await switchToLightSkin(page);
+        // the card sits right under the theme switch, whose tooltip would otherwise ride the capture
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card-light.png')
+    });
 });
