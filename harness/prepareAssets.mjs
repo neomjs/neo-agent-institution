@@ -1,8 +1,8 @@
-import {access}        from 'node:fs/promises';
-import {spawn}         from 'node:child_process';
-import fs              from 'node:fs';
-import {fileURLToPath} from 'node:url';
-import path            from 'node:path';
+import {access}                       from 'node:fs/promises';
+import {spawn}                        from 'node:child_process';
+import fs                             from 'node:fs';
+import {fileURLToPath, pathToFileURL} from 'node:url';
+import path                           from 'node:path';
 
 import {newestMtime} from '../node_modules/neo.mjs/buildScripts/util/developmentThemeAssets.mjs';
 
@@ -33,23 +33,31 @@ async function assetExists(relativePath) {
 }
 
 /**
- * @summary Runs the canonical Neo theme builder for one development theme.
- * @param {String} theme
+ * @summary The one theme-build argv a WORKSPACE may run, shared with the pack stage: every theme in
+ * one dev build. The engine builder regenerates `resources/theme-map.json` on each run from the
+ * engine's own map plus the themes it was asked for, so a single-theme run leaves the product's
+ * classes with rows for that theme only — and `-f` (`--framework`) parses the engine's SCSS alone,
+ * leaving the map without one `apps.agentos` row. The App worker inserts CSS only for classes the
+ * map names: either shape renders the cockpit in the engine's default looks.
+ * @type {String[]}
+ */
+export const THEME_BUILD_ARGS = Object.freeze(['-n', '-e', 'dev', '-t', 'all']);
+
+/**
+ * @summary Runs the product's `build-themes` script once, for every development theme.
+ * @param {Object} [options]
+ * @param {Function} [options.spawnFn=spawn] Injection seam for tests.
  * @returns {Promise<void>}
  */
-function buildTheme(theme) {
+export function buildThemes({spawnFn = spawn} = {}) {
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
     return new Promise((resolve, reject) => {
-        const child = spawn(
-            npmCommand,
-            ['run', 'build-themes', '--', '-n', '-e', 'dev', '-t', theme],
-            {cwd: repoRoot, stdio: 'inherit'}
-        );
+        const child = spawnFn(npmCommand, ['run', 'build-themes', '--', ...THEME_BUILD_ARGS], {cwd: repoRoot, stdio: 'inherit'});
 
         child.on('error', reject);
         child.on('exit', code => {
-            code === 0 ? resolve() : reject(new Error(`Theme build failed for ${theme} with exit code ${code}`))
+            code === 0 ? resolve() : reject(new Error(`Theme build failed with exit code ${code}`))
         })
     })
 }
@@ -76,9 +84,11 @@ function themesAreStale() {
  * @summary Materializes the generated assets the source-mode Agent OS boot requires — and
  * REBUILDS the themes when any SCSS source is newer than the built css (staleness, not just
  * existence: the fully-broken-visuals class ships through existence-only checks).
+ * @param {Object} [options]
+ * @param {Function} [options.spawnFn=spawn] Injection seam for tests.
  * @returns {Promise<void>}
  */
-async function prepareAssets() {
+export async function prepareAssets({spawnFn = spawn} = {}) {
     const state = Object.fromEntries(
         await Promise.all(Object.entries(assets).map(async ([key, value]) => [key, await assetExists(value)]))
     );
@@ -89,9 +99,7 @@ async function prepareAssets() {
 
     if (Object.values(state).every(Boolean)) {
         console.log('[harness] built themes are older than the SCSS sources — rebuilding');
-        for (const theme of ['theme-neo-dark', 'theme-neo-light']) {
-            await buildTheme(theme)
-        }
+        await buildThemes({spawnFn});
         return
     }
 
@@ -99,14 +107,7 @@ async function prepareAssets() {
         throw new Error('Harness source mode requires the repo-root dependencies; run npm install from the repo root')
     }
 
-    const themes = !state.source || !state.map ? ['theme-neo-dark', 'theme-neo-light'] : [
-        !state.dark  && 'theme-neo-dark',
-        !state.light && 'theme-neo-light'
-    ].filter(Boolean);
-
-    for (const theme of themes) {
-        await buildTheme(theme)
-    }
+    await buildThemes({spawnFn});
 
     const missing = (await Promise.all(
         Object.values(assets).map(async asset => [asset, await assetExists(asset)])
@@ -117,4 +118,6 @@ async function prepareAssets() {
     }
 }
 
-await prepareAssets();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    await prepareAssets()
+}

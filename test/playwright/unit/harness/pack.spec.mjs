@@ -22,7 +22,8 @@ import {
     materializeOverlaySlots,
     resolvePackRoots,
     stageOrganism,
-    stageOwners
+    stageOwners,
+    themeBuildArgv
 } from '../../../../harness/pack.mjs';
 import {buildPackagedBrainEnv, resolveBrainMode, resolveLauncherRuntimeRoot} from '../../../../harness/brain.mjs';
 import path                                                                  from 'node:path';
@@ -315,6 +316,32 @@ test.describe('harness pack stage', () => {
             // package, and a product root without an installed Engine fails before any mutation
             await rm(path.join(product, 'node_modules', 'neo.mjs', ENGINE_THEME_BUILD), {force: true});
             expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product})).toThrow(/engine package root .* carries no buildScripts\/build\/themes\.mjs/)
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
+    test('stageOrganism\'s first child process IS the workspace theme build against the pinned Engine builder — the call site, not only the helper', async () => {
+        const
+            {brain, product, root} = await scaffoldRoots(),
+            stageDir               = path.join(root, 'stage'),
+            calls                  = [],
+            runFn                  = (command, args, options) => {
+                calls.push({args, command, options});
+                throw new Error('stop after the theme build')
+            };
+
+        try {
+            expect(() => stageOrganism({electronVersion: '43.1.0', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product, runFn, stageDir}))
+                .toThrow(/stop after the theme build/);
+
+            expect(calls).toEqual([{
+                args   : themeBuildArgv(path.join(product, 'node_modules', 'neo.mjs')),
+                command: 'node',
+                options: {cwd: product}
+            }]);
+            expect(calls[0].args).not.toContain('-f');
+            expect(calls[0].args.slice(-2)).toEqual(['-t', 'all'])
         } finally {
             await rm(root, {force: true, recursive: true})
         }

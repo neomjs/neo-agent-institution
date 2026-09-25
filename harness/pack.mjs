@@ -28,6 +28,7 @@ import {isDeepStrictEqual}                          from 'node:util';
 import {parse}                                      from 'acorn';
 import {resolveAgentOsRuntimeRoot}                  from './brain.mjs';
 import {ALLOWED_EXACT_PATHS, ALLOWED_PATH_PREFIXES} from './contentPolicy.mjs';
+import {THEME_BUILD_ARGS}                           from './prepareAssets.mjs';
 
 const
     harnessDir = path.dirname(fileURLToPath(import.meta.url)),
@@ -63,6 +64,17 @@ export const TREE_EXCLUDES = Object.freeze([
 // (the product's own `build-themes` is the same path), resolved inside the pinned install — the
 // product root carries no buildScripts/build of its own since the split.
 export const ENGINE_THEME_BUILD = 'buildScripts/build/themes.mjs';
+
+/**
+ * @summary The stage's theme-build argv: the pinned Engine builder with the workspace argv
+ * `prepareAssets` owns — every theme, one dev build, never `-f` (`--framework` parses the engine's
+ * SCSS only and the product's classes drop out of the theme map).
+ * @param {String} enginePackageRoot Absolute root of the pinned `neo.mjs` install.
+ * @returns {String[]}
+ */
+export function themeBuildArgv(enginePackageRoot) {
+    return [path.join(enginePackageRoot, ENGINE_THEME_BUILD), ...THEME_BUILD_ARGS]
+}
 
 /**
  * @summary True when a repo-relative path is a checkout-instance CONFIG OVERLAY — a `config.mjs`
@@ -673,9 +685,10 @@ function run(command, args, options = {}) {
  * @param {Object} [options.env=process.env] Carries `NEO_AGENTOS_RUNTIME_ROOT`, the Brain authority.
  * @param {String} [options.productRoot] Defaults to this checkout.
  * @param {String} [options.stageDir=STAGE_DIR]
+ * @param {Function} [options.runFn=run] Runner seam for every child process the stage issues (tests).
  * @returns {Object} build info (also written to `<stageDir>/organism-build-info.json`).
  */
-export function stageOrganism({electronVersion, env = process.env, productRoot = repoRoot, stageDir = STAGE_DIR} = {}) {
+export function stageOrganism({electronVersion, env = process.env, productRoot = repoRoot, runFn = run, stageDir = STAGE_DIR} = {}) {
     if (!electronVersion) {
         throw new Error('pack: electronVersion is required — the staged natives MUST target the bundled runtime ABI.')
     }
@@ -693,9 +706,10 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     // Deterministic asset freshness: the stage copies dist/development/css AS-IS, and a stale
     // build renders the packaged window fully broken while every existence probe stays green
     // (live incident: a theming merge landed after the last local theme build). The artifact
-    // never trusts checkout state — it rebuilds.
+    // never trusts checkout state — it rebuilds, with the workspace argv (a second live incident:
+    // `-f` here shipped a cockpit without one of its own styles).
     console.log('[pack] building dev themes from current SCSS');
-    run('node', [path.join(roots.enginePackageRoot, ENGINE_THEME_BUILD), '-f', '-n', '-e', 'dev', '-t', 'all'], {cwd: roots.productRoot});
+    runFn('node', themeBuildArgv(roots.enginePackageRoot), {cwd: roots.productRoot});
 
     const
         {copied, scanned} = stageOwners({roots, stageDir}),
@@ -704,11 +718,11 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     fs.writeFileSync(path.join(stageDir, 'package.json'), JSON.stringify(manifest, null, 4), 'utf8');
 
     console.log(`[pack] staged ${copied.product.length} product + ${copied.brain.length} Brain files; installing ${Object.keys(manifest.dependencies).length} organism dependencies`);
-    run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], {cwd: stageDir});
+    runFn('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], {cwd: stageDir});
 
     // Mandatory ABI targeting: the staged natives rebuild for the bundled Electron. Failure fails
     // the build — a catch-and-ship here is a silently-broken-artifact vector.
-    run('npx', ['@electron/rebuild', '--module-dir', stageDir, '--version', electronVersion], {cwd: harnessDir});
+    runFn('npx', ['@electron/rebuild', '--module-dir', stageDir, '--version', electronVersion], {cwd: harnessDir});
 
     const buildInfo = {
         electronVersion,
@@ -720,7 +734,7 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     // Pack-time-fresh instance config: template-current by construction, so the packaged first
     // boot never needs to WRITE into the (possibly read-only, translocated) resources dir. The
     // Brain's setup script fills the slots it knows; the derived pass fills the rest.
-    run('node', ['ai/scripts/setup/initServerConfigs.mjs'], {cwd: stageDir});
+    runFn('node', ['ai/scripts/setup/initServerConfigs.mjs'], {cwd: stageDir});
 
     const
         trees    = [...product.trees, ...brain.trees],
