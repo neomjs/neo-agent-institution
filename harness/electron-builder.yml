@@ -16,6 +16,7 @@ files:
     - brain.mjs
     - contentPolicy.mjs
     - fleetCapability.mjs
+    - planeConfig.mjs
     - preload.cjs
     - package.json
     - assets/tray/**
