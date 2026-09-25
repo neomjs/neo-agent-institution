@@ -34,7 +34,9 @@
        so every deviation is visible at the site. The chrome role's non-font half (tracking) has
        its own bindable slot because the shorthand cannot carry it; uppercase stays a declaration
        at the site (binary, self-documenting). Mode-invariant by construction — the stacks
-       resolve from the skin twins at use time, in both viewports this sheet reaches. */
+       resolve from the skin twins at use time, in both viewports this sheet reaches. A type
+       literal outside the ladder (a glyph's scale, prose above the ladder) is a recorded
+       exception at its site — never silent, the rhythm's own rule applied to type. */
     --fm-text-display: 600 14px/1.3 var(--fm-font-sans);
     --fm-text-body   : 12px/1.45 var(--fm-font-sans);
     --fm-text-detail : 11px/1.4 var(--fm-font-mono);
@@ -117,7 +119,7 @@
 
         .neo-button-glyph {
             color      : inherit;
-            font-size  : 12px;
+            font-size  : 12px;   /* §04 recorded exception: glyph scale (T3), one step below the label */
             line-height: 1;
         }
 
@@ -301,7 +303,8 @@
             text-transform: uppercase;
         }
 
-        /* the glyph decorates, never carries (§04 T3): one step below the label */
+        /* the glyph decorates, never carries (§04 T3): one step below the label — a recorded
+           exception, glyph scale is not a type role */
         .neo-button-glyph {
             font-size: 12px;
         }
@@ -399,6 +402,8 @@
 
         .agent-welcome-eyebrow {
             font-family   : var(--fm-font-mono);
+            /* §04 recorded exception: the chrome role's voice one step up (11 → 12px) with its own
+               wide tracking — the welcome surface's eyebrow above a 26–42px display line */
             font-size     : 12px;
             letter-spacing: .22em;
             text-transform: uppercase;
@@ -416,7 +421,7 @@
         }
 
         .agent-welcome-lede {
-            font-size  : 17px;
+            font-size  : 17px;   /* §04 recorded exception: prose above the ladder (the welcome lede) */
             line-height: 1.6;
             color      : var(--fm-ink-dim);
             margin     : 18px 0 0;
@@ -437,7 +442,7 @@
         .agent-placeholder-inner {
             max-width  : 520px;
             text-align : center;
-            font-size  : 15px;
+            font-size  : 15px;   /* §04 recorded exception: prose above the ladder (the placeholder's line) */
             line-height: 1.6;
             color      : var(--fm-ink-dim);
         }

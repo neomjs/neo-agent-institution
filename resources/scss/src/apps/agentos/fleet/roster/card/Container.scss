@@ -72,7 +72,6 @@
         align-items    : center;
         justify-content: center;
         font           : var(--fm-text-display);
-        font-size      : 14px;
         font-weight    : 600;
         line-height    : 1;
         letter-spacing : .04em;
@@ -469,7 +468,7 @@
         }
 
         .fm-card-monogram {
-            font-size: 12px;
+            font-size: 12px;   /* §04 recorded exception: a letterform glyph sized to its 32px box */
         }
 
         .fm-card-engine {
@@ -512,13 +511,13 @@
         }
 
         .fm-card-monogram {
-            font-size: 10px;   /* the micro floor: nothing below 10px ships */
+            font-size: 10px;   /* §04 recorded exception: a letterform glyph at the micro floor — nothing below 10px ships */
         }
 
         .fm-card-action {
             width    : 32px;
             height   : 32px;
-            font-size: 13px;
+            font-size: 13px;   /* §04 recorded exception: glyph scale for the 32px action box */
         }
 
         .fm-card-control-verbs {
