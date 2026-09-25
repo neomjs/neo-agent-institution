@@ -1,0 +1,35 @@
+/* The packaged shell's "connect to a plane" card (Institution #211): inline under the top chrome,
+   never a modal gate, so it reads as a quiet panel on the frame ground rather than an alert. It only
+   exists while a packaged shell has no plane configured; hidden, the default `removeDom` takes it out
+   of the layout entirely. */
+.agent-plane-setup.neo-panel {
+    margin       : var(--fm-space-2) var(--fm-space-3) 0;
+    border       : 1px solid var(--fm-line);
+    border-left  : 3px solid var(--fm-signal);
+    border-radius: 6px;
+    background   : var(--fm-panel);
+    color        : var(--fm-ink);
+
+    .neo-toolbar {
+        background: transparent;
+        padding   : var(--fm-space-2) var(--fm-space-3) 0;
+    }
+
+    .agent-plane-setup-lede,
+    .agent-plane-setup-status {
+        padding: var(--fm-space-2) var(--fm-space-3) 0;
+        color  : var(--fm-ink-dim);
+        font   : var(--fm-text-body);
+    }
+
+    .agent-plane-setup-row {
+        gap    : var(--fm-space-2);
+        padding: var(--fm-space-2) var(--fm-space-3) 0;
+    }
+
+    .agent-plane-setup-status {
+        min-height    : 1.5em;
+        padding-bottom: var(--fm-space-2);
+        color         : var(--fm-ink);
+    }
+}

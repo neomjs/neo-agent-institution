@@ -7,6 +7,7 @@ import FleetCockpit       from './fleet/cockpit/Container.mjs';
 import FleetInstances     from '../store/FleetInstances.mjs';
 import FleetTenants       from '../store/FleetTenants.mjs';
 import InstanceSwitcher   from './fleet/instances/SwitcherButton.mjs';
+import PlaneSetupPanel    from './PlaneSetupPanel.mjs';
 import StateProvider      from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import SystemView         from './system/Container.mjs';
 import TabContainer       from '../../../node_modules/neo.mjs/src/tab/Container.mjs';
@@ -133,6 +134,11 @@ class Viewport extends BaseViewport {
                     hideDelay: 0
                 }
             }]
+        }, {
+            // hidden unless a packaged shell has no plane configured — inline, never a gate
+            module   : PlaneSetupPanel,
+            flex     : 'none',
+            reference: 'plane-setup'
         }, {
             module        : TabContainer,
             cls           : ['agent-shell'],
