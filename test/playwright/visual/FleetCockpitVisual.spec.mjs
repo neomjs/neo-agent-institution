@@ -755,25 +755,35 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForTimeout(300)
     };
 
-    /** @summary The card's control facts: the button scale, the label role, the hierarchy weights, the field font. */
+    /**
+     * @summary The card's control facts: the button scale, the label role, the hierarchy weights, the
+     * field font — and the row's geometry, because an element's own box says nothing about what shows:
+     * a row squeezed by its column and clipping its hidden overflow reports 32 px controls with their
+     * tops cut off, so every control must lie inside the row and share its line.
+     */
     const measurePlaneSetupCard = page => page.evaluate(() => {
         const
             cs      = el => getComputedStyle(el),
+            rect    = el => { const r = el.getBoundingClientRect(); return {top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height)} },
             card    = document.querySelector('.agent-plane-setup'),
             dismiss = card.querySelector('.agent-plane-setup-dismiss'),
             connect = card.querySelector('.agent-plane-setup-connect'),
             label   = card.querySelector('.neo-toolbar .neo-label'),
-            input   = card.querySelector('.neo-textfield-input');
+            input   = card.querySelector('.neo-textfield-input'),
+            row     = card.querySelector('.agent-plane-setup-row');
 
         return {
-            dismissHeight: Math.round(dismiss.getBoundingClientRect().height),
-            connectHeight: Math.round(connect.getBoundingClientRect().height),
+            dismissHeight: rect(dismiss).height,
+            connectHeight: rect(connect).height,
             radius       : cs(connect).borderTopLeftRadius,
             textSize     : cs(connect.querySelector('.neo-button-text')).fontSize,
             connectWeight: cs(connect.querySelector('.neo-button-text')).fontWeight,
             dismissWeight: cs(dismiss.querySelector('.neo-button-text')).fontWeight,
             labelWeight  : cs(label).fontWeight,
-            inputFont    : cs(input).fontFamily
+            inputFont    : cs(input).fontFamily,
+            row          : rect(row),
+            connect      : rect(connect),
+            input        : rect(input)
         }
     });
 
@@ -791,6 +801,12 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(paint.dismissWeight, 'the quiet action keeps 500').toBe('500');
         expect(paint.labelWeight, 'the card title at 600').toBe('600');
         expect(paint.inputFont, 'the field in the FM font, not the theme\'s Arial').not.toMatch(/Arial/);
+        // what shows, not what the element claims: the row holds both controls whole, on one line
+        for (const control of ['connect', 'input']) {
+            expect(paint[control].top, `${control} starts inside the row ${JSON.stringify(paint.row)}`).toBeGreaterThanOrEqual(paint.row.top);
+            expect(paint[control].bottom, `${control} ends inside the row ${JSON.stringify(paint.row)}`).toBeLessThanOrEqual(paint.row.bottom)
+        }
+        expect(paint.connect.top, 'Connect and the field share a top').toBe(paint.input.top);
 
         await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card.png');
 

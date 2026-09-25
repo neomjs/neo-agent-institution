@@ -62,9 +62,12 @@ class PlaneSetupPanel extends Panel {
             cls  : ['agent-plane-setup-lede'],
             text : 'The cockpit shows sample data until it attaches to your team\'s plane. Your GitHub PAT is asked for in a separate window and stored encrypted on this Mac.'
         }, {
+            // sized to its content: the body's column would otherwise hand the row the leftover
+            // height and its hidden overflow would clip the 32 px controls at the top
             ntype : 'container',
             cls   : ['agent-plane-setup-row'],
-            layout: {ntype: 'hbox', align: 'end'},
+            flex  : 'none',
+            layout: {ntype: 'hbox', align: 'center'},
             items : [{
                 module   : TextField,
                 flex     : 1,
