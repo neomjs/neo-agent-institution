@@ -50,6 +50,11 @@
     --fm-space-3: 12px;
     --fm-space-4: 16px;
 
+    /* The frame gutter — the recorded off-rhythm exception: the dock's edge rails are 20px wide,
+       and every full-width chrome row (the top toolbar, the cockpit bar) ends its last control on
+       that line, where the pane headers' ink already ends. One value, read by both rows. */
+    --fm-frame-gutter: 20px;
+
     /* FM motion aliases (§04 T4): the FM-scoped re-timing knob over the product motion
        vocabulary — pointing at the standards tiers, never at dock-scoped aliases. The
        vocabulary-layer reduced-motion collapse (_motion.scss) flows through the alias by
@@ -196,7 +201,7 @@
            every FM pane */
         background: var(--fm-rail);
         min-height: 50px;
-        padding   : 0 20px;
+        padding   : 0 var(--fm-frame-gutter);
 
         @media (max-width: 560px) {
             padding: 0 var(--fm-space-3);

@@ -92,7 +92,9 @@
 
     .fm-cockpit-bar {
         flex   : none;
-        padding: 6px 10px;
+        /* the bar is a full-width chrome row: its last control ends on the frame gutter, the same
+           line as the top toolbar's theme switch and the pane headers' ink */
+        padding: 6px var(--fm-frame-gutter);
         gap    : var(--fm-space-2);
 
         /* THE STATE BLOCK (#23): the two spine axes as ONE right-aligned group before the action
