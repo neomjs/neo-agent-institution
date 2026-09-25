@@ -13,15 +13,13 @@ import BaseContainer   from '../../../../../../node_modules/neo.mjs/src/containe
 import PlaneSetupPanel from '../../../../../../apps/agentos/view/PlaneSetupPanel.mjs';
 
 /**
- * Installs a stand-in for the `WS/ShellPlane` main addon's remotes, recording every attach request.
- * `status` is what `planeStatus()` answers; `reply` is what `attachPlane()` answers.
+ * Installs a stand-in for the `WS/ShellPlane` main addon's attach remote, recording every request.
  */
-function stubShellPlane({status, reply = {ok: false, reason: 'rejected', relaunching: false}}) {
+function stubAttachPlane(reply) {
     const requests = [];
 
     Neo.ns('Neo.main.addon', true).ShellPlane = {
-        attachPlane: async request => { requests.push(request); return reply },
-        planeStatus: async () => status
+        attachPlane: async request => { requests.push(request); return reply }
     };
 
     return requests
@@ -31,51 +29,20 @@ function stubShellPlane({status, reply = {ok: false, reason: 'rejected', relaunc
  * The card lives inside the Viewport, so it is created inside a host here too: a root component would
  * try to mount itself on `document.body` when shown.
  */
-async function createPanel() {
-    const
-        host  = Neo.create(BaseContainer, {windowId: 7, items: [{module: PlaneSetupPanel, reference: 'plane-setup'}]}),
-        panel = host.getReference('plane-setup');
+function createPanel() {
+    const host = Neo.create(BaseContainer, {windowId: 7, items: [{module: PlaneSetupPanel, reference: 'plane-setup'}]});
 
-    await panel.readPlaneStatus();
-
-    return {host, panel}
+    return {host, panel: host.getReference('plane-setup')}
 }
-
-const UNCONFIGURED = {available: true, packaged: true, configured: false};
 
 test.describe('AgentOS.view.PlaneSetupPanel — the packaged shell\'s connect-to-a-plane card', () => {
     test.afterEach(() => {
         delete Neo.main?.addon?.ShellPlane
     });
 
-    test('shows only for a packaged shell with no plane configured', async () => {
-        const cases = [
-            [{available: false},                                    true],
-            [{available: true, packaged: false, configured: false}, true],
-            [{available: true, packaged: true,  configured: true},  true],
-            [UNCONFIGURED,                                          false]
-        ];
-
-        for (const [status, hidden] of cases) {
-            stubShellPlane({status});
-
-            const {host, panel} = await createPanel();
-
-            expect(panel.hidden, JSON.stringify(status)).toBe(hidden);
-            host.destroy()
-        }
-    });
-
-    test('without a shell nothing shows and nothing throws', async () => {
-        const {host, panel} = await createPanel();
-
-        expect(panel.hidden).toBe(true);
-        host.destroy()
-    });
-
     test('a refusal renders its line and re-enables Connect; the request carries only the plane base', async () => {
-        const requests      = stubShellPlane({status: UNCONFIGURED});
-        const {host, panel} = await createPanel();
+        const requests      = stubAttachPlane({ok: false, reason: 'rejected', relaunching: false});
+        const {host, panel} = createPanel();
 
         await panel.onConnectClick();
 
@@ -85,10 +52,20 @@ test.describe('AgentOS.view.PlaneSetupPanel — the packaged shell\'s connect-to
         host.destroy()
     });
 
-    test('a successful attach keeps Connect disabled while the shell relaunches', async () => {
-        stubShellPlane({status: UNCONFIGURED, reply: {ok: true, reason: null, relaunching: true}});
+    test('without a shell Connect answers instead of throwing', async () => {
+        const {host, panel} = createPanel();
 
-        const {host, panel} = await createPanel();
+        await panel.onConnectClick();
+
+        expect(panel.getReference('status-line').text).toBe('The plane could not be attached.');
+        expect(panel.getReference('connect-button').disabled).toBe(false);
+        host.destroy()
+    });
+
+    test('a successful attach keeps Connect disabled while the shell relaunches', async () => {
+        stubAttachPlane({ok: true, reason: null, relaunching: true});
+
+        const {host, panel} = createPanel();
 
         await panel.onConnectClick();
 
@@ -97,10 +74,8 @@ test.describe('AgentOS.view.PlaneSetupPanel — the packaged shell\'s connect-to
         host.destroy()
     });
 
-    test('dismissing hides the card for the session', async () => {
-        stubShellPlane({status: UNCONFIGURED});
-
-        const {host, panel} = await createPanel();
+    test('dismissing hides the card for the session', () => {
+        const {host, panel} = createPanel();
 
         expect(panel.hidden).toBe(false);
         panel.onDismissClick();

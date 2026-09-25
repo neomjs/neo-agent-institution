@@ -1,7 +1,6 @@
-/* The packaged shell's "connect to a plane" card (Institution #211): inline under the top chrome,
-   never a modal gate, so it reads as a quiet panel on the frame ground rather than an alert. It only
-   exists while a packaged shell has no plane configured; hidden, the default `removeDom` takes it out
-   of the layout entirely. */
+/* The packaged shell's "connect to a plane" card: inline under the top chrome, never a modal gate,
+   so it reads as a quiet panel on the frame ground rather than an alert. It only exists while a
+   packaged shell has no plane configured. */
 .agent-plane-setup.neo-panel {
     margin       : var(--fm-space-2) var(--fm-space-3) 0;
     border       : 1px solid var(--fm-line);

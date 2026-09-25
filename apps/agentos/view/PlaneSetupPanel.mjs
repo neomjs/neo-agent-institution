@@ -6,11 +6,10 @@ import TextField from '../../../node_modules/neo.mjs/src/form/field/Text.mjs';
  * @summary The packaged shell's "connect to a plane" card: inline, dismissible, and never a gate — the
  * sample cockpit stays usable behind it, as the shell spec requires.
  *
- * It shows only in a packaged shell with no plane configured, read once from
- * `Neo.main.addon.ShellPlane.planeStatus()`, so a browser build or a configured shell never renders
- * it. Connecting hands the plane address to `attachPlane()`; Electron main then asks for the PAT in its
- * own window, checks it against the plane, stores it encrypted, and relaunches the shell. No credential
- * ever reaches this card, so every line it renders is plain `text`.
+ * `AgentOS.view.ViewportController#mountPlaneSetup` creates it only for a packaged shell with no
+ * plane configured. Connecting hands the plane address to `attachPlane()`; Electron main then asks
+ * for the PAT in its own window, checks it against the plane, stores it encrypted, and relaunches the
+ * shell. No credential ever reaches this card, so every line it renders is plain `text`.
  * @class AgentOS.view.PlaneSetupPanel
  * @extends Neo.container.Panel
  */
@@ -54,12 +53,6 @@ class PlaneSetupPanel extends Panel {
             }]
         }],
         /**
-         * Hidden until the shell reports a packaged boot with no plane configured.
-         * @member {Boolean} hidden=true
-         * @reactive
-         */
-        hidden: true,
-        /**
          * @member {Object[]} items
          */
         items: [{
@@ -89,29 +82,6 @@ class PlaneSetupPanel extends Panel {
             role     : 'status',
             text     : ''
         }]
-    }
-
-    /**
-     * Whether the one status read has started.
-     * @member {Boolean} planeStatusRead=false
-     * @protected
-     */
-    planeStatusRead = false
-
-    /**
-     * Triggered after the windowId config got changed. The addon remotes need a window, so the one
-     * status read starts here.
-     * @param {Number|null} value
-     * @param {Number|null} oldValue
-     * @protected
-     */
-    afterSetWindowId(value, oldValue) {
-        super.afterSetWindowId(value, oldValue);
-
-        if (value && !this.planeStatusRead) {
-            this.planeStatusRead = true;
-            this.readPlaneStatus()
-        }
     }
 
     /**
@@ -149,19 +119,6 @@ class PlaneSetupPanel extends Panel {
      */
     onDismissClick() {
         this.hidden = true
-    }
-
-    /**
-     * @summary Reads the shell's plane status once and shows the card only for a packaged shell with no
-     * plane configured. A failed read or a missing shell leaves it hidden.
-     * @returns {Promise<void>}
-     */
-    async readPlaneStatus() {
-        const status = await Promise.resolve(Neo.main?.addon?.ShellPlane?.planeStatus({windowId: this.windowId})).catch(() => null);
-
-        if (!this.isDestroyed) {
-            this.hidden = !(status?.available && status.packaged && !status.configured)
-        }
     }
 }
 
