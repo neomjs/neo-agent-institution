@@ -25,7 +25,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
 
     const STATES = ['sample', 'stale', 'live'];
 
-    const HIDDEN_LIVE = {hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''};
+    const HIDDEN_LIVE = {action: null, hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''};
 
     test.describe('connection observations belong to the deciding read', () => {
         const cases = [
@@ -81,6 +81,38 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
                 expect(SpineBanner.deriveSpineBanner({...plain, grid: {state: 'sample', connection: {state, reason: 'untrusted'}}}))
                     .toEqual(SpineBanner.deriveSpineBanner(plain))
             }
+        })
+    });
+
+    test.describe('a shell beside a running plane — the refusal outranks its own consequences', () => {
+        const besidePlane = {cause: 'organism-beside-plane', reason: 'Chroma holds localhost:8000', state: 'degraded'};
+
+        test('it names the running plane and offers Connect over a sample roster the fleet refused', () => {
+            const verdict = SpineBanner.deriveSpineBanner({
+                daemon: besidePlane,
+                grid  : {state: 'sample', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}},
+                stream: {state: 'sample', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}}
+            });
+
+            expect(verdict).toEqual({
+                action   : 'connect-plane',
+                ariaLabel: 'A plane already runs on this machine — connect this shell to it · Chroma holds localhost:8000',
+                hidden   : false,
+                kind     : 'cold',
+                text     : 'plane here',
+                title    : 'A plane already runs on this machine — connect this shell to it · Chroma holds localhost:8000'
+            })
+        });
+
+        test('CONTROL: any other daemon cause keeps its verdict and the reconnect action', () => {
+            const verdict = SpineBanner.deriveSpineBanner({
+                daemon: {cause: 'boot-not-ready', reason: 'boot-not-ready', state: 'degraded'},
+                grid  : {state: 'sample', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}},
+                stream: {state: 'sample'}
+            });
+
+            expect(verdict.action).toBeNull();
+            expect(verdict.text).not.toBe('plane here')
         })
     });
 
@@ -160,7 +192,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             });
 
             expect(Array.isArray(episode)).toBe(false);
-            expect(Object.keys(episode).sort()).toEqual(['ariaLabel', 'hidden', 'kind', 'text', 'title']);
+            expect(Object.keys(episode).sort()).toEqual(['action', 'ariaLabel', 'hidden', 'kind', 'text', 'title']);
             expect(episode.title.match(/Agent OS/g)).toHaveLength(1);
 
             // And it is IDEMPOTENT across re-derivation: a polling consumer re-deriving the same

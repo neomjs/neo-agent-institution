@@ -38,6 +38,8 @@ import {
     allocatePort,
     assertIsolatedProfile,
     awaitFleetReady,
+    besidePlaneRefusal,
+    bootFailureCause,
     awaitOrchestratorReady,
     awaitPortListening,
     buildBrainProfile,
@@ -998,7 +1000,7 @@ async function bootProductBrain() {
         // supervisor (singleton-port reconciliation). A held Chroma port without a serving fleet
         // fails the boot closed instead.
         if (packagedMode && await probePort({host: 'localhost', port: paths.chromaPort})) {
-            throw new Error(`chroma port ${paths.chromaPort} is already held (a checkout Brain?) — the packaged harness cannot own an organism beside it`)
+            throw besidePlaneRefusal(paths.chromaPort)
         }
 
         const orchestrator = startBrainChild({entry: ORCHESTRATOR_ENTRY, env: packagedEnv, onLog: brainLog, repoRoot: agentosRuntimeRoot});
@@ -1217,10 +1219,10 @@ app.whenReady().then(async () => {
         ? (diagnosticMode ? bootSmokeBrain() : bootProductBrain())
             .catch(error => {
                 console.log('HARNESS_BRAIN_BOOT_FAILED ' + error.message);
-                return {error: error.message, up: false}
+                return {cause: bootFailureCause(error), error: error.message, up: false}
             })
             .then(boot => {
-                appLifecycle.settleBrainBoot(boot.up === true);
+                appLifecycle.settleBrainBoot(boot.up === true, boot.cause);
                 uiTransportFact = normalizeTransportFact(boot);
                 return boot
             })

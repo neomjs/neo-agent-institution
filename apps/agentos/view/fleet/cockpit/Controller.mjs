@@ -253,6 +253,21 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
+     * @summary The spine banner's one action. Beside a running plane there is nothing to reconnect:
+     * the shell refused its own organism on purpose, so the action opens the plane card, which lives
+     * with the viewport. Every other verdict reconnects the fleet.
+     */
+    onSpineAction() {
+        const me = this;
+
+        if (me.component.getStateProvider()?.getData('spineBanner')?.action === 'connect-plane') {
+            me.getParent()?.showPlaneSetup?.()
+        } else {
+            me.reconnectFleet()
+        }
+    }
+
+    /**
      * @summary Relay a WakeRoutePane read intent.
      * @param {Object} data
      * @returns {Promise<Object>}

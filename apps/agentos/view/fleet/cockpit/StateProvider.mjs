@@ -14,7 +14,7 @@ import {sampleActivity}    from '../../../config/fleetSampleData.mjs';
  * @returns {{hidden: Boolean, kind: String, text: String}}
  */
 const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
-    daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason},
+    daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason, cause: data.daemonCause},
     grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason, connection: data.gridConnection},
     stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection},
     transport: data.shellTransport
@@ -64,6 +64,13 @@ class StateProvider extends Provider {
              * @member {Object[]} activityCounts=[]
              */
             activityCounts: [],
+            /**
+             * The lifecycle owner's cause code while the Brain is not running (`organism-beside-plane`,
+             * `boot-not-ready`, …), beside the readable reason below: the banner branches on the code,
+             * never on its wording.
+             * @member {String|null} daemonCause=null
+             */
+            daemonCause: null,
             /**
              * The retained diagnosis for the DAEMON surface — the "why" the banner names instead
              * of generic copy. Written only by the brain-health apply, from the lifecycle owner's
@@ -183,10 +190,11 @@ class StateProvider extends Provider {
              * bind its LEAVES (`setData` drills object values into leaf paths — an object-valued
              * key never becomes one trackable config, so consumers bind `data.spineBanner.text`
              * etc. and every leaf is declared here). `text` is the pill's status word; `title`
-             * carries the full honesty sentence, `ariaLabel` its screen-reader mirror.
+             * carries the full honesty sentence, `ariaLabel` its screen-reader mirror; `action` names
+             * what the affordance does (`'connect-plane'`, or `null` for the reconnect).
              * @member {Object} spineBanner
              */
-            spineBanner: {ariaLabel: '', hidden: false, kind: 'cold', text: '', title: ''},
+            spineBanner: {action: null, ariaLabel: '', hidden: false, kind: 'cold', text: '', title: ''},
             /**
              * Formula-owned — the wake chip's derivation; leaf-declared for the same reason.
              * Re-derives on every `viewerWake` stamp beat (the cadence the observations move on).

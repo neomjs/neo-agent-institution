@@ -71,6 +71,21 @@ class ViewportController extends Controller {
     }
 
     /**
+     * @summary Brings the plane-setup card back on request (the banner's Connect beside a running
+     * plane), a dismissed card included; mounts it when this boot never created one.
+     * @returns {Promise<void>}
+     */
+    async showPlaneSetup() {
+        const card = this.getReference('plane-setup');
+
+        if (card) {
+            card.hidden = false
+        } else {
+            await this.mountPlaneSetup()
+        }
+    }
+
+    /**
      * @summary Hydrates the configured-instances Store from storage, seeds the boot profile, and
      * mirrors the bound-instance fact.
      *

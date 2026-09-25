@@ -181,6 +181,35 @@ export function resolveProductBrainPlan({planeBase, orchestratorAlive, fleetServ
 }
 
 /**
+ * @summary The packaged boot's refusal to own an organism beside a running plane: a held Chroma port
+ * means another organism already owns this machine's stores, and its supervisor would reap ours. The
+ * refusal is typed, so the lifecycle names the cause and the cockpit can offer the way in (attaching
+ * this shell to that plane) instead of a generic "not ready".
+ * @param {Number|String} port The held Chroma port.
+ * @returns {Error} `code: 'organism-beside-plane'`, with `detail` as the one-line reason.
+ */
+export function besidePlaneRefusal(port) {
+    const
+        detail = `Chroma holds localhost:${port}`,
+        error  = new Error(`a plane already runs on this machine (${detail}): the packaged harness cannot own an organism beside it`);
+
+    error.code   = 'organism-beside-plane';
+    error.detail = detail;
+
+    return error
+}
+
+/**
+ * @summary The lifecycle cause a failed boot carries: a typed refusal names itself; anything else
+ * returns `null`, which settles as the generic `boot-not-ready`.
+ * @param {Error|null} error
+ * @returns {{source: String, detail: (String|null)}|null}
+ */
+export function bootFailureCause(error) {
+    return error?.code === 'organism-beside-plane' ? {detail: error.detail ?? null, source: error.code} : null
+}
+
+/**
  * @summary Allocates a free loopback TCP port via a zero-port listen. The classic race (another
  * process binding between close and child bind) is accepted: the child's own bind failure exits
  * it early, which the readiness contract converts into a deterministic boot rejection.

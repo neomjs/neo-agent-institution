@@ -25,6 +25,8 @@ import {
     resolveAgentOsRuntimeRoot,
     resolveBrainPaths,
     resolveProductBrainPlan,
+    besidePlaneRefusal,
+    bootFailureCause,
     resolveRealPath,
     resolveUiFleetTransport,
     startBrainChild,
@@ -290,6 +292,15 @@ test.describe('harness brain lifecycle', () => {
             'NEO_ORCHESTRATOR_SWARM_HEARTBEAT_ENABLED'
         ]);
         gates.forEach(([, value]) => expect(value).toBe('0'))
+    });
+
+    test('a refusal beside a running plane is typed, and only it names a cause', () => {
+        const refusal = besidePlaneRefusal(8000);
+
+        expect(refusal.message).toContain('a plane already runs on this machine (Chroma holds localhost:8000)');
+        expect(bootFailureCause(refusal)).toEqual({detail: 'Chroma holds localhost:8000', source: 'organism-beside-plane'});
+        expect(bootFailureCause(new Error('fleet port 8083 cannot be reused')), 'any other failure stays generic').toBeNull();
+        expect(bootFailureCause(null)).toBeNull()
     });
 
     test('resolveProductBrainPlan: a declared plane outranks host liveness and can start only Fleet', () => {

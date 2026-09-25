@@ -163,6 +163,26 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         return {host, provider}
     };
 
+    test('a boot refused beside a running plane travels from the lifecycle owner to the Connect action', () => {
+        const
+            lifecycle = createAppLifecycle({
+                app          : Object.assign(new EventEmitter(), {exit() {}, quit() {}}),
+                teardownBrain: async () => ({})
+            }),
+            {host, provider} = makeDaemonHost();
+
+        lifecycle.settleBrainBoot(false, {detail: 'Chroma holds localhost:8000', source: 'organism-beside-plane'});
+        host.applyBrainHealth(lifecycle.brainHealth);
+
+        expect(provider.data.daemonCause).toBe('organism-beside-plane');
+        expect(verdictOf(provider.data)).toMatchObject({action: 'connect-plane', text: 'plane here'});
+
+        lifecycle.setBrainState('running');
+        host.applyBrainHealth(lifecycle.brainHealth);
+
+        expect(provider.data.daemonCause, 'recovery clears the cause').toBeNull()
+    });
+
     // ⭐ The producer→controller→provider witness the predecessor lacked: the SHELL transition
     // drives the surface. A test that hand-assigns `daemonState` witnesses only a pass-through.
     test('⭐ a SHELL transition drives the surface: lifecycle owner → wire payload → provider truth', () => {
@@ -254,7 +274,15 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
     test('a fully live owner hides the banner with empty copy — zero nominal pixels', () => {
         expect(verdictOf({gridAdapterState: 'live', streamAdapterState: 'live'}))
-            .toEqual({ariaLabel: '', hidden: true, kind: 'live', text: '', title: ''})
+            .toEqual({action: null, ariaLabel: '', hidden: true, kind: 'live', text: '', title: ''})
+    });
+
+    test('a boot refused beside a running plane reaches the banner as its Connect action', () => {
+        const verdict = verdictOf({daemonCause: 'organism-beside-plane', daemonDegradedReason: 'Chroma holds localhost:8000', daemonState: 'degraded'});
+
+        expect(verdict.action).toBe('connect-plane');
+        expect(verdict.title).toContain('A plane already runs on this machine');
+        expect(verdictOf({daemonDegradedReason: 'boot-not-ready', daemonState: 'degraded'}).action, 'CONTROL: no cause, no Connect').toBeNull()
     });
 
     test('the Reconnect affordance shares the banner verdict: visible on any spoken line, hidden on live', () => {
@@ -297,6 +325,23 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         expect(driven.sort()).toEqual([
             'activity', 'brainHealth', 'catchUpHistory', 'deploymentState', 'goldenPathRead', 'memoriesHistory', 'roster', 'tasks', 'viewerWake', 'wakeRoutesHistory'
         ])
+    });
+
+    test('the banner action opens the plane card beside a running plane, and reconnects otherwise', () => {
+        const run = action => {
+            const calls = [],
+                  host  = makeControllerFake(FleetCockpitController, {
+                      component     : {getStateProvider: () => ({getData: key => key === 'spineBanner' ? {action} : undefined})},
+                      getParent     : () => ({showPlaneSetup: () => calls.push('showPlaneSetup')}),
+                      reconnectFleet: () => calls.push('reconnectFleet')
+                  });
+
+            host.onSpineAction();
+            return calls
+        };
+
+        expect(run('connect-plane')).toEqual(['showPlaneSetup']);
+        expect(run(null), 'CONTROL: every other verdict reconnects').toEqual(['reconnectFleet'])
     });
 
     test('reconnectFleet tolerates unmounted panes — a missing reference is silence, never a throw', () => {

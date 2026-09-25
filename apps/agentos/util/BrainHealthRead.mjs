@@ -46,11 +46,12 @@ class BrainHealthRead extends Base {
             return
         }
 
+        const cause = state !== 'running' ? response.cause : null;
+
         provider.setData({
+            daemonCause         : cause?.source || null,
             daemonState         : state,
-            daemonDegradedReason: state !== 'running' && response.cause
-                ? (response.cause.detail || response.cause.source || null)
-                : null
+            daemonDegradedReason: cause ? (cause.detail || cause.source || null) : null
         })
     }
 

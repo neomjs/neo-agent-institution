@@ -134,6 +134,25 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         for (const planeStatus of cases) {
             expect(await mountWith(planeStatus), String(planeStatus)).toEqual([])
         }
+    });
+
+    test('the banner\'s Connect brings a dismissed card back, and mounts one this boot never created', async () => {
+        const
+            card       = {hidden: true},
+            controller = Object.create(ViewportController.prototype);
+
+        controller.getReference = reference => reference === 'plane-setup' ? card : null;
+
+        await controller.showPlaneSetup();
+        expect(card.hidden, 'the dismissed card shows again').toBe(false);
+
+        let mounted = 0;
+
+        controller.getReference   = () => null;
+        controller.mountPlaneSetup = async () => { mounted++ };
+
+        await controller.showPlaneSetup();
+        expect(mounted, 'no card yet: it mounts through the status-gated path').toBe(1)
     })
 });
 
