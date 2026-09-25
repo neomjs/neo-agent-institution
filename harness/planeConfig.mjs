@@ -167,24 +167,28 @@ export function forgetPlaneConfig({dir, fsModule = fs}) {
  * The stored bearer brings its identity as `NEO_AGENT_IDENTITY`, over any inherited value: the fleet
  * child claims that identity and the plane admits it only as the bearer's subject, so an identity the
  * launch left behind — none from Finder, a peer's when an agent session started the app — can only be
- * refused. An env bearer keeps the env's identity, and a record without one exports none.
+ * refused. A stored bearer without its identity (a record from before the identity was recorded) is
+ * therefore no record either: the shell boots on its own, and the plane card offers to attach again.
+ * An env bearer keeps the env's identity.
  * @param {Object} options
  * @param {{planeBase: String|null, bearer: String|null, identity: String|null}} options.planeConfig
  * @param {Object} options.env The process env.
  * @returns {Object}
  */
 export function planeEnvFragment({planeConfig, env}) {
-    if (!planeConfig?.planeBase || env.NEO_FLEET_PLANE_BASE !== undefined || (!planeConfig.bearer && env.NEO_FLEET_PLANE_BEARER === undefined)) {
+    if (!planeConfig?.planeBase || env.NEO_FLEET_PLANE_BASE !== undefined) {
         return {}
     }
 
-    const storedBearer = planeConfig.bearer && env.NEO_FLEET_PLANE_BEARER === undefined;
-
-    return {
-        NEO_FLEET_PLANE_BASE: planeConfig.planeBase,
-        ...(storedBearer && {NEO_FLEET_PLANE_BEARER: planeConfig.bearer}),
-        ...(storedBearer && planeConfig.identity && {NEO_AGENT_IDENTITY: planeConfig.identity})
+    if (env.NEO_FLEET_PLANE_BEARER !== undefined) {
+        return {NEO_FLEET_PLANE_BASE: planeConfig.planeBase}
     }
+
+    return planeConfig.bearer && planeConfig.identity ? {
+        NEO_AGENT_IDENTITY    : planeConfig.identity,
+        NEO_FLEET_PLANE_BASE  : planeConfig.planeBase,
+        NEO_FLEET_PLANE_BEARER: planeConfig.bearer
+    } : {}
 }
 
 /**
@@ -353,13 +357,14 @@ export function createPlaneBroker({dir, getTransportFact, isTrustedSender, packa
             }
 
             const
-                {bearer, planeBase} = readPlaneConfig({dir, safeStorage, fsModule}),
-                fact                = getTransportFact();
+                {bearer, identity, planeBase} = readPlaneConfig({dir, safeStorage, fsModule}),
+                fact                          = getTransportFact();
 
             return {
                 attached  : fact?.mode === 'plane-attach' && fact.up === true,
-                // a record whose bearer no longer decrypts cannot attach, so the card offers to reconnect
-                configured: planeBase !== null && bearer !== null,
+                // a record whose bearer no longer decrypts, or that predates the identity, cannot attach,
+                // so the card offers to reconnect
+                configured: planeBase !== null && bearer !== null && identity !== null,
                 packaged,
                 planeBase
             }

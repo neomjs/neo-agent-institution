@@ -170,14 +170,14 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
             .toBe(IDENTITY);
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}}), 'an env bearer keeps the env\'s identity')
             .toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'});
-        expect(planeEnvFragment({planeConfig: {...planeConfig, identity: null}, env: {}}), 'a record from before the identity')
-            .toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example', NEO_FLEET_PLANE_BEARER: BEARER})
+        expect(planeEnvFragment({planeConfig: {...planeConfig, identity: null}, env: {NEO_AGENT_IDENTITY: 'neo-fable-clio'}}), 'a record from before the identity is no record: the shell boots on its own and the card offers to attach again')
+            .toEqual({})
     });
 
     test('the env fragment: a set plane base keeps the stored bearer away from it; a set bearer wins', () => {
-        const planeConfig = {planeBase: 'https://plane.example', bearer: BEARER};
+        const planeConfig = {planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY};
 
-        expect(planeEnvFragment({planeConfig, env: {}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example', NEO_FLEET_PLANE_BEARER: BEARER});
+        expect(planeEnvFragment({planeConfig, env: {}})).toEqual({NEO_AGENT_IDENTITY: IDENTITY, NEO_FLEET_PLANE_BASE: 'https://plane.example', NEO_FLEET_PLANE_BEARER: BEARER});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: 'http://127.0.0.1:3102'}}), 'the launcher and checkout env win whole').toEqual({});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: ''}}), 'an explicitly empty base still wins').toEqual({});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'});
@@ -320,6 +320,16 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
         writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({planeBase: 'https://plane.example'}));
         writeFileSync(path.join(dir, PLANE_BEARER_FILE), 'not a blob this keychain wrote');
 
+        expect(broker.status({})).toEqual({attached: false, configured: false, packaged: true, planeBase: 'https://plane.example'})
+    });
+
+    test('a record from before the identity reads as unconfigured too, so the card offers to attach again', () => {
+        const {broker, dir, safeStorage} = makeBroker();
+
+        writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({planeBase: 'https://plane.example'}));
+        writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString(BEARER));
+
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'https://plane.example', bearer: BEARER, identity: null});
         expect(broker.status({})).toEqual({attached: false, configured: false, packaged: true, planeBase: 'https://plane.example'})
     });
 
