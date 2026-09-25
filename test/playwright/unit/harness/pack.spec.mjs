@@ -637,11 +637,14 @@ test.describe('harness pack stage', () => {
             brainPackageJson   = {dependencies: {chromadb: '3.5.0'}, overrides: {...sharpOverride, 'gray-matter': {'js-yaml': '^3.15.2'}}},
             scanned            = {brain: ['chromadb'], product: ['neo.mjs']};
 
-        // both owners' entries ride along; a key both declare with one value is one entry
+        // both owners' entries ride along; a key both declare with one value is one entry — and the
+        // engine is forced onto the product's pin, so the Brain's own `neo.mjs` pin cannot nest a
+        // second engine (whose older postinstall materializer would write into the stage root)
         expect(buildOrganismManifest({brainPackageJson, productPackageJson, scanned, supplemental: NO_SUPPLEMENTAL}).overrides).toEqual({
             '@huggingface/transformers': {sharp: '^0.35.4'},
             'gray-matter'              : {'js-yaml': '^3.15.2'},
-            'lodash-es'                : '^4.18.0'
+            'lodash-es'                : '^4.18.0',
+            'neo.mjs'                  : 'github:neomjs/neo#pin'
         });
 
         // the red control: one key, two values — never a silent winner
@@ -652,13 +655,21 @@ test.describe('harness pack stage', () => {
             supplemental      : NO_SUPPLEMENTAL
         })).toThrow(/owners disagree on the override @huggingface\/transformers/);
 
-        // owners that force nothing stage the manifest they always staged
+        // an owner that overrides the engine to anything but the product's pin is the same red
+        expect(() => buildOrganismManifest({
+            brainPackageJson  : {...brainPackageJson, overrides: {'neo.mjs': 'https://github.com/neomjs/neo/archive/older.tar.gz'}},
+            productPackageJson,
+            scanned,
+            supplemental      : NO_SUPPLEMENTAL
+        })).toThrow(/Engine is the product's pin github:neomjs\/neo#pin/);
+
+        // owners that force nothing still stage the one forced resolution: the engine
         expect(buildOrganismManifest({
             brainPackageJson  : {dependencies: brainPackageJson.dependencies},
             productPackageJson: {dependencies: productPackageJson.dependencies},
             scanned,
             supplemental      : NO_SUPPLEMENTAL
-        })).not.toHaveProperty('overrides')
+        }).overrides).toEqual({'neo.mjs': 'github:neomjs/neo#pin'})
     });
 
     test('describeOwners ships role, name, version, pin and revision — no build-host coordinate survives in the staged metadata', () => {
