@@ -21,20 +21,23 @@ and first-run product UX remain later release-line leaves.
 ## Run
 
 ```bash
-cd /path/to/neo      # repo root
+cd /path/to/neo-agent-institution   # the product root
 npm install         # source-mode runtime + canonical theme builder dependencies
 cd harness
 npm ci              # the tracked lockfile pins the Electron toolchain — reproducible by construction
 npm start            # prepares missing dev assets, then boots the harness window (UI only)
-npm run start:brain  # the window + the SUPERVISED Agent OS (Arm B — see below)
+NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run start:brain  # + the SUPERVISED Agent OS (Arm B — see below)
 npm run smoke        # boot + popup + shared-worker + clean-runtime evidence, JSON verdict
 npm run smoke:brain  # the full verdict incl. the Brain leg (up + clean teardown + no orphan)
 npm run witness:lifecycle # headed close→hide→tray-open identity + tray-quit teardown receipt
 ```
 
-Prerequisite for the Brain legs: a fresh per-clone `ai/config.mjs` — if the orchestrator child
-crashes at import with `ERR_INVALID_ARG_TYPE` on a config path, run
-`npm run prepare -- --migrate-config` from the repo root (the instance config drifted behind the
+Prerequisites for the Brain legs: `NEO_AGENTOS_RUNTIME_ROOT` names a Brain checkout with its
+dependencies installed — the resolver and the supervised children bootstrap the Engine from the
+`neo.mjs` package that root's `node_modules` serves, exactly as the Brain's daemons do — and a
+fresh per-clone `ai/config.mjs`: if the orchestrator child crashes at import with
+`ERR_INVALID_ARG_TYPE` on a config path, run
+`npm run prepare -- --migrate-config` from the Brain root (the instance config drifted behind the
 template; the daemon's own freshness assert fires too late to catch this because the Orchestrator
 singleton constructs at module import).
 

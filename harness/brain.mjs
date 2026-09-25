@@ -237,10 +237,14 @@ export function probePort({port, host = '127.0.0.1', timeoutMs = 1500}) {
  */
 export function resolveBrainPaths({repoRoot, env = {}, execFileFn = execFile}) {
     const script = [
-        // The daemon entrypoints' own bootstrap order: Neo namespace before any setupClass consumer.
-        "import Neo from './src/Neo.mjs';",
-        "import * as core from './src/core/_export.mjs';",
-        "import InstanceManager from './src/manager/Instance.mjs';",
+        // The daemon entrypoints' own bootstrap (ai/daemons/orchestrator/daemon.mjs): the Brain
+        // root's .env, then the Engine from the `neo.mjs` package that root's node_modules serves —
+        // the checkout's shared-engine link and the staged organism's pinned install alike; a Brain
+        // root has no src/Neo.mjs of its own — then the Neo namespace before any setupClass consumer.
+        "import 'dotenv/config';",
+        "import Neo from 'neo.mjs/src/Neo.mjs';",
+        "import * as core from 'neo.mjs/src/core/_export.mjs';",
+        "import InstanceManager from 'neo.mjs/src/manager/Instance.mjs';",
         "import AiConfig from './ai/config.mjs';",
         "process.stdout.write(JSON.stringify({",
         "    backupPath         : AiConfig.data.backupPath,",
