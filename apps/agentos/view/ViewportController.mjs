@@ -1,5 +1,6 @@
 import Controller                                      from '../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import InstanceManager                                 from './fleet/instances/ManagerContainer.mjs';
+import PlaneSetupPanel                                 from './PlaneSetupPanel.mjs';
 import {createFleetProfile, deriveFleetProfileId}      from '../fleet/connectionProfiles.mjs';
 import {establishFleetSessionCustody, resolveFleetUrl} from '../fleet/fleetSessionCustody.mjs';
 import {installFleetBridge}                            from '../fleet/installFleetBridge.mjs';
@@ -26,8 +27,8 @@ class ViewportController extends Controller {
     }
 
     /**
-     * @summary Applies the persisted harness theme before the viewport settles, then hydrates the
-     * configured-instances roster.
+     * @summary Applies the persisted harness theme before the viewport settles, hydrates the
+     * configured-instances roster, and asks the shell whether it still needs a plane.
      */
     onComponentConstructed() {
         let me = this;
@@ -43,7 +44,30 @@ class ViewportController extends Controller {
             }
         });
 
-        me.initInstanceRoster()
+        me.initInstanceRoster();
+        me.mountPlaneSetup()
+    }
+
+    /**
+     * @summary Mounts the plane-setup card above the shell when the packaged shell reports no plane
+     * configured. A browser build or a configured shell never creates it, so its field styles never
+     * reorder the cascade the other surfaces render against.
+     * @returns {Promise<void>}
+     */
+    async mountPlaneSetup() {
+        const
+            me     = this,
+            status = await Promise.resolve(Neo.main?.addon?.ShellPlane?.planeStatus({windowId: me.windowId})).catch(() => null);
+
+        if (status?.available && status.packaged && !status.configured && !me.isDestroyed && !me.getReference('plane-setup')) {
+            const viewport = me.component;
+
+            viewport.insert(viewport.items.indexOf(me.getReference('shell')), {
+                module   : PlaneSetupPanel,
+                flex     : 'none',
+                reference: 'plane-setup'
+            })
+        }
     }
 
     /**

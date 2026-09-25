@@ -13,6 +13,7 @@ import AgentDefinitions   from '../../../../../apps/agentos/store/AgentDefinitio
 import FleetCockpit       from '../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetTenants       from '../../../../../apps/agentos/store/FleetTenants.mjs';
 import {deriveFleetProfileId} from '../../../../../apps/agentos/fleet/connectionProfiles.mjs';
+import PlaneSetupPanel    from '../../../../../apps/agentos/view/PlaneSetupPanel.mjs';
 import Viewport           from '../../../../../apps/agentos/view/Viewport.mjs';
 import ViewportController from '../../../../../apps/agentos/view/ViewportController.mjs';
 
@@ -88,6 +89,51 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
 
         expect(routes).toEqual(['/home', '/fleet', '/system', '/accounts', '/chat']);
         expect(routes.sort()).toEqual(Object.keys(ViewportController.config.routes).sort())
+    })
+});
+
+test.describe('AgentOS.view.ViewportController — the plane-setup card mounts only when the shell needs a plane', () => {
+    test.afterEach(() => {
+        delete Neo.main?.addon?.ShellPlane
+    });
+
+    async function mountWith(planeStatus) {
+        const
+            shell      = {},
+            inserted   = [],
+            controller = Object.create(ViewportController.prototype);
+
+        if (planeStatus) {
+            Neo.ns('Neo.main.addon', true).ShellPlane = {planeStatus}
+        }
+
+        controller.component    = {items: [{}, shell], insert: (index, config) => inserted.push({index, config})};
+        controller.getReference = reference => reference === 'shell' ? shell : null;
+        controller.windowId     = 7;
+
+        await controller.mountPlaneSetup();
+
+        return inserted
+    }
+
+    test('a packaged shell with no plane gets the card, above the shell', async () => {
+        const inserted = await mountWith(async () => ({available: true, packaged: true, configured: false}));
+
+        expect(inserted).toEqual([{index: 1, config: {module: PlaneSetupPanel, flex: 'none', reference: 'plane-setup'}}])
+    });
+
+    test('a browser, an unpackaged shell, a configured shell and a failed read create nothing', async () => {
+        const cases = [
+            null,
+            async () => ({available: false}),
+            async () => ({available: true, packaged: false, configured: false}),
+            async () => ({available: true, packaged: true,  configured: true}),
+            async () => { throw new Error('remote gone') }
+        ];
+
+        for (const planeStatus of cases) {
+            expect(await mountWith(planeStatus), String(planeStatus)).toEqual([])
+        }
     })
 });
 

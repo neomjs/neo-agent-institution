@@ -142,7 +142,8 @@ test.describe('harness pack stage', () => {
             'brain.mjs',
             'contentPolicy.mjs',
             'fleetCapability.mjs',
-            'main.mjs'
+            'main.mjs',
+            'planeConfig.mjs'
         ]);
         expect(() => assertPackagedMainModulesDeclared({builderConfig, modules})).not.toThrow();
         expect(mainSource).toContain('loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot})')

@@ -16,7 +16,7 @@
 //
 //   §2.1.5   one retained cockpit + tray; explicit quit owns exact-once Brain teardown
 
-import {app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, protocol, session, Tray} from 'electron';
+import {app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, protocol, safeStorage, session, Tray} from 'electron';
 import {createReadStream}                                                                   from 'node:fs';
 import {fileURLToPath}                                                                      from 'node:url';
 import path                                                                                 from 'node:path';
@@ -59,6 +59,7 @@ import {
     sweepStaleRunState,
     writeRunState
 } from './brain.mjs';
+import {createPlaneBroker, planeEnvFragment, readPlaneConfig} from './planeConfig.mjs';
 
 const
     harnessDir           = path.dirname(fileURLToPath(import.meta.url)),
@@ -957,10 +958,12 @@ function registerBrainChild(entry) {
 async function bootProductBrain() {
     // Packaged mode: the organism ships read-only(ish), so every mutable path moves to the
     // per-user data root, and Brain children (plus shebang grandchildren via the organism's node
-    // shim) run on the BUNDLED Electron runtime — a stranger's machine carries no Node.
+    // shim) run on the BUNDLED Electron runtime — a stranger's machine carries no Node. A plane the
+    // user attached from the cockpit joins as the env the launcher would export; set env still wins.
     const packagedEnv = packagedMode
         ? {
             ...buildPackagedBrainEnv({dataRoot: path.join(app.getPath('userData'), 'brain')}),
+            ...planeEnvFragment({env: process.env, planeConfig: readPlaneConfig({dir: app.getPath('userData'), safeStorage})}),
             ELECTRON_RUN_AS_NODE    : '1',
             NEO_HARNESS_ELECTRON_BIN: process.execPath
         }
@@ -1175,6 +1178,21 @@ app.whenReady().then(async () => {
         return {...appLifecycle.brainHealth, transport: uiTransportFact}
     });
 
+    // The plane-attach broker pair: the cockpit reads whether a plane is configured
+    // and asks main to attach one; the PAT stays in main custody from the prompt to the encrypted write.
+    const planeBroker = createPlaneBroker({
+        dir             : app.getPath('userData'),
+        getTransportFact: () => uiTransportFact,
+        isTrustedSender : isTrustedIpcSender,
+        packaged        : packagedMode,
+        promptCredential: promptFleetCredential,
+        relaunch        : () => setTimeout(() => { app.relaunch(); app.quit() }, 250),
+        safeStorage
+    });
+
+    ipcMain.handle('shell-plane-status', planeBroker.status);
+    ipcMain.handle('shell-plane-attach', planeBroker.attach);
+
     const win1 = createHarnessWindow(APP_URL);
 
     appLifecycle.attachCockpitWindow(win1);
@@ -1340,7 +1358,7 @@ app.whenReady().then(async () => {
             }
 
             const
-                expectedShellKeys = ['fleetRequest', 'shellVersion'],
+                expectedShellKeys = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'shellVersion'],
                 probes            = [primary, popup, primaryAfterPopup, forgedSender],
                 surfaceExact      = probes.every(probe =>
                     JSON.stringify(probe.shellKeys) === JSON.stringify(expectedShellKeys)
