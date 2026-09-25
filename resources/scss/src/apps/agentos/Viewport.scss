@@ -206,6 +206,15 @@
         min-height: 50px;
         padding   : 0 var(--fm-frame-gutter);
 
+        /* The band's control scale — the identity row, not a touch surface: the engine's button
+           reads these four at the element (button/Base.scss: height, min-width, padding,
+           border-radius), so the theme switch becomes a 32px square centered in the 50px band
+           instead of a 48px tile filling it. The instance switcher keeps its own chip geometry. */
+        --button-height       : 32px;
+        --button-min-width    : 32px;
+        --button-padding      : 0;
+        --button-border-radius: 6px;
+
         @media (max-width: 560px) {
             padding: 0 var(--fm-space-3);
         }
