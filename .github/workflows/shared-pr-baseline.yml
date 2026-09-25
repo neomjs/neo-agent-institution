@@ -1,7 +1,7 @@
-# Agent Institution owns only the event trigger and the immutable Skills coordinate. The called
-# workflow owns base admission, materialization, source archaeology, substrate size and the agent
-# PR-body gate, so their implementation cannot drift in this consumer. Product CI (ci.yml — the
-# isolated and explicit-Brain suites) stays a separate workflow: governance never gates the build.
+# Agent Institution owns only the event trigger, its permissions, the team roster input and the Skills
+# release it calls. The called workflow owns every job, so their implementation cannot drift in this
+# consumer. Product CI (ci.yml — the isolated and explicit-Brain suites) stays a separate workflow:
+# governance never gates the build.
 
 name: Shared PR Baseline
 
@@ -25,9 +25,11 @@ on:
 jobs:
   baseline:
     name: Shared PR Baseline
-    # An exact commit, never a branch or tag, so a pull request cannot weaken the gate it is judged
-    # by: the called workflow hardcodes the guard release it installs, and this line is the only way
-    # a newer one reaches this repository. The coordinate is Skills 0.1.6 (2026-09-15), whose
-    # archaeology rules stop reading CSS colour literals and numeric entities as ticket references, and
-    # accept a typed `[not-ticket-ref: <reason>]` marker on a deliberate reference as well as a colour.
-    uses: neomjs/neo-agent-skills/.github/workflows/reusable-pr-baseline.yml@6b009521fac6f571be2200cadbeab734cfcffe6d
+    # The published Skills release this repository is judged by, named by its tag and never by a commit
+    # SHA: the called workflow installs the same npm version, and dependabot moves the tag on each release.
+    uses: neomjs/neo-agent-skills/.github/workflows/reusable-pr-baseline.yml@v0.1.17
+    # The team roster tells the commit-authorship job whose commits are an agent's; without it the job
+    # checks nothing. It is read from the Brain's `dev`, never from the pull request under review.
+    with:
+      team_roster_repository: neomjs/neo-agent-brain
+      team_roster_path: ai/graph/agentCoAuthorEmails.mjs
