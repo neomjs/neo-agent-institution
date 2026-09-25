@@ -302,12 +302,12 @@ class FleetCockpit extends VesselContainer {
             {
                 // THE STATE BLOCK — the bar's structural law: state never sits between action
                 // buttons; the two spine axes (fleet · wake) render as one right-aligned block
-                // before the action group. Wide bars stack the pills vertically (the band's
-                // vertical space is there), mid widths run them in a row, narrow widths drop to
-                // dots-with-titles — the collapse order is a container query in the cockpit
-                // SCSS, never measured here.
-                ntype: 'container',
-                cls  : ['fm-bar-state'],
+                // before the action group. The pills run in a row wherever they carry their
+                // words; narrow widths drop to dots-with-titles — the collapse order is a
+                // container query in the cockpit SCSS, never measured here.
+                ntype : 'container',
+                cls   : ['fm-bar-state'],
+                layout: {ntype: 'hbox', align: 'center'},
                 // Both pills size to their words: the block's flexbox layout would otherwise
                 // write `flex: 1 1 0%` onto each child, which splits the row form's width equally
                 // and clipped the longer pill mid-word while the shorter one held slack.
