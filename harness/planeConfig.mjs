@@ -4,14 +4,16 @@ import path from 'node:path';
 /**
  * @module harness/planeConfig
  * @summary The packaged shell's own record of the plane it attaches to. `plane.json` under Electron's
- * `userData` names the plane base; the viewer's PAT sits beside it, encrypted by `safeStorage` (the OS
- * keychain). Only main reads or writes either file: the renderer and the App worker learn whether a
- * plane is configured, never the credential.
+ * `userData` names the plane base and the identity the plane named for the viewer's PAT; the PAT sits
+ * beside it, encrypted by `safeStorage` (the OS keychain). Only main reads or writes either file: the
+ * renderer and the App worker learn whether a plane is configured, never the credential.
  *
- * At boot the record becomes the env fragment the launcher used to export — `NEO_FLEET_PLANE_BASE` and
- * `NEO_FLEET_PLANE_BEARER` — and a variable already set in the process env wins, so checkout runs and
- * the launcher keep working unchanged. The record applies as a unit: its bearer never travels to a
- * plane base that came from somewhere else.
+ * At boot the record becomes the env fragment the launcher used to export — `NEO_FLEET_PLANE_BASE`,
+ * `NEO_FLEET_PLANE_BEARER`, and the bearer's `NEO_AGENT_IDENTITY` — and a plane variable already set in
+ * the process env wins, so checkout runs and the launcher keep working unchanged. The record applies as
+ * a unit: its bearer never travels to a plane base that came from somewhere else, and its identity
+ * travels with its bearer, because the plane admits the fleet child only when the claimed identity is
+ * the bearer's subject.
  */
 
 /**
@@ -59,22 +61,38 @@ export function normalizePlaneBase(value) {
 }
 
 /**
+ * @summary A viewer identity in the canonical `@login` form the Brain's `normalizeAgentIdentityNodeId`
+ * produces, or `null`. A namespaced id (`AGENT:*`) or a value with whitespace names no viewer. The
+ * shell keeps its own copy of the rule: it imports no Brain code.
+ * @param {*} value
+ * @returns {String|null}
+ */
+export function canonicalIdentity(value) {
+    const bare = typeof value === 'string' ? value.trim().replace(/^@+/, '') : '';
+
+    return bare && !/[\s:]/.test(bare) ? `@${bare}` : null
+}
+
+/**
  * @summary Reads the configured plane. A missing or unreadable record reads as unconfigured, and a
  * bearer that no longer decrypts (a reset keychain, another user) reads as absent instead of failing
- * the boot.
+ * the boot. A record stored before the identity was recorded reads `identity: null`.
  * @param {Object} options
  * @param {String} options.dir Directory holding the record (Electron `userData`).
  * @param {Object} options.safeStorage Electron `safeStorage`.
  * @param {Object} [options.fsModule=fs]
- * @returns {{planeBase: String|null, bearer: String|null}}
+ * @returns {{planeBase: String|null, bearer: String|null, identity: String|null}}
  */
 export function readPlaneConfig({dir, safeStorage, fsModule = fs}) {
-    let planeBase, bearer = null;
+    let planeBase, identity, bearer = null;
 
     try {
-        planeBase = normalizePlaneBase(JSON.parse(fsModule.readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8')).planeBase)
+        const record = JSON.parse(fsModule.readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'));
+
+        planeBase = normalizePlaneBase(record.planeBase);
+        identity  = canonicalIdentity(record.identity)
     } catch {
-        return {planeBase: null, bearer: null}
+        return {planeBase: null, bearer: null, identity: null}
     }
 
     try {
@@ -85,27 +103,36 @@ export function readPlaneConfig({dir, safeStorage, fsModule = fs}) {
         bearer = null
     }
 
-    return {planeBase, bearer}
+    return {planeBase, bearer, identity}
 }
 
 /**
  * @summary Stores the plane record. Refuses when the OS cannot encrypt: a plain-text PAT under
  * `userData` is the launcher's stopgap, not the product. The bearer is written first, so `plane.json`
- * — the file that marks the shell as configured — never points at a credential that is missing.
+ * — the file that marks the shell as configured — never points at a credential that is missing. The
+ * identity is the one the plane named for this bearer; it is not a secret, so it sits in `plane.json`.
  * @param {Object} options
  * @param {String} options.dir
  * @param {Object} options.safeStorage
  * @param {String} options.planeBase
  * @param {String} options.bearer
+ * @param {String} options.identity The bearer's canonical `@login`, from {@link probePlaneCredential}.
  * @param {Object} [options.fsModule=fs]
- * @returns {{planeBase: String}}
- * @throws {Error} When encryption is unavailable, or on an invalid plane base or an empty bearer.
+ * @returns {{planeBase: String, identity: String}}
+ * @throws {Error} When encryption is unavailable, or on an invalid plane base, an empty bearer, or an
+ * identity that names no viewer.
  */
-export function writePlaneConfig({dir, safeStorage, planeBase, bearer, fsModule = fs}) {
-    const base = normalizePlaneBase(planeBase);
+export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity, fsModule = fs}) {
+    const
+        base   = normalizePlaneBase(planeBase),
+        viewer = canonicalIdentity(identity);
 
     if (typeof bearer !== 'string' || !bearer.trim()) {
         throw new TypeError('plane bearer must be a non-empty string')
+    }
+
+    if (!viewer) {
+        throw new TypeError('plane identity must be a canonical @login')
     }
 
     if (!safeStorage.isEncryptionAvailable()) {
@@ -114,9 +141,9 @@ export function writePlaneConfig({dir, safeStorage, planeBase, bearer, fsModule 
 
     fsModule.mkdirSync(dir, {recursive: true});
     fsModule.writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString(bearer.trim()), {mode: 0o600});
-    fsModule.writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({planeBase: base}, null, 4) + '\n', {mode: 0o600});
+    fsModule.writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({identity: viewer, planeBase: base}, null, 4) + '\n', {mode: 0o600});
 
-    return {planeBase: base}
+    return {identity: viewer, planeBase: base}
 }
 
 /**
@@ -136,8 +163,13 @@ export function forgetPlaneConfig({dir, fsModule = fs}) {
  * base set elsewhere. A bearer set in the env still wins over the stored one, and a record whose bearer
  * no longer decrypts is no record at all unless the env supplies one: the shell boots on its own rather
  * than attaching without a credential.
+ *
+ * The stored bearer brings its identity as `NEO_AGENT_IDENTITY`, over any inherited value: the fleet
+ * child claims that identity and the plane admits it only as the bearer's subject, so an identity the
+ * launch left behind — none from Finder, a peer's when an agent session started the app — can only be
+ * refused. An env bearer keeps the env's identity, and a record without one exports none.
  * @param {Object} options
- * @param {{planeBase: String|null, bearer: String|null}} options.planeConfig
+ * @param {{planeBase: String|null, bearer: String|null, identity: String|null}} options.planeConfig
  * @param {Object} options.env The process env.
  * @returns {Object}
  */
@@ -146,9 +178,12 @@ export function planeEnvFragment({planeConfig, env}) {
         return {}
     }
 
+    const storedBearer = planeConfig.bearer && env.NEO_FLEET_PLANE_BEARER === undefined;
+
     return {
         NEO_FLEET_PLANE_BASE: planeConfig.planeBase,
-        ...(planeConfig.bearer && env.NEO_FLEET_PLANE_BEARER === undefined && {NEO_FLEET_PLANE_BEARER: planeConfig.bearer})
+        ...(storedBearer && {NEO_FLEET_PLANE_BEARER: planeConfig.bearer}),
+        ...(storedBearer && planeConfig.identity && {NEO_AGENT_IDENTITY: planeConfig.identity})
     }
 }
 
@@ -160,12 +195,15 @@ export function planeEnvFragment({planeConfig, env}) {
  */
 export const PLANE_MCP_SERVER_NAME = 'neo-memory-core';
 
-const INITIALIZE = JSON.stringify({
-    id     : 1,
-    jsonrpc: '2.0',
-    method : 'initialize',
-    params : {capabilities: {}, clientInfo: {name: 'neo-harness-plane-probe', version: '1'}, protocolVersion: '2025-03-26'}
-});
+const
+    INITIALIZE       = {
+        id     : 1,
+        jsonrpc: '2.0',
+        method : 'initialize',
+        params : {capabilities: {}, clientInfo: {name: 'neo-harness-plane-probe', version: '1'}, protocolVersion: '2025-03-26'}
+    },
+    INITIALIZED      = {jsonrpc: '2.0', method: 'notifications/initialized'},
+    LIST_PERMISSIONS = {id: 2, jsonrpc: '2.0', method: 'tools/call', params: {arguments: {}, name: 'list_permissions'}};
 
 /**
  * @summary Reads the JSON-RPC message from an MCP answer, which the transport sends either as JSON or
@@ -184,25 +222,49 @@ function parseMcpAnswer(text) {
 }
 
 /**
- * @summary Asks the plane whether it admits a credential, in two steps on its MCP route. The first
+ * @summary Reads a tool call's payload the way the Brain's plane client does: structured content when
+ * present, else the JSON of the text item. An error result has none.
+ * @param {Object|null} result The `result` of a `tools/call` answer.
+ * @returns {Object|null}
+ */
+function readToolPayload(result) {
+    if (!result || result.isError) return null;
+
+    if (result.structuredContent && typeof result.structuredContent === 'object') {
+        return result.structuredContent
+    }
+
+    try {
+        return JSON.parse(result.content?.find?.(item => item?.type === 'text')?.text)
+    } catch {
+        return null
+    }
+}
+
+/**
+ * @summary Asks the plane whether it admits a credential, and whose it is, on its MCP route. The first
  * `initialize` carries no credential: a plane answers with a bearer challenge (401 +
  * `WWW-Authenticate: Bearer`), and any other answer ends the probe before the PAT leaves this process.
- * The second carries the PAT and is accepted only when the Memory Core names itself; the session it
- * opened is closed again. Whether the credential's subject is the viewer is proven later, by the plane
- * client at boot.
+ * The second carries the PAT and counts only when the Memory Core names itself. In that session the
+ * probe then calls `list_permissions`, whose `identity` is the bearer's subject as the plane resolves
+ * it — the identity the fleet child must claim for the plane to admit it. The session is closed again
+ * however the probe ends.
  * @param {Object} options
  * @param {String} options.planeBase A normalized plane base.
  * @param {String} options.bearer
  * @param {Function} [options.fetchFn=fetch]
  * @param {Number} [options.timeoutMs=8000]
- * @returns {Promise<'accepted'|'rejected'|'not-a-plane'|'unreachable'>}
+ * @returns {Promise<{verdict: 'accepted'|'rejected'|'not-a-plane'|'no-identity'|'unreachable', identity: String|null}>}
+ *     `identity` is the canonical `@login` when the verdict is `accepted`, else `null`.
  */
 export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, timeoutMs = 8000}) {
     const
-        url  = `${planeBase}/mc/mcp`,
-        post = authorization => fetchFn(url, {
-            body   : INITIALIZE,
-            headers: {Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...(authorization && {Authorization: authorization})},
+        url           = `${planeBase}/mc/mcp`,
+        authorization = `Bearer ${bearer}`,
+        refuse        = verdict => ({identity: null, verdict}),
+        post          = (message, headers = {}) => fetchFn(url, {
+            body   : JSON.stringify(message),
+            headers: {Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...headers},
             method : 'POST',
             signal : AbortSignal.timeout(timeoutMs)
         });
@@ -210,32 +272,55 @@ export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, 
     let answer, response;
 
     try {
-        response = await post(null);
+        response = await post(INITIALIZE);
         await response.text().catch(() => '');
 
         if (response.status !== 401 || !/^Bearer\b/i.test(response.headers.get('www-authenticate') ?? '')) {
-            return 'not-a-plane'
+            return refuse('not-a-plane')
         }
 
-        response = await post(`Bearer ${bearer}`);
+        response = await post(INITIALIZE, {Authorization: authorization});
         answer   = await response.text().catch(() => '')
     } catch {
-        return 'unreachable'
+        return refuse('unreachable')
     }
 
     if (response.status === 401 || response.status === 403) {
-        return 'rejected'
+        return refuse('rejected')
     }
 
-    const session = response.headers.get('mcp-session-id');
+    const
+        session     = response.headers.get('mcp-session-id'),
+        initialized = response.status === 200 ? parseMcpAnswer(answer)?.result : null;
 
-    session && Promise.resolve(fetchFn(url, {
-        headers: {Authorization: `Bearer ${bearer}`, 'mcp-session-id': session},
-        method : 'DELETE',
-        signal : AbortSignal.timeout(timeoutMs)
-    })).catch(() => {});
+    try {
+        if (initialized?.serverInfo?.name !== PLANE_MCP_SERVER_NAME) {
+            return refuse('not-a-plane')
+        }
 
-    return response.status === 200 && parseMcpAnswer(answer)?.result?.serverInfo?.name === PLANE_MCP_SERVER_NAME ? 'accepted' : 'not-a-plane'
+        const headers = {
+            Authorization: authorization,
+            ...(session                    && {'mcp-session-id': session}),
+            ...(initialized.protocolVersion && {'mcp-protocol-version': initialized.protocolVersion})
+        };
+
+        try {
+            await (await post(INITIALIZED, headers)).text().catch(() => '');
+            answer = await (await post(LIST_PERMISSIONS, headers)).text().catch(() => '')
+        } catch {
+            return refuse('unreachable')
+        }
+
+        const identity = canonicalIdentity(readToolPayload(parseMcpAnswer(answer)?.result)?.identity);
+
+        return identity ? {identity, verdict: 'accepted'} : refuse('no-identity')
+    } finally {
+        session && Promise.resolve(fetchFn(url, {
+            headers: {Authorization: authorization, 'mcp-session-id': session},
+            method : 'DELETE',
+            signal : AbortSignal.timeout(timeoutMs)
+        })).catch(() => {})
+    }
 }
 
 /**
@@ -312,13 +397,13 @@ export function createPlaneBroker({dir, getTransportFact, isTrustedSender, packa
                 return refuse('canceled')
             }
 
-            const verdict = await probePlaneCredential({planeBase, bearer, fetchFn});
+            const {identity, verdict} = await probePlaneCredential({planeBase, bearer, fetchFn});
 
             if (verdict !== 'accepted') {
                 return refuse(verdict)
             }
 
-            writePlaneConfig({bearer, dir, fsModule, planeBase, safeStorage});
+            writePlaneConfig({bearer, dir, fsModule, identity, planeBase, safeStorage});
             relaunch();
 
             return {ok: true, reason: null, relaunching: true}
