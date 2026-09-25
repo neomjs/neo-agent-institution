@@ -13,8 +13,8 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  */
 
 /**
- * The declared shape of the `fleetGoldenPath` wire (neomjs/neo-agent-brain#499): `null` marks a leaf,
- * `[]` an atomic list, and an object a block.
+ * The declared shape of the Brain's `fleetGoldenPath` wire: `null` marks a leaf, `[]` an atomic list, and
+ * an object a block.
  * @type {Object}
  */
 const SHAPE = {
