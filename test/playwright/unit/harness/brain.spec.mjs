@@ -23,6 +23,7 @@ import {
     probePort,
     registerOwnedChild,
     resolveAgentOsRuntimeRoot,
+    resolveBrainPaths,
     resolveProductBrainPlan,
     resolveRealPath,
     resolveUiFleetTransport,
@@ -150,6 +151,53 @@ test.describe('harness brain lifecycle', () => {
         expect(() => resolveAgentOsRuntimeRoot({NEO_AGENTOS_RUNTIME_ROOT: '../neo-agent-brain'}))
             .toThrow(/absolute/);
         expect(resolveAgentOsRuntimeRoot({NEO_AGENTOS_RUNTIME_ROOT: workDir})).toBe(path.resolve(workDir))
+    });
+
+    test('resolveBrainPaths bootstraps the Engine from the neo.mjs package the Brain root serves, never from a Brain-root ./src', async () => {
+        // The Brain root has no src/Neo.mjs since the split: its daemons import the Engine from
+        // the `neo.mjs` package in their own node_modules, after `dotenv/config`. The resolver is
+        // the same process shape, so it mirrors that bootstrap line for line.
+        const
+            calls      = [],
+            execFileFn = (file, args, options, callback) => {
+                calls.push({args, options});
+                callback(null, JSON.stringify({fleetPlaneBase: 'http://127.0.0.1:3102'}), '')
+            },
+            resolved   = await resolveBrainPaths({env: {NEO_FLEET_PLANE_BASE: 'http://127.0.0.1:3102'}, execFileFn, repoRoot: workDir}),
+            [{args, options}] = calls;
+
+        expect(resolved).toEqual({fleetPlaneBase: 'http://127.0.0.1:3102'});
+        expect(args.slice(0, 2)).toEqual(['--input-type=module', '-e']);
+        expect(args[2].split('\n').slice(0, 5)).toEqual([
+            "import 'dotenv/config';",
+            "import Neo from 'neo.mjs/src/Neo.mjs';",
+            "import * as core from 'neo.mjs/src/core/_export.mjs';",
+            "import InstanceManager from 'neo.mjs/src/manager/Instance.mjs';",
+            "import AiConfig from './ai/config.mjs';"
+        ]);
+        expect(args[2]).not.toMatch(/from '\.\/src\//);
+        expect(options.cwd).toBe(workDir);
+        expect(options.env.NEO_FLEET_PLANE_BASE).toBe('http://127.0.0.1:3102');
+    });
+
+    test('resolveBrainPaths rejects with the child\'s stderr on failure and names non-JSON output', async () => {
+        const failing = (file, args, options, callback) => callback(new Error('exit 1'), '', 'ERR_MODULE_NOT_FOUND: src/Neo.mjs'),
+              garbled = (file, args, options, callback) => callback(null, 'not json', '');
+
+        await expect(resolveBrainPaths({execFileFn: failing, repoRoot: workDir})).rejects.toThrow(/config resolver failed: ERR_MODULE_NOT_FOUND/);
+        await expect(resolveBrainPaths({execFileFn: garbled, repoRoot: workDir})).rejects.toThrow(/non-JSON: not json/);
+    });
+
+    test('resolveBrainPaths resolves every supervised leaf against a real Brain root (NEO_AGENTOS_RUNTIME_ROOT)', async () => {
+        test.skip(!process.env.NEO_AGENTOS_RUNTIME_ROOT, 'live arm: set NEO_AGENTOS_RUNTIME_ROOT to an installed Brain checkout');
+
+        const resolved = await resolveBrainPaths({repoRoot: resolveAgentOsRuntimeRoot(process.env)});
+
+        expect(Object.keys(resolved).sort()).toEqual([
+            'backupPath', 'chromaDataDir', 'chromaPort', 'dbPath', 'fleetInstanceRoot', 'fleetPlaneBase', 'orchestratorDataDir'
+        ]);
+        expect(path.isAbsolute(resolved.dbPath)).toBe(true);
+        expect(Number.isInteger(Number(resolved.chromaPort))).toBe(true);
     });
 
     test('Fleet contracts keep the public product and private runtime roots independent, cache both, and support the explicit packaged same-root case', async () => {
