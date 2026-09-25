@@ -12,6 +12,7 @@ const CAUSE_SEVERITY = Object.freeze({
     'boot-not-ready'         : 1,
     'cockpit-closed'         : 1,
     'cockpit-destroyed'      : 1,
+    'organism-beside-plane'  : 1,
     'owned-child-termination': 2,
     'render-process-gone'    : 1
 });
@@ -93,12 +94,14 @@ export function createAppLifecycle({
 
     /**
      * @summary Settles asynchronous Brain boot without erasing an owned-child fault that arrived
-     * while readiness was still resolving.
+     * while readiness was still resolving. A failed boot keeps the cause its refusal named, and falls
+     * back to the generic `boot-not-ready` when it named none.
      * @param {Boolean} up Whether the bounded boot contract reached ready.
+     * @param {{source: String, detail: (String|null)}|null} [cause=null] The failed boot's typed cause.
      * @returns {'running'|'degraded'}
      */
-    function settleBrainBoot(up) {
-        up || recordBrainCause('boot-not-ready');
+    function settleBrainBoot(up, cause = null) {
+        up || recordBrainCause(cause?.source ?? 'boot-not-ready', cause?.detail ?? null);
         return setBrainState(up && !brainFaulted ? 'running' : 'degraded')
     }
 

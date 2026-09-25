@@ -358,6 +358,15 @@ test.describe('harness app lifecycle', () => {
             expect(lifecycle.brainHealth).toEqual({cause: null, state: 'running'})
         });
 
+        test('a boot refused beside a running plane keeps its typed cause instead of boot-not-ready', () => {
+            const
+                app       = createFakeApp(),
+                lifecycle = createAppLifecycle({app, teardownBrain: async () => ({})});
+
+            expect(lifecycle.settleBrainBoot(false, {detail: 'Chroma holds localhost:8000', source: 'organism-beside-plane'})).toBe('degraded');
+            expect(lifecycle.brainHealth.cause).toMatchObject({detail: 'Chroma holds localhost:8000', source: 'organism-beside-plane'})
+        });
+
         test('an explicit quit path never renders as impairment: stopped clears the cause', async () => {
             const
                 app       = createFakeApp(),

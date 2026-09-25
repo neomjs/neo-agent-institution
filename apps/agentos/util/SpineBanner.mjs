@@ -182,7 +182,7 @@ class SpineBanner extends Base {
               reason = typeof connection.reason === 'string' ? connection.reason.trim() : '',
               title = `${sentence} — ${detail}${reason ? ` · ${reason}` : ''}`;
 
-        return {hidden: false, kind, text: `${scope} ${word}`, title, ariaLabel: title}
+        return {action: null, hidden: false, kind, text: `${scope} ${word}`, title, ariaLabel: title}
     }
 
     /**
@@ -208,7 +208,14 @@ class SpineBanner extends Base {
     static deriveSpineBanner({daemon, grid, stream, transport = null}) {
         const surfaces = [grid, stream],
               states   = surfaces.map(surface => surface?.state),
-              verdict  = (kind, text, title) => ({hidden: false, kind, text, title, ariaLabel: title});
+              verdict  = (kind, text, title, action = null) => ({action, hidden: false, kind, text, title, ariaLabel: title});
+
+        // A packaged shell refuses to own an organism beside a plane that already runs here. The sample
+        // roster and the refused fleet are consequences of that refusal, so its cause outranks them, and
+        // the one useful action is attaching this shell to that plane.
+        if (daemon?.cause === 'organism-beside-plane') {
+            return verdict('cold', 'plane here', `A plane already runs on this machine — connect this shell to it${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
+        }
 
         // Only a sample GRID enters the cold family: its copy asserts roster + server facts, and a
         // sample sibling stream has no standing to make either claim over a live roster.
@@ -291,7 +298,7 @@ class SpineBanner extends Base {
                 : 'Activity feed pending — roster is live')
         }
 
-        return {hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''}
+        return {action: null, hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''}
     }
 }
 

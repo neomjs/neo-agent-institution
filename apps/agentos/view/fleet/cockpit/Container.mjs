@@ -354,17 +354,19 @@ class FleetCockpit extends VesselContainer {
                     reference: 'viewer-wake-telltale'
                 }]
             }, {
-                // the banner's manual recovery affordance: one click re-drives every liveness
-                // seam through the existing authenticated bridge — no reload, no new transport.
-                // Visibility IS the banner verdict, bound from the same formula. First of the
-                // ACTION group — contextual: it exists only while the fleet pill shows.
+                // the banner's action: Reconnect re-drives every liveness seam through the existing
+                // bridge; beside a running plane it becomes Connect and opens the plane card. Its
+                // visibility and its words are the banner verdict, bound from the same formula. First
+                // of the ACTION group — contextual: it exists only while the fleet pill shows.
                 module   : Button,
-                bind     : {hidden: data => data.spineBanner.hidden},
+                bind     : {
+                    hidden : data => data.spineBanner.hidden,
+                    iconCls: data => data.spineBanner.action === 'connect-plane' ? 'fa-solid fa-plug' : 'fa-solid fa-rotate',
+                    text   : data => data.spineBanner.action === 'connect-plane' ? 'Connect' : 'Reconnect'
+                },
                 cls      : ['fm-reconnect-button'],
-                handler  : 'reconnectFleet',
-                iconCls  : 'fa-solid fa-rotate',
-                reference: 'fleet-reconnect-button',
-                text     : 'Reconnect'
+                handler  : 'onSpineAction',
+                reference: 'fleet-reconnect-button'
             }, {
                 // The fleet-start outcome summary — written by the controller after the staged
                 // bring-up settles ("N started · U UNKNOWN · M rejected · K excluded"; per-member
