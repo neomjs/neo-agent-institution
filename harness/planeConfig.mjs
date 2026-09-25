@@ -181,9 +181,9 @@ export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, 
 }
 
 /**
- * @summary The main-process handlers behind the preload's `planeStatus()` and `attachPlane()` (ADR 0034
- * §2.3.8). Both refuse an untrusted sender, and neither reply ever carries the credential: the PAT
- * exists only between the credential prompt, the probe, and the encrypted write.
+ * @summary The main-process handlers behind the preload's `planeStatus()` and `attachPlane()`. Both
+ * refuse an untrusted sender, and neither reply ever carries the credential: the PAT exists only
+ * between the credential prompt, the probe, and the encrypted write.
  * @param {Object} options
  * @param {String} options.dir Directory holding the record (Electron `userData`).
  * @param {Function} options.getTransportFact Returns the settled boot fact (`{mode, up}`) or `null`.

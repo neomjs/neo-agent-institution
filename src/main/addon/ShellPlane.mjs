@@ -1,7 +1,7 @@
 import Base from '../../../node_modules/neo.mjs/src/main/addon/Base.mjs';
 
 /**
- * @summary The cockpit's reach into the packaged shell's plane-attach broker pair (ADR 0034 §2.3.8).
+ * @summary The cockpit's reach into the packaged shell's plane-attach broker pair.
  *
  * The shell's preload answers both calls in Electron main. Main prompts for the credential itself, so
  * no call from here carries one, and no answer returns one. In a browser there is no shell: each call

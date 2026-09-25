@@ -4,13 +4,13 @@ import TextField from '../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 
 /**
  * @summary The packaged shell's "connect to a plane" card: inline, dismissible, and never a gate — the
- * sample cockpit stays usable behind it (the shell spec, Institution #12).
+ * sample cockpit stays usable behind it, as the shell spec requires.
  *
  * It shows only in a packaged shell with no plane configured, read once from
  * `Neo.main.addon.ShellPlane.planeStatus()`, so a browser build or a configured shell never renders
  * it. Connecting hands the plane address to `attachPlane()`; Electron main then asks for the PAT in its
  * own window, checks it against the plane, stores it encrypted, and relaunches the shell. No credential
- * ever reaches this card (ADR 0034 §2.3.8), so every line it renders is plain `text`.
+ * ever reaches this card, so every line it renders is plain `text`.
  * @class AgentOS.view.PlaneSetupPanel
  * @extends Neo.container.Panel
  */

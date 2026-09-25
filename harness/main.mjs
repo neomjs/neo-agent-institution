@@ -1178,7 +1178,7 @@ app.whenReady().then(async () => {
         return {...appLifecycle.brainHealth, transport: uiTransportFact}
     });
 
-    // The plane-attach broker pair (ADR 0034 §2.3.8): the cockpit reads whether a plane is configured
+    // The plane-attach broker pair: the cockpit reads whether a plane is configured
     // and asks main to attach one; the PAT stays in main custody from the prompt to the encrypted write.
     const planeBroker = createPlaneBroker({
         dir             : app.getPath('userData'),
