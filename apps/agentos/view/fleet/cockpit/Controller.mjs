@@ -1,4 +1,4 @@
-import LivenessController          from './LivenessController.mjs';
+import ReadingSurfacesController   from './ReadingSurfacesController.mjs';
 import CockpitPerspectives         from '../../../util/CockpitPerspectives.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
@@ -7,13 +7,16 @@ import SourceHealth                from '../../../util/SourceHealth.mjs';
 /**
  * @summary The cockpit's intent + command layer — the surface-fired intent relays, the per-pane
  * snapshot reads and the fleet-start batch. View logic lives on the controller (lifecycle-bound,
- * first-class `this.component` access), never on a util a view object gets passed into. The wire-liveness half (roster/activity/Brain-health loads, cadence,
- * reconnect, viewer-wake custody) is the inherited
- * {@link AgentOS.view.fleet.cockpit.LivenessController} layer.
+ * first-class `this.component` access), never on a util a view object gets passed into. Two layers
+ * are inherited:
+ * - the south reading surfaces (catch-up and the Golden Path):
+ *   {@link AgentOS.view.fleet.cockpit.ReadingSurfacesController};
+ * - beneath them, the wire-liveness half (roster, activity and Brain-health loads, cadence,
+ *   reconnect, viewer-wake custody): {@link AgentOS.view.fleet.cockpit.LivenessController}.
  *
  * State split (the operator's partial-provider ruling): truths MORE THAN ONE surface reads live
  * on {@link AgentOS.view.fleet.cockpit.StateProvider} and the surfaces bind. Per-pane snapshots
- * (operator inbox, memories + drill, wake routes, tasks, catch-up) are CONTROLLER state below,
+ * (operator inbox, memories + drill, wake routes, tasks) are CONTROLLER state below,
  * written to their one pane directly at WRITE time through the view's phase-blind accessors (a
  * pane torn into a vessel or parked in a returning window still receives the truth; a destroyed
  * one never swallows it).
@@ -22,9 +25,9 @@ import SourceHealth                from '../../../util/SourceHealth.mjs';
  * unavailable fallback (never a fabricated success), and only the newest generation writes.
  *
  * @class AgentOS.view.fleet.cockpit.Controller
- * @extends AgentOS.view.fleet.cockpit.LivenessController
+ * @extends AgentOS.view.fleet.cockpit.ReadingSurfacesController
  */
-class Controller extends LivenessController {
+class Controller extends ReadingSurfacesController {
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.cockpit.Controller'
@@ -38,23 +41,6 @@ class Controller extends LivenessController {
         ntype: 'fm-fleet-cockpit-controller'
     }
 
-    /**
-     * Read-fence + owner-held snapshot for the catch-up history surface.
-     * @member {Number} catchUpReadGeneration=0
-     * @protected
-     */
-    catchUpReadGeneration = 0
-    /**
-     * @member {Object|null} catchUpSnapshot=null
-     * @protected
-     */
-    catchUpSnapshot = null
-    /**
-     * The last explicit mark-caught-up outcome, owner-held for pane rematerialization.
-     * @member {Object|null} catchUpMarkOutcome=null
-     * @protected
-     */
-    catchUpMarkOutcome = null
     /**
      * The read-fence + owner-held drill state for the memories surfaces.
      * @member {Number} memoriesReadGeneration=0
@@ -236,35 +222,6 @@ class Controller extends LivenessController {
     }
 
     /**
-     * @summary Relay a CatchUpPane read intent.
-     * @param {Object} data
-     * @returns {Promise<Object>}
-     */
-    onCatchUpHistoryRequest(data) {
-        const {source, ...params} = data;
-
-        return this.loadCatchUp(params)
-    }
-
-    /**
-     * @summary Relay the explicit runtime-only mark intent.
-     * @param {Object} data
-     * @returns {Promise<Object>}
-     */
-    onCatchUpMarkRequest(data) {
-        return this.markCatchUp({windowEnd: data.windowEnd})
-    }
-
-    /**
-     * @summary Route to the existing live adjacency without turning it into history authority.
-     * @param {Object} data
-     * @returns {Promise<Object>}
-     */
-    onCatchUpLiveSurfaceRequest(data) {
-        return this.openCatchUpLiveSurface({target: data.target})
-    }
-
-    /**
      * @summary Relay a MemoriesPane read intent.
      * @param {Object} data `{agentIdentity, offset?}`
      * @returns {Promise<Object>}
@@ -439,40 +396,6 @@ class Controller extends LivenessController {
         }
     }
 
-    /**
-     * @summary Focus the existing bounded live Activity surface as adjacency. No history citation
-     * is injected into it and no alternate historical authority is implied.
-     *
-     * The stream is a resident south tab, so adjacency ACTIVATES its tab first: the jump usually
-     * originates from a sibling reading surface (catch-up) whose tab is active, and focusing the
-     * inactive card's unmounted DOM would be a silent no-op.
-     * @param {Object} request `{target}`
-     * @returns {Promise<{opened: Boolean, target: String}>}
-     */
-    async openCatchUpLiveSurface({target} = {}) {
-        const
-            me      = this,
-            cockpit = me.component,
-            stream  = target === 'activity-stream' ? me.getReference('activity-stream') : null;
-
-        if (!stream) {
-            return {opened: false, target: target || 'unknown'}
-        }
-
-        const strip = cockpit.down({dockNodeId: 'stream-tabs'}),
-              index = cockpit.dockModel?.nodes?.['stream-tabs']?.items?.indexOf('stream') ?? -1;
-
-        if (strip && index > -1 && strip.activeIndex !== index) {
-            strip.activeIndex = index;
-            // the card layout mounts the newly active item asynchronously; focus needs the DOM
-            await cockpit.timeout(50)
-        }
-
-        stream.focus(stream.id, false, true);
-
-        return {opened: true, target}
-    }
-
     /* ── the fleet-start batch ── */
 
     /**
@@ -564,82 +487,6 @@ class Controller extends LivenessController {
     /* ── provider store resolution (tolerant: an overridden provider chain degrades honestly) ── */
 
     /* ── the fenced pane-snapshot reads ── */
-
-    /**
-     * @summary READ-OBSERVE: one pane history intent → the fleet history verb; a typed
-     * unavailable envelope on absence/throw, the accepted snapshot owner-held and written to the
-     * pane at WRITE time.
-     * @param {Object} [params]
-     * @returns {Promise<Object>}
-     */
-    async loadCatchUp(params = {}) {
-        const
-            me         = this,
-            {bridge}   = me,
-            generation = ++me.catchUpReadGeneration,
-            fallback   = reason => ({
-                capability         : {state: 'unavailable', reason},
-                needsFirstUseWindow: false,
-                partition          : params.partition || 'unified',
-                viewerState        : {lastSeen: null, lastVisitAt: null},
-                window             : null,
-                sources            : null
-            });
-
-        let snapshot;
-
-        if (typeof bridge?.fleetHistory !== 'function') {
-            snapshot = fallback('fleet history verb not wired')
-        } else {
-            try {
-                snapshot = await bridge.fleetHistory(params)
-            } catch (error) {
-                snapshot = fallback('fleet history read failed')
-            }
-        }
-
-        if (generation === me.catchUpReadGeneration && !me.isDestroyed) {
-            me.catchUpSnapshot = snapshot;
-
-            const pane = me.component.getCatchUpPane();
-
-            pane && (pane.snapshot = snapshot)
-        }
-
-        return snapshot
-    }
-
-    /**
-     * @summary RUNTIME-WRITE: advance the authenticated viewer's lastSeen through the pane's
-     * rendered window end, then write the honest outcome back.
-     * @param {Object} params `{windowEnd}`
-     * @returns {Promise<Object>}
-     */
-    async markCatchUp(params) {
-        const
-            me       = this,
-            {bridge} = me;
-
-        let outcome;
-
-        try {
-            outcome = typeof bridge?.markFleetCaughtUp === 'function'
-                ? await bridge.markFleetCaughtUp(params)
-                : {status: 'not-wired', reason: 'fleet catch-up mark verb not wired'}
-        } catch (error) {
-            outcome = {status: 'error', reason: 'fleet catch-up mark failed'}
-        }
-
-        if (!me.isDestroyed) {
-            me.catchUpMarkOutcome = outcome;
-
-            const pane = me.component.getCatchUpPane();
-
-            pane && (pane.markOutcome = outcome)
-        }
-
-        return outcome
-    }
 
     /**
      * @summary READ-OBSERVE: one pane memories intent. The requested selection is owner-held

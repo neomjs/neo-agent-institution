@@ -82,9 +82,10 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             // the third seam counts separately: the wire-read expectations stay untouched by it
             loadBrainHealth() { this.brainReads++; return Promise.resolve() },
             loadRoster()   { this.polls++; return Promise.resolve() },
-            // the tasks and deployment-state seams launch no counted wire read in these balance fixtures
+            // the tasks, deployment-state and Golden Path seams launch no counted wire read in these balance fixtures
             loadTasks()    { return Promise.resolve() },
             loadDeploymentState() { return Promise.resolve() },
+            loadGoldenPath() { return Promise.resolve() },
             // the wake rebind seam launches no wire read — modeled as a plain no-op so the
             // wire-read balance assertions stay exact
             ensureViewerWakeStream() {},
