@@ -143,6 +143,7 @@ test.describe('harness pack stage', () => {
             'contentPolicy.mjs',
             'fleetCapability.mjs',
             'main.mjs',
+            'mainLog.mjs',
             'planeConfig.mjs'
         ]);
         expect(() => assertPackagedMainModulesDeclared({builderConfig, modules})).not.toThrow();
