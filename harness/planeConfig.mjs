@@ -133,14 +133,16 @@ export function forgetPlaneConfig({dir, fsModule = fs}) {
 /**
  * @summary The Brain children's env fragment for a stored record. Returns nothing when the process env
  * already names a plane base: the stored bearer belongs to the stored plane, so it must not follow a
- * base set elsewhere. A bearer set in the env still wins over the stored one.
+ * base set elsewhere. A bearer set in the env still wins over the stored one, and a record whose bearer
+ * no longer decrypts is no record at all unless the env supplies one: the shell boots on its own rather
+ * than attaching without a credential.
  * @param {Object} options
  * @param {{planeBase: String|null, bearer: String|null}} options.planeConfig
  * @param {Object} options.env The process env.
  * @returns {Object}
  */
 export function planeEnvFragment({planeConfig, env}) {
-    if (!planeConfig?.planeBase || env.NEO_FLEET_PLANE_BASE !== undefined) {
+    if (!planeConfig?.planeBase || env.NEO_FLEET_PLANE_BASE !== undefined || (!planeConfig.bearer && env.NEO_FLEET_PLANE_BEARER === undefined)) {
         return {}
     }
 
@@ -151,33 +153,89 @@ export function planeEnvFragment({planeConfig, env}) {
 }
 
 /**
- * @summary Asks the plane whether it admits a credential, with one authenticated `GET` on its MCP route.
- * The Memory Core installs its bearer check in front of every route, so a refused PAT answers a bare
- * 401, and any other HTTP status means the credential got past it. The body is never read. Whether the
- * credential's subject is the viewer is proven later, by the plane client at boot.
+ * The name the Memory Core's MCP server gives itself in its `initialize` answer — the positive proof
+ * that a plane admitted the credential. A status alone proves nothing: a stranger's host answers 404 or
+ * 405, never 401, and "not refused" is not "admitted".
+ * @type {String}
+ */
+export const PLANE_MCP_SERVER_NAME = 'neo-memory-core';
+
+const INITIALIZE = JSON.stringify({
+    id     : 1,
+    jsonrpc: '2.0',
+    method : 'initialize',
+    params : {capabilities: {}, clientInfo: {name: 'neo-harness-plane-probe', version: '1'}, protocolVersion: '2025-03-26'}
+});
+
+/**
+ * @summary Reads the JSON-RPC message from an MCP answer, which the transport sends either as JSON or
+ * as an SSE `data:` line.
+ * @param {String} text
+ * @returns {Object|null}
+ */
+function parseMcpAnswer(text) {
+    const data = text.trimStart().startsWith('{') ? text : text.split('\n').find(line => line.startsWith('data:'))?.slice(5);
+
+    try {
+        return data ? JSON.parse(data) : null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * @summary Asks the plane whether it admits a credential, in two steps on its MCP route. The first
+ * `initialize` carries no credential: a plane answers with a bearer challenge (401 +
+ * `WWW-Authenticate: Bearer`), and any other answer ends the probe before the PAT leaves this process.
+ * The second carries the PAT and is accepted only when the Memory Core names itself; the session it
+ * opened is closed again. Whether the credential's subject is the viewer is proven later, by the plane
+ * client at boot.
  * @param {Object} options
  * @param {String} options.planeBase A normalized plane base.
  * @param {String} options.bearer
  * @param {Function} [options.fetchFn=fetch]
  * @param {Number} [options.timeoutMs=8000]
- * @returns {Promise<'accepted'|'rejected'|'unreachable'>}
+ * @returns {Promise<'accepted'|'rejected'|'not-a-plane'|'unreachable'>}
  */
 export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, timeoutMs = 8000}) {
-    let response;
+    const
+        url  = `${planeBase}/mc/mcp`,
+        post = authorization => fetchFn(url, {
+            body   : INITIALIZE,
+            headers: {Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...(authorization && {Authorization: authorization})},
+            method : 'POST',
+            signal : AbortSignal.timeout(timeoutMs)
+        });
+
+    let answer, response;
 
     try {
-        response = await fetchFn(`${planeBase}/mc/mcp`, {
-            headers: {Accept: 'text/event-stream', Authorization: `Bearer ${bearer}`},
-            method : 'GET',
-            signal : AbortSignal.timeout(timeoutMs)
-        })
+        response = await post(null);
+        await response.text().catch(() => '');
+
+        if (response.status !== 401 || !/^Bearer\b/i.test(response.headers.get('www-authenticate') ?? '')) {
+            return 'not-a-plane'
+        }
+
+        response = await post(`Bearer ${bearer}`);
+        answer   = await response.text().catch(() => '')
     } catch {
         return 'unreachable'
     }
 
-    response.body?.cancel?.().catch?.(() => {});
+    if (response.status === 401 || response.status === 403) {
+        return 'rejected'
+    }
 
-    return response.status === 401 || response.status === 403 ? 'rejected' : 'accepted'
+    const session = response.headers.get('mcp-session-id');
+
+    session && Promise.resolve(fetchFn(url, {
+        headers: {Authorization: `Bearer ${bearer}`, 'mcp-session-id': session},
+        method : 'DELETE',
+        signal : AbortSignal.timeout(timeoutMs)
+    })).catch(() => {});
+
+    return response.status === 200 && parseMcpAnswer(answer)?.result?.serverInfo?.name === PLANE_MCP_SERVER_NAME ? 'accepted' : 'not-a-plane'
 }
 
 /**
@@ -210,12 +268,13 @@ export function createPlaneBroker({dir, getTransportFact, isTrustedSender, packa
             }
 
             const
-                {planeBase} = readPlaneConfig({dir, safeStorage, fsModule}),
-                fact        = getTransportFact();
+                {bearer, planeBase} = readPlaneConfig({dir, safeStorage, fsModule}),
+                fact                = getTransportFact();
 
             return {
                 attached  : fact?.mode === 'plane-attach' && fact.up === true,
-                configured: planeBase !== null,
+                // a record whose bearer no longer decrypts cannot attach, so the card offers to reconnect
+                configured: planeBase !== null && bearer !== null,
                 packaged,
                 planeBase
             }

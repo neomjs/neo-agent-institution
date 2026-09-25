@@ -8,6 +8,7 @@ import {
     normalizePlaneBase,
     PLANE_BEARER_FILE,
     PLANE_CONFIG_FILE,
+    PLANE_MCP_SERVER_NAME,
     planeEnvFragment,
     probePlaneCredential,
     readPlaneConfig,
@@ -29,6 +30,48 @@ function fakeSafeStorage({available = true} = {}) {
 }
 
 const tempDir = () => mkdtempSync(path.join(tmpdir(), 'plane-config-'));
+
+/**
+ * One fetch answer: the probe reads the status, the headers and the text.
+ */
+function answer(status, body, headers = {}) {
+    return {headers: new Headers(headers), status, text: async () => body}
+}
+
+/**
+ * A plane's MCP route as measured on the local plane: without a credential it answers 401 with a
+ * bearer challenge; an admitted PAT gets the `initialize` answer over SSE, naming the server.
+ */
+function fakePlane({admits = true, name = PLANE_MCP_SERVER_NAME} = {}) {
+    const requests = [];
+
+    async function fetchFn(url, init) {
+        const authorization = init.headers?.Authorization ?? null;
+
+        requests.push({authorization, method: init.method, session: init.headers?.['mcp-session-id'] ?? null, url});
+
+        if (init.method === 'DELETE') {
+            return answer(200, '')
+        }
+
+        if (!authorization || !admits) {
+            return answer(401, '{"error":"invalid_token"}', {'www-authenticate': 'Bearer error="invalid_token"'})
+        }
+
+        return answer(200, `event: message\ndata: ${JSON.stringify({id: 1, jsonrpc: '2.0', result: {serverInfo: {name, version: '1.0.0'}}})}\n\n`, {'content-type': 'text/event-stream', 'mcp-session-id': 'session-1'})
+    }
+
+    return {fetchFn, requests}
+}
+
+/**
+ * A host that is not a plane: it answers `status` to everything, credential or not.
+ */
+function stranger(status) {
+    const requests = [];
+
+    return {requests, fetchFn: async (url, init) => { requests.push(init.headers?.Authorization ?? null); return answer(status, '<html></html>') }}
+}
 
 test.describe('harness/planeConfig — the packaged shell\'s plane record', () => {
     test('a stored record reads back, and plane.json carries no credential', () => {
@@ -91,35 +134,58 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: 'http://127.0.0.1:3102'}}), 'the launcher and checkout env win whole').toEqual({});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: ''}}), 'an explicitly empty base still wins').toEqual({});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'});
-        expect(planeEnvFragment({planeConfig: {planeBase: null, bearer: null}, env: {}})).toEqual({})
+        expect(planeEnvFragment({planeConfig: {planeBase: null, bearer: null}, env: {}})).toEqual({});
+        expect(planeEnvFragment({planeConfig: {planeBase: 'https://plane.example', bearer: null}, env: {}}), 'a bearer that no longer decrypts is no record').toEqual({});
+        expect(planeEnvFragment({planeConfig: {planeBase: 'https://plane.example', bearer: null}, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'})
     });
 
-    test('the credential probe: 401 and 403 reject, any other status accepts, a network failure is unreachable', async () => {
-        const seen = [], respond = status => async (url, init) => {
-            seen.push({url, authorization: init.headers.Authorization});
-            return {status, body: {cancel: async () => {}}}
-        };
+    test('the credential probe accepts only the Memory Core naming itself after a bearer challenge', async () => {
+        const plane = fakePlane();
 
-        expect(await probePlaneCredential({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, fetchFn: respond(401)})).toBe('rejected');
-        expect(await probePlaneCredential({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, fetchFn: respond(403)})).toBe('rejected');
-        expect(await probePlaneCredential({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, fetchFn: respond(400)})).toBe('accepted');
-        expect(await probePlaneCredential({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, fetchFn: async () => { throw new Error('ECONNREFUSED') }})).toBe('unreachable');
+        expect(await probePlaneCredential({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, fetchFn: plane.fetchFn})).toBe('accepted');
+        expect(plane.requests.map(({authorization, method}) => `${method} ${authorization ? 'with' : 'without'} PAT`)).toEqual(['POST without PAT', 'POST with PAT', 'DELETE with PAT']);
+        expect(plane.requests[1].url, 'the credential rides the header, never the URL').toBe('http://127.0.0.1:3102/mc/mcp');
+        expect(plane.requests[1].authorization).toBe(`Bearer ${BEARER}`);
+        expect(plane.requests[2].session, 'the probe closes the session it opened').toBe('session-1')
+    });
 
-        expect(seen[0].url, 'the credential rides the header, never the URL').toBe('http://127.0.0.1:3102/mc/mcp');
-        expect(seen[0].authorization).toBe(`Bearer ${BEARER}`)
+    test('a host that is not a plane never sees the PAT', async () => {
+        for (const status of [200, 404, 405]) {
+            const host = stranger(status);
+
+            expect(await probePlaneCredential({planeBase: 'https://example.com', bearer: BEARER, fetchFn: host.fetchFn}), String(status)).toBe('not-a-plane');
+            expect(host.requests, String(status)).toEqual([null])
+        }
+    });
+
+    test('a plane that refuses the PAT rejects it; an MCP server that is not the Memory Core is not a plane', async () => {
+        expect(await probePlaneCredential({planeBase: 'https://plane.example', bearer: BEARER, fetchFn: fakePlane({admits: false}).fetchFn})).toBe('rejected');
+        expect(await probePlaneCredential({planeBase: 'https://plane.example', bearer: BEARER, fetchFn: fakePlane({name: 'another-mcp-server'}).fetchFn})).toBe('not-a-plane')
+    });
+
+    test('a network failure at either step is unreachable', async () => {
+        const plane = fakePlane();
+
+        expect(await probePlaneCredential({planeBase: 'https://plane.example', bearer: BEARER, fetchFn: async () => { throw new Error('ECONNREFUSED') }})).toBe('unreachable');
+        expect(await probePlaneCredential({
+            bearer   : BEARER,
+            fetchFn  : async (url, init) => init.headers?.Authorization ? Promise.reject(new Error('reset')) : plane.fetchFn(url, init),
+            planeBase: 'https://plane.example'
+        })).toBe('unreachable')
     })
 });
 
 test.describe('harness/planeConfig — the plane broker behind planeStatus() and attachPlane()', () => {
-    function makeBroker({packaged = true, prompt = BEARER, status = 400, trusted = true, available = true, fact = null} = {}) {
+    function makeBroker({packaged = true, prompt = BEARER, host = fakePlane(), trusted = true, available = true, decrypts = true, fact = null} = {}) {
         const
             dir         = tempDir(),
-            safeStorage = fakeSafeStorage({available}),
+            keychain    = fakeSafeStorage({available}),
+            safeStorage = decrypts ? keychain : {...keychain, decryptString: () => { throw new Error('decrypt failed') }},
             calls       = {prompts: [], relaunches: 0};
 
         const broker = createPlaneBroker({
             dir,
-            fetchFn         : async () => ({status, body: {cancel: async () => {}}}),
+            fetchFn         : host.fetchFn,
             getTransportFact: () => fact,
             isTrustedSender : () => trusted,
             packaged,
@@ -148,7 +214,8 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
             [{},                 {planeBase: 'http://plane.example'},  'invalid-plane-base'],
             [{available: false}, {planeBase: 'http://127.0.0.1:3102'}, 'encryption-unavailable'],
             [{prompt: null},     {planeBase: 'http://127.0.0.1:3102'}, 'canceled'],
-            [{status: 401},      {planeBase: 'http://127.0.0.1:3102'}, 'rejected']
+            [{host: fakePlane({admits: false})}, {planeBase: 'http://127.0.0.1:3102'}, 'rejected'],
+            [{host: stranger(404)},              {planeBase: 'https://example.com'},   'not-a-plane']
         ];
 
         for (const [options, request, reason] of cases) {
@@ -164,6 +231,15 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
         const {broker} = makeBroker({fact: {mode: 'plane-attach', up: true}});
 
         expect(broker.status({})).toEqual({attached: true, configured: false, packaged: true, planeBase: null})
+    });
+
+    test('a record whose bearer no longer decrypts reads as unconfigured, so the card offers to reconnect', () => {
+        const {broker, dir} = makeBroker({decrypts: false});
+
+        writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({planeBase: 'https://plane.example'}));
+        writeFileSync(path.join(dir, PLANE_BEARER_FILE), 'not a blob this keychain wrote');
+
+        expect(broker.status({})).toEqual({attached: false, configured: false, packaged: true, planeBase: 'https://plane.example'})
     });
 
     test('an untrusted sender is refused before anything runs', async () => {

@@ -23,6 +23,7 @@ class PlaneSetupPanel extends Panel {
         canceled                : 'Canceled. Nothing was stored.',
         'encryption-unavailable': 'This Mac cannot store the PAT encrypted, so nothing was stored.',
         'invalid-plane-base'    : 'Use an https address, or http on this machine (127.0.0.1 or localhost).',
+        'not-a-plane'           : 'That address is not a Neo plane. Nothing was stored.',
         rejected                : 'The plane refused that PAT. Nothing was stored.',
         unreachable             : 'No plane answered at that address.'
     }
