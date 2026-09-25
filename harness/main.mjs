@@ -47,6 +47,7 @@ import {
     clearRunState,
     detectLiveBrain,
     FLEET_SERVER_ENTRY,
+    fleetReadyOrPlaneRefusal,
     ORCHESTRATOR_ENTRY,
     probePort,
     registerOwnedChild,
@@ -1017,15 +1018,23 @@ async function bootProductBrain() {
             throw new Error(`fleet port ${fleetPort} cannot be reused: ${live.fleetRefusalReason || 'listener did not prove canonical Fleet identity'} — free the port or set NEO_FLEET_PORT`)
         }
 
+        let fleetLastLine = null;
+
         const fleet = startBrainChild({
             entry   : FLEET_SERVER_ENTRY,
             env     : {...packagedEnv, NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
-            onLog   : brainLog,
+            onLog   : line => {fleetLastLine = line; brainLog(line)},
             repoRoot: agentosRuntimeRoot
         });
 
         registerBrainChild({child: fleet, label: 'fleet'});
-        await awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot})
+        await fleetReadyOrPlaneRefusal({
+            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
+            child     : fleet,
+            lastLine  : () => fleetLastLine,
+            mode,
+            secrets   : [fleetBearerToken, packagedEnv.NEO_FLEET_PLANE_BEARER, process.env.NEO_FLEET_PLANE_BEARER]
+        })
     }
 
     console.log(`HARNESS_BRAIN_MODE ${mode}${plan.planeBase ? ` planeBase=${plan.planeBase}` : ''} fleetPort=${fleetPort} started=[${brainState.children.map(entry => entry.label).join(',') || 'none'}]`);

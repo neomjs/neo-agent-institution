@@ -28,6 +28,7 @@
 
 import {execFile, execFileSync, spawn} from 'node:child_process';
 import {randomUUID}                    from 'node:crypto';
+import {once}                          from 'node:events';
 import fs                              from 'node:fs';
 import net                             from 'node:net';
 import path                            from 'node:path';
@@ -200,13 +201,76 @@ export function besidePlaneRefusal(port) {
 }
 
 /**
+ * The longest fleet-child line a plane refusal quotes; the log keeps the whole line.
+ * @type {Number}
+ */
+export const PLANE_REFUSAL_DETAIL_MAX = 240;
+
+/**
+ * @summary A plane-attach boot the plane refused. The fleet child exits before it is ready when the plane
+ * will not admit it — an identity mismatch, an unreachable plane, no viewer identity — and its last line
+ * says which. The line is quoted, never parsed; one that carries a known secret is dropped, not shown.
+ * @param {String|null} lastLine The fleet child's last output line.
+ * @param {String[]} [secrets=[]] Values that must never reach the cockpit.
+ * @returns {Error} `code: 'plane-refused'`, with `detail` as the quoted line or `null`.
+ */
+export function planeRefusal(lastLine, secrets = []) {
+    const
+        line   = typeof lastLine === 'string' ? lastLine.trim() : '',
+        secret = secrets.some(value => typeof value === 'string' && value.length > 0 && line.includes(value)),
+        detail = line && !secret ? line.slice(0, PLANE_REFUSAL_DETAIL_MAX) : null,
+        error  = new Error(`the plane refused this shell's fleet child${detail ? `: ${detail}` : ''}`);
+
+    error.code   = 'plane-refused';
+    error.detail = detail;
+
+    return error
+}
+
+/**
+ * @summary Awaits a fleet child's readiness, and names the refusal when a plane-attach child exits before
+ * it. The refusal line lands on the child's output streams, which can still be in flight at `exit`, so it
+ * is quoted once `close` says they drained (or after `drainMs`). Any other failure — a boot that is not
+ * plane-attach, a child still alive when readiness timed out — keeps its own error.
+ * @param {Object} options
+ * @param {Function} options.awaitReady `() => Promise`, the readiness wait.
+ * @param {import('node:child_process').ChildProcess} options.child
+ * @param {Function} options.lastLine `() => String|null`, the child's last output line so far.
+ * @param {String} options.mode The boot plan's mode.
+ * @param {String[]} [options.secrets=[]] Forwarded to {@link planeRefusal}.
+ * @param {Number} [options.drainMs=1000]
+ * @returns {Promise<void>}
+ */
+export async function fleetReadyOrPlaneRefusal({awaitReady, child, lastLine, mode, secrets = [], drainMs = 1000}) {
+    try {
+        await awaitReady()
+    } catch (error) {
+        if (mode !== 'plane-attach' || (child.exitCode === null && !child.signalCode)) {
+            throw error
+        }
+
+        let timer;
+
+        await Promise.race([
+            once(child, 'close').catch(() => {}),
+            new Promise(resolve => {timer = setTimeout(resolve, drainMs)})
+        ]);
+        clearTimeout(timer);
+
+        throw planeRefusal(lastLine(), secrets)
+    }
+}
+
+const TYPED_BOOT_REFUSALS = new Set(['organism-beside-plane', 'plane-refused']);
+
+/**
  * @summary The lifecycle cause a failed boot carries: a typed refusal names itself; anything else
  * returns `null`, which settles as the generic `boot-not-ready`.
  * @param {Error|null} error
  * @returns {{source: String, detail: (String|null)}|null}
  */
 export function bootFailureCause(error) {
-    return error?.code === 'organism-beside-plane' ? {detail: error.detail ?? null, source: error.code} : null
+    return TYPED_BOOT_REFUSALS.has(error?.code) ? {detail: error.detail ?? null, source: error.code} : null
 }
 
 /**
@@ -619,7 +683,9 @@ function forwardLines(child, onLog) {
  * @param {Object} options
  * @param {String}   options.repoRoot Repo root (cwd for the child).
  * @param {String}   options.entry Entry script, repo-relative.
- * @param {Object}   [options.env] Env fragment merged over process.env.
+ * @param {Object}   [options.env] Env fragment merged over process.env. It can add or override an
+ *     inherited variable, never remove one, so a fragment builder that must keep an inherited value away
+ *     from the child has to decide it by what it exports, not by deleting.
  * @param {Function} [options.onLog] Receives trimmed child stdout/stderr lines.
  * @param {Function} [options.ownershipTokenFn=randomUUID] Per-spawn identity seam for tests.
  * @param {Function} [options.spawnFn=spawn] Injection seam for tests.

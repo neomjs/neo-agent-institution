@@ -27,6 +27,9 @@ import {
     resolveProductBrainPlan,
     besidePlaneRefusal,
     bootFailureCause,
+    fleetReadyOrPlaneRefusal,
+    PLANE_REFUSAL_DETAIL_MAX,
+    planeRefusal,
     resolveRealPath,
     resolveUiFleetTransport,
     startBrainChild,
@@ -301,6 +304,65 @@ test.describe('harness brain lifecycle', () => {
         expect(bootFailureCause(refusal)).toEqual({detail: 'Chroma holds localhost:8000', source: 'organism-beside-plane'});
         expect(bootFailureCause(new Error('fleet port 8083 cannot be reused')), 'any other failure stays generic').toBeNull();
         expect(bootFailureCause(null)).toBeNull()
+    });
+
+    test('a plane refusal quotes the fleet child\'s last line, bounded, and never one that carries a secret', () => {
+        const
+            line    = '[fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch — fix fleet.planeBase / fleet.planeBearer, or empty the base for in-process mode.',
+            refusal = planeRefusal(line, ['fleet-bearer-secret']);
+
+        expect(refusal.code).toBe('plane-refused');
+        expect(refusal.detail).toBe(line);
+        expect(refusal.message).toContain('plane identity mismatch');
+        expect(bootFailureCause(refusal)).toEqual({detail: line, source: 'plane-refused'});
+        expect(planeRefusal('x'.repeat(500)).detail).toHaveLength(PLANE_REFUSAL_DETAIL_MAX);
+        expect(planeRefusal('Authorization: Bearer fleet-bearer-secret', ['fleet-bearer-secret']).detail, 'a line carrying a secret is dropped, not shown').toBeNull();
+        expect(planeRefusal(null).detail).toBeNull()
+    });
+
+    test('only a plane-attach fleet child that exited before ready is a plane refusal, quoted once its output has closed', async () => {
+        const failure = new Error('fleet transport exited before ready (code=1 signal=null)');
+
+        await expect(fleetReadyOrPlaneRefusal({awaitReady: async () => {}, child: createFakeChild(), lastLine: () => null, mode: 'plane-attach'})).resolves.toBeUndefined();
+
+        const ownMode = createFakeChild();
+
+        ownMode.exitCode = 1;
+        await expect(fleetReadyOrPlaneRefusal({awaitReady: async () => { throw failure }, child: ownMode, lastLine: () => 'x', mode: 'own'}), 'another mode keeps its own error').rejects.toBe(failure);
+
+        const timeout = new Error('fleet transport did not become ready within 15000ms');
+
+        await expect(fleetReadyOrPlaneRefusal({awaitReady: async () => { throw timeout }, child: createFakeChild(), lastLine: () => 'x', mode: 'plane-attach'}), 'a child still alive keeps its own error').rejects.toBe(timeout);
+
+        // The refusal line lands on the output streams after `exit`: it is quoted only once `close` says they drained.
+        const refused = createFakeChild();
+        let last = null;
+
+        refused.stdout.on('data', chunk => { last = String(chunk).trim() });
+
+        const pending = fleetReadyOrPlaneRefusal({
+            awaitReady: async () => { refused.exit(1); throw failure },
+            child     : refused,
+            drainMs   : 5000,
+            lastLine  : () => last,
+            mode      : 'plane-attach'
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 20));
+        refused.emitLine('[fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch');
+        refused.emit('close', 1, null);
+
+        await expect(pending).rejects.toMatchObject({code: 'plane-refused', detail: '[fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch'});
+
+        const silent = createFakeChild();
+
+        await expect(fleetReadyOrPlaneRefusal({
+            awaitReady: async () => { silent.exit(1); throw failure },
+            child     : silent,
+            drainMs   : 20,
+            lastLine  : () => null,
+            mode      : 'plane-attach'
+        }), 'an output that never closes is waited for a bounded time').rejects.toMatchObject({code: 'plane-refused', detail: null})
     });
 
     test('resolveProductBrainPlan: a declared plane outranks host liveness and can start only Fleet', () => {
