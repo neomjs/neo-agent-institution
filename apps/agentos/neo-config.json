@@ -5,6 +5,7 @@
     "mainPath"        : "../node_modules/neo.mjs/src/Main.mjs",
     "themes"          : ["neo-theme-neo-dark", "neo-theme-neo-light"],
     "useAiClient"     : true,
+    "useCanvasWorker" : true,
     "useSharedWorkers": true,
     "workerBasePath"  : "../../node_modules/neo.mjs/src/worker/",
 

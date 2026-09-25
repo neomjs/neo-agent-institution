@@ -1,0 +1,33 @@
+/* The Golden Path graph pane — a south-strip reading surface on the FM tonal stack: the currency
+   line in the chrome role above, the canvas worker's surface filling the rest. The graph itself
+   is painted in the same ink tiers by the renderer (apps/agentos/canvas/GoldenPathGraph.mjs),
+   which mirrors the token VALUES because a worker has no stylesheet to read. */
+.fm-goldenpath-graph-pane {
+    background: var(--fm-panel);
+    min-height: 0;
+
+    .fm-goldenpath-head {
+        display        : flex;
+        align-items    : baseline;
+        gap            : var(--fm-space-3);
+        padding        : var(--fm-space-2) var(--fm-space-3);
+        border-bottom  : 1px solid var(--fm-line-soft);
+        font           : var(--fm-text-chrome);
+        letter-spacing : var(--fm-text-chrome-tracking);
+        text-transform : uppercase;
+        color          : var(--fm-ink-dim);
+        white-space    : nowrap;
+        overflow       : hidden;
+        text-overflow  : ellipsis;
+
+        .fm-goldenpath-title {
+            color: var(--fm-ink);
+        }
+    }
+
+    .fm-goldenpath-graph-canvas {
+        display   : block;
+        width     : 100%;
+        min-height: 160px;
+    }
+}
