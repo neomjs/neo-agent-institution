@@ -1,15 +1,12 @@
-import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import Base        from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import ClosedShape from './ClosedShape.mjs';
 
 /**
  * @module apps/agentos/util/GoldenPathEnvelope
  * @summary The cockpit's one reading of the `fleetGoldenPath` envelope, shared by every Golden Path
- * pane: the closed shape of the provider's `goldenPathEnvelope` leaf, the landing every read passes
- * through, and the currency derived from the producer's words.
- *
- * The shape is closed because `setData` drills object values into leaf paths. A block written as
- * `null` stops the ancestor rebuild for every later write beneath it, and a key that an envelope omits
- * keeps the previous envelope's value. So a landed envelope carries every declared key: an absent
- * block lands as its blank, an absent leaf as `null`, and an absent list as `[]`.
+ * pane: the closed shape of the provider's `goldenPathEnvelope` leaf ({@link AgentOS.util.ClosedShape}
+ * says why it is closed), the landing every read passes through, and the currency derived from the
+ * producer's words.
  */
 
 /**
@@ -41,22 +38,6 @@ const SHAPE = {
 };
 
 /**
- * Projects one wire block onto its declared shape. A leaf keeps a string, a finite number or a
- * boolean, a list keeps an array (items stay exactly as written), and anything else lands as the blank.
- * @param {*} block
- * @param {Object} shape
- * @returns {Object}
- */
-const project = (block, shape) => Object.fromEntries(Object.entries(shape).map(([key, blank]) => {
-    const value = block?.[key];
-
-    if (Array.isArray(blank)) return [key, Array.isArray(value) ? value : []];
-    if (blank)                return [key, project(value && typeof value === 'object' ? value : null, blank)];
-
-    return [key, typeof value === 'string' || typeof value === 'boolean' || Number.isFinite(value) ? value : null]
-}));
-
-/**
  * Static landing and derivation for the Golden Path envelope.
  * @class AgentOS.util.GoldenPathEnvelope
  * @extends Neo.core.Base
@@ -75,7 +56,7 @@ class GoldenPathEnvelope extends Base {
      * @returns {Object}
      */
     static blank() {
-        return project(null, SHAPE)
+        return ClosedShape.project(null, SHAPE)
     }
 
     /**
@@ -85,7 +66,7 @@ class GoldenPathEnvelope extends Base {
      * @returns {Object}
      */
     static fromWire(wire) {
-        const envelope = project(wire, SHAPE);
+        const envelope = ClosedShape.project(wire, SHAPE);
 
         if (envelope.capability.state === null) {
             envelope.capability.state = 'unavailable';
