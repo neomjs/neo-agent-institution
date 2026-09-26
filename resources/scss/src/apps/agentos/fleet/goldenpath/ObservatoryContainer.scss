@@ -1,0 +1,52 @@
+/* The observatory pane — the Golden Path as a 3D scene on the FM tonal stack: the currency line and
+   the hovered node in the chrome role above, the canvas worker's WebGL surface filling the rest on the
+   panel ground (the surface clears to transparent, so the ground is this stylesheet's). The scene is
+   painted in the same ink tiers by the renderer (apps/agentos/canvas/Observatory.mjs), which reads the
+   token VALUES from their one mirror (apps/agentos/canvas/fmPalette.mjs) because a worker has no
+   stylesheet to read. */
+.fm-observatory-pane {
+    background: var(--fm-panel);
+    min-height: 0;
+
+    .fm-observatory-head {
+        display        : flex;
+        align-items    : baseline;
+        gap            : var(--fm-space-3);
+        padding        : var(--fm-space-2) var(--fm-space-3);
+        border-bottom  : thin solid var(--fm-line-soft);
+        font           : var(--fm-text-chrome);
+        letter-spacing : var(--fm-text-chrome-tracking);
+        text-transform : uppercase;
+        color          : var(--fm-ink-dim);
+        white-space    : nowrap;
+        overflow       : hidden;
+        text-overflow  : ellipsis;
+
+        .fm-observatory-title {
+            color: var(--fm-ink);
+        }
+
+        /* the hovered node keeps its own case: it is a title, not chrome; the gesture hint that
+           stands in for it while no node is under the pointer stays chrome, dim */
+        .fm-observatory-hover {
+            color         : var(--fm-signal);
+            letter-spacing: normal;
+            margin-left   : auto;
+            text-transform: none;
+
+            &.is-hint {
+                color         : var(--fm-ink-dim);
+                letter-spacing: inherit;
+                text-transform: inherit;
+            }
+        }
+    }
+
+    .fm-observatory-canvas {
+        cursor      : grab;
+        display     : block;
+        min-height  : 200px;
+        touch-action: none;
+        width       : 100%;
+    }
+}

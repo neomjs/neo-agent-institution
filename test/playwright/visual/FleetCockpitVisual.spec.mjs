@@ -733,6 +733,63 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     });
 
     /**
+     * @summary Activates the Observatory tab (the south strip's last surface) and waits for the pane's
+     * cold spine: the head with the currency line and the gesture hint, the canvas mounted. Cold, the
+     * Golden Path read answers unavailable — the reason is the bridge's own and moves with the Brain
+     * pin, so only the word is asserted here.
+     * @param {Object} page
+     */
+    const openObservatoryPane = async page => {
+        const tab = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: /observatory/i});
+
+        await expect(tab).toBeVisible({timeout: 30000});
+        await tab.click();
+        await expect(page.locator('.fm-observatory-pane')).toBeVisible({timeout: 30000});
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-currency')).toHaveText(/^Unavailable · /);
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-hover')).toHaveText('drag orbits · wheel zooms');
+        await expect(page.locator('.fm-observatory-pane canvas')).toBeVisible();
+        await page.evaluate(() => document.fonts.ready);
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)
+    };
+
+    /**
+     * @summary Lands one fixture wire envelope through the Golden Path driver (both panes bind the
+     * same leaf) and waits for the observatory's currency line; the scene follows one canvas-worker
+     * frame later, so a short settle follows.
+     * @param {Object} page
+     * @param {String} state `current|withheld|degraded|unavailable`
+     * @param {RegExp} currency The currency line that envelope must produce
+     */
+    const feedObservatory = async (page, state, currency) => {
+        const result = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=${state}&t=${++driverTick}`);
+
+        expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true);
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-currency')).toHaveText(currency);
+        await page.waitForTimeout(600)
+    };
+
+    test('the Observatory pane — a current route draws the helix with its citation rings and the beaded route in the signal; withheld dims it; degraded clears the surface; both skins', async ({page}) => {
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+
+        await feedObservatory(page, 'current', /^Current · captured .+ · 4 items$/);
+        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-current.png');
+
+        await feedObservatory(page, 'withheld', /^Withheld · freshness-sla-breached · last known good route · captured .+ · 4 items$/);
+        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-withheld.png');
+
+        await switchToLightSkin(page);
+        await page.waitForTimeout(600);
+        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-withheld-light.png');
+
+        await feedObservatory(page, 'current', /^Current · captured .+ · 4 items$/);
+        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-current-light.png');
+
+        await feedObservatory(page, 'degraded', /^Degraded · route-sidecar-missing$/);
+        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-degraded-light.png')
+    });
+
+    /**
      * @summary Creates the packaged shell's plane-setup card in the viewport above the shell, the way
      * `ViewportController#mountPlaneSetup` inserts it on an unconfigured packaged boot. The harness
      * never boots packaged, so this is the card's only render witness; the App worker creates it

@@ -1,16 +1,6 @@
-import Base                 from '../../../node_modules/neo.mjs/src/canvas/Base.mjs';
+import Base                  from '../../../node_modules/neo.mjs/src/canvas/Base.mjs';
 import GoldenPathGraphLayout from '../util/GoldenPathGraphLayout.mjs';
-
-/**
- * The FM ink tiers the graph is drawn in, per theme — the values of the `--fm-*` tokens the
- * cockpit's stylesheets bind (the dark and light `apps/agentos/Viewport.scss` theme files). A canvas
- * worker has no stylesheet to read, so the mirror lives here and is named as one.
- * @type {Object}
- */
-const PALETTES = {
-    dark : {ink: '#d6dce6', inkDim: '#8b97a8', signal: '#5eead4', line: '#262f3d', lineSoft: '#1c242f', panel: '#141a23', panel2: '#1a212c'},
-    light: {ink: '#1f2733', inkDim: '#5a6b80', signal: '#0f766e', line: '#d3dae4', lineSoft: '#e4e9f0', panel: '#ffffff', panel2: '#f7f9fc'}
-};
+import {PALETTES}            from './fmPalette.mjs';
 
 /**
  * The type roles the graph writes with — the §04 ladder's body and micro roles, on the stacks
