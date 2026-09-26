@@ -12,7 +12,6 @@ import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
 import GoldenPathPane         from '../goldenpath/Container.mjs';
 import GoldenPathGraph        from '../goldenpath/GraphContainer.mjs';
-import ObservatoryPane        from '../goldenpath/ObservatoryContainer.mjs';
 import MemoriesPane           from '../memories/Container.mjs';
 import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
@@ -207,12 +206,6 @@ class FleetCockpit extends VesselContainer {
                 module   : GoldenPathGraph,
                 header   : {text: 'Route graph'},
                 reference: 'golden-path-graph',
-                bind     : {envelope: data => data.goldenPathEnvelope}
-            },
-            observatory: {
-                module   : ObservatoryPane,
-                header   : {text: 'Observatory'},
-                reference: 'observatory',
                 bind     : {envelope: data => data.goldenPathEnvelope}
             },
             // the inspector and the invoked tools: auto-hidden onto the right edge's rail

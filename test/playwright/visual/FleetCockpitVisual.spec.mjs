@@ -733,14 +733,14 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     });
 
     /**
-     * @summary Activates the Observatory tab (the south strip's last surface) and waits for the pane's
-     * cold spine: the head with the currency line and the gesture hint, the canvas mounted. Cold, the
+     * @summary Activates the Observatory keeper-view in the shell rail and waits for the pane's cold
+     * spine: the head with the currency line and the gesture hint, the canvas mounted. Cold, the
      * Golden Path read answers unavailable — the reason is the bridge's own and moves with the Brain
      * pin, so only the word is asserted here.
      * @param {Object} page
      */
     const openObservatoryPane = async page => {
-        const tab = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: /observatory/i});
+        const tab = page.getByRole('tab', {name: 'Observatory', exact: true});
 
         await expect(tab).toBeVisible({timeout: 30000});
         await tab.click();

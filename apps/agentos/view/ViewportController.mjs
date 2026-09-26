@@ -22,11 +22,12 @@ class ViewportController extends Controller {
     static config = {
         className: 'AgentOS.view.ViewportController',
         routes   : {
-            '/accounts': 'onAccountsRoute',
-            '/chat'    : 'onChatRoute',
-            '/fleet'   : 'onFleetRoute',
-            '/home'    : 'onHomeRoute',
-            '/system'  : 'onSystemRoute'
+            '/accounts'   : 'onAccountsRoute',
+            '/chat'       : 'onChatRoute',
+            '/fleet'      : 'onFleetRoute',
+            '/home'       : 'onHomeRoute',
+            '/observatory': 'onObservatoryRoute',
+            '/system'     : 'onSystemRoute'
         }
     }
 
@@ -585,6 +586,13 @@ class ViewportController extends Controller {
      */
     onHomeRoute() {
         this.activateRoute('/home')
+    }
+
+    /**
+     * @summary Activates the Observatory keeper-view from the route.
+     */
+    onObservatoryRoute() {
+        this.activateRoute('/observatory')
     }
 
     /**
