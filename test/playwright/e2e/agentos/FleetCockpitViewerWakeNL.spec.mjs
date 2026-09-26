@@ -200,7 +200,12 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
         await wireAuthenticatedFleetBridge({app, fleetUrl: fixture.endpoint, bearerToken, mcAuthorization: mcMint});
 
         // a fast deterministic cadence so the liveness tick performs the custody rebind promptly
-        await app.setProperties(cockpitId, {livenessPollInterval: 300, livenessReadTimeout: 2500});
+        await app.setProperties(cockpitId, {
+            // every read due on every 300 ms pass, so the timer drives each edge
+            livenessCadence     : {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0},
+            livenessPollInterval: 300,
+            livenessReadTimeout : 2500
+        });
         await app.callMethod(cockpitId, 'controller.stopLiveness');
         await app.callMethod(cockpitId, 'controller.startLiveness');
 
@@ -262,7 +267,7 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         // ── transport KILLED: the consumer's own observation reaches the chrome verbatim ────────
         // The pill wears the status word pair only; the absence-of-signal reason rides the title's
-        // first line (the #23 chrome grammar — labels are never sentences).
+        // first line (the chrome grammar: labels are never sentences).
         await fixture.close();
 
         await expect(telltale, 'a dead stream drops the pill to its off word — the reason rides the title, never a verdict')

@@ -17,13 +17,14 @@ import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
 import CockpitStateProvider   from './StateProvider.mjs';
 import CockpitPerspectives    from '../../../util/CockpitPerspectives.mjs';
+import LivenessCadence        from '../../../util/LivenessCadence.mjs';
 import SpineBannerComponent   from './SpineBannerComponent.mjs';
 import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
 
 /**
- * The liveness re-poll cadence (ms). Slow enough that the cockpit is not a load generator against
- * the fleet bridge, fast enough that a transport death is named while the operator is still looking
- * at the surface that died.
+ * The liveness owner's pass interval (ms): how often it checks which reads are due. Each read comes
+ * due on its own cadence ({@link AgentOS.util.LivenessCadence}); a pass that launches nothing costs
+ * the fleet bridge nothing.
  * @type {Number}
  */
 const livenessPollDefault = 15000;
@@ -431,8 +432,15 @@ class FleetCockpit extends VesselContainer {
      */
     maxReadsInFlight = 2
     /**
-     * The liveness re-poll cadence (ms). Injectable so specs pin a deterministic cadence instead of
-     * sleeping on the production one.
+     * The interval (ms) each liveness read comes due on, keyed like
+     * {@link AgentOS.util.LivenessCadence#READS}. Injectable, like the pass interval below.
+     * @member {Object} livenessCadence=LivenessCadence.DEFAULT_INTERVALS
+     * @protected
+     */
+    livenessCadence = LivenessCadence.DEFAULT_INTERVALS
+    /**
+     * The liveness owner's pass interval (ms). Injectable so specs pin a deterministic cadence
+     * instead of sleeping on the production one.
      * @member {Number} livenessPollInterval=livenessPollDefault
      * @protected
      */
