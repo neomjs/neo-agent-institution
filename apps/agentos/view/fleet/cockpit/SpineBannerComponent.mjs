@@ -1,7 +1,7 @@
 import Component from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 
 /**
- * @summary The per-spine honesty pill — names WHY a surface shows sample/last-known data
+ * @summary The per-spine honesty pill — names WHY a surface shows no data yet or last-known data
  * (cold/degraded); a fully live spine renders nothing (zero nominal pixels).
  *
  * Presentation-thin by design: the full verdict derives on

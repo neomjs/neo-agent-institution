@@ -85,7 +85,7 @@ test('typed wire refusal and recovery drive the real read owner, reactive banner
         await cockpit.refreshPromise;
         const provider = cockpit.getStateProvider(),
               banner = cockpit.getReference('fleet-spine-banner');
-        provider.setData({gridAdapterState: 'live', streamAdapterState: 'sample'});
+        provider.setData({gridAdapterState: 'live', streamAdapterState: 'cold'});
 
         let answer;
         installFleetBridge({send: () => new Promise(resolve => { answer = resolve })});

@@ -56,13 +56,13 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             remove(id) { this.removed.push(id) }
         };
 
-        return {adapterState: 'sample', store}
+        return {adapterState: 'cold', store}
     };
 
     // the controller drives; the slim view fake carries only what loadRoster READS from its
     // component: the resident-pane accessors (unmaterialized → null, the same silence contract
-    // as getReference), the provider seat and the source-mode config
-    const makeRosterHost = (grid, {rosterWired = false, rosterSourceMode = 'sample'} = {}) => {
+    // as getReference) and the provider seat
+    const makeRosterHost = (grid, {rosterWired = false} = {}) => {
         const provider = makeProviderFake(),
               view     = {
                   detailRecord          : null,
@@ -70,8 +70,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                   getMemoriesPane       : () => null,
                   getOperatorMailboxPane: () => null,
                   getStateProvider      : () => provider,
-                  livenessReadTimeout   : 4000,
-                  rosterSourceMode
+                  livenessReadTimeout   : 4000
               },
               controller = makeControllerFake(FleetCockpitController, {
                   component              : view,
@@ -86,10 +85,10 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         return {controller, grid, provider, view}
     };
 
-    const routeLoadRoster = async (bridge, {known, items, rosterSourceMode, rosterWired} = {}) => {
+    const routeLoadRoster = async (bridge, {known, items, rosterWired} = {}) => {
         bridge ? ((globalThis.AgentOS ??= {}).fleet = {registryBridge: bridge}) : clearBridge();
 
-        const host = makeRosterHost(makeGrid(known, items), {rosterSourceMode, rosterWired});
+        const host = makeRosterHost(makeGrid(known, items), {rosterWired});
 
         await host.controller.loadRoster();
 
@@ -105,12 +104,13 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
     test.afterEach(() => clearBridge());
 
-    test('FleetRoster is a provider-hosted Store CLASS — JSON-fetched seed, durable agentId keying, honest sample', () => {
-        // no singleton: the cockpit provider hosts + autoLoads the ONE shared instance; the class
-        // carries the url seed (the Portal.store.* house pattern)
+    test('FleetRoster is a provider-hosted Store CLASS — starts EMPTY (no url, no seed), durable agentId keying', () => {
+        // no singleton: the cockpit provider hosts the ONE shared instance (the Portal.store.* house
+        // pattern); nothing is fetched at boot — the fleet's answer, or a test's landing, fills it
         expect(FleetRoster.isClass).toBe(true);
         expect(FleetRoster.config.singleton).toBeFalsy();
-        expect(FleetRoster.config.url).toBe('../../apps/agentos/resources/data/fleetRoster.json');
+        expect(FleetRoster.config.url ?? null).toBeNull();
+        expect(FleetRoster.config.autoLoad ?? false).toBe(false);
 
         // the tests' sample roster: the eleven REAL maintainer identities, registry-derived — no invented agents
         const seed = seedRows;
@@ -161,8 +161,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         ]) {
             const {grid, provider} = await routeLoadRoster(bridge);
 
-            expect(grid.adapterState).toBe('sample');
-            expect(provider.data.gridAdapterState).toBe('sample');
+            expect(grid.adapterState).toBe('cold');
+            expect(provider.data.gridAdapterState).toBe('cold');
             expect(grid.store.cleared).toBe(0);
             expect(grid.store.added).toEqual([])
         }
@@ -197,84 +197,43 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(recovered.data.presenceCapability).toBeNull()
     });
 
-    test('a resolved EMPTY first snapshot preserves the zero-call sample until a source is selected', async () => {
-        const {controller, grid, provider, view} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
+    test('a resolved EMPTY first snapshot is authoritative — nothing is seeded that it could erase', async () => {
+        const {controller, grid, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
 
-        expect(FleetCockpit.config.rosterSourceMode).toBe('sample');
-        expect(grid.store.cleared).toBe(0);   // a fresh empty registry cannot erase first-run truth
-        expect(grid.store.added).toEqual([]);
-        expect(grid.adapterState).toBe('sample');
-        expect(view.rosterSourceMode).toBe('sample');
-        expect(controller.rosterWired).toBe(false);
-        // the ANSWERED-empty retention: the sample stays, but the cause is on record — the banner
-        // names "connected · registry empty" instead of claiming "server offline" against a
-        // transport that just replied
-        expect(provider.data.gridDegradedReason).toBe('server connected · fleet registry empty — define agents to go live')
-    });
-
-    test('the answered-empty reason is RETRACTED on silence — the claim must not outlive the connection', async () => {
-        // empty answer retains the cause…
-        const {controller, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
-
-        expect(provider.data.gridDegradedReason).toContain('registry empty');
-
-        // …then the transport dies: back on silence, the generic cold copy is the honest line
-        // again, so the never-wired loss edge must drop the retained answered-state cause.
-        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => { throw new Error('transport lost') }}};
-        await controller.loadRoster();
-
-        expect(provider.data.gridAdapterState).toBe('sample');
-        expect(provider.data.gridDegradedReason).toBe(null)
-    });
-
-    test('answered-empty → bridge ABSENT also retracts — absence is its own transition, not a thrown-call proxy', async () => {
-        // the exact-head reviewer falsifier: an answered producer-specific cause survived the
-        // no-bridge early return while the surface stayed sample — "server connected" rendering
-        // against NO bridge at all. Absence must withdraw the answered cause exactly like a
-        // thrown call does.
-        const {controller, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
-
-        expect(provider.data.gridDegradedReason).toContain('registry empty');
-
-        clearBridge();
-        await controller.loadRoster();
-
-        expect(provider.data.gridAdapterState).toBe('sample');
-        expect(provider.data.gridDegradedReason).toBe(null)
-    });
-
-    test('answered-empty → verb ABSENT retracts too — a bridge without the verb is the same cold truth', async () => {
-        const {controller, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
-
-        expect(provider.data.gridDegradedReason).toContain('registry empty');
-
-        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {}};
-        await controller.loadRoster();
-
-        expect(provider.data.gridAdapterState).toBe('sample');
-        expect(provider.data.gridDegradedReason).toBe(null)
-    });
-
-    test('a resolved EMPTY first snapshot is authoritative after explicit source selection', async () => {
-        const {controller, grid} = await routeLoadRoster(
-            {fleetRoster: async () => ({rows: []})},
-            {rosterSourceMode: 'selected'}
-        );
-
+        // the store empties through the ordinary first-admission path and the surface goes live:
+        // the registry has no agents, and the roster's own CTA is the empty state's word — no
+        // retained "registry empty" cause, the banner keeps to transport verdicts
         expect(grid.store.cleared).toBe(1);
         expect(grid.store.added).toEqual([]);
         expect(grid.adapterState).toBe('live');
+        expect(provider.data.gridAdapterState).toBe('live');
+        expect(provider.data.gridDegradedReason).toBeNull();
+        expect(controller.rosterWired).toBe(true);
+        expect(controller.lastLiveRows).toEqual([])
+    });
+
+    test('an empty live answer followed by a transport loss degrades to stale — the empty roster is the last-known truth', async () => {
+        const {controller, grid, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: []})});
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => { throw new Error('transport lost') }}};
+        await controller.loadRoster();
+
+        expect(provider.data.gridAdapterState).toBe('stale');
+        expect(grid.adapterState).toBe('stale');
+        expect(typeof provider.data.gridDegradedReason).toBe('string');
+        // never blanked, never back to cold: the answer happened
+        expect(grid.store.cleared).toBe(1);
         expect(controller.rosterWired).toBe(true)
     });
 
-    test('density: openLaneCount survives the FIRST authoritative load — a stamped live count is stored, a missing stamp degrades to null, the sample number never outlives the replacement (#14598)', async () => {
+    test('density: openLaneCount survives the FIRST authoritative load — a stamped live count is stored, a missing stamp degrades to null, an earlier number never outlives the replacement (#14598)', async () => {
         const {grid} = await routeLoadRoster({fleetRoster: async () => ({rows: [
             {id: 'neo-gpt',   openLaneCount: 23, lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'}, sources: liveSources()},
             {id: 'neo-fable', lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'}, sources: liveSources()}
         ]})});
 
-        // the first authoritative snapshot REPLACES the sample seed (clear + add through the real
-        // loadRoster) — the roster DTO owns the field, so what lands is the DTO's truth:
+        // the first authoritative snapshot REPLACES what the store holds (clear + add through the
+        // real loadRoster) — the roster DTO owns the field, so what lands is the DTO's truth:
         expect(grid.store.cleared).toBe(1);
         // a live stamped count is stored (the badge renders it) …
         expect(grid.store.added.find(row => row.agentId === 'neo-gpt').openLaneCount).toBe(23);
@@ -392,7 +351,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(bare.engineTag).toBeNull()
     });
 
-    test('the FIRST non-empty snapshot populates the Store (replaces the sample seed) and goes live — rows without a durable id are dropped', async () => {
+    test('the FIRST non-empty snapshot populates the Store (replaces what it holds) and goes live — rows without a durable id are dropped', async () => {
         const {controller, grid, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: [
             {id: 'vega', lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'}, sources: liveSources()},
             {noId: true},
@@ -447,14 +406,14 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(grid.adapterState).toBe('live')
     });
 
-    // Source precedence: the provider-hosted store autoLoads the JSON sample while loadRoster races
-    // the bridge. These run against a REAL isolated FleetRoster instance with the REAL load
+    // Source precedence: any later store `load` (a raw possession, a retirement's clear) races live
+    // truth. These run against a REAL isolated FleetRoster instance with the REAL load
     // listener attached (the store fires `load` for its own mutations, so the guard's recursion
     // behavior is only observable through the live listener path — a manual handler call is a
     // mock-hole).
     const makeLiveHost = (store, index, detail = null) => {
         const
-            grid         = {adapterState: 'sample', store},
+            grid         = {adapterState: 'cold', store},
             provider     = makeProviderFake(),
             getReference = reference => reference === 'fleet-grid' ? grid : reference === 'agent-detail' ? detail : null,
             // the REAL View selection surface: applySelection, the phase-blind pane accessors and
@@ -471,7 +430,6 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                 getStateProvider      : () => provider,
                 id                    : `fake-fleet-cockpit-${index}`,
                 livenessReadTimeout   : 4000,
-                rosterSourceMode      : 'sample',
                 selectionState        : {},
                 setState(values) { Object.assign(this.selectionState, values) }
             }, FleetCockpit),
@@ -498,7 +456,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         return {controller, grid, provider, view}
     };
 
-    test('a sample seed landing AFTER live truth cannot overwrite the roster (fail-closed toward live)', async () => {
+    test('rows landing AFTER live truth cannot overwrite the roster (fail-closed toward live)', async () => {
         const store        = Neo.create(FleetRoster, {data: []}),
               {controller} = makeLiveHost(store, 1);
 
@@ -762,18 +720,18 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             return host
         };
 
-        // the retirement, asserted once: A's rows leave through the store's own seed reload, the
-        // surface returns to its honestly-labelled sample, nothing of A survives for a re-apply
+        // the retirement, asserted once: A's rows leave through a clear (no seed to reload), the
+        // surface returns to cold, nothing of A survives for a re-apply
         const expectRetired = host => {
             expect(host.grid.store.cleared).toBe(2);
-            expect(host.grid.store.loads).toBe(1);
+            expect(host.grid.store.loads).toBe(0);
             expect(host.controller.rosterWired).toBe(false);
             expect(host.controller.lastLiveRows).toBeNull();
             expect(host.controller.rosterProfileId).toBeNull();
-            expect(host.provider.data.gridAdapterState).toBe('sample');
+            expect(host.provider.data.gridAdapterState).toBe('cold');
             expect(host.provider.data.gridDegradedReason).toBeNull();
             expect(host.provider.data.presenceCapability).toBeNull();
-            expect(host.grid.adapterState).toBe('sample')
+            expect(host.grid.adapterState).toBe('cold')
         };
 
         test('a switch to a profile whose read fails retires the previous residents — never `stale` over another instance', async () => {
@@ -802,9 +760,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             installBridge(answering('b', rowsOf('emmy')));
             await host.controller.loadRoster();
 
-            // retirement clear + first-admission clear; the reconcile path never clears
+            // retirement clear + first-admission clear; the reconcile path never clears, nothing reloads
             expect(store.cleared).toBe(3);
-            expect(store.loads).toBe(1);
+            expect(store.loads).toBe(0);
             expect(store.added).toHaveLength(3);
             expect(host.controller.rosterWired).toBe(true);
             expect(host.controller.lastLiveRows).toHaveLength(1);

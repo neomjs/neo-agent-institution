@@ -19,14 +19,15 @@ import {
 
 const classList = names => ({contains: name => names.includes(name)});
 
-/** A healthy sanitised report; overrides shape the case under test. */
+/** A healthy sanitised report — a live, populated cockpit; overrides shape the case under test. */
 const report = (overrides = {}) => ({
     cockpitVisible  : true,
     cardCount       : 10,
-    rosterState     : 'sample',
-    rosterLabel     : 'static roster',
-    streamState     : 'sample',
-    activityLabel   : 'sample · live feed pending',
+    emptyCta        : false,
+    rosterState     : 'live',
+    rosterLabel     : '',
+    streamState     : 'live',
+    activityLabel   : '● streaming',
     firstPaintMs    : 800,
     timedOut        : false,
     tourControlCount: 0,
@@ -50,9 +51,9 @@ test.describe('resolveAdapterState — exactly one known class, or unknown', () 
 
     test('⭐ AMBIGUOUS: two known classes report `unknown`, never the first one listed', () => {
         // First-match resolution gave a confident answer about a contradictory DOM, preferring whichever
-        // state sat earlier in the list — so `is-live is-sample` reported `live`.
-        expect(resolveAdapterState(classList(['is-live', 'is-sample']).contains)).toBe('unknown');
-        expect(resolveAdapterState(classList(['is-sample', 'is-stale']).contains)).toBe('unknown');
+        // state sat earlier in the list — so `is-live is-cold` reported `live`.
+        expect(resolveAdapterState(classList(['is-live', 'is-cold']).contains)).toBe('unknown');
+        expect(resolveAdapterState(classList(['is-cold', 'is-stale']).contains)).toBe('unknown');
         expect(resolveAdapterState(classList(ADAPTER_STATES.map(s => `is-${s}`)).contains)).toBe('unknown');
     })
 
@@ -73,10 +74,10 @@ test.describe('isAdapterRenderCoherent — agreement, not a pinned state', () =>
     })
 
     test('⭐ a MISMATCHED label fails — the guard is still real', () => {
-        // The point of agreement-over-pinning: a `live` head rendering the sample label is a defect.
-        expect(isAdapterRenderCoherent('live', 'static roster · offline', ROSTER_STATE_LABELS)).toBe(false);
-        expect(isAdapterRenderCoherent('sample', '', ROSTER_STATE_LABELS)).toBe(false);
-        expect(isAdapterRenderCoherent('live', 'sample · live feed pending', STREAM_STATE_LABELS)).toBe(false);
+        // The point of agreement-over-pinning: a `live` head rendering the cold label is a defect.
+        expect(isAdapterRenderCoherent('live', 'not answered yet · offline', ROSTER_STATE_LABELS)).toBe(false);
+        expect(isAdapterRenderCoherent('cold', '', ROSTER_STATE_LABELS)).toBe(false);
+        expect(isAdapterRenderCoherent('live', 'not answered yet', STREAM_STATE_LABELS)).toBe(false);
     })
 
     test('an empty canonical label accepts an empty node or none at all', () => {
@@ -91,29 +92,53 @@ test.describe('isAdapterRenderCoherent — agreement, not a pinned state', () =>
 });
 
 test.describe('computeFirstPaintVerdict — the final verdict, mutation-discriminated', () => {
-    test('a matching SAMPLE cockpit passes the whole verdict', () => {
+    test('a matching LIVE populated cockpit passes the whole verdict', () => {
         const result = verdict();
 
         expect(result.adaptersCoherent).toBe(true);
+        expect(result.firstPaintPassed).toBe(true);
+        expect(result.rosterAnswered).toBe(true);
+        expect(result.productWitnessPassed).toBe(true);
+        expect(result.productWitnessUnmet).toEqual([]);
+    })
+
+    test('⭐ a LIVE EMPTY cockpit passes through the CTA — an empty fleet is an answer', () => {
+        // Nothing is seeded any more: a live answer with no agents renders the "Add your first
+        // agent" CTA and no cards, and that IS the plane's answer.
+        const result = verdict({cardCount: 0, emptyCta: true});
+
+        expect(result.rosterAnswered).toBe(true);
         expect(result.firstPaintPassed).toBe(true);
         expect(result.productWitnessPassed).toBe(true);
         expect(result.productWitnessUnmet).toEqual([]);
     })
 
-    test('⭐ a matching LIVE cockpit passes too — the witness can observe success', () => {
-        // The defect this replaces: the gate required the sample labels, so wiring the cockpit to the
-        // live fleet would have turned the smoke red.
+    test('⭐ a COLD cockpit is an honest first paint but never the product witness', () => {
+        // The plain smoke spawns no plane: the cockpit paints cold ("not answered yet", no cards, no
+        // CTA). That is a paint — and it is not an answer, so the product witness names the gap.
         const result = verdict({
-            rosterState: 'live', rosterLabel: '',
-            streamState: 'live', activityLabel: '● streaming'
+            cardCount: 0, emptyCta: false,
+            rosterState: 'cold', rosterLabel: 'not answered yet',
+            streamState: 'cold', activityLabel: 'not answered yet'
         });
 
         expect(result.adaptersCoherent).toBe(true);
-        expect(result.productWitnessPassed).toBe(true);
+        expect(result.firstPaintPassed).toBe(true);
+        expect(result.rosterAnswered).toBe(false);
+        expect(result.productWitnessPassed).toBe(false);
+        expect(result.productWitnessUnmet).toEqual(['rosterAnswered (no cards and no empty CTA — the plane never answered the roster)']);
+    })
+
+    test('⭐ a LIVE head with no cards and no CTA is not a paint — silence under a live label', () => {
+        const result = verdict({cardCount: 0, emptyCta: false});
+
+        expect(result.firstPaintPassed).toBe(false);
+        expect(result.productWitnessUnmet).toContain('firstPaint');
+        expect(result.productWitnessUnmet).toContain('rosterAnswered (no cards and no empty CTA — the plane never answered the roster)');
     })
 
     test('⭐ a MISMATCHED label fails the verdict and names the conjunct', () => {
-        const result = verdict({rosterState: 'live', rosterLabel: 'static roster · offline'});
+        const result = verdict({rosterState: 'live', rosterLabel: 'not answered yet · offline'});
 
         expect(result.adaptersCoherent).toBe(false);
         expect(result.firstPaintPassed).toBe(false);
@@ -135,7 +160,7 @@ test.describe('computeFirstPaintVerdict — the final verdict, mutation-discrimi
 
     test('⭐ an AMBIGUOUS observation fails the verdict — via `unknown`, end to end', () => {
         // The full path: two known classes resolve to `unknown`, which the verdict then rejects.
-        const state  = resolveAdapterState(classList(['is-live', 'is-sample']).contains),
+        const state  = resolveAdapterState(classList(['is-live', 'is-cold']).contains),
               result = verdict({rosterState: state, rosterLabel: ''});
 
         expect(state).toBe('unknown');
@@ -172,7 +197,7 @@ test.describe('computeFirstPaintVerdict — the final verdict, mutation-discrimi
         // The review's exact requirement — the suite must go red if `isAdapterRenderCoherent()` is
         // forced true. Asserted as a property here: a mismatched label is only rejected BECAUSE the
         // coherence term is false, so if that term were hardcoded true the verdict would wrongly pass.
-        const mismatched = report({rosterState: 'live', rosterLabel: 'static roster · offline'});
+        const mismatched = report({rosterState: 'live', rosterLabel: 'not answered yet · offline'});
 
         expect(isAdapterRenderCoherent(mismatched.rosterState, mismatched.rosterLabel, ROSTER_STATE_LABELS)).toBe(false);
 
@@ -180,7 +205,7 @@ test.describe('computeFirstPaintVerdict — the final verdict, mutation-discrimi
         expect(mismatched.cockpitVisible).toBe(true);
         expect(mismatched.cardCount).toBeGreaterThan(0);
         expect(mismatched.timedOut).toBe(false);
-        expect(verdict({rosterState: 'live', rosterLabel: 'static roster · offline'}).firstPaintPassed).toBe(false);
+        expect(verdict({rosterState: 'live', rosterLabel: 'not answered yet · offline'}).firstPaintPassed).toBe(false);
     })
 });
 

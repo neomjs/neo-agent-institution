@@ -34,6 +34,10 @@ window.addEventListener('error', event => reportRuntimeError('error', event.erro
 window.addEventListener('unhandledrejection', event => reportRuntimeError('unhandledrejection', event.reason));
 
 const
+    // how long a cold roster (no answer yet) may stay cold before the first-paint report calls it
+    // cold: a plane that answers inside the window lands as the answer it is, the plain smoke
+    // (no plane spawned) reports its honest cold paint once the window elapsed
+    COLD_SETTLE_MS         = 10000,
     FIRST_PAINT_TIMEOUT_MS = 60000,
     TOUR_CONTROL_SELECTOR  = [
         '.fm-fleet-cockpit .fm-fusion-tour',
@@ -56,10 +60,10 @@ function isElementVisible(element) {
 
 /**
  * Adapter states a cockpit head can render, as `is-<state>` classes (`FleetGrid.mjs` renders
- * `is-${adapterState}`; `FleetCockpit` seeds `sample` and promotes on a capability answer).
+ * `is-${adapterState}`; `FleetCockpit` starts `cold` and promotes on a capability answer).
  * @type {String[]}
  */
-const ADAPTER_STATES = ['live', 'sample', 'stale', 'degraded'];
+const ADAPTER_STATES = ['live', 'cold', 'stale', 'degraded'];
 
 /**
  * @summary Resolves the single adapter state a class list advertises, or `unknown`.
@@ -79,7 +83,7 @@ function resolveAdapterStateFromClassList(classList) {
 /**
  * @summary Reports which adapter state a cockpit head is actually rendering, plus its label text.
  *
- * Scoped selectors were the defect this replaces: reading `.fm-fleet-head.is-sample .fm-fleet-stale`
+ * Scoped selectors were the defect this replaces: reading `.fm-fleet-head.is-cold .fm-fleet-stale`
  * can only ever observe the ONE state we do not want to ship. A promoted (live) cockpit made that
  * selector match nothing and the field reported `null` — indistinguishable from a broken selector or
  * an absent cockpit, so the witness could not report success at all, only failure. The state is now
@@ -96,7 +100,7 @@ function readAdapterHead(headSelector, labelSelector) {
 
     return {
         // EXACTLY ONE known class, or `unknown`. First-match resolution reported a confident answer
-        // about a contradictory DOM: a head carrying `is-live is-sample` resolved to whichever state
+        // about a contradictory DOM: a head carrying `is-live is-cold` resolved to whichever state
         // sat earlier in the list. Ambiguity and unrecognised-state now share the same fail-closed
         // outcome — not ready, not conclusive.
         state: resolveAdapterStateFromClassList(head.classList),
@@ -113,6 +117,7 @@ function collectFirstPaintSnapshot() {
     const
         cards      = [...document.querySelectorAll('.fm-fleet-cockpit .fm-agent-card')],
         cockpit    = document.querySelector('.fm-fleet-cockpit'),
+        cta        = document.querySelector('.fm-fleet-cockpit .fm-fleet-empty-cta'),
         rosterHead = readAdapterHead('.fm-fleet-cockpit .fm-fleet-head', '.fm-fleet-stale'),
         streamHead = readAdapterHead('.fm-fleet-cockpit .fm-stream-head', '.fm-stream-state');
 
@@ -120,6 +125,9 @@ function collectFirstPaintSnapshot() {
         activityLabel   : streamHead.label,
         cardCount       : cards.filter(isElementVisible).length,
         cockpitVisible  : Boolean(cockpit && isElementVisible(cockpit)),
+        // the roster's own empty state: a live answer with no agents renders the CTA, a cold roster
+        // (no answer yet) hides it — a visible CTA is an ANSWER, never a paint of nothing
+        emptyCta        : Boolean(cta && isElementVisible(cta)),
         rosterLabel     : rosterHead.label,
         rosterState     : rosterHead.state,
         streamState     : streamHead.state,
@@ -157,14 +165,21 @@ const firstPaintTimer = setInterval(function reportFirstPaint() {
     const
         elapsed  = Date.now() - t0,
         snapshot = collectFirstPaintSnapshot(),
-        // Ready = the cockpit rendered RECOGNISED adapter heads, in ANY honest state. Pinning the
-        // sample labels here meant a cockpit wired to the live fleet could never become ready: it
+        // Ready = the cockpit rendered RECOGNISED adapter heads, in ANY honest state. Pinning one
+        // state's labels here meant a cockpit wired to the live fleet could never become ready: it
         // would wait out the full timeout and report `timedOut: true`, so the product receipt was
         // reachable only while the product was unfinished. Label-vs-state AGREEMENT is judged by the
         // shell, which owns the verdict — the preload only observes. `tourControlCount === 0` stays:
         // the receipt is for the product first paint, not a demo tour.
+        //
+        // The roster's ANSWER is what the product receipt is for: real cards, or the empty CTA a live
+        // empty answer renders. Nothing is seeded any more, so a cold roster (no answer yet) is
+        // reported only once it has stayed cold past the settle window — the plain smoke, which
+        // spawns no plane, paints cold and says so; a plane that answers inside the window lands as
+        // the answer it is.
+        rosterAnswered = snapshot.cardCount > 0 || snapshot.emptyCta,
         ready    = snapshot.cockpitVisible &&
-            snapshot.cardCount > 0 &&
+            (rosterAnswered || (snapshot.rosterState === 'cold' && elapsed >= COLD_SETTLE_MS)) &&
             snapshot.rosterState !== null && snapshot.rosterState !== 'unknown' &&
             snapshot.streamState !== null && snapshot.streamState !== 'unknown' &&
             snapshot.tourControlCount === 0,

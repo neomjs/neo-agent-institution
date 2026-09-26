@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {test, expect, landFleetSample} from '../../fixtures.mjs';
 
 const
     LIST_CLASS     = 'Neo.list.Buffered',
@@ -14,7 +14,7 @@ const
  * @param {Number} [start=0]
  * @returns {Object[]}
  */
-// mixed kinds on purpose (#63): the kind-chip geometry witness needs short and long words
+// mixed kinds on purpose: the kind-chip geometry witness needs short and long words
 // (PR · A2A · ISSUE-ACTIVITY · WORK-STALL · REVIEW) riding the SAME pooled rows through recycle
 const EVENT_KINDS = ['a2a-activity', 'pr', 'issue-activity', 'work-stall', 'review'];
 
@@ -42,7 +42,7 @@ function createEvents(count, start=0) {
 }
 
 /**
- * @summary Reads the mounted rows' cell geometry the way a reader sees it (#63): one grid row per
+ * @summary Reads the mounted rows' cell geometry the way a reader sees it: one grid row per
  * event, every cell at its own content size around one vertical center, and every kind chip
  * exactly as wide and as tall as its own word box. The stretch family this guards: a pooled row
  * whose flexbox layout outranks the grid paints 23px chips and rows that read top-aligned and
@@ -159,6 +159,8 @@ async function boot(page, neuralLink) {
     await page.goto('/apps/agentos/index.html');
     await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
     await expect(page.locator('.fm-activity-stream')).toBeVisible({timeout: 30000});
+    // the tests' sample events land as the feed's first answer — nothing is seeded any more
+    await landFleetSample(page, {roster: false});
 
     const
         app        = await neuralLink.connectToApp('AgentOS'),
@@ -185,7 +187,7 @@ async function boot(page, neuralLink) {
  * The Store remains complete while the DOM is finite; the first nested pooled row joins record,
  * VDOM, VNode and painted text; history reading survives a prepend without a jump; source counts
  * never borrow local retention; stale transport never blanks the retained feed; both skins
- * render the same fixed-height row anatomy; and the row geometry (#63) — grid rows, centered
+ * render the same fixed-height row anatomy; and the row geometry — grid rows, centered
  * cells, kind chips at their own word box — is the same at first paint, deep in recycled history
  * and back at the top.
  *
@@ -264,8 +266,8 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         await expect(rows).toHaveCount(expectedPool);
         await expect(page.locator('.fm-stream-fold')).toHaveCount(0);
 
-        // #63 — first paint, before any scroll: the geometry a reader sees without touching the
-        // surface. Scrolling must never be a repair step.
+        // the row-geometry witness at first paint, before any scroll: the geometry a reader sees without
+        // touching the surface. Scrolling must never be a repair step.
         const geometryAtFirstPaint = await readRowGeometry(page);
 
         expectIntrinsicRows(geometryAtFirstPaint, 'first paint');
@@ -349,8 +351,8 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         expect((await app.queryComponent({className: ROW_CLASS}, ['id'])).map(componentId).sort()).toEqual(poolIdsBefore);
         await expect(rows).toHaveCount(expectedPool);
 
-        // #63 — deep in history after the prepend: the same physical rows carry other records now;
-        // recycling changes record truth, never chip geometry
+        // the row-geometry witness deep in history after the prepend: the same physical rows carry other
+        // records now; recycling changes record truth, never chip geometry
         const geometryAfterRecycle = await readRowGeometry(page);
 
         expectIntrinsicRows(geometryAfterRecycle, 'after recycle');
@@ -365,8 +367,8 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         await expect(page.locator('.fm-stream-new-events')).toBeHidden();
         await expect(firstObject).toHaveText('event 501');
 
-        // #63 — back at the top after the round trip (the operator's path: scroll down, then up):
-        // the geometry is the first-paint geometry, and a kind's chip is the width it was
+        // the row-geometry witness, back at the top after the round trip (the operator's path: scroll
+        // down, then up): the geometry is the first-paint geometry, and a kind's chip is the width it was
         const geometryBackAtTop = await readRowGeometry(page),
               widthsAtFirstPaint = chipWidthsByKind(geometryAtFirstPaint),
               widthsBackAtTop    = chipWidthsByKind(geometryBackAtTop);

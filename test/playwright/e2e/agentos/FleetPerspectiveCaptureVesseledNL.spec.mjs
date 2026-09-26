@@ -1,4 +1,4 @@
-import {departedWindowSends, test, expect} from '../../fixtures.mjs';
+import {departedWindowSends, landFleetSample, test, expect} from '../../fixtures.mjs';
 
 /**
  * @summary Normalizes a one-match Neural Link component query without weakening a missing match.
@@ -35,6 +35,9 @@ test.describe('AgentOS FleetCockpit — a perspective captured while a pane is i
         workerErrors.expect(departedWindowSends);
 
         await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        // the tests' sample fleet lands as the fleet's answer — nothing is seeded any more
+        await landFleetSample(page);
         await page.waitForSelector('.fm-agent-card', {timeout: 30000});
 
         const app       = await neuralLink.connectToApp('AgentOS'),

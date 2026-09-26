@@ -4,7 +4,6 @@ import Provider            from '../../../../../node_modules/neo.mjs/src/state/P
 import SpineBanner         from '../../../util/SpineBanner.mjs';
 import TelltaleDeriver     from '../../../util/ViewerWakeTelltale.mjs';
 import ViewerWakeFeed      from '../../../store/ViewerWakeFeed.mjs';
-import {sampleActivity}    from '../../../config/fleetSampleData.mjs';
 
 /**
  * @summary One banner-verdict derivation for the two formulas that render it (`spineBanner` and
@@ -25,9 +24,9 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
  * stay controller state.
  *
  * The provider hosts three kinds of truth:
- * - **stores** — the roster (autoloaded from the honestly-labelled sample seed), the activity
- *   feed (fixture-seeded the same way) and the bounded viewer-wake feed; panes bind instances
- *   via `bind: {store: 'stores.…'}` — the provider is the sharing scope, never a store singleton.
+ * - **stores** — the roster and the activity feed (both start EMPTY: the fleet's answers fill
+ *   them, nothing is seeded) and the bounded viewer-wake feed; panes bind instances via
+ *   `bind: {store: 'stores.…'}` — the provider is the sharing scope, never a store singleton.
  * - **data** — the selection pair, the per-surface adapter states with their RETAINED degrade
  *   reasons (per-surface by design: one shared reason field cannot know whose cause it holds),
  *   the Brain daemon verdict + shell transport fact, the viewer-wake truths and the activity
@@ -85,12 +84,12 @@ class StateProvider extends Provider {
              */
             daemonState: null,
             /**
-             * The grid surface's adapter state — `'sample'` is the honest cold-first-run badge;
-             * absent-item materialization binds to HERE, so a layout commit can never reset a
-             * live grid back to sample.
-             * @member {String} gridAdapterState='sample'
+             * The grid surface's adapter state — `'cold'` until a source answers (no data is
+             * claimed, none is seeded), then `'live'` or `'stale'`; absent-item materialization
+             * binds to HERE, so a layout commit can never reset a live grid back to cold.
+             * @member {String} gridAdapterState='cold'
              */
-            gridAdapterState: 'sample',
+            gridAdapterState: 'cold',
             /**
              * The roster read owner's finite observation and sanitized reason. Leaf-complete so
              * the banner and dot react to this surface independently of the activity read.
@@ -140,9 +139,9 @@ class StateProvider extends Provider {
             shellTransport: null,
             /**
              * The ACTIVITY surface's adapter state — see {@link #data.gridAdapterState}.
-             * @member {String} streamAdapterState='sample'
+             * @member {String} streamAdapterState='cold'
              */
-            streamAdapterState: 'sample',
+            streamAdapterState: 'cold',
             /**
              * Activity read observation; success/absence clears only this surface's fields.
              * @member {Object} streamConnection={state:null,reason:null}
@@ -244,12 +243,10 @@ class StateProvider extends Provider {
          */
         stores: {
             fleetActivityEvents: {
-                data  : sampleActivity,
                 module: FleetActivityEvents
             },
             fleetRoster: {
-                autoLoad: true,
-                module  : FleetRoster
+                module: FleetRoster
             },
             viewerWakeFeed: {
                 module: ViewerWakeFeed

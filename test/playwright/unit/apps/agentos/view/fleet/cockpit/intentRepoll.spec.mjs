@@ -232,12 +232,11 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
                   getMemoriesPane       : () => null,
                   getOperatorMailboxPane: () => null,
                   getStateProvider      : () => provider,
-                  livenessReadTimeout   : 4000,
-                  rosterSourceMode      : 'sample'
+                  livenessReadTimeout   : 4000
               },
               controller = makeControllerFake(FleetCockpitController, {
                   component              : view,
-                  getReference           : reference => reference === 'fleet-grid' ? {adapterState: 'sample', store} : null,
+                  getReference           : reference => reference === 'fleet-grid' ? {adapterState: 'cold', store} : null,
                   lastLiveRows           : null,
                   // the provider-owned roster authority — the same REAL store the grid binds
                   resolveFleetRosterStore: () => store

@@ -88,7 +88,7 @@ function getFirstPaintReporter(intervals) {
 /**
  * @summary Builds a cockpit adapter-head element mock: an `is-<state>` class plus its label child.
  *
- * The preload no longer queries `.fm-fleet-head.is-sample …` — a selector pinned to one state could
+ * The preload no longer queries `.fm-fleet-head.is-cold …` — a selector pinned to one state could
  * only ever observe that state, so a promoted (live) cockpit reported `null` and the witness could not
  * distinguish "working" from "broken". These mocks therefore carry the state on the element, exactly
  * as `FleetGrid` renders `is-${adapterState}`.
@@ -115,10 +115,11 @@ function adapterHead(state, labelText, labelSelector) {
  * @param {Object} options
  * @returns {Object}
  */
-function cockpitDom({rosterState='sample', rosterLabel='static roster', streamState='sample', streamLabel='sample · live feed pending', cards=[{getClientRects: () => [{}]}], tourControls=[], cockpit={getClientRects: () => [{}]}} = {}) {
+function cockpitDom({rosterState='cold', rosterLabel='not answered yet', streamState='cold', streamLabel='not answered yet', cards=[{getClientRects: () => [{}]}], emptyCta=false, tourControls=[], cockpit={getClientRects: () => [{}]}} = {}) {
     return {
         selectors: {
-            '.fm-fleet-cockpit'                : cockpit,
+            '.fm-fleet-cockpit'                    : cockpit,
+            '.fm-fleet-cockpit .fm-fleet-empty-cta': emptyCta ? {getClientRects: () => [{}]} : null,
             '.fm-fleet-cockpit .fm-fleet-head' : rosterState === null ? null : adapterHead(rosterState, rosterLabel, '.fm-fleet-stale'),
             '.fm-fleet-cockpit .fm-stream-head': streamState === null ? null : adapterHead(streamState, streamLabel, '.fm-stream-state')
         },
@@ -185,7 +186,7 @@ test.describe('Electron harness preload capability', () => {
             cards              = [{getClientRects: () => [{}]}, {getClientRects: () => [{}]}],
             {intervals, sends} = await loadPreload({
                 clock,
-                dom                      : cockpitDom({cards, cockpit, rosterLabel: ' static roster ', streamLabel: ' sample · live feed pending '}),
+                dom                      : cockpitDom({cards, cockpit, rosterLabel: ' not answered yet ', streamLabel: ' not answered yet '}),
                 precedeWithUnrelatedTimer: true
             }),
             firstPaintReporter = getFirstPaintReporter(intervals);
@@ -195,13 +196,14 @@ test.describe('Electron harness preload capability', () => {
         firstPaintReporter.fn();
 
         expect(sends).toContainEqual(['shell-first-paint-report', {
-            activityLabel       : 'sample · live feed pending',
+            activityLabel       : 'not answered yet',
             cardCount           : 2,
             cockpitVisible      : true,
+            emptyCta            : false,
             rendererFirstPaintMs: 0,
-            rosterLabel         : 'static roster',
-            rosterState         : 'sample',
-            streamState         : 'sample',
+            rosterLabel         : 'not answered yet',
+            rosterState         : 'cold',
+            streamState         : 'cold',
             timedOut            : false,
             tourControlCount    : 0
         }]);
@@ -226,20 +228,21 @@ test.describe('Electron harness preload capability', () => {
         firstPaintReporter.fn();
 
         expect(sends).toContainEqual(['shell-first-paint-report', {
-            activityLabel       : 'sample · live feed pending',
+            activityLabel       : 'not answered yet',
             cardCount           : 1,
             cockpitVisible      : true,
+            emptyCta            : false,
             rendererFirstPaintMs: null,
-            rosterLabel         : 'static roster',
-            rosterState         : 'sample',
-            streamState         : 'sample',
+            rosterLabel         : 'not answered yet',
+            rosterState         : 'cold',
+            streamState         : 'cold',
             timedOut            : true,
             tourControlCount    : 1
         }]);
         expect(firstPaintReporter.cleared).toBe(true)
     })
 
-    // The defect these cover: the witness previously read `.fm-fleet-head.is-sample .fm-fleet-stale`,
+    // The defect these cover: the witness previously read `.fm-fleet-head.is-cold .fm-fleet-stale`,
     // so it could observe exactly ONE adapter state — the one we do not want to ship. A cockpit
     // promoted to `live` made that selector match nothing and the field reported `null`,
     // indistinguishable from a broken selector or an absent cockpit. An instrument that can only
@@ -271,7 +274,7 @@ test.describe('Electron harness preload capability', () => {
             // is not enough — the resolution BEHAVIOUR must be pinned here too, or the copy could revert
             // to first-match and nothing would catch it.
             const report = await readFirstPaint(cockpitDom({
-                rosterState: ['live', 'sample'],   // contradictory DOM
+                rosterState: ['live', 'cold'],   // contradictory DOM
                 rosterLabel: ''
             }), {viaTimeout: true});
 
@@ -283,7 +286,7 @@ test.describe('Electron harness preload capability', () => {
 
         test('a head advertising THREE known classes is also `unknown`', async () => {
             const report = await readFirstPaint(cockpitDom({
-                rosterState: ['live', 'sample', 'stale'], rosterLabel: ''
+                rosterState: ['live', 'cold', 'stale'], rosterLabel: ''
             }), {viaTimeout: true});
 
             expect(report.rosterState).toBe('unknown');
@@ -328,6 +331,41 @@ test.describe('Electron harness preload capability', () => {
             expect(degraded.streamState).toBe('degraded');
         })
 
+        test('⭐ a COLD cockpit with no cards reports only once the settle window elapsed — a paint, not a timeout', async () => {
+            const clock              = {now: 0},
+                  {intervals, sends} = await loadPreload({clock, dom: cockpitDom({cards: []})}),
+                  reporter           = getFirstPaintReporter(intervals);
+
+            // cold and empty inside the window: a plane may still answer — not ready yet
+            reporter.fn();
+            expect(sends.filter(([channel]) => channel === 'shell-first-paint-report')).toEqual([]);
+
+            // past the window the honest cold paint is reported as a paint, never as a timeout
+            clock.now = 10000;
+            reporter.fn();
+
+            const report = sends.find(([channel]) => channel === 'shell-first-paint-report')?.[1];
+
+            expect(report.rosterState).toBe('cold');
+            expect(report.cardCount).toBe(0);
+            expect(report.emptyCta).toBe(false);
+            expect(report.timedOut).toBe(false);
+            expect(report.rendererFirstPaintMs).toBe(10000);
+        })
+
+        test('⭐ a LIVE EMPTY cockpit reports through the CTA at once — the plane answered', async () => {
+            const report = await readFirstPaint(cockpitDom({
+                cards: [], emptyCta: true,
+                rosterState: 'live', rosterLabel: '',
+                streamState: 'live', streamLabel: '● streaming'
+            }));
+
+            expect(report.rosterState).toBe('live');
+            expect(report.cardCount).toBe(0);
+            expect(report.emptyCta).toBe(true);
+            expect(report.timedOut).toBe(false);
+        })
+
         test('NEGATIVE CONTROL — an ABSENT head is distinct from every rendered state', async () => {
             const report = await readFirstPaint(cockpitDom({rosterState: null, streamState: null}), {viaTimeout: true});
 
@@ -341,7 +379,7 @@ test.describe('Electron harness preload capability', () => {
         })
 
         test('an UNMAPPED state reports `unknown` rather than falling back to a known one', async () => {
-            // A state added upstream must surface as unverified. Defaulting to `sample` would let a new
+            // A state added upstream must surface as unverified. Defaulting to `cold` would let a new
             // render state pass a check that never examined it.
             const report = await readFirstPaint(cockpitDom({rosterState: 'reconciling', rosterLabel: 'anything'}), {viaTimeout: true});
 

@@ -71,8 +71,8 @@ class FleetAdmission extends Base {
             store.clear();
             rows.length > 0 && store.add(rows);
             owner.rosterWired = true;
-            // the first live snapshot replaces the sample seed wholesale — re-seat or clear a
-            // selection made against a now-removed sample record
+            // the first live snapshot replaces what the store holds wholesale — re-seat or clear a
+            // selection made against a now-removed record
             owner.reconcileSelection()
         }
 

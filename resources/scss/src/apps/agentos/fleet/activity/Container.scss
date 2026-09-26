@@ -31,6 +31,19 @@
         &.is-stale .fm-stream-state {
             color: var(--fm-state-wedged);
         }
+
+        // no source has answered yet: the quietest ink — a fact, not an alarm
+        &.is-cold .fm-stream-state {
+            color: var(--fm-ink-faint);
+        }
+    }
+
+    // the feed's empty ANSWER, in the region the rows would fill; a cold feed keeps it hidden
+    .fm-stream-empty {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        padding       : var(--fm-space-3) 0;
     }
 
     .fm-stream-label {

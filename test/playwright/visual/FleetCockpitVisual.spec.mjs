@@ -1,4 +1,5 @@
 import {test, expect} from '@playwright/test';
+import {landFleetActivity, landFleetRoster, landFleetSample} from '../fixtures.mjs';
 
 /**
  * The FM cockpit's visual-regression baselines — the design gate's mechanical guard: pixel
@@ -9,9 +10,10 @@ import {test, expect} from '@playwright/test';
  * - the config forces `reducedMotion: 'reduce'` — every transition collapses through the
  *   motion-token layer, so settling means "the dock motion signal class is ABSENT", never a
  *   timing sleep;
- * - data is the committed fixture seed only: the registry bridge stays unwired here, and the
- *   fail-closed loaders render the honestly-labelled sample state BY DESIGN — the fixture IS
- *   the deterministic render;
+ * - data is the tests' sample fleet, landed through the liveness owner's own admission
+ *   (`landFleetSample`) once the cockpit mounts: the registry bridge stays unwired here, nothing
+ *   is seeded, and the cold and empty states get their own arm — the fixture IS the
+ *   deterministic render;
  * - `document.fonts.ready` gates every capture (half-loaded webfonts are the classic
  *   false-diff source);
  * - the globalSetup already refused the run if the built theme CSS trails the SCSS sources.
@@ -42,6 +44,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 30000});
+        // the tests' sample fleet lands as the fleet's answer — nothing is seeded any more
+        await landFleetSample(page);
         await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
         await page.evaluate(() => document.fonts.ready);
         // The one non-deterministic layer of the fixture render: card avatars are LIVE GitHub
@@ -64,10 +68,33 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 }))
         ));
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await installFleetHeadMeasure(page)
+    };
 
-        // the fleet head's shared no-clip measure — its geometry, read by the narrow arms below:
-        // a legend that hides its last states says those states do not exist, so every band
-        // asserts scrollWidth inside clientWidth and the last swatch inside the row.
+    /**
+     * Boots the agentos shell to the SETTLED but UNANSWERED cockpit: shell visible, fonts loaded, no dock
+     * motion in flight, both surfaces cold — nothing is landed, nothing is seeded. The arms that witness
+     * the cold spine (the banner's narrow form, the empty states) boot here.
+     * @param {Object} page
+     */
+    const bootColdCockpit = async page => {
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 30000});
+        await expect(page.locator('.fm-fleet-head')).toHaveClass(/is-cold/);
+        await expect(page.locator('.fm-stream-head')).toHaveClass(/is-cold/);
+        await page.evaluate(() => document.fonts.ready);
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await installFleetHeadMeasure(page)
+    };
+
+    /**
+     * Installs the fleet head's shared no-clip measure — its geometry, read by the narrow arms below:
+     * a legend that hides its last states says those states do not exist, so every band asserts
+     * scrollWidth inside clientWidth and the last swatch inside the row.
+     * @param {Object} page
+     */
+    const installFleetHeadMeasure = async page => {
         await page.evaluate(() => {
             globalThis.__fmMeasureFleetHead = () => {
                 const head     = document.querySelector('.fm-fleet-head'),
@@ -334,9 +361,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // and the view labels never drop. The old shrink-only regime witnessed the banner
         // ellipsizing under pressure; its own receipt said a design fix widening the box must go
         // red, not quiet — this cut IS that design fix (chrome labels are never sentences), so
-        // the witness now pins the designed narrow FORM instead of the pressure it removed.
+        // the witness now pins the designed narrow FORM instead of the pressure it removed. The cold
+        // boot is the band's subject: the banner is the state mark, and only an unanswered spine
+        // renders one (a live spine earns zero pixels).
         await page.setViewportSize({width: 720, height: 900});
-        await bootSettledCockpit(page);
+        await bootColdCockpit(page);
 
         const geometry = await page.evaluate(() => {
             const bar       = document.querySelector('.fm-cockpit-bar'),
@@ -873,5 +902,36 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
         await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card-light.png')
+    });
+
+    test('the cockpit before any answer and after an empty one — cold says "not answered yet", an empty answer offers the first agent; both skins', async ({page}) => {
+        // the cold boot: nothing is landed — nothing is seeded, no source has answered
+        await bootColdCockpit(page);
+
+        const cockpit = page.locator('.fm-fleet-cockpit');
+
+        await expect(page.locator('.fm-fleet-stale')).toHaveText('not answered yet');
+        await expect(page.locator('.fm-stream-state')).toHaveText('not answered yet');
+        // an unanswered roster is not an empty fleet: no CTA, no "no activity yet"
+        await expect(page.locator('.fm-fleet-empty-cta')).toBeHidden();
+        await expect(page.locator('.fm-stream-empty')).toBeHidden();
+        await expect(cockpit).toHaveScreenshot('cockpit-cold.png');
+
+        // the fleet answers with nothing: live, and the surfaces' own empty words
+        await landFleetRoster(page, []);
+        await landFleetActivity(page, []);
+
+        await expect(page.locator('.fm-fleet-head')).toHaveClass(/is-live/);
+        await expect(page.locator('.fm-stream-head')).toHaveClass(/is-live/);
+        await expect(page.locator('.fm-fleet-empty-cta')).toBeVisible();
+        await expect(page.locator('.fm-fleet-empty-cta')).toHaveText('Add your first agent');
+        await expect(page.locator('.fm-stream-empty')).toHaveText('no activity yet');
+        await expect(page.locator('.fm-agent-card')).toHaveCount(0);
+        await expect(cockpit).toHaveScreenshot('cockpit-empty.png');
+
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(cockpit).toHaveScreenshot('cockpit-empty-light.png')
     });
 });

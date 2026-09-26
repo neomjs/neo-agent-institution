@@ -41,13 +41,13 @@ export const makeActivityStoreHarness = () => {
 /**
  * The provider fake mirrors `state.Provider`'s write surface (both `setData` forms) and seeds the
  * REAL config defaults — the load guards read `streamAdapterState`/`gridAdapterState`, so a fake
- * missing the 'sample' seed would let a pre-wired throw claim last-known data that never existed.
+ * missing the 'cold' default would let a pre-wired throw claim last-known data that never existed.
  */
 export const makeProviderFake = (data = {}) => ({
     data: {
         daemonDegradedReason: null, daemonState: null,
-        gridAdapterState: 'sample', gridDegradedReason: null, shellTransport: null,
-        streamAdapterState: 'sample', streamDegradedReason: null, ...data
+        gridAdapterState: 'cold', gridDegradedReason: null, shellTransport: null,
+        streamAdapterState: 'cold', streamDegradedReason: null, ...data
     },
     getData(key) { return this.data[key] },
     getStore() { return null },

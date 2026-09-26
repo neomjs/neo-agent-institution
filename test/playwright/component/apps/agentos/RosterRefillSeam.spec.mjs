@@ -13,12 +13,13 @@ let gridId, tick = 0;
 /**
  * @summary The mounted roster after a same-key refill (the MailboxGridSeam pattern): the REAL list,
  * pool and cards in a browser, across the worker boundary — the one layer that shows a doubled DOM
- * node. The cockpit writes the roster in two mutations on its first live admission and on every
- * instance switch — `clear()` then `add()` of the surviving keys, or `clear()` then the seed
- * `load()` — and a pooled card retired on the first mutation and re-created under the SAME id on
- * the second was inserted beside its old node instead of patching it: two cards per `li` after the
- * admission, three after a switch (measured live 2026-09-23). The writer driver
- * (`rosterRefill.driver.mjs`) performs exactly those two mutations inside the App worker. The unit
+ * node. The cockpit writes the roster in two mutations on its first live admission (`clear()` then
+ * `add()` of the surviving keys) and in three on an instance switch (the retirement's `clear()` —
+ * nothing is seeded, so nothing reloads — then the next admission's `clear()` and `add()`), and a
+ * pooled card retired on the first mutation and re-created under the SAME id on a later one was
+ * inserted beside its old node instead of patching it: two cards per `li` after the admission, three
+ * after a switch (measured live 2026-09-23). The writer driver (`rosterRefill.driver.mjs`) performs
+ * exactly those mutations inside the App worker. The unit
  * arm in `roster/cardIdentity.spec.mjs` holds the mechanism (the retired card asks its parent to
  * forget it); this arm holds the DOM. The grid takes its store as a CONFIG here and owns it: the
  * destroy-and-remount control proves the fixed-id store leaves with the grid.
@@ -33,8 +34,8 @@ test.describe('AgentOS.view.fleet.roster — the mounted list after a same-key r
             parentId  : 'component-test-viewport',
             height    : 700,
             width     : 1000,
-            // the seed's own eleven keys, so the seed `load()` returns the SAME keys the store held
-            store     : {className: 'AgentOS.store.FleetRoster', id: STORE_ID, autoLoad: false, url: '/apps/agentos/resources/data/fleetRoster.json', data: seedRows}
+            // the tests' sample rows as the store's data — the grid owns the store, nothing is seeded
+            store     : {className: 'AgentOS.store.FleetRoster', id: STORE_ID, data: seedRows}
         }),
         // one writer mutation per call, inside the App worker; every URL is loaded once
         drive = (page, op, extra = '') => page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${DRIVER}?store=${STORE_ID}&op=${op}${extra}&t=${++tick}`);
@@ -46,7 +47,7 @@ test.describe('AgentOS.view.fleet.roster — the mounted list after a same-key r
         }
     });
 
-    test('clear+add and clear+load of the same keys leave exactly one card per record; the owned store leaves with the grid', async ({page}) => {
+    test('clear+add and a switch\'s clear·clear+add of the same keys leave exactly one card per record; the owned store leaves with the grid', async ({page}) => {
         await page.goto('test/playwright/component/apps/empty-viewport/index.html');
         await page.waitForSelector('#component-test-viewport', {state: 'attached'});
 
@@ -84,11 +85,12 @@ test.describe('AgentOS.view.fleet.roster — the mounted list after a same-key r
         expect(added.success, `clear+add drove: ${added.error?.message ?? ''}`).toBe(true);
         await onePerRecord('after clear() + add()');
 
-        // 3. the retirement's shape: clear(), then the seed load() — the same keys return through the url pipeline
-        const reloaded = await drive(page, 'clearLoad');
+        // 3. the switch's shape: the retirement's clear() (nothing is seeded, so nothing reloads), then the
+        // next profile's admission — clear() and add() of the same keys: three mutations before the pool re-seats
+        const switched = await drive(page, 'switchAdd', `&rows=${encodeURIComponent(JSON.stringify(seedRows))}`);
 
-        expect(reloaded.success, `clear+load drove: ${reloaded.error?.message ?? ''}`).toBe(true);
-        await onePerRecord('after clear() + load()');
+        expect(switched.success, `switch drove: ${switched.error?.message ?? ''}`).toBe(true);
+        await onePerRecord('after a switch\'s clear() · clear() + add()');
 
         // 4. the owned store leaves with the grid: a remount under the same fixed id is clean
         await page.evaluate(id => Neo.worker.App.destroyNeoInstance(id), gridId);

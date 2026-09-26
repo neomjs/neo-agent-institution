@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {test, expect, landFleetSample} from '../../fixtures.mjs';
 
 /**
  * @summary Publishes one popup's observed frame after CDP automation moved the real window —
@@ -111,6 +111,8 @@ test.describe('AgentOS Fleet Cockpit — kinetic multi-window choreography (#156
 
             await page.goto('/apps/agentos/index.html');
             await page.waitForSelector('.fm-fleet-cockpit', {timeout: 60000});
+            // the tests' sample fleet lands as the fleet's answer — nothing is seeded any more
+            await landFleetSample(page);
             await page.waitForSelector('.fm-agent-card', {timeout: 30000});
 
             const app       = await neuralLink.connectToApp('AgentOS'),

@@ -13,31 +13,38 @@
  *
  * ## Exactly one state, or `unknown`
  *
- * A head advertising two known states (`is-live is-sample`) is **ambiguous, not live**. First-match
+ * A head advertising two known states (`is-live is-cold`) is **ambiguous, not live**. First-match
  * resolution silently preferred whichever state happened to be earlier in the list and reported a
  * confident answer about a contradictory DOM. Ambiguity now yields `unknown`, which is not ready and
  * not conclusive — the same fail-closed direction as an unrecognised state.
  *
  * ## The labels belong to the components that render them
  *
- * `FleetGrid` renders `adapterState === 'stale' ? … : adapterState === 'sample' ? … : ''`, and
- * `ActivityStream` renders `{sample, stale}[state] ?? '● streaming'`. These maps mirror that, so the
+ * `FleetGrid` renders `adapterState === 'stale' ? … : adapterState === 'cold' ? … : ''`, and
+ * `ActivityStream` renders `{cold, stale}[state] ?? '● streaming'`. These maps mirror that, so the
  * witness checks state-vs-label **agreement** rather than pinning one expected state — pinning made the
  * smoke assert the product was unfinished, and it would have gone red the moment the cockpit worked.
+ *
+ * ## The roster's answer, not a count of seeded cards
+ *
+ * Nothing is seeded any more: a cold roster renders no cards and no CTA, a live empty answer renders
+ * the "Add your first agent" CTA, a live populated answer renders cards. The first-paint receipt
+ * accepts any of the three as a paint; the PRODUCT witness needs the plane's answer — cards or the
+ * CTA (`emptyCta`) — because a count of zero over a cold head is silence, not an empty fleet.
  */
 
 /**
  * Adapter states a cockpit head can render, as `is-<state>` classes.
  * @type {String[]}
  */
-export const ADAPTER_STATES = Object.freeze(['live', 'sample', 'stale', 'degraded']);
+export const ADAPTER_STATES = Object.freeze(['live', 'cold', 'stale', 'degraded']);
 
 /**
  * The label each roster state renders, mirrored from `FleetGrid`.
  * @type {Object}
  */
 export const ROSTER_STATE_LABELS = Object.freeze({
-    live: '', sample: 'static roster', stale: 'stale — reconnecting', degraded: ''
+    live: '', cold: 'not answered yet', stale: 'stale — reconnecting', degraded: ''
 });
 
 /**
@@ -45,7 +52,7 @@ export const ROSTER_STATE_LABELS = Object.freeze({
  * @type {Object}
  */
 export const STREAM_STATE_LABELS = Object.freeze({
-    live: '● streaming', sample: 'sample · live feed pending', stale: 'stale — reconnecting', degraded: '● streaming'
+    live: '● streaming', cold: 'not answered yet', stale: 'stale — reconnecting', degraded: '● streaming'
 });
 
 /**
@@ -78,8 +85,8 @@ export function resolveAdapterState(hasClass) {
  * @summary True when a head renders a recognised state AND a label that agrees with it.
  *
  * Deliberately state-AGNOSTIC: pinning one expected label made the smoke assert the cockpit was still
- * on sample data, so wiring it to the live fleet would have turned the witness red. Agreement keeps the
- * guard real — a `live` head showing the sample label is still a defect — while letting any honest
+ * cold, so wiring it to the live fleet would have turned the witness red. Agreement keeps the
+ * guard real — a `live` head showing the cold label is still a defect — while letting any honest
  * state pass.
  *
  * `unknown` fails closed, which now covers ambiguity as well as unmapped states.
@@ -105,7 +112,7 @@ export function isAdapterRenderCoherent(state, label, expectedLabels) {
  * completely healthy boot invited exactly the wrong conclusion — it is normally just `packagedMode`,
  * since no npm script runs the packaged app.
  * @param {Object}  spec
- * @param {Object}  spec.firstPaint    Sanitised report: `{cockpitVisible, cardCount, rosterState, rosterLabel, streamState, activityLabel, firstPaintMs, timedOut, tourControlCount}`.
+ * @param {Object}  spec.firstPaint    Sanitised report: `{cockpitVisible, cardCount, emptyCta, rosterState, rosterLabel, streamState, activityLabel, firstPaintMs, timedOut, tourControlCount}`.
  * @param {Boolean} spec.packagedMode
  * @param {Boolean} spec.brainMode
  * @param {Boolean} [spec.brainUp]
@@ -115,8 +122,13 @@ export function isAdapterRenderCoherent(state, label, expectedLabels) {
 export function computeFirstPaintVerdict({firstPaint, packagedMode, brainMode, brainUp, firstPaintBudgetMs = 60000} = {}) {
     const adaptersCoherent = isAdapterRenderCoherent(firstPaint.rosterState, firstPaint.rosterLabel, ROSTER_STATE_LABELS) &&
               isAdapterRenderCoherent(firstPaint.streamState, firstPaint.activityLabel, STREAM_STATE_LABELS),
+          // the roster ANSWERED: real cards, or the empty CTA a live empty answer renders. Nothing is
+          // seeded any more, so a count of cards can only ever be the fleet's own.
+          rosterAnswered   = firstPaint.cardCount > 0 || firstPaint.emptyCta === true,
+          // a first paint is honest in ANY recognised state: cold is what the plain smoke (no plane)
+          // paints, and it is a paint — the PRODUCT witness below is the one that needs an answer
           firstPaintPassed = firstPaint.cockpitVisible === true &&
-              firstPaint.cardCount > 0 &&
+              (rosterAnswered || firstPaint.rosterState === 'cold') &&
               adaptersCoherent &&
               firstPaint.firstPaintMs !== null &&
               firstPaint.firstPaintMs <= firstPaintBudgetMs &&
@@ -126,13 +138,15 @@ export function computeFirstPaintVerdict({firstPaint, packagedMode, brainMode, b
               !brainMode                       && 'brainMode (use `npm run smoke:brain`)',
               brainMode && brainUp !== true    && 'brainUp',
               !firstPaintPassed                && 'firstPaint',
-              !adaptersCoherent                && 'adapterRenderCoherent'
+              !adaptersCoherent                && 'adapterRenderCoherent',
+              !rosterAnswered                  && 'rosterAnswered (no cards and no empty CTA — the plane never answered the roster)'
           ].filter(Boolean);
 
     return {
         adaptersCoherent,
         firstPaintPassed,
-        productWitnessPassed: Boolean(packagedMode && brainMode && brainUp === true && firstPaintPassed),
-        productWitnessUnmet
+        productWitnessPassed: Boolean(packagedMode && brainMode && brainUp === true && firstPaintPassed && rosterAnswered),
+        productWitnessUnmet,
+        rosterAnswered
     };
 }

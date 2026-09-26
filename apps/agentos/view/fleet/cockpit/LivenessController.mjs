@@ -139,8 +139,8 @@ class LivenessController extends ComponentController {
      */
     streamReadInFlight = 0
     /**
-     * Whether the activity feed ever went live — the first live snapshot replaces the sample
-     * seed wholesale; later ones merge.
+     * Whether the activity feed ever went live — the first live snapshot replaces whatever the
+     * store holds; later ones merge.
      * @member {Boolean} activityWired=false
      * @protected
      */
@@ -217,10 +217,10 @@ class LivenessController extends ComponentController {
 
     /**
      * @summary Bind the activity stream to the live feed and route its honest capability state:
-     * `wired` → live (a wired-but-quiet feed stays live, never the sample), `degraded` → stale
+     * `wired` → live (a wired-but-quiet feed stays live, never cold), `degraded` → stale
      * with the adapter's OWN reason, an ANSWERED `not-wired` retains its cause (a reachable
      * server with an unconfigured source is not an unreachable server), a torn answer keeps the
-     * cold seed silent. All state writes land on the provider; the banner renders itself.
+     * cold surface silent. All state writes land on the provider; the banner renders itself.
      * @protected
      */
     async loadActivity() {
@@ -236,7 +236,7 @@ class LivenessController extends ComponentController {
         if (!store || typeof bridge?.fleetActivity !== 'function') {
             // no bridge/verb IS the cold truth; a never-wired surface's retained answered cause
             // must not outlive the bridge that answered it
-            me.publishConnection('stream', {data: provider?.getData('streamAdapterState') === 'sample'
+            me.publishConnection('stream', {data: provider?.getData('streamAdapterState') === 'cold'
                 ? {streamDegradedReason: null} : {}});
             return
         }
@@ -270,15 +270,15 @@ class LivenessController extends ComponentController {
                 }});
                 stream && (stream.adapterState = 'stale')
             } else if (capability) {
-                // the producer ANSWERED not-wired: the sample seed stays (the stream really is
-                // showing sample events) but an answer is not silence — retain the cause
+                // the producer ANSWERED not-wired: no events land (the feed stays cold) but an
+                // answer is not silence — retain the cause
                 me.publishConnection('stream', {data: {
                     streamDegradedReason: me.toSafeDegradedReason(capability.reason)
                 }})
             } else {
                 me.publishConnection('stream')
             }
-            // NO capability (torn/absent answer): keep the sample seed AND no reason — we learned
+            // NO capability (torn/absent answer): the feed stays cold AND no reason — we learned
             // nothing, the banner falls back to generic copy rather than inventing a cause
         } catch (error) {
             // fenced too — the sad path is not exempt from ordering
@@ -290,11 +290,10 @@ class LivenessController extends ComponentController {
 
     /**
      * @summary Bind the fleet roster to the running fleet: map the assembler DTO onto the record
-     * contract and route honestly into the provider-owned store — a populated snapshot is
-     * authoritative (first replaces the sample seed, later ones reconcile), an EMPTY first
-     * unselected snapshot preserves the sample (a fresh private registry must not blank the
-     * zero-setup first paint) while retaining its answered cause, and absence/throw/malformed
-     * keeps the last-known roster (fail closed, never a blanked fleet).
+     * contract and route honestly into the provider-owned store — every answered snapshot is
+     * authoritative (the first replaces what the store holds, later ones reconcile; an EMPTY
+     * answer renders the roster's own empty state, since nothing is seeded that it could erase),
+     * and absence/throw/malformed keeps the last-known roster (fail closed, never a blanked fleet).
      * @protected
      */
     async loadRoster() {
@@ -309,7 +308,7 @@ class LivenessController extends ComponentController {
             profileId  = bridge?.profileId ?? null;
 
         if (!store || typeof bridge?.fleetRoster !== 'function') {
-            me.publishConnection('grid', {data: provider?.getData('gridAdapterState') === 'sample'
+            me.publishConnection('grid', {data: provider?.getData('gridAdapterState') === 'cold'
                 ? {gridDegradedReason: null} : {}});
             return
         }
@@ -336,18 +335,8 @@ class LivenessController extends ComponentController {
 
             const mapped = rows.filter(row => row?.id).map(row => me.mapRosterRow(row));
 
-            // the shipped sample is the cold-first-run authority: an explicitly wired bridge
-            // (`selected`) or any prior live snapshot flips empty to its ordinary authoritative
-            // meaning (a real fleet may genuinely drain)
-            if (!me.rosterWired && mapped.length === 0 && !bridge?.selected && cockpit.rosterSourceMode !== 'selected') {
-                // the server ANSWERED — retain the cause so the banner names "connected · registry
-                // empty" instead of advising a restart of a process that just replied
-                me.publishConnection('grid', {data: {
-                    gridDegradedReason: 'server connected · fleet registry empty — define agents to go live'
-                }});
-                return
-            }
-
+            // an EMPTY answer is authoritative: nothing is seeded that it could erase, the registry
+            // has no agents, and the roster's own empty state says so
             me.admitRoster({capabilities, profileId, rows: mapped})
         } catch (error) {
             if (generation === me.gridReadGeneration && !me.isDestroyed) {
@@ -413,7 +402,7 @@ class LivenessController extends ComponentController {
 
     /**
      * @summary Advance ONE wired surface to the degraded truth and retain the safe reason. A
-     * surface that never reached `live` stays on its honest `sample` seed — advancing it to
+     * surface that never reached `live` stays honestly `cold` — advancing it to
      * `stale` would claim last-known data that never existed — and a transport failure RETRACTS
      * any answered-state cause it retained (the claim must not outlive the connection). The
      * current read's typed connection observation keeps its own sanitized reason on either path.
@@ -430,11 +419,11 @@ class LivenessController extends ComponentController {
 
         if (!provider) return;
 
-        const state = provider.getData(stateKey) === 'sample' ? 'sample' : 'stale';
+        const state = provider.getData(stateKey) === 'cold' ? 'cold' : 'stale';
         this.publishConnection(surface, {error, data: {
             [stateKey]: state,
             // this surface's cause on this surface's field — never a shared slot a sibling clears
-            [causeKey]: state === 'sample' ? null : this.toSafeDegradedReason(error)
+            [causeKey]: state === 'cold' ? null : this.toSafeDegradedReason(error)
         }});
 
         consumer && state === 'stale' && (consumer.adapterState = 'stale')
@@ -592,13 +581,12 @@ class LivenessController extends ComponentController {
     }
 
     /**
-     * @summary Source-precedence guard: the provider-hosted roster store `autoLoad`s the JSON
-     * sample seed while {@link #loadRoster} races the bridge. When the bridge wins, the sample's
-     * later `load` would silently replace live rows (the grid still claiming `live`). Any store
+     * @summary Source-precedence guard: once the bridge has answered, a later store `load` from any
+     * other writer would silently replace live rows (the grid still claiming `live`). Any store
      * load landing AFTER live truth re-applies the last authoritative snapshot — idempotent,
-     * fail-closed toward live. A load before live truth is the normal seed path and passes through.
-     * Latched via {@link #reconcilingRoster}: the reconciliation's own mutations fire `load` back
-     * into this listener.
+     * fail-closed toward live. A load before live truth passes through: nothing is seeded, so the
+     * store holds only what a landing put there. Latched via {@link #reconcilingRoster}: the
+     * reconciliation's own mutations fire `load` back into this listener.
      * @protected
      */
     onRosterStoreLoad() {

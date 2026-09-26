@@ -48,9 +48,9 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
     // here instead of silently reading undefined in production.
     const provData = (over = {}) => ({
         activityCounts: [], boundProfileId: null, daemonDegradedReason: null, daemonState: null,
-        gridAdapterState: 'sample', gridDegradedReason: null, presenceCapability: null,
+        gridAdapterState: 'cold', gridDegradedReason: null, presenceCapability: null,
         selectedAgentId: null, selectedAgentIdentity: null, shellTransport: null,
-        streamAdapterState: 'sample', streamDegradedReason: null, ...over
+        streamAdapterState: 'cold', streamDegradedReason: null, ...over
     });
 
     // the REAL formulas over the full declared data surface — pull-based: each formula reads
@@ -387,7 +387,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         const {host, provider} = makeDaemonHost();
 
         // the roster surface sits on its cold seed — the transport fact speaks through the COLD copy
-        provider.data.gridAdapterState = 'sample';
+        provider.data.gridAdapterState = 'cold';
 
         // a state-less payload carrying only the fact: the daemon surface stays unfed (absence
         // claims nothing), while the cold copy moves to the shell's honest line
@@ -459,7 +459,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
     test('a real refused activity response reaches its own cold feed banner with a sanitized reason', async () => {
         const {host, provider} = makeLivenessHost();
-        provider.data.streamAdapterState = 'sample';
+        provider.data.streamAdapterState = 'cold';
 
         let answer;
         installFleetBridge({send: () => new Promise(resolve => { answer = resolve })});
@@ -533,30 +533,30 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
     test('a never-wired surface stays cold-honest: a pre-live throw never claims last-known data', async () => {
         const {host, provider} = makeLivenessHost();
 
-        provider.data.streamAdapterState = 'sample';
+        provider.data.streamAdapterState = 'cold';
 
         await withBridge(async () => { throw new Error('transport lost') }, host);
 
         // 'stale' would tell the operator we are showing last-known data that never existed
-        expect(provider.data.streamAdapterState).toBe('sample');
+        expect(provider.data.streamAdapterState).toBe('cold');
         expect(provider.data.streamDegradedReason).toBe(null)
     });
 
     test('not-wired → bridge ABSENT retracts the activity cause — the answer must not outlive its producer', async () => {
         // the activity half of the reviewer falsifier: the producer ANSWERED not-wired (reason
-        // retained, honest sample), then the bridge vanished — the retained cause must go with it.
+        // retained, honestly cold), then the bridge vanished — the retained cause must go with it.
         const {host, provider} = makeLivenessHost();
 
-        provider.data.streamAdapterState = 'sample';
+        provider.data.streamAdapterState = 'cold';
 
         await withBridge(async () => ({capability: {state: 'not-wired', reason: 'activity source not wired'}, events: []}), host);
         expect(provider.data.streamDegradedReason).toBe('activity source not wired');
-        expect(provider.data.streamAdapterState).toBe('sample');
+        expect(provider.data.streamAdapterState).toBe('cold');
 
         // withBridge already removed the bridge in its finally — this drive hits the absence exit
         await host.loadActivity();
 
-        expect(provider.data.streamAdapterState).toBe('sample');
+        expect(provider.data.streamAdapterState).toBe('cold');
         expect(provider.data.streamDegradedReason).toBe(null)
     });
 
@@ -597,7 +597,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         const {host, provider} = makeLivenessHost();
 
         // the stream sits on its SEED, which is the real state when a not-wired answer arrives
-        provider.data.streamAdapterState = 'sample';
+        provider.data.streamAdapterState = 'cold';
 
         // 1. the activity surface answers not-wired and retains its own cause
         await withBridge(async () => ({capability: {state: 'not-wired', reason: 'fleet activity source not wired'}, events: []}), host);
@@ -681,7 +681,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         const {host, provider} = makeLivenessHost();
 
         // seeded to the SEED so the dropped write is observable
-        provider.data.streamAdapterState = 'sample';
+        provider.data.streamAdapterState = 'cold';
 
         let releaseSlow;
         const slow = new Promise(resolve => { releaseSlow = () => resolve({capability: {state: 'wired'}, events: []}) });
@@ -696,7 +696,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         releaseSlow();                              // read 1 lands, LATE, with news from a vanished bridge
         await slowRead;
 
-        expect(provider.data.streamAdapterState, 'a read from a bridge that no longer exists must not claim live').toBe('sample')
+        expect(provider.data.streamAdapterState, 'a read from a bridge that no longer exists must not claim live').toBe('cold')
     });
 
     test('a read completing after destroy mutates NOTHING — no post-destroy writes', async () => {

@@ -117,11 +117,11 @@ class ActivityStream extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * Feed liveness: live, honestly-labelled sample, or stale last-known data.
-         * @member {String} adapterState_='sample'
+         * Feed liveness: `cold` (no source has answered yet), `live`, or `stale` last-known data.
+         * @member {String} adapterState_='cold'
          * @reactive
          */
-        adapterState_: 'sample',
+        adapterState_: 'cold',
         /**
          * Roster facts supplied by the cockpit owner.
          * @member {Object} actorDirectory_={}
@@ -195,6 +195,12 @@ class ActivityStream extends Container {
                 cls      : ['fm-stream-state'],
                 reference: 'state'
             }]
+        }, {
+            module   : Component,
+            cls      : ['fm-stream-empty'],
+            hidden   : true,
+            reference: 'empty-note',
+            text     : 'no activity yet'
         }, {
             module          : BufferedList,
             autoDestroyStore: false,
@@ -365,9 +371,9 @@ class ActivityStream extends Container {
             retained   = me.store?.count ?? 0,
             dropped    = me.store?.droppedCount ?? 0,
             countView  = describeActivityCounts(me.counts),
-            stateWord  = {sample: 'sample · live feed pending', stale: 'stale — reconnecting'}[me.adapterState],
-            stateCls   = {sample: 'is-sample', stale: 'is-stale'}[me.adapterState] ?? 'is-live',
-            // sample and stale already say their rows are not current; only a live feed can mislead
+            stateWord  = {cold: 'not answered yet', stale: 'stale — reconnecting'}[me.adapterState],
+            stateCls   = {cold: 'is-cold', stale: 'is-stale'}[me.adapterState] ?? 'is-live',
+            // cold and stale already say their rows are not current; only a live feed can mislead
             quiet      = stateWord ? null : describeQuietSince(me.store?.getAt(0)?.occurredAt),
             stateText  = stateWord ?? (quiet ? `● streaming · ${quiet.text}` : '● streaming');
 
@@ -376,6 +382,10 @@ class ActivityStream extends Container {
         }
 
         header.cls = ['fm-stream-head', stateCls, ...(quiet ? ['is-quiet'] : [])];
+
+        // the feed's own empty state: an ANSWER with no events says so in the list region; a cold
+        // feed (no answer yet) leaves the region quiet — the head already says "not answered yet"
+        me.getReference('empty-note').hidden = me.adapterState === 'cold' || retained > 0;
 
         countsCell.vdom.title = countView?.title ?? null;
         countsCell.set({
