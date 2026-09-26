@@ -1,77 +1,117 @@
 import {expect, test} from '../../fixtures.mjs';
 
 /**
- * The Observatory keeper-view, driven by the real shell over the Neural Link: a current route lands through
- * the cockpit's own write and the canvas worker draws it — the renderer's own statistics say what it
- * holds and how many frames it drew; a drag orbits and the wheel zooms through the DOM → App Worker →
- * canvas-worker path; an idle second draws nothing; withheld keeps the scene, degraded clears it. No
- * fleet server takes part: the first state the pane shows is the unavailable one.
+ * The Observatory keeper-view, driven by the real shell over the Neural Link: a bounded graph read lands
+ * through the cockpit's own write and the canvas worker draws it — the renderer's own statistics say what it
+ * holds and how many frames it drew. A drag orbits and the wheel zooms through the DOM → App Worker →
+ * canvas-worker path, and an idle second draws nothing. A click on a node selects it by its qualified id,
+ * an orbit selects nothing, a shuffled read of the same snapshot keeps the selection and a read without the
+ * id clears it with the reason. A budget cut reads partial, degraded draws what it holds, unavailable
+ * clears. No fleet server takes part: the first state the pane shows is the unavailable one.
  */
 const
     CAPTURED_AT = '2026-07-05T08:00:00.000Z',
-    EXPIRES_AT  = '2026-07-05T20:00:00.000Z',
-    route       = overrides => ({
-        schemaVersion: 'computed-route.v1',
-        status       : 'fresh',
-        freshness    : {status: 'fresh'},
-        capturedAt   : CAPTURED_AT,
-        expiresAt    : EXPIRES_AT,
-        expired      : false,
-        routeVersion : 'rv-7',
-        provenance   : {producer: 'golden-path-synthesizer', runId: 'run-42', algorithmVersion: 'gp-v2'},
-        kind         : 'computed-ranked',
-        // three items, three distinct citations: six nodes, three edges, a route of three
-        items        : [
-            {id: 'neo#15252', title: 'The five-beat multi-window film', score: 0.91, rank: 1, citations: ['pull:19224', {id: 'issue:19225'}]},
-            {id: 'neo-agent-brain#122', title: 'Golden Path v2', score: 0.87, rank: 2, citations: []},
-            {id: 'neo#14800', title: 'The 13.2 release notes', score: 0.64, rank: 3, citations: ['pull:19227']}
-        ],
-        ...overrides
-    }),
-    wired    = {state: 'wired', capturedAt: CAPTURED_AT},
-    rem      = {undigested: 990, digested: 1010, recentCycles: 0},
-    current  = {capability: wired, admission: {admitted: true, fallback: 'current', reasonCode: 'current', requiredFacets: [], staleFacets: []}, route: route(), rem, sources: {}},
-    withheld = {capability: wired, admission: {admitted: false, fallback: 'last-known-good', reasonCode: 'freshness-sla-breached', requiredFacets: ['issues', 'discussions'], staleFacets: ['issues']}, route: route(), rem, sources: {}},
-    degraded = {capability: {...wired, state: 'degraded', reason: 'route-sidecar-missing'}, admission: null, route: null, rem, sources: {route: {state: 'degraded', reason: 'route-sidecar-missing'}}};
+    q           = id => `neomjs/neo#${id}`,
+    NODES       = [
+        {id: q('agent-grace'),  label: 'Grace',             kind: 'agent'},
+        {id: q('concept-dock'), label: 'Dock',              kind: 'concept'},
+        {id: q('issue-202'),    label: 'second route item', kind: 'issue'},
+        {id: q('issue-303'),    label: 'third route item',  kind: 'issue'},
+        {id: q('issue-404'),    label: 'two hops out',      kind: 'issue'},
+        {id: q('issue-505'),    label: 'no seed reaches',   kind: 'issue'},
+        {id: q('pr-101'),       label: 'first route item',  kind: 'pull'}
+    ],
+    EDGES       = [
+        {from: q('agent-grace'),  to: q('issue-202'), type: 'authored'},
+        {from: q('agent-grace'),  to: q('pr-101'),    type: 'authored'},
+        {from: q('concept-dock'), to: q('issue-404')},
+        {from: q('pr-101'),       to: q('concept-dock'), type: 'mentions'}
+    ],
+    // a `fleetGraphScene` answer as the Brain's bounded read gives it: three seeds, seven nodes, four edges
+    read        = (scene = {}, envelope = {}) => ({
+        capability: {state: 'current', reason: null},
+        scene     : {
+            route       : [q('pr-101'), q('issue-202'), q('issue-303')],
+            nodes       : NODES,
+            edges       : EDGES,
+            counts      : {nodes: 7, edges: 4, seeds: 3},
+            budget      : {maxNodes: 150, maxEdges: 300, maxBytes: 32768},
+            completeness: 'complete',
+            ...scene
+        },
+        snapshotId: 'snap-7f3a',
+        capturedAt: CAPTURED_AT,
+        ...envelope
+    });
+
+/**
+ * @summary Opens the shell and the Observatory, and binds the handles the arms drive: the cockpit
+ * controller's graph write, the canvas's stats and its `locate`, and the pane's three text slots.
+ * @param {Object} page
+ * @param {Object} neuralLink
+ * @returns {Promise<Object>}
+ */
+async function openObservatory(page, neuralLink) {
+    await page.setViewportSize({width: 1600, height: 1100});
+    await page.goto('/apps/agentos/index.html');
+    await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+    const app = await neuralLink.connectToApp('AgentOS');
+
+    await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
+
+    const pane = page.locator('.fm-observatory-pane');
+
+    await expect(pane).toBeVisible({timeout: 10000});
+
+    const
+        [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+        cockpitState = await app.getComponent(cockpit.properties.id, ['controller']),
+        [canvas]     = await app.queryComponent({className: 'AgentOS.view.fleet.goldenpath.ObservatoryCanvas'}, ['id']);
+
+    const locate = id => app.callMethod(canvas.properties.id, 'locate', [id]);
+
+    return {
+        currency : pane.locator('.fm-observatory-currency'),
+        hover    : pane.locator('.fm-observatory-hover'),
+        land     : envelope => app.callMethod(cockpitState.controller.id, 'writeGraphScene', [envelope]),
+        locate,
+        pane,
+        // clicks a node where the renderer draws it. The pointer rests on it first, as a hand does: the main
+        // thread coalesces a move into the next frame but sends a press at once, so a press that follows a
+        // jump in the same frame reaches the canvas as a moved press and orbits it off the node
+        selectNode: async id => {
+            const rect = await pane.locator('canvas').boundingBox(), at = await locate(id);
+
+            await page.mouse.move(rect.x + at.x, rect.y + at.y, {steps: 4});
+            await page.waitForTimeout(100);
+            await page.mouse.click(rect.x + at.x, rect.y + at.y)
+        },
+        selection: pane.locator('.fm-observatory-selection'),
+        settle   : async () => {
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+            await page.waitForTimeout(400)
+        },
+        stats    : () => app.callMethod(canvas.properties.id, 'readStats', [])
+    }
+}
 
 test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
-    test('a current route lands as the scene the canvas worker draws; drag orbits, wheel zooms, idle draws nothing; withheld keeps the scene, degraded clears it', async ({page, neuralLink}) => {
-        await page.setViewportSize({width: 1600, height: 1100});
-        await page.goto('/apps/agentos/index.html');
-        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+    test('a bounded read lands as the scene the canvas worker draws; a click selects by qualified id and an orbit does not; the selection survives a shuffle and clears with its reason; partial, degraded and unavailable keep their meaning', async ({page, neuralLink}) => {
+        const {currency, hover, land, pane, selection, selectNode, settle, stats} = await openObservatory(page, neuralLink);
 
-        const app = await neuralLink.connectToApp('AgentOS');
-
-        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
-
-        const
-            pane     = page.locator('.fm-observatory-pane'),
-            currency = pane.locator('.fm-observatory-currency'),
-            hover    = pane.locator('.fm-observatory-hover');
-
-        await expect(pane).toBeVisible({timeout: 10000});
         await expect(currency, 'cold, the read is unavailable').toHaveText(/^Unavailable · /);
-        await expect(hover, 'the gesture hint stands in for the hovered node').toHaveText('drag orbits · wheel zooms');
+        await expect(hover, 'the gesture hint stands in for the hovered node').toHaveText('drag orbits · wheel zooms · click selects');
+        await expect(selection).toHaveText('No node selected');
 
-        const
-            [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
-            cockpitState = await app.getComponent(cockpit.properties.id, ['controller']),
-            [canvas]     = await app.queryComponent({className: 'AgentOS.view.fleet.goldenpath.ObservatoryCanvas'}, ['id']),
-            land         = envelope => app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [envelope]),
-            stats        = () => app.callMethod(canvas.properties.id, 'readStats', []),
-            settle       = async () => {
-                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-                await page.waitForTimeout(400)
-            };
-
-        await land(current);
-        await expect(currency).toHaveText(/^Current · captured .+ · 3 items$/);
+        await land(read());
+        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · complete$/);
         await settle();
 
         const drawn = await stats();
 
-        expect(drawn.currency).toBe('current');
-        expect(drawn.counts).toEqual({nodes: 6, edges: 3, route: 3});
+        expect(drawn).toMatchObject({currency: 'current', completeness: 'complete', snapshotId: 'snap-7f3a', selectedId: null});
+        expect(drawn.counts).toEqual({nodes: 7, edges: 4, seeds: 3});
         expect(drawn.canvas[0], 'the drawing buffer is sized').toBeGreaterThan(0);
 
         const [cssWidth, ratio] = await pane.locator('canvas').evaluate(node => [node.getBoundingClientRect().width, window.devicePixelRatio]);
@@ -86,9 +126,16 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         expect(idle.frames, 'idle draws nothing').toBe(drawn.frames);
 
-        // drag orbits: the pointer takes the camera through the canvas's own listeners
+        // a click on a node, found where the renderer draws it, selects it by its qualified id
         const rect = await pane.locator('canvas').boundingBox();
 
+        await selectNode(q('pr-101'));
+        await expect(selection).toHaveText('Selected · first route item · pull · neomjs/neo#pr-101 · rank 1 · 2 relations (1 authored, 1 mentions)');
+        await expect(hover).toHaveText('first route item · pull · rank 1');
+        await page.waitForTimeout(400);
+        expect((await stats()).selectedId).toBe(q('pr-101'));
+
+        // drag orbits: the pointer takes the camera through the canvas's own listeners, and selects nothing
         await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
         await page.mouse.down();
         await page.mouse.move(rect.x + rect.width / 2 + 120, rect.y + rect.height / 2 + 30, {steps: 8});
@@ -101,6 +148,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(orbited.camera.pitch).not.toBe(drawn.camera.pitch);
         expect(orbited.camera.touched).toBe(true);
         expect(orbited.frames).toBeGreaterThan(idle.frames);
+        expect(orbited.selectedId, 'the click that ends an orbit selects nothing').toBe(q('pr-101'));
 
         // wheel zooms out
         await page.mouse.wheel(0, 240);
@@ -111,63 +159,91 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(zoomed.camera.dist).toBeGreaterThan(orbited.camera.dist);
         expect(zoomed.frames).toBeGreaterThan(orbited.frames);
 
-        await land(withheld);
-        await expect(currency).toHaveText(/^Withheld · freshness-sla-breached · last known good route · captured .+ · 3 items$/);
+        // the same snapshot in another row order keeps the selection and the taken camera
+        await land(read({nodes: [...NODES].reverse(), edges: [...EDGES].reverse()}));
         await settle();
 
-        const dim = await stats();
+        const shuffled = await stats();
 
-        expect(dim.currency).toBe('withheld');
-        expect(dim.counts).toEqual({nodes: 6, edges: 3, route: 3});
-        expect(dim.camera.dist, 'a taken camera keeps its distance across scenes').toBe(zoomed.camera.dist);
+        expect(shuffled.selectedId).toBe(q('pr-101'));
+        expect(shuffled.camera.dist, 'a taken camera keeps its distance across scenes').toBe(zoomed.camera.dist);
+        await expect(selection).toHaveText(/^Selected · first route item · /);
 
-        await land(degraded);
-        await expect(currency).toHaveText(/^Degraded · route-sidecar-missing$/);
+        // a read without the selected id clears the selection and says why
+        await land(read({
+            route : [q('issue-202'), q('issue-303')],
+            nodes : NODES.filter(node => node.id !== q('pr-101')),
+            edges : EDGES.filter(edge => edge.from !== q('pr-101') && edge.to !== q('pr-101')),
+            counts: {nodes: 6, edges: 2, seeds: 2}
+        }, {snapshotId: 'snap-9c40'}));
+        await expect(selection).toHaveText('Selection cleared · neomjs/neo#pr-101 is not in snapshot snap-9c40');
+        await settle();
+
+        const lost = await stats();
+
+        expect(lost.selectedId).toBeNull();
+        expect(lost.counts).toEqual({nodes: 6, edges: 2, seeds: 2});
+
+        // a click on the empty surface clears a selection
+        await selectNode(q('issue-202'));
+        await expect(selection).toHaveText(/^Selected · second route item · /);
+        await page.mouse.click(rect.x + 6, rect.y + 6);
+        await expect(selection).toHaveText('No node selected');
+
+        await land(read({completeness: 'truncated'}, {snapshotId: 'snap-a1'}));
+        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
+        await settle();
+        expect((await stats()).completeness).toBe('truncated');
+
+        await land(read({}, {capability: {state: 'degraded', reason: 'graph-seam-refused'}}));
+        await expect(currency).toHaveText('Degraded · graph-seam-refused · 7 nodes · 4 edges · complete');
+        await settle();
+
+        const partial = await stats();
+
+        expect(partial.currency).toBe('degraded');
+        expect(partial.counts, 'degraded draws what the read holds').toEqual({nodes: 7, edges: 4, seeds: 3});
+
+        await land({capability: {state: 'unavailable', reason: 'route-read-failed'}, scene: null, snapshotId: null, capturedAt: CAPTURED_AT});
+        await expect(currency).toHaveText('Unavailable · route-read-failed');
         await settle();
 
         const cleared = await stats();
 
-        expect(cleared.currency).toBe('degraded');
-        expect(cleared.counts).toEqual({nodes: 0, edges: 0, route: 0})
+        expect(cleared.currency).toBe('unavailable');
+        expect(cleared.counts).toEqual({nodes: 0, edges: 0, seeds: 0})
     });
 
-    test('the view keeps its scene across a switch away and back without a second read, and resizes with the window', async ({page, neuralLink}) => {
-        await page.setViewportSize({width: 1600, height: 1100});
-        await page.goto('/apps/agentos/index.html');
-        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
-
-        const app = await neuralLink.connectToApp('AgentOS');
-
-        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
-
-        const
-            currency = page.locator('.fm-observatory-pane .fm-observatory-currency'),
-            [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
-            cockpitState = await app.getComponent(cockpit.properties.id, ['controller']),
-            [canvas]     = await app.queryComponent({className: 'AgentOS.view.fleet.goldenpath.ObservatoryCanvas'}, ['id']),
-            stats        = () => app.callMethod(canvas.properties.id, 'readStats', []);
+    test('the view keeps its scene and its selection across a switch away and back without a second read, and resizes with the window', async ({page, neuralLink}) => {
+        const {currency, land, selection, selectNode, stats} = await openObservatory(page, neuralLink);
 
         await expect(currency, 'cold, the read is unavailable').toHaveText(/^Unavailable · /);
-        await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [current]);
-        await expect(currency).toHaveText(/^Current · captured .+ · 3 items$/);
+        await land(read());
+        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · complete$/);
+        await page.waitForTimeout(400);
+
+        await selectNode(q('issue-303'));
+        await expect(selection).toHaveText(/^Selected · third route item · issue · neomjs\/neo#issue-303 · rank 3 · /);
         await page.waitForTimeout(400);
 
         const before = await stats();
 
-        expect(before.counts).toEqual({nodes: 6, edges: 3, route: 3});
+        expect(before.counts).toEqual({nodes: 7, edges: 4, seeds: 3});
 
         // a read on the way back would answer unavailable (no fleet server takes part), so a current
         // line after the round trip is a read that did not happen
         await page.getByRole('tab', {name: 'Fleet', exact: true}).click();
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible();
         await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
-        await expect(currency).toHaveText(/^Current · captured .+ · 3 items$/);
+        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · complete$/);
+        await expect(selection).toHaveText(/^Selected · third route item · /);
         await page.waitForTimeout(400);
 
         const back = await stats();
 
         expect(back.currency).toBe('current');
-        expect(back.counts, 'the scene survives the round trip').toEqual({nodes: 6, edges: 3, route: 3});
+        expect(back.counts, 'the scene survives the round trip').toEqual({nodes: 7, edges: 4, seeds: 3});
+        expect(back.selectedId, 'and so does the selection').toBe(q('issue-303'));
         expect(back.canvas).toEqual(before.canvas);
 
         await page.setViewportSize({width: 1200, height: 800});
@@ -177,7 +253,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         expect(resized.canvas[0], 'the drawing buffer follows the narrower view').toBeLessThan(back.canvas[0]);
         expect(resized.canvas[1], 'and the shorter one').toBeLessThan(back.canvas[1]);
-        expect(resized.counts, 'a resize keeps the scene').toEqual({nodes: 6, edges: 3, route: 3});
+        expect(resized.counts, 'a resize keeps the scene').toEqual({nodes: 7, edges: 4, seeds: 3});
         expect(resized.frames, 'the resized surface is drawn').toBeGreaterThan(back.frames)
     });
 });

@@ -7,6 +7,7 @@ import FleetCockpit       from './fleet/cockpit/Container.mjs';
 import FleetInstances     from '../store/FleetInstances.mjs';
 import FleetTenants       from '../store/FleetTenants.mjs';
 import GoldenPathEnvelope from '../util/GoldenPathEnvelope.mjs';
+import GraphSceneEnvelope from '../util/GraphSceneEnvelope.mjs';
 import InstanceSwitcher   from './fleet/instances/SwitcherButton.mjs';
 import ObservatoryPane    from './fleet/goldenpath/ObservatoryContainer.mjs';
 import StateProvider      from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
@@ -21,7 +22,7 @@ import ViewportController from './ViewportController.mjs';
  * @summary The harness shell — the B3-hybrid keeper-view structure: a top chrome bar over a
  * stable-shell **left-rail keeper-view nav** (`tab.Container`, left tab-bar). The rail is how you
  * reach the keeper views — **Home** (the Welcome landing), **Fleet** (the FM mission-control
- * cockpit, the default), **Observatory** (the Golden Path as a 3D scene, the whole view), **System** (the connected instance's engine room: plane health from the
+ * cockpit, the default), **Observatory** (the Golden Path's graph neighbourhood as a 3D scene, the whole view), **System** (the connected instance's engine room: plane health from the
  * orchestrator's deployment-state picture, observe-only), **Accounts** (identity setup), **Chat**
  * (prompt → live pane, the dockable work-area seam). The Fleet keeper-view renders the roster as CARDS (the design SSOT), not a
  * data-grid table. Renders through `neo-theme-neo-dark` / `neo-theme-neo-light`.
@@ -79,8 +80,11 @@ class Viewport extends BaseViewport {
                 // (a block declared null would stop the leaf bubble on its first real answer)
                 deploymentState: DeploymentStateRead.blank(),
                 // the Golden Path envelope, same shape of ownership: the cockpit's Golden Path read
-                // writes it, the cockpit's reading panes and the Observatory keeper-view bind it
+                // writes it, the cockpit's reading panes bind it
                 goldenPathEnvelope: GoldenPathEnvelope.blank(),
+                // the bounded graph neighbourhood around that route, its own read and its own currency:
+                // a graph read never rewrites the Golden Path leaf, and the Observatory binds this one
+                graphSceneEnvelope: GraphSceneEnvelope.blank(),
                 // that read owner's connection observation, the System view's own surface
                 systemConnection: {state: null, reason: null},
                 // the instant of that owner's latest cadence tick it could not spend on a read (its
@@ -167,11 +171,11 @@ class Viewport extends BaseViewport {
                 header   : {iconCls: 'fa-solid fa-satellite-dish', route: '/fleet', text: 'Fleet'},
                 reference: 'fleet-cockpit'
             }, {
-                // the Golden Path as a scene takes the whole view: its follow-ups need room beside it
+                // the Golden Path's neighbourhood as a scene takes the whole view: its follow-ups need room beside it
                 module   : ObservatoryPane,
                 header   : {iconCls: 'fa-solid fa-circle-nodes', route: '/observatory', text: 'Observatory'},
                 reference: 'observatory-view',
-                bind     : {envelope: data => data.goldenPathEnvelope}
+                bind     : {envelope: data => data.graphSceneEnvelope}
             }, {
                 // the engine room beside mission control: what the planes are doing to the fleet's
                 // truth — a distinct subject, so a distinct place in the rail (never a cockpit pane)

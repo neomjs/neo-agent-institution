@@ -806,6 +806,7 @@ class LivenessController extends ComponentController {
         me.loadBrainHealth();
         me.loadDeploymentState();
         me.loadGoldenPath();
+        me.loadGraphScene();
         me.ensureViewerWakeStream();
 
         cockpit.getMemoriesPane()?.onRefreshClick();

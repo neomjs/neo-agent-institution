@@ -1,9 +1,9 @@
-/* The observatory pane — the Golden Path as a 3D scene on the FM tonal stack: the currency line and
-   the hovered node in the chrome role above, the canvas worker's WebGL surface filling the rest on the
-   panel ground (the surface clears to transparent, so the ground is this stylesheet's). The scene is
-   painted in the same ink tiers by the renderer (apps/agentos/canvas/Observatory.mjs), which reads the
-   token VALUES from their one mirror (apps/agentos/canvas/fmPalette.mjs) because a worker has no
-   stylesheet to read. */
+/* The observatory pane — the Golden Path's graph neighbourhood as a 3D scene on the FM tonal stack: the
+   read's line and the hovered node in the chrome role above, the selection strip below them, the canvas
+   worker's WebGL surface filling the rest on the panel ground (the surface clears to transparent, so the
+   ground is this stylesheet's). The scene is painted in the same ink tiers by the renderer
+   (apps/agentos/canvas/Observatory.mjs), which reads the token VALUES from their one mirror
+   (apps/agentos/canvas/fmPalette.mjs) because a worker has no stylesheet to read. */
 .fm-observatory-pane {
     background: var(--fm-panel);
     min-height: 0;
@@ -39,6 +39,27 @@
                 letter-spacing: inherit;
                 text-transform: inherit;
             }
+        }
+    }
+
+    /* the selected node keeps its own case, like the hovered one, and so does a cleared selection's
+       reason, which names an id; both of those without a node read dim, and the hint is chrome */
+    .fm-observatory-selection {
+        padding      : var(--fm-space-1) var(--fm-space-3);
+        border-bottom: thin solid var(--fm-line-soft);
+        font         : var(--fm-text-chrome);
+        color        : var(--fm-ink);
+        white-space  : nowrap;
+        overflow     : hidden;
+        text-overflow: ellipsis;
+
+        &.is-empty {
+            color: var(--fm-ink-dim);
+        }
+
+        &.is-hint {
+            letter-spacing: var(--fm-text-chrome-tracking);
+            text-transform: uppercase;
         }
     }
 

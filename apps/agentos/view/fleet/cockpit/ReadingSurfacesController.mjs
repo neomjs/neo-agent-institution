@@ -1,4 +1,5 @@
 import GoldenPathEnvelope from '../../../util/GoldenPathEnvelope.mjs';
+import GraphSceneEnvelope from '../../../util/GraphSceneEnvelope.mjs';
 import LivenessController from './LivenessController.mjs';
 
 /**
@@ -50,6 +51,12 @@ class ReadingSurfacesController extends LivenessController {
      * @protected
      */
     goldenPathReadGeneration = 0
+    /**
+     * Read-fence for the graph scene surface.
+     * @member {Number} graphSceneReadGeneration=0
+     * @protected
+     */
+    graphSceneReadGeneration = 0
 
     /**
      * @summary Relay a CatchUpPane read intent.
@@ -81,10 +88,13 @@ class ReadingSurfacesController extends LivenessController {
     }
 
     /**
-     * @summary Relay a GoldenPathPane read intent.
-     * @returns {Promise<Object>}
+     * @summary Relay a GoldenPathPane read intent. The graph scene is the neighbourhood of the same
+     * route, so it is read beside it, on its own fence.
+     * @returns {Promise<Object>} The landed Golden Path envelope.
      */
     onGoldenPathRequest() {
+        this.loadGraphScene();
+
         return this.loadGoldenPath()
     }
 
@@ -199,6 +209,43 @@ class ReadingSurfacesController extends LivenessController {
         const landed = GoldenPathEnvelope.fromWire(envelope);
 
         this.component.getStateProvider()?.setData({goldenPathEnvelope: landed});
+
+        return landed
+    }
+
+    /**
+     * @summary READ: the bounded graph neighbourhood around the route through the fleet bridge. The
+     * read fence lets the latest read win. The unavailable envelope is used when the verb is absent or
+     * the read throws; the Golden Path leaf is never touched.
+     * @returns {Promise<Object>} The landed envelope.
+     */
+    async loadGraphScene() {
+        const
+            me         = this,
+            {bridge}   = me,
+            generation = ++me.graphSceneReadGeneration,
+            fallback   = reason => ({capability: {state: 'unavailable', reason}});
+
+        let envelope;
+
+        try {
+            envelope = typeof bridge?.fleetGraphScene === 'function' ? await bridge.fleetGraphScene({}) : fallback('fleet graph scene verb not wired')
+        } catch (error) {
+            envelope = fallback('fleet graph scene read failed')
+        }
+
+        return generation === me.graphSceneReadGeneration && !me.isDestroyed ? me.writeGraphScene(envelope) : GraphSceneEnvelope.fromWire(envelope)
+    }
+
+    /**
+     * @summary WRITE: lands one envelope in the provider's `graphSceneEnvelope` leaf, in its closed shape.
+     * @param {Object|null} envelope The wire envelope.
+     * @returns {Object} The landed envelope.
+     */
+    writeGraphScene(envelope) {
+        const landed = GraphSceneEnvelope.fromWire(envelope);
+
+        this.component.getStateProvider()?.setData({graphSceneEnvelope: landed});
 
         return landed
     }

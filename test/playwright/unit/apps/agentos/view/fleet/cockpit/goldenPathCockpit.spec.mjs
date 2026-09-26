@@ -10,6 +10,7 @@ import Neo                    from '../../../../../../../../node_modules/neo.mjs
 import * as core              from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 import GoldenPathEnvelope     from '../../../../../../../../apps/agentos/util/GoldenPathEnvelope.mjs';
+import GraphSceneEnvelope     from '../../../../../../../../apps/agentos/util/GraphSceneEnvelope.mjs';
 
 // the load is a CONTROLLER method: a prototype host with a recording provider on the component seat
 // drives it as production code, like the catch-up owner spec
@@ -19,6 +20,7 @@ const makeHost = () => {
     return Object.assign(Object.create(FleetCockpitController.prototype), {
         component               : {getStateProvider: () => ({setData: data => writes.push(data)})},
         goldenPathReadGeneration: 0,
+        graphSceneReadGeneration: 0,
         isDestroyed             : false,
         writes
     })
@@ -37,7 +39,11 @@ test.describe('FleetCockpit — Golden Path owner routing', () => {
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGoldenPath: async () => envelope}};
 
         await expect(host.onGoldenPathRequest()).resolves.toEqual(landed);
-        expect(host.writes).toEqual([{goldenPathEnvelope: landed}])
+        // the request reads the route's graph neighbourhood beside it, into its own leaf
+        expect(host.writes).toEqual([
+            {graphSceneEnvelope: GraphSceneEnvelope.fromWire({capability: {state: 'unavailable', reason: 'fleet graph scene verb not wired'}})},
+            {goldenPathEnvelope: landed}
+        ])
     });
 
     test('an unwired verb or a failed read lands as unavailable, never as an empty route', async () => {
@@ -73,5 +79,58 @@ test.describe('FleetCockpit — Golden Path owner routing', () => {
         await first;
 
         expect(host.writes.map(({goldenPathEnvelope}) => goldenPathEnvelope.capability.reason)).toEqual(['new'])
+    });
+});
+
+test.describe('FleetCockpit — graph scene owner routing', () => {
+    test.afterEach(() => clearBridge());
+
+    const scene = {
+        capability: {state: 'current', reason: null},
+        scene     : {route: ['neomjs/neo#issue-1'], nodes: [{id: 'neomjs/neo#issue-1', label: 'one', kind: 'issue'}], edges: [],
+            counts: {nodes: 1, edges: 0, seeds: 1}, budget: {maxNodes: 150, maxEdges: 300, maxBytes: 32768}, completeness: 'complete'},
+        snapshotId: 'snap-1',
+        capturedAt: '2026-09-26T22:00:00.000Z'
+    };
+
+    test('the load reads the verb into the graph scene leaf and never writes the Golden Path leaf', async () => {
+        const host = makeHost();
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGraphScene: async () => scene}};
+
+        await expect(host.loadGraphScene()).resolves.toEqual(GraphSceneEnvelope.fromWire(scene));
+        expect(host.writes).toEqual([{graphSceneEnvelope: GraphSceneEnvelope.fromWire(scene)}])
+    });
+
+    test('an unwired verb or a failed read lands as unavailable with its own reason', async () => {
+        const unwired = makeHost();
+
+        expect((await unwired.loadGraphScene()).capability).toEqual({state: 'unavailable', reason: 'fleet graph scene verb not wired'});
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGraphScene: async () => { throw new Error('secret read detail') }}};
+
+        const failed = makeHost();
+
+        expect((await failed.loadGraphScene()).capability).toEqual({state: 'unavailable', reason: 'fleet graph scene read failed'});
+        expect(failed.writes).toHaveLength(1)
+    });
+
+    test('an older read loses the generation race and writes nothing', async () => {
+        let resolveOld,
+            reads = 0;
+
+        const host = makeHost(),
+              old  = new Promise(resolve => { resolveOld = resolve });
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGraphScene: () => ++reads === 1 ? old : Promise.resolve({capability: {state: 'degraded', reason: 'new'}})}};
+
+        const first  = host.loadGraphScene(),
+              second = host.loadGraphScene();
+
+        await second;
+        resolveOld(scene);
+        await first;
+
+        expect(host.writes.map(({graphSceneEnvelope}) => graphSceneEnvelope.capability.reason)).toEqual(['new'])
     });
 });

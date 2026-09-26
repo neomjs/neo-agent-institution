@@ -639,10 +639,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     let driverTick = 0;
 
     /**
+     * The graph scene driver, resolved the way {@link GOLDEN_PATH_DRIVER} is.
+     * @type {String}
+     */
+    const GRAPH_SCENE_DRIVER = '../../../../test/playwright/visual/graphSceneEnvelope.driver.mjs';
+
+    /**
      * @summary Activates the Observatory keeper-view in the shell rail and waits for the pane's cold
-     * spine: the head with the currency line and the gesture hint, the canvas mounted. Cold, the
-     * Golden Path read answers unavailable — the reason is the bridge's own and moves with the Brain
-     * pin, so only the word is asserted here.
+     * spine: the head with the read's line and the gesture hint, the empty selection strip, the canvas
+     * mounted. Cold, the graph read answers unavailable — the reason is the bridge's own and moves with the
+     * Brain pin, so only the word is asserted here.
      * @param {Object} page
      */
     const openObservatoryPane = async page => {
@@ -652,47 +658,64 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await tab.click();
         await expect(page.locator('.fm-observatory-pane')).toBeVisible({timeout: 30000});
         await expect(page.locator('.fm-observatory-pane .fm-observatory-currency')).toHaveText(/^Unavailable · /);
-        await expect(page.locator('.fm-observatory-pane .fm-observatory-hover')).toHaveText('drag orbits · wheel zooms');
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-hover')).toHaveText('drag orbits · wheel zooms · click selects');
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-selection')).toHaveText('No node selected');
         await expect(page.locator('.fm-observatory-pane canvas')).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)
     };
 
     /**
-     * @summary Lands one fixture wire envelope through the Golden Path driver (both panes bind the
-     * same leaf) and waits for the observatory's currency line; the scene follows one canvas-worker
-     * frame later, so a short settle follows.
+     * @summary Lands one fixture `fleetGraphScene` envelope through the graph scene driver, optionally with a
+     * selection, and waits for the observatory's line; the scene follows one canvas-worker frame later, so a
+     * short settle follows.
      * @param {Object} page
-     * @param {String} state `current|withheld|degraded|unavailable`
-     * @param {RegExp} currency The currency line that envelope must produce
+     * @param {String} state `current|truncated|degraded|routeless|unavailable`
+     * @param {RegExp|String} currency The line that envelope must produce
+     * @param {String} [select] The qualified id to select
      */
-    const feedObservatory = async (page, state, currency) => {
-        const result = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=${state}&t=${++driverTick}`);
+    const feedObservatory = async (page, state, currency, select) => {
+        const
+            query  = `state=${state}${select ? `&select=${encodeURIComponent(select)}` : ''}&t=${++driverTick}`,
+            result = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GRAPH_SCENE_DRIVER}?${query}`);
 
         expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true);
         await expect(page.locator('.fm-observatory-pane .fm-observatory-currency')).toHaveText(currency);
         await page.waitForTimeout(600)
     };
 
-    test('the Observatory pane — a current route draws the helix with its citation rings and the beaded route in the signal; withheld dims it; degraded clears the surface; both skins', async ({page}) => {
+    test('the Observatory pane — a bounded read draws its seeds as rank beacons with their neighbours around them; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
+        const
+            pane    = page.locator('.fm-observatory-pane'),
+            current = /^Current · captured .+ · 16 nodes · 15 edges · complete$/;
+
         await bootSettledCockpit(page);
         await openObservatoryPane(page);
 
-        await feedObservatory(page, 'current', /^Current · captured .+ · 4 items$/);
-        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-current.png');
+        await feedObservatory(page, 'current', current);
+        await expect(pane).toHaveScreenshot('observatory-pane-current.png');
 
-        await feedObservatory(page, 'withheld', /^Withheld · freshness-sla-breached · last known good route · captured .+ · 4 items$/);
-        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-withheld.png');
+        await feedObservatory(page, 'current', current, 'neomjs/neo#issue-8');
+        await expect(pane.locator('.fm-observatory-selection')).toHaveText('Selected · Golden Path currency on the cockpit · issue · neomjs/neo#issue-8 · rank 2 · 4 relations (1 authored, 1 relates, 1 resolves, 1 tagged)');
+        await expect(pane).toHaveScreenshot('observatory-pane-selected.png');
+
+        await feedObservatory(page, 'truncated', /^Current · captured .+ · 16 nodes · 15 edges · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
+        await expect(pane.locator('.fm-observatory-selection'), 'a new snapshot that holds the id keeps the selection').toHaveText(/^Selected · Golden Path currency on the cockpit · /);
+        await expect(pane).toHaveScreenshot('observatory-pane-truncated.png');
 
         await switchToLightSkin(page);
         await page.waitForTimeout(600);
-        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-withheld-light.png');
+        await expect(pane, 'a skin change inks the same scene and selection again').toHaveScreenshot('observatory-pane-truncated-light.png');
 
-        await feedObservatory(page, 'current', /^Current · captured .+ · 4 items$/);
-        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-current-light.png');
+        await feedObservatory(page, 'degraded', 'Degraded · graph-seam-refused · 16 nodes · 15 edges · complete');
+        await expect(pane).toHaveScreenshot('observatory-pane-degraded-light.png');
 
-        await feedObservatory(page, 'degraded', /^Degraded · route-sidecar-missing$/);
-        await expect(page.locator('.fm-observatory-pane')).toHaveScreenshot('observatory-pane-degraded-light.png')
+        await feedObservatory(page, 'routeless', 'Degraded · route-not-found');
+        await expect(pane.locator('.fm-observatory-selection')).toHaveText('Selection cleared · neomjs/neo#issue-8 is not in this read');
+        await expect(pane).toHaveScreenshot('observatory-pane-routeless-light.png');
+
+        await feedObservatory(page, 'unavailable', 'Unavailable · fleet graph scene verb not wired');
+        await expect(pane).toHaveScreenshot('observatory-pane-unavailable-light.png')
     });
 
     /**
