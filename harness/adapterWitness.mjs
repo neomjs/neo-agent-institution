@@ -21,7 +21,8 @@
  * ## The labels belong to the components that render them
  *
  * `FleetGrid` renders `adapterState === 'stale' ? … : adapterState === 'cold' ? … : ''`, and
- * `ActivityStream` renders `{cold, stale}[state] ?? '● streaming'`. These maps mirror that, so the
+ * `ActivityStream` distinguishes cold, partial and stale data from streaming, including unavailable
+ * when a failed read retained no rows. These maps mirror that, so the
  * witness checks state-vs-label **agreement** rather than pinning one expected state — pinning made the
  * smoke assert the product was unfinished, and it would have gone red the moment the cockpit worked.
  *
@@ -37,7 +38,7 @@
  * Adapter states a cockpit head can render, as `is-<state>` classes.
  * @type {String[]}
  */
-export const ADAPTER_STATES = Object.freeze(['live', 'cold', 'stale', 'degraded']);
+export const ADAPTER_STATES = Object.freeze(['live', 'cold', 'stale', 'degraded', 'partial']);
 
 /**
  * The label each roster state renders, mirrored from `FleetGrid`.
@@ -52,7 +53,9 @@ export const ROSTER_STATE_LABELS = Object.freeze({
  * @type {Object}
  */
 export const STREAM_STATE_LABELS = Object.freeze({
-    live: '● streaming', cold: 'not answered yet', stale: 'stale — reconnecting', degraded: '● streaming'
+    live: '● streaming', cold: 'not answered yet',
+    stale: Object.freeze(['stale — reconnecting', 'unavailable']),
+    degraded: '● streaming', partial: 'partial — some sources unavailable'
 });
 
 /**
@@ -92,7 +95,7 @@ export function resolveAdapterState(hasClass) {
  * `unknown` fails closed, which now covers ambiguity as well as unmapped states.
  * @param {String|null} state Observed `is-<state>`, `'unknown'`, or `null` when the head is absent.
  * @param {String|null} label Observed label text.
- * @param {Object} expectedLabels state → canonical label.
+ * @param {Object} expectedLabels state → canonical label or allowed label variants.
  * @returns {Boolean}
  */
 export function isAdapterRenderCoherent(state, label, expectedLabels) {
@@ -100,6 +103,8 @@ export function isAdapterRenderCoherent(state, label, expectedLabels) {
     if (!state || !Object.hasOwn(expectedLabels, state)) return false;
 
     const expected = expectedLabels[state];
+
+    if (Array.isArray(expected)) return expected.includes(label);
 
     // An empty canonical label may render as an empty node or none at all; both are honest.
     return expected === '' ? (label === '' || label === null) : label === expected;

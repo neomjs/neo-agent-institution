@@ -63,7 +63,7 @@ function isElementVisible(element) {
  * `is-${adapterState}`; `FleetCockpit` starts `cold` and promotes on a capability answer).
  * @type {String[]}
  */
-const ADAPTER_STATES = ['live', 'cold', 'stale', 'degraded'];
+const ADAPTER_STATES = ['live', 'cold', 'stale', 'degraded', 'partial'];
 
 /**
  * @summary Resolves the single adapter state a class list advertises, or `unknown`.
