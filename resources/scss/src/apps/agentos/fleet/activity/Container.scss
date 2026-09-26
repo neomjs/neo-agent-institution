@@ -32,6 +32,10 @@
             color: var(--fm-state-wedged);
         }
 
+        &.is-partial .fm-stream-state {
+            color: var(--fm-state-idle);
+        }
+
         // no source has answered yet: the quietest ink — a fact, not an alarm
         &.is-cold .fm-stream-state {
             color: var(--fm-ink-faint);

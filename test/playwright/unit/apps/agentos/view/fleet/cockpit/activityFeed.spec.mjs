@@ -64,9 +64,15 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
                   getReference: reference => reference === 'activity-stream' ? stream : null
               });
 
+        const states = [], write = harness.activityProvider.setData.bind(harness.activityProvider);
+        harness.activityProvider.setData = (key, value) => {
+            const data = typeof key === 'object' ? key : {[key]: value};
+            Object.hasOwn(data, 'streamAdapterState') && states.push(data.streamAdapterState);
+            write(key, value)
+        };
         await controller.loadActivity();
 
-        return {stream, controller, store: harness.activityStore, provider: harness.activityProvider}
+        return {stream, controller, store: harness.activityStore, provider: harness.activityProvider, states}
     };
 
     test.beforeAll(async () => {
@@ -121,6 +127,81 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
         const {stream} = await routeLoadActivity({fleetActivity: async () => ({capability: {state: 'degraded'}, events: []})});
 
         expect(stream.adapterState).toBe('stale')
+    });
+
+    test('a failed PR source does not discard current A2A activity or claim a complete feed', async () => {
+        const event = {
+            eventId: 'memory-core:mailbox:message-current', type: 'a2a-activity',
+            source: 'memory-core:mailbox', confidence: 'observed',
+            occurredAt: '2026-09-26T20:58:11.000Z', payload: {subject: 'current plane message'}
+        };
+        const diagnostic = {
+            eventId: 'pr-lane:source-degraded', type: 'source-degraded',
+            confidence: 'none', occurredAt: '2026-09-26T20:58:54.000Z'
+        };
+        const counts = [{source: 'memory-core:mailbox', scope: 'total', value: 11210,
+            complete: true, capturedAt: '2026-09-26T20:58:54.000Z'}];
+        const {controller, stream, store, provider, states} = await routeLoadActivity({
+            profileId: 'plane-a',
+            fleetActivity: async () => ({
+                capability: {state: 'degraded', reason: 'pr-lane: corpus unavailable'},
+                counts, events: [diagnostic, event]
+            })
+        });
+
+        expect(store.pages).toEqual([{events: [event], options: {replace: true}}]);
+        expect(controller.activityProfileId).toBe('plane-a');
+        expect(provider.data.activityCounts).toEqual(counts);
+        expect(provider.data.streamAdapterState).toBe('partial');
+        expect(provider.data.streamDegradedReason).toBe('pr-lane: corpus unavailable');
+        expect(stream.adapterState).toBe('partial');
+        expect(states).not.toContain('live');
+
+        globalThis.AgentOS.fleet.registryBridge = {
+            profileId: 'plane-a', fleetActivity: async () => { throw new Error('plane disconnected') }
+        };
+        await controller.loadActivity();
+        expect(store.pages).toHaveLength(1);
+        expect(provider.data.streamAdapterState).toBe('stale');
+
+        globalThis.AgentOS.fleet.registryBridge = {
+            profileId: 'plane-a', fleetActivity: async () => ({capability: {state: 'wired'}, events: [event], counts})
+        };
+        await controller.loadActivity();
+        expect(store.pages.at(-1).options).toEqual({replace: false});
+        expect(provider.data.streamAdapterState).toBe('live');
+        expect(provider.data.streamDegradedReason).toBeNull();
+
+        globalThis.AgentOS.fleet.registryBridge = {
+            profileId: 'plane-b', fleetActivity: async () => { throw new Error('other plane unavailable') }
+        };
+        await controller.loadActivity();
+        expect(store.cleared).toBe(1);
+        expect(provider.data.streamAdapterState).toBe('cold');
+    });
+
+    test('diagnostics and malformed rows do not turn a failed feed into partial activity', async () => {
+        for (const events of [
+            [{eventId: 'failure', type: 'source-degraded', confidence: 'none'}],
+            [{eventId: 'unknown', type: 'invented-event', confidence: 'observed', occurredAt: '2026-09-26T20:58:11.000Z'}],
+            [{type: 'a2a-activity', confidence: 'observed', occurredAt: '2026-09-26T20:58:11.000Z'}]
+        ]) {
+            const {store, provider} = await routeLoadActivity({fleetActivity: async () => ({
+                capability: {state: 'degraded', reason: 'sources unavailable'}, events
+            })});
+            expect(store.pages).toEqual([]);
+            expect(provider.data.streamAdapterState).toBe('stale');
+        }
+    });
+
+    test('an unknown capability cannot admit valid-looking rows', async () => {
+        const {store, provider} = await routeLoadActivity({fleetActivity: async () => ({
+            capability: {state: 'unknown-future-state'},
+            events: [{eventId: 'untrusted', type: 'a2a-activity', source: 'memory-core:mailbox',
+                confidence: 'observed', occurredAt: '2026-09-26T20:58:11.000Z'}]
+        })});
+        expect(store.pages).toEqual([]);
+        expect(provider.data.streamAdapterState).toBe('cold');
     });
 
     test('a thrown source → fail-closed, stays cold (never falsely goes live or stale)', async () => {

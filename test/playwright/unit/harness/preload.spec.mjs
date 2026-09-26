@@ -292,6 +292,15 @@ test.describe('Electron harness preload capability', () => {
             expect(report.rosterState).toBe('unknown');
         })
 
+        test('partial activity is reported as partial, not an unknown or live state', async () => {
+            const report = await readFirstPaint(cockpitDom({
+                rosterState: 'live', rosterLabel: '',
+                streamState: 'partial', streamLabel: 'partial — some sources unavailable'
+            }), {viaTimeout: true});
+            expect(report.streamState).toBe('partial');
+            expect(report.activityLabel).toBe('partial — some sources unavailable');
+        });
+
         test('the STREAM head obeys the same rule — both heads, not just the roster', async () => {
             const report = await readFirstPaint(cockpitDom({
                 streamState: ['live', 'degraded'], streamLabel: '● streaming'

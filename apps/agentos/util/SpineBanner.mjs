@@ -191,7 +191,7 @@ class SpineBanner extends Base {
      * @summary Derives the spine banner from the owner-held surface truths.
      * @param {Object} options
      * @param {{state: String, reason: ?String, connection: ?Object}} options.grid The roster surface:
-     *     `'cold'|'stale'|'live'`, its retained cause and its read owner's optional connection
+     *     `'cold'|'stale'|'partial'|'live'`, its retained cause and its read owner's optional connection
      *     observation `{state, reason}`. Both reasons are sanitized before publication.
      * @param {{state: String, reason: ?String}} options.stream The activity surface, same shape.
      * @param {{state: String, reason: ?String}} [options.daemon] Brain daemon health:
@@ -286,6 +286,13 @@ class SpineBanner extends Base {
             return verdict('degraded', 'fleet degraded', reason
                 ? `Fleet feed degraded — showing last-known data · ${reason}`
                 : 'Fleet feed degraded — showing last-known data')
+        }
+
+        if (stream?.state === 'partial') {
+            const reason = reasonFor([stream], 'partial');
+            return verdict('degraded', 'feed partial', reason
+                ? `Activity feed partial — some sources unavailable · ${reason}`
+                : 'Activity feed partial — some sources unavailable')
         }
 
         // The stream's own verdict: reachable here only with a LIVE grid (cold/stale grids returned

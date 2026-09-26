@@ -139,7 +139,8 @@ class StateProvider extends Provider {
              */
             shellTransport: null,
             /**
-             * The ACTIVITY surface's adapter state — see {@link #data.gridAdapterState}.
+             * The ACTIVITY surface's adapter state: cold, live, partial (usable events with a failed
+             * sibling source), or stale retained data after a read failure.
              * @member {String} streamAdapterState='cold'
              */
             streamAdapterState: 'cold',

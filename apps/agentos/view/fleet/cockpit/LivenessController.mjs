@@ -152,8 +152,8 @@ class LivenessController extends ComponentController {
      */
     streamReadInFlight = 0
     /**
-     * Whether the activity feed ever went live — the first live snapshot replaces whatever the
-     * store holds; later ones merge.
+     * Whether the activity feed accepted a complete or partial answer. The first admitted page
+     * replaces whatever the store holds; later pages merge.
      * @member {Boolean} activityWired=false
      * @protected
      */
@@ -230,8 +230,9 @@ class LivenessController extends ComponentController {
 
     /**
      * @summary Bind the activity stream to the live feed and route its honest capability state:
-     * `wired` → live (a wired-but-quiet feed stays live, never cold), `degraded` → stale
-     * with the adapter's OWN reason, an ANSWERED `not-wired` retains its cause (a reachable
+     * `wired` → live (a wired-but-quiet feed stays live, never cold), `degraded` → partial when usable
+     * events survive, otherwise stale, preserving the adapter's own reason. An answered `not-wired`
+     * retains its cause (a reachable
      * server with an unconfigured source is not an unreachable server), a torn answer keeps the
      * cold surface silent. All state writes land on the provider; the banner renders itself.
      * @protected
@@ -277,12 +278,22 @@ class LivenessController extends ComponentController {
             if (capability?.state === 'wired') {
                 me.admitActivity({counts, events, profileId})
             } else if (capability?.state === 'degraded') {
+                const partialEvents = FleetAdmission.partialActivityEvents(events);
+                if (partialEvents.length) {
+                    me.admitActivity({counts, events: partialEvents, profileId, partial: true,
+                        reason: me.toSafeDegradedReason(capability.reason)});
+                    return
+                }
                 me.publishConnection('stream', {data: {
                     streamAdapterState  : 'stale',
                     streamDegradedReason: me.toSafeDegradedReason(capability.reason)
                 }});
                 stream && (stream.adapterState = 'stale')
             } else if (capability) {
+                if (me.activityWired) {
+                    me.degradeWiredSurface('stream', capability.reason ?? 'Activity source unavailable', stream);
+                    return
+                }
                 // the producer ANSWERED not-wired: no events land (the feed stays cold) but an
                 // answer is not silence — retain the cause
                 me.publishConnection('stream', {data: {
@@ -362,7 +373,7 @@ class LivenessController extends ComponentController {
      * @summary Admits an ANSWERED activity feed — the one path a wired answer and a test's landing
      * share; the rule lives in `AgentOS.util.FleetAdmission` (this file holds its size bar).
      * {@link #loadActivity} calls it after its generation fence; the tests' landing calls it directly.
-     * @param {Object} answer `{events, counts, profileId}`
+     * @param {Object} answer `{events, counts, profileId, partial, reason}`
      * @protected
      */
     admitActivity(answer) {
