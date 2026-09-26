@@ -37,6 +37,7 @@ export const ALLOWED_EXACT_PATHS = Object.freeze([
     '/node_modules/neo-agent-brain/src/fleet/contract/cockpit.mjs',
     '/node_modules/neo-agent-brain/src/fleet/contract/harnessTypes.mjs',
     '/node_modules/neo-agent-brain/src/fleet/contract/index.mjs',
+    '/node_modules/neo-agent-brain/src/fleet/contract/launchAuthority.mjs',
     '/node_modules/neo-agent-brain/src/fleet/contract/mcpServers.mjs',
     '/node_modules/neo-agent-brain/src/fleet/contract/wire.mjs',
     '/resources/images/logo/neo_logo_primary.svg',

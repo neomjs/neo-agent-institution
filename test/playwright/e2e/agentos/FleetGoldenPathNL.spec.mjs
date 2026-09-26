@@ -5,8 +5,8 @@ import {expect, test} from '../../fixtures.mjs';
  *
  * The pane under test is the one the cockpit mounts in its stream tabs. Each state is landed through
  * the cockpit's own write over the Neural Link, and the pane renders it through its bind to the
- * provider leaf, as in production. No fleet server takes part. The bridge stays unwired, so the first
- * read the pane shows is the unavailable one, never an empty route.
+ * provider leaf, as in production. No fleet server takes part: the bridge knows the verb and the read
+ * fails, so the first state the pane shows is the unavailable one, never an empty route.
  *
  * Instants are a fixed older day: ViewerTime's older-day form carries no year, so the goldens read
  * the same on every capture day (the visual-baseline determinism rule).
@@ -54,7 +54,7 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
               currency = pane.locator('.fm-golden-path-currency');
 
         await expect(pane).toBeVisible({timeout: 10000});
-        await expect(currency, 'the unwired bridge answers first, as unavailable').toHaveText(/^Unavailable · fleet golden path verb not wired$/);
+        await expect(currency, 'the failed read answers first, as unavailable').toHaveText(/^Unavailable · fleet golden path read failed$/);
 
         const
             [cockpit]     = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
