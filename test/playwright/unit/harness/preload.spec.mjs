@@ -163,19 +163,19 @@ test.describe('Electron harness preload capability', () => {
         ])
     })
 
-    test('keeps credential capture in the one main-owned channel with no renderer input surface', async () => {
+    test('keeps credential capture out of the cockpit: one fleet channel, and the credential window is the only input surface', async () => {
         const
             mainSource    = await readFile(mainPath, 'utf8'),
             preloadSource = await readFile(preloadPath, 'utf8');
 
         expect(preloadSource).not.toContain('window.prompt');
         expect(preloadSource).not.toContain('fleet-define-agent');
+        expect(preloadSource).not.toContain('credential-prompt');
         expect(mainSource).not.toContain('<input');
         expect(mainSource).not.toContain("ipcMain.handle('fleet-define-agent'");
         expect(mainSource.match(/ipcMain\.handle\('fleet-request'/g)).toHaveLength(1);
-        expect(mainSource).toContain("webContents.on('before-input-event'");
-        expect(mainSource).toContain('inputEvent.preventDefault()');
-        expect(mainSource).toContain('clipboard.readText()')
+        expect(mainSource.match(/createCredentialPrompt\(/g)).toHaveLength(1);
+        expect(mainSource).toContain("'credentialPrompt.preload.cjs'")
     })
 
     test('reports the exact bounded cold-first-paint semantics over the private diagnostic channel', async () => {

@@ -61,7 +61,7 @@ class PlaneSetupPanel extends Panel {
         items: [{
             ntype: 'component',
             cls  : ['agent-plane-setup-lede'],
-            text : 'The cockpit shows sample data until it attaches to your team\'s plane. Your GitHub PAT is asked for in a separate window and stored encrypted on this Mac.'
+            text : 'The cockpit shows sample data until it attaches to your team\'s plane. Your GitHub or GitLab PAT is asked for in a separate window and stored encrypted on this Mac.'
         }, {
             // sized to its content: the body's column would otherwise hand the row the leftover
             // height and its hidden overflow would clip the 32 px controls at the top
@@ -103,7 +103,7 @@ class PlaneSetupPanel extends Panel {
             status = me.getReference('status-line');
 
         button.disabled = true;
-        status.text     = 'Enter your GitHub PAT in the window that opens.';
+        status.text     = 'Enter your GitHub or GitLab PAT in the window that opens.';
 
         const reply = await Promise.resolve(Neo.main?.addon?.ShellPlane?.attachPlane({
             planeBase: me.getReference('plane-base-field').value,

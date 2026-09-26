@@ -16,15 +16,16 @@
 //
 //   §2.1.5   one retained cockpit + tray; explicit quit owns exact-once Brain teardown
 
-import {app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, protocol, safeStorage, session, Tray} from 'electron';
-import {createReadStream}                                                                   from 'node:fs';
-import {fileURLToPath}                                                                      from 'node:url';
-import path                                                                                 from 'node:path';
+import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, Tray} from 'electron';
+import {createReadStream}                                                        from 'node:fs';
+import {fileURLToPath}                                                           from 'node:url';
+import path                                                                      from 'node:path';
 import {
     ADAPTER_STATE_NAMES,
     computeFirstPaintVerdict
 } from './adapterWitness.mjs';
-import {createAppLifecycle}    from './appLifecycle.mjs';
+import {createAppLifecycle}     from './appLifecycle.mjs';
+import {createCredentialPrompt} from './credentialPrompt.mjs';
 import {createAbsentFleetCapability, createFleetCapability} from './fleetCapability.mjs';
 import {
     APP_HOST,
@@ -376,94 +377,12 @@ function isTrustedIpcSender(event) {
     )
 }
 
-/**
- * @summary Collects one Fleet credential in Electron-main custody. The modal deliberately contains
- * no input element or script: `before-input-event` prevents renderer dispatch, main reads paste
- * through Electron's clipboard API, and the page receives only a character count in its title.
- * @param {Object} options
- * @param {Electron.IpcMainInvokeEvent} options.event Trusted originating IPC event.
- * @param {String} options.method Credential-bearing Fleet verb.
- * @returns {Promise<String|null>} The ephemeral credential, or `null` when canceled.
- */
-function promptFleetCredential({event, method}) {
-    const
-        MAX_LENGTH = 1024,
-        parent     = BrowserWindow.fromWebContents(event.sender),
-        promptWin  = new BrowserWindow({
-            backgroundColor: '#151922',
-            fullscreenable : false,
-            height         : 250,
-            maximizable    : false,
-            minimizable    : false,
-            modal          : Boolean(parent),
-            parent         : parent?.isDestroyed() ? undefined : parent,
-            resizable      : false,
-            show           : false,
-            title          : 'Fleet credential — 0 characters',
-            width          : 540,
-            webPreferences : {
-                contextIsolation: true,
-                nodeIntegration : false,
-                sandbox         : true,
-                webSecurity     : true
-            }
-        }),
-        promptLabel = method === 'connectTenant' ? 'tenant PAT' : 'GitHub PAT',
-        documentUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-<title>Fleet credential</title><style>
-body{background:#151922;color:#edf2ff;font:16px/1.5 system-ui,sans-serif;margin:0;padding:32px}
-h1{font-size:20px;margin:0 0 16px}p{color:#b9c4d8;margin:8px 0}.hint{color:#8ea4c8;font-size:14px}
-</style></head><body><h1>Enter ${promptLabel}</h1><p>Paste or type the credential, then press Enter.</p>
-<p class="hint">The page receives no key, paste, or credential data. Escape cancels; Backspace edits. The title shows length only.</p></body></html>`);
-
-    return new Promise(resolve => {
-        let credential = '', settled = false;
-
-        const
-            updateTitle = () => promptWin.setTitle(`Fleet credential — ${credential.length} characters`),
-            complete    = value => {
-                if (settled) return;
-
-                settled = true;
-
-                const output = value;
-
-                credential = '';
-                !promptWin.isDestroyed() && promptWin.destroy();
-                resolve(output)
-            };
-
-        promptWin.webContents.on('before-input-event', (inputEvent, input) => {
-            inputEvent.preventDefault();
-
-            if (input.type !== 'keyDown') return;
-
-            if (input.key === 'Escape') {
-                complete(null)
-            } else if (input.key === 'Enter') {
-                complete(credential.trim() || null)
-            } else if (input.key === 'Backspace') {
-                credential = credential.slice(0, -1);
-                updateTitle()
-            } else if ((input.control || input.meta) && input.key?.toLowerCase() === 'v') {
-                credential = clipboard.readText().trim().slice(0, MAX_LENGTH);
-                updateTitle()
-            } else if (input.key?.length === 1 && !input.alt && !input.control && !input.meta && credential.length < MAX_LENGTH) {
-                credential += input.key;
-                updateTitle()
-            }
-        });
-
-        promptWin.once('closed', () => complete(null));
-        promptWin.webContents.once('render-process-gone', () => complete(null));
-        promptWin.once('ready-to-show', () => {
-            promptWin.show();
-            promptWin.focus()
-        });
-        promptWin.loadURL(documentUrl).catch(() => complete(null))
-    })
-}
+// One credential window serves plane attach and every credential-bearing Fleet verb.
+const promptFleetCredential = createCredentialPrompt({
+    BrowserWindow,
+    Menu,
+    preloadPath: path.join(harnessDir, 'credentialPrompt.preload.cjs')
+});
 
 // The handler closures own the only renderer→Fleet route in the packaged topology. The Brain
 // promise is read at call time so an early-rendering UI receives a named not-ready envelope while a
