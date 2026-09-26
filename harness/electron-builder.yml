@@ -15,6 +15,8 @@ files:
     - appLifecycle.mjs
     - brain.mjs
     - contentPolicy.mjs
+    - credentialPrompt.mjs
+    - credentialPrompt.preload.cjs
     - fleetCapability.mjs
     - mainLog.mjs
     - planeConfig.mjs
