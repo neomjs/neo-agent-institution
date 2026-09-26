@@ -117,7 +117,7 @@ class ActivityStream extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * Feed liveness: `cold` (no source has answered yet), `live`, or `stale` last-known data.
+         * Feed liveness: `cold`, `live`, `partial` answered data, or `stale` last-known data.
          * @member {String} adapterState_='cold'
          * @reactive
          */
@@ -371,8 +371,9 @@ class ActivityStream extends Container {
             retained   = me.store?.count ?? 0,
             dropped    = me.store?.droppedCount ?? 0,
             countView  = describeActivityCounts(me.counts),
-            stateWord  = {cold: 'not answered yet', stale: 'stale — reconnecting'}[me.adapterState],
-            stateCls   = {cold: 'is-cold', stale: 'is-stale'}[me.adapterState] ?? 'is-live',
+            stateWord  = {cold: 'not answered yet', partial: 'partial — some sources unavailable',
+                stale: retained ? 'stale — reconnecting' : 'unavailable'}[me.adapterState],
+            stateCls   = {cold: 'is-cold', partial: 'is-partial', stale: 'is-stale'}[me.adapterState] ?? 'is-live',
             // cold and stale already say their rows are not current; only a live feed can mislead
             quiet      = stateWord ? null : describeQuietSince(me.store?.getAt(0)?.occurredAt),
             stateText  = stateWord ?? (quiet ? `● streaming · ${quiet.text}` : '● streaming');
@@ -385,7 +386,10 @@ class ActivityStream extends Container {
 
         // the feed's own empty state: an ANSWER with no events says so in the list region; a cold
         // feed (no answer yet) leaves the region quiet — the head already says "not answered yet"
-        me.getReference('empty-note').hidden = me.adapterState === 'cold' || retained > 0;
+        me.getReference('empty-note').set({
+            hidden: me.adapterState === 'cold' || retained > 0,
+            text  : me.adapterState === 'live' ? 'no activity yet' : 'Activity unavailable'
+        });
 
         countsCell.vdom.title = countView?.title ?? null;
         countsCell.set({

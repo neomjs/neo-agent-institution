@@ -120,6 +120,9 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
         // re-read the roster that raced the injection
         await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken});
         await reloadRoster(app);
+        // The fixture bridge arrives after mount. Establish the initial feed through the real
+        // reader now; transport loss and recovery below remain driven by the re-armed timer.
+        await app.callMethod(cockpitId, 'controller.loadActivity');
 
         // the adapter states are provider data (the cockpit's StateProvider owns the liveness
         // leaves, the chrome binds them) — read the SAME instance the banner renders from
@@ -203,5 +206,67 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
         await fleet.close();
 
         expect(pageErrors, 'the liveness journey must be error-free in the main window').toEqual([])
+    });
+
+    test('a failed PR reader keeps current A2A events visible as partial, then recovers without replacing the store', async ({page, neuralLink}) => {
+        await wireRealFleetSources();
+        const {wireFleetActivityReadSource} = await loadAgentOsModule('ai/services/fleet/wireFleetActivityReadSource.mjs');
+        const {default: bridge} = await loadAgentOsModule('ai/services/fleet/FleetControlBridge.mjs');
+        const {default: path} = await import('node:path');
+        const {fileURLToPath} = await import('node:url');
+        const issuesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/issues');
+        const originalSource = bridge.activitySource;
+        const pageErrors = [];
+        page.on('pageerror', error => pageErrors.push(String(error)));
+        let a2aAvailable = true;
+        const listMessages = async () => {
+            if (!a2aAvailable) throw new Error('fixture mailbox unavailable');
+            return {messages: [{messageId: 'MESSAGE:partial-feed-fixture', from: '@fixture-sender', to: '@fixture-viewer',
+                subject: 'current partial-plane message', sentAt: new Date().toISOString(), priority: 'normal'}],
+                totalCount: 1, truncated: false, offset: 0}
+        };
+        wireFleetActivityReadSource({issuesDir: path.join(issuesDir, 'missing-corpus'), listMessages});
+        const produced = await bridge.activitySource.readActivitySnapshot();
+        expect(produced.capability.state).toBe('degraded');
+        expect(produced.events.some(event => event.type === 'a2a-activity')).toBe(true);
+        const fleet = await startLivenessFleetServer({bearerToken: generateLocalBearerToken()});
+
+        try {
+            await page.goto('/apps/agentos/index.html');
+            await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+            const app = await neuralLink.connectToApp('AgentOS');
+            const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
+            const cockpitId = cockpit.properties.id;
+            await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken: fleet.bearerToken});
+            await reloadRoster(app);
+            await app.callMethod(cockpitId, 'controller.loadActivity');
+            const readState = async () => (await app.callMethod(cockpitId, 'getStateProvider')).data;
+            await expect.poll(async () => (await readState()).streamAdapterState).toBe('partial');
+            expect((await readState()).streamDegradedReason).toContain('pr-lane');
+            await expect(page.locator('.fm-activity-row').filter({hasText: 'current partial-plane message'})).toHaveCount(1);
+            await expect(page.locator('.fm-stream-state')).toHaveText('partial — some sources unavailable');
+            await expect(page.locator('.fm-spine-banner-degraded')).toHaveText('feed partial');
+            const findActivityStore = async () => (await app.listStores()).stores
+                .find(store => store.model === 'AgentOS.model.FleetActivityEvent');
+            const storeId = (await findActivityStore()).id;
+
+            a2aAvailable = false;
+            await app.callMethod(cockpitId, 'controller.loadActivity');
+            await expect.poll(async () => (await readState()).streamAdapterState).toBe('stale');
+            await expect(page.locator('.fm-activity-row').filter({hasText: 'current partial-plane message'})).toHaveCount(1);
+            expect((await findActivityStore()).id).toBe(storeId);
+
+            a2aAvailable = true;
+            wireFleetActivityReadSource({issuesDir, listMessages});
+            await app.callMethod(cockpitId, 'controller.loadActivity');
+            await expect.poll(async () => (await readState()).streamAdapterState).toBe('live');
+            expect((await readState()).streamDegradedReason).toBeNull();
+            await expect(page.locator('.fm-activity-row').filter({hasText: 'current partial-plane message'})).toHaveCount(1);
+            expect((await findActivityStore()).id).toBe(storeId);
+            expect(pageErrors).toEqual([]);
+        } finally {
+            bridge.activitySource = originalSource;
+            await fleet.close();
+        }
     });
 });
