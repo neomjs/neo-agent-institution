@@ -7,6 +7,7 @@ import {
     createHarnessAssetResolver,
     isAllowedHarnessAssetPath,
     isHarnessDocumentUrl,
+    isHarnessPopupUrl,
     parseHarnessUrl
 } from '../../../../harness/contentPolicy.mjs';
 
@@ -72,12 +73,30 @@ test.describe('harness content policy', () => {
         expect(parseHarnessUrl('app://neo/src/Neo.mjs%3A%24DATA').ok).toBe(false)
     });
 
-    test('limits navigation and popup targets to Agent OS HTML documents', () => {
+    test('limits navigation targets to Agent OS HTML documents', () => {
         expect(isHarnessDocumentUrl('app://neo/apps/agentos/index.html')).toBe(true);
         expect(isHarnessDocumentUrl('app://neo/apps/agentos/design/plan.html?mode=review')).toBe(true);
         expect(isHarnessDocumentUrl('app://neo/apps/agentos/app.mjs')).toBe(false);
         expect(isHarnessDocumentUrl('app://neo/src/Neo.mjs')).toBe(false);
-        expect(isHarnessDocumentUrl('https://neo/apps/agentos/index.html')).toBe(false)
+        expect(isHarnessDocumentUrl('https://neo/apps/agentos/index.html')).toBe(false);
+        expect(isHarnessDocumentUrl('about:blank')).toBe(false)
+    });
+
+    test('admits popups at Agent OS HTML documents and the engine staging realm only', () => {
+        expect(isHarnessPopupUrl('about:blank')).toBe(true);
+        expect(isHarnessPopupUrl('app://neo/apps/agentos/childapps/widget/index.html?tearout=memories')).toBe(true);
+
+        for (const url of [
+            'about:blank#staged',
+            'about:blank?x=1',
+            'about:srcdoc',
+            'data:text/html,<p>x</p>',
+            'https://neo/apps/agentos/index.html',
+            'app://neo/apps/agentos/app.mjs',
+            'app://evil/apps/agentos/index.html'
+        ]) {
+            expect(isHarnessPopupUrl(url), url).toBe(false)
+        }
     });
 
     test('defines a restrictive policy with only the named passive-image exception', () => {

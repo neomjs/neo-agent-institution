@@ -124,7 +124,7 @@ export function isAllowedHarnessAssetPath(pathname) {
 }
 
 /**
- * @summary Restricts top-level navigation and popups to HTML documents owned by apps/agentos.
+ * @summary Restricts top-level navigation to HTML documents owned by apps/agentos.
  * @param {String} value
  * @returns {Boolean}
  */
@@ -134,6 +134,19 @@ export function isHarnessDocumentUrl(value) {
     return parsed.ok &&
         parsed.pathname.startsWith('/apps/agentos/') &&
         parsed.pathname.endsWith('.html')
+}
+
+/**
+ * `Neo.Main.windowOpen` opens every same-origin popup at `about:blank`, writes the child's
+ * one-time route into that realm's sessionStorage, then replaces its location with the document.
+ * The blank realm holds no content, the preload's capabilities refuse it as a sender, and
+ * `will-navigate` still admits only {@link isHarnessDocumentUrl}: its one exit is a harness document.
+ * @summary Restricts popups to harness documents plus the engine's `about:blank` staging realm.
+ * @param {String} value
+ * @returns {Boolean}
+ */
+export function isHarnessPopupUrl(value) {
+    return value === 'about:blank' || isHarnessDocumentUrl(value)
 }
 
 /**
