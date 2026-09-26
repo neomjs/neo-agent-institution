@@ -1,7 +1,7 @@
-import Container             from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import GoldenPathGraphLayout from '../../../util/GoldenPathGraphLayout.mjs';
-import ObservatoryCanvas     from './ObservatoryCanvas.mjs';
-import ViewerTime            from '../../../util/ViewerTime.mjs';
+import Container          from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import GoldenPathEnvelope from '../../../util/GoldenPathEnvelope.mjs';
+import ObservatoryCanvas  from './ObservatoryCanvas.mjs';
+import ViewerTime         from '../../../util/ViewerTime.mjs';
 
 /**
  * @summary The Observatory keeper-view — the Golden Path as a navigable 3D scene on the canvas worker,
@@ -52,7 +52,7 @@ class ObservatoryContainer extends Container {
             reference: 'observatory-head',
             vdom     : {cn: [
                 {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
-                {tag: 'span', cls: ['fm-observatory-currency'], text: GoldenPathGraphLayout.describeCurrency(null).text},
+                {tag: 'span', cls: ['fm-observatory-currency'], text: GoldenPathEnvelope.describeCurrency(null).text},
                 {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: 'drag orbits · wheel zooms'}
             ]}
         }]
@@ -93,7 +93,7 @@ class ObservatoryContainer extends Container {
 
         if (head) {
             // the instant in the viewer's own clock, the way the Golden Path text pane stamps it
-            head.vdom.cn[1].text = GoldenPathGraphLayout.describeCurrency(value, at => ViewerTime.formatViewerTime(at)?.text ?? null).text;
+            head.vdom.cn[1].text = GoldenPathEnvelope.describeCurrency(value, at => ViewerTime.formatViewerTime(at)?.text ?? null).text;
             head.update()
         }
 

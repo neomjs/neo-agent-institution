@@ -114,3 +114,37 @@ test.describe('goldenPathEnvelope — one closed shape, one currency', () => {
         rawIn.destroy()
     });
 });
+
+test.describe('goldenPathEnvelope — the currency line: the word, then the producer\'s reason or the capture instant and the count', () => {
+    const
+        land  = wire => GoldenPathEnvelope.fromWire(wire),
+        two   = [{id: 'issue:19220', title: 'Film capture', score: 8.06, rank: 1, citations: []}, {id: 'issue:19186', title: 'Parked vessel', score: 4.3, rank: 2, citations: []}],
+        fresh = (routeItems, capturedAt = '2026-09-25T14:30:00.000Z') => ({...wired, route: {...wired.route, capturedAt, items: routeItems}});
+
+    test('a current route: the word, captured <instant>, the count — the instant through the given formatter, UTC minute by default', () => {
+        expect(GoldenPathEnvelope.describeCurrency(land(fresh(two)))).toEqual({currency: 'current', text: 'Current · captured 2026-09-25 14:30Z · 2 items'});
+        expect(GoldenPathEnvelope.describeCurrency(land(fresh(two)), at => `viewer:${at.slice(11, 16)}`).text).toBe('Current · captured viewer:14:30 · 2 items')
+    });
+
+    test('a withheld route names the admission\'s reason code, says it is the last known good route, and counts one item as one', () => {
+        const wire = {...fresh([two[0]], '2026-09-24T18:40:00.000Z'), admission: {admitted: false, fallback: 'last-known-good', reasonCode: 'freshness-sla-breached', requiredFacets: [], staleFacets: []}};
+
+        expect(GoldenPathEnvelope.describeCurrency(land(wire))).toEqual({
+            currency: 'withheld',
+            text    : 'Withheld · freshness-sla-breached · last known good route · captured 2026-09-24 18:40Z · 1 item'
+        })
+    });
+
+    test('degraded and unavailable carry the capability\'s reason and no instant; the unobserved blank is the bare word', () => {
+        expect(GoldenPathEnvelope.describeCurrency(land(degraded))).toEqual({currency: 'degraded', text: 'Degraded · route-sidecar-missing'});
+        expect(GoldenPathEnvelope.describeCurrency(land({capability: {state: 'unavailable', reason: 'fleet golden path source not wired'}})))
+            .toEqual({currency: 'unavailable', text: 'Unavailable · fleet golden path source not wired'});
+        expect(GoldenPathEnvelope.describeCurrency(GoldenPathEnvelope.blank())).toEqual({currency: 'unobserved', text: 'Unobserved'});
+        expect(GoldenPathEnvelope.describeCurrency(null)).toEqual({currency: 'unobserved', text: 'Unobserved'})
+    });
+
+    test('an unparseable instant, or a formatter with nothing to say, leaves the instant out rather than rendering a wrong one', () => {
+        expect(GoldenPathEnvelope.describeCurrency(land(fresh(two, 'not-a-date'))).text).toBe('Current · 2 items');
+        expect(GoldenPathEnvelope.describeCurrency(land(fresh(two)), () => null).text).toBe('Current · 2 items')
+    })
+});
