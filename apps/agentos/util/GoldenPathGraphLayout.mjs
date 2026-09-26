@@ -4,7 +4,7 @@ import GoldenPathEnvelope from './GoldenPathEnvelope.mjs';
 /**
  * @module apps/agentos/util/GoldenPathGraphLayout
  * @summary Pure layout for the Golden Path graph pane: turns the landed `fleetGoldenPath` envelope
- * (the cockpit's `goldenPathEnvelope` leaf, {@link AgentOS.util.GoldenPathEnvelope}) into nodes and
+ * (the shell's `goldenPathEnvelope` leaf, {@link AgentOS.util.GoldenPathEnvelope}) into nodes and
  * edges a canvas-worker renderer only draws. The route's items form a ranked spine along one axis
  * with their weight taken from the producer's score; each item's citations hang below it as
  * satellites, and a citation several items share is placed once, between the items that cite it,

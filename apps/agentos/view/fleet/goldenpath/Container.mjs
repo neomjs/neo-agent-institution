@@ -11,9 +11,9 @@ import ViewerTime         from '../../../util/ViewerTime.mjs';
  * @summary Renders the `fleetGoldenPath` envelope as text. The currency line comes first, then the
  * route's items in the producer's order, then the producer's provenance. It synthesizes, ranks, merges
  * and caches nothing. The items go into a pane-local Store exactly as written, and a route that is not
- * current says so before any item shows. The envelope is the cockpit's `goldenPathEnvelope` leaf, bound
- * like every other Golden Path pane's. Reads are intent events that the owning cockpit relays to the
- * authenticated fleet bridge.
+ * current says so before any item shows. The envelope is the shell's `goldenPathEnvelope` leaf on the
+ * Viewport provider, bound like every other Golden Path pane's. Reads are intent events that the owning
+ * cockpit relays to the authenticated fleet bridge.
  *
  * @class AgentOS.view.fleet.goldenpath.Container
  * @extends Neo.container.Base

@@ -6,9 +6,10 @@ import ViewerTime            from '../../../util/ViewerTime.mjs';
 /**
  * @summary The Golden Path graph pane — a south-strip reading surface: a currency line first
  * (the cockpit's one reading of the envelope, with when the route was captured), then the graph
- * on the canvas worker. It binds the cockpit's `goldenPathEnvelope` leaf and synthesizes nothing:
- * a route drawn as current is current, a withheld one is drawn dim as the last known good route,
- * and a degraded, unavailable or unobserved source draws nothing.
+ * on the canvas worker. It binds the shell's `goldenPathEnvelope` leaf, which the cockpit's Golden
+ * Path read writes, and synthesizes nothing: a route drawn as current is current, a withheld one is
+ * drawn dim as the last known good route, and a degraded, unavailable or unobserved source draws
+ * nothing.
  *
  * @class AgentOS.view.fleet.goldenpath.GraphContainer
  * @extends Neo.container.Base
@@ -30,7 +31,7 @@ class GraphContainer extends Container {
          */
         baseCls: ['fm-goldenpath-graph-pane'],
         /**
-         * The `fleetGoldenPath` envelope, bound from the cockpit provider's `goldenPathEnvelope` leaf.
+         * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf.
          * @member {Object|null} envelope_=null
          * @reactive
          */

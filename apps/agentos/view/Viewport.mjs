@@ -21,10 +21,11 @@ import ViewportController from './ViewportController.mjs';
  * @summary The harness shell — the B3-hybrid keeper-view structure: a top chrome bar over a
  * stable-shell **left-rail keeper-view nav** (`tab.Container`, left tab-bar). The rail is how you
  * reach the keeper views — **Home** (the Welcome landing), **Fleet** (the FM mission-control
- * cockpit, the default), **Observatory** (the Golden Path as a 3D scene, the whole view), **System** (the connected instance's engine room: plane health from the
- * orchestrator's deployment-state picture, observe-only), **Accounts** (identity setup), **Chat**
- * (prompt → live pane, the dockable work-area seam). The Fleet keeper-view renders the roster as CARDS (the design SSOT), not a
- * data-grid table. Renders through `neo-theme-neo-dark` / `neo-theme-neo-light`.
+ * cockpit, the default), **Observatory** (the Golden Path as a 3D scene, the whole view),
+ * **System** (the connected instance's engine room: plane health from the orchestrator's
+ * deployment-state picture, observe-only), **Accounts** (identity setup), **Chat** (prompt → live
+ * pane, the dockable work-area seam). The Fleet keeper-view renders the roster as CARDS (the design
+ * SSOT), not a data-grid table. Renders through `neo-theme-neo-dark` / `neo-theme-neo-light`.
  *
  * The Viewport is also the composition authority between two deliberately separate projections:
  * Accounts owns `AgentDefinitions`, while FleetCockpit owns `FleetRoster`. An accepted definition
