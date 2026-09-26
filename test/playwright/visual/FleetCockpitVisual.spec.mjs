@@ -862,6 +862,24 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card-light.png')
     });
 
+    test('the keeper nav is an icon rail — each tab keeps its label as its accessible name and speaks it as a tooltip', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        const nav = page.locator('.agent-shell > .neo-tab-header-toolbar');
+
+        for (const label of ['Home', 'Fleet', 'Observatory', 'System', 'Accounts', 'Chat']) {
+            const tab = nav.getByRole('tab', {name: label, exact: true});
+
+            await expect(tab, `${label} keeps its accessible name`).toHaveCount(1);
+            // hidden visually only: a clipped box, never display:none, which would leave the tree
+            await expect(tab.locator('.neo-button-text')).toHaveCSS('position', 'absolute');
+            await expect(tab.locator('.neo-button-text')).not.toHaveCSS('display', 'none')
+        }
+
+        await nav.getByRole('tab', {name: 'Observatory', exact: true}).hover();
+        await expect(page.locator('.neo-tooltip')).toHaveText('Observatory')
+    });
+
     test('the cockpit before any answer and after an empty one — cold says "not answered yet", an empty answer offers the first agent; both skins', async ({page}) => {
         // the cold boot: nothing is landed — nothing is seeded, no source has answered
         await bootColdCockpit(page);
