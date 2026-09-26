@@ -69,6 +69,16 @@ export const STREAM_STATE_LABELS = Object.freeze({
 export const ADAPTER_STATE_NAMES = Object.freeze([...ADAPTER_STATES, 'unknown']);
 
 /**
+ * How long (ms) the shell waits for the cockpit's next roster read after a popup closes. The cockpit
+ * reads its roster on its own cadence and launches a due read on its next pass
+ * ({@link AgentOS.util.LivenessCadence}), so the next App-Worker crossing can be one roster interval
+ * plus one pass away; the rest is margin. The shell cannot import the cockpit's classes, so the
+ * cadence spec fails when that sum outgrows this window.
+ * @type {Number}
+ */
+export const ROSTER_CROSSING_WINDOW_MS = 80000;
+
+/**
  * @summary Resolves the single state a class list advertises, or `unknown` when it is absent or ambiguous.
  *
  * Shared by the preload observer's logic and the shell's assertions so the two cannot drift on what

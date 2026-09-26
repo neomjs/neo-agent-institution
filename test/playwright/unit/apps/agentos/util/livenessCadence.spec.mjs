@@ -10,7 +10,8 @@ import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
-import LivenessCadence from '../../../../../../apps/agentos/util/LivenessCadence.mjs';
+import LivenessCadence             from '../../../../../../apps/agentos/util/LivenessCadence.mjs';
+import {ROSTER_CROSSING_WINDOW_MS} from '../../../../../../harness/adapterWitness.mjs';
 
 /**
  * @summary The cadence's contract: every read comes due on its own interval, a due read is
@@ -83,5 +84,11 @@ test.describe('AgentOS.util.LivenessCadence', () => {
         }
 
         expect(launched).toBe(10 + 10 + 5 + 5 + 5)
+    });
+
+    test('the next roster read lands inside the window the packaged smoke waits after a popup closes', () => {
+        // A roster read comes due one interval after the last and launches on the first pass after
+        // that: a popup that closes just after a launch sees the next one at most interval + pass later.
+        expect(intervals.roster + LivenessCadence.DEFAULT_PASS).toBeLessThanOrEqual(ROSTER_CROSSING_WINDOW_MS)
     })
 });

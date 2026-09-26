@@ -1,5 +1,5 @@
 import {test, expect, loadAgentOsModule}                                       from '../../fixtures.mjs';
-import {authenticatedFleetOptions, reloadRoster, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
+import {authenticatedFleetOptions, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
 
 const {generateLocalBearerToken} = await loadAgentOsModule('ai/mcp/server/shared/helpers/localBearer.mjs');
 
@@ -119,10 +119,9 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
         // flip the fail-closed boot bridge live (the ONE wire call — recovery must not repeat it), then
         // re-read the roster that raced the injection
         await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken});
-        await reloadRoster(app);
-        // The fixture bridge arrives after mount. Establish the initial feed through the real
-        // reader now; transport loss and recovery below remain driven by the re-armed timer.
-        await app.callMethod(cockpitId, 'controller.loadActivity');
+        // The fixture bridge arrives after mount. Use the product's late-bridge path for initial
+        // reads; transport loss and recovery below remain driven by the re-armed timer.
+        await app.callMethod(cockpitId, 'controller.reconnectFleet');
 
         // the adapter states are provider data (the cockpit's StateProvider owns the liveness
         // leaves, the chrome binds them) — read the SAME instance the banner renders from
@@ -168,6 +167,7 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
 
         expect(degraded.gridDegradedReason,   'the roster surface retains a safe degrade reason').toBeTruthy();
         expect(degraded.streamDegradedReason, 'the activity surface retains a safe degrade reason').toBeTruthy();
+        expect(degraded.gridConnection.state, 'the roster read names the transport loss').toBe('unreachable');
         const [sameCockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
 
         expect(sameCockpit?.properties?.id, 'the SAME cockpit instance advanced the state — no reload').toBe(cockpitId);
@@ -179,9 +179,9 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
         await expect(banner, 'the spine banner renders the degraded state').toBeVisible({timeout: 15000});
         // the pill wears the status word pair; the sentence WITH the retained reason rides the
         // title (the chrome grammar: labels are never sentences)
-        await expect(banner).toHaveText('fleet degraded');
+        await expect(banner).toHaveText('fleet unreachable');
         await expect(banner, 'the banner names the loss AND carries the retained reason (not only the prefix)')
-            .toHaveAttribute('title', /Fleet feed degraded — showing last-known data · .+/);
+            .toHaveAttribute('title', /Roster connection unavailable — showing last-known data · .+/);
 
         // ── transport RESTARTED at the SAME endpoint, SAME bearer — the bridge is NOT re-wired ──
         fleet = await startLivenessFleetServer({port: fleetPort, bearerToken});
@@ -238,8 +238,7 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
             const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
             const cockpitId = cockpit.properties.id;
             await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken: fleet.bearerToken});
-            await reloadRoster(app);
-            await app.callMethod(cockpitId, 'controller.loadActivity');
+            await app.callMethod(cockpitId, 'controller.reconnectFleet');
             const readState = async () => (await app.callMethod(cockpitId, 'getStateProvider')).data;
             await expect.poll(async () => (await readState()).streamAdapterState).toBe('partial');
             expect((await readState()).streamDegradedReason).toContain('pr-lane');

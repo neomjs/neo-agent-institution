@@ -33,6 +33,14 @@ class LivenessCadence extends Base {
     })
 
     /**
+     * The cadence owner's pass interval (ms): how often it checks which reads are due. A due read
+     * launches on the first pass at or after its due time, so it can wait up to one pass past its
+     * interval; a pass that launches nothing costs the fleet bridge nothing.
+     * @type {Number}
+     */
+    static DEFAULT_PASS = 15000
+
+    /**
      * Each liveness read: the controller method that launches it and the controller counter of its
      * unsettled wire reads.
      * @type {Object<String, {load: String, inFlight: String}>}
