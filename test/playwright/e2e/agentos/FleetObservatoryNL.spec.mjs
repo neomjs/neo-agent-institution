@@ -73,6 +73,10 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(drawn.currency).toBe('current');
         expect(drawn.counts).toEqual({nodes: 6, edges: 3, route: 3});
         expect(drawn.canvas[0], 'the drawing buffer is sized').toBeGreaterThan(0);
+
+        const [cssWidth, ratio] = await pane.locator('canvas').evaluate(node => [node.getBoundingClientRect().width, window.devicePixelRatio]);
+
+        expect(Math.abs(drawn.canvas[0] - cssWidth * ratio), 'the drawing buffer follows the host pixel ratio').toBeLessThanOrEqual(1);
         expect(drawn.frames).toBeGreaterThan(0);
         expect(drawn.camera.touched).toBe(false);
 
