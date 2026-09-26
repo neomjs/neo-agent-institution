@@ -22,6 +22,7 @@ import {fileURLToPath}                                                          
 import path                                                                      from 'node:path';
 import {
     ADAPTER_STATE_NAMES,
+    ROSTER_CROSSING_WINDOW_MS,
     computeFirstPaintVerdict
 } from './adapterWitness.mjs';
 import {createAppLifecycle}     from './appLifecycle.mjs';
@@ -1300,7 +1301,7 @@ app.whenReady().then(async () => {
                 primaryAfterPopup     = await invokeFleetFromWindow(win1, request),
                 workerAfterPopupClose = await awaitLifecycleState(
                     () => smokeState.fleetMethods.filter(method => method === 'fleetRoster').length > rosterCountAtClose,
-                    20000
+                    ROSTER_CROSSING_WINDOW_MS
                 ),
                 forgedWindow            = new BrowserWindow({show: false, webPreferences: getSecureWebPreferences()});
 
