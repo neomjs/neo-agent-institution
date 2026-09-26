@@ -22,18 +22,11 @@ import SpineBannerComponent   from './SpineBannerComponent.mjs';
 import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
 
 /**
- * The liveness owner's pass interval (ms): how often it checks which reads are due. Each read comes
- * due on its own cadence ({@link AgentOS.util.LivenessCadence}); a pass that launches nothing costs
- * the fleet bridge nothing.
- * @type {Number}
- */
-const livenessPollDefault = 15000;
-
-/**
  * The bounded window (ms) a single liveness read gets before it is treated as a degrade.
  *
- * Deliberately shorter than {@link livenessPollDefault}: the window must close before the next
- * tick, or a hung read would still be holding its surface's slot when the cadence comes round.
+ * Deliberately shorter than the pass ({@link AgentOS.util.LivenessCadence.DEFAULT_PASS}): the window
+ * must close before the next tick, or a hung read would still be holding its surface's slot when the
+ * cadence comes round.
  * @type {Number}
  */
 const livenessReadTimeoutDefault = 10000;
@@ -441,10 +434,10 @@ class FleetCockpit extends VesselContainer {
     /**
      * The liveness owner's pass interval (ms). Injectable so specs pin a deterministic cadence
      * instead of sleeping on the production one.
-     * @member {Number} livenessPollInterval=livenessPollDefault
+     * @member {Number} livenessPollInterval=LivenessCadence.DEFAULT_PASS
      * @protected
      */
-    livenessPollInterval = livenessPollDefault
+    livenessPollInterval = LivenessCadence.DEFAULT_PASS
     /**
      * The bounded window (ms) ONE liveness read gets before it is treated as a degrade. Boundedness
      * is the contract — a read may fail, it may never hang — the same shape and the same reason as
