@@ -112,14 +112,19 @@ class Observatory extends GraphScene {
     }
 
     /**
-     * @summary Remote entry: the App Worker hands over the layout's scene, or `null`; it is inked and drawn.
+     * @summary Remote entry: the App Worker hands over the layout's scene, or `null`; it is inked and drawn. The
+     * pane's scene changes only once the engine took the inked one, so a refused scene leaves `pick` and the
+     * stats answering for the scene still drawn.
      * @param {Object} data
      * @param {Object|null} data.scene
      * @param {String} [data.windowId]
+     * @throws {Error} when the engine refuses the inked scene
      */
     setScene({scene}) {
-        this.sourceScene = scene ?? null;
-        super.setScene(this.ink(this.sourceScene))
+        const next = scene ?? null;
+
+        super.setScene(this.ink(next));
+        this.sourceScene = next
     }
 
     /**

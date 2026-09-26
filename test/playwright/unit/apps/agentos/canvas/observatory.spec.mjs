@@ -96,6 +96,24 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect(Observatory.scene, 'an empty scene clears the engine surface').toBeNull()
     });
 
+    test('a scene the engine refuses leaves the drawn one answering: its node, its counts and its currency', () => {
+        Observatory.context = createContext();
+        Observatory.updateSize({width: 400, height: 200, devicePixelRatio: 1});
+        Observatory.setScene({scene: layoutScene('current'), windowId: 'window-1'});
+
+        const [x, y] = GraphScene.project(Observatory.matrix(), 0.6, 0, 0.2, 400, 200);
+
+        const refused = layoutScene('withheld');
+
+        refused.nodes = refused.nodes.map(node => ({...node, id: `refused:${node.id}`}));
+        refused.edges = [[0, 99]];
+
+        expect(() => Observatory.setScene({scene: refused, windowId: 'window-1'})).toThrow(/index names a node/);
+
+        expect(Observatory.pick({x, y})).toMatchObject({id: 'issue:2'});
+        expect(Observatory.getStats()).toMatchObject({counts: {nodes: 3, edges: 1, route: 2}, currency: 'current'})
+    });
+
     test('a theme change inks the drawn scene again in the new palette', () => {
         Observatory.context = createContext();
         Observatory.updateSize({width: 400, height: 200, devicePixelRatio: 1});
