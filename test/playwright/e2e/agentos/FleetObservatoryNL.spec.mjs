@@ -126,4 +126,54 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(cleared.currency).toBe('degraded');
         expect(cleared.counts).toEqual({nodes: 0, edges: 0, route: 0})
     });
+
+    test('the view keeps its scene across a switch away and back without a second read, and resizes with the window', async ({page, neuralLink}) => {
+        await page.setViewportSize({width: 1600, height: 1100});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+        const app = await neuralLink.connectToApp('AgentOS');
+
+        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
+
+        const
+            currency = page.locator('.fm-observatory-pane .fm-observatory-currency'),
+            [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+            cockpitState = await app.getComponent(cockpit.properties.id, ['controller']),
+            [canvas]     = await app.queryComponent({className: 'AgentOS.view.fleet.goldenpath.ObservatoryCanvas'}, ['id']),
+            stats        = () => app.callMethod(canvas.properties.id, 'readStats', []);
+
+        await expect(currency, 'cold, the read is unavailable').toHaveText(/^Unavailable · /);
+        await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [current]);
+        await expect(currency).toHaveText(/^Current · captured .+ · 3 items$/);
+        await page.waitForTimeout(400);
+
+        const before = await stats();
+
+        expect(before.counts).toEqual({nodes: 6, edges: 3, route: 3});
+
+        // a read on the way back would answer unavailable (no fleet server takes part), so a current
+        // line after the round trip is a read that did not happen
+        await page.getByRole('tab', {name: 'Fleet', exact: true}).click();
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible();
+        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
+        await expect(currency).toHaveText(/^Current · captured .+ · 3 items$/);
+        await page.waitForTimeout(400);
+
+        const back = await stats();
+
+        expect(back.currency).toBe('current');
+        expect(back.counts, 'the scene survives the round trip').toEqual({nodes: 6, edges: 3, route: 3});
+        expect(back.canvas).toEqual(before.canvas);
+
+        await page.setViewportSize({width: 1200, height: 800});
+        await page.waitForTimeout(600);
+
+        const resized = await stats();
+
+        expect(resized.canvas[0], 'the drawing buffer follows the narrower view').toBeLessThan(back.canvas[0]);
+        expect(resized.canvas[1], 'and the shorter one').toBeLessThan(back.canvas[1]);
+        expect(resized.counts, 'a resize keeps the scene').toEqual({nodes: 6, edges: 3, route: 3});
+        expect(resized.frames, 'the resized surface is drawn').toBeGreaterThan(back.frames)
+    });
 });
