@@ -116,7 +116,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
          * @summary Keeps the real roster loader, mapping and Store; only unrelated view seams
          * are absent. Every capacity change comes from a real wire settlement, never a counter edit.
          */
-        const makeRosterHost = ({state = 'sample', timeout = 2000} = {}) => {
+        const makeRosterHost = ({state = 'cold', timeout = 2000} = {}) => {
             const provider = makeProviderFake({
                 gridAdapterState: state,
                 gridConnection: {state: null, reason: null},
@@ -139,8 +139,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
                 getOperatorMailboxPane: () => null,
                 getStateProvider: () => provider,
                 getWakeRoutesPane: () => null,
-                livenessReadTimeout: timeout,
-                rosterSourceMode: 'selected'
+                livenessReadTimeout: timeout
             });
             delete host.loadRoster;
             stores.push(store);
@@ -171,7 +170,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(provider.data.gridConnection.state).toBe('refused');
             expect(provider.data.gridConnection.reason).toContain('[redacted]');
             expect(provider.data.gridConnection.reason).not.toContain('secret-value');
-            expect(provider.data.gridAdapterState).toBe('sample');
+            expect(provider.data.gridAdapterState).toBe('cold');
             expect(store.get('resident')).toBeTruthy();
             expect(host.gridReadInFlight).toBe(0);
 
@@ -256,7 +255,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
                 wire        = (url, fetchImpl) => ViewportController.prototype.wireFleetBridge.call({}, {url, bearerToken, fetchImpl});
             let seedReloads = 0;
 
-            // the retirement asks the store for its seed through the url pipeline — the one seam stubbed
+            // NEGATIVE control: nothing is seeded, so a retirement is a clear and never asks the
+            // store's url pipeline for anything — the stub counts what must stay at zero
             store.load = async () => { seedReloads++ };
 
             wire(endpointA, answering([{id: 'a1', displayName: 'A1'}]));
@@ -282,10 +282,10 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(globalThis.AgentOS.fleet.registryBridge.profileId).toBe(deriveFleetProfileId(endpointB));
             expect(store.get('a1'), 'the previous endpoint\'s resident is gone').toBeFalsy();
             expect(store.getCount()).toBe(0);
-            expect(seedReloads, 'the seed reload was asked for').toBe(1);
+            expect(seedReloads, 'no seed exists to reload — the retirement is a clear').toBe(0);
             expect(host.rosterWired).toBe(false);
             expect(host.rosterProfileId).toBeNull();
-            expect(provider.data.gridAdapterState, 'B\'s failure is B\'s own cold truth').toBe('sample');
+            expect(provider.data.gridAdapterState, 'B\'s failure is B\'s own cold truth').toBe('cold');
             expect(provider.data.gridConnection.state).toBe('unreachable')
         });
 

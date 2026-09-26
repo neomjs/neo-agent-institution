@@ -384,15 +384,35 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(stream.getReference('header').cls).not.toContain('is-quiet')
     });
 
-    test('sample and stale keep their own words over old rows', async () => {
+    test('cold and stale keep their own words over old rows', async () => {
         await createStream({count: 20});
 
-        expect(stream.getReference('state').text).toBe('sample · live feed pending');
+        expect(stream.getReference('state').text).toBe('not answered yet');
+        expect(stream.getReference('header').cls).toContain('is-cold');
         expect(stream.getReference('header').cls).not.toContain('is-quiet');
 
         stream.adapterState = 'stale';
 
         expect(stream.getReference('state').text).toBe('stale — reconnecting');
         expect(stream.getReference('header').cls).not.toContain('is-quiet')
+    });
+
+    test('the feed\'s empty state is an ANSWER: "no activity yet" renders live over an empty store, never while cold', async () => {
+        await createStream({count: 0});
+
+        const note = stream.getReference('empty-note');
+
+        // cold and empty: the head already says "not answered yet" — the region stays quiet
+        expect(note.hidden).toBe(true);
+
+        stream.adapterState = 'live';
+
+        expect(note.text).toBe('no activity yet');
+        expect(note.hidden).toBe(false);
+
+        // an event lands: the note leaves with the first row
+        store.add(event(1, 1));
+
+        expect(note.hidden).toBe(true)
     })
 });

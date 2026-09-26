@@ -740,14 +740,23 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         grid.destroy()
     });
 
-    test('labels the seeded roster honestly — a static-provenance marker until the live source wires', () => {
-        const grid = Neo.create(FleetGrid, {appName, adapterState: 'sample', store: makeStore(roster(['ok']))});
+    test('a cold roster says so — "not answered yet", no offline claim, and the empty CTA stays hidden', () => {
+        const grid = Neo.create(FleetGrid, {appName, adapterState: 'cold', store: makeStore([])});
 
-        expect(head(grid).cls).toContain('is-sample');
-        // provenance only, no offline claim: sample proves WHICH data renders, never WHY — the
-        // spine banner owns the why; a badge asserting "offline" against a replying server would
-        // repeat the lie the banner used to tell
-        expect(head(grid).items.find(i => i.cls.includes('fm-fleet-stale')).text).toBe('static roster');
+        expect(head(grid).cls).toContain('is-cold');
+        // no offline claim: cold only says no source has answered, never WHY — the spine banner
+        // owns the why; a badge asserting "offline" against a replying server would repeat the
+        // lie the banner used to tell
+        expect(head(grid).items.find(i => i.cls.includes('fm-fleet-stale')).text).toBe('not answered yet');
+        // an unanswered roster is not an empty fleet: the CTA is the answer-was-EMPTY state
+        expect(grid.getReference('empty-cta').hidden).toBe(true);
+
+        // the answer lands empty: live, and the CTA is the roster's word for it
+        grid.adapterState = 'live';
+
+        expect(head(grid).cls).toContain('is-live');
+        expect(head(grid).items.find(i => i.cls.includes('fm-fleet-stale')).text).toBe('');
+        expect(grid.getReference('empty-cta').hidden).toBe(false);
 
         grid.destroy()
     });

@@ -455,6 +455,7 @@ function sanitizeFirstPaintReport(report) {
         !Number.isInteger(report.cardCount) ||
         report.cardCount < 0 ||
         typeof report.cockpitVisible !== 'boolean' ||
+        typeof report.emptyCta !== 'boolean' ||
         !(report.rendererFirstPaintMs === null ||
             (Number.isFinite(report.rendererFirstPaintMs) && report.rendererFirstPaintMs >= 0)) ||
         !boundedText(report.rosterLabel) ||
@@ -468,6 +469,7 @@ function sanitizeFirstPaintReport(report) {
         activityLabel       : report.activityLabel,
         cardCount           : report.cardCount,
         cockpitVisible      : report.cockpitVisible,
+        emptyCta            : report.emptyCta,
         firstPaintMs        : report.rendererFirstPaintMs === null ? null : Math.round(process.uptime() * 1000),
         rendererFirstPaintMs: report.rendererFirstPaintMs,
         rosterLabel         : report.rosterLabel,
@@ -614,6 +616,7 @@ function awaitFirstPaintReport(win, timeoutMs = 65000) {
                 activityLabel       : null,
                 cardCount           : 0,
                 cockpitVisible      : false,
+                emptyCta            : false,
                 firstPaintMs        : null,
                 rendererFirstPaintMs: null,
                 rosterLabel         : null,

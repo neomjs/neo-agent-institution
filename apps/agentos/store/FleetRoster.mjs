@@ -12,10 +12,10 @@ import Store           from '../../../node_modules/neo.mjs/src/data/Store.mjs';
  * get it anyway"), so views bind the shared instance via `bind: {store: 'stores.fleetRoster'}`
  * instead of importing module-global state (the `Portal.store.*` house pattern).
  *
- * The sample seed lives in `apps/agentos/resources/data/fleetRoster.json`, fetched via the Store's
- * native `url` pipeline (the provider declaration sets `autoLoad`) — the seven real cross-family
- * maintainer identities; session state + lane-line are an illustrative snapshot until
- * `FleetCockpit.loadRoster()` replaces it with the live registry roster. NO invented agents.
+ * The store starts EMPTY — no seed, no fetched JSON, no invented agents: the cockpit's liveness
+ * owner lands the fleet's answer through `loadRoster()`, and a test lands rows through the same
+ * admission. Until an answer lands the roster surface reads `cold`; an empty answer renders the
+ * roster's own empty state.
  */
 class FleetRoster extends Store {
     static config = {
@@ -36,11 +36,7 @@ class FleetRoster extends Store {
          * @member {Neo.data.Model} model=FleetAgentModel
          * @reactive
          */
-        model: FleetAgentModel,
-        /**
-         * @member {String} url='../../apps/agentos/resources/data/fleetRoster.json'
-         */
-        url: '../../apps/agentos/resources/data/fleetRoster.json'
+        model: FleetAgentModel
     }
 }
 

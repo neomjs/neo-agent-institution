@@ -101,6 +101,19 @@ class Controller extends ComponentController {
     }
 
     /**
+     * @summary Show the bootstrap CTA only for an EMPTY ANSWER: a live (or stale last-known) roster
+     * with no agents. A cold roster has not been answered, so it keeps the CTA hidden — the head's
+     * "not answered yet" is its whole truth. Called from the store-derived sync and from the grid's
+     * adapter-state apply, the two events that can change either half of the predicate.
+     * @param {Number} [total] The whole fleet's count, when the caller already has it.
+     */
+    syncEmptyCta(total = this.getWholeFleet().length) {
+        const {component} = this;
+
+        component.getReference('empty-cta').hidden = total > 0 || component.adapterState === 'cold'
+    }
+
+    /**
      * @summary Re-derive everything the roster owns beyond the rows: the title count, the
      * empty-fleet CTA, and the fold preset (at/above `foldThreshold` the idle tier filters out by
      * default while the chip renders the honest count and toggles it back in — the fold row left
@@ -119,7 +132,7 @@ class Controller extends ComponentController {
             chip        = me.getReference('fold-chip');
 
         component.getReference('fleet-title').text = `Fleet · ${total} agents`;
-        component.getReference('empty-cta').hidden = total > 0;
+        me.syncEmptyCta(total);
 
         if (foldFilter) {
             const disabled = !folded || idleShown;

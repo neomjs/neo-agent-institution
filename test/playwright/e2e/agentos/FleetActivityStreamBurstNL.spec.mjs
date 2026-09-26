@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {test, expect, landFleetSample} from '../../fixtures.mjs';
 
 const
     LIST_CLASS     = 'Neo.list.Buffered',
@@ -159,6 +159,8 @@ async function boot(page, neuralLink) {
     await page.goto('/apps/agentos/index.html');
     await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
     await expect(page.locator('.fm-activity-stream')).toBeVisible({timeout: 30000});
+    // the tests' sample events land as the feed's first answer — nothing is seeded any more
+    await landFleetSample(page, {roster: false});
 
     const
         app        = await neuralLink.connectToApp('AgentOS'),

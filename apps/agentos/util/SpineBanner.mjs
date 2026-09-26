@@ -7,15 +7,17 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * last-known data instead of failing silent. Render-only over existing truth — this module
  * produces no probes.
  *
- * Precedence: a `sample` GRID (the roster itself is seed data — cold) beats `daemon` (a Brain
- * daemon down) beats `stale` on either surface (reachable but degraded) beats a `sample` STREAM
+ * Precedence: a `cold` GRID (no source has answered the roster) beats `daemon` (a Brain
+ * daemon down) beats `stale` on either surface (reachable but degraded) beats a `cold` STREAM
  * under a live roster (the feed is pending; the roster is provably live) beats `live`. A fully
  * live spine renders NOTHING — nominal earns zero pixels, the same exception-based discipline the
- * cards follow. Per-AGENT truth (wake/throttle telltales) is a different surface.
+ * cards follow. Per-AGENT truth (wake/throttle telltales) is a different surface. The banner keeps
+ * to TRANSPORT verdicts: what the roster or the feed holds is each surface's own word (the roster's
+ * "not answered yet" and its empty CTA, the feed's "no activity yet").
  *
  * **A verdict may only speak for the surface that produced it.** The cold family's copy
- * makes ROSTER claims ("showing the static roster") and SERVER claims ("Fleet server offline"),
- * so only a sample GRID may enter it: with the roster live on screen, a sample activity stream
+ * makes SERVER claims ("Fleet server offline"), so only a cold GRID may enter it: with the roster
+ * live on screen, a cold activity stream
  * rendering that copy was the module's own documented lie class in its third instance — observed
  * live over a wire-fed 9-agent roster with real presence bands. The stream's own verdict names
  * the stream, states the roster fact that falsifies the old copy, and ranks BELOW the daemon line
@@ -32,13 +34,13 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  *
  * **A dead daemon outranks a stale feed because it usually CAUSES one.** Reporting "feed degraded"
  * while a daemon is down names the symptom and drops the diagnosis, which is precisely the pointer
- * the spec asks for. It sits below `sample` because an unreachable transport cannot have answered a
+ * the spec asks for. It sits below `cold` because an unreachable transport cannot have answered a
  * daemon-status pull in the first place — the two are near-exclusive, and when the server is silent
  * "start the server" is the actionable line.
  *
  * **Daemon silence renders nothing, and does not claim health.** An absent daemon surface is
  * unknown, not nominal — but inventing a degradation from missing information is a false alarm, and
- * the transport line already speaks when the server is silent (that is exactly the `sample` case).
+ * the transport line already speaks when the server is silent (that is exactly the `cold` case).
  * So absence stays quiet here and the operator still gets told, by the surface that actually knows.
  *
  * **`degraded` is reused as the `kind` rather than minting a fourth.** The severity is the same and
@@ -105,7 +107,7 @@ function coldFallbackFor(transport) {
     if (!transport) {
         return {
             text : 'fleet offline',
-            title: 'Fleet server offline — showing the static roster · start it from the neo-agent-brain checkout'
+            title: 'Fleet server offline — start it from the neo-agent-brain checkout'
         }
     }
 
@@ -128,7 +130,7 @@ function coldFallbackFor(transport) {
     if (transport.up !== true) {
         return {
             text : 'fleet failed',
-            title: `Fleet transport failed to start — showing the static roster${transport.error ? ` · ${transport.error}` : ''}`
+            title: `Fleet transport failed to start${transport.error ? ` · ${transport.error}` : ''}`
         }
     }
 
@@ -189,7 +191,7 @@ class SpineBanner extends Base {
      * @summary Derives the spine banner from the owner-held surface truths.
      * @param {Object} options
      * @param {{state: String, reason: ?String, connection: ?Object}} options.grid The roster surface:
-     *     `'sample'|'stale'|'live'`, its retained cause and its read owner's optional connection
+     *     `'cold'|'stale'|'live'`, its retained cause and its read owner's optional connection
      *     observation `{state, reason}`. Both reasons are sanitized before publication.
      * @param {{state: String, reason: ?String}} options.stream The activity surface, same shape.
      * @param {{state: String, reason: ?String}} [options.daemon] Brain daemon health:
@@ -210,7 +212,7 @@ class SpineBanner extends Base {
               states   = surfaces.map(surface => surface?.state),
               verdict  = (kind, text, title, action = null) => ({action, hidden: false, kind, text, title, ariaLabel: title});
 
-        // A packaged shell refuses to own an organism beside a plane that already runs here. The sample
+        // A packaged shell refuses to own an organism beside a plane that already runs here. The cold
         // roster and the refused fleet are consequences of that refusal, so its cause outranks them, and
         // the one useful action is attaching this shell to that plane.
         if (daemon?.cause === 'organism-beside-plane') {
@@ -223,24 +225,24 @@ class SpineBanner extends Base {
             return verdict('cold', 'plane refused', `The plane refused this shell — connect it again${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
         }
 
-        // Only a sample GRID enters the cold family: its copy asserts roster + server facts, and a
-        // sample sibling stream has no standing to make either claim over a live roster.
-        // Both-sample keeps the exact pre-partition behavior — the reason scan still covers both
-        // surfaces, so a stream-retained cause surfaces when the grid learned none.
-        if (grid?.state === 'sample') {
-            const reason = reasonFor(surfaces, 'sample');
+        // Only a cold GRID enters the cold family: its copy asserts server facts, and a cold sibling
+        // stream has no standing to make that claim over a live roster. Both-cold keeps the exact
+        // pre-partition behavior — the reason scan still covers both surfaces, so a stream-retained
+        // cause surfaces when the grid learned none.
+        if (grid?.state === 'cold') {
+            const reason = reasonFor(surfaces, 'cold');
 
             // Same discipline the `stale` line follows: name the retained cause when the owner HAS
             // one, guess only when it does not. A reachable server whose source is unconfigured
-            // answers `not-wired` — the seed stays, so the data really is sample, but "start the
-            // server" would be advice to restart a process that just replied. The fallback for
-            // SILENCE is topology-owned: the shell's transport fact picks the honest word AND line,
-            // and only the plain-browser flow keeps the classic "start the server" advice.
+            // answers `not-wired` — no data lands, but "start the server" would be advice to restart
+            // a process that just replied. The fallback for SILENCE is topology-owned: the shell's
+            // transport fact picks the honest word AND line, and only the plain-browser flow keeps
+            // the classic "start the server" advice.
             if (reason) {
-                return verdict('cold', 'fleet offline', `Fleet data unavailable — showing the static roster · ${reason}`)
+                return verdict('cold', 'fleet offline', `Fleet data unavailable · ${reason}`)
             }
 
-            const connection = SpineBanner.connectionVerdict(grid, 'cold', 'fleet', 'showing the static roster');
+            const connection = SpineBanner.connectionVerdict(grid, 'cold', 'fleet', 'no fleet data yet');
 
             if (connection) return connection;
 
@@ -286,15 +288,15 @@ class SpineBanner extends Base {
                 : 'Fleet feed degraded — showing last-known data')
         }
 
-        // The stream's own verdict: reachable here only with a LIVE grid (sample/stale grids returned
+        // The stream's own verdict: reachable here only with a LIVE grid (cold/stale grids returned
         // above), so "roster is live" is true by construction — the fact that falsifies the old cold
         // copy this case used to render. A pending feed is not an incident: `degraded` skin, and the
         // transport fact is deliberately not consulted (it belongs to the cold family alone).
-        if (stream?.state === 'sample') {
-            const reason = reasonFor([stream], 'sample');
+        if (stream?.state === 'cold') {
+            const reason = reasonFor([stream], 'cold');
 
             if (!reason) {
-                const connection = SpineBanner.connectionVerdict(stream, 'degraded', 'feed', 'roster is live · showing sample activity');
+                const connection = SpineBanner.connectionVerdict(stream, 'degraded', 'feed', 'roster is live · no activity data yet');
 
                 if (connection) return connection
             }

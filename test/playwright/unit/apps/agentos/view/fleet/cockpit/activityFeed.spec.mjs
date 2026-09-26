@@ -25,7 +25,7 @@ import {makeActivityStoreHarness, makeControllerFake} from './cockpitFakes.mjs';
  * `loadActivity`'s unit is its ROUTING decision: given the bridge's honest capability state, which
  * `adapterState` (+ event order) does it apply to the stream? The stream is a collaborator, so it is
  * mocked with a spy that records what `loadActivity` sets — this pins the routing precisely and in
- * isolation. That the REAL `ActivityStream` renders each `adapterState` (sample / live / stale) is
+ * isolation. That the REAL `ActivityStream` renders each `adapterState` (cold / live / stale) is
  * covered by `activityStream.spec.mjs`; here we prove `loadActivity` chooses the right one.
  */
 test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', () => {
@@ -38,7 +38,7 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
 
     // a spy stream: `loadActivity` either assigns `adapterState` directly (stale) or calls `set({...})`
     // (live); both land on the same object so the resulting state is assertable.
-    const makeStream = () => ({adapterState: 'sample', set(config) { Object.assign(this, config) }});
+    const makeStream = () => ({adapterState: 'cold', set(config) { Object.assign(this, config) }});
 
     /**
      * @param {Object|null} bridge The stubbed `registryBridge` (or null for "no bridge").
@@ -75,25 +75,25 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
 
     test.afterEach(() => clearBridge());
 
-    test('no bridge → keeps the honestly-labelled sample seed (fail-closed, no crash)', async () => {
+    test('no bridge → stays cold (fail-closed, no crash)', async () => {
         const {stream, provider} = await routeLoadActivity(null);
 
-        expect(stream.adapterState).toBe('sample');
+        expect(stream.adapterState).toBe('cold');
         // SILENCE: the owner learned nothing, so it retains no cause. This is what lets the banner
         // fall back to "server offline" honestly — it is the only state that implies one.
         expect(provider.data.streamDegradedReason ?? null).toBe(null)
     });
 
-    test('a bridge without fleetActivity → keeps the sample seed', async () => {
+    test('a bridge without fleetActivity → stays cold', async () => {
         const {stream, provider} = await routeLoadActivity({});
 
-        expect(stream.adapterState).toBe('sample');
+        expect(stream.adapterState).toBe('cold');
         expect(provider.data.streamDegradedReason ?? null).toBe(null)
     });
 
-    test('not-wired capability → keeps the sample seed AND retains the producer’s reason', async () => {
-        // The producer ANSWERED. The seed stays — the stream really is showing sample events, so its
-        // own state is honestly 'sample' — but an answer is not silence, and the retained reason is
+    test('not-wired capability → stays cold AND retains the producer’s reason', async () => {
+        // The producer ANSWERED. No events land — the stream really has nothing, so its own state
+        // is honestly 'cold' — but an answer is not silence, and the retained reason is
         // the ONLY thing that separates "we never reached the server" from "it answered: my source
         // is unconfigured". Without it the banner told the operator to start a running server.
         //
@@ -104,8 +104,8 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
             events    : []
         })});
 
-        expect(stream.adapterState).toBe('sample');
-        expect(provider.data.streamAdapterState).toBe('sample');
+        expect(stream.adapterState).toBe('cold');
+        expect(provider.data.streamAdapterState).toBe('cold');
         expect(provider.data.streamDegradedReason).toBe('fleet activity source not wired')
     });
 
@@ -123,9 +123,9 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
         expect(stream.adapterState).toBe('stale')
     });
 
-    test('a thrown source → fail-closed, keeps the sample seed (never blanks or falsely goes live)', async () => {
+    test('a thrown source → fail-closed, stays cold (never falsely goes live or stale)', async () => {
         const {stream} = await routeLoadActivity({fleetActivity: async () => { throw new Error('bridge boom') }});
-        expect(stream.adapterState).toBe('sample')
+        expect(stream.adapterState).toBe('cold')
     });
 
     test('wired + events → live, admitting producer order into the provider Store', async () => {
@@ -148,7 +148,7 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
         expect(provider.data.activityCounts).toHaveLength(1)
     });
 
-    test('wired + empty → live (streaming but quiet), never the sample — a wired source is live', async () => {
+    test('wired + empty → live (streaming but quiet), never cold — a wired source is live', async () => {
         const {stream, provider, store} = await routeLoadActivity({fleetActivity: async () => ({capability: {state: 'wired'}, events: []})});
 
         expect(stream.adapterState).toBe('live');
@@ -200,12 +200,12 @@ test.describe('Fleet cockpit — activity feed binding (loadActivity, #14868)', 
             expect(host.store.cleared).toBe(1);
             expect(host.controller.activityWired).toBe(false);
             expect(host.controller.activityProfileId).toBeNull();
-            // B's failure is B's own cold truth: sample, no cause claimed, A's counts gone, the
+            // B's failure is B's own cold truth: cold, no cause claimed, A's counts gone, the
             // typed observation names the failure
-            expect(host.provider.data.streamAdapterState).toBe('sample');
+            expect(host.provider.data.streamAdapterState).toBe('cold');
             expect(host.provider.data.streamDegradedReason).toBeNull();
             expect(host.provider.data.activityCounts).toEqual([]);
-            expect(host.stream.adapterState).toBe('sample');
+            expect(host.stream.adapterState).toBe('cold');
             expect(host.provider.data.streamConnection).toEqual({state: 'refused', reason: 'connection refused'})
         });
 

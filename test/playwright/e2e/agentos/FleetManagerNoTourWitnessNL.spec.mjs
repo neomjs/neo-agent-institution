@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {test, expect, landFleetSample} from '../../fixtures.mjs';
 
 /**
  * @summary Negative product witness: the REAL AgentOS Fleet Manager (the production cockpit, NOT
@@ -20,8 +20,10 @@ test.describe('AgentOS Fleet Manager — the production cockpit carries no tour 
     test('the real cockpit still renders its fleet but shows no Play-tour button and no tour caption', async ({page}) => {
         await page.goto('/apps/agentos/index.html');
 
-        // the surgical tour removal left the product cockpit intact — it still mounts and renders
+        // the surgical tour removal left the product cockpit intact — it still mounts and renders the
+        // fleet it is handed (nothing is seeded: the tests' sample lands as the fleet's answer)
         await expect(page.locator('.fm-fleet-cockpit'), 'the production cockpit still renders post-removal').toBeVisible({timeout: 60000});
+        await landFleetSample(page);
         await expect(page.locator('.fm-agent-card').first(), 'the fleet still renders').toBeVisible({timeout: 30000});
 
         // …but the tour affordance is gone from the product surface — it lives only on the demo host

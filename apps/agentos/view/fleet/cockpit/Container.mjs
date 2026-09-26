@@ -69,9 +69,9 @@ const livenessReadTimeoutDefault = 10000;
  * The roster data layer is ONE {@link AgentOS.store.FleetRoster} Store of
  * {@link AgentOS.model.FleetAgent} records, hosted by THIS view's `state.Provider` (`stores`
  * block — the provider is the sharing scope and survives every re-projection; store classes are
- * never singletons). The provider `autoLoad`s the honestly-labelled JSON sample seed, the
- * projected {@link FleetGrid} binds the instance via `bind: {store: 'stores.fleetRoster'}`, and
- * {@link #loadRoster} re-points it at the running fleet when the registry bridge wires up. The
+ * never singletons). The store starts empty — nothing is seeded — the projected {@link FleetGrid}
+ * binds the instance via `bind: {store: 'stores.fleetRoster'}`, and {@link #loadRoster} fills it
+ * with the running fleet's answer when the registry bridge wires up. The
  * activity zone composes {@link ActivityStream} → EventChip the same way ({@link #loadActivity}).
  *
  * @class AgentOS.view.fleet.cockpit.Container
@@ -94,18 +94,6 @@ class FleetCockpit extends VesselContainer {
          * @member {String[]} cls=['fm-fleet-cockpit']
          */
         cls: ['fm-fleet-cockpit'],
-        /**
-         * The roster-source admission mode. `sample` is the zero-call cold-first-run authority: an
-         * empty first bridge answer cannot erase the honestly labelled bundled fleet. `selected`
-         * means the operator/product composition explicitly chose the wired source, so even an
-         * empty first snapshot is authoritative. A populated snapshot promotes this mode while
-         * {@link #rosterWired} keeps every later snapshot (including empty) authoritative.
-         *
-         * Non-reactive on purpose: this is an ingress policy, not render state. Instance config and
-         * `Neo.overwrites` may select it without introducing a hidden hardware/product constant.
-         * @member {'sample'|'selected'} rosterSourceMode='sample'
-         */
-        rosterSourceMode: 'sample',
         /**
          * The drill-in inspector's selected resident — OWN reactive state the view genuinely
          * holds: a genuinely absent {@link AgentOS.view.fleet.detail.Container} pane

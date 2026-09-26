@@ -78,9 +78,9 @@ class FleetGrid extends Container {
          */
         foldThreshold_: 12,
         /**
-         * Feed liveness — `live` renders normally; `sample` marks the honestly-labelled fixture
-         * seed (no roster source wired yet); `stale` renders the degrade banner over the
-         * last-known roster (never a blanked grid).
+         * Feed liveness — `cold` marks a roster no source has answered yet (the head says so and
+         * the empty CTA stays hidden); `live` renders normally, an empty live answer rendering the
+         * CTA; `stale` renders the degrade marker over the last-known roster (never a blanked grid).
          * @member {String} adapterState_='live'
          * @reactive
          */
@@ -398,10 +398,11 @@ class FleetGrid extends Container {
     }
 
     /**
-     * @summary Render the feed-liveness state onto the stable header: the stale / static-roster
-     * marker text and the head's state cls. 'static roster' without an offline claim: sample only
-     * proves WHICH data renders, never WHY — the transport may be answering (empty registry) or
-     * silent, and the spine banner is the surface that knows which.
+     * @summary Render the feed-liveness state onto the stable header: the stale / not-answered
+     * marker text and the head's state cls. 'not answered yet' makes no offline claim: cold only
+     * says no source has answered, never WHY — the transport may be connecting or silent, and the
+     * spine banner is the surface that knows which. The empty CTA follows the same truth: it is
+     * the roster's answer-was-empty state, so a cold roster keeps it hidden.
      * @protected
      */
     applyAdapterState() {
@@ -410,9 +411,11 @@ class FleetGrid extends Container {
 
         me.getReference('fleet-stale').text = adapterState === 'stale'
             ? 'stale — reconnecting'
-            : adapterState === 'sample' ? 'static roster' : '';
+            : adapterState === 'cold' ? 'not answered yet' : '';
 
-        me.getReference('fleet-head').cls = ['fm-fleet-head', `is-${adapterState}`]
+        me.getReference('fleet-head').cls = ['fm-fleet-head', `is-${adapterState}`];
+
+        me.getController().syncEmptyCta()
     }
 
     /**

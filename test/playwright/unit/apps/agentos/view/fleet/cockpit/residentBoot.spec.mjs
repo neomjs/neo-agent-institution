@@ -32,7 +32,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
         prevFleet = globalThis.AgentOS?.fleet;
         cockpit   = Neo.create(FleetCockpit, {
             // hermetic: the REAL cockpit provider class (data + formulas), with the store
-            // block overridden so no sample-seed fetch runs in the unit env
+            // block spelled out so the unit env hosts its own store instances
             stateProvider: {
                 module: CockpitStateProvider,
                 stores: {
@@ -110,7 +110,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
         const store    = Neo.create(FleetRoster, {autoLoad: false}),
               sets     = {catchUp: [], mailbox: []},
               provider = {
-                  data: {gridAdapterState: 'sample', gridDegradedReason: null},
+                  data: {gridAdapterState: 'cold', gridDegradedReason: null},
                   getData(key) { return this.data[key] },
                   setData(key, value) {
                       if (typeof key === 'object') { Object.assign(this.data, key) } else { this.data[key] = value }
@@ -126,8 +126,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
                   getOperatorMailboxPane       : () => ({set: values => sets.mailbox.push(values)}),
                   getReference                 : () => null, // NO grid, NO activity stream — torn or absent
                   getStateProvider             : () => provider,
-                  livenessReadTimeout          : 4000,
-                  rosterSourceMode             : 'sample'
+                  livenessReadTimeout          : 4000
               },
               host = Object.assign(Object.create(FleetCockpitController.prototype), {
                   component              : view,

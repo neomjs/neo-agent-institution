@@ -3,7 +3,7 @@ import {test, expect} from '../../fixtures.mjs';
 /**
  * @summary The persisted side-by-side receipt for the shell's ONE tab family: the keeper rail,
  * the south content strip, and the right dock-rail band pinned per skin. The three regions are
- * pixel-stable (static roster, no timestamps), so the committed baselines ARE the reviewable
+ * pixel-stable (a cold, unseeded cockpit, no timestamps), so the committed baselines ARE the reviewable
  * keeper/rail/south evidence — and any future drift in the family fails here instead of waiting
  * for a reader. The skin switch is driven through the App Worker (the drill-journey idiom) and
  * gated on the applied theme class, so a "light" pin can never hold dark pixels.

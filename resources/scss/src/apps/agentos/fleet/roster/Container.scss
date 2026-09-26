@@ -22,6 +22,11 @@
         &.is-stale .fm-fleet-stale {
             color: var(--fm-state-wedged);
         }
+
+        /* no source has answered yet: the quietest ink — a fact, not an alarm */
+        &.is-cold .fm-fleet-stale {
+            color: var(--fm-ink-faint);
+        }
     }
 
     .fm-fleet-title {

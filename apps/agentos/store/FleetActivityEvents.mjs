@@ -79,7 +79,7 @@ class FleetActivityEvents extends Store {
      * collection transaction, then the oldest tail is evicted at the local bound.
      * @param {Object[]} events
      * @param {Object} [options={}]
-     * @param {Boolean} [options.replace=false] Replace the honestly-labelled sample on first live admission.
+     * @param {Boolean} [options.replace=false] Replace whatever the store holds on first live admission.
      * @returns {{added: Number, dropped: Number, retained: Number, newEventIds: String[]}}
      */
     ingestSnapshot(events = [], {replace = false} = {}) {

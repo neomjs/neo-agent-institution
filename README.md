@@ -102,8 +102,10 @@ Webpack prints the selected loopback origin. Open the Agent Institution route on
 http://localhost:<reported-port>/apps/agentos/index.html
 ```
 
-The browser app can render its static roster without a Brain checkout. Live state and lifecycle
-actions require a reachable Fleet transport from a configured Brain deployment.
+The browser app boots without a Brain checkout, but it ships no sample fleet: the cockpit reads
+"not answered yet" until a Fleet transport answers, and an empty registry shows the first-agent
+call to action. Live state and lifecycle actions require a reachable Fleet transport from a
+configured Brain deployment.
 
 `npm install` resolves the pinned Engine package and materializes the public Skills surface. It
 does not grant Neo maintainer identity or copy private credentials into the checkout.

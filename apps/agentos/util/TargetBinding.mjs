@@ -6,8 +6,8 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * whose answer produced them. `DeploymentStateRead` stamps its picture with the answering
  * `profileId`; this helper brings the roster and the activity feed under the same rule, lifted
  * beside the liveness owner (which holds the size bar). A read through a bridge bound to ANOTHER
- * profile first retires the previous profile's truth — the roster returns to its honestly-labelled
- * seed, the feed empties, the surface reads `sample`, the roster-derived consumers re-snapshot —
+ * profile first retires the previous profile's truth — both stores empty, both surfaces read
+ * `cold`, the roster-derived consumers re-snapshot —
  * so the new profile's first live answer is a first admission, and its failure shows its own cold
  * truth instead of another instance's residents labelled `stale`. The generation fences only drop
  * a LATE answer from the previous bridge; nothing else touched rows already admitted. A
@@ -24,9 +24,9 @@ class TargetBinding extends Base {
 
     /**
      * @summary Retire the roster when the bridge in hand belongs to another profile than the rows
-     * the store holds. The seed comes back through the store's own `load()` (its `url` pipeline);
-     * `onRosterStoreLoad` lets it land because nothing is wired any more, and the selection
-     * reconciles against the emptied store so the inspector never keeps another instance's resident.
+     * the store holds. The store empties and the surface reads `cold` until the new profile
+     * answers; the selection reconciles against the emptied store so the inspector never keeps
+     * another instance's resident.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Object} options
      * @param {Neo.data.Store} options.store The provider-owned roster store.
@@ -44,10 +44,9 @@ class TargetBinding extends Base {
         owner.rosterProfileId = null;
 
         store.clear();
-        store.load();
 
-        owner.publishConnection('grid', {data: {gridAdapterState: 'sample', gridDegradedReason: null, presenceCapability: null}});
-        grid && (grid.adapterState = 'sample');
+        owner.publishConnection('grid', {data: {gridAdapterState: 'cold', gridDegradedReason: null, presenceCapability: null}});
+        grid && (grid.adapterState = 'cold');
 
         owner.reconcileSelection();
         TargetBinding.refreshRosterConsumers(owner);
@@ -57,9 +56,8 @@ class TargetBinding extends Base {
 
     /**
      * @summary Retire the activity feed when the bridge in hand belongs to another profile than
-     * the events the store holds. The feed has no seed: the store empties and the header reads
-     * `sample · live feed pending` until the new profile answers; the previous profile's counts go
-     * with its rows.
+     * the events the store holds. The store empties and the header reads `not answered yet` until
+     * the new profile answers; the previous profile's counts go with its rows.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Object} options
      * @param {Neo.data.Store} options.store The provider-owned activity store.
@@ -77,8 +75,8 @@ class TargetBinding extends Base {
 
         store.clear();
 
-        owner.publishConnection('stream', {data: {activityCounts: [], streamAdapterState: 'sample', streamDegradedReason: null}});
-        stream && (stream.adapterState = 'sample');
+        owner.publishConnection('stream', {data: {activityCounts: [], streamAdapterState: 'cold', streamDegradedReason: null}});
+        stream && (stream.adapterState = 'cold');
 
         return true
     }

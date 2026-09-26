@@ -23,7 +23,7 @@ test.describe('AgentOS Fleet cockpit — bar composition at the contract widths 
             const bar = page.locator('.fm-cockpit-bar');
 
             await expect(bar).toBeVisible({timeout: 60000});
-            // the cold-state banner is deterministic fixture truth (server offline · static roster)
+            // the cold-state banner is deterministic truth (server offline; nothing is seeded)
             await expect(page.locator('.fm-spine-banner')).toBeVisible({timeout: 30000});
 
             // structural truth before the pixel pin: no pane verb rents bar space in the nominal

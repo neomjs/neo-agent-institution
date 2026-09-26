@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {test, expect, landFleetSample} from '../../fixtures.mjs';
 
 /**
  * @summary The fleet grid's scroll contract: at a zone height shorter than the roster, the
@@ -16,6 +16,9 @@ test.describe('AgentOS FleetGrid — roster scroll ownership', () => {
 
     test('the cards region scrolls end-to-end at a short zone height with the header pinned', async ({page, neuralLink}) => {
         await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        // the tests' sample fleet (eleven cards) lands as the fleet's answer — nothing is seeded any more
+        await landFleetSample(page);
         await page.waitForSelector('.fm-agent-card', {timeout: 30000});
 
         const app = await neuralLink.connectToApp('AgentOS');

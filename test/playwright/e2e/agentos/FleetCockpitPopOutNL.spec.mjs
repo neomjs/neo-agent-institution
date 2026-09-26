@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {test, expect, landFleetSample} from '../../fixtures.mjs';
 
 /**
  * Whitebox-e2e for the cockpit's click pop-out: the agent-detail inspector detaches to a REAL
@@ -41,7 +41,10 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         // setItemAutoHidden reveal through the commit loop). Driven via callMethod because the
         // card-click → agentSelect DOM chain is regressed on dev (own bug ticket; the full
         // gesture journey belongs to the drill-e2e sibling leaf) — the seam below the gesture is
-        // the production path.
+        // the production path. The tests' sample fleet lands as the fleet's answer first — nothing
+        // is seeded any more.
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetSample(page);
         await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
         const app   = await neuralLink.connectToApp('AgentOS'),
