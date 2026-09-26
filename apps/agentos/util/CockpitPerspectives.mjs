@@ -46,7 +46,7 @@ function arrangement({sizes = [0.6078, 0.3922], detailColumn = false} = {}) {
         sizes,
         children   : [
             {id: 'fleet-tabs',  items: ['fleet']},
-            {id: 'stream-tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp', 'goldenPath', 'goldenPathGraph', 'observatory']}
+            {id: 'stream-tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp', 'goldenPath', 'goldenPathGraph']}
         ]
     };
 
