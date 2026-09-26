@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {expect, landFleetRoster, test} from '../../fixtures.mjs';
 
 /**
  * @summary The evolved-D/synthesis AgentCard rendered against a pathological fleet at the
@@ -114,7 +114,6 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         await page.setViewportSize({width: 900, height: 1000});
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
-        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
         const app      = await neuralLink.connectToApp('AgentOS'),
               [roster] = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
@@ -122,9 +121,8 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
 
         expect(storeId, 'the provider-owned FleetRoster store must exist').toBeTruthy();
 
-        // replace the seed with the pathological fleet via the store's own API (clear → add)
-        await app.callMethod(storeId, 'clear');
-        await app.callMethod(storeId, 'add', [PATHOLOGICAL_ROSTER]);
+        // the pathological fleet lands as the fleet's answer
+        await landFleetRoster(page, PATHOLOGICAL_ROSTER);
 
         // RENDERED cards, not instances: since the animated-list conversion the roster POOLS one
         // AgentCard instance per index (create on first use, re-seat via `record` on reuse — the
@@ -335,7 +333,7 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         await page.emulateMedia({reducedMotion: null})
     });
 
-    test('the beacon facet across the card-width matrix: the band glyph carries it at every width, the words yield to the state line, and nothing overlaps or clips beyond the fresh control (#112)', async ({page, neuralLink}) => {
+    test('the beacon facet across the card-width matrix: the band glyph carries it at every width, the words yield to the state line, and nothing overlaps or clips beyond the fresh control (#112)', async ({page}) => {
         // Each beacon row has a control sharing every other fact, so any geometry delta is the facet's
         // own. The widest pair carries the widest ordinary state line an active seat can render (the
         // longest state word, the longest active band, a two-digit badge): the words' threshold must
@@ -368,16 +366,8 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         await page.setViewportSize({width: 900, height: 1000});
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
-        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
-        const app           = await neuralLink.connectToApp('AgentOS'),
-              [rosterStore] = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
-              storeId       = (Array.isArray(rosterStore) ? rosterStore[0] : rosterStore)?.id;
-
-        expect(storeId, 'the provider-owned FleetRoster store must exist').toBeTruthy();
-
-        await app.callMethod(storeId, 'clear');
-        await app.callMethod(storeId, 'add', [BEACON_ROSTER]);
+        await landFleetRoster(page, BEACON_ROSTER);
 
         await expect.poll(async () => page.locator('.fm-agent-card').count(), {
             message: 'the grid renders one card per beacon row', timeout: 15000, intervals: [250]
@@ -456,7 +446,7 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         }
     });
 
-    test('the state line\'s fit across the card-width matrix: one row, members leave whole from the end, nothing past the line or under the verbs, and the card\'s height never follows its resident\'s data', async ({page, neuralLink}) => {
+    test('the state line\'s fit across the card-width matrix: one row, members leave whole from the end, nothing past the line or under the verbs, and the card\'s height never follows its resident\'s data', async ({page}) => {
         // The closed vocabularies' long rows beside the ordinary ones. Geometry-asserted, no golden.
         const presenceOf = (state, beacon = 'fresh') => ({source: 'fleet:presenceState', state, confidence: 'observed', lastSeenAt: '2026-09-04T22:00:00.000Z', beacon}),
               seat       = (id, displayName, extra) => ({
@@ -492,17 +482,9 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         await page.setViewportSize({width: 900, height: 1600});
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
-        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
-
-        const app           = await neuralLink.connectToApp('AgentOS'),
-              [rosterStore] = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
-              storeId       = (Array.isArray(rosterStore) ? rosterStore[0] : rosterStore)?.id;
-
-        expect(storeId, 'the provider-owned FleetRoster store must exist').toBeTruthy();
 
         const seatRoster = async rows => {
-                  await app.callMethod(storeId, 'clear');
-                  await app.callMethod(storeId, 'add', [rows]);
+                  await landFleetRoster(page, rows);
                   await expect.poll(async () => page.locator('.fm-agent-card').count(), {
                       message: 'the grid renders one card per row', timeout: 15000, intervals: [250]
                   }).toBe(rows.length)
@@ -612,7 +594,7 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         }
     });
 
-    test('the name line\'s fit across the card-width matrix: a long name ellipsizes inside its line, the chip and the engine tag are whole or absent, and the card\'s height never follows the name', async ({page, neuralLink}) => {
+    test('the name line\'s fit across the card-width matrix: a long name ellipsizes inside its line, the chip and the engine tag are whole or absent, and the card\'s height never follows the name', async ({page}) => {
         const LONG        = 'Alexander Constantine Maximilianus',
               SHORT       = 'Ada',
               seat        = (id, displayName, engineTag) => ({
@@ -630,16 +612,8 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         await page.setViewportSize({width: 900, height: 1200});
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
-        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
-        const app           = await neuralLink.connectToApp('AgentOS'),
-              [rosterStore] = await app.findInstances({className: 'AgentOS.store.FleetRoster'}, ['id']),
-              storeId       = (Array.isArray(rosterStore) ? rosterStore[0] : rosterStore)?.id;
-
-        expect(storeId, 'the provider-owned FleetRoster store must exist').toBeTruthy();
-
-        await app.callMethod(storeId, 'clear');
-        await app.callMethod(storeId, 'add', [NAME_ROSTER]);
+        await landFleetRoster(page, NAME_ROSTER);
 
         await expect.poll(async () => page.locator('.fm-agent-card').count(), {
             message: 'the grid renders one card per row', timeout: 15000, intervals: [250]

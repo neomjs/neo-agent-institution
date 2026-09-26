@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {expect, landFleetSample, test} from '../../fixtures.mjs';
 
 /**
  * @summary The detail tranche's closing round-trip (T4.16): the full USER path — real semantic
@@ -40,6 +40,7 @@ test.describe('AgentOS fleet cockpit — the drill round-trip journey (card → 
 
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetSample(page);
         await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
         const app       = await neuralLink.connectToApp('AgentOS'),

@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {expect, landFleetSample, test} from '../../fixtures.mjs';
 
 /**
  * @summary The FM cockpit card→detail drill, proven LIVE through nested content inside the semantic
@@ -20,6 +20,7 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
     test('nested avatar content selects its resident and reveals the AgentDetail inspector + four panes', async ({page, neuralLink}) => {
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetSample(page);
         await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
         const
