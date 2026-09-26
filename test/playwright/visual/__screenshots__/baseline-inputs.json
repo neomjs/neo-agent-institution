@@ -2,7 +2,7 @@
     "note": "Input-identity stamp for the Darwin visual baselines — regenerate via `npm run stamp-visual-baselines` whenever goldens are re-captured. The check compares digests only; it never grants CI pixel authority.",
     "engine": "32107c22138baa974cbb130f5f858c0d700a688ceb21d33194b7e894c6226055",
     "inputs": {
-        "apps/agentos": "16eebfa91a951bfd5a2b010569767d189a187dc23c34deb865cfcab663f14c82",
+        "apps/agentos": "01716b3cf4805aabbee16a49b219c3c5348eab49f6d46d74806a81696e75a53c",
         "resources/scss": "839015d4b737bd2b1db07cc31bef6709415b1cc11a7908288dd2f0ea2ad59057",
         "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs": "f1e723c1f1fc46049d061202f99a50496619ab6a03f6c6f51b447dd9576fbc4b",
         "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots": "582e1c468adb42f685d0118ea9cc922572174b729543af7d36d17335e4eed69d",
