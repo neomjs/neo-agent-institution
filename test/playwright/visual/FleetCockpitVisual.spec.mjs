@@ -652,8 +652,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     /**
      * @summary Activates the Route graph tab (the south strip's last surface) and waits for the
      * pane's cold spine: the head with the currency line, the canvas mounted. The fixture boot's
-     * Golden Path read answers unavailable (the dev server wires no such verb), so the cold word is
-     * `Unavailable` with the wire's own reason — by design, never a route.
+     * Golden Path read answers unavailable (the bridge knows the verb, the harness runs no fleet
+     * server to answer it), so the cold word is `Unavailable` with the read's own reason — by design,
+     * never a route.
      * @param {Object} page
      */
     const openGoldenPathPane = async page => {
@@ -662,7 +663,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(tab).toBeVisible({timeout: 30000});
         await tab.click();
         await expect(page.locator('.fm-goldenpath-graph-pane')).toBeVisible({timeout: 30000});
-        await expect(page.locator('.fm-goldenpath-graph-pane .fm-goldenpath-currency')).toHaveText(/^Unavailable · fleet golden path verb not wired$/);
+        await expect(page.locator('.fm-goldenpath-graph-pane .fm-goldenpath-currency')).toHaveText(/^Unavailable · fleet golden path read failed$/);
         await expect(page.locator('.fm-goldenpath-graph-pane canvas')).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)

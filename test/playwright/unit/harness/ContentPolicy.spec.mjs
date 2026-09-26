@@ -1,7 +1,7 @@
-import {expect, test}                           from '@playwright/test';
-import {mkdir, mkdtemp, rm, symlink, writeFile} from 'node:fs/promises';
-import {tmpdir}                                 from 'node:os';
-import path                                     from 'node:path';
+import {expect, test}                                     from '@playwright/test';
+import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises';
+import {tmpdir}                                           from 'node:os';
+import path                                               from 'node:path';
 import {
     CONTENT_SECURITY_POLICY,
     createHarnessAssetResolver,
@@ -12,7 +12,7 @@ import {
 
 const
     fleetContractRoot = 'node_modules/neo-agent-brain/src/fleet/contract',
-    fleetModules      = ['cockpit', 'harnessTypes', 'index', 'mcpServers', 'wire'],
+    fleetModules      = ['cockpit', 'harnessTypes', 'index', 'launchAuthority', 'mcpServers', 'wire'],
     privateFleetPaths = [
         'node_modules/neo-agent-brain/package.json',
         'node_modules/neo-agent-brain/ai/config.mjs',
@@ -121,6 +121,18 @@ test.describe('harness content policy', () => {
                 ok    : false,
                 reason: 'not-allowlisted'
             })
+        }
+    });
+
+    test('every module the installed Brain contract index re-exports is allowlisted — a pin that widens the contract reds here, not in the packaged smoke', async () => {
+        const
+            indexPath = path.resolve(import.meta.dirname, '../../../../', fleetContractRoot, 'index.mjs'),
+            reexports = [...(await readFile(indexPath, 'utf8')).matchAll(/export \* from '\.\/([\w-]+)\.mjs'/g)].map(match => match[1]);
+
+        expect(reexports.length, 'the installed contract index re-exports its sibling modules').toBeGreaterThan(0);
+
+        for (const name of reexports) {
+            expect(isAllowedHarnessAssetPath(`/${fleetContractRoot}/${name}.mjs`), `${name}.mjs is allowlisted`).toBe(true)
         }
     });
 
