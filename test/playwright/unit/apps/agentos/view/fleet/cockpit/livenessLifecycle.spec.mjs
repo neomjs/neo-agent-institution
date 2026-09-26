@@ -19,12 +19,15 @@ import                                 '../../../../../../../../node_modules/neo
 import {makeActivityStoreHarness, makeProviderFake} from './cockpitFakes.mjs';
 import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
 import DeploymentStateRead  from '../../../../../../../../apps/agentos/util/DeploymentStateRead.mjs';
+import LivenessCadence      from '../../../../../../../../apps/agentos/util/LivenessCadence.mjs';
 import ViewportController   from '../../../../../../../../apps/agentos/view/ViewportController.mjs';
 import {deriveFleetProfileId} from '../../../../../../../../apps/agentos/fleet/connectionProfiles.mjs';
 import {
     createFleetWireResponse,
     FLEET_WIRE_RESPONSE_STATES
 } from 'neo-agent-brain/fleet-contract';
+
+const EVERY_PASS = Object.freeze({activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0});
 
 /**
  * The liveness owner's LIFECYCLE witness. A transition matrix proves the owner tells the truth while
@@ -68,8 +71,9 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             brainHealthReadInFlight: 0,
             deploymentStateReadGeneration: 0,
             deploymentStateReadInFlight: 0,
-            // the view-owned cadence configs live on the component seat now
-            component              : {livenessPollInterval: 50, maxReadsInFlight: 2, getStateProvider: () => null},
+            // the view-owned cadence configs live on the component seat now; a zero interval makes
+            // every read due on every pass, so these balance fixtures drive each seam per tick
+            component              : {livenessCadence: EVERY_PASS, livenessPollInterval: 50, maxReadsInFlight: 2, getStateProvider: () => null},
             gridReadGeneration     : 0,
             gridReadInFlight       : 0,
             isDestroyed            : false,
@@ -632,6 +636,94 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(host.brainReads, 'the Brain read must re-drive on the cadence, not just once').toBeGreaterThanOrEqual(2)
         } finally {
             host.stopLiveness()
+        }
+    });
+
+    /**
+     * @summary A host on the production cadence whose passes run at chosen instants: the timer is
+     * captured, never run, and every seam counts its launches.
+     */
+    const makeCadenceHost = () => {
+        const
+            host     = makeTimerHost(),
+            launched = {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0},
+            ticks    = [];
+
+        host.component.livenessCadence  = LivenessCadence.DEFAULT_INTERVALS;
+        host.component.windowId         = 7;
+        host.component.getStateProvider = () => ({setData: ({systemTickAt}) => ticks.push(systemTickAt)});
+
+        Object.keys(launched).forEach(key => {
+            host[LivenessCadence.READS[key].load] = () => { launched[key]++; return Promise.resolve() }
+        });
+
+        return {host, launched, ticks}
+    };
+
+    test('each read comes due on its own interval, never on the shared pass', () => {
+        const
+            {host, launched, ticks} = makeCadenceHost(),
+            originalSetInterval     = globalThis.setInterval;
+
+        globalThis.setInterval = () => 1;
+
+        try {
+            host.startLiveness();
+
+            const start = Date.now();
+
+            expect(launched, 'arming the owner is the Brain and plane pictures\' first read')
+                .toEqual({activity: 0, roster: 0, brainHealth: 1, tasks: 0, deploymentState: 1});
+
+            host.onLivenessTick(start + 15000);
+
+            expect(launched.activity + launched.roster + launched.tasks, 'a 15 s pass issues nothing a minute-scale read owns').toBe(0);
+            expect(ticks, 'a pass that launches no deployment read still ages the retained picture').toHaveLength(1);
+
+            host.onLivenessTick(start + 60000);
+
+            expect(launched).toEqual({activity: 1, roster: 1, brainHealth: 1, tasks: 0, deploymentState: 1});
+
+            host.onLivenessTick(start + 120000);
+
+            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2})
+        } finally {
+            globalThis.setInterval = originalSetInterval;
+            host.livenessTimerId   = null
+        }
+    });
+
+    test('a hidden cockpit launches nothing; visibility returning launches what fell due, once', () => {
+        const
+            {host, launched}    = makeCadenceHost(),
+            originalSetInterval = globalThis.setInterval;
+
+        globalThis.setInterval = () => 1;
+
+        try {
+            host.startLiveness();
+
+            const start = Date.now();
+
+            host.onLivenessVisibility({hidden: true, windowId: 8});
+            host.onLivenessTick(start + 60000);
+
+            expect(launched.roster, 'another window hiding pauses nothing here').toBe(1);
+
+            host.onLivenessVisibility({hidden: true, windowId: 7});
+            host.onLivenessTick(start + 120000);
+            host.onLivenessTick(start + 180000);
+
+            expect(launched.roster, 'hidden, the owner issues no read').toBe(1);
+
+            // everything fell due while hidden
+            host.livenessSchedule = LivenessCadence.create(start - 120000, LivenessCadence.DEFAULT_INTERVALS);
+            host.onLivenessVisibility({hidden: false, windowId: 7});
+
+            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2})
+        } finally {
+            globalThis.setInterval = originalSetInterval;
+            host.livenessTimerId   = null
         }
     });
 

@@ -138,7 +138,12 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
         await expect(page.locator('.fm-spine-banner-degraded'), 'a fully-live spine renders no degraded banner').toHaveCount(0);
 
         // ── pin a fast, deterministic cadence and RE-ARM the owner so the timer drives the edges ─
-        await app.setProperties(cockpitId, {livenessPollInterval: 300, livenessReadTimeout: 2500});
+        await app.setProperties(cockpitId, {
+            // every read due on every 300 ms pass, so the timer drives each edge
+            livenessCadence     : {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0},
+            livenessPollInterval: 300,
+            livenessReadTimeout : 2500
+        });
         // the liveness verbs live on the cockpit's controller (the wire-liveness layer); the
         // Neural Link resolves the dotted path against the component instance
         await app.callMethod(cockpitId, 'controller.stopLiveness');
@@ -165,12 +170,12 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
         expect(sameCockpit?.properties?.id, 'the SAME cockpit instance advanced the state — no reload').toBe(cockpitId);
 
         // the spine banner NAMES the loss in the DOM — and carries the RETAINED REASON, not just the
-        // generic prefix (proving the safe reason reaches rendered copy, RA-3)
+        // generic prefix (proving the safe reason reaches rendered copy)
         const banner = page.locator('.fm-spine-banner-degraded');
 
         await expect(banner, 'the spine banner renders the degraded state').toBeVisible({timeout: 15000});
         // the pill wears the status word pair; the sentence WITH the retained reason rides the
-        // title (the #23 chrome grammar — labels are never sentences)
+        // title (the chrome grammar: labels are never sentences)
         await expect(banner).toHaveText('fleet degraded');
         await expect(banner, 'the banner names the loss AND carries the retained reason (not only the prefix)')
             .toHaveAttribute('title', /Fleet feed degraded — showing last-known data · .+/);

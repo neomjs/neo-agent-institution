@@ -2,6 +2,7 @@ import ComponentController from '../../../../../node_modules/neo.mjs/src/control
 import BrainHealthRead     from '../../../util/BrainHealthRead.mjs';
 import DeploymentStateRead from '../../../util/DeploymentStateRead.mjs';
 import FleetAdmission      from '../../../util/FleetAdmission.mjs';
+import LivenessCadence     from '../../../util/LivenessCadence.mjs';
 import SourceHealth        from '../../../util/SourceHealth.mjs';
 import TargetBinding       from '../../../util/TargetBinding.mjs';
 
@@ -101,6 +102,18 @@ class LivenessController extends ComponentController {
      * @protected
      */
     reconcilingRoster = false
+    /**
+     * Whether the cockpit's window is hidden: a hidden cockpit issues no liveness read.
+     * @member {Boolean} livenessHidden=false
+     * @protected
+     */
+    livenessHidden = false
+    /**
+     * When each liveness read comes due (epoch ms per read) — {@link AgentOS.util.LivenessCadence}.
+     * @member {Object|null} livenessSchedule=null
+     * @protected
+     */
+    livenessSchedule = null
     /**
      * The liveness re-poll interval id; `null` = not started.
      * @member {Number|null} livenessTimerId=null
@@ -644,9 +657,10 @@ class LivenessController extends ComponentController {
     /**
      * @summary Start the ongoing liveness owner — the mechanism that makes `live` mean live: an
      * interval re-drive of the EXISTING read verbs (never a separate ping — a second writer could
-     * disagree with the first), with per-surface overlap suppression: the fence makes a late read
-     * harmless, not absent, and a transport slower than the cadence must not pile unbounded reads
-     * onto a bridge already failing to answer. Idempotent.
+     * disagree with the first), each on its own cadence ({@link AgentOS.util.LivenessCadence}) and
+     * capped per surface: the fence makes a late read harmless, not absent, and a transport slower
+     * than the cadence must not pile unbounded reads onto a bridge already failing to answer.
+     * Idempotent.
      * @protected
      */
     startLiveness() {
@@ -659,23 +673,10 @@ class LivenessController extends ComponentController {
         // every start is a new generation: a callback attached by an earlier start — the custody
         // heal's, pending across a stop/restart — must not act on behalf of this one
         me.livenessGeneration++;
+        me.livenessSchedule = LivenessCadence.create(Date.now(), cockpit.livenessCadence);
+        me.livenessTimerId  = setInterval(() => me.onLivenessTick(), cockpit.livenessPollInterval);
 
-        me.livenessTimerId = setInterval(() => {
-            const cap = cockpit.maxReadsInFlight;
-
-            if (me.streamReadInFlight      < cap) me.loadActivity();
-            if (me.gridReadInFlight        < cap) me.loadRoster();
-            if (me.brainHealthReadInFlight < cap) me.loadBrainHealth();
-            if (me.tasksReadInFlight       < cap) me.loadTasks();
-            // the system lane's cadence is also the System view's only clock: a tick its hung
-            // reads keep it from spending on a read still publishes its instant, so a retained
-            // picture's age keeps moving while nothing else can change
-            if (me.deploymentStateReadInFlight < cap) { me.loadDeploymentState() } else { me.tickSystemLane() }
-
-            // no in-flight cap: this launches no wire read — it compares bridge identity (the
-            // custody-heal rebuild trigger) and copies the consumer's local observations
-            me.ensureViewerWakeStream()
-        }, cockpit.livenessPollInterval);
+        me.component.app?.on('visibilitychange', me.onLivenessVisibility, me);
 
         // the daemon surface has no other first read; waiting a full cadence would leave a
         // boot-time fault invisible — the plane picture has no other first read either
@@ -683,6 +684,52 @@ class LivenessController extends ComponentController {
         me.loadDeploymentState();
 
         me.followCustodyHeal()
+    }
+
+    /**
+     * @summary One pass of the liveness owner: launch the reads that are due, none while hidden.
+     * @param {Number} [now=Date.now()]
+     * @protected
+     */
+    onLivenessTick(now = Date.now()) {
+        const
+            me      = this,
+            cockpit = me.component;
+
+        if (me.livenessHidden) return;
+
+        const {launch, dueAt} = LivenessCadence.plan(me.livenessSchedule, {
+            cap      : cockpit.maxReadsInFlight,
+            inFlight : key => me[LivenessCadence.READS[key].inFlight],
+            intervals: cockpit.livenessCadence,
+            now
+        });
+
+        me.livenessSchedule = dueAt;
+        launch.forEach(key => me[LivenessCadence.READS[key].load]());
+
+        // the system lane's cadence is also the System view's only clock: a pass that launches no
+        // deployment read still publishes its instant, so a retained picture's age keeps moving
+        launch.includes('deploymentState') || me.tickSystemLane();
+
+        // no in-flight cap: this launches no wire read — it compares bridge identity (the
+        // custody-heal rebuild trigger) and copies the consumer's local observations
+        me.ensureViewerWakeStream()
+    }
+
+    /**
+     * @summary Pause the liveness reads while the cockpit's window is hidden; visibility returning
+     * launches what fell due meanwhile, once.
+     * @param {Object} data The app's `visibilitychange` payload: `{hidden, windowId}`.
+     * @protected
+     */
+    onLivenessVisibility({hidden, windowId}) {
+        const me = this;
+
+        if (windowId !== me.component.windowId) return;
+
+        me.livenessHidden = hidden;
+        hidden || me.livenessTimerId === null || me.onLivenessTick()
     }
 
     /**
@@ -727,7 +774,8 @@ class LivenessController extends ComponentController {
 
         if (me.livenessTimerId !== null) {
             clearInterval(me.livenessTimerId);
-            me.livenessTimerId = null
+            me.livenessTimerId = null;
+            me.component.app?.un('visibilitychange', me.onLivenessVisibility, me)
         }
     }
 
