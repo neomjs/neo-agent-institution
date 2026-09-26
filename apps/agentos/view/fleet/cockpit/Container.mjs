@@ -579,7 +579,8 @@ class FleetCockpit extends VesselContainer {
                 return me.refusePerspective(name, errors)
             }
 
-            document = CockpitPerspectives.retireUndeclaredItems(document, Object.keys(me.panes))
+            // a host without a pane catalog has nothing to retire against, so it keeps every item
+            me.panes && (document = CockpitPerspectives.retireUndeclaredItems(document, Object.keys(me.panes)))
         }
 
         me.presetError = null;
