@@ -156,7 +156,7 @@ class Viewport extends BaseViewport {
             items: [{
                 ntype : 'component',
                 cls   : ['agent-welcome'],
-                header: {iconCls: 'fa-solid fa-house', route: '/home', text: 'Home'},
+                header: {iconCls: 'fa-solid fa-house', route: '/home', text: 'Home', tooltip: 'Home'},
                 html  : '<div class="agent-welcome-inner">' +
                             '<p class="agent-welcome-eyebrow">Neo Agent OS</p>' +
                             '<h1 class="agent-welcome-h1">Mission control for a cross-model AI engineering team.</h1>' +
@@ -164,26 +164,26 @@ class Viewport extends BaseViewport {
                         '</div>'
             }, {
                 module   : FleetCockpit,
-                header   : {iconCls: 'fa-solid fa-satellite-dish', route: '/fleet', text: 'Fleet'},
+                header   : {iconCls: 'fa-solid fa-satellite-dish', route: '/fleet', text: 'Fleet', tooltip: 'Fleet'},
                 reference: 'fleet-cockpit'
             }, {
                 // the Golden Path as a scene takes the whole view: its follow-ups need room beside it
                 module   : ObservatoryPane,
-                header   : {iconCls: 'fa-solid fa-circle-nodes', route: '/observatory', text: 'Observatory'},
+                header   : {iconCls: 'fa-solid fa-circle-nodes', route: '/observatory', text: 'Observatory', tooltip: 'Observatory'},
                 reference: 'observatory-view',
                 bind     : {envelope: data => data.goldenPathEnvelope}
             }, {
                 // the engine room beside mission control: what the planes are doing to the fleet's
                 // truth — a distinct subject, so a distinct place in the rail (never a cockpit pane)
                 module   : SystemView,
-                header   : {iconCls: 'fa-solid fa-server', route: '/system', text: 'System'},
+                header   : {iconCls: 'fa-solid fa-server', route: '/system', text: 'System', tooltip: 'System'},
                 reference: 'system-view'
             }, {
                 // Accounts is likewise a dashboard.Panel — its own dashboard.Container host so the
                 // identity panel keeps the pop-out affordance and stays structurally idiomatic.
                 module   : Dashboard,
                 cls      : ['agent-accounts-dashboard'],
-                header   : {iconCls: 'fa-solid fa-id-badge', route: '/accounts', text: 'Accounts'},
+                header   : {iconCls: 'fa-solid fa-id-badge', route: '/accounts', text: 'Accounts', tooltip: 'Accounts'},
                 popupUrl : 'apps/agentos/childapps/widget/index.html',
                 sortGroup: 'neo-connected-dashboard',
 
@@ -196,7 +196,7 @@ class Viewport extends BaseViewport {
             }, {
                 ntype : 'component',
                 cls   : ['agent-placeholder'],
-                header: {iconCls: 'fa-solid fa-comments', route: '/chat', text: 'Chat'},
+                header: {iconCls: 'fa-solid fa-comments', route: '/chat', text: 'Chat', tooltip: 'Chat'},
                 html  : '<div class="agent-placeholder-inner">Chat — prompt an agent → a live widget pane you can dock and pop out. The dockable QT work-area lands here next.</div>'
             }]
         }]

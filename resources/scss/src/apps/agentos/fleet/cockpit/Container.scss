@@ -71,17 +71,20 @@
        The quiet rail keeps its navigation read — a hover affordance in the same idiom as the bar
        buttons (panel lift + ink), never a primary slab. */
     .neo-dashboard-dock-rail-tab.neo-button {
-        --dock-rail-tab-background-hover: var(--fm-panel);
+        /* Each item is its own chip (#267): on a transparent strip the engine's 2px gap read like
+           the word space inside "AGENT DETAIL", so without hover nobody could count the items. A
+           resting panel ground makes that gap read as cockpit ground between chips, and each state
+           takes its own ground (panel, panel-2, line), so "under the pointer" and "open" never
+           share a picture. The rail's job is answering which pane is showing. */
+        --dock-rail-tab-background      : var(--fm-panel);
+        --dock-rail-tab-background-hover: var(--fm-panel-2);
         --dock-rail-tab-color           : var(--fm-ink-dim);
         --dock-rail-tab-color-hover     : var(--fm-ink);
         --dock-transition-duration-fast : var(--fm-motion-fast);
 
-        /* The REVEALED tab. Deliberately NOT the bar's `.pressed` idiom (panel ground + full ink):
-           that pair is byte-identical to this rail's hover, so reusing it would make "open" and
-           "under the pointer" the same picture — and the rail's whole job is answering which pane
-           is showing. The ground stays the quiet panel lift, and the SIGNAL ink carries the state,
-           which is FM's existing vocabulary for "this is the one" without reaching for a slab. */
-        --dock-rail-tab-background-active: var(--fm-panel);
+        /* The REVEALED tab: the strongest ground plus the SIGNAL ink, FM's existing vocabulary for
+           "this is the one", structural and never hue-alone, and never a primary slab. */
+        --dock-rail-tab-background-active: var(--fm-line);
         --dock-rail-tab-color-active     : var(--fm-signal);
 
         /* Voice stays app-side: mono, tracking and case are the FM chrome role, not dock
