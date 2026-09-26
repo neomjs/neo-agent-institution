@@ -33,7 +33,8 @@ import {
     REQUIRED_ASSET_PATHS,
     createHarnessAssetResolver,
     isAllowedHarnessAssetPath,
-    isHarnessDocumentUrl
+    isHarnessDocumentUrl,
+    isHarnessPopupUrl
 } from './contentPolicy.mjs';
 import {
     allocatePort,
@@ -249,7 +250,7 @@ async function serveHarnessContent(request) {
  */
 function configureWebContents(contents) {
     contents.setWindowOpenHandler(({url: target}) => {
-        if (!isHarnessDocumentUrl(target)) {
+        if (!isHarnessPopupUrl(target)) {
             return {action: 'deny'}
         }
 
@@ -1225,11 +1226,12 @@ app.whenReady().then(async () => {
 
     // Renderer window.open needs a user gesture. Post-boot executeJavaScript is bounded because the
     // same call can wedge during module-graph boot; real product popouts originate from real clicks.
+    // The popup opens through the engine's windowOpen, so the smoke takes every product popup's path.
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     const openPath = await Promise.race([
         win1.webContents.executeJavaScript(
-            `window.open('${APP_URL}', '_blank', 'width=900,height=700'); 'renderer-window-open'`, true
+            `Neo.Main.windowOpen({url: '${APP_URL}', windowFeatures: 'width=900,height=700', windowName: 'harness-smoke-popup'}) ? 'engine-window-open' : 'engine-window-refused'`, true
         ),
         new Promise(resolve => setTimeout(() => resolve('gesture-call-wedged'), 5000))
     ]);
