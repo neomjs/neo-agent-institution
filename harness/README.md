@@ -15,8 +15,61 @@ Brain lifecycle glue, window policy, packaging/signing, updater, tray.
 **Scope shipped here:** the privileged `app://` shell and fail-closed content/window policy; the
 multi-window same-SharedWorker proof; supervised Agent-OS hosting; unsigned packaging; and the E8
 retained-cockpit + tray lifecycle. A renderer-initiated `window.open` popup still materializes
-through `setWindowOpenHandler` and joins the SAME shared workers. Signing/notarization, updater,
-and first-run product UX remain later release-line leaves.
+through `setWindowOpenHandler` and joins the SAME shared workers. The packaged shell can store its
+plane connection in userData. Signing/notarization and the automatic update channel remain
+release-line work.
+
+## Updating an installed app
+
+The current development distribution is updated manually. There is no automatic update feed yet:
+reopening the app, merging a pull request, or updating a source checkout does not replace an
+installed copy. Operators receive a complete replacement app from their maintainer; they do not
+need Node.js or npm to install it.
+
+For the current macOS build:
+
+1. Obtain the replacement **Neo Harness.app** and its build receipt from the maintainer. Keep the
+   previous bundle until the replacement has been verified.
+2. Choose **Neo Harness → Quit Neo Harness**, or the tray's **Quit** action. Closing the cockpit
+   window only hides it; the retained process would continue running the old code.
+3. Replace the whole app in **Applications**, then open that copy. Do not copy individual renderer
+   files, dependencies or Brain files into the old bundle.
+4. Preserve the application's userData directory. On macOS it is normally
+   `~/Library/Application Support/neo-harness/`; it holds the saved plane record and encrypted
+   credential, separately from the application bundle. An update is not a reset or a change of
+   viewer identity. Use the shell's connection flow if the OS cannot recover the saved credential.
+5. Check the replacement's build receipt and the instance switcher's plane address. Then check
+   the roster and activity pane: an empty answer, an unavailable read and actual live rows are
+   different results. A connected transport alone does not prove every data source works, and
+   fixture rows are never evidence of a live connection.
+
+The shell version currently remains `0.0.1` across development builds, so **the version label alone
+cannot prove an update**. A macOS bundle carries its build time, Engine pin and Brain revision in
+`Contents/Resources/organism/organism-build-info.json`. The Product entry currently records only
+its name and package version; the maintainer's receipt must also name the Institution source
+revision. The shell's boot log is available through Electron's logs directory, normally
+`~/Library/Logs/Neo Harness/main.log` on macOS.
+
+Automatic updates belong to the shell's release channel under
+[the Electron shell epic](https://github.com/neomjs/neo-agent-institution/issues/7) and
+[ADR 0034 §2.5](https://github.com/neomjs/neo/blob/dev/learn/agentos/decisions/0034-electron-shell-architecture.md).
+They deliver a complete versioned package; npm releases and individual repository merges do not
+update an installed shell. macOS automatic updating requires a signed application and an update
+feed ([Electron's updater contract](https://www.electronjs.org/docs/latest/api/auto-updater)). The
+unsigned development artifact does not provide that channel.
+
+### Maintainer build and verification
+
+Use the [packaging procedure](#packaging-e6--the-unsigned-leg) with an explicit Brain root. Record
+the Institution revision, the Product's Engine pin, the Brain revision and the generated build
+receipt beside the artifact. Build from the intended merged revisions; do not infer the installed
+contents from whichever checkout happens to be open.
+
+Run the packaged smoke using its isolated profile before replacing the installed app. After
+replacement, verify the saved-plane boot separately: the smoke's isolated transport does not
+establish admission to the operator's real Agent OS. Retain the observed source states and any
+failures in the delivery receipt. Installation success must not conceal a remaining live-data
+defect.
 
 ## Run
 
