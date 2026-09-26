@@ -175,10 +175,10 @@ tokens, `.env` values, or generated seat configuration.**
 The optional Electron shell lives under [`harness/`](harness/README.md). It is the native vessel
 around the same Agent Institution app, not a second UI and not a Brain source owner.
 
-The post-split packaged launcher is **transitional**: [#4](https://github.com/neomjs/neo-agent-institution/issues/4)
-owns explicit product/Engine/Brain roots, checkout launch without accidental Brain loading, and
-pack-stage closure. Until that ticket lands, this README does not claim a downloadable or
-one-command packaged Institution.
+For an installed copy, see [Updating an installed app](harness/README.md#updating-an-installed-app).
+The current development build needs whole-app replacement; it has no automatic update feed yet.
+The [packaging procedure](harness/README.md#packaging-e6--the-unsigned-leg) is for maintainers and
+records the explicit Product, pinned Engine and Brain inputs.
 
 ## Read next
 
