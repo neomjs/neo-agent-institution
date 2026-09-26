@@ -19,6 +19,15 @@ export function displayInstanceLabel(record) {
 }
 
 /**
+ * @summary The shell's own binding: the attached plane without its scheme, else this machine.
+ * @param {String|null} planeBase
+ * @returns {String}
+ */
+export function displayShellLabel(planeBase) {
+    return planeBase ? String(planeBase).replace(/^https?:\/\//, '') : 'this machine'
+}
+
+/**
  * @class AgentOS.view.fleet.instances.MenuList
  * @extends Neo.menu.List
  *
@@ -123,7 +132,7 @@ class InstanceMenuList extends MenuList {
 
     /**
      * @summary Lets menu.List build the Store-backed profile rows, then appends the one terminal
-     * non-record affordance. No profile array is copied or hand-mapped.
+     * non-record affordance (under shell custody: attach a plane). No profile array is hand-mapped.
      * @param {Boolean} [silent=false]
      */
     createItems(silent=false) {
@@ -132,17 +141,16 @@ class InstanceMenuList extends MenuList {
 
         super.createItems(true);
 
-        vdom.cn.push(
-            {cls: ['fm-instance-menu-sep'], role: 'separator', 'aria-hidden': 'true'},
-            {
-                id      : me.manageItemId,
-                tag     : me.itemTagName,
-                cls     : [me.itemCls, 'fm-instance-manage'],
-                role    : 'menuitem',
-                tabIndex: -1,
-                text    : 'Manage instances…'
-            }
-        );
+        vdom.cn.length > 0 && vdom.cn.push({cls: ['fm-instance-menu-sep'], role: 'separator', 'aria-hidden': 'true'});
+
+        vdom.cn.push({
+            id      : me.manageItemId,
+            tag     : me.itemTagName,
+            cls     : [me.itemCls, 'fm-instance-manage'],
+            role    : 'menuitem',
+            tabIndex: -1,
+            text    : me.parentComponent?.shellCustody ? 'Connect a plane…' : 'Manage instances…'
+        });
 
         !silent && me.promiseUpdate().then(() => me.fire('createItems'))
     }

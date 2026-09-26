@@ -17,13 +17,33 @@ export const MAX_CREDENTIAL_LENGTH = 1024;
 
 /**
  * The channels between the window's preload and main: `submit` carries the value once, `action`
- * carries `cancel` or `paste`.
- * @type {{action: String, submit: String}}
+ * carries `cancel` or `paste`, `size` carries the document's natural height once.
+ * @type {{action: String, size: String, submit: String}}
  */
 export const PROMPT_CHANNELS = Object.freeze({
     action: 'credential-prompt-action',
+    size  : 'credential-prompt-size',
     submit: 'credential-prompt-submit'
 });
+
+/**
+ * The window's content area in CSS pixels. The height starts at a value the known content fits, and
+ * is then set to the document's own measured height, within `minHeight`…`maxHeight`.
+ * @type {{height: Number, maxHeight: Number, minHeight: Number, width: Number}}
+ */
+export const PROMPT_SIZE = Object.freeze({height: 320, maxHeight: 720, minHeight: 200, width: 540});
+
+/**
+ * @summary The content height a size report may set: the measured height rounded up and clamped to
+ * the band, or `null` for anything that is not a positive finite number.
+ * @param {*} value What the window's preload reported.
+ * @returns {Number|null}
+ */
+export function acceptContentHeight(value) {
+    if (!Number.isFinite(value) || value <= 0) return null;
+
+    return Math.min(PROMPT_SIZE.maxHeight, Math.max(PROMPT_SIZE.minHeight, Math.ceil(value)))
+}
 
 /**
  * What the field asks for. A plane signs in with the forge its repositories live on, so the label
@@ -111,7 +131,7 @@ export function createCredentialPrompt({BrowserWindow, Menu, preloadPath}) {
             win    = new BrowserWindow({
                 backgroundColor: '#151922',
                 fullscreenable : false,
-                height         : 260,
+                height         : PROMPT_SIZE.height,
                 maximizable    : false,
                 minimizable    : false,
                 modal          : Boolean(parent),
@@ -119,7 +139,9 @@ export function createCredentialPrompt({BrowserWindow, Menu, preloadPath}) {
                 resizable      : false,
                 show           : false,
                 title          : `Enter ${text.label}`,
-                width          : 540,
+                // the size is the page's, with or without a title bar (modal on macOS is a sheet)
+                useContentSize : true,
+                width          : PROMPT_SIZE.width,
                 webPreferences : {
                     contextIsolation: true,
                     nodeIntegration : false,
@@ -145,6 +167,13 @@ export function createCredentialPrompt({BrowserWindow, Menu, preloadPath}) {
                 const credential = acceptSubmittedCredential(value);
 
                 credential && complete(credential)
+            });
+
+            // the window fits its content, so no wording, font or label length scrolls the page
+            contents.ipc.once(PROMPT_CHANNELS.size, (ipcEvent, value) => {
+                const height = acceptContentHeight(value);
+
+                height && !win.isDestroyed() && win.setContentSize(PROMPT_SIZE.width, height)
             });
 
             contents.ipc.on(PROMPT_CHANNELS.action, (ipcEvent, action) => {
