@@ -1,9 +1,8 @@
 import ActivityStream         from '../activity/Container.mjs';
 import AgentDetail            from '../detail/Container.mjs';
 import Button                 from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-// NAMED registration import: the engine's dock LayoutAdapter emits `ntype: 'tab-container'` for tab
-// zones without importing the class itself (engine gap) — until it does, the dock consumer owns
-// the registration, and the named binding keeps the dependency visible.
+// NAMED registration import: the engine's dock LayoutAdapter emits `ntype: 'tab-container'` for tab zones
+// without importing the class (engine gap) — the dock consumer owns the registration, visibly, until it does.
 import TabContainer           from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import CatchUpPane            from '../catchup/Container.mjs';
 import DockService           from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
@@ -13,6 +12,7 @@ import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
 import GoldenPathPane         from '../goldenpath/Container.mjs';
 import GoldenPathGraph        from '../goldenpath/GraphContainer.mjs';
+import ObservatoryPane        from '../goldenpath/ObservatoryContainer.mjs';
 import MemoriesPane           from '../memories/Container.mjs';
 import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
@@ -27,7 +27,6 @@ import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
  * at the surface that died.
  * @type {Number}
  */
-
 const livenessPollDefault = 15000;
 
 /**
@@ -38,8 +37,6 @@ const livenessPollDefault = 15000;
  * @type {Number}
  */
 const livenessReadTimeoutDefault = 10000;
-
-
 
 /**
  * @summary The Fleet keeper-view — the FM cockpit's default mission-control surface (design SSOT §01),
@@ -210,6 +207,12 @@ class FleetCockpit extends VesselContainer {
                 module   : GoldenPathGraph,
                 header   : {text: 'Route graph'},
                 reference: 'golden-path-graph',
+                bind     : {envelope: data => data.goldenPathEnvelope}
+            },
+            observatory: {
+                module   : ObservatoryPane,
+                header   : {text: 'Observatory'},
+                reference: 'observatory',
                 bind     : {envelope: data => data.goldenPathEnvelope}
             },
             // the inspector and the invoked tools: auto-hidden onto the right edge's rail
