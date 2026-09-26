@@ -20,11 +20,12 @@ import ViewportController from '../../../../../apps/agentos/view/ViewportControl
 test.describe('AgentOS.view.ViewportController — route → keeper-view tab', () => {
     function createController() {
         const tabButtons = [
-            {route: '/home',     index: 0},
-            {route: '/fleet',    index: 1},
-            {route: '/system',   index: 2},
-            {route: '/accounts', index: 3},
-            {route: '/chat',     index: 4}
+            {route: '/home',        index: 0},
+            {route: '/fleet',       index: 1},
+            {route: '/observatory', index: 2},
+            {route: '/system',      index: 3},
+            {route: '/accounts',    index: 4},
+            {route: '/chat',        index: 5}
         ];
 
         const shell = {
@@ -41,11 +42,12 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
 
     test('declares routes for each left-rail keeper-view', () => {
         expect(ViewportController.config.routes).toEqual({
-            '/accounts': 'onAccountsRoute',
-            '/chat'    : 'onChatRoute',
-            '/fleet'   : 'onFleetRoute',
-            '/home'    : 'onHomeRoute',
-            '/system'  : 'onSystemRoute'
+            '/accounts'   : 'onAccountsRoute',
+            '/chat'       : 'onChatRoute',
+            '/fleet'      : 'onFleetRoute',
+            '/home'       : 'onHomeRoute',
+            '/observatory': 'onObservatoryRoute',
+            '/system'     : 'onSystemRoute'
         })
     });
 
@@ -63,14 +65,17 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
         controller.onHomeRoute();
         expect(shell.activeIndex).toBe(0);
 
-        controller.onSystemRoute();
+        controller.onObservatoryRoute();
         expect(shell.activeIndex).toBe(2);
 
-        controller.onAccountsRoute();
+        controller.onSystemRoute();
         expect(shell.activeIndex).toBe(3);
 
+        controller.onAccountsRoute();
+        expect(shell.activeIndex).toBe(4);
+
         controller.onChatRoute();
-        expect(shell.activeIndex).toBe(4)
+        expect(shell.activeIndex).toBe(5)
     });
 
     test('leaves the active shell view unchanged when the route has no tab match', () => {
@@ -87,7 +92,7 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
         const shellConfig = Viewport.config.items.find(item => item.reference === 'shell'),
               routes      = shellConfig.items.map(item => item.header.route);
 
-        expect(routes).toEqual(['/home', '/fleet', '/system', '/accounts', '/chat']);
+        expect(routes).toEqual(['/home', '/fleet', '/observatory', '/system', '/accounts', '/chat']);
         expect(routes.sort()).toEqual(Object.keys(ViewportController.config.routes).sort())
     })
 });
