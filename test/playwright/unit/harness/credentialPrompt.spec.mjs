@@ -3,11 +3,13 @@ import {EventEmitter} from 'node:events';
 import {readFile}     from 'node:fs/promises';
 import vm             from 'node:vm';
 import {
+    acceptContentHeight,
     acceptSubmittedCredential,
     createCredentialPrompt,
     CREDENTIAL_LABEL,
     MAX_CREDENTIAL_LENGTH,
     PROMPT_CHANNELS,
+    PROMPT_SIZE,
     renderCredentialPromptDocument
 } from '../../../../harness/credentialPrompt.mjs';
 
@@ -33,9 +35,10 @@ function fakeElectron({parent = null, loadFails = false} = {}) {
 
         constructor(options) {
             super();
-            this.options     = options;
-            this.destroyed   = false;
-            this.webContents = Object.assign(new EventEmitter(), {
+            this.options      = options;
+            this.destroyed    = false;
+            this.contentSizes = [];
+            this.webContents  = Object.assign(new EventEmitter(), {
                 ipc       : new EventEmitter(),
                 pasteCalls: 0,
                 paste() { this.pasteCalls++ }
@@ -56,6 +59,10 @@ function fakeElectron({parent = null, loadFails = false} = {}) {
         loadURL(url) {
             this.url = url;
             return loadFails ? Promise.reject(new Error('load failed')) : Promise.resolve()
+        }
+
+        setContentSize(width, height) {
+            this.contentSizes.push([width, height])
         }
 
         show() {}
@@ -125,6 +132,39 @@ test.describe('harness/credentialPrompt — the shell\'s one credential window',
         expect(decodeURIComponent(win.url.replace('data:text/html;charset=utf-8,', ''))).toBe(
             renderCredentialPromptDocument({label: CREDENTIAL_LABEL, submit: 'Admit'})
         )
+    });
+
+    test('the window starts at a height its content fits, measured as content, not frame', () => {
+        const {win} = openPrompt();
+
+        expect(win.options).toMatchObject({height: PROMPT_SIZE.height, useContentSize: true, width: PROMPT_SIZE.width})
+    });
+
+    test('a size report fits the window to its content, rounded up and clamped, once', () => {
+        const {win} = openPrompt();
+
+        win.webContents.ipc.emit(PROMPT_CHANNELS.size, {}, 287.2);
+        win.webContents.ipc.emit(PROMPT_CHANNELS.size, {}, 400);
+
+        expect(win.contentSizes).toEqual([[PROMPT_SIZE.width, 288]])
+    });
+
+    test('a size report that is not a positive finite number sizes nothing', () => {
+        const {win} = openPrompt();
+
+        win.webContents.ipc.emit(PROMPT_CHANNELS.size, {}, Number.NaN);
+
+        expect(win.contentSizes).toEqual([])
+    });
+
+    test('the accepted height stays within the band', () => {
+        expect(acceptContentHeight(287.2)).toBe(288);
+        expect(acceptContentHeight(40)).toBe(PROMPT_SIZE.minHeight);
+        expect(acceptContentHeight(5000)).toBe(PROMPT_SIZE.maxHeight);
+
+        for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '300', null, undefined]) {
+            expect(acceptContentHeight(value)).toBeNull()
+        }
     });
 
     test('a live parent makes the window modal to it', () => {
@@ -234,6 +274,7 @@ async function loadPreload() {
 
     vm.runInNewContext(await readFile(preloadPath, 'utf8'), {
         document: {
+            body          : {scrollHeight: 287},
             getElementById: id => id === 'credential' ? input : null,
             querySelector : selector => selector === 'form' ? form : null
         },
@@ -247,7 +288,10 @@ async function loadPreload() {
 
     win.dispatch('DOMContentLoaded');
 
-    return {cancel, form, input, paste, sent, submit, win}
+    // the load-time size report, set aside so each arm below sees only what its own input sent
+    const sized = sent.splice(0);
+
+    return {cancel, form, input, paste, sent, sized, submit, win}
 }
 
 test.describe('harness/credentialPrompt.preload — the window\'s own wiring', () => {
@@ -255,7 +299,14 @@ test.describe('harness/credentialPrompt.preload — the window\'s own wiring', (
         const source = await readFile(preloadPath, 'utf8');
 
         expect(source).toContain(`'${PROMPT_CHANNELS.submit}'`);
-        expect(source).toContain(`'${PROMPT_CHANNELS.action}'`)
+        expect(source).toContain(`'${PROMPT_CHANNELS.action}'`);
+        expect(source).toContain(`'${PROMPT_CHANNELS.size}'`)
+    });
+
+    test('the preload reports the body\'s natural height once, on load', async () => {
+        const {sized} = await loadPreload();
+
+        expect(sized).toEqual([[PROMPT_CHANNELS.size, 287]])
     });
 
     test('typing enables the submit button only for a non-blank value', async () => {
