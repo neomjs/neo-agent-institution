@@ -750,36 +750,18 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
         host.perspectiveStore.destroy()
     });
 
-    test('the persistent control bar keeps identities while refusal state changes — the preset buttons are bound, a sync never writes them', async () => {
+    test('a standing refusal rides every drawer projection until a switch clears it', async () => {
         const
-            buttons = ['overview', 'focus', 'review'].map(layoutId => ({
-                pressed  : false,
-                reference: `fleet-preset-${layoutId}`,
-                set(values) { Object.assign(this, values) }
-            })),
-            error = {
-                hidden: true,
-                text  : '',
-                set(values) { Object.assign(this, values) }
-            },
-            host = await makePresetHost({
-                items: [{items: buttons}],
-                getReference(reference) {
-                    return reference === 'fleet-preset-error' ? error : null
-                }
-            }),
-            identities = [...buttons];
+            writes = [],
+            host   = await makePresetHost({getStateProvider: () => ({setData: data => writes.push(data)})});
 
-        FleetCockpit.prototype.syncControlBar.call(host);
-        expect(buttons.map(button => button.pressed), 'pressed is the binding\'s to write, never a reconcile\'s').toEqual([false, false, false]);
+        host.presetError = 'Ghost: no perspective named "Ghost"';
+        FleetCockpit.prototype.publishPerspectives.call(host);
+        expect(writes.at(-1).perspectives.applyNote).toBe('switch refused: Ghost: no perspective named "Ghost"');
 
-        host.perspectiveStore.loadPerspective('Focus');
-        host.presetError = 'refused visibly';
-        FleetCockpit.prototype.syncControlBar.call(host);
-
-        expect(buttons).toEqual(identities);
-        expect(buttons.map(button => button.pressed)).toEqual([false, false, false]);
-        expect(error).toMatchObject({hidden: false, text: 'refused visibly'});
+        host.presetError = null;
+        FleetCockpit.prototype.publishPerspectives.call(host);
+        expect(writes.at(-1).perspectives.applyNote).toBeNull();
 
         host.perspectiveStore.destroy()
     });

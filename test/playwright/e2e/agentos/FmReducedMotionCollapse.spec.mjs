@@ -6,7 +6,7 @@ import {test, expect} from '../../fixtures.mjs';
  * `no-preference`. The ratified motion audit rejects source inference as motion evidence — this reads
  * the browser's COMPUTED values on the mounted surface, across both vocabulary tiers the cleanup touches:
  *
- * - `--motion-fast` (the `.agent-button` / `.fm-preset-button` / `.fm-fleet-start` hover pairs), proven
+ * - `--motion-fast` (the `.agent-button` / `.fm-reconnect-button` / `.fm-fleet-start` hover pairs), proven
  *   on a real rendered cockpit-bar button's computed `transition-duration`;
  * - `--motion-fast` AND `--motion-base` (the `--motion-base` tier carries the `DemoAWorkspace` pip +
  *   the `HealthBar` count fade), proven by the document-root computed token values — the live cascade

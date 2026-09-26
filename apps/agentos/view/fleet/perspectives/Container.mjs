@@ -4,19 +4,20 @@ import Container from '../../../../../node_modules/neo.mjs/src/container/Base.mj
 import TextField from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 
 /**
- * The cockpit's saved layouts: every perspective the dock document can take, one card each, with
- * the two explicit acts — apply one, or capture the live layout as a new one.
+ * The cockpit's saved layouts, and the one place to switch them: every perspective the dock
+ * document can take, one card each, with the two explicit acts — apply one, or capture the live
+ * layout as a new one.
  *
  * @summary Renders the perspective list the owning FleetCockpit projects into provider data
  * (`perspectives`) and fires intent (`perspectiveRequest`); it never reaches the perspective
  * library itself. The three duties are the cockpit's declared `perspectives`, projected as the
  * first rows; a captured layout (`AgentOS.util.CockpitPerspectives`) joins them under the operator's
  * name. The live row is the engine's committed name — `dock.perspective.active`, bound here
- * directly — so the drawer and the top bar's preset buttons follow the same published truth.
+ * directly — so a switch from any writer marks the right card.
  *
  * Honest states: no projected list renders as exactly that (never an empty list posing as "no
  * layouts"), the active perspective is named in the meta line and marked on its card, and a
- * refused capture renders the library's own reason.
+ * refused switch or capture renders its own reason there.
  *
  * @class AgentOS.view.fleet.perspectives.Container
  * @extends Neo.container.Base
@@ -193,15 +194,24 @@ class PerspectivesPane extends Container {
      */
     projectionIdentity(list) {
         return JSON.stringify({
-            note : list?.captureNote ?? null,
+            notes: this.notesOf(list),
             items: (Array.isArray(list?.items) ? list.items : []).map(item => [item.layoutId, item.perspectiveName, item.title, item.captureScope])
         })
     }
 
     /**
+     * @summary The projection's verdicts, a refused switch before the latest capture.
+     * @param {Object|null} list
+     * @returns {String[]}
+     */
+    notesOf(list) {
+        return [list?.applyNote, list?.captureNote].filter(Boolean)
+    }
+
+    /**
      * @summary Project the list into the meta line and the cards — in place. The live card is the
-     * one carrying the engine's committed name; the capture verdict, when the projection carries
-     * one, is named on the meta line rather than flashed and lost.
+     * one carrying the engine's committed name; the verdicts, when the projection carries them,
+     * are named on the meta line rather than flashed and lost.
      */
     applyPerspectives() {
         const
@@ -209,14 +219,14 @@ class PerspectivesPane extends Container {
             list     = me.perspectives,
             items    = Array.isArray(list?.items) ? list.items : [],
             active   = items.find(item => item.layoutId === me.activePerspective) ?? null,
-            note     = list?.captureNote ?? null,
+            notes    = me.notesOf(list),
             metaEl   = me.getReference('perspectives-meta'),
             target   = me.getReference('perspectives-rows');
 
         if (metaEl) {
             metaEl.text = !items.length
                 ? 'No layouts projected yet — the cockpit publishes its perspectives on boot.'
-                : `${items.length} ${items.length === 1 ? 'layout' : 'layouts'} · ${active ? `${me.nameOf(active)} active` : 'none active'}${note ? ` · ${note}` : ''}`
+                : [`${items.length} ${items.length === 1 ? 'layout' : 'layouts'}`, active ? `${me.nameOf(active)} active` : 'none active', ...notes].join(' · ')
         }
 
         target && me.syncPerspectiveCards(target, items, active)

@@ -354,15 +354,6 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
-     * @summary A preset button's click — activate the named perspective on the view (the dock
-     * document + projection are view state; the button carries its `presetName`).
-     * @param {Object} data
-     */
-    onPresetSelect(data) {
-        this.component.activatePerspective(data.component.presetName)
-    }
-
-    /**
      * @summary The memories pop-out/return toggle — routed to the view's vessel state machine.
      * @param {Object} data
      */

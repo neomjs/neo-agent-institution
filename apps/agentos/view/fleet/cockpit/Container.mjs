@@ -104,9 +104,9 @@ class FleetCockpit extends VesselContainer {
          */
         detailRecord_: null,
         /**
-         * The preset switcher's refusal line (fail-closed VISIBLY: a refused restore must never
-         * look like a no-op) — OWN reactive state: {@link #afterSetPresetError} renders it in
-         * place, and the next successful switch clears it.
+         * The latest refused perspective switch (fail-closed VISIBLY: a refused restore must never
+         * look like a no-op) — OWN reactive state: {@link #afterSetPresetError} projects it into the
+         * perspectives drawer, and the next successful switch clears it.
          * @member {String|null} presetError_=null
          * @reactive
          */
@@ -245,8 +245,8 @@ class FleetCockpit extends VesselContainer {
         perspectives: CockpitPerspectives.declare(),
         /**
          * The boot duty. The engine restores a declared name through the ordinary commit path and
-         * publishes the committed one as `dock.perspective.active`, which the preset bar and the
-         * perspectives drawer bind — a switch from any writer presses the right button.
+         * publishes the committed one as `dock.perspective.active`, which the perspectives drawer
+         * binds — a switch from any writer marks the right card.
          * @member {String} activePerspective='Overview'
          * @reactive
          */
@@ -277,9 +277,8 @@ class FleetCockpit extends VesselContainer {
          * telltale are real component classes whose slots bind provider truth (each channel a
          * first-class config); handlers are controller-resolved strings. Static child items bind
          * under the child provider (reviewer positive control + live re-measurement, 2026-08-29
-         * — the earlier add()-path workaround rested on a misattributed root cause). The preset
-         * switch is declared too, one segmented group pressed by the engine's published
-         * `dock.perspective.active` ({@link AgentOS.util.CockpitPerspectives#group}); runtime injection stays limited to
+         * — the earlier add()-path workaround rested on a misattributed root cause). Perspectives
+         * are applied from their drawer, never from this bar; runtime injection stays limited to
          * the one genuinely dynamic member, the dock projection shell (document-derived,
          * instance-bound callbacks).
          * @member {Object[]} items
@@ -289,16 +288,7 @@ class FleetCockpit extends VesselContainer {
             cls      : ['fm-cockpit-bar'],
             flex     : 'none',
             reference: 'fleet-control-bar',
-            items    : [CockpitPerspectives.group(), {
-                // exception chrome for the VIEW class: the perspective-restore refusal line
-                // renders beside its source, the declared preset buttons
-                ntype    : 'component',
-                cls      : ['fm-preset-error'],
-                hidden   : true,
-                reference: 'fleet-preset-error'
-            },
-            '->',
-            {
+            items    : ['->', {
                 // THE STATE BLOCK — the bar's structural law: state never sits between action
                 // buttons; the two spine axes (fleet · wake) render as one right-aligned block
                 // before the action group. The pills run in a row wherever they carry their
@@ -538,16 +528,14 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
-     * Triggered after the presetError config got changed — render the refusal line in place.
+     * Triggered after the presetError config got changed — the drawer names the refusal on its
+     * meta line ({@link #publishPerspectives}).
      * @param {String|null} value
      * @param {String|null} oldValue
      * @protected
      */
     afterSetPresetError(value, oldValue) {
-        this.getReference('fleet-preset-error')?.set({
-            hidden: !value,
-            text  : value || ''
-        })
+        this.isConstructed && this.publishPerspectives()
     }
 
     /**
@@ -629,7 +617,7 @@ class FleetCockpit extends VesselContainer {
 
     /**
      * @summary A refused switch, rendered: the live layout stays what it is and the reason lands
-     * in the bar beside the presets.
+     * on the perspectives drawer's meta line.
      * @param {String} name
      * @param {String[]} errors
      * @returns {{switched: Boolean, errors: String[]}}
@@ -753,16 +741,11 @@ class FleetCockpit extends VesselContainer {
     }
 
     /**
-     * @summary Synchronizes the persistent control bar's refusal line and vessel chrome onto a
-     * fresh projection — the preset buttons need nothing here: they are bound.
+     * @summary Synchronizes the persistent chrome onto a fresh projection: the vessel chrome. A
+     * standing refusal needs nothing here — every refresh republishes it with the perspectives.
      */
     syncControlBar() {
-        let me = this;
-
-        // re-assert the refusal line onto a freshly projected error slot (the afterSet hook owns
-        // CHANGES; a re-projection needs the standing value re-rendered)
-        me.afterSetPresetError(me.presetError, null);
-        me.syncVesselChrome()
+        this.syncVesselChrome()
     }
 
     /**
@@ -770,16 +753,17 @@ class FleetCockpit extends VesselContainer {
      * duties first, as rows the drawer can apply, then the captures beside them — the drawer and
      * any other reader bind to it, so nothing outside this cockpit reaches into the library. Which
      * row is live is not in this list: the engine publishes `dock.perspective.active`, and the
-     * drawer binds that leaf directly. Runs with every settled refresh and once more with the
-     * capture verdict, which rides the projection rather than a side channel.
+     * drawer binds that leaf directly. Runs with every settled refresh, with a refused switch, and
+     * once more with the capture verdict, which rides the projection rather than a side channel.
      * @param {Object|null} [captureResult=null] The latest capture verdict, or `null`.
      */
     publishPerspectives(captureResult = null) {
         let me       = this,
             provider = me.getStateProvider(),
             next     = {
-                // one string leaf, never a nested verdict object: provider data drills plain objects
-                // into leaf paths, and a verdict under a `null` leaf never reads back
+                // one string leaf per verdict, never a nested verdict object: provider data drills
+                // plain objects into leaf paths, and a verdict under a `null` leaf never reads back
+                applyNote  : me.presetError ? `switch refused: ${me.presetError}` : null,
                 captureNote: !captureResult
                     ? null
                     : captureResult.saved

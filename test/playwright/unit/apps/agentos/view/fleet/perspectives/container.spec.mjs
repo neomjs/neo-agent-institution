@@ -123,6 +123,20 @@ test.describe('AgentOS.view.fleet.perspectives.Container — the saved-layouts d
         expect(pane.getReference('perspectives-meta').text).toContain('capture refused: "Overview" is a declared perspective — a capture needs its own name')
     });
 
+    test('a refused switch is named on the meta line, ahead of a capture verdict, until the projection clears it', () => {
+        pane = Neo.create(PerspectivesPane, {appName, activePerspective: 'Focus', perspectives: {
+            ...projected('captured "triage" — apply it from its card'),
+            applyNote: 'switch refused: Ghost: no perspective named "Ghost"'
+        }});
+
+        expect(pane.getReference('perspectives-meta').text)
+            .toBe('3 layouts · Focus active · switch refused: Ghost: no perspective named "Ghost" · captured "triage" — apply it from its card');
+
+        pane.perspectives = projected();
+
+        expect(pane.getReference('perspectives-meta').text).toBe('3 layouts · Focus active')
+    });
+
     test('the verbs fire intent only: apply names the card, capture names the typed layout and arms with it', () => {
         pane = Neo.create(PerspectivesPane, {appName, activePerspective: 'Overview', perspectives: projected()});
 
