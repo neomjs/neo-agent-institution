@@ -23,6 +23,15 @@ export function resolveFleetUrl() {
 }
 
 /**
+ * @summary Whether a bridge is the packaged shell's: main holds its custody, the worker only `send`.
+ * @param {Object|null} bridge The published `AgentOS.fleet.registryBridge`, or `null`.
+ * @returns {Boolean}
+ */
+export function holdsShellCustody(bridge) {
+    return bridge?.credentialIngress === 'shell'
+}
+
+/**
  * @summary Establish session-only Fleet custody for one boot, healing pass, or deliberate instance
  * switch, with the full migration lifecycle made real:
  *
@@ -33,6 +42,9 @@ export function resolveFleetUrl() {
  *   switch: there the new endpoint's fail-closed bridge IS the honest state ("chosen instance,
  *   not connected"), while preserving the old live bridge would be the old instance impersonating
  *   the operator's choice. The guard protects against ACCIDENT, never against decision.
+ * - **shell custody:** a packaged-shell bridge is main's custody, and no establish replaces it,
+ *   deliberate or not. The renderer holds no bearer there by design, so a replace could only
+ *   publish a fail-closed bridge over a working one; the call throws instead.
  * - **establish:** the install moves the bearer into transport closures. With NO existing bridge
  *   the install publishes synchronously (there is nothing to displace, and the pane needs the
  *   fail-closed or live state immediately). With an existing bridge, the candidate is built
@@ -72,6 +84,7 @@ export function resolveFleetUrl() {
  *     verdict. `promoted` additionally requires the detached candidate to retain compare-and-swap
  *     authority over the published bridge; a later operator switch wins even if the stale candidate
  *     authenticated successfully.
+ * @throws {Error} When the published bridge holds shell custody (see {@link holdsShellCustody}).
  */
 export function establishFleetSessionCustody({fleetUrl, redeemed = null, deliberate = false, installImpl = installFleetBridge, target = globalThis} = {}) {
     const
@@ -79,6 +92,10 @@ export function establishFleetSessionCustody({fleetUrl, redeemed = null, deliber
         existing        = fleet?.registryBridge,
         bearerToken     = redeemed?.bearerToken ?? fleet?.bearerToken ?? null,
         mcAuthorization = redeemed?.mcAuthorization ?? fleet?.mcAuthorization ?? null;
+
+    if (holdsShellCustody(existing)) {
+        throw new Error('fleet custody belongs to the packaged shell: no renderer establish replaces its bridge')
+    }
 
     if (bearerToken === null && existing && !deliberate) {
         return {

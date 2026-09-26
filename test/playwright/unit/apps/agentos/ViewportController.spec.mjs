@@ -97,7 +97,7 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         delete Neo.main?.addon?.ShellPlane
     });
 
-    async function mountWith(planeStatus) {
+    async function mountWith(planeStatus, act = controller => controller.mountPlaneSetup()) {
         const
             shell      = {},
             inserted   = [],
@@ -111,7 +111,7 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         controller.getReference = reference => reference === 'shell' ? shell : null;
         controller.windowId     = 7;
 
-        await controller.mountPlaneSetup();
+        await act(controller);
 
         return inserted
     }
@@ -146,13 +146,79 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         await controller.showPlaneSetup();
         expect(card.hidden, 'the dismissed card shows again').toBe(false);
 
-        let mounted = 0;
+        const mounts = [];
 
         controller.getReference   = () => null;
-        controller.mountPlaneSetup = async () => { mounted++ };
+        controller.mountPlaneSetup = async options => { mounts.push(options) };
 
         await controller.showPlaneSetup();
-        expect(mounted, 'no card yet: it mounts through the status-gated path').toBe(1)
+        expect(mounts, 'no card yet: it mounts on request, configured plane or not').toEqual([{force: true}])
+    });
+
+    test('a request mounts the card for a configured shell too: another plane, or one that refused this shell (#241)', async () => {
+        const inserted = await mountWith(
+            async () => ({available: true, packaged: true, configured: true, planeBase: 'http://127.0.0.1:3102'}),
+            controller => controller.showPlaneSetup()
+        );
+
+        expect(inserted).toEqual([{index: 1, config: {module: PlaneSetupPanel, flex: 'none', reference: 'plane-setup'}}]);
+
+        expect(await mountWith(async () => ({available: false}), controller => controller.showPlaneSetup()), 'a browser still gets none').toEqual([])
+    });
+
+    test('the shell switcher\'s attach intent opens the card (#241)', () => {
+        let shown = 0;
+
+        const controller = Object.assign(Object.create(ViewportController.prototype), {showPlaneSetup: () => { shown++ }});
+
+        controller.onAttachPlane();
+        expect(shown).toBe(1)
+    });
+
+    test('under shell custody the switcher mirrors the shell\'s binding: custody at once, then the plane main attached (#241)', async () => {
+        const
+            writes     = [],
+            controller = Object.assign(Object.create(ViewportController.prototype), {
+                component: {stateProvider: {setData: data => writes.push(data)}},
+                windowId : 7
+            });
+
+        Neo.ns('Neo.main.addon', true).ShellPlane = {
+            planeStatus: async () => ({available: true, packaged: true, configured: true, attached: true, planeBase: 'http://127.0.0.1:3102'})
+        };
+
+        await controller.syncShellBinding();
+
+        expect(writes).toEqual([{shellCustody: true}, {shellPlaneBase: 'http://127.0.0.1:3102'}])
+    });
+
+    test('the shell skips the browser-custody roster; a browser hydrates it (#241)', () => {
+        const
+            calls        = [],
+            original     = globalThis.AgentOS,
+            addon        = Neo.ns('Neo.main.addon', true),
+            localStorage = addon.LocalStorage,
+            make         = () => Object.assign(Object.create(ViewportController.prototype), {
+                initInstanceRoster: () => calls.push('roster'),
+                mountPlaneSetup   : () => calls.push('card'),
+                syncShellBinding  : () => calls.push('shell'),
+                windowId          : 7
+            });
+
+        addon.LocalStorage = {readLocalStorageItem: async () => ({value: null})};
+
+        try {
+            globalThis.AgentOS = {fleet: {registryBridge: {credentialIngress: 'shell'}}};
+            make().onComponentConstructed();
+
+            globalThis.AgentOS = {fleet: {registryBridge: {credentialIngress: 'worker'}}};
+            make().onComponentConstructed()
+        } finally {
+            globalThis.AgentOS = original;
+            addon.LocalStorage = localStorage
+        }
+
+        expect(calls).toEqual(['shell', 'card', 'roster', 'card'])
     })
 });
 
@@ -359,6 +425,34 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
 
         expect(calls).toEqual(['syncBoundInstance', 'pushTearOutTitles', 'reconnectFleet']);
         expect(writes).toEqual([{instanceState: 'starting'}, {instanceState: 'off'}])
+    });
+
+    test('under shell custody a switch or a connect answers false and the shell bridge stays published (#241)', async () => {
+        const
+            calls      = [],
+            writes     = [],
+            controller = createControllerOverRealCockpit({calls, writes}),
+            original   = globalThis.AgentOS,
+            shell      = {credentialIngress: 'shell', profileId: null},
+            record     = {canonicalEndpoint: 'http://127.0.0.1:8083/fleet', profileId: 'fleet-profile:v1:http://127.0.0.1:8083/fleet'},
+            source     = {};
+
+        controller.component.stateProvider.getStore = () => ({get: () => record});
+
+        try {
+            globalThis.AgentOS = {fleet: {registryBridge: shell}};
+
+            await expect(controller.switchToProfile(record)).resolves.toBe(false);
+            await controller.onConnectInstance({profileId: record.profileId, bearerToken: 'a'.repeat(43), source});
+
+            expect(globalThis.AgentOS.fleet.registryBridge).toBe(shell)
+        } finally {
+            globalThis.AgentOS = original
+        }
+
+        expect(source.notice?.tone).toBe('refused');
+        expect(calls, 'nothing re-drives: nothing was bound').toEqual([]);
+        expect(writes).toEqual([])
     });
 
     test('a connected tenant re-drives the cockpit after its success notice', async () => {

@@ -2,7 +2,11 @@ import Controller                                      from '../../../node_modul
 import InstanceManager                                 from './fleet/instances/ManagerContainer.mjs';
 import PlaneSetupPanel                                 from './PlaneSetupPanel.mjs';
 import {createFleetProfile, deriveFleetProfileId}      from '../fleet/connectionProfiles.mjs';
-import {establishFleetSessionCustody, resolveFleetUrl} from '../fleet/fleetSessionCustody.mjs';
+import {
+    establishFleetSessionCustody,
+    holdsShellCustody,
+    resolveFleetUrl
+} from '../fleet/fleetSessionCustody.mjs';
 import {installFleetBridge}                            from '../fleet/installFleetBridge.mjs';
 import {
     INSTANCE_ROSTER_STORAGE_KEY,
@@ -28,7 +32,8 @@ class ViewportController extends Controller {
 
     /**
      * @summary Applies the persisted harness theme before the viewport settles, hydrates the
-     * configured-instances roster, and asks the shell whether it still needs a plane.
+     * configured-instances roster (or, in the packaged shell, mirrors the shell's own binding), and
+     * asks the shell whether it still needs a plane.
      */
     onComponentConstructed() {
         let me = this;
@@ -44,22 +49,52 @@ class ViewportController extends Controller {
             }
         });
 
-        me.initInstanceRoster();
+        // the configured-instances roster is browser custody; the shell dials only what main holds
+        if (holdsShellCustody(globalThis.AgentOS?.fleet?.registryBridge)) {
+            me.syncShellBinding()
+        } else {
+            me.initInstanceRoster()
+        }
+
         me.mountPlaneSetup()
     }
 
     /**
-     * @summary Mounts the plane-setup card above the shell when the packaged shell reports no plane
-     * configured. A browser build or a configured shell never creates it, so its field styles never
-     * reorder the cascade the other surfaces render against.
+     * @summary The shell's plane-attach broker status, or `null` in a browser or on a failed read.
+     * @returns {Promise<Object|null>} `{available, attached, configured, packaged, planeBase}`
+     */
+    readPlaneStatus() {
+        return Promise.resolve(Neo.main?.addon?.ShellPlane?.planeStatus({windowId: this.windowId})).catch(() => null)
+    }
+
+    /**
+     * @summary Mirrors the shell's own binding for the switcher: custody at once, then the plane main attached.
      * @returns {Promise<void>}
      */
-    async mountPlaneSetup() {
+    async syncShellBinding() {
+        const {stateProvider} = this.component;
+
+        stateProvider.setData({shellCustody: true});
+
+        const status = await this.readPlaneStatus();
+
+        this.isDestroyed || stateProvider.setData({shellPlaneBase: status?.planeBase ?? null})
+    }
+
+    /**
+     * @summary Mounts the plane-setup card above the shell when the packaged shell has no plane, or on
+     * request (`force`: another plane, or one that refused this shell). A browser build never creates
+     * it, so its field styles never reorder the cascade the other surfaces render against.
+     * @param {Object}  [options]
+     * @param {Boolean} [options.force=false] Mount for a configured shell too.
+     * @returns {Promise<void>}
+     */
+    async mountPlaneSetup({force = false} = {}) {
         const
             me     = this,
-            status = await Promise.resolve(Neo.main?.addon?.ShellPlane?.planeStatus({windowId: me.windowId})).catch(() => null);
+            status = await me.readPlaneStatus();
 
-        if (status?.available && status.packaged && !status.configured && !me.isDestroyed && !me.getReference('plane-setup')) {
+        if (status?.available && status.packaged && (force || !status.configured) && !me.isDestroyed && !me.getReference('plane-setup')) {
             const viewport = me.component;
 
             viewport.insert(viewport.items.indexOf(me.getReference('shell')), {
@@ -71,8 +106,8 @@ class ViewportController extends Controller {
     }
 
     /**
-     * @summary Brings the plane-setup card back on request (the banner's Connect beside a running
-     * plane), a dismissed card included; mounts it when this boot never created one.
+     * @summary Brings the plane-setup card back on request (the banner's Connect, the shell switcher),
+     * a dismissed card included; mounts it when this boot never created one, plane or not.
      * @returns {Promise<void>}
      */
     async showPlaneSetup() {
@@ -81,8 +116,15 @@ class ViewportController extends Controller {
         if (card) {
             card.hidden = false
         } else {
-            await this.mountPlaneSetup()
+            await this.mountPlaneSetup({force: true})
         }
+    }
+
+    /**
+     * @summary The shell switcher's `attachplane` intent → the plane-setup card.
+     */
+    onAttachPlane() {
+        this.showPlaneSetup()
     }
 
     /**

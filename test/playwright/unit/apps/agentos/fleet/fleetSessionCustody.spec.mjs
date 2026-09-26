@@ -1,6 +1,10 @@
 import {expect, test} from '@playwright/test';
 
-import {establishFleetSessionCustody, resolveFleetUrl} from '../../../../../../apps/agentos/fleet/fleetSessionCustody.mjs';
+import {
+    establishFleetSessionCustody,
+    holdsShellCustody,
+    resolveFleetUrl
+} from '../../../../../../apps/agentos/fleet/fleetSessionCustody.mjs';
 
 /**
  * The deliberate-switch semantics of the custody establish — the unit half beside the
@@ -66,6 +70,24 @@ test.describe('fleetSessionCustody — the deliberate instance switch (#17328)',
         // bearer-less: nothing to verify, nothing to retire — fail-closed is the settled truth
         await expect(outcome.verified).resolves.toBe(false);
         await expect(outcome.custodySettled).resolves.toBe(false)
+    });
+
+    test('a published shell bridge is main\'s custody: every establish throws, installs nothing and leaves it published, deliberate or not (#241)', () => {
+        const shell                = {credentialIngress: 'shell', profileId: null};
+        const target               = {AgentOS: {fleet: {registryBridge: shell}}};
+        const {calls, installImpl} = makeInstall();
+
+        for (const opts of [{deliberate: true}, {deliberate: true, redeemed: {bearerToken: 'a'.repeat(43)}}, {}]) {
+            expect(() => establishFleetSessionCustody({fleetUrl: url, installImpl, target, ...opts}), JSON.stringify(opts))
+                .toThrow(/packaged shell/)
+        }
+
+        expect(calls).toHaveLength(0);
+        expect(target.AgentOS.fleet.registryBridge).toBe(shell);
+
+        expect(holdsShellCustody(shell)).toBe(true);
+        expect(holdsShellCustody({credentialIngress: 'worker'})).toBe(false);
+        expect(holdsShellCustody(null)).toBe(false)
     });
 
     test('deliberate + caller-provided bearer: verified resolves on the whoami proof even though there is NO ingress slot to retire — the two verdicts are distinct by design', async () => {

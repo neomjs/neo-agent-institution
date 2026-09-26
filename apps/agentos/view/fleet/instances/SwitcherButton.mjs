@@ -1,6 +1,9 @@
-import Button                                   from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import InstanceMenuList, {displayInstanceLabel} from './MenuList.mjs';
-import {stateClass}                             from '../shared/StateDotComponent.mjs';
+import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import InstanceMenuList, {
+    displayInstanceLabel,
+    displayShellLabel
+} from './MenuList.mjs';
+import {stateClass}      from '../shared/StateDotComponent.mjs';
 
 /**
  * The instance-connection WORD per state key — the text channel of the two-channel rule. The dot
@@ -28,7 +31,8 @@ const INSTANCE_STATE_WORDS = {
  * fact rides {@link #boundProfileId}, and the connection state rides {@link #instanceState}. The
  * switcher reaches for nothing itself and fires the unchanged `switchinstance` / `manageinstances`
  * intent contracts. Its accessible name remains the tested text channel:
- * `Instance: <label> — <state word>`.
+ * `Instance: <label> — <state word>`. Under {@link #shellCustody} the label names the shell's plane
+ * and the menu's one affordance fires `attachplane`.
  */
 class InstanceSwitcher extends Button {
     static config = {
@@ -60,6 +64,18 @@ class InstanceSwitcher extends Button {
          * @reactive
          */
         instanceStore_: null,
+        /**
+         * Whether the packaged shell holds fleet custody (Electron main owns the binding).
+         * @member {Boolean} shellCustody_=false
+         * @reactive
+         */
+        shellCustody_: false,
+        /**
+         * The plane the shell attached, `null` while it runs its own organism.
+         * @member {String|null} shellPlaneBase_=null
+         * @reactive
+         */
+        shellPlaneBase_: null,
         /**
          * The scope chip has no transient ink-ripple layer.
          * @member {Boolean} useRippleEffect=false
@@ -109,6 +125,27 @@ class InstanceSwitcher extends Button {
      * @protected
      */
     afterSetInstanceState(value, oldValue) {
+        this.updateSwitcher()
+    }
+
+    /**
+     * @summary Custody changes relabel the trigger and the menu's terminal affordance.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetShellCustody(value, oldValue) {
+        this.updateSwitcher();
+        this.menuList?.createItems()
+    }
+
+    /**
+     * @summary The attached plane arrives after the custody fact; only the trigger changes.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetShellPlaneBase(value, oldValue) {
         this.updateSwitcher()
     }
 
@@ -179,10 +216,11 @@ class InstanceSwitcher extends Button {
     }
 
     /**
-     * @summary Terminal menu-affordance intent. The ViewportController contract is unchanged.
+     * @summary Terminal menu-affordance intent: manage the configured instances, or, under shell
+     * custody, attach a plane.
      */
     onInstanceMenuManage() {
-        this.fire('manageinstances', {source: this})
+        this.fire(this.shellCustody ? 'attachplane' : 'manageinstances', {source: this})
     }
 
     /**
@@ -246,7 +284,7 @@ class InstanceSwitcher extends Button {
      */
     updateSwitcher() {
         let me       = this,
-            label    = displayInstanceLabel(me.boundRecord),
+            label    = me.shellCustody ? displayShellLabel(me.shellPlaneBase) : displayInstanceLabel(me.boundRecord),
             word     = Object.hasOwn(INSTANCE_STATE_WORDS, me.instanceState) ? INSTANCE_STATE_WORDS[me.instanceState] : INSTANCE_STATE_WORDS.off,
             expanded = Boolean(me.menuList && !me.menuList.hidden),
             root     = me.getVdomRoot();
