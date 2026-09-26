@@ -226,9 +226,9 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
 
-        // the boot bar renders the three declared duties, Overview pressed by the engine's published name
-        const focusButton = page.locator('.fm-preset-button', {hasText: 'Focus'}).first();
-        await expect(focusButton, 'the preset bar must render on the boot surface').toBeVisible({timeout: 30000});
+        // perspectives switch from their drawer: the boot bar carries no perspective buttons
+        await expect(page.locator('.fm-cockpit-bar'), 'the control bar must render on the boot surface').toBeVisible({timeout: 30000});
+        await expect(page.locator('.fm-preset-button'), 'no perspective button sits in the bar').toHaveCount(0);
 
         const app      = await neuralLink.connectToApp('AgentOS'),
               cockpits = await app.findInstances({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
@@ -257,8 +257,9 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
             return doc.nodes['primary-split'].sizes
         };
 
-        // 1) the REAL gesture on the live persistent bar: one click switches to Focus
-        await focusButton.click();
+        // 1) the REAL gesture in the drawer: reveal it from the rail, then apply Focus from its card
+        await page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Perspectives'}).first().click();
+        await page.locator('.fm-perspectives-card', {hasText: 'Focus'}).locator('.fm-perspectives-apply').click();
 
         await expect.poll(primarySizes, {message: 'the Focus click must commit the preset document', timeout: 10000, intervals: [100]})
             .toEqual([0.85, 0.15]);
@@ -336,8 +337,12 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
         const ghost = await app.callMethod(holderId, 'activatePerspective', ['Ghost']);
         expect(ghost?.switched).toBe(false);
         expect(await primarySizes()).toEqual([0.6078, 0.3922]);
-        await expect(page.locator('.fm-preset-error'), 'a refused switch records its error in the same persistent toolbar')
-            .toContainText('Ghost');
+        const drawers  = await app.findInstances({className: 'AgentOS.view.fleet.perspectives.Container'}, ['id']),
+              drawerId = (Array.isArray(drawers) ? drawers[0] : drawers)?.id;
+
+        await expect.poll(async () => (await app.getComponent(drawerId, ['perspectives']))?.perspectives?.applyNote ?? '',
+            {message: 'a refused switch is named in the drawer', timeout: 10000, intervals: [100]})
+            .toContain('Ghost');
         expect(runtimeErrors, 'no global error or unhandled rejection across perspective reconciliation').toEqual([]);
         expect(pageErrors, 'no Playwright pageerror across perspective reconciliation').toEqual([])
     });

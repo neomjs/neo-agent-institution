@@ -104,14 +104,15 @@ class StateProvider extends Provider {
             gridDegradedReason: null,
             /**
              * The cockpit's projected perspective list — the declared duties, then every capture,
-             * and the latest capture verdict — written by the cockpit's `publishPerspectives`; the
+             * and the latest verdicts — written by the cockpit's `publishPerspectives`; the
              * perspectives drawer binds to it. Which row is live is the engine's own leaf
              * (`dock.perspective.active`, seeded by the Workspace), not this list. Empty `items`
-             * means "not projected yet", never "no layouts"; `captureNote` is the latest capture
-             * verdict as one sentence (a string leaf — nested objects drill into leaf paths here).
-             * @member {Object} perspectives={captureNote:null,items:[]}
+             * means "not projected yet", never "no layouts"; `applyNote` names a standing refused
+             * switch and `captureNote` the latest capture verdict, each one sentence (string leaves —
+             * nested objects drill into leaf paths here).
+             * @member {Object} perspectives={applyNote:null,captureNote:null,items:[]}
              */
-            perspectives: {captureNote: null, items: []},
+            perspectives: {applyNote: null, captureNote: null, items: []},
             /**
              * The presence-capability envelope riding every admitted roster snapshot — the grid's
              * chip names a degraded producer and clears on recovery; `null` claims nothing.

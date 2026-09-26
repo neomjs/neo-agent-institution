@@ -1,5 +1,4 @@
 import Base               from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import Button             from '../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Persistence        from '../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs';
 import PerspectiveLibrary from '../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 import WorkspaceDocument  from '../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
@@ -67,7 +66,7 @@ function arrangement({sizes = [0.6078, 0.3922], detailColumn = false} = {}) {
 
 /**
  * The Fleet Cockpit's perspectives: the three declared duties as `zones` the engine selects
- * through `activePerspective`, the bar buttons pressed by its published `dock.perspective.active`,
+ * through `activePerspective`, their rows in the perspectives drawer,
  * the empty library a cockpit files its captures into, and the wrapper that turns the live dock
  * document into one saved layout. A capture is a snapshot beside the declared list, never a
  * perspective of its own. Every factory returns fresh data — the engine clones declarations and
@@ -116,44 +115,6 @@ class CockpitPerspectives extends Base {
      */
     static rows() {
         return duties.map(({name, title}) => ({captureScope: null, layoutId: name, perspectiveName: name, title}))
-    }
-
-    /**
-     * @summary The preset switcher's declared buttons, one per duty in bar order, each pressed by
-     * PUBLISHED truth: `dock.perspective.active` is the engine's committed name, so a switch from
-     * any writer (a click, the Neural Link, a bound provider leaf) presses the right button with
-     * no reconcile. `presetName` rides each button so the controller relay switches without a
-     * per-button closure; the reference keys the duty for tests and the Neural Link.
-     * @returns {Object[]} fresh button configs
-     */
-    static buttons() {
-        return duties.map(({name}) => ({
-            module    : Button,
-            cls       : ['fm-preset-button'],
-            handler   : 'onPresetSelect',
-            presetName: name,
-            reference : `fleet-preset-${name.toLowerCase()}`,
-            text      : name,
-            bind      : {pressed: data => data.dock.perspective.active === name}
-        }))
-    }
-
-    /**
-     * @summary The switch itself: the three declared buttons as ONE segmented group — a container
-     * with an hbox layout — so the row reads as one choice with one value, not as three actions
-     * beside the bar's real actions. Geometry is the cockpit SCSS's (`.fm-preset-group`); the
-     * buttons keep their class, reference and `presetName`, so every consumer of
-     * {@link AgentOS.util.CockpitPerspectives#buttons} reads them unchanged.
-     * @returns {Object} a fresh container config
-     */
-    static group() {
-        return {
-            ntype : 'container',
-            cls   : ['fm-preset-group'],
-            role  : 'group',
-            layout: {ntype: 'hbox', align: 'center'},
-            items : this.buttons()
-        }
     }
 
     /**

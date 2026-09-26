@@ -53,10 +53,10 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         expect(list.items.map(item => item.layoutId)).toEqual(['Overview', 'Focus', 'Review']);
         expect(list.items.map(item => item.captureScope), 'the duties are declared rows, not captures').toEqual([null, null, null]);
         expect(list.captureNote).toBeNull();
+        expect(list.applyNote).toBeNull();
         expect(cockpit.perspectiveStore.list(), 'the capture library starts empty').toEqual([]);
-        // seeded by the Workspace onto the cockpit's own provider — the bar and the drawer bind it
-        expect(cockpit.getStateProvider().getData('dock.perspective.active')).toBe('Overview');
-        expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(true)
+        // seeded by the Workspace onto the cockpit's own provider — the drawer binds it
+        expect(cockpit.getStateProvider().getData('dock.perspective.active')).toBe('Overview')
     });
 
     test('capture files the live layout under the name and projects the verdict — filed, never activated, and never a bar button', async () => {
@@ -77,9 +77,8 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         expect(list.items.map(item => item.perspectiveName)).toEqual(['Overview', 'Focus', 'Review', 'Triage']);
         expect(list.captureNote).toBe('captured "Triage" — apply it from its card');
 
-        // the bar carries the declared duties only — a capture is applied from its card
-        expect(cockpit.getReference('fleet-preset-capture-triage')).toBeFalsy();
-        expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(true)
+        // filed, never activated: the committed name is still the declared duty
+        expect(cockpit.getStateProvider().getData('dock.perspective.active')).toBe('Overview')
     });
 
     test('a capture taken while the inspector is away in its vessel files it in its home, not as closed', async () => {
@@ -169,15 +168,13 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         // switch's refresh does not settle in this harness (no main thread lands the
         // re-projection), so the settled verdict and the cleared request are the declaration
         // spec's witness over a settling cockpit; what this harness CAN pin is the write and the
-        // publication — and the bar following the published name with no reconcile.
+        // publication the drawer follows with no reconcile.
         expect(settled).toBeInstanceOf(Promise);
         expect(cockpit.activePerspective).toBe('Focus');
         expect(cockpit.dockModel.nodes['primary-split'].sizes).toEqual([0.85, 0.15]);
         expect(provider.getData('dock.perspective.active')).toBe('Focus');
         expect(provider.getData('dock.perspective.modified')).toBe(false);
         expect(provider.getData('dock.perspective.pending'), 'the request clears with the refresh, which never lands here').toBe('Focus');
-        expect(cockpit.getReference('fleet-preset-overview').pressed).toBe(false);
-        expect(cockpit.getReference('fleet-preset-focus').pressed).toBe(true);
         expect(cockpit.perspectiveStore.collection.activeLayoutId, 'the library is not the selection').toBeNull()
     });
 });

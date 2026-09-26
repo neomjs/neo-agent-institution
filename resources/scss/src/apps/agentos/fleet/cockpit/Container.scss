@@ -139,7 +139,6 @@
            The spine banner's Reconnect remedy joins the same quiet base: it appears only when the
            banner speaks (exception-only chrome), and a recovery affordance must read as calm, not
            as a second alarm beside the line that already carries the severity. */
-        .neo-button.fm-preset-button,
         .neo-button.fm-reconnect-button {
             border       : 1px solid var(--fm-line);
             background: var(--fm-panel-2);
@@ -157,43 +156,6 @@
             .neo-button-glyph,
             .neo-button-text {
                 color: inherit;
-            }
-        }
-
-        /* THE PERSPECTIVE SWITCH: one choice with one value (the engine's published
-           `dock.perspective.active`), drawn as one segmented field — the group carries the border,
-           radius and ground on the bar's control line; the segments carry none of their own and
-           meet on a 1px divider. The hover lift is a half step of the ground; selected is the
-           chrome's underline — the active dock tab's idiom — never the hover lift, so a mouse
-           resting on an inactive segment cannot paint it as the active one. */
-        .fm-preset-group {
-            box-sizing   : border-box;
-            height       : var(--button-height);
-            border       : 1px solid var(--fm-line);
-            border-radius: var(--button-border-radius);
-            background   : var(--fm-panel-2);
-            overflow     : hidden;
-
-            .neo-button.fm-preset-button {
-                height       : 100%;
-                border       : 0;
-                border-radius: 0;
-                background   : transparent;
-
-                & + .fm-preset-button {
-                    border-left: 1px solid var(--fm-line);
-                }
-
-                &:hover {
-                    background: color-mix(in srgb, var(--fm-panel) 55%, var(--fm-panel-2));
-                    color     : var(--fm-ink);
-                }
-
-                &.pressed {
-                    background: var(--fm-panel);
-                    box-shadow: inset 0 -2px 0 var(--fm-signal);
-                    color     : var(--fm-ink);
-                }
             }
         }
 
