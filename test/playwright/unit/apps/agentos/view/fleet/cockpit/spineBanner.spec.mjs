@@ -84,6 +84,32 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         })
     });
 
+    test.describe('a plane that refused this shell — the refusal speaks, in the child\'s own words', () => {
+        const refused = {cause: 'plane-refused', reason: '[fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch', state: 'degraded'};
+
+        test('it names the refusal, quotes the reason, and offers Connect to reach the card again', () => {
+            const verdict = SpineBanner.deriveSpineBanner({
+                daemon: refused,
+                grid  : {state: 'sample', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}},
+                stream: {state: 'sample', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}}
+            });
+
+            expect(verdict).toEqual({
+                action   : 'connect-plane',
+                ariaLabel: 'The plane refused this shell — connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch',
+                hidden   : false,
+                kind     : 'cold',
+                text     : 'plane refused',
+                title    : 'The plane refused this shell — connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch'
+            })
+        });
+
+        test('a refusal whose line was withheld still names itself', () => {
+            expect(SpineBanner.deriveSpineBanner({daemon: {...refused, reason: null}, grid: {state: 'sample'}, stream: {state: 'sample'}}).title)
+                .toBe('The plane refused this shell — connect it again')
+        })
+    });
+
     test.describe('a shell beside a running plane — the refusal outranks its own consequences', () => {
         const besidePlane = {cause: 'organism-beside-plane', reason: 'Chroma holds localhost:8000', state: 'degraded'};
 

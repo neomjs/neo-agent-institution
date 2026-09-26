@@ -14,6 +14,7 @@ const CAUSE_SEVERITY = Object.freeze({
     'cockpit-destroyed'      : 1,
     'organism-beside-plane'  : 1,
     'owned-child-termination': 2,
+    'plane-refused'          : 1,
     'render-process-gone'    : 1
 });
 

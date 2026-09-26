@@ -66,7 +66,7 @@ class StateProvider extends Provider {
             activityCounts: [],
             /**
              * The lifecycle owner's cause code while the Brain is not running (`organism-beside-plane`,
-             * `boot-not-ready`, …), beside the readable reason below: the banner branches on the code,
+             * `plane-refused`, `boot-not-ready`, …), beside the readable reason below: the banner branches on the code,
              * never on its wording.
              * @member {String|null} daemonCause=null
              */

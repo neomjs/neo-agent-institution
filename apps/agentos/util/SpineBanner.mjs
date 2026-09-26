@@ -217,6 +217,12 @@ class SpineBanner extends Base {
             return verdict('cold', 'plane here', `A plane already runs on this machine — connect this shell to it${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
         }
 
+        // The plane refused this shell's fleet child: the reason is the child's own last line. A stored
+        // record reads as configured, so the card does not come back by itself; Connect brings it.
+        if (daemon?.cause === 'plane-refused') {
+            return verdict('cold', 'plane refused', `The plane refused this shell — connect it again${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
+        }
+
         // Only a sample GRID enters the cold family: its copy asserts roster + server facts, and a
         // sample sibling stream has no standing to make either claim over a live roster.
         // Both-sample keeps the exact pre-partition behavior — the reason scan still covers both

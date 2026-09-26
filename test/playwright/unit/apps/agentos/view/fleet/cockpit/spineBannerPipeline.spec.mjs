@@ -183,6 +183,23 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         expect(provider.data.daemonCause, 'recovery clears the cause').toBeNull()
     });
 
+    test('a plane-attach boot the plane refused travels from the lifecycle owner to the banner, with the child\'s line', () => {
+        const
+            lifecycle = createAppLifecycle({
+                app          : Object.assign(new EventEmitter(), {exit() {}, quit() {}}),
+                teardownBrain: async () => ({})
+            }),
+            {host, provider} = makeDaemonHost(),
+            detail           = '[fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch';
+
+        lifecycle.settleBrainBoot(false, {detail, source: 'plane-refused'});
+        host.applyBrainHealth(lifecycle.brainHealth);
+
+        expect(provider.data.daemonCause).toBe('plane-refused');
+        expect(verdictOf(provider.data)).toMatchObject({action: 'connect-plane', text: 'plane refused'});
+        expect(verdictOf(provider.data).title).toContain('plane identity mismatch')
+    });
+
     // ⭐ The producer→controller→provider witness the predecessor lacked: the SHELL transition
     // drives the surface. A test that hand-assigns `daemonState` witnesses only a pass-through.
     test('⭐ a SHELL transition drives the surface: lifecycle owner → wire payload → provider truth', () => {

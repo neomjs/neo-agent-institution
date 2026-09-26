@@ -47,6 +47,7 @@ import {
     clearRunState,
     detectLiveBrain,
     FLEET_SERVER_ENTRY,
+    fleetReadyOrPlaneRefusal,
     ORCHESTRATOR_ENTRY,
     probePort,
     registerOwnedChild,
@@ -113,6 +114,9 @@ let
     // The plane record's bearer once the product boot has read it; the log redacts it with the others.
     storedPlaneBearer = null;
 
+// Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
+const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer];
+
 // A Finder launch has no terminal: every line main prints also lands in ~/Library/Logs/neo-harness/main.log,
 // with each secret main holds redacted at the file boundary. A logs path the platform refuses leaves the
 // boot running without a file, never failing it.
@@ -120,7 +124,7 @@ try {
     app.setAppLogsPath();
     createMainLog({
         dir    : app.getPath('logs'),
-        secrets: () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer]
+        secrets: mainSecrets
     }).install()
 } catch (error) {
     console.error(`HARNESS_MAIN_LOG_UNAVAILABLE ${error?.message ?? error}`)
@@ -1037,15 +1041,23 @@ async function bootProductBrain() {
             throw new Error(`fleet port ${fleetPort} cannot be reused: ${live.fleetRefusalReason || 'listener did not prove canonical Fleet identity'} — free the port or set NEO_FLEET_PORT`)
         }
 
+        let fleetLastLine = null;
+
         const fleet = startBrainChild({
             entry   : FLEET_SERVER_ENTRY,
             env     : {...packagedEnv, NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
-            onLog   : brainLog,
+            onLog   : line => {fleetLastLine = line; brainLog(line)},
             repoRoot: agentosRuntimeRoot
         });
 
         registerBrainChild({child: fleet, label: 'fleet'});
-        await awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot})
+        await fleetReadyOrPlaneRefusal({
+            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
+            child     : fleet,
+            lastLine  : () => fleetLastLine,
+            mode,
+            secrets   : mainSecrets()
+        })
     }
 
     console.log(`HARNESS_BRAIN_MODE ${mode}${plan.planeBase ? ` planeBase=${plan.planeBase}` : ''} fleetPort=${fleetPort} started=[${brainState.children.map(entry => entry.label).join(',') || 'none'}]`);

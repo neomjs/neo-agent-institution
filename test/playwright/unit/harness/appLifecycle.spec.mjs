@@ -367,6 +367,16 @@ test.describe('harness app lifecycle', () => {
             expect(lifecycle.brainHealth.cause).toMatchObject({detail: 'Chroma holds localhost:8000', source: 'organism-beside-plane'})
         });
 
+        test('a plane-attach boot the plane refused keeps its typed cause and the child\'s line', () => {
+            const
+                app       = createFakeApp(),
+                lifecycle = createAppLifecycle({app, teardownBrain: async () => ({})}),
+                detail    = '[fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch';
+
+            expect(lifecycle.settleBrainBoot(false, {detail, source: 'plane-refused'})).toBe('degraded');
+            expect(lifecycle.brainHealth.cause).toMatchObject({detail, source: 'plane-refused'})
+        });
+
         test('an explicit quit path never renders as impairment: stopped clears the cause', async () => {
             const
                 app       = createFakeApp(),
