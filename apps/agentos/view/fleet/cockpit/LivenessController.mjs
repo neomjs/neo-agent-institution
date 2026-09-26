@@ -1,6 +1,7 @@
 import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import BrainHealthRead     from '../../../util/BrainHealthRead.mjs';
 import DeploymentStateRead from '../../../util/DeploymentStateRead.mjs';
+import FleetAdmission      from '../../../util/FleetAdmission.mjs';
 import SourceHealth        from '../../../util/SourceHealth.mjs';
 import TargetBinding       from '../../../util/TargetBinding.mjs';
 
@@ -261,15 +262,7 @@ class LivenessController extends ComponentController {
             }
 
             if (capability?.state === 'wired') {
-                store.ingestSnapshot(Array.isArray(events) ? events : [], {replace: !me.activityWired});
-                me.activityWired     = true;
-                me.activityProfileId = profileId;
-                me.publishConnection('stream', {data: {
-                    activityCounts      : Array.isArray(counts) ? counts : [],
-                    streamAdapterState  : 'live',
-                    streamDegradedReason: null
-                }});
-                stream && (stream.adapterState = 'live')
+                me.admitActivity({counts, events, profileId})
             } else if (capability?.state === 'degraded') {
                 me.publishConnection('stream', {data: {
                     streamAdapterState  : 'stale',
@@ -344,47 +337,35 @@ class LivenessController extends ComponentController {
 
             // an EMPTY answer is authoritative: nothing is seeded that it could erase, the registry
             // has no agents, and the roster's own empty state says so
-            me.lastLiveRows    = mapped;
-            me.rosterProfileId = profileId;
-
-            if (me.rosterWired) {
-                me.reconcileRoster(store, mapped)
-            } else {
-                store.clear();
-                mapped.length > 0 && store.add(mapped);
-                me.rosterWired = true;
-                // the first live snapshot replaces what the store holds wholesale — re-seat or
-                // clear a selection made against a now-removed record
-                me.reconcileSelection()
-            }
-
-            me.publishConnection('grid', {data: {
-                gridAdapterState  : 'live',
-                gridDegradedReason: null,
-                // the presence-capability envelope rides every admitted snapshot; absent or
-                // malformed envelopes plumb null — the chip claims nothing
-                presenceCapability: capabilities?.presence ?? null
-            }});
-            grid && (grid.adapterState = 'live');
-
-            TargetBinding.refreshRosterConsumers(me);
-
-            if (me.operatorRecord) {
-                me.operatorIdentityPosture = me.deriveOperatorIdentityPosture(me.operatorRecord.agentIdentityNodeId);
-                cockpit.getOperatorMailboxPane()?.set({identityPosture: me.operatorIdentityPosture})
-            }
-
-            // a resident CatchUp can emit its construction-time request BEFORE the bridge wires;
-            // that one-shot miss recovers the moment the bridge answers, through the pane's own
-            // guarded refresh path
-            me.catchUpSnapshot?.capability?.state === 'unavailable' && cockpit.getCatchUpPane()?.onRefreshClick();
-            // the Golden Path read has the same construction-time miss; its leaf is the owner's own truth
-            provider?.getData('goldenPathEnvelope.capability.state') === 'unavailable' && me.loadGoldenPath()
+            me.admitRoster({capabilities, profileId, rows: mapped})
         } catch (error) {
             if (generation === me.gridReadGeneration && !me.isDestroyed) {
                 me.degradeWiredSurface('grid', error, grid)
             }
         }
+    }
+
+    /**
+     * @summary Admits an ANSWERED activity feed — the one path a wired answer and a test's landing
+     * share; the rule lives in `AgentOS.util.FleetAdmission` (this file holds its size bar).
+     * {@link #loadActivity} calls it after its generation fence; the tests' landing calls it directly.
+     * @param {Object} answer `{events, counts, profileId}`
+     * @protected
+     */
+    admitActivity(answer) {
+        FleetAdmission.admitActivity(this, answer)
+    }
+
+    /**
+     * @summary Admits an ANSWERED roster over record-shaped rows — the one path a wired answer and a
+     * test's landing share; the rule lives in `AgentOS.util.FleetAdmission` (this file holds its size
+     * bar). {@link #loadRoster} calls it after its generation fence and validation; the tests' landing
+     * calls it directly.
+     * @param {Object} answer `{rows, capabilities, profileId}`
+     * @protected
+     */
+    admitRoster(answer) {
+        FleetAdmission.admitRoster(this, answer)
     }
 
     /**

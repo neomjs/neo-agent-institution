@@ -1,6 +1,5 @@
 import FleetActivityEvents from '../../../store/FleetActivityEvents.mjs';
 import FleetRoster         from '../../../store/FleetRoster.mjs';
-import GoldenPathEnvelope  from '../../../util/GoldenPathEnvelope.mjs';
 import Provider            from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import SpineBanner         from '../../../util/SpineBanner.mjs';
 import TelltaleDeriver     from '../../../util/ViewerWakeTelltale.mjs';
@@ -84,12 +83,6 @@ class StateProvider extends Provider {
              * @member {String|null} daemonState=null
              */
             daemonState: null,
-            /**
-             * The Golden Path envelope that every Golden Path pane binds, written only by the Golden
-             * Path read. Declared leaf-complete: an object written into a `null` leaf reads `null`.
-             * @member {Object} goldenPathEnvelope
-             */
-            goldenPathEnvelope: GoldenPathEnvelope.blank(),
             /**
              * The grid surface's adapter state — `'cold'` until a source answers (no data is
              * claimed, none is seeded), then `'live'` or `'stale'`; absent-item materialization

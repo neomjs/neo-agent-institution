@@ -4,10 +4,10 @@ import ObservatoryCanvas     from './ObservatoryCanvas.mjs';
 import ViewerTime            from '../../../util/ViewerTime.mjs';
 
 /**
- * @summary The observatory pane — the Golden Path as a navigable 3D scene on the canvas worker, with
- * the cockpit's currency line first (the one reading of the envelope, with when the route was captured)
- * and the node under the pointer named beside it. It binds the cockpit's `goldenPathEnvelope` leaf and
- * synthesizes nothing: a current route is drawn in the signal, a withheld one dim as the last known
+ * @summary The Observatory keeper-view — the Golden Path as a navigable 3D scene on the canvas worker,
+ * with the cockpit's currency line first (the one reading of the envelope, with when the route was
+ * captured) and the node under the pointer named beside it. It binds the shell's `goldenPathEnvelope`
+ * leaf, which the cockpit's Golden Path read writes, and synthesizes nothing: a current route is drawn in the signal, a withheld one dim as the last known
  * good route, and a degraded, unavailable or unobserved source draws nothing. Drag orbits, the wheel
  * zooms.
  *
@@ -31,7 +31,7 @@ class ObservatoryContainer extends Container {
          */
         baseCls: ['fm-observatory-pane'],
         /**
-         * The `fleetGoldenPath` envelope, bound from the cockpit provider's `goldenPathEnvelope` leaf.
+         * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf.
          * @member {Object|null} envelope_=null
          * @reactive
          */
