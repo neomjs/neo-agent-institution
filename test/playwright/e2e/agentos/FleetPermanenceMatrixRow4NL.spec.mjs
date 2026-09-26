@@ -1,4 +1,4 @@
-import {expect, test} from '../../fixtures.mjs';
+import {expect, landFleetSample, test} from '../../fixtures.mjs';
 
 /**
  * @summary Matrix row 4 — object permanence / reintegration WITH live-store continuity, on the
@@ -66,6 +66,7 @@ test.describe('matrix row 4 — AgentDetail permanence with live FleetRoster con
 
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetSample(page);
         await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
         const app      = await neuralLink.connectToApp('AgentOS'),

@@ -1,4 +1,4 @@
-import {test, expect} from '../../fixtures.mjs';
+import {expect, landFleetSample, test} from '../../fixtures.mjs';
 
 /**
  * @summary Verifies the AgentOS harness shell boots to the left-rail keeper-view nav with the Fleet
@@ -23,6 +23,7 @@ test.describe('AgentOS harness shell — left-rail keeper-view nav', () => {
 
         // Fleet is the default keeper-view: the CARD cockpit (fleet grid + health bar + activity stream)
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetSample(page);
         await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 60000});
         expect(await page.locator('.fm-agent-card').count()).toBeGreaterThan(0);
         await expect(page.locator('.fm-health-bar')).toBeVisible();
@@ -39,20 +40,18 @@ test.describe('AgentOS harness shell — left-rail keeper-view nav', () => {
         await expect(page.locator('.agent-definition-form')).toBeVisible({timeout: 30000})
     });
 
-    test('offline first-run renders the calm static-roster view — zero per-card source alarms (#17210)', async ({page}) => {
+    test('the sample fleet renders calm — zero per-card source alarms (#17210)', async ({page}) => {
         await page.goto('/apps/agentos/index.html');
 
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
-        await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 60000});
+        await landFleetSample(page);
 
-        // the topology gate: this test's acceptance surface is the OFFLINE first-run — the sample
-        // badge must be up (no fleet server reachable), else the run is measuring the wrong topology
-        await expect(page.locator('.fm-fleet-head')).toHaveClass(/is-sample/, {timeout: 30000});
-        await expect(page.locator('.fm-fleet-stale')).toHaveText('static roster');
+        // the topology gate: the fixture landed as the fleet's answer, so the head reads live — a run
+        // measuring the app's seed or a degraded read would be the wrong topology
+        await expect(page.locator('.fm-fleet-head')).toHaveClass(/is-live/, {timeout: 30000});
 
-        // the retired defect: one red "Roster not nominal · malformed source fact" strip per card.
-        // Declared absence earns zero pixels — every strip stays hidden; the badge + banner announce
-        // the condition once.
+        // the retired defect: one red "Roster not nominal · malformed source fact" strip per card for
+        // the sample's unobserved source facts. Declared absence earns zero pixels — every strip stays hidden.
         expect(await page.locator('.fm-agent-card').count()).toBeGreaterThan(0);
         await expect(page.locator('.fm-card-strip:visible')).toHaveCount(0)
     });

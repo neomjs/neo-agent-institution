@@ -1,12 +1,9 @@
-import path            from 'path';
-import {fileURLToPath} from 'url';
-
 /**
  * @summary The cockpit container specs' shared fakes — the provider, controller and activity-store
- * collaborators plus the roster seed path — one module the concern-named specs import by name, so
+ * collaborators plus the tests' sample roster — one module the concern-named specs import by name, so
  * each carries only the seams it drives. The fakes' own JSDoc travels with them.
  */
-export const seedPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../../../../apps/agentos/resources/data/fleetRoster.json');
+export {sampleRoster as seedRows} from '../../../../../../fixture/fleetSample.mjs';
 
 // A usable three-source collection: the runtime axis is WIRED. The eligibility partition fails a
 // fleet start closed without it (projected 'off' over unusable provenance is display fallback,

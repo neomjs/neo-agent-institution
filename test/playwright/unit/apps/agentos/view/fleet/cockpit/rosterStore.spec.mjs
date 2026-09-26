@@ -11,13 +11,12 @@ setup({
 });
 
 import {test, expect}                                                     from '@playwright/test';
-import {readFileSync}                                                     from 'fs';
 import Neo                                                                from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core                                                          from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                         '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
-import {makeControllerFake, makeProviderFake, seedPath, wireDetailRecord} from './cockpitFakes.mjs';
+import {makeControllerFake, makeProviderFake, seedRows, wireDetailRecord} from './cockpitFakes.mjs';
 
 /**
  * Covers the Store-backed roster data path: the shared `FleetRoster` singleton contract
@@ -113,8 +112,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(FleetRoster.config.singleton).toBeFalsy();
         expect(FleetRoster.config.url).toBe('../../apps/agentos/resources/data/fleetRoster.json');
 
-        // the JSON sample seed: the eleven REAL maintainer identities, registry-derived — no invented agents
-        const seed = JSON.parse(readFileSync(seedPath, 'utf8')).data;
+        // the tests' sample roster: the eleven REAL maintainer identities, registry-derived — no invented agents
+        const seed = seedRows;
         expect(seed).toHaveLength(11);
         const knownHandles = ['neo-fable', 'neo-fable-clio', 'neo-gemini-pro', 'neo-gpt', 'neo-gpt-emmy', 'neo-kimi-iris', 'neo-kimi-phoebe', 'neo-opus-ada', 'neo-opus-grace', 'neo-opus-vega', 'neo-preview'];
         expect(seed.map(row => row.agentId).sort()).toEqual(knownHandles);

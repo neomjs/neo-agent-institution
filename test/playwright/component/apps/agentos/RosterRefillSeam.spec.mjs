@@ -1,10 +1,7 @@
-import {test, expect}  from '@playwright/test';
-import {readFileSync}  from 'fs';
-import path            from 'path';
-import {fileURLToPath} from 'url';
+import {test, expect}             from '@playwright/test';
+import {sampleRoster as seedRows} from '../../../fixture/fleetSample.mjs';
 
 const
-    seedRows = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../apps/agentos/resources/data/fleetRoster.json'), 'utf8')).data,
     STORE_ID = 'seam-roster-store',
     // both paths resolve from the App worker's own file (`node_modules/neo.mjs/src/worker/`)
     GRID     = '../../../../apps/agentos/view/fleet/roster/Container.mjs',
