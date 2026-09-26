@@ -2,11 +2,11 @@
     "note": "Input-identity stamp for the Darwin visual baselines — regenerate via `npm run stamp-visual-baselines` whenever goldens are re-captured. The check compares digests only; it never grants CI pixel authority.",
     "engine": "82653552000e52574fc64d4536decba6662ff563b35d4d26d1ed6bfc5b9a9981",
     "inputs": {
-        "apps/agentos": "6723487a857680073907ef89de17f5107c5532adbc9075ff706a06545f7580e7",
-        "resources/scss": "ba6879a3762b5bb8a4f7e5a0c11a209acd0f98aed18ef2bc1b4263eada7cdd26",
+        "apps/agentos": "ce9772a811fc87693ba36fa7f746b728402cc2cf54142f087dd5dc8365c30b09",
+        "resources/scss": "4fc4a73ed5fafce73bd54f625a31098317065b5c64d7caadf45c59ba4a252cc3",
         "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs": "1df2103262bdfa8a3bd2d38cdb133d3159edd2d1b98bab2f5032f5bab6cb73c3",
         "test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots": "8b4a56b27e4b5f599d8c8a53c376a480955c13692ea89eef785c245e32324acb",
         "test/playwright/visual/FleetCockpitVisual.spec.mjs": "472f0395bc1a001039d027df903431b8248576369d4a1bb09392c25f4c1379a4",
-        "test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs": "a04ebfa51e6c217576ec932ffdcf8da7dc184eca3547ff66b509b09777ec5502"
+        "test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs": "975e0ff5337284a2476b62dc10c4bfab99a2421f59619a88e890442642a3b528"
     }
 }

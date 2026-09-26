@@ -217,5 +217,33 @@ test.describe('InstanceSwitcher — framework button + Store-backed menu (#17367
         await waitForMenu(switcher);
         switcher.destroy();
         store.destroy()
+    });
+
+    test('under shell custody the trigger names the shell\'s plane and the one affordance attaches a plane (#241)', async () => {
+        const store    = Neo.create(FleetInstances, {data: []});
+        const switcher = Neo.create(InstanceSwitcher, {appName, instanceState: 'ok', instanceStore: store, shellCustody: true});
+        const attached = [], managed = [];
+
+        expect(switcher.getVdomRoot()['aria-label'], 'no plane yet: the shell runs its own organism').toBe('Instance: this machine — connected');
+
+        switcher.shellPlaneBase = 'http://127.0.0.1:3102';
+        expect(switcher.getVdomRoot()['aria-label']).toBe('Instance: 127.0.0.1:3102 — connected');
+        expect(switcher.textNode.cn[1].text).toBe('127.0.0.1:3102');
+
+        const menu = await waitForMenu(switcher);
+
+        menu.createItems(true);
+        expect(menu.vdom.cn, 'no profile rows and no separator: the roster is browser custody').toHaveLength(1);
+        expect(menu.vdom.cn[0].text).toBe('Connect a plane…');
+
+        switcher.on('attachplane', data => attached.push(data.source));
+        switcher.on('manageinstances', data => managed.push(data.source));
+        switcher.onInstanceMenuManage();
+
+        expect(attached).toEqual([switcher.id]);
+        expect(managed).toEqual([]);
+
+        switcher.destroy();
+        store.destroy()
     })
 });

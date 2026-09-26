@@ -67,6 +67,10 @@ class Viewport extends BaseViewport {
                 // the bound instance's connection state as a session-state key — written at the
                 // spine banner's sync point, so the chrome dot and the banner share ONE truth
                 instanceState: 'off',
+                // the packaged shell holds fleet custody in main: the switcher then shows the
+                // shell's own binding (the attached plane's base, `null` for this machine's organism)
+                shellCustody  : false,
+                shellPlaneBase: null,
                 // the connected instance's deployment-state picture — the System keeper-view's plane
                 // truth, written by the cockpit's read owner through setData's closest-owner walk and
                 // declared HERE so a sibling keeper-view can bind it; leaf-complete by construction
@@ -115,9 +119,12 @@ class Viewport extends BaseViewport {
                 bind     : {
                     boundProfileId: data => data.boundProfileId,
                     instanceState : data => data.instanceState,
-                    instanceStore : 'stores.fleetInstances'
+                    instanceStore : 'stores.fleetInstances',
+                    shellCustody  : data => data.shellCustody,
+                    shellPlaneBase: data => data.shellPlaneBase
                 },
                 listeners: {
+                    attachplane    : 'onAttachPlane',
                     manageinstances: 'onManageInstances',
                     switchinstance : 'onSwitchInstance'
                 }

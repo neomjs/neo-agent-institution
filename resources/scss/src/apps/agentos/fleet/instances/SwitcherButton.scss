@@ -15,7 +15,8 @@
     padding      : var(--fm-space-1) var(--fm-space-2);
 
     /* the text row and the label shrink WITH the button: a flex item's default minimum is its own
-       nowrap text, so max-width + ellipsis alone never fired and the label painted over its neighbours */
+       nowrap text, so max-width + ellipsis alone never fired and the label painted over its neighbours.
+       The label is an endpoint as written, so its case is kept. */
     .neo-button-text {
         align-items   : center;
         color         : inherit;
@@ -25,7 +26,6 @@
         letter-spacing: var(--fm-text-chrome-tracking);
         max-width     : 100%;
         min-width     : 0;
-        text-transform: uppercase;
     }
 
     &:hover {
