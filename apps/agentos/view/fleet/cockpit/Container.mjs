@@ -11,7 +11,6 @@ import PerspectiveLibrary     from '../../../../../node_modules/neo.mjs/src/dash
 import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
 import GoldenPathPane         from '../goldenpath/Container.mjs';
-import GoldenPathGraph        from '../goldenpath/GraphContainer.mjs';
 import MemoriesPane           from '../memories/Container.mjs';
 import OperatorMailbox        from '../mailbox/OperatorContainer.mjs';
 import TasksPane              from '../tasks/Container.mjs';
@@ -183,12 +182,6 @@ class FleetCockpit extends VesselContainer {
                 reference: 'golden-path',
                 bind     : {envelope: data => data.goldenPathEnvelope},
                 listeners: {goldenPathRequest: 'onGoldenPathRequest'}
-            },
-            goldenPathGraph: {
-                module   : GoldenPathGraph,
-                header   : {text: 'Route graph'},
-                reference: 'golden-path-graph',
-                bind     : {envelope: data => data.goldenPathEnvelope}
             },
             // the inspector and the invoked tools: auto-hidden onto the right edge's rail
             detail: {
@@ -585,6 +578,9 @@ class FleetCockpit extends VesselContainer {
             if (errors.length) {
                 return me.refusePerspective(name, errors)
             }
+
+            // a host without a pane catalog has nothing to retire against, so it keeps every item
+            me.panes && (document = CockpitPerspectives.retireUndeclaredItems(document, Object.keys(me.panes)))
         }
 
         me.presetError = null;

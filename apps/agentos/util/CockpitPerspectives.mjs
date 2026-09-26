@@ -1,4 +1,5 @@
 import Base               from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import Operations         from '../../../node_modules/neo.mjs/src/dashboard/dock/model/Operations.mjs';
 import Persistence        from '../../../node_modules/neo.mjs/src/dashboard/dock/model/Persistence.mjs';
 import PerspectiveLibrary from '../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 import WorkspaceDocument  from '../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
@@ -45,7 +46,7 @@ function arrangement({sizes = [0.6078, 0.3922], detailColumn = false} = {}) {
         sizes,
         children   : [
             {id: 'fleet-tabs',  items: ['fleet']},
-            {id: 'stream-tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp', 'goldenPath', 'goldenPathGraph']}
+            {id: 'stream-tabs', items: ['stream', 'tasks', 'memories', 'operator', 'catchUp', 'goldenPath']}
         ]
     };
 
@@ -202,6 +203,28 @@ class CockpitPerspectives extends Base {
             title   : perspectiveName,
             metadata: {source: 'fm-cockpit-capture'}
         })
+    }
+
+    /**
+     * @summary A stored layout with every item the cockpit no longer declares retired: each is removed
+     * from the tree and the catalog the way a close removes it, so an emptied tab strip or split
+     * collapses and activation moves on. A shared perspective exported before a pane left the cockpit
+     * then restores without a tab for a pane that no longer exists. A retired item's lock and
+     * closability belonged to the pane that is gone, so neither keeps it.
+     * @param {Object} document A restored `neo.dock.zone.v1` document.
+     * @param {String[]} declaredIds The cockpit's declared pane ids.
+     * @returns {Object} the document without the undeclared items
+     */
+    static retireUndeclaredItems(document, declaredIds) {
+        const declared = new Set(declaredIds);
+
+        return Object.keys(document?.items ?? {}).filter(itemId => !declared.has(itemId)).reduce((current, itemId) => {
+            const
+                released = {...current, items: {...current.items, [itemId]: {...current.items[itemId], closable: true, locked: false}}},
+                {document: retired, errors} = Operations.closeItem(released, {itemId});
+
+            return errors.length ? current : retired
+        }, document)
     }
 
     /**
