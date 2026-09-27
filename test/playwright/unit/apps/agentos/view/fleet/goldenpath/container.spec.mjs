@@ -178,7 +178,7 @@ test.describe('AgentOS.view.fleet.goldenpath.Container — the computed route as
 
     test('an item selects its node in the graph read: the button is live only where the read lists the item, and the selected item is marked', () => {
         const
-            listing = route => GraphSceneEnvelope.fromWire({capability: {state: 'current'}, scene: {route}}),
+            listing = route => GraphSceneEnvelope.fromWire({capability: {state: 'current'}, scene: {route, nodes: route.map(id => ({id}))}}),
             pane    = createPane({envelope: envelope(), graphEnvelope: listing(['neo#19226'])}),
             buttons = () => itemsOf(pane).map(card => card.down({ntype: 'button'}).disabled),
             marked  = () => itemsOf(pane).map(card => card.cls.includes('is-selected'));
@@ -204,11 +204,35 @@ test.describe('AgentOS.view.fleet.goldenpath.Container — the computed route as
     test('a bare route id selects the node the graph read qualified with its origin', () => {
         const pane = createPane({
             envelope     : envelope({route: {items: [{id: 'issue-9853', title: 'bare', score: 1, rank: 1, citations: []}]}}),
-            graphEnvelope: GraphSceneEnvelope.fromWire({capability: {state: 'current'}, scene: {route: ['neomjs/neo#issue-9853']}})
+            graphEnvelope: GraphSceneEnvelope.fromWire({capability: {state: 'current'}, scene: {route: ['neomjs/neo#issue-9853'], nodes: [{id: 'neomjs/neo#issue-9853'}]}})
         });
 
         pane.onItemChoose('issue-9853');
         expect(pane.selectedId).toBe('neomjs/neo#issue-9853');
+
+        pane.destroy()
+    });
+
+    test('an item whose node the read cut, or cannot tell apart from another origin\'s, stays unselectable', () => {
+        const pane = createPane({
+            envelope     : envelope({route: {items: [
+                {id: 'issue-1', title: 'two origins', score: 1, rank: 1, citations: []},
+                {id: 'issue-2', title: 'cut',         score: 1, rank: 2, citations: []}
+            ]}}),
+            graphEnvelope: GraphSceneEnvelope.fromWire({capability: {state: 'current'}, scene: {
+                route: ['org/a#issue-1', 'org/b#issue-1', 'org/a#issue-2'],
+                nodes: [{id: 'org/a#issue-1'}, {id: 'org/b#issue-1'}]
+            }})
+        });
+
+        expect(itemsOf(pane).map(card => card.down({ntype: 'button'}).disabled)).toEqual([true, true]);
+
+        pane.selectedId = 'org/a#issue-1';
+        pane.onItemChoose('issue-1');
+        pane.onItemChoose('issue-2');
+
+        expect(pane.selectedId, 'neither choice moves the shared selection').toBe('org/a#issue-1');
+        expect(itemsOf(pane).map(card => card.cls.includes('is-selected')), 'the ambiguous item never claims it').toEqual([false, false]);
 
         pane.destroy()
     });
