@@ -64,6 +64,15 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
             .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · complete')
     });
 
+    test('the line counts what the pane drew and names what the read carried beyond it; a read drawn whole reads as the read', () => {
+        const landed = GraphSceneEnvelope.fromWire(current()), stamp = at => `viewer ${at.slice(11, 16)}`;
+
+        expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 2, edges: 1}).text, 'drawn whole').toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · complete');
+        expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 2, edges: 0}).text).toBe('Current · captured viewer 22:05 · 2 nodes · 0 edges · 1 edge not drawn · complete');
+        expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 0, edges: 0}).text, 'a read none of whose nodes is drawn still says what it carried')
+            .toBe('Current · captured viewer 22:05 · 0 nodes · 0 edges · 2 nodes not drawn · 1 edge not drawn · complete')
+    });
+
     test('a route item resolves only to a seed the read holds: a qualified id as itself, a bare id when one origin holds it', () => {
         const
             read = (route, ids) => GraphSceneEnvelope.fromWire(current({route, nodes: ids.map(id => ({id, label: id, kind: 'issue'}))})),

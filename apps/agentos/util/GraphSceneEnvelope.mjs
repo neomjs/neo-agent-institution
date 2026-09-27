@@ -86,11 +86,16 @@ class GraphSceneEnvelope extends Base {
      * capture instant, what the scene holds and its completeness. A budget cut reads as partial and names
      * the budget; a complete read says complete. The instant goes through `formatStamp` (the pane passes
      * the viewer's clock; the default is the UTC minute) and is left out when unparseable.
+     *
+     * The counts are what the pane drew, when it passes them: a node without an id, an edge whose ends are not
+     * both nodes of the read, or a repeated edge is not drawn, and the line says how many of the read's own
+     * were not. Without `drawn` it counts the read.
      * @param {Object|null} envelope A landed envelope.
      * @param {Function} [formatStamp] `(isoString) → String|null`
+     * @param {Object|null} [drawn=null] `{nodes, edges}`: what the pane drew from this read
      * @returns {{currency: String, text: String}}
      */
-    static describe(envelope, formatStamp = at => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}Z`) {
+    static describe(envelope, formatStamp = at => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}Z`, drawn = null) {
         const
             currency = envelope?.capability?.state ?? 'unobserved',
             reason   = envelope?.capability?.reason ?? null,
@@ -98,7 +103,10 @@ class GraphSceneEnvelope extends Base {
             at       = envelope?.capturedAt,
             stamp    = typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? formatStamp(at) : null,
             plural   = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`,
-            holds    = scene?.nodes?.length ? `${plural(scene.nodes.length, 'node')} · ${plural(scene.edges?.length ?? 0, 'edge')}` : null,
+            read     = {nodes: scene?.nodes?.length ?? 0, edges: scene?.edges?.length ?? 0},
+            {nodes, edges} = drawn ?? read,
+            unseen   = [[read.nodes - nodes, 'node'], [read.edges - edges, 'edge']].filter(([count]) => count > 0).map(([count, word]) => `${plural(count, word)} not drawn`),
+            holds    = read.nodes ? [`${plural(nodes, 'node')} · ${plural(edges, 'edge')}`, ...unseen].join(' · ') : null,
             budget   = scene?.budget,
             cut      = scene?.completeness === 'truncated'
                 ? `partial, budget ${budget?.maxNodes ?? '?'} nodes / ${budget?.maxEdges ?? '?'} edges / ${budget?.maxBytes ? `${Math.round(budget.maxBytes / 1024)} KiB` : '?'}`

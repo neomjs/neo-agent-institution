@@ -192,7 +192,7 @@ apps/agentos/util/GoldenPathEnvelope.mjs
     b112a479ca39a63d579e8dc5f13926fe6a9aa3a0
 
 apps/agentos/util/GraphSceneEnvelope.mjs
-    f460cc8825861f6e07f91b5fb06f75cff9979291
+    7a09b0dd9041d6de65e152fde1757539be77b749
 
 apps/agentos/util/KindRegistry.mjs
     b33024720f4b84257113f91ea0664f7be2e26081
@@ -288,7 +288,7 @@ apps/agentos/view/fleet/goldenpath/ObservatoryCanvas.mjs
     042eb1202d488758ddf7578739ea3184ec8cf68a
 
 apps/agentos/view/fleet/goldenpath/ObservatoryContainer.mjs
-    c0b64e8063a606c35c896804d5cd6af4978c33a1
+    9b28424c0356c3d7925e2bee03cbebe7574f4983
 
 apps/agentos/view/fleet/goldenpath/ObservatoryNodeList.mjs
     5e368781abf3361bc7822276143dd0f04420f0f4
