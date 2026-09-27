@@ -1,7 +1,7 @@
 /* The observatory pane — the graph read as a 3D scene on the FM tonal stack, the Golden Path's route an
    overlay: the read's line, the hovered node and the route toggle in the chrome role above, the selection
    strip below them, the canvas worker's WebGL surface filling the rest on the panel ground (the surface clears
-   to transparent, so the ground is this stylesheet's). The scene is painted in the same ink tiers by the
+   to transparent, so the ground is this stylesheet's). The scene is painted from the same tokens by the
    renderer (apps/agentos/canvas/Observatory.mjs), which reads the token VALUES from their one mirror
    (apps/agentos/canvas/fmPalette.mjs) because a worker has no stylesheet to read. */
 .fm-observatory-pane {
@@ -13,8 +13,31 @@
         min-width    : 0;
     }
 
+    /* the route toggle: the roster's quiet ghost verb, whose pressed state carries the choice. A real Neo
+       Button, so the engine's 48px chrome height and its label type rule are re-bound here. */
     .fm-observatory-route {
-        margin-right: var(--fm-space-2);
+        --button-height: auto;
+
+        border       : 1px solid transparent;
+        border-radius: 999px;
+        color        : var(--fm-ink-dim);
+        font         : var(--fm-text-micro);
+        margin-right : var(--fm-space-2);
+        padding      : 2px var(--fm-space-2);
+
+        .neo-button-text {
+            font: inherit;
+        }
+
+        &.pressed {
+            border-color: var(--fm-line-soft);
+            color       : var(--fm-ink);
+        }
+
+        &:focus-visible {
+            outline       : 2px solid var(--fm-signal);
+            outline-offset: 1px;
+        }
     }
 
     .fm-observatory-head {

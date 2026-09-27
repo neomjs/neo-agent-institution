@@ -675,21 +675,34 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForTimeout(600)
     };
 
-    test('the Observatory pane — a bounded read draws its seeds as rank beacons with their neighbours around them; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
+    test('the Observatory pane — a read draws its communities and the route as an overlay of rank beacons the toggle removes; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
         const
             pane    = page.locator('.fm-observatory-pane'),
-            current = /^Current · captured .+ · 16 nodes · 15 edges · complete$/;
+            toggle  = pane.getByRole('button', {name: 'Route'}),
+            current = /^Current · captured .+ · 16 nodes · 15 edges · complete$/,
+            // no tooltip in a shot. The pointer dwells until any pending tooltip has shown, then leaves and
+            // waits out the hide: an engine tooltip whose target is left inside its show delay stays up.
+            rest    = async () => {
+                await page.waitForTimeout(300);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(500)
+            };
 
         await bootSettledCockpit(page);
         await openObservatoryPane(page);
-        // no tooltip in a shot: the pointer dwells until the tab's tooltip has shown, then leaves and waits out
-        // the hide, since an engine tooltip whose target is left inside its show delay stays up
-        await page.waitForTimeout(300);
-        await page.mouse.move(0, 0);
-        await page.waitForTimeout(500);
+        await rest();
 
         await feedObservatory(page, 'current', current);
         await expect(pane).toHaveScreenshot('observatory-pane-current.png');
+
+        // the route is an overlay: switched off, the same graph stays where it was
+        await toggle.click();
+        await rest();
+        await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        await expect(pane).toHaveScreenshot('observatory-pane-route-off.png');
+        await toggle.click();
+        await rest();
+        await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
         await feedObservatory(page, 'current', current, 'neomjs/neo#issue-8');
         await expect(pane.locator('.fm-observatory-selection')).toHaveText('Selected · Golden Path currency on the cockpit · issue · neomjs/neo#issue-8 · rank 2 · 4 relations (1 authored, 1 relates, 1 resolves, 1 tagged)');
@@ -700,7 +713,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(pane).toHaveScreenshot('observatory-pane-truncated.png');
 
         await switchToLightSkin(page);
-        await page.waitForTimeout(600);
+        await rest();
         await expect(pane, 'a skin change inks the same scene and selection again').toHaveScreenshot('observatory-pane-truncated-light.png');
 
         // a withheld Golden Path route is named beside the graph read's own words, never folded into them

@@ -62,16 +62,13 @@ const layoutScene = currency => ({
 const colorOf = (colors, index) => Array.from(colors.slice(index * 3, index * 3 + 3));
 
 /**
- * A community's tone in a palette, as the renderer mixes it: a step from ink toward dim ink.
- * @param {Object} palette
+ * A community's tone in the renderer's current skin. The arms test which node takes which community's tone; the
+ * palette itself is the arm below.
+ * @param {Object} palette Unused: the renderer's skin decides
  * @param {Number} community
  * @returns {Number[]}
  */
-const toneOf = (palette, community) => {
-    const ink = rgb(palette.ink), dim = rgb(palette.inkDim), share = community * 0.618034 % 1 * 0.8;
-
-    return ink.map((value, channel) => value + (dim[channel] - value) * share)
-};
+const toneOf = (palette, community) => Observatory.toneOf(community);
 
 const rounded = triple => triple.map(value => Math.round(value * 1000));
 
@@ -91,6 +88,29 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect(flat.paths, 'the route joins its seeds in route order').toEqual([[0, 1]]);
         expect(flat.positions).toEqual([0, 0.5, 0,  0.6, -0.5, 0.2,  -0.3, 0.3, 0.1,  -0.5, 0.2, 0.3,  0.2, -0.9, -0.4]);
         expect(flat.edges).toEqual([0, 2, 2, 3])
+    });
+
+    test('the communities read apart and below the route: distinct muted tones, none as saturated as the signal, lighter in the dark skin than the light', () => {
+        const
+            saturation = ([r, g, b]) => (Math.max(r, g, b) - Math.min(r, g, b)) / Math.max(r, g, b),
+            dark       = [0, 1, 2, 3].map(community => Observatory.toneOf(community));
+
+        expect(new Set(dark.map(tone => rounded(tone).join())).size, 'four communities, four tones').toBe(4);
+        dark.forEach(tone => expect(saturation(tone)).toBeLessThan(saturation(rgb(PALETTES.dark.signal))));
+
+        Observatory.theme = 'light';
+
+        const light = Observatory.toneOf(0);
+
+        expect(Math.max(...light), 'the light skin inks its communities darker').toBeLessThan(Math.max(...dark[0]))
+    });
+
+    test('a denser read draws smaller nodes: full size up to 400 nodes, then shrinking toward the floor', () => {
+        const sizeAt = count => Observatory.ink(ObservatorySceneLayout.fromGraphScene(wholeGraphEnvelope({communities: 4, nodes: count, routeLength: 0}))).sizes[0];
+
+        expect(sizeAt(400)).toBe(12);
+        expect(sizeAt(1600)).toBeCloseTo(6, 6);
+        expect(sizeAt(40000)).toBe(3)
     });
 
     test('a large read hands its communities to the engine: the fitted camera draws the far level, closer ones mid and near', () => {
@@ -128,12 +148,12 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect(Observatory.ink(null)).toBeNull()
     });
 
-    test('a selection grows its node and fades — dims and shrinks — every node but it and its neighbours; an id the scene lacks selects nothing', () => {
+    test('a selection grows its node and fades — dims and shrinks — every node but it and its neighbours, while a drawn route only shrinks; an id the scene lacks selects nothing', () => {
         const
             {dark} = PALETTES,
             flat   = Observatory.ink(layoutScene('current'), 'o#agent-7');
 
-        expect([0, 1, 2, 3, 4].map(index => rounded(colorOf(flat.colors, index)))).toEqual([rgb(dark.signal), rgb(dark.line), toneOf(dark, 0), toneOf(dark, 0), rgb(dark.line)].map(rounded));
+        expect([0, 1, 2, 3, 4].map(index => rounded(colorOf(flat.colors, index)))).toEqual([rgb(dark.signal), rgb(dark.signal), toneOf(dark, 0), toneOf(dark, 0), rgb(dark.line)].map(rounded));
         expect(flat.sizes.map(size => Math.round(size * 100) / 100)).toEqual([52, 27 * 0.6, 12 * 1.25, 12, 12 * 0.6].map(size => Math.round(size * 100) / 100));
         expect(Observatory.ink(layoutScene('current'), 'o#gone')).toEqual(Observatory.ink(layoutScene('current')))
     });
@@ -212,6 +232,6 @@ test.describe('AgentOS.canvas.Observatory', () => {
         Observatory.theme = 'light';
 
         expect(rounded(colorOf(Observatory.scene.colors, 0))).toEqual(rounded(rgb(PALETTES.light.signal)));
-        expect(rounded(colorOf(Observatory.scene.colors, 1)), 'the selection still fades the unrelated seed').toEqual(rounded(rgb(PALETTES.light.line)))
+        expect(rounded(colorOf(Observatory.scene.colors, 4)), 'the selection still fades the unrelated node').toEqual(rounded(rgb(PALETTES.light.line)))
     });
 });

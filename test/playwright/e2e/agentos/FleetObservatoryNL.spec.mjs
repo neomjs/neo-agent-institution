@@ -337,6 +337,11 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(drawn.lod.level, 'the fitted camera draws the far level').toBe('far');
         expect(drawn.lod.clusters, 'most of the 64 generated groups are found').toBeGreaterThan(48);
 
+        // the pictures a reviewer looks at, attached to the run: never compared, so never goldens
+        const picture = async name => testInfo.attach(name, {body: await pane.screenshot(), contentType: 'image/png'});
+
+        await picture('100k · far')
+
         // the wheel over the canvas steps the level of detail in
         const rect = await pane.locator('canvas').boundingBox(), levels = [drawn.lod.level];
 
@@ -352,6 +357,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         }
 
         expect(levels).toEqual(['far', 'mid', 'near']);
+        await picture('100k · near');
 
         // a drag orbits
         const {yaw} = (await stats()).camera;
@@ -371,6 +377,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect.poll(async () => (await stats()).counts.paths).toBe(0);
         await expect(toggle).toHaveAttribute('aria-pressed', 'false');
         expect(await Promise.all(ids.map(locate))).toEqual(before);
+        await picture('100k · near, route off');
 
         await toggle.click();
         await expect.poll(async () => (await stats()).counts.paths).toBe(1);
