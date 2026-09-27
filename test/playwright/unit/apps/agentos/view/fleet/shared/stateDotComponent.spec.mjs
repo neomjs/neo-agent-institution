@@ -24,21 +24,23 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
  * visible non-colour channel on the consuming surface, tracked separately.
  */
 test.describe('Fleet cockpit StateDot — accessible name + closed-set resolvers', () => {
-    let StateDot, stateLabel, stateClass, stateToken;
+    let StateDot, stateClass, stateLabel, stateMeaning, stateToken;
 
     test.beforeAll(async () => {
         const mod = await import('../../../../../../../../apps/agentos/view/fleet/shared/StateDotComponent.mjs');
 
-        StateDot   = mod.default;
-        stateLabel = mod.stateLabel;
-        stateClass = mod.stateClass;
-        stateToken = mod.stateToken
+        StateDot     = mod.default;
+        stateClass   = mod.stateClass;
+        stateLabel   = mod.stateLabel;
+        stateMeaning = mod.stateMeaning;
+        stateToken   = mod.stateToken
     });
 
     test('stateLabel resolves canonical labels and degrades to LITERAL text, never to off', () => {
         expect(stateLabel('ok')).toBe('working');
+        expect(stateLabel('wedged')).toBe('stuck');
         expect(stateLabel('limited')).toBe('rate-limited');
-        expect(stateLabel('off')).toBe('benched / offline');
+        expect(stateLabel('off')).toBe('offline');
         // the transitional pair now has canonical labels too — they render while an intent is in flight
         expect(stateLabel('starting')).toBe('starting');
         expect(stateLabel('stopping')).toBe('stopping');
@@ -50,11 +52,30 @@ test.describe('Fleet cockpit StateDot — accessible name + closed-set resolvers
         expect(stateLabel('__proto__')).toBe('__proto__')
     });
 
+    test('offline names its reason, and the reasons and "stuck" carry what they mean (#246)', () => {
+        expect(stateLabel('off', 'benched')).toBe('offline · benched');
+        expect(stateLabel('off', 'stopped')).toBe('offline · stopped');
+        expect(stateLabel('off', 'unobserved')).toBe('offline · unobserved');
+        expect(stateLabel('ok', 'benched'), 'a reason belongs to offline only').toBe('working');
+
+        expect(stateMeaning('wedged')).toBe('running, no progress');
+        expect(stateMeaning('off', 'benched')).toBe('benched by the operator');
+        expect(stateMeaning('off', 'stopped')).toBe('Fleet stopped its process');
+        expect(stateMeaning('off', 'unobserved')).toBe('Fleet runs no process for it, so it has no session to read');
+        expect(stateMeaning('ok'), 'a word that says it all carries no title').toBeNull();
+        expect(stateMeaning('off'), 'offline without a reason').toBeNull()
+    });
+
+    test('the retired display states have no token of their own: they degrade to offline\'s', () => {
+        expect(stateToken('external')).toBe('--fm-state-off');
+        expect(stateToken('unobserved')).toBe('--fm-state-off')
+    });
+
     test('the dot exposes an accessible name for its state', () => {
         const dot = Neo.create(StateDot, {appName, state: 'wedged'});
 
         expect(dot.vdom.role).toBe('img');
-        expect(dot.vdom['aria-label']).toBe('wedged');
+        expect(dot.vdom['aria-label']).toBe('stuck');
 
         dot.destroy()
     });

@@ -1,5 +1,6 @@
 import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import FleetAgent          from '../../../model/FleetAgent.mjs';
+import SourceHealth        from '../../../util/SourceHealth.mjs';
 
 /**
  * The roster's sort modes as plain store-sorter sets — replacing the whole set keeps ONE ordering
@@ -68,7 +69,8 @@ class Controller extends ComponentController {
         (store.sorters?.length ?? 0) < 1 && (store.sorters = SORT_MODES[this.sortMode].map(sorter => ({...sorter})));
 
         store.filters = [
-            {disabled: true, property: 'state',               filterBy: ({item}) => item.state === 'off'},
+            // offline is what the legend counts as offline — benched, stopped and unobserved alike
+            {disabled: true, property: 'state',               filterBy: ({item}) => SourceHealth.resolveFleetDisplayState(item).state === 'off'},
             {disabled: true, property: 'participationStatus', filterBy: ({item}) => item.participationStatus === 'operator_benched'},
             // derived from `state`, never read from the calculated `tierRank`: a filter must not depend
             // on a calculated field being present on the row it sees — a wire row or a turbo-mode row

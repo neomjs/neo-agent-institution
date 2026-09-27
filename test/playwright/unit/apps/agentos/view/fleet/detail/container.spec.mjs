@@ -203,20 +203,32 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
     });
 
     test('the state dot is gated on a wired runtime source — missing runtime evidence never renders live', () => {
-        const detail = createDetail({agentId: 'vega', state: 'ok'});
+        const
+            detail  = createDetail({agentId: 'vega', state: 'ok'}),
+            session = () => {
+                const nodes = detail.down({reference: 'detail-ledger'}).vdom.cn ?? [],
+                      index = nodes.findIndex(node => node.text === 'session');
+
+                return {text: nodes[index + 1]?.text, title: nodes[index + 1]?.title ?? null}
+            };
 
         expect(detail.down({ntype: 'fm-state-dot'}).state).toBe('ok');
         expect(detail.down({ntype: 'fm-state-dot'}).live).toBe(true);
+        expect(session()).toEqual({text: 'working', title: null});
 
-        // missing runtime evidence resolves a participation-active resident to 'unobserved' — the
-        // SAME truth the grid card renders (one resolver, three surfaces), never live, never a
-        // false benched verdict
+        // missing runtime evidence resolves the resident offline, unobserved — the SAME truth the
+        // grid card renders (one resolver, three surfaces), never live, never a false benched verdict
         applySet(detail, {sources: {
             ...observedSources,
             runtime: {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}
         }});
-        expect(detail.down({ntype: 'fm-state-dot'}).state).toBe('unobserved');
+        expect(detail.down({ntype: 'fm-state-dot'}).state).toBe('off');
         expect(detail.down({ntype: 'fm-state-dot'}).live).toBe(false);
+        // the detail carries the reason too (#246)
+        expect(session()).toEqual({text: 'offline · unobserved', title: 'Fleet runs no process for it, so it has no session to read'});
+
+        applySet(detail, {participationStatus: 'operator_benched'});
+        expect(session().text).toBe('offline · benched');
 
         detail.destroy()
     });

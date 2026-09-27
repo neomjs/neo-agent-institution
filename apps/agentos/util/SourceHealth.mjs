@@ -279,41 +279,41 @@ class SourceHealth extends Base {
 
     /**
      * @summary Resolve one roster row's display state as ONE atomic honesty contract shared by the
-     * AgentCard and the HealthBar, so the card grain and the glance tally can never diverge.
+     * AgentCard, the detail pane and the HealthBar, so the card grain and the glance tally can never
+     * diverge.
      *
-     * The vocabulary distinguishes participation truth from session truth, under one invariant:
-     * **supervision vocabulary renders only where supervision exists (a wired runtime)** — the
-     * operator-ratified default-state contract; un-managed is the NORMAL topology on FM-as-client
-     * deployments and must never read as a supervision verdict or carry attention weight.
-     * - **Wired runtime** → the row's `state` IS session truth (observed/inferred) and renders as-is —
-     *   including `off` (`benched / offline`): a process Fleet manages and knows to be stopped.
-     * - **Not-wired + `state: 'off'`** (and unknown / guest / missing rows, which are equally outside
-     *   any supervision contract) → `external`: the seat runs in its own harness; Fleet manages
-     *   nothing here, so no benched/offline verdict exists to claim. The previous mapping rendered
-     *   these `off` — the falsified copy ("offline" about agents visibly merging PRs) this partition
-     *   retires.
-     * - **Not-wired + any other canonical state** → participation-active with NO session observation
-     *   (the derived sample path) — renders `unobserved`: no liveness is claimed and no benched
-     *   verdict is claimed. Rendering it `off` would be a false participation claim; rendering it
-     *   `ok` would fabricate session liveness.
+     * The five states answer the operator's five questions — working (`ok`), idle, stuck
+     * (`wedged`: running, no progress), rate-limited (`limited`), offline (`off`). Why a seat is
+     * offline is the row's `reason`, never a state of its own:
+     * - **`benched`** — the roster marks it `operator_benched`. The bench is a roster fact, so it
+     *   holds whether or not Fleet runs the seat.
+     * - **`stopped`** — Fleet supervises the process (a wired runtime) and knows it stopped.
+     * - **`unobserved`** — Fleet supervises no process for the seat, so it holds no session truth.
+     *   The seat may well be working in its own harness; that is the presence band's to say.
+     *
+     * Only a wired runtime's session state renders as-is: supervision vocabulary (stuck above all)
+     * renders only where supervision exists. An unrecognized runtime state passes through too, so a
+     * new state still reads as its literal word until it earns a label.
      * @param {Object} data
-     * @param {String|null} [data.state] The row's raw state field.
+     * @param {String|null} [data.participationStatus] The roster's participation fact.
      * @param {Object|null} [data.sources] The row's source facts (normalized here; malformed fails closed).
-     * @returns {String} `ok` · `idle` · `wedged` · `limited` · `off` · `unobserved` · `external`
+     * @param {String|null} [data.state] The row's raw state field.
+     * @returns {{reason: String|null, state: String}} `state` is `ok` · `idle` · `wedged` · `limited`
+     *     · `off` (or a wired runtime's unrecognized state); `reason` is `benched` · `stopped` ·
+     *     `unobserved` for `off`, else `null`.
      */
-    static resolveFleetDisplayState({state, sources} = {}) {
-        if (SourceHealth.normalizeFleetSources(sources).runtime.state === 'wired') {
-            return state ?? 'off'
+    static resolveFleetDisplayState({participationStatus, sources, state} = {}) {
+        if (participationStatus === 'operator_benched') {
+            return {reason: 'benched', state: 'off'}
         }
 
-        // unknown / guest / missing rows sit outside any supervision contract exactly like an
-        // explicit un-managed `off` — both resolve `external` (the grid's raw-state tail tiering is
-        // unaffected: it reads `agent.state`, never this display value).
-        if (!CARD_STATES.includes(state) || state === 'off') {
-            return 'external'
+        if (SourceHealth.normalizeFleetSources(sources).runtime.state !== 'wired') {
+            return {reason: 'unobserved', state: 'off'}
         }
 
-        return 'unobserved'
+        state ??= 'off';
+
+        return {reason: state === 'off' ? 'stopped' : null, state}
     }
 
     /**

@@ -29,8 +29,9 @@ test.describe('Fleet cockpit HealthSwatch — state-axis legend + count-bar unit
 
     test('stateLabel gives canonical labels; an unknown category → its LITERAL text (never off, never invisible)', () => {
         expect(stateLabel('ok')).toBe('working');
+        expect(stateLabel('wedged')).toBe('stuck');
         expect(stateLabel('limited')).toBe('rate-limited');
-        expect(stateLabel('off')).toBe('benched / offline');
+        expect(stateLabel('off')).toBe('offline');
         expect(stateLabel('some-new-state')).toBe('some-new-state');
         expect(stateLabel(undefined)).toBe('unknown');
         // prototype-shaped keys resolve to their literal text, never an inherited Object.prototype value
@@ -50,7 +51,7 @@ test.describe('Fleet cockpit HealthSwatch — state-axis legend + count-bar unit
         // the ROOT carries the state class; SCSS binds --fm-dot from it (inherited by the dot) — no inline style
         expect(sw.vdom.cls).toContain('fm-state-wedged');
         expect(dot.style?.['--fm-dot']).toBeUndefined();
-        expect(label.text).toBe('wedged');
+        expect(label.text).toBe('stuck');
         // class-idiom: the count node stays in cn, removeDom-toggled (not omitted) — so a plain
         // legend row renders no count element in the DOM.
         expect(count.removeDom).toBe(true);

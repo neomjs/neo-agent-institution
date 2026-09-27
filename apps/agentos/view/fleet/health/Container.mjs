@@ -3,46 +3,46 @@ import HealthSwatch from './SwatchComponent.mjs';
 import SourceHealth from '../../../util/SourceHealth.mjs';
 
 /**
- * Canonical category order for the health summary — the seven session-state buckets in the SSOT
- * legend order (working · idle · wedged · rate-limited · unobserved · external · benched/offline).
- * One vocabulary shared with {@link HealthSwatch} / {@link StateDot} on the agent-health axis.
+ * Canonical category order for the health summary: the five questions an operator asks of a seat,
+ * in legend order (working · idle · stuck · rate-limited · offline). Why a seat is offline is its
+ * row's detail, never a bucket. One vocabulary shared with {@link HealthSwatch} / {@link StateDot}.
  * @type {String[]}
  */
-const HEALTH_ORDER = ['ok', 'idle', 'wedged', 'limited', 'unobserved', 'external', 'off'];
+const HEALTH_ORDER = ['ok', 'idle', 'wedged', 'limited', 'off'];
 
 /**
- * The display states that carry ATTENTION weight — the ones an operator should act on. Everything
- * else is calm: `external` seats are the normal FM-as-client topology, `unobserved` claims nothing,
- * and `ok`/`idle` are nominal. The bar derives its aggregate nominal/attention class from these, so
- * a fleet of un-managed seats with nominal sources reads GREEN — the operator-ratified
- * default-state contract (a header that is always yellow trains the operator to ignore it).
+ * The display states that carry ATTENTION weight — the ones an operator should act on. Working and
+ * idle are nominal, and offline is a fact, not an alarm: most seats run outside Fleet today, so
+ * weighting it would keep the header yellow for a healthy fleet (a header that is always yellow
+ * trains the operator to ignore it).
  * @type {String[]}
  */
 const ATTENTION_STATES = Object.freeze(['wedged', 'limited']);
 
 /**
  * @summary Pure fleet → per-category counts — the scale-to-a-glance tally.
- * Buckets each agent through {@link SourceHealth.resolveFleetDisplayState} — the SAME resolver the AgentCard
- * renders from, so the glance tally and every card can never diverge: a roster-only active row
- * counts as `unobserved` here exactly as the card displays it, while an explicit operator-benched
- * `off` counts as benched in both. Unknown/guest rows fold into `off` (never a 7th key). Every
- * agent lands in a RENDERED bucket and the visible bar total can never undercount the roster.
+ * Buckets each agent through {@link SourceHealth.resolveFleetDisplayState}, the SAME resolver the
+ * AgentCard renders from, so the glance tally and every card can never diverge. Every agent lands in
+ * one of the five buckets, so the visible total never undercounts the roster.
  * Pure + serializable; the bar renders its result, so the tally is unit-provable in isolation.
- * @param {Object[]} agents Roster entries carrying `state` + `sources` fields — FleetAgent records or plain rows.
- * @returns {Object} `{ok, idle, wedged, limited, unobserved, off}` — exactly the six canonical keys (zero-filled); the counts sum to the roster length.
+ * @param {Object[]} agents Roster entries carrying `state`, `sources` and `participationStatus` —
+ *     FleetAgent records or plain rows.
+ * @returns {Object} `{ok, idle, wedged, limited, off}`, zero-filled; the counts sum to the roster length.
  */
 export function healthCounts(agents) {
     const list   = Array.isArray(agents) ? agents : [],
-          counts = {ok: 0, idle: 0, wedged: 0, limited: 0, unobserved: 0, external: 0, off: 0};
+          counts = {ok: 0, idle: 0, wedged: 0, limited: 0, off: 0};
 
     list.forEach(agent => {
-        // canonical display state → its own bucket; a non-bucket value (transitional
-        // starting/stopping never reaches the tally, but fail closed anyway) → external, matching
-        // the resolver's own outside-supervision fold — never an invented benched verdict
-        const resolved = SourceHealth.resolveFleetDisplayState({state: agent?.state, sources: agent?.sources}),
-              key      = Object.hasOwn(counts, resolved) ? resolved : 'external';
+        const {state} = SourceHealth.resolveFleetDisplayState({
+            participationStatus: agent?.participationStatus,
+            sources            : agent?.sources,
+            state              : agent?.state
+        });
 
-        counts[key] += 1
+        // a runtime state outside the five (one this contract cannot name yet) counts offline:
+        // the card still shows its literal word, and the bar never undercounts
+        counts[Object.hasOwn(counts, state) ? state : 'off'] += 1
     });
 
     return counts
@@ -50,8 +50,8 @@ export function healthCounts(agents) {
 
 /**
  * @summary Pure counts → session-bucket attention: `true` when any attention-weighted bucket is
- * non-zero. `external`/`unobserved`/`off` deliberately carry no weight — un-managed seats are the
- * normal topology, and a managed-stopped seat is a fact, not an alarm. One input to
+ * non-zero. Offline carries no weight: a seat Fleet does not run is the normal topology, and a
+ * managed-stopped or benched seat is a fact, not an alarm. One input to
  * {@link #deriveAttention}; exported separately so the bucket matrix stays unit-provable alone.
  * @param {Object} counts The {@link #healthCounts} result.
  * @returns {Boolean}
@@ -95,7 +95,7 @@ export function deriveAttention({counts, rows = [], daemonFault = false, presenc
 /**
  * @summary The fleet health-summary bar — the scale-to-a-glance instrument:
  * the counts must read before any single card does. Composes one {@link HealthSwatch} per canonical
- * category (working · idle · wedged · rate-limited · benched) in legend order, each carrying its live
+ * category (working · idle · stuck · rate-limited · offline) in legend order, each carrying its live
  * count, tallied from the SAME bound roster Store the grid renders from ({@link AgentOS.store.FleetRoster}
  * records — no re-materialized plain-array copy). The Store is the reactive layer: a `load` re-tallies,
  * and a `recordChange` re-tallies when the session `state` moved a resident between buckets. The swatch
@@ -123,7 +123,7 @@ class HealthBar extends Container {
          */
         baseCls: ['fm-health-bar'],
         /**
-         * Wrap-capable: at a vessel width the seven swatches fold onto a second line inside the
+         * Wrap-capable: at a vessel width the swatches fold onto a second line inside the
          * bar instead of clipping the last states — a legend that drops a state says the state
          * does not exist (#85). Wide rows stay one line.
          * @member {Object} layout={ntype:'hbox',align:'center',wrap:'wrap'}
@@ -232,14 +232,15 @@ class HealthBar extends Container {
     }
 
     /**
-     * @summary One record's fields changed — a session-`state` change can move a resident between
-     * buckets, and a `sources` change can flip both the resolved bucket (unmanaged↔managed) AND
-     * the answered-abnormal half of the aggregate verdict; anything else is a no-op for the tally.
+     * @summary One record's fields changed — a session-`state` or `participationStatus` change can
+     * move a resident between buckets, and a `sources` change can flip both the resolved bucket
+     * (unmanaged↔managed) AND the answered-abnormal half of the aggregate verdict; anything else is
+     * a no-op for the tally.
      * @param {Object} data The store recordChange event `{fields, record, index, model}`.
      * @protected
      */
     onStoreRecordChange({fields}) {
-        this.isConstructed && fields.some(field => field.name === 'state' || field.name === 'sources') && this.applyCounts()
+        this.isConstructed && fields.some(field => ['participationStatus', 'sources', 'state'].includes(field.name)) && this.applyCounts()
     }
 
     /**

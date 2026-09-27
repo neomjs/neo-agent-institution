@@ -1,13 +1,13 @@
-import AgentConfigCard       from './AgentConfigComponent.mjs';
-import Container             from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import FamilyRail            from '../shared/FamilyRailComponent.mjs';
-import Image                 from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
-import StateDot              from '../shared/StateDotComponent.mjs';
-import TabContainer          from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
-import AgentFreshness        from '../../../util/AgentFreshness.mjs';
-import ConfigIntentRoundTrip from '../../../util/ConfigIntentRoundTrip.mjs';
-import SourceHealth          from '../../../util/SourceHealth.mjs';
-import Telltale              from '../../../util/Telltale.mjs';
+import AgentConfigCard                      from './AgentConfigComponent.mjs';
+import Container                            from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import FamilyRail                           from '../shared/FamilyRailComponent.mjs';
+import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
+import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
+import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
+import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
+import ConfigIntentRoundTrip                from '../../../util/ConfigIntentRoundTrip.mjs';
+import SourceHealth                         from '../../../util/SourceHealth.mjs';
+import Telltale                             from '../../../util/Telltale.mjs';
 
 /**
  * The SSOT drill-in panes (design §B3: "thought-stream, lane, repo, and PRs"), each with the honest
@@ -517,23 +517,22 @@ class AgentDetail extends Container {
             sources = SourceHealth.normalizeFleetSources(record.sources),
             runtime = sources.runtime,
             // the drill-in dot renders the SAME resolved truth as the card and the health tally —
-            // one resolver, three surfaces: a roster-only active resident reads `unobserved` here
-            // exactly as the grid displays it, never a contradictory `off`
-            state        = SourceHealth.resolveFleetDisplayState({state: record.state, sources: record.sources}),
-            agentId      = record.agentId ?? '';
+            // one resolver, three surfaces, so a resident offline on its card is offline here too
+            display = SourceHealth.resolveFleetDisplayState(record),
+            agentId = record.agentId ?? '';
 
         me.getReference('family-rail').family = record.family ?? null;
 
         me.getReference('state-dot').set({
-            live : state === 'ok' && runtime.confidence === 'observed',
-            state
+            live : display.state === 'ok' && runtime.confidence === 'observed',
+            state: display.state
         });
 
         me.getReference('detail-name').text   = record.displayName || agentId || '—';
         me.getReference('detail-engine').text = record.engineTag ?? '';
         me.getReference('detail-id').text     = agentId;
 
-        me.renderStateLedger(record, sources);
+        me.renderStateLedger(record, sources, display);
 
         me.getReference('detail-avatar').set({
             alt: record.displayName ?? agentId,
@@ -547,7 +546,8 @@ class AgentDetail extends Container {
      * @summary Render the ONE state ledger — every liveness/wiring axis once, as `axis · pill`
      * rows in the pane's own freshness-pill vocabulary (#23: three vocabularies became one).
      *
-     * Rows, in order: availability (participationStatus — a known status word or no row),
+     * Rows, in order: the session (the resolved display state; an offline one names its reason),
+     * availability (participationStatus — a known status word or no row),
      * the wake telltale (BOTH renderings the old readout carried: a nominal axis says so, an
      * observed `unknown` keeps the producer's reason — on the pill title now), capacity
      * (the throttle axis, SOURCE-GATED: it renders only when a producer actually reported it —
@@ -565,9 +565,10 @@ class AgentDetail extends Container {
      * @param {Object} record The drilled-in FleetAgent record (never null here).
      * @param {Object} sources `SourceHealth.normalizeFleetSources` output — the SAME resolved
      *     truth the card's strip reads, so detail and card can never disagree.
+     * @param {Object} display `SourceHealth.resolveFleetDisplayState` output `{reason, state}`.
      * @protected
      */
-    renderStateLedger(record, sources) {
+    renderStateLedger(record, sources, display) {
         const
             me     = this,
             ledger = me.getReference('detail-ledger'),
@@ -576,6 +577,11 @@ class AgentDetail extends Container {
                 {tag: 'span', cls: ['fm-ledger-axis'], text: axis},
                 {tag: 'span', cls: ['fm-freshness', tone], text: word, ...(title ? {title} : {})}
             );
+
+        row('session', stateLabel(display.state, display.reason),
+            display.state === 'ok' || display.state === 'idle' ? 'is-fresh'
+                : display.reason === 'unobserved' ? 'is-unobserved' : 'is-stale',
+            stateMeaning(display.state, display.reason));
 
         const participation = record.participationStatus ?? null;
 
