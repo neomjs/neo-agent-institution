@@ -381,9 +381,17 @@
     .agent-shell > .neo-tab-header-toolbar {
         --tab-button-text-color            : var(--fm-ink-dim);
         --tab-button-glyph-color           : var(--fm-ink-dim);
-        --tab-button-glyph-color-pressed   : var(--fm-ink);
+        --tab-button-glyph-color-pressed   : var(--fm-signal);
         --tab-button-background-color      : transparent;
         --tab-button-background-color-hover: var(--fm-panel);
+        /* Where you are, told by a GROUND and not only a brighter glyph (#267). The icons landed
+           without this, so the active destination had no surface at all — and because hover owned the
+           only ground, hovering the ACTIVE tab read as LESS selected than hovering an inactive one.
+           Three grounds for three states, the same separation the cockpit's right rail now has, and
+           the same signal-tint shape `apps/workstation/Viewport.scss` already uses for its own nav:
+           a low-percentage signal wash over the rail rather than a flat panel, so the band belongs to
+           the chrome instead of competing with the keeper-view it selects. */
+        --tab-button-background-color-active: color-mix(in srgb, var(--fm-signal) 12%, transparent);
 
         background  : var(--fm-rail);
         border-right: 1px solid var(--fm-line);
