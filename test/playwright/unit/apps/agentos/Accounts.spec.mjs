@@ -37,7 +37,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                 getSubmitValues: async () => ({
                     credential    : 'ghp_should_not_escape',
                     githubUsername: '  submitted-login  ',
-                    harnessType   : 'codex'
+                    harnessType   : 'codex',
+                    launchOwner   : 'fleet'
                 }),
                 validate: async () => true
             },
@@ -80,7 +81,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                 getSubmitValues: async () => ({
                     credential,
                     githubUsername: '  submitted-login  ',
-                    harnessType   : 'opencode'
+                    harnessType   : 'opencode',
+                    launchOwner   : 'fleet'
                 }),
                 validate: async () => true
             },
@@ -128,6 +130,146 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
         expect(calls[4]).toEqual(['clear'])
     });
 
+    test('a seat that runs in its own harness is added without a PAT from the shell, and a browser bridge refuses it before the write (#280)', async () => {
+        const
+            previousOS = globalThis.AgentOS,
+            canonical  = {id: 'neo-gpt-emmy', githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'},
+            submitWith = async registryBridge => {
+                const
+                    calls = [],
+                    form  = {
+                        getSubmitValues: async () => ({
+                            credential    : 'ghp_typed_then_hidden',
+                            githubUsername: 'neo-gpt-emmy',
+                            harnessType   : 'codex-desktop',
+                            launchOwner   : 'external'
+                        }),
+                        validate: async () => true
+                    };
+
+                globalThis.AgentOS = {...previousOS, fleet: {...previousOS?.fleet, registryBridge}};
+
+                await Accounts.prototype.onSubmitAgentClick.call({
+                    clearCredentialField       : async () => calls.push(['clear']),
+                    fire                       : (name, data) => calls.push(['fire', name, data]),
+                    getReference               : reference => reference === 'agent-form' ? form : null,
+                    submitToFleetRegistryBridge: async payload => {
+                        calls.push(['submit', payload]);
+                        return canonical
+                    },
+                    updateBridgeStatus         : (state, message) => calls.push(['status', state, message]),
+                    upsertPublicAgentDefinition: (definition, credential) => calls.push(['upsert', definition, credential])
+                });
+
+                return calls
+            };
+
+        try {
+            // the shell's Fleet is its pinned Brain: public intent only, the typed PAT never crosses
+            const shell = await submitWith({credentialIngress: 'shell', defineAgent: async () => canonical});
+
+            expect(shell[0]).toEqual(['submit', {githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'}]);
+            expect(shell[1]).toEqual(['upsert', canonical, undefined]);
+            expect(shell[3]).toEqual(['status', 'is-live', 'Agent added. It runs in its own harness, so Fleet refuses to start it.']);
+
+            // a browser bridge may reach an older Fleet that would store the row startable: nothing is written
+            const browser = await submitWith({defineAgent: async () => canonical});
+
+            expect(browser.map(([kind]) => kind)).toEqual(['status']);
+            expect(browser[0][1]).toBe('is-error');
+            expect(browser[0][2]).toContain('can only be added from the installed shell')
+        } finally {
+            globalThis.AgentOS = previousOS
+        }
+    });
+
+    test('the shell\'s refusal of an external seat renders its reason; nothing secret crossed (#280)', async () => {
+        const
+            previousOS = globalThis.AgentOS,
+            reason     = 'fleet: a seat that runs in its own harness can only be added through the Fleet this app started from its bundled Brain',
+            calls      = [];
+
+        globalThis.AgentOS = {...previousOS, fleet: {...previousOS?.fleet, registryBridge: {credentialIngress: 'shell', defineAgent: async () => ({})}}};
+
+        try {
+            await Accounts.prototype.onSubmitAgentClick.call({
+                clearCredentialField       : async () => calls.push(['clear']),
+                fire                       : () => calls.push(['unexpected-fire']),
+                getReference               : () => ({
+                    getSubmitValues: async () => ({githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'}),
+                    validate       : async () => true
+                }),
+                submitToFleetRegistryBridge: async () => { throw Object.assign(new Error(reason), {fleetWireState: 'refused'}) },
+                updateBridgeStatus         : (state, message) => calls.push(['status', state, message]),
+                upsertPublicAgentDefinition: () => calls.push(['unexpected-upsert'])
+            });
+
+            expect(calls).toEqual([['status', 'is-error', `Could not add agent. ${reason}`], ['clear']])
+        } finally {
+            globalThis.AgentOS = previousOS
+        }
+    });
+
+    test('the sample is an existing peer: it selects the harness it runs in, hides the PAT, and says what adding it takes (#280)', async () => {
+        const
+            previousOS = globalThis.AgentOS,
+            statusText = view => view.getReference('bridge-status').vdom.cn[0].text;
+
+        let view;
+
+        try {
+            view = Neo.create(Accounts, {appName: 'AgentOSAccountsTest'});
+
+            const
+                form       = view.getReference('agent-form'),
+                credential = await form.getField('credential');
+
+            // switched to Fleet first: the sample still resets the choice and the PAT field
+            await view.onLaunchOwnerChange({value: 'fleet'});
+            expect(credential.hidden).toBe(false);
+
+            await view.onLoadSampleClick();
+
+            expect((await form.getValues()).launchOwner).toBe('external');
+            expect(credential.hidden).toBe(true);
+            expect(credential.required).toBe(false);
+            expect(statusText(view)).toContain('can only be added from the installed shell');
+
+            // from the shell, the same sample is ready to add
+            globalThis.AgentOS = {...previousOS, fleet: {...previousOS?.fleet, registryBridge: {credentialIngress: 'shell', defineAgent: async () => ({})}}};
+            await view.onLoadSampleClick();
+
+            expect(statusText(view)).toBe('Sample loaded. It runs in its own harness, so no PAT is needed.')
+        } finally {
+            view?.destroy();
+            globalThis.AgentOS = previousOS
+        }
+    });
+
+    test('the launch radio shows, and requires, the PAT for a Fleet-launched seat only (#280)', async () => {
+        const view = Neo.create(Accounts, {appName: 'AgentOSAccountsTest'});
+
+        try {
+            const credential = await view.getReference('agent-form').getField('credential');
+
+            expect(credential.hidden).toBe(true);
+            expect(credential.required).toBe(false);
+
+            await view.onLaunchOwnerChange({value: 'fleet'});
+            expect(credential.hidden).toBe(false);
+            expect(credential.required).toBe(true);
+
+            await view.onLaunchOwnerChange({value: null});   // the radio that was unchecked
+            expect(credential.hidden).toBe(false);
+
+            await view.onLaunchOwnerChange({value: 'external'});
+            expect(credential.hidden).toBe(true);
+            expect(credential.required).toBe(false)
+        } finally {
+            view.destroy()
+        }
+    });
+
     test('shell mode removes the Accounts PAT field before mount', () => {
         const
             previousOS = globalThis.AgentOS,
@@ -153,7 +295,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                 getSubmitValues: async () => ({
                     credential    : 'ghp_retry',
                     githubUsername: 'duplicate',
-                    harnessType   : 'codex'
+                    harnessType   : 'codex',
+                    launchOwner   : 'fleet'
                 }),
                 validate: async () => true
             },
@@ -235,7 +378,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
             statuses   = [],
             store      = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: []}),
             form       = {
-                getSubmitValues: async () => ({credential: pat, githubUsername: 'submitted-login', harnessType: 'codex'}),
+                // a Fleet-launched seat: the one path a PAT crosses, so the leak checks are not vacuous
+                getSubmitValues: async () => ({credential: pat, githubUsername: 'submitted-login', harnessType: 'codex', launchOwner: 'fleet'}),
                 validate       : async () => true
             },
             stub       = {

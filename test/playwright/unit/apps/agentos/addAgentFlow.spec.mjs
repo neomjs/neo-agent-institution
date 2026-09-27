@@ -16,10 +16,12 @@ import AddAgentFlow from '../../../../../apps/agentos/util/AddAgentFlow.mjs';
 
 const CREDENTIAL = 'github_pat_11TESTSECRET_shouldNeverEscape';
 
+// a new resident Fleet launches: the one kind of seat that brings a PAT
 const cleanPayload = () => ({
     credential    : CREDENTIAL,
     githubUsername: 'neo-kimi-phoebe',
-    harnessType   : 'opencode'
+    harnessType   : 'opencode',
+    launchOwner   : 'fleet'
 });
 
 const cleanReadback = () => ({
@@ -54,11 +56,74 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), {})).toEqual({...cleanPayload(), launchOwner: 'fleet'})
     });
 
-    test('a seat added here is fleet-launched in both modes, and a caller cannot declare it external', () => {
-        const payload = {...cleanPayload(), launchOwner: 'external'};
+    test('the launch owner always crosses explicitly: external unless Fleet launches the seat, and an external seat carries no PAT in either mode (#280)', () => {
+        const {launchOwner, ...unowned} = cleanPayload();
 
-        expect(AddAgentFlow.createDefineAgentIntent(payload, {credentialIngress: 'shell'}).launchOwner).toBe('fleet');
-        expect(AddAgentFlow.createDefineAgentIntent(payload, {}).launchOwner).toBe('fleet')
+        for (const bridge of [{credentialIngress: 'shell'}, {}]) {
+            // the default, and anything outside the two answers, is the seat that runs in its own harness
+            for (const payload of [unowned, {...unowned, launchOwner: 'external'}, {...unowned, launchOwner: 'root'}]) {
+                expect(AddAgentFlow.createDefineAgentIntent(payload, bridge)).toEqual({
+                    githubUsername: 'neo-kimi-phoebe',
+                    harnessType   : 'opencode',
+                    launchOwner   : 'external'
+                })
+            }
+
+            expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), bridge).launchOwner).toBe('fleet')
+        }
+
+        // a direct-browser Fleet seat still brings its PAT, and validation still asks for one
+        expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), {}).credential).toBe(CREDENTIAL);
+        expect(AddAgentFlow.validateDefinePayload({...cleanPayload(), credential: ''}).valid).toBe(false);
+        expect(AddAgentFlow.validateDefinePayload({...unowned, credential: '', launchOwner: 'external'}, {externalAllowed: true}))
+            .toEqual({valid: true, reason: ''});
+        expect(AddAgentFlow.LAUNCH_OWNERS).toEqual(['external', 'fleet'])
+    });
+
+    test('only the shell registers a seat that runs in its own harness — a browser bridge refuses it before the write, whatever Fleet it reaches (#280)', async () => {
+        const
+            {launchOwner, ...unowned} = cleanPayload(),
+            writes  = [],
+            browser = () => ({defineAgent: async payload => { writes.push(payload); return cleanReadback() }});
+
+        expect(AddAgentFlow.canRegisterExternal({credentialIngress: 'shell'})).toBe(true);
+        expect(AddAgentFlow.canRegisterExternal({})).toBe(false);
+        expect(AddAgentFlow.canRegisterExternal(null)).toBe(false);
+
+        const refused = AddAgentFlow.validateDefinePayload({...unowned, launchOwner: 'external'});
+
+        expect(refused.valid).toBe(false);
+        expect(refused.reason).toContain('can only be added from the installed shell');
+
+        // wire v1 reads the same on an older Fleet and a current one, so the gate precedes the bridge
+        expect(await AddAgentFlow.submitDefineAgent({bridgeResolver: browser, payload: {...unowned, launchOwner: 'external'}}))
+            .toEqual({state: 'rejected', reason: refused.reason});
+        expect(writes).toEqual([]);
+
+        // a Fleet-launched seat on the same bridge still writes, with its PAT
+        await AddAgentFlow.submitDefineAgent({bridgeResolver: browser, payload: cleanPayload()});
+        expect(writes).toEqual([{...cleanPayload(), launchOwner: 'fleet'}])
+    });
+
+    test('a refusal reads as the refusal when nothing secret crossed: the shell\'s reason for an external seat renders, a PAT-bearing failure stays generic (#280)', async () => {
+        const
+            {launchOwner, ...unowned} = cleanPayload(),
+            reason  = 'fleet: a seat that runs in its own harness can only be added through the Fleet this app started from its bundled Brain',
+            refused = message => Object.assign(new Error(message), {fleetWireState: 'refused'});
+
+        expect(await AddAgentFlow.submitDefineAgent({
+            bridgeResolver: () => ({credentialIngress: 'shell', defineAgent: async () => { throw refused(reason) }}),
+            payload       : {...unowned, launchOwner: 'external'}
+        })).toEqual({state: 'rejected', reason});
+
+        // a direct-browser Fleet seat carries its PAT: whatever the server said stays out of the DOM
+        const generic = await AddAgentFlow.submitDefineAgent({
+            bridgeResolver: () => ({defineAgent: async () => { throw refused(`echo ${CREDENTIAL}`) }}),
+            payload       : cleanPayload()
+        });
+
+        expect(generic.reason).toBe('Could not reach the Fleet Registry. Nothing was stored in browser state.');
+        expect(generic.reason).not.toContain(CREDENTIAL)
     });
 
     test('the readback guard fails closed on every poisoned shape and passes the canonical one', () => {
@@ -180,6 +245,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         const credentialField = await form.getField('credential');
         const usernameField   = await form.getField('githubUsername');
 
+        form.launchOwner      = 'fleet';
         usernameField.value   = 'neo-kimi-phoebe';
         credentialField.value = CREDENTIAL;
         form.harnessType      = 'opencode';
@@ -189,7 +255,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.flowStatus.state).toBe('readback-confirmed');
         expect(fired).toHaveLength(1);
         expect(fired[0].agent).toEqual(cleanReadback());
-        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet'}]);
+        expect(calls).toEqual([cleanPayload()]);
         // the settle rule: no terminal state leaves credential bytes in the field
         expect(credentialField.value ?? '').toBe('');
 
@@ -211,7 +277,9 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         });
 
         expect(form.items.some(item => item.name === 'credential')).toBe(false);
-        expect(form.flowStatus.reason).toContain('native shell');
+        // a Fleet-launched seat's credential is the native shell's to ask for
+        form.launchOwner = 'fleet';
+        expect(form.getReference('flow-status').text).toContain('native shell');
 
         const usernameField = await form.getField('githubUsername');
 
@@ -230,6 +298,65 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         form.destroy()
     });
 
+    test('the form defaults to a seat that runs in its own harness: no PAT field, the choice marked, and a browser bridge writes nothing for it (#280)', async () => {
+        let received;
+
+        const form = Neo.create(AddAgentForm, {
+            appName       : 'AgentOSAddAgentFlowTest',
+            bridgeResolver: () => ({defineAgent: async payload => { received = payload; return cleanReadback() }})
+        });
+
+        const
+            credentialField = await form.getField('credential'),
+            chips           = () => form.getReference('owner-row').items.filter(chip => chip.cls.includes('is-selected')).map(chip => chip.launchOwner);
+
+        expect(form.launchOwner).toBe('external');
+        expect(chips()).toEqual(['external']);
+        expect(credentialField.hidden).toBe(true);
+        expect(form.getReference('flow-status').text).toContain('can only be added from the installed shell');
+
+        // the other answer brings the PAT field back, and switching back hides it again
+        form.launchOwner = 'fleet';
+        expect(chips()).toEqual(['fleet']);
+        expect(credentialField.hidden).toBe(false);
+        form.launchOwner = 'external';
+        expect(credentialField.hidden).toBe(true);
+
+        (await form.getField('githubUsername')).value = 'neo-gpt-emmy';
+        credentialField.value                          = CREDENTIAL;
+        form.harnessType                               = 'codex-desktop';
+
+        await form.onSubmitClick();
+
+        expect(received).toBeUndefined();
+        expect(form.flowStatus.state).toBe('rejected');
+        expect(form.flowStatus.reason).toContain('can only be added from the installed shell');
+
+        form.destroy()
+    });
+
+    test('from the shell, the external default crosses as public intent only (#280)', async () => {
+        let received;
+
+        const form = Neo.create(AddAgentForm, {
+            appName       : 'AgentOSAddAgentFlowTest',
+            bridgeResolver: () => ({credentialIngress: 'shell', defineAgent: async payload => { received = payload; return cleanReadback() }})
+        });
+
+        expect(await form.getField('credential')).toBeFalsy();   // the shell owns credential entry
+        expect(form.getReference('flow-status').text).toContain('no PAT is needed');
+
+        (await form.getField('githubUsername')).value = 'neo-gpt-emmy';
+        form.harnessType                               = 'codex-desktop';
+
+        await form.onSubmitClick();
+
+        expect(received).toEqual({githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'});
+        expect(form.flowStatus.state).toBe('readback-confirmed');
+
+        form.destroy()
+    });
+
     test('a rejected round-trip still clears the PAT field — the settle rule is terminal-state-independent', async () => {
         const form = Neo.create(AddAgentForm, {
             appName       : 'AgentOSAddAgentFlowTest',
@@ -239,6 +366,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         const credentialField = await form.getField('credential');
         const usernameField   = await form.getField('githubUsername');
 
+        form.launchOwner      = 'fleet';   // the seat that brings a PAT
         usernameField.value   = 'neo-kimi-phoebe';
         credentialField.value = CREDENTIAL;
 

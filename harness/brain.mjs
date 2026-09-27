@@ -183,6 +183,20 @@ export function resolveProductBrainPlan({planeBase, orchestratorAlive, fleetServ
 }
 
 /**
+ * @summary Whether this boot's Fleet is the shell's own bundled Brain, the one fact that proves the
+ * Brain pin. A packaged shell that spawned its Fleet runs the organism packed with it, so the UI and
+ * its Brain travel at one commit. A reused incumbent is any process answering on the same port,
+ * bearer and viewer, and a checkout boot spawns from an env-selected Brain root; neither proves it.
+ * @param {Object}  options
+ * @param {Boolean} options.packaged   The shell runs as the packaged app.
+ * @param {Boolean} options.startFleet The boot spawned its own Fleet ({@link resolveProductBrainPlan}).
+ * @returns {Boolean}
+ */
+export function provesBundledFleet({packaged, startFleet}) {
+    return packaged === true && startFleet === true
+}
+
+/**
  * @summary The packaged boot's refusal to own an organism beside a running plane: a held Chroma port
  * means another organism already owns this machine's stores, and its supervisor would reap ours. The
  * refusal is typed, so the lifecycle names the cause and the cockpit can offer the way in (attaching

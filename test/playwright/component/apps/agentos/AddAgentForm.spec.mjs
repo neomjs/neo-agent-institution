@@ -58,8 +58,12 @@ test.describe('AgentOS.view.fleet.AddAgentForm — mounted credential boundary (
         await expect(submit).toBeDisabled();
         await expect(form.locator('.fm-add-status')).toContainText('fails closed');
 
-        // type the sentinel into the PAT field — the ONE place credential bytes may exist
+        // a seat that runs in its own harness has no PAT field; only a Fleet-launched one takes a credential
         const patInput = form.locator('input[type="password"]');
+        await expect(patInput).toBeHidden();
+        await form.locator('.fm-add-owner-row button', {hasText: 'Fleet launches it'}).click();
+
+        // type the sentinel into the PAT field — the ONE place credential bytes may exist
         await patInput.fill(SENTINEL);
         await expect(patInput).toHaveValue(SENTINEL);
 

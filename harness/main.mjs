@@ -53,6 +53,7 @@ import {
     fleetReadyOrPlaneRefusal,
     ORCHESTRATOR_ENTRY,
     probePort,
+    provesBundledFleet,
     registerOwnedChild,
     resolveBrainMode,
     resolveLauncherRuntimeRoot,
@@ -985,7 +986,13 @@ async function bootProductBrain() {
     }
 
     console.log(`HARNESS_BRAIN_MODE ${mode}${plan.planeBase ? ` planeBase=${plan.planeBase}` : ''} fleetPort=${fleetPort} started=[${brainState.children.map(entry => entry.label).join(',') || 'none'}]`);
-    return {fleetPort, mode, planeBase: plan.planeBase, up: true}
+    return {
+        bundledFleet: provesBundledFleet({packaged: packagedMode, startFleet: !!plan.startFleet}),
+        fleetPort,
+        mode,
+        planeBase   : plan.planeBase,
+        up          : true
+    }
 }
 
 /**
