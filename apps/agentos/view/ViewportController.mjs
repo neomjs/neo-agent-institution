@@ -603,13 +603,14 @@ class ViewportController extends Controller {
     }
 
     /**
-     * @summary Toggles the harness between the Neo dark and light themes.
+     * @summary Toggles the harness between the Neo dark and light themes, from the one on screen: with no
+     * theme stored and no dark preference the boot sets none, and the viewport shows the app's first
+     * configured theme, which `getTheme()` answers where the `theme` config is still unset.
      * @param {Object} data
      */
     async onSwitchTheme(data) {
         let me       = this,
-            viewport = me.component,
-            oldTheme = viewport.theme || 'neo-theme-neo-light',
+            oldTheme = me.component.getTheme(),
             newTheme = oldTheme === 'neo-theme-neo-light' ? 'neo-theme-neo-dark' : 'neo-theme-neo-light';
 
         // A keyboard activation carries no coordinates. It used to reveal from 0,0 — a corner wipe
