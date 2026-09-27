@@ -13,9 +13,6 @@ import ViewerTime         from '../../../util/ViewerTime.mjs';
  * the cockpit's `goldenPathEnvelope` leaf, bound like every other Golden Path pane's. Reads are intent events
  * that the owning cockpit relays to the authenticated fleet bridge.
  *
- * The graph envelope and shared selection remain provider data for the Observatory; this reading surface
- * does not manufacture a second graph interaction over producer-written content.
- *
  * @class AgentOS.view.fleet.goldenpath.Container
  * @extends Neo.container.Base
  */
@@ -43,23 +40,10 @@ class GoldenPathPane extends Container {
          */
         envelope_: null,
         /**
-         * The `fleetGraphScene` envelope stays bound as shared Observatory data. This pane does not derive a
-         * second selection control from it.
-         * @member {Object|null} graphEnvelope_=null
-         * @reactive
-         */
-        graphEnvelope_: null,
-        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
         layout: {ntype: 'vbox', align: 'stretch'},
-        /**
-         * The selected graph node's qualified id remains shared provider data for the Observatory.
-         * @member {String|null} selectedId_=null
-         * @reactive
-         */
-        selectedId_: null,
         /**
          * @member {Object[]} items
          */

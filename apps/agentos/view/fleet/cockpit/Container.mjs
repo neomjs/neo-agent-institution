@@ -180,7 +180,7 @@ class FleetCockpit extends VesselContainer {
                 module   : GoldenPathPane,
                 header   : {text: 'Golden Path'},
                 reference: 'golden-path',
-                bind     : {envelope: data => data.goldenPathEnvelope, graphEnvelope: data => data.graphSceneEnvelope, selectedId: {key: 'graphSelectionId', twoWay: true}},
+                bind     : {envelope: data => data.goldenPathEnvelope},
                 listeners: {goldenPathRequest: 'onGoldenPathRequest'}
             },
             // the inspector and the invoked tools: auto-hidden onto the right edge's rail

@@ -83,9 +83,6 @@ apps/agentos/model/FleetTask.mjs
 apps/agentos/model/FleetTenant.mjs
     9d121e948e87e886001ce3ad59c30e7c27d825ce
 
-apps/agentos/model/GoldenPathItem.mjs
-    b34bfcfe5aec6bca5fb6dc5004e1c18cb02d5599
-
 apps/agentos/model/GraphSceneNode.mjs
     d799e7abdcb2a70f669452a89a47fb6914b56303
 
@@ -148,9 +145,6 @@ apps/agentos/store/FleetTasks.mjs
 
 apps/agentos/store/FleetTenants.mjs
     cce0aff5d8baa28e056a155c9c4793fe5b9ff1c8
-
-apps/agentos/store/GoldenPathItems.mjs
-    76d371ba547ad1d3a24cc1daa68ef3e16cef2e42
 
 apps/agentos/store/GraphSceneNodes.mjs
     6b1504b7ccd1eedcfcc304d49b0ed78dfc3f9d1f
@@ -258,7 +252,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     db3a6e46e86e8de72c91a59bf8085e905394cb28
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    f89cb846a1b8f769725f4520e5c6b593297f82e2
+    cf651f3d7f7974eb21e9fcd2e54cb68840d22d87
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     de279c7faeb0f3c9c18f1c8c18541ee86d8c853a
@@ -288,13 +282,13 @@ apps/agentos/view/fleet/detail/Container.mjs
     0548d040121c6c4ba84e44d3d506aeafe878befd
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
-    d4ccab07bc3f68123334b9f7438cf7c7f6dff3d8
+    58ffb86f112a3d285c3470ba2d6ee6296e49c954
 
 apps/agentos/view/fleet/goldenpath/ObservatoryCanvas.mjs
     042eb1202d488758ddf7578739ea3184ec8cf68a
 
 apps/agentos/view/fleet/goldenpath/ObservatoryContainer.mjs
-    475e7d89741fd61c1c69c95319aa01f3b5f03736
+    c0b64e8063a606c35c896804d5cd6af4978c33a1
 
 apps/agentos/view/fleet/goldenpath/ObservatoryNodeList.mjs
     5e368781abf3361bc7822276143dd0f04420f0f4
