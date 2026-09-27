@@ -94,10 +94,10 @@ class LivenessController extends ComponentController {
      */
     lastLiveRows = null
     /**
-     * Re-entrancy latch for {@link #onRosterStoreLoad}: the store fires `load` for its own
-     * mutations, so the guard's reconciliation adds/removals re-trigger the very listener that
-     * issued them — unlatched, that recursion is a real stack overflow (~524 frames on a 5k-row
-     * snapshot).
+     * Re-entrancy latch, held by {@link #reconcileRoster}: the store fires `load` for the reconcile's
+     * own adds and removals, and {@link #onRosterStoreLoad} would answer each with another reconcile
+     * of the same snapshot — unlatched, that recursion is a real stack overflow (~524 frames on a
+     * 5k-row snapshot).
      * @member {Boolean} reconcilingRoster=false
      * @protected
      */
@@ -584,6 +584,9 @@ class LivenessController extends ComponentController {
      * The roster's view filters (the density fold, hide offline) leave a filtered-out resident only
      * in the store's unfiltered twin, so membership is read there. A known resident is found in the
      * view first, where hydrating it also writes the twin, and in the twin only when the view hides it.
+     *
+     * Every store mutation fires `load`, so joiners and departures each land as ONE batch, under the
+     * {@link #reconcilingRoster} latch: a snapshot is one reconcile, whichever writer admits it.
      * @param {Neo.data.Store} store
      * @param {Object[]} rows Mapped snapshot rows keyed by `agentId`.
      * @protected
@@ -591,21 +594,23 @@ class LivenessController extends ComponentController {
     reconcileRoster(store, rows) {
         const
             snapshotIds = new Set(rows.map(row => row.agentId)),
+            departed    = (store.allItems ?? store).items.map(record => record.agentId).filter(agentId => !snapshotIds.has(agentId)),
             joiners     = [];
 
-        rows.forEach(row => {
-            const record = store.get(row.agentId) ?? store.allItems?.get(row.agentId);
+        this.reconcilingRoster = true;
 
-            record ? record.set(row) : joiners.push(row)
-        });
+        try {
+            rows.forEach(row => {
+                const record = store.get(row.agentId) ?? store.allItems?.get(row.agentId);
 
-        // one batched add — every store mutation fires `load`, per-row adds would fan out
-        joiners.length > 0 && store.add(joiners);
+                record ? record.set(row) : joiners.push(row)
+            });
 
-        (store.allItems ?? store).items
-            .filter(record => !snapshotIds.has(record.agentId))
-            .map(record => record.agentId)
-            .forEach(agentId => store.remove(agentId));
+            joiners.length  > 0 && store.add(joiners);
+            departed.length > 0 && store.remove(departed)
+        } finally {
+            this.reconcilingRoster = false
+        }
 
         this.reconcileSelection()
     }
@@ -623,13 +628,7 @@ class LivenessController extends ComponentController {
         const me = this;
 
         if (!me.reconcilingRoster && me.rosterWired && me.lastLiveRows) {
-            me.reconcilingRoster = true;
-
-            try {
-                me.reconcileRoster(me.resolveFleetRosterStore(), me.lastLiveRows)
-            } finally {
-                me.reconcilingRoster = false
-            }
+            me.reconcileRoster(me.resolveFleetRosterStore(), me.lastLiveRows)
         }
     }
 
