@@ -126,6 +126,55 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(AddAgentFlow.ADD_AGENT_STATES).toContain(confirmed.state)
     });
 
+    test('a confirmed seat gets its working repo through the wire\'s setRepo; one that cannot be set is named, a malformed one never reaches the bridge', async () => {
+        expect(AddAgentFlow.repoOf()).toEqual({cloneUrl: 'https://github.com/neomjs/neo.git', repoSlug: 'neomjs/neo'});
+        expect(AddAgentFlow.repoOf('  neomjs/neo-agent-brain ')).toEqual({
+            cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git',
+            repoSlug: 'neomjs/neo-agent-brain'
+        });
+        // the Fleet names the checkout path in lowercase only, so a typed case never reaches its verb
+        expect(AddAgentFlow.repoOf('NeoMJS/Neo').repoSlug).toBe('neomjs/neo');
+
+        for (const malformed of ['neo', 'a/b/c', 'https://github.com/x/y.git', 'x/y z']) {
+            expect(AddAgentFlow.repoOf(malformed)).toBeNull()
+        }
+
+        const
+            calls    = [],
+            withRepo = {...cleanReadback(), metadata: {repo: {cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git', repoSlug: 'neomjs/neo-agent-brain'}}},
+            set      = await AddAgentFlow.submitDefineAgent({
+                bridgeResolver: () => ({
+                    defineAgent: async () => cleanReadback(),
+                    setRepo    : async payload => { calls.push(payload); return withRepo }
+                }),
+                payload: {...cleanPayload(), repoSlug: 'neomjs/neo-agent-brain'}
+            });
+
+        expect(calls).toEqual([{id: 'resident-7', cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git', repoSlug: 'neomjs/neo-agent-brain'}]);
+        expect(set).toEqual({state: 'readback-confirmed', definition: withRepo, reason: ''});
+
+        const failing = await AddAgentFlow.submitDefineAgent({
+            bridgeResolver: () => ({defineAgent: async () => cleanReadback(), setRepo: async () => { throw new Error('down') }}),
+            payload       : cleanPayload()
+        });
+
+        expect(failing).toEqual({
+            state     : 'readback-confirmed',
+            definition: cleanReadback(),
+            reason    : 'Agent added, but its working repo is not set: set neomjs/neo before starting it.'
+        });
+
+        let contacted = false;
+
+        const malformed = await AddAgentFlow.submitDefineAgent({
+            bridgeResolver: () => ({defineAgent: async () => { contacted = true; return cleanReadback() }}),
+            payload       : {...cleanPayload(), repoSlug: 'not a repo'}
+        });
+
+        expect(malformed.state).toBe('rejected');
+        expect(contacted).toBe(false)
+    });
+
     test('shell submit crosses the generic bridge with public intent only', async () => {
         let received;
 

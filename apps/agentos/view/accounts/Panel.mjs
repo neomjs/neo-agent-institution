@@ -129,6 +129,15 @@ class Accounts extends DashboardPanel {
                 placeholderText: 'neo-gpt',
                 required       : true
             }, {
+                // the repo the seat's first Start clones and runs in
+                module         : TextField,
+                labelText      : 'Working repo',
+                labelWidth     : 136,
+                name           : 'repoSlug',
+                placeholderText: 'owner/repo',
+                required       : true,
+                value          : AddAgentFlow.DEFAULT_REPO_SLUG
+            }, {
                 module         : PasswordField,
                 clearable      : true,
                 labelText      : 'GitHub PAT',
@@ -549,10 +558,16 @@ class Accounts extends DashboardPanel {
             valid      = await form.validate(),
             values     = await form.getSubmitValues(),
             payload    = AddAgentFlow.createDefineAgentIntent(values, bridge),
+            repo       = AddAgentFlow.repoOf(values.repoSlug),
             validation = AddAgentFlow.validateDefinePayload(payload, {credentialRequired: !shellOwned});
 
         if (!valid || !validation.valid) {
             this.updateBridgeStatus('is-error', `Agent setup incomplete. ${validation.reason}`);
+            return
+        }
+
+        if (!repo) {
+            this.updateBridgeStatus('is-error', 'Agent setup incomplete. The working repo reads owner/repo, e.g. neomjs/neo.');
             return
         }
 
@@ -564,13 +579,15 @@ class Accounts extends DashboardPanel {
                 return
             }
 
-            this.upsertPublicAgentDefinition(outcome, payload.credential);
-            this.fire('agentDefinitionAccepted', {agent: outcome});
+            const {definition, reason} = await this.assignRepoThroughBridge(outcome, repo, payload.credential);
+
+            this.upsertPublicAgentDefinition(definition, payload.credential);
+            this.fire('agentDefinitionAccepted', {agent: definition});
             this.updateBridgeStatus(
-                'is-live',
-                shellOwned
+                reason ? 'is-error' : 'is-live',
+                reason || (shellOwned
                     ? 'Agent added. Credential entry stayed in the native shell.'
-                    : 'Agent added. PAT was not retained in the app worker.'
+                    : 'Agent added. PAT was not retained in the app worker.')
             )
         } catch (error) {
             this.updateBridgeStatus(
@@ -626,6 +643,18 @@ class Accounts extends DashboardPanel {
         }
 
         return bridge.defineAgent(AddAgentFlow.createDefineAgentIntent(payload, bridge))
+    }
+
+    /**
+     * @summary Set a newly defined seat's working repo through the injected Fleet Registry bridge, the
+     * twin of {@link submitToFleetRegistryBridge}: its first Start then clones that repo and runs there.
+     * @param {Object} definition The confirmed public definition.
+     * @param {{cloneUrl: String, repoSlug: String}} repo
+     * @param {String} [credential] Ephemeral — used solely for the readback's echo check.
+     * @returns {Promise<{definition: Object, reason: String}>}
+     */
+    async assignRepoThroughBridge(definition, repo, credential) {
+        return AddAgentFlow.assignRepo(AddAgentFlow.resolveRegistryBridge(), definition, repo, credential)
     }
 
     /**

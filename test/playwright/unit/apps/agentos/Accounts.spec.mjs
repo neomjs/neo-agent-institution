@@ -42,6 +42,10 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                 validate: async () => true
             },
             stub      = {
+                assignRepoThroughBridge    : async (definition, repo) => {
+                    calls.push(['repo', definition.id, repo]);
+                    return {definition, reason: ''}
+                },
                 clearCredentialField       : async () => calls.push(['clear']),
                 fire                       : (name, data) => calls.push(['fire', name, data]),
                 getReference               : reference => reference === 'agent-form' ? form : null,
@@ -61,10 +65,12 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
             harnessType   : 'codex',
             launchOwner   : 'fleet'
         }]);
-        expect(calls[1]).toEqual(['upsert', canonical, 'ghp_should_not_escape']);
-        expect(calls[2]).toEqual(['fire', 'agentDefinitionAccepted', {agent: canonical}]);
-        expect(calls[3]).toEqual(['status', 'is-live', 'Agent added. PAT was not retained in the app worker.']);
-        expect(calls[4]).toEqual(['clear'])
+        // the seat's working repo is set right after the define: the default when the form names none
+        expect(calls[1]).toEqual(['repo', 'resident-42', {cloneUrl: 'https://github.com/neomjs/neo.git', repoSlug: 'neomjs/neo'}]);
+        expect(calls[2]).toEqual(['upsert', canonical, 'ghp_should_not_escape']);
+        expect(calls[3]).toEqual(['fire', 'agentDefinitionAccepted', {agent: canonical}]);
+        expect(calls[4]).toEqual(['status', 'is-live', 'Agent added. PAT was not retained in the app worker.']);
+        expect(calls[5]).toEqual(['clear'])
     });
 
     test('shell creation sends public intent only and never hands a PAT to the App-Worker bridge', async () => {
@@ -86,6 +92,7 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
             },
             previousOS = globalThis.AgentOS,
             stub       = {
+                assignRepoThroughBridge    : Accounts.prototype.assignRepoThroughBridge,
                 clearCredentialField       : async () => calls.push(['clear']),
                 fire                       : (name, data) => calls.push(['fire', name, data]),
                 getReference               : reference => reference === 'agent-form' ? form : null,
@@ -105,6 +112,10 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                     defineAgent      : async payload => {
                         calls.push(['submit', payload]);
                         return canonical
+                    },
+                    setRepo          : async payload => {
+                        calls.push(['repo', payload]);
+                        return canonical
                     }
                 }
             }
@@ -122,10 +133,12 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
             launchOwner   : 'fleet'
         }]);
         expect(JSON.stringify(calls[0])).not.toContain(credential);
-        expect(calls[1]).toEqual(['upsert', canonical, undefined]);
-        expect(calls[2]).toEqual(['fire', 'agentDefinitionAccepted', {agent: canonical}]);
-        expect(calls[3]).toEqual(['status', 'is-live', 'Agent added. Credential entry stayed in the native shell.']);
-        expect(calls[4]).toEqual(['clear'])
+        // the wire's setRepo gives the seat its working repo, so its first Start clones it
+        expect(calls[1]).toEqual(['repo', {id: 'resident-shell', cloneUrl: 'https://github.com/neomjs/neo.git', repoSlug: 'neomjs/neo'}]);
+        expect(calls[2]).toEqual(['upsert', canonical, undefined]);
+        expect(calls[3]).toEqual(['fire', 'agentDefinitionAccepted', {agent: canonical}]);
+        expect(calls[4]).toEqual(['status', 'is-live', 'Agent added. Credential entry stayed in the native shell.']);
+        expect(calls[5]).toEqual(['clear'])
     });
 
     test('shell mode removes the Accounts PAT field before mount', () => {
@@ -248,6 +261,7 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                 // delete the very path the credential crosses, and a helper extracted INSIDE it would
                 // leak while every assertion here stayed green — the claim would be about a boundary
                 // the test had removed.
+                assignRepoThroughBridge    : Accounts.prototype.assignRepoThroughBridge,
                 submitToFleetRegistryBridge: Accounts.prototype.submitToFleetRegistryBridge,
                 upsertPublicAgentDefinition: Accounts.prototype.upsertPublicAgentDefinition
             },
@@ -279,7 +293,7 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
             undo       = [];
 
         // the injected bridge the REAL submit seam reads off globalThis
-        globalThis.AgentOS = {...realOS, fleet: {registryBridge: {defineAgent: async () => canonical}}};
+        globalThis.AgentOS = {...realOS, fleet: {registryBridge: {defineAgent: async () => canonical, setRepo: async () => canonical}}};
 
         try {
             kinds.forEach(kind => {
@@ -325,7 +339,7 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
         expect(source).toContain("agentDefinitionsStore: 'stores.agentDefinitions'");
         expect(source).toContain("fleetTenantsStore    : 'stores.fleetTenants'");
         expect(source).toContain('store.add(definition)');
-        expect(source).toContain('this.upsertPublicAgentDefinition(outcome, payload.credential)');
+        expect(source).toContain('this.upsertPublicAgentDefinition(definition, payload.credential)');
         expect(source).not.toContain('createPublicAgentDefinition');
         expect(source).not.toContain("from '../store/AgentDefinitions.mjs'");
         expect(source).not.toMatch(/store\.add\(\s*values/)

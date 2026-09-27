@@ -37,12 +37,19 @@ const ADD_AGENT_STATES = ['idle', 'validating', 'submitting', 'readback-confirme
 const SECRET_KEYS = ['authorization', 'credential', 'password', 'pat', 'token'];
 
 /**
+ * The repository a new seat works in unless the operator names another.
+ * @member {String} DEFAULT_REPO_SLUG
+ */
+const DEFAULT_REPO_SLUG = 'neomjs/neo';
+
+/**
  * Static validation and bridge-round-trip utilities for defining an AgentOS resident.
  * @class AgentOS.util.AddAgentFlow
  * @extends Neo.core.Base
  */
 class AddAgentFlow extends Base {
-    static ADD_AGENT_STATES = ADD_AGENT_STATES
+    static ADD_AGENT_STATES  = ADD_AGENT_STATES
+    static DEFAULT_REPO_SLUG = DEFAULT_REPO_SLUG
 
     static config = {
         /**
@@ -108,6 +115,22 @@ class AddAgentFlow extends Base {
     }
 
     /**
+     * @summary A seat's working repository from the form's `owner/repo`: the slug and the GitHub clone
+     * URL a provisioned Start clones, so the harness runs in the seat's own checkout. A blank entry
+     * means the default; anything that is not exactly `owner/repo` is `null`. The slug is lowercased:
+     * GitHub ignores case, and the Fleet names the checkout path in lowercase only.
+     * @param {String} [repoSlug]
+     * @returns {{cloneUrl: String, repoSlug: String}|null}
+     */
+    static repoOf(repoSlug) {
+        const slug = String(repoSlug ?? '').trim().toLowerCase() || DEFAULT_REPO_SLUG;
+
+        return /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(slug)
+            ? {cloneUrl: `https://github.com/${slug}.git`, repoSlug: slug}
+            : null
+    }
+
+    /**
      * @summary Resolve the Fleet Registry bridge from its injected seam. The Body never constructs a
      * bridge — an Agent OS shell injects one; its absence is the `gated` state, not an error.
      * @param {Function|null} [resolver] Optional injected resolver (the DI seam for owners and tests).
@@ -163,10 +186,14 @@ class AddAgentFlow extends Base {
      * - `{state: 'gated',              reason}`             — no bridge, or the bridge lacks `defineAgent`; fail-closed, nothing attempted.
      * - `{state: 'rejected',           reason}`             — payload invalid, controlled domain rejection, invalid readback, or transport error (reason is sanitized; never echoes credential bytes).
      * - `{state: 'readback-confirmed', definition, reason}` — the validated canonical public definition; the ONLY success shape.
+     *   A readback-confirmed outcome with a `reason` is a defined seat whose working repo could not be set.
+     *
+     * The seat's working repo is set right after the define, so its first Start provisions its own
+     * checkout; without one, Start launches the harness in the Fleet process's own directory.
      *
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
-     * @param {Object}        config.payload          `{credential, githubUsername, harnessType}`.
+     * @param {Object}        config.payload          `{credential, githubUsername, harnessType, repoSlug}`.
      * @returns {Promise<Object>} One terminal outcome — this function never throws.
      */
     static async submitDefineAgent({bridgeResolver=null, payload}) {
@@ -174,10 +201,15 @@ class AddAgentFlow extends Base {
             bridge     = AddAgentFlow.resolveRegistryBridge(bridgeResolver),
             shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
             request    = AddAgentFlow.createDefineAgentIntent(payload, bridge),
+            repo       = AddAgentFlow.repoOf(payload?.repoSlug),
             validation = AddAgentFlow.validateDefinePayload(request, {credentialRequired: !shellOwned});
 
         if (!validation.valid) {
             return {state: 'rejected', reason: validation.reason}
+        }
+
+        if (!repo) {
+            return {state: 'rejected', reason: 'The working repo reads owner/repo, e.g. neomjs/neo.'}
         }
 
         if (!bridge?.defineAgent) {
@@ -207,7 +239,37 @@ class AddAgentFlow extends Base {
             return {state: 'rejected', reason: readback.reason}
         }
 
-        return {state: 'readback-confirmed', definition: outcome, reason: ''}
+        return {state: 'readback-confirmed', ...await AddAgentFlow.assignRepo(bridge, outcome, repo, request.credential)}
+    }
+
+    /**
+     * @summary Set a newly defined seat's working repo through the bridge. The define stands either
+     * way; a repo that could not be set comes back as the reason, so the operator sets it before the
+     * seat's first Start.
+     * @param {Object} bridge
+     * @param {Object} definition The confirmed public definition.
+     * @param {{cloneUrl: String, repoSlug: String}} repo
+     * @param {String} [credential] Ephemeral — used solely for the readback's echo check.
+     * @returns {Promise<{definition: Object, reason: String}>}
+     */
+    static async assignRepo(bridge, definition, repo, credential) {
+        const unset = {definition, reason: `Agent added, but its working repo is not set: set ${repo.repoSlug} before starting it.`};
+
+        if (!bridge?.setRepo) {
+            return unset
+        }
+
+        let withRepo;
+
+        try {
+            withRepo = await bridge.setRepo({id: definition.id, ...repo})
+        } catch {
+            return unset
+        }
+
+        return withRepo && AddAgentFlow.validateReadback(withRepo, credential).valid
+            ? {definition: withRepo, reason: ''}
+            : unset
     }
 }
 

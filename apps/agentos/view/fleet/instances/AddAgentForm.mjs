@@ -99,6 +99,17 @@ class AddAgentForm extends FormContainer {
             reference      : 'field-username',
             required       : true
         }, {
+            // the repo the seat's first Start clones and runs in
+            module         : TextField,
+            flex           : 'none',
+            labelPosition  : 'inline',
+            labelText      : 'Working repo',
+            name           : 'repoSlug',
+            placeholderText: 'owner/repo',
+            reference      : 'field-repo',
+            required       : true,
+            value          : AddAgentFlow.DEFAULT_REPO_SLUG
+        }, {
             module         : PasswordField,
             clearable      : true,
             flex           : 'none',
@@ -285,7 +296,10 @@ class AddAgentForm extends FormContainer {
 
             me.flowStatus = {state: 'submitting', reason: ''};
 
-            const outcome = await AddAgentFlow.submitDefineAgent({bridgeResolver: me.bridgeResolver, payload});
+            const outcome = await AddAgentFlow.submitDefineAgent({
+                bridgeResolver: me.bridgeResolver,
+                payload       : {...payload, repoSlug: values.repoSlug}
+            });
 
             me.flowStatus = {state: outcome.state, reason: outcome.reason};
 
