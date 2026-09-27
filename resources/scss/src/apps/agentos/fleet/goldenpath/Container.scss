@@ -75,9 +75,21 @@
         }
     }
 
-    /* the graph button shows its glyph; its label stays the accessible name, clipped rather than removed */
+    /* the graph button: a compact glyph on the item's line, the engine's button scale re-valued; its label
+       stays the accessible name, clipped rather than removed, and a disabled button only fades */
     .fm-golden-path-item-graph {
-        flex: none;
+        --button-background-color: transparent;
+        --button-border-radius   : 6px;
+        --button-height          : 24px;
+        --button-min-width       : 24px;
+        --button-padding         : 0;
+
+        align-self: center;
+        flex      : none;
+
+        &.neo-disabled {
+            opacity: .35;
+        }
 
         .neo-button-text {
             clip-path: inset(50%);

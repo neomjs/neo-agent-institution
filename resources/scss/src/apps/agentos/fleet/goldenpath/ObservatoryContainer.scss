@@ -80,10 +80,26 @@
         text-transform: uppercase;
     }
 
+    /* the engine list's own variables, re-valued on the FM scale: rows on the pane's ground, the selected
+       row a step up with the signal at its edge, keyboard focus outlined in the signal */
     .fm-observatory-node-list,
     .fm-observatory-relation-list {
+        --list-container-list-color          : var(--fm-ink);
+        --list-item-background-color         : transparent;
+        --list-item-background-color-active  : var(--fm-panel-2);
+        --list-item-background-color-hover   : var(--fm-panel-2);
+        --list-item-background-color-selected: var(--fm-panel-2);
+        --list-item-color-selected           : var(--fm-ink);
+        --list-item-focus-outline            : thin solid var(--fm-signal);
+        --list-item-focus-outline-offset     : -1px;
+        --list-scrollbar-color-scheme        : inherit;
+
         min-height: 0;
         overflow-y: auto;
+
+        .neo-list-item[aria-selected="true"] {
+            box-shadow: inset 2px 0 0 var(--fm-signal);
+        }
 
         .neo-list-item {
             align-items: baseline;
@@ -120,11 +136,12 @@
         }
     }
 
+    /* the body's flex item: it takes the width the side panel leaves, never its own */
     .fm-observatory-canvas {
         cursor      : grab;
         display     : block;
         min-height  : 200px;
+        min-width   : 0;
         touch-action: none;
-        width       : 100%;
     }
 }
