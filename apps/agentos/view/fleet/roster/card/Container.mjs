@@ -1,9 +1,9 @@
-import AgentCardController    from './Controller.mjs';
-import Button                 from '../../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Container              from '../../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import FamilyRail             from '../../shared/FamilyRailComponent.mjs';
-import Image                  from '../../../../../../node_modules/neo.mjs/src/component/Image.mjs';
-import StateDot, {stateLabel} from '../../shared/StateDotComponent.mjs';
+import AgentCardController                  from './Controller.mjs';
+import Button                               from '../../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container                            from '../../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import FamilyRail                           from '../../shared/FamilyRailComponent.mjs';
+import Image                                from '../../../../../../node_modules/neo.mjs/src/component/Image.mjs';
+import StateDot, {stateLabel, stateMeaning} from '../../shared/StateDotComponent.mjs';
 
 /**
  * The closed presence-band → label map (the plane's who_is_online embryo). Only these render; an
@@ -431,20 +431,20 @@ class AgentCard extends Container {
             pendingAction = record.pendingAction ?? null,
             sources       = SourceHealth.normalizeFleetSources(record.sources),
             summary       = SourceHealth.summarizeAnsweredAbnormal(record.sources),
-            // the runtime fact gates a resolved session state: a wired runtime renders the row's
-            // state as session truth; without one, an explicit `off` stays the operator-benched
-            // participation fact it is, while every other state renders `unobserved` — never a
-            // false `benched / offline` verdict, never fabricated liveness (the pulse still
-            // requires an OBSERVED confidence). A transitional pendingAction is a first-party
-            // fact (we sent the intent) and takes precedence with no runtime-source gate
+            // one resolver for card, detail and tally: a wired runtime renders the row's session
+            // state; otherwise the seat is offline, and the reason (benched / unobserved) rides the
+            // word's title — never fabricated liveness (the pulse still requires an OBSERVED confidence).
+            // A transitional pendingAction is a first-party fact (we sent the intent) and takes
+            // precedence with no runtime-source gate
             runtimeWired  = sources.runtime.state === 'wired',
             recordState   = record.state ?? 'off',
-            resolvedState = SourceHealth.resolveFleetDisplayState({state: record.state, sources: record.sources}),
+            resolved      = SourceHealth.resolveFleetDisplayState(record),
             displayState  = pendingAction === 'stop'
                 ? 'stopping'
                 : pendingAction // 'start' | 'restart' both transition toward running
                     ? 'starting'
-                    : resolvedState,
+                    : resolved.state,
+            reason        = pendingAction ? null : resolved.reason,
             // severity = weight: the exceptional resolved states take ink + weight on the word
             hot           = displayState === 'wedged' || displayState === 'limited',
             disabled      = Boolean(pendingAction) || !runtimeWired || controlReason?.kind === 'unauthorized';
@@ -458,10 +458,16 @@ class AgentCard extends Container {
             state: displayState
         });
 
-        me.getReference('card-state').set({
+        const cardState = me.getReference('card-state');
+
+        cardState.set({
             cls : hot ? ['fm-card-state', 'fm-state-hot'] : ['fm-card-state'],
             text: stateLabel(displayState)
         });
+
+        // the word stays short enough for the narrowest card; what "stuck" means, and why a seat is
+        // offline, ride its title (the detail pane spells the reason out)
+        cardState.changeVdomRootKey('title', stateMeaning(displayState, reason));
 
         // The presence band: session state says what the resident's PROCESS does;
         // presence says whether the SEAT is alive anywhere (the plane's who_is_online graph

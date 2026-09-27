@@ -19,13 +19,6 @@ const STATE_TOKEN = {
     // neither cleanly `off` nor confirmed `ok`; the dot must not assert a resolved state mid-request.
     starting: '--fm-state-starting',
     stopping: '--fm-state-stopping',
-    // participation-active with NO session observation: the slate signal-pending token, visually
-    // distinct from off's dead grey — no liveness claimed, no benched verdict claimed.
-    unobserved: '--fm-state-unobserved',
-    // a seat Fleet does not manage: supervision vocabulary does not apply, so the dot carries the
-    // calm neutral token — un-managed is the NORMAL topology on FM-as-client deployments, never an
-    // attention state (the operator-ratified default-state contract).
-    external: '--fm-state-external',
     off     : '--fm-state-off'
 };
 
@@ -61,31 +54,54 @@ export function stateClass(state) {
  * @type {Object}
  */
 const STATE_LABEL = {
-    ok        : 'working',
-    idle      : 'idle',
-    wedged    : 'wedged',
-    limited   : 'rate-limited',
-    starting  : 'starting',
-    stopping  : 'stopping',
-    unobserved: 'unobserved',
-    // neutral operator copy, not a supervision verdict: the seat runs in its own harness and Fleet
-    // simply does not manage it — "offline" would be a fact about FLEET presented as a fact about
-    // the agent (the falsified copy this label replaces).
-    external: 'external harness',
-    off     : 'benched / offline'
+    ok      : 'working',
+    idle    : 'idle',
+    wedged  : 'stuck',
+    limited : 'rate-limited',
+    starting: 'starting',
+    stopping: 'stopping',
+    off     : 'offline'
 };
 
 /**
- * Pure state → human-readable label. An unrecognized state renders its LITERAL category string
- * (never invisible, never silently re-labelled as `off`), so a new runtime state still reads until it
- * earns a canonical label here. Uses an `Object.hasOwn` check (not `MAP[k] ||`) so a prototype-shaped
- * key (`toString`, `constructor`, `__proto__`) resolves to its literal text instead of leaking an
- * inherited `Object.prototype` value.
+ * What a label means, for the states and offline reasons whose word alone does not say it. Rendered
+ * as the word's `title`, beside it rather than instead of it.
+ * @type {Object}
+ */
+const STATE_MEANING = {
+    benched   : 'benched by the operator',
+    stopped   : 'Fleet stopped its process',
+    unobserved: 'Fleet runs no process for it, so it has no session to read',
+    wedged    : 'running, no progress'
+};
+
+/**
+ * Pure state → human-readable label; an offline state names its reason (`offline · benched`). An
+ * unrecognized state renders its LITERAL category string (never invisible, never silently
+ * re-labelled as `off`), so a new runtime state still reads until it earns a canonical label here.
+ * Uses an `Object.hasOwn` check (not `MAP[k] ||`) so a prototype-shaped key (`toString`,
+ * `constructor`, `__proto__`) resolves to its literal text instead of leaking an inherited
+ * `Object.prototype` value.
  * @param {String} state
+ * @param {String|null} [reason=null] Why an `off` state is offline
  * @returns {String}
  */
-export function stateLabel(state) {
-    return Object.hasOwn(STATE_LABEL, state) ? STATE_LABEL[state] : String(state ?? 'unknown')
+export function stateLabel(state, reason = null) {
+    const label = Object.hasOwn(STATE_LABEL, state) ? STATE_LABEL[state] : String(state ?? 'unknown');
+
+    return state === 'off' && reason ? `${label} · ${reason}` : label
+}
+
+/**
+ * Pure state → what its label means, or `null` where the word says it all.
+ * @param {String} state
+ * @param {String|null} [reason=null] Why an `off` state is offline
+ * @returns {String|null}
+ */
+export function stateMeaning(state, reason = null) {
+    const key = state === 'off' ? reason : state;
+
+    return Object.hasOwn(STATE_MEANING, key) ? STATE_MEANING[key] : null
 }
 
 /**

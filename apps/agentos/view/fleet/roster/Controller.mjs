@@ -1,5 +1,6 @@
 import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import FleetAgent          from '../../../model/FleetAgent.mjs';
+import SourceHealth        from '../../../util/SourceHealth.mjs';
 
 /**
  * The roster's sort modes as plain store-sorter sets — replacing the whole set keeps ONE ordering
@@ -21,6 +22,13 @@ const SORT_MODES = Object.freeze({
         {direction: 'DESC', property: 'lastActivityAt'}
     ]
 });
+
+/**
+ * Every record field a view filter's predicate reads: what `SourceHealth.resolveFleetDisplayState`
+ * reads for hide-offline, the participation for hide-benched, the session state for the fold.
+ * @type {String[]}
+ */
+const FILTER_INPUTS = Object.freeze(['participationStatus', 'sources', 'state']);
 
 /**
  * Controller for {@link AgentOS.view.fleet.roster.Container}: the roster's business logic, out of
@@ -68,7 +76,8 @@ class Controller extends ComponentController {
         (store.sorters?.length ?? 0) < 1 && (store.sorters = SORT_MODES[this.sortMode].map(sorter => ({...sorter})));
 
         store.filters = [
-            {disabled: true, property: 'state',               filterBy: ({item}) => item.state === 'off'},
+            // offline is what the legend counts as offline — benched, stopped and unobserved alike
+            {disabled: true, property: 'state',               filterBy: ({item}) => SourceHealth.resolveFleetDisplayState(item).state === 'off'},
             {disabled: true, property: 'participationStatus', filterBy: ({item}) => item.participationStatus === 'operator_benched'},
             // derived from `state`, never read from the calculated `tierRank`: a filter must not depend
             // on a calculated field being present on the row it sees — a wire row or a turbo-mode row
@@ -233,17 +242,25 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary A session-`state` change moved a record between tiers: re-run the store's own sort
-     * so the plugin animates the reposition (a calculated field mutates silently — the collection
-     * does not watch record fields, so the tier move needs this one explicit re-sort trigger).
-     * Non-tier field changes re-render in place through the list's own `recordChange` path and
-     * need no ordering pass.
+     * @summary A record changed a fact the view reads. The collection re-filters on mutations and
+     * filter edits, never on a record's own field change, so an enabled filter whose predicate reads
+     * a changed field is re-run here: the offline filter reads everything the legend's resolver reads
+     * (session `state`, `sources`, `participationStatus`), the benched filter the participation, the
+     * fold the session state. A session-`state` change also moves a record between tiers, and the
+     * re-sort lets the plugin animate the reposition. Other field changes re-render in place through
+     * the list's own `recordChange` path.
      * @param {Object} data The store recordChange event `{fields, record}`.
      */
     onRosterRecordChange({fields}) {
-        const store = this.component.store;
+        const
+            store    = this.component.store,
+            changed  = new Set(fields.map(field => field.name)),
+            refilter = store?.filters?.some(filter => !filter.disabled) &&
+                       FILTER_INPUTS.some(name => changed.has(name));
 
-        if (store?.sorters?.length && fields.some(field => field.name === 'state')) {
+        refilter && store.filter();
+
+        if (store?.sorters?.length && (refilter || changed.has('state'))) {
             store.doSort()
         }
 

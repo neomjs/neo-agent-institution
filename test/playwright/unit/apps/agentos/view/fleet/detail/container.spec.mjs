@@ -195,7 +195,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(rowTexts()).toContain('status');
         expect(rowTexts()).toContain('operator benched');
 
-        // null (no identity-root fact) → no row, never guessed (#23 ledger: absent facts are absent)
+        // null (no identity-root fact) → no row, never guessed: in the ledger, absent facts are absent
         applySet(detail, {participationStatus: null});
         expect(rowTexts()).not.toContain('status');
 
@@ -203,20 +203,32 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
     });
 
     test('the state dot is gated on a wired runtime source — missing runtime evidence never renders live', () => {
-        const detail = createDetail({agentId: 'vega', state: 'ok'});
+        const
+            detail  = createDetail({agentId: 'vega', state: 'ok'}),
+            session = () => {
+                const nodes = detail.down({reference: 'detail-ledger'}).vdom.cn ?? [],
+                      index = nodes.findIndex(node => node.text === 'session');
+
+                return {text: nodes[index + 1]?.text, title: nodes[index + 1]?.title ?? null}
+            };
 
         expect(detail.down({ntype: 'fm-state-dot'}).state).toBe('ok');
         expect(detail.down({ntype: 'fm-state-dot'}).live).toBe(true);
+        expect(session()).toEqual({text: 'working', title: null});
 
-        // missing runtime evidence resolves a participation-active resident to 'unobserved' — the
-        // SAME truth the grid card renders (one resolver, three surfaces), never live, never a
-        // false benched verdict
+        // missing runtime evidence resolves the resident offline, unobserved — the SAME truth the
+        // grid card renders (one resolver, three surfaces), never live, never a false benched verdict
         applySet(detail, {sources: {
             ...observedSources,
             runtime: {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}
         }});
-        expect(detail.down({ntype: 'fm-state-dot'}).state).toBe('unobserved');
+        expect(detail.down({ntype: 'fm-state-dot'}).state).toBe('off');
         expect(detail.down({ntype: 'fm-state-dot'}).live).toBe(false);
+        // the detail carries the reason too
+        expect(session()).toEqual({text: 'offline · unobserved', title: 'Fleet runs no process for it, so it has no session to read'});
+
+        applySet(detail, {participationStatus: 'operator_benched'});
+        expect(session().text).toBe('offline · benched');
 
         detail.destroy()
     });
@@ -260,7 +272,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         expect(body(detail, 'lane').text).toBe('FM cockpit agent detail view · 17 open lanes');
         // a feed-gated pane never fabricates a stream — and never repeats the head's honest
-        // "not observed" as a body line either (#23): the body stays EMPTY, the awaiting truth
+        // "not observed" as a body line either: the body stays EMPTY, the awaiting truth
         // rides the freshness pill's title
         expect(body(detail, 'thought-stream').text).toBe('');
         expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting live feed');
@@ -296,7 +308,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         const nodes = ledger.vdom.cn ?? [];
 
         // carried, inert, and still READABLE — an operator needs the producer's evidence; it rides
-        // the pill's title ATTRIBUTE now (#23), which is an attribute string: inert like a text node
+        // the pill's title ATTRIBUTE, which is an attribute string: inert like a text node
         expect(nodes.some(node => node.title === hostile)).toBe(true);
 
         // …and nowhere as markup, on any node

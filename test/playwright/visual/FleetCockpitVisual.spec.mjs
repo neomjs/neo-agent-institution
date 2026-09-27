@@ -236,8 +236,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         });
 
         expect(geometry.viewport, 'the viewport itself is the 314px vessel window').toBe(314);
-        // the seven-state legend folds inside its bar at vessel width — never clips a state
-        expect(geometry.head.swatches, 'all seven legend states are rendered at vessel width').toBe(7);
+        // the five-state legend folds inside its bar at vessel width — never clips a state
+        expect(geometry.head.swatches, 'all five legend states are rendered at vessel width').toBe(5);
         expect(geometry.head.scrollWidth, 'the head row hides nothing: no horizontal pressure').toBeLessThanOrEqual(geometry.head.clientWidth);
         expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
         expect(geometry.scrollWidth, 'the repaired cockpit no longer overflows its vessel — scroll width stays inside the client box').toBeLessThanOrEqual(geometry.clientWidth);
@@ -351,7 +351,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         expect(geometry.viewport, 'the viewport is the 720px intermediate band').toBe(720);
         // the legend wraps under the title at this band instead of clipping its tail
-        expect(geometry.head.swatches, 'all seven legend states are rendered in the intermediate band').toBe(7);
+        expect(geometry.head.swatches, 'all five legend states are rendered in the intermediate band').toBe(5);
         expect(geometry.head.scrollWidth, 'the head row hides nothing in the intermediate band').toBeLessThanOrEqual(geometry.head.clientWidth);
         expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
         expect(geometry.docScrollWidth, 'no horizontal document overflow in the mark regime').toBeLessThanOrEqual(geometry.viewport);
@@ -371,11 +371,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     });
 
     test('the Review preset at 1280×720 — the fleet head keeps its whole legend when the inspector docks beside it (geometry asserted)', async ({page}) => {
-        // the legend's exact case: the shipped Review preset narrows the fleet pane to ~896px, which the
-        // seven-state health legend does not fit beside the title. The head row wraps (layout
-        // wrap), so the legend takes the line under the title — every state stays readable, and
-        // the wide presets (Overview, Focus) keep their one-line head. The capture pins the
-        // wrapped form; the geometry pins the no-clip contract.
+        // the legend's exact case: the shipped Review preset narrows the fleet pane to ~896px, and
+        // the five-state legend still fits beside the title there, so the Review preset keeps the
+        // one-line head the wide presets have. The head row wraps (layout wrap) wherever the legend
+        // cannot fit. The capture pins the one-line form; the geometry pins the no-clip contract.
         await page.setViewportSize({width: 1280, height: 720});
         await bootSettledCockpit(page);
         // perspectives switch from their drawer: reveal it, apply Review, dismiss the reveal
@@ -398,10 +397,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         }));
 
         expect(geometry.viewport, 'the viewport is the design pass width').toBe(1280);
-        expect(geometry.head.swatches, 'all seven legend states are rendered').toBe(7);
+        expect(geometry.head.swatches, 'all five legend states are rendered').toBe(5);
         expect(geometry.head.scrollWidth, 'the head row hides nothing: scrollWidth stays inside clientWidth').toBeLessThanOrEqual(geometry.head.clientWidth);
-        expect(geometry.head.lastSwatchRight, 'the last legend state (benched / offline) sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
-        expect(geometry.head.legendTop, 'the legend took the line under the title').toBeGreaterThan(geometry.head.titleBottom - 1);
+        expect(geometry.head.lastSwatchRight, 'the last legend state (offline) sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
+        expect(geometry.head.legendTop, 'the five-state legend fits on the title\'s line').toBeLessThan(geometry.head.titleBottom);
 
         await expect(page).toHaveScreenshot('cockpit-review-1280.png')
     });

@@ -107,50 +107,47 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         stores.length = 0
     });
 
-    test('healthCounts is the pure tally — seven canonical categories through the SAME resolver the cards render; outside-supervision rows count external', () => {
-        const zero = {ok: 0, idle: 0, wedged: 0, limited: 0, unobserved: 0, external: 0, off: 0};
+    test('healthCounts is the pure tally — five buckets through the SAME resolver the cards render; a seat Fleet does not run counts offline (#246)', () => {
+        const zero = {ok: 0, idle: 0, wedged: 0, limited: 0, off: 0};
 
-        // roster-only rows (no sources) resolve participation-active states to `unobserved` and an
-        // un-wired `off` to `external` (supervision vocabulary only where supervision exists —
-        // the default-state contract), exactly as the cards display them — the tally and the card
-        // grain can never diverge
-        const counts = healthCounts(roster(['ok', 'ok', 'idle', 'off', 'limited', 'wedged']));
-        expect(counts).toEqual({...zero, unobserved: 5, external: 1});
+        // roster-only rows (no sources): Fleet supervises nothing, so every one is offline, exactly
+        // as the cards display them — the tally and the card grain can never diverge
+        expect(healthCounts(roster(['ok', 'ok', 'idle', 'off', 'limited', 'wedged']))).toEqual({...zero, off: 6});
 
         // a wired runtime keeps the row state as session truth in the tally too — including `off`,
-        // the managed-and-stopped seat that KEEPS its benched bucket
+        // the managed-and-stopped seat
         const wiredSources = {
             roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
             repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
             runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
         };
-        expect(healthCounts([{agentId: 'a1', state: 'ok', sources: wiredSources}])).toEqual({...zero, ok: 1});
-        expect(healthCounts([{agentId: 'a2', state: 'off', sources: wiredSources}])).toEqual({...zero, off: 1});
+        expect(healthCounts(['ok', 'idle', 'wedged', 'limited', 'off'].map(state => ({state, sources: wiredSources}))))
+            .toEqual({ok: 1, idle: 1, wedged: 1, limited: 1, off: 1});
 
-        // zero-fill: exactly the seven canonical keys, present even when absent
+        // the bench is a roster fact: a benched seat counts offline even with a running process
+        expect(healthCounts([{participationStatus: 'operator_benched', sources: wiredSources, state: 'ok'}])).toEqual({...zero, off: 1});
+
+        // zero-fill: exactly the five buckets, present even when absent
         expect(healthCounts([])).toEqual(zero);
 
-        // unknown / guest / unsupported rows sit outside any supervision contract → external,
-        // matching the resolver's own fold — never an invented benched verdict, never an 8th key
-        const withGuest = healthCounts(roster(['ok', 'mysterious', 'guest']));
-        expect(withGuest).toEqual({...zero, unobserved: 1, external: 2});
-        expect(Object.keys(withGuest).sort()).toEqual(['external', 'idle', 'limited', 'off', 'ok', 'unobserved', 'wedged']);
-        // the seven visible counts sum to the roster size — the bar can never undercount
-        expect(Object.values(withGuest).reduce((a, b) => a + b, 0)).toBe(3);
+        // unknown / guest / unsupported rows land in a rendered bucket too — never a sixth key
+        const withGuest = healthCounts([...roster(['ok', 'mysterious', 'guest']), {sources: wiredSources, state: 'mysterious'}]);
+        expect(withGuest).toEqual({...zero, off: 4});
+        expect(Object.keys(withGuest).sort()).toEqual(['idle', 'limited', 'off', 'ok', 'wedged']);
+        // the visible counts sum to the roster size — the bar can never undercount
+        expect(Object.values(withGuest).reduce((a, b) => a + b, 0)).toBe(4);
 
         // non-array guard
         expect(healthCounts(null)).toEqual(zero)
     });
 
     test('hasAttention derives the aggregate header verdict — only actionable buckets carry weight', () => {
-        const zero = {ok: 0, idle: 0, wedged: 0, limited: 0, unobserved: 0, external: 0, off: 0};
+        const zero = {ok: 0, idle: 0, wedged: 0, limited: 0, off: 0};
 
-        // a fleet of un-managed seats with nominal sources is CALM — the operator-ratified
-        // default-state contract (a header that is always yellow trains the operator to ignore it)
-        expect(hasAttention({...zero, external: 9})).toBe(false);
-        expect(hasAttention({...zero, ok: 3, idle: 2, unobserved: 4})).toBe(false);
-        // a managed-stopped seat is a fact, not an alarm
-        expect(hasAttention({...zero, off: 2})).toBe(false);
+        // a fleet of seats Fleet does not run is CALM — offline is a fact, not an alarm (a header
+        // that is always yellow trains the operator to ignore it)
+        expect(hasAttention({...zero, off: 9})).toBe(false);
+        expect(hasAttention({...zero, ok: 3, idle: 2})).toBe(false);
 
         // the actionable states carry the weight
         expect(hasAttention({...zero, wedged: 1})).toBe(true);
@@ -162,30 +159,30 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
     });
 
     test('deriveAttention is the SINGLE aggregate projection — every summarized truth folds, and expected-absence still weighs nothing', () => {
-        const zero = {ok: 0, idle: 0, wedged: 0, limited: 0, unobserved: 0, external: 0, off: 0};
+        const zero = {ok: 0, idle: 0, wedged: 0, limited: 0, off: 0};
 
-        // the un-managed normal: not-wired sources everywhere (the sample/FM-as-client topology)
+        // the un-managed normal: not-wired sources everywhere (the FM-as-client topology)
         // must NOT trip attention — weighting expected absence would make the header permanently
         // yellow again, the exact falsified default this projection retires
         const unmanagedRows = [{sources: {}}, {sources: null}, {
             sources: {runtime: {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}}
         }];
-        expect(deriveAttention({counts: {...zero, external: 3}, rows: unmanagedRows})).toBe(false);
+        expect(deriveAttention({counts: {...zero, off: 3}, rows: unmanagedRows})).toBe(false);
 
         // an ANSWERED-abnormal source (a producer said `missing`) is real trouble on a real surface
-        expect(deriveAttention({counts: {...zero, unobserved: 1}, rows: [{
+        expect(deriveAttention({counts: {...zero, off: 1}, rows: [{
             sources: {repoStatus: {source: 'fleet:fleetStatus', state: 'missing', confidence: 'none'}}
         }]})).toBe(true);
 
         // REJECTED evidence (a present fact the contract refused — malformed, cross-axis,
         // contradictory) carries weight too: validation failure must never read as a green surface
-        expect(deriveAttention({counts: {...zero, unobserved: 1}, rows: [{
+        expect(deriveAttention({counts: {...zero, off: 1}, rows: [{
             sources: {runtime: {source: 'fleet:listAgents', state: 'wired', confidence: 'observed'}}
         }]})).toBe(true);
 
         // the plumbed non-roster facts each trip the fold on their own
-        expect(deriveAttention({counts: {...zero, external: 9}, rows: unmanagedRows, daemonFault: true})).toBe(true);
-        expect(deriveAttention({counts: {...zero, external: 9}, rows: unmanagedRows, presenceDegraded: true})).toBe(true);
+        expect(deriveAttention({counts: {...zero, off: 9}, rows: unmanagedRows, daemonFault: true})).toBe(true);
+        expect(deriveAttention({counts: {...zero, off: 9}, rows: unmanagedRows, presenceDegraded: true})).toBe(true);
 
         // session buckets keep their weight through the fold
         expect(deriveAttention({counts: {...zero, wedged: 1}, rows: []})).toBe(true);
@@ -301,18 +298,22 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         expect(store.items.at(-1)).toBe(first);
         expect(store.items.map(record => record.tierRank)).toEqual([0, 1, 2]);
 
-        // the store-bound health bar re-tallied through ITS OWN record seam
+        // the store-bound health bar tallies through ITS OWN record seam: none of these roster-only
+        // rows has a runtime Fleet supervises, so all three read offline
         const bar = grid.getReference('fleet-health');
         expect(bar.store).toBe(store);
-        expect(swatchOf(bar, 'unobserved').count).toBe(2);
-        expect(swatchOf(bar, 'external').count).toBe(1);
+        expect(swatchOf(bar, 'off').count).toBe(3);
 
         grid.destroy()
     });
 
     test('filters hide without erasing: hide-offline and hide-benched shape the VIEW; the tally and title keep the whole fleet', async () => {
-        const rows = roster(['ok', 'off', 'idle', 'off']);
+        const
+            wired = {runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            rows  = roster(['ok', 'off', 'idle', 'idle']);
 
+        // working · stopped · benched while running · a seat Fleet does not run
+        [0, 1, 2].forEach(index => rows[index].sources = wired);
         rows[2].participationStatus = 'operator_benched';
 
         const store      = makeStore(rows),
@@ -322,26 +323,67 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
 
         expect(store.getCount()).toBe(4);
 
-        // hide offline: the two `off` rows leave the VIEW
-        controller.onFilterToggleClick({component: grid.getReference('filter-offline')});
-        expect(store.getCount()).toBe(2);
-        expect(store.items.every(record => record.state !== 'off')).toBe(true);
-        expect(grid.getReference('filter-offline').pressed).toBe(true);
-
-        // hide benched: the operator_benched row leaves too
+        // hide benched: the operator_benched row leaves the VIEW
         controller.onFilterToggleClick({component: grid.getReference('filter-benched')});
-        expect(store.getCount()).toBe(1);
+        expect(store.getCount()).toBe(3);
+        expect(grid.getReference('filter-benched').pressed).toBe(true);
+
+        // hide offline: what the legend counts offline leaves — stopped and unobserved as well
+        controller.onFilterToggleClick({component: grid.getReference('filter-offline')});
+        expect(store.items.map(record => record.state)).toEqual(['ok']);
 
         // the WHOLE fleet stays the counted truth: title + health tally read the unfiltered set
         expect(grid.getReference('fleet-title').text).toBe('Fleet · 4 agents');
         const bar = grid.getReference('fleet-health');
-        expect(swatchOf(bar, 'external').count).toBe(2);
+        expect(swatchOf(bar, 'ok').count).toBe(1);
+        expect(swatchOf(bar, 'off').count).toBe(3);
 
         // toggling back restores the view
         controller.onFilterToggleClick({component: grid.getReference('filter-offline')});
         controller.onFilterToggleClick({component: grid.getReference('filter-benched')});
         expect(store.getCount()).toBe(4);
         expect(cards(list).length).toBe(4);
+
+        grid.destroy()
+    });
+
+    test('an enabled hide-offline follows every fact the legend reads: a runtime or bench change alone moves a card in or out, both ways; the tally and title keep the whole fleet', () => {
+        const
+            wired = {runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            rows  = roster(['ok', 'ok']);
+
+        rows[0].sources = wired;   // agent-02 works under a runtime Fleet supervises; agent-01 has none
+
+        const
+            store      = makeStore(rows),
+            grid       = Neo.create(FleetGrid, {appName, store}),
+            controller = grid.getController(),
+            bar        = grid.getReference('fleet-health'),
+            running    = store.get('agent-02'),
+            seat       = store.get('agent-01'),
+            visible    = () => store.items.map(record => record.agentId).sort(),
+            tally      = () => [swatchOf(bar, 'ok').count, swatchOf(bar, 'off').count];
+
+        controller.onFilterToggleClick({component: grid.getReference('filter-offline')});
+        expect(visible()).toEqual(['agent-02']);
+
+        // a source-only change: the seat comes under the runtime and joins the view
+        seat.set({sources: wired});
+        expect(visible()).toEqual(['agent-01', 'agent-02']);
+        expect(tally()).toEqual([2, 0]);
+
+        // a bench-only change: the running seat leaves the view, its process untouched
+        running.set({participationStatus: 'operator_benched'});
+        expect(visible()).toEqual(['agent-01']);
+        expect(tally()).toEqual([1, 1]);
+
+        // and back: the bench lifts, the runtime goes
+        running.set({participationStatus: 'active'});
+        seat.set({sources: {}});
+        expect(visible()).toEqual(['agent-02']);
+        expect(tally()).toEqual([1, 1]);
+
+        expect(grid.getReference('fleet-title').text).toBe('Fleet · 2 agents');
 
         grid.destroy()
     });
@@ -628,13 +670,12 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         const store = makeStore(roster(['ok', 'ok', 'idle', 'off'])),
               bar   = Neo.create(HealthBar, {appName, store});
 
-        expect(bar.items.length).toBe(7);
-        expect(swatchOf(bar, 'unobserved').count).toBe(3);
-        expect(swatchOf(bar, 'external').count).toBe(1);   // an un-wired off is outside supervision
-        expect(swatchOf(bar, 'off').count).toBe(0);
+        // five swatches: working · idle · stuck · rate-limited · offline
+        expect(bar.items.map(sw => sw.state)).toEqual(['ok', 'idle', 'wedged', 'limited', 'off']);
+        expect(swatchOf(bar, 'off').count).toBe(4);      // Fleet runs none of these roster-only rows
         expect(swatchOf(bar, 'wedged').count).toBe(0);   // zero still renders (confirms "none")
 
-        // the aggregate verdict rides the bar as the nominal class — nothing here needs an operator
+        // the aggregate verdict rides the bar as the nominal class — offline is a fact, not an alarm
         expect(bar.cls).toContain('fm-health-nominal');
         expect(bar.cls).not.toContain('fm-health-attention');
 
@@ -642,25 +683,16 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         const idsBefore = bar.items.map(sw => sw.id);
         store.items[2].set({state: 'wedged'});                   // idle → wedged, via the record seam
         expect(bar.items.map(sw => sw.id)).toEqual(idsBefore);   // not recreated → the count transition can animate
-        expect(swatchOf(bar, 'idle').count).toBe(0);
-        // an unwired canonical state stays unobserved in the tally — wedged only counts as session
-        // truth under a wired runtime (exactly the card's own honesty rule); the aggregate verdict
-        // therefore stays nominal too
+        // an unwired row stays offline in the tally — stuck only counts as session truth under a
+        // wired runtime (exactly the card's own honesty rule); the aggregate verdict therefore
+        // stays nominal too
         expect(swatchOf(bar, 'wedged').count).toBe(0);
-        expect(swatchOf(bar, 'unobserved').count).toBe(3);
+        expect(swatchOf(bar, 'off').count).toBe(4);
         expect(bar.cls).toContain('fm-health-nominal');
 
         // a store load (roster growth) re-tallies too
         store.add({agentId: 'agent-99', state: 'ok'});
-        expect(swatchOf(bar, 'unobserved').count).toBe(4);
-
-        // guest/unknown folds into the VISIBLE external swatch — the seven-swatch bar never
-        // undercounts a roster, and never invents a benched verdict for an unsupervised row
-        store.items[0].set({state: 'mysterious'});
-        expect(bar.items.length).toBe(7);                   // still no 8th swatch
-        expect(swatchOf(bar, 'external').count).toBe(2);    // un-wired off + mysterious
-        expect(swatchOf(bar, 'off').count).toBe(0);
-        expect(swatchOf(bar, 'unobserved').count).toBe(3);
+        expect(swatchOf(bar, 'off').count).toBe(5);
 
         // a SOURCES-only record change re-tallies too: wiring a runtime flips unmanaged→managed
         // truth with no `state` field write — the mutation the old state-only filter dropped
@@ -669,9 +701,16 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
             repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
             runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
         };
-        store.items[1].set({sources: wired});               // an `ok` row: unobserved → ok, sources-only
+        store.items[1].set({sources: wired});               // an `ok` row: offline → working, sources-only
         expect(swatchOf(bar, 'ok').count).toBe(1);
-        expect(swatchOf(bar, 'unobserved').count).toBe(2);
+        expect(swatchOf(bar, 'off').count).toBe(4);
+
+        // a participation-only change re-tallies too: the bench moves a running seat offline
+        store.items[1].set({participationStatus: 'operator_benched'});
+        expect(swatchOf(bar, 'ok').count).toBe(0);
+        expect(swatchOf(bar, 'off').count).toBe(5);
+        store.items[1].set({participationStatus: 'active'});
+        expect(swatchOf(bar, 'ok').count).toBe(1);
 
         // an answered-abnormal source arriving via the SAME sources-only seam trips the aggregate
         store.items[1].set({sources: {...wired, repoStatus: {source: 'fleet:fleetStatus', state: 'missing', confidence: 'none'}}});
@@ -685,17 +724,19 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
     });
 
     test('HealthBar tallies the WHOLE fleet under view filters — hiding a tier never shrinks its count', () => {
-        const store = makeStore(roster(['ok', 'off', 'off', 'idle'])),
-              grid  = Neo.create(FleetGrid, {appName, store}),
-              bar   = grid.getReference('fleet-health');
+        const
+            wired = {runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            store = makeStore(roster(['ok', 'off', 'off', 'idle']).map(row => ({...row, sources: wired}))),
+            grid  = Neo.create(FleetGrid, {appName, store}),
+            bar   = grid.getReference('fleet-health');
 
-        expect(swatchOf(bar, 'external').count).toBe(2);
+        expect(swatchOf(bar, 'off').count).toBe(2);
 
         // hide the offline tier — the VIEW loses the rows, the tally must not
         grid.getController().onFilterToggleClick({component: grid.getReference('filter-offline')});
 
         expect(store.getCount()).toBe(2);
-        expect(swatchOf(bar, 'external').count).toBe(2);
+        expect(swatchOf(bar, 'off').count).toBe(2);
 
         grid.destroy()
     });

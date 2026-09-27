@@ -102,7 +102,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(band().cls).toEqual(['fm-card-presence']);
         expect(band().vdom['aria-label']).toBeFalsy();
         expect(band().vdom.title).toBeFalsy();
-        expect(card.down({reference: 'card-state'}).text).toBe('benched / offline');
+        expect(card.down({reference: 'card-state'}).text).toBe('offline');
 
         // the producer degrades to unknown → the band disappears entirely (no fabricated offline)
         applySet(card, {presence: {source: 'fleet:presenceState', state: 'unknown', confidence: 'none', lastSeenAt: null, reason: 'presence read failed'}});
@@ -385,7 +385,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('the source strip summarizes health in place; absent runtime renders the dot unobserved and never pulses (#15536)', () => {
+    test('the source strip summarizes health in place; absent runtime renders the dot offline and never pulses (#15536)', () => {
         const card     = createCard({agentId: 'vega', state: 'ok'}),
               beforeId = card.id,
               strip    = card.down({reference: 'source-strip'}),
@@ -403,9 +403,9 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         // repo ANSWERED-missing with a retained cause + runtime not-wired: only the answered
         // abnormality renders (name + reason — the rendered-exception bar), while the not-wired
         // runtime is expected absence — zero pixels on the strip exactly as it carries zero
-        // attention weight (ONE interpretation). The dot resolves unobserved (participation-
-        // active, session unobserved — never a benched verdict), the control cluster disables —
-        // in place.
+        // attention weight (ONE interpretation). The dot resolves offline, its word naming the
+        // reason (Fleet supervises nothing here — never a benched verdict), the control cluster
+        // disables — in place.
         applySet(card, {sources: {
             roster    : {source: 'fleet:listAgents',    state: 'wired',     confidence: 'observed'},
             repoStatus: {source: 'fleet:fleetStatus',   state: 'missing',   confidence: 'none', reason: 'no repository status answered for this agent'},
@@ -418,7 +418,8 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(strip.text).toBe('Repository not nominal · no repository status answered for this agent');
         expect(strip.vdom['aria-label']).toBe('Source health: Repository not nominal. Repository: no repository status answered for this agent.');
         expect(strip.cls).toContain('fm-strip-bad');
-        expect(stateDot.state).toBe('unobserved');
+        expect(stateDot.state).toBe('off');
+        expect(card.down({reference: 'card-state'}).text).toBe('offline');
         expect(stateDot.live).toBe(false);
         expect(card.down({reference: 'control-toggle'}).iconCls).toBe('fa-solid fa-stop');
         expect(card.down({reference: 'control-toggle'}).disabled).toBe(true);
@@ -656,17 +657,17 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
     });
 
     test('observe: a transitional state is a first-party fact — it renders even when the runtime source is not wired (#14978)', () => {
-        // runtime not-wired resolves a participation-active row to 'unobserved' (no session evidence,
-        // no benched verdict); but a pending action is something WE know (we sent the intent), so it
-        // takes precedence over the gate
+        // runtime not-wired resolves the row offline, unobserved (no session evidence, no benched
+        // verdict); but a pending action is something WE know (we sent the intent), so it takes
+        // precedence over the gate
         const card = createCard({agentId: 'vega', state: 'ok', sources: {
             roster    : {source: 'fleet:listAgents',    state: 'wired',     confidence: 'observed'},
             repoStatus: {source: 'fleet:fleetStatus',   state: 'wired',     confidence: 'observed'},
             runtime   : {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}
         }});
 
-        // resolved state renders 'unobserved' with no pending action (participation-active, session unobserved)
-        expect(card.down({ntype: 'fm-state-dot'}).state).toBe('unobserved');
+        // with no pending action the resolved state renders offline
+        expect(card.down({ntype: 'fm-state-dot'}).state).toBe('off');
 
         applySet(card, {pendingAction: 'start'});
         expect(card.down({ntype: 'fm-state-dot'}).state).toBe('starting');
@@ -686,8 +687,12 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
 
         // the word comes from stateLabel — the SAME closed-set resolver StateDot names ITSELF with, so the
         // card can never introduce a second state vocabulary; colour (dot) and word derive from one state
-        expect(card.down({reference: 'card-state'}).text).toBe('wedged');
+        expect(card.down({reference: 'card-state'}).text).toBe('stuck');
         expect(card.down({ntype: 'fm-state-dot'}).state).toBe('wedged');
+        // "stuck" says what it means on its title; a word that says it all carries none
+        expect(card.down({reference: 'card-state'}).vdom.title).toBe('running, no progress');
+        applySet(card, {state: 'ok'});
+        expect(card.down({reference: 'card-state'}).vdom.title).toBeFalsy();
 
         card.destroy()
     });
@@ -703,16 +708,15 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(stateText()).toBe('stopping');
         expect(card.down({ntype: 'fm-state-dot'}).state).toBe('stopping');
 
-        // missing runtime evidence resolves a participation-active row to 'unobserved' — the word
-        // degrades WITH the dot from the shared vocabulary (never a false 'benched / offline'
-        // verdict, never fabricated liveness)
+        // missing runtime evidence resolves the row offline, unobserved — the word degrades WITH the
+        // dot from the shared vocabulary (never a benched verdict, never fabricated liveness)
         applySet(card, {pendingAction: null, sources: {
             roster    : {source: 'fleet:listAgents',    state: 'wired',     confidence: 'observed'},
             repoStatus: {source: 'fleet:fleetStatus',   state: 'wired',     confidence: 'observed'},
             runtime   : {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}
         }});
-        expect(stateText()).toBe('unobserved');
-        expect(card.down({ntype: 'fm-state-dot'}).state).toBe('unobserved');
+        expect(stateText()).toBe('offline');
+        expect(card.down({ntype: 'fm-state-dot'}).state).toBe('off');
 
         card.destroy()
     });
@@ -731,42 +735,43 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('state-honesty: a roster-only ACTIVE resident renders `unobserved` — never `benched / offline`, never fabricated liveness (#15625)', () => {
-        // the derived sample path: participation truth `state: 'ok'`, NO runtime source at all —
-        // the card must not claim the resident is working (no session evidence) and must not
-        // claim they are benched (a false participation verdict)
-        const card = createCard({agentId: 'phoebe', state: 'ok', sources: {}}),
-              dot  = card.down({ntype: 'fm-state-dot'});
+    test('state-honesty: a resident Fleet does not run reads offline, unobserved on its title — never working, never benched (#246)', () => {
+        // NO runtime source at all: whatever the row's state says, the card must not claim the
+        // resident is working (no session evidence) and must not claim they are benched (the bench
+        // is the roster's fact) — an un-wired `off` row included: no unmanaged seat reads benched
+        for (const state of ['ok', 'off']) {
+            const card = createCard({agentId: `phoebe-${state}`, state, sources: {}}),
+                  dot  = card.down({ntype: 'fm-state-dot'});
 
-        expect(dot.state).toBe('unobserved');
-        expect(card.down({reference: 'card-state'}).text).toBe('unobserved');
-        // the pulse stays observation-gated — unobserved never renders live
-        expect(dot.live).toBe(false);
+            expect(dot.state).toBe('off');
+            expect(card.down({reference: 'card-state'}).text).toBe('offline');
+            expect(card.down({reference: 'card-state'}).vdom.title).toBe('Fleet runs no process for it, so it has no session to read');
+            // the pulse stays observation-gated — never live
+            expect(dot.live).toBe(false);
 
-        card.destroy()
+            card.destroy()
+        }
     });
 
-    test('state-honesty: an un-wired `off` row renders `external harness` — supervision vocabulary only where supervision exists', () => {
-        // REVERSES the prior state-honesty mapping deliberately, under the newer operator
-        // ratification (the default-state contract): without a wired runtime there is no
-        // supervision contract, so "benched / offline" was a fact about FLEET presented as a
-        // verdict about the agent — falsified live against seats visibly working in their own
-        // harnesses. The participation fact still renders; its vocabulary is now neutral and
-        // carries no attention weight.
-        const card = createCard({agentId: 'gemini', state: 'off', sources: {}});
+    test('state-honesty: a benched resident reads offline, benched on its title, with or without a runtime Fleet supervises (#246)', () => {
+        for (const sources of [{}, observedSources]) {
+            const card = createCard({agentId: `gemini-${Object.keys(sources).length}`, participationStatus: 'operator_benched', sources, state: 'ok'});
 
-        expect(card.down({ntype: 'fm-state-dot'}).state).toBe('external');
-        expect(card.down({reference: 'card-state'}).text).toBe('external harness');
+            expect(card.down({ntype: 'fm-state-dot'}).state).toBe('off');
+            expect(card.down({reference: 'card-state'}).text).toBe('offline');
+            expect(card.down({reference: 'card-state'}).vdom.title).toBe('benched by the operator');
 
-        card.destroy()
+            card.destroy()
+        }
     });
 
-    test('state-honesty: a wired-and-stopped seat KEEPS `benched / offline` — the supervision verdict survives where supervision exists', () => {
-        // the partition's other half: Fleet manages this seat (wired runtime) and knows it stopped
+    test('state-honesty: a wired-and-stopped seat reads offline, stopped on its title — the supervision verdict survives where supervision exists', () => {
+        // Fleet manages this seat (wired runtime) and knows it stopped
         const card = createCard({agentId: 'vega', state: 'off'});
 
         expect(card.down({ntype: 'fm-state-dot'}).state).toBe('off');
-        expect(card.down({reference: 'card-state'}).text).toBe('benched / offline');
+        expect(card.down({reference: 'card-state'}).text).toBe('offline');
+        expect(card.down({reference: 'card-state'}).vdom.title).toBe('Fleet stopped its process');
 
         card.destroy()
     });
