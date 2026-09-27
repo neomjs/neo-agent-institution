@@ -95,4 +95,26 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryCanvas — a click selec
 
         expect(selections).toEqual([nodeA.id])
     });
+
+    test('a new selection or overlay crosses to the worker alone; only a new scene carries the scene, with both', () => {
+        const {canvas} = makeCanvas(), calls = [];
+
+        canvas.renderer = {
+            setRouteOverlay: data => calls.push(['setRouteOverlay', data]),
+            setScene       : data => calls.push(['setScene', Object.keys(data).sort()]),
+            setSelection   : data => calls.push(['setSelection', data])
+        };
+
+        ['routeOverlay', 'selectedId'].forEach(key => Object.defineProperty(canvas, key, {configurable: true, enumerable: true, value: null, writable: true}));
+
+        canvas.afterSetSelectedId(nodeA.id, null);
+        canvas.afterSetRouteOverlay(false, true);
+        canvas.pushScene();
+
+        expect(calls).toEqual([
+            ['setSelection',    {selectedId: nodeA.id, windowId: 'window-1'}],
+            ['setRouteOverlay', {routeOverlay: false, windowId: 'window-1'}],
+            ['setScene',        ['routeOverlay', 'scene', 'selectedId', 'windowId']]
+        ])
+    });
 });

@@ -1,19 +1,28 @@
-/* The observatory pane — the Golden Path's graph neighbourhood as a 3D scene on the FM tonal stack: the
-   read's line and the hovered node in the chrome role above, the selection strip below them, the canvas
-   worker's WebGL surface filling the rest on the panel ground (the surface clears to transparent, so the
-   ground is this stylesheet's). The scene is painted in the same ink tiers by the renderer
-   (apps/agentos/canvas/Observatory.mjs), which reads the token VALUES from their one mirror
+/* The observatory pane — the graph read as a 3D scene on the FM tonal stack, the Golden Path's route an
+   overlay: the read's line, the hovered node and the route toggle in the chrome role above, the selection
+   strip below them, the canvas worker's WebGL surface filling the rest on the panel ground (the surface clears
+   to transparent, so the ground is this stylesheet's). The scene is painted in the same ink tiers by the
+   renderer (apps/agentos/canvas/Observatory.mjs), which reads the token VALUES from their one mirror
    (apps/agentos/canvas/fmPalette.mjs) because a worker has no stylesheet to read. */
 .fm-observatory-pane {
     background: var(--fm-panel);
     min-height: 0;
 
+    .fm-observatory-bar {
+        border-bottom: thin solid var(--fm-line-soft);
+        min-width    : 0;
+    }
+
+    .fm-observatory-route {
+        margin-right: var(--fm-space-2);
+    }
+
     .fm-observatory-head {
         display        : flex;
         align-items    : baseline;
         gap            : var(--fm-space-3);
+        min-width      : 0;
         padding        : var(--fm-space-2) var(--fm-space-3);
-        border-bottom  : thin solid var(--fm-line-soft);
         font           : var(--fm-text-chrome);
         letter-spacing : var(--fm-text-chrome-tracking);
         text-transform : uppercase;
@@ -78,6 +87,11 @@
         letter-spacing: var(--fm-text-chrome-tracking);
         padding       : var(--fm-space-1) var(--fm-space-3);
         text-transform: uppercase;
+
+        /* the selection strip above already draws the line */
+        &:first-child {
+            border-top: none;
+        }
     }
 
     /* the engine list's own variables, re-valued on the FM scale: rows on the pane's ground, the selected

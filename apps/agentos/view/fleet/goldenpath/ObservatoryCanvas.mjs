@@ -9,11 +9,11 @@ const CLICK_SLOP = 4;
 
 /**
  * @summary The App Worker half of the observatory: an offscreen canvas handed to the canvas worker's
- * {@link AgentOS.canvas.Observatory} renderer. It draws nothing itself: it forwards the scene and the selected
- * id its pane derives, the surface size and the pointer (moves, buttons and the wheel, so the worker orbits and
- * zooms), asks the renderer which node the pointer rests on, and reports a click that did not orbit as a
- * selection. The scene and the selection are reactive configs, so either change reaches the worker as one
- * message.
+ * {@link AgentOS.canvas.Observatory} renderer. It draws nothing itself: it forwards the scene, the selected id
+ * and the route overlay its pane derives, the surface size and the pointer (moves, buttons and the wheel, so the
+ * worker orbits and zooms), asks the renderer which node the pointer rests on, and reports a click that did not
+ * orbit as a selection. The three are reactive configs: a new scene crosses to the worker with the other two,
+ * and a new selection or overlay crosses alone, so a click never resends a whole graph.
  *
  * @class AgentOS.view.fleet.goldenpath.ObservatoryCanvas
  * @extends Neo.app.SharedCanvas
@@ -44,6 +44,12 @@ class ObservatoryCanvas extends SharedCanvas {
          * @member {String} rendererImportPath='../../apps/agentos/canvas/Observatory.mjs'
          */
         rendererImportPath: '../../apps/agentos/canvas/Observatory.mjs',
+        /**
+         * Whether the route is drawn over the graph.
+         * @member {Boolean} routeOverlay_=true
+         * @reactive
+         */
+        routeOverlay_: true,
         /**
          * The layout scene to draw ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}), or `null` for
          * the empty surface.
@@ -114,13 +120,29 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
-     * Triggered after the selectedId config got changed — the worker inks the new selection.
+     * Triggered after the routeOverlay config got changed — the worker inks the drawn scene again, without
+     * the scene crossing to it.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetRouteOverlay(value, oldValue) {
+        const me = this;
+
+        me.isCanvasReady && me.renderer && me.renderer.setRouteOverlay({routeOverlay: value, windowId: me.windowId})
+    }
+
+    /**
+     * Triggered after the selectedId config got changed — the worker inks the new selection, without the scene
+     * crossing to it.
      * @param {String|null} value
      * @param {String|null} oldValue
      * @protected
      */
     afterSetSelectedId(value, oldValue) {
-        this.pushScene()
+        const me = this;
+
+        me.isCanvasReady && me.renderer && me.renderer.setSelection({selectedId: value, windowId: me.windowId})
     }
 
     /**
@@ -213,14 +235,14 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
-     * @summary Hands the scene and the selection to the renderer, once the canvas is ready.
+     * @summary Hands the scene, the selection and the overlay to the renderer, once the canvas is ready.
      * @protected
      */
     pushScene() {
         const me = this;
 
         if (me.isCanvasReady && me.renderer) {
-            me.renderer.setScene({scene: me.scene, selectedId: me.selectedId, windowId: me.windowId})
+            me.renderer.setScene({routeOverlay: me.routeOverlay, scene: me.scene, selectedId: me.selectedId, windowId: me.windowId})
         }
     }
 

@@ -1,3 +1,4 @@
+import Button                  from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container               from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import GoldenPathEnvelope      from '../../../util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope      from '../../../util/GraphSceneEnvelope.mjs';
@@ -16,14 +17,19 @@ import ViewerTime              from '../../../util/ViewerTime.mjs';
 const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 'No node selected'};
 
 /**
- * @summary The Observatory keeper-view — the bounded graph neighbourhood of the Golden Path's route, as a
- * navigable 3D scene on the canvas worker and as two lists beside it. The head carries the read's line first
- * (capability, capture, holdings, completeness — {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node
- * under the pointer beside it; the selection strip below names the selected node as the read has it. The pane
- * binds the shell's `graphSceneEnvelope` leaf, which the cockpit's graph read writes, derives the scene once
+ * @summary The Observatory keeper-view — the graph read in its communities, as a navigable 3D scene on the
+ * canvas worker and as two lists beside it, with the Golden Path's route as an overlay the head's toggle draws
+ * or leaves out. The head carries the read's line first (capability, capture, holdings, completeness —
+ * {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node under the pointer beside it; the selection
+ * strip below names the selected node as the read has it. The pane binds the shell's `graphSceneEnvelope` leaf,
+ * which the cockpit's graph read writes, derives the scene once
  * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas and the lists. The
  * Golden Path leaf only qualifies the line: its route's admission is not the graph read's to report, so a
  * withheld route is named beside the graph read's own words.
+ *
+ * The lists stay at a human scale: up to {@link #listBudget} nodes, the route's seeds first, and the selected
+ * node always; the relations of the selected node under the same budget. A title says when a list holds less
+ * than the read, and the relations reach the rest.
  *
  * Selection is one origin-qualified id, never a draw index, and every path reaches the same one: a click on a
  * node, a row of the node list (the arrow keys move it), a row of the selected node's relations (which moves
@@ -68,15 +74,30 @@ class ObservatoryContainer extends Container {
          * @member {Object[]} items
          */
         items: [{
-            ntype    : 'component',
-            cls      : ['fm-observatory-head'],
-            flex     : 'none',
-            reference: 'observatory-head',
-            vdom     : {cn: [
-                {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
-                {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
-                {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HINTS.hover}
-            ]}
+            ntype : 'container',
+            cls   : ['fm-observatory-bar'],
+            flex  : 'none',
+            layout: {ntype: 'hbox', align: 'center'},
+            items : [{
+                ntype    : 'component',
+                cls      : ['fm-observatory-head'],
+                flex     : 1,
+                reference: 'observatory-head',
+                vdom     : {cn: [
+                    {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
+                    {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
+                    {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HINTS.hover}
+                ]}
+            }, {
+                module   : Button,
+                cls      : ['fm-observatory-route'],
+                flex     : 'none',
+                pressed  : true,
+                reference: 'route-toggle',
+                text     : 'Route',
+                tooltip  : 'Draw the Golden Path route over the graph',
+                ui       : 'ghost'
+            }]
         }, {
             ntype    : 'component',
             cls      : ['fm-observatory-selection', 'is-empty', 'is-hint'],
@@ -96,14 +117,21 @@ class ObservatoryContainer extends Container {
                 layout   : {ntype: 'vbox', align: 'stretch'},
                 reference: 'observatory-side',
                 items    : [{
+                    ntype    : 'component',
+                    cls      : ['fm-observatory-side-title'],
+                    flex     : 'none',
+                    reference: 'observatory-nodes-title',
+                    text     : 'Nodes'
+                }, {
                     module   : ObservatoryNodeList,
                     flex     : 1,
                     reference: 'observatory-nodes'
                 }, {
-                    ntype: 'component',
-                    cls  : ['fm-observatory-side-title'],
-                    flex : 'none',
-                    text : 'Relations of the selected node'
+                    ntype    : 'component',
+                    cls      : ['fm-observatory-side-title'],
+                    flex     : 'none',
+                    reference: 'observatory-relations-title',
+                    text     : 'Relations of the selected node'
                 }, {
                     module   : ObservatoryRelationList,
                     flex     : 1,
@@ -119,6 +147,12 @@ class ObservatoryContainer extends Container {
          */
         routeEnvelope_: null,
         /**
+         * Whether the route is drawn over the graph; the head's toggle flips it.
+         * @member {Boolean} routeOverlay_=true
+         * @reactive
+         */
+        routeOverlay_: true,
+        /**
          * The selected node's origin-qualified id, or `null`. The Viewport binds it both ways to the shared
          * `graphSelectionId` leaf.
          * @member {String|null} selectedId_=null
@@ -128,10 +162,22 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * The most rows either list holds: a read up to it lists whole, a larger one lists the route's seeds first
+     * and then by id, and the relations reach the rest.
+     * @member {Number} listBudget=500
+     */
+    listBudget = 500
+
+    /**
      * The nodes of the current scene, one record each, in the layout's order.
      * @member {AgentOS.store.GraphSceneNodes|null} nodeStore=null
      */
     nodeStore = null
+    /**
+     * Each node's relations in the current read, by layout index.
+     * @member {Uint32Array|null} relationCounts=null
+     */
+    relationCounts = null
     /**
      * The relations of the selected node.
      * @member {AgentOS.store.GraphSceneRelations|null} relationStore=null
@@ -179,21 +225,25 @@ class ObservatoryContainer extends Container {
         relations.store = me.relationStore;
         nodes    .on('select', me.onNodeListSelect,     me);
         relations.on('select', me.onRelationListSelect, me);
+        me.getReference('route-toggle').set({handler: 'onRouteToggleClick', handlerScope: me});
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
             me.getReference('observatory-body').insert(0, {
-                module    : ObservatoryCanvas,
-                flex      : 1,
-                reference : 'observatory-canvas',
-                scene     : me.scene,
-                selectedId: me.selectedId,
-                listeners : {nodeHover: me.onNodeHover, nodeSelect: me.onNodeSelect, scope: me}
+                module      : ObservatoryCanvas,
+                flex        : 1,
+                reference   : 'observatory-canvas',
+                routeOverlay: me.routeOverlay,
+                scene       : me.scene,
+                selectedId  : me.selectedId,
+                listeners   : {nodeHover: me.onNodeHover, nodeSelect: me.onNodeSelect, scope: me}
             })
         } else {
             me.getReference('observatory-side').flex = 1
         }
 
         me.updateLine();
+        me.updateRouteToggle();
+        me.fillNodeList();
         me.syncLists();
         me.updateSelection()
     }
@@ -221,21 +271,11 @@ class ObservatoryContainer extends Container {
         const
             me           = this,
             {selectedId} = me,
-            // the bound value is the provider's tracking proxy; the layout reads plain data and the worker
-            // message carries plain data
-            scene        = ObservatorySceneLayout.fromGraphScene(value ? JSON.parse(JSON.stringify(value)) : null),
-            relations    = scene.nodes.map(() => 0);
+            // the bound value is the provider's tracking proxy; the layout reads the plain projection
+            scene        = ObservatorySceneLayout.fromGraphScene(GraphSceneEnvelope.plain(value));
 
         me.scene = scene;
         me.updateLine();
-
-        scene.edges.forEach(([from, to]) => {
-            relations[from]++;
-            from !== to && relations[to]++
-        });
-
-        me.nodeStore.clear();
-        scene.nodes.length && me.nodeStore.add(scene.nodes.map(({hop, id, kind, label, rank}, index) => ({hop, id, kind, label, rank, relations: relations[index]})));
 
         if (selectedId && !Object.hasOwn(scene.index, selectedId)) {
             // an unobserved leaf is a retired read (another instance's): the id did not leave a read, no read is held
@@ -244,6 +284,7 @@ class ObservatoryContainer extends Container {
         }
 
         me.getReference('observatory-canvas')?.set({scene, selectedId: me.selectedId});
+        me.fillNodeList();
         me.syncLists();
         me.updateSelection()
     }
@@ -256,6 +297,18 @@ class ObservatoryContainer extends Container {
      */
     afterSetRouteEnvelope(value, oldValue) {
         this.updateLine()
+    }
+
+    /**
+     * Triggered after the routeOverlay config got changed: the canvas draws or drops the route, and the toggle
+     * says which. Nothing moves.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetRouteOverlay(value, oldValue) {
+        this.getReference('observatory-canvas')?.set({routeOverlay: value});
+        this.updateRouteToggle()
     }
 
     /**
@@ -301,6 +354,36 @@ class ObservatoryContainer extends Container {
             node.rank && `rank ${node.rank}`,
             types.length ? `${types.length} relation${types.length === 1 ? '' : 's'} (${counts.join(', ')})` : 'no relations in this read'
         ].filter(Boolean).join(' · ')
+    }
+
+    /**
+     * @summary Fills the node list from the current scene: the whole read up to {@link #listBudget}, else the
+     * budget's first nodes in the layout's order, the route's seeds leading. The title says when the list holds
+     * less than the read.
+     * @protected
+     */
+    fillNodeList() {
+        const
+            me                             = this,
+            {listBudget, nodeStore, scene} = me,
+            counts                         = new Uint32Array(scene.nodes.length),
+            listed                         = scene.nodes.slice(0, listBudget),
+            title                          = me.getReference('observatory-nodes-title');
+
+        scene.edges.forEach(([from, to]) => {
+            counts[from]++;
+            from !== to && counts[to]++
+        });
+
+        me.relationCounts = counts;
+        nodeStore.clear();
+        listed.length && nodeStore.add(listed.map(node => me.rowOf(node)));
+
+        if (title) {
+            title.text = scene.nodes.length > listed.length
+                ? `Nodes · ${listed.length.toLocaleString('en-US')} of ${scene.nodes.length.toLocaleString('en-US')} · relations reach the rest`
+                : 'Nodes'
+        }
     }
 
     /**
@@ -365,29 +448,57 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Puts the node list's selection on the selected node and fills the relation list with that
-     * node's relations, seen from it. A reloaded node list has lost its selection, so it is placed again.
+     * @summary The head's route toggle was clicked: the overlay flips.
+     */
+    onRouteToggleClick() {
+        this.routeOverlay = !this.routeOverlay
+    }
+
+    /**
+     * @summary A node of the current scene as a node-list row, with its relations in the read.
+     * @param {Object} node A layout node
+     * @returns {Object}
+     * @protected
+     */
+    rowOf({hop, id, kind, label, rank}) {
+        return {hop, id, kind, label, rank, relations: this.relationCounts?.[this.scene.index[id]] ?? 0}
+    }
+
+    /**
+     * @summary Puts the node list's selection on the selected node — a node beyond the list's budget joins it
+     * — and fills the relation list with that node's relations, seen from it, up to {@link #listBudget}. A
+     * reloaded node list has lost its selection, so it is placed again.
      * @protected
      */
     syncLists() {
         const
-            me                             = this,
-            {nodeStore, scene, selectedId} = me,
-            nodes                          = me.getReference('observatory-nodes'),
-            index                          = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
-            record                         = index < 0 ? null : nodeStore.get(selectedId);
+            me                                         = this,
+            {listBudget, nodeStore, scene, selectedId} = me,
+            nodes                                      = me.getReference('observatory-nodes'),
+            title                                      = me.getReference('observatory-relations-title'),
+            index                                      = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
+            relations                                  = index < 0 ? [] : scene.edges.flatMap((pair, edge) => {
+                if (!pair.includes(index)) {
+                    return []
+                }
+
+                const other = scene.nodes[pair[0] === index ? pair[1] : pair[0]];
+
+                return [{direction: pair[0] === index ? 'out' : 'in', otherId: other.id, otherKind: other.kind, otherLabel: other.label, type: scene.edgeTypes[edge]}]
+            });
+
+        index < 0 || nodeStore.get(selectedId) || nodeStore.add(me.rowOf(scene.nodes[index]));
 
         me.relationStore.clear();
+        relations.length && me.relationStore.add(relations.slice(0, listBudget).map((relation, position) => ({...relation, position})));
 
-        index < 0 || me.relationStore.add(scene.edges.flatMap((pair, edge) => {
-            if (!pair.includes(index)) {
-                return []
-            }
+        if (title) {
+            title.text = relations.length > listBudget
+                ? `Relations of the selected node · ${listBudget.toLocaleString('en-US')} of ${relations.length.toLocaleString('en-US')}`
+                : 'Relations of the selected node'
+        }
 
-            const other = scene.nodes[pair[0] === index ? pair[1] : pair[0]];
-
-            return [{direction: pair[0] === index ? 'out' : 'in', otherId: other.id, otherKind: other.kind, otherLabel: other.label, type: scene.edgeTypes[edge]}]
-        }).map((relation, position) => ({...relation, position})));
+        const record = index < 0 ? null : nodeStore.get(selectedId);
 
         if (nodes?.selectionModel) {
             nodes.selectionModel.deselectAll(true);
@@ -409,6 +520,21 @@ class ObservatoryContainer extends Container {
                 GoldenPathEnvelope.currency(route) === 'withheld' && `route withheld · ${GoldenPathEnvelope.withheldReason(route)}`
             ].filter(Boolean).join(' · ');
             head.update()
+        }
+    }
+
+    /**
+     * @summary The route toggle shows the overlay's state: pressed while the route is drawn, for the eye and for
+     * assistive technology alike.
+     * @protected
+     */
+    updateRouteToggle() {
+        const {routeOverlay} = this, toggle = this.getReference('route-toggle');
+
+        if (toggle) {
+            toggle.pressed               = routeOverlay;
+            toggle.vdom['aria-pressed'] = String(routeOverlay);
+            toggle.update()
         }
     }
 
