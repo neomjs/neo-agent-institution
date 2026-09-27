@@ -126,7 +126,9 @@ test.describe('AgentOS Tasks pane — the WHAT surface through the authenticated
             await expect(heads.nth(0).locator('.fm-tasks-section-label')).toHaveText('Running');
             await expect(heads.nth(1).locator('.fm-tasks-section-label')).toHaveText('Queued · next');
             await expect(heads.nth(2).locator('.fm-tasks-section-label')).toHaveText('Recent');
-            await expect(pane.locator('.fm-tasks-section-head .fm-freshness')).toHaveText(['live', 'live', 'live']);
+            // each head's freshness pill, and the source pill of a section whose rows share one source
+            await expect(pane.locator('.fm-tasks-section-head .fm-freshness:not([class*="is-source-"])')).toHaveText(['live', 'live', 'live']);
+            await expect(pane.locator('.fm-tasks-section-head .fm-freshness[class*="is-source-"]')).toHaveText(['knowledge base', 'orchestrator']);
 
             // running: the determinate idiom in REAL DOM — a native progress element carrying the
             // fraction as data, plus the percentage as text beside it
@@ -137,7 +139,8 @@ test.describe('AgentOS Tasks pane — the WHAT surface through the authenticated
             await expect(run.locator('progress.fm-task-bar')).toHaveAttribute('value', '100');
             await expect(run.locator('progress.fm-task-bar')).toHaveAttribute('max', '400');
             await expect(run.locator('.fm-task-progress-text')).toHaveText('25%');
-            await expect(run.locator('.fm-freshness')).toHaveText('knowledge base');
+            // its section's rows share one source, so the provenance sits once on the head, never on the row
+            await expect(run.locator('.fm-freshness[class*="is-source-"]')).toHaveCount(0);
 
             // queued: the due repo carries no bar; the backlog gauge keeps its word and renders done / total
             const queued = pane.locator('.fm-task-row.is-queued');
