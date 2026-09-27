@@ -1,4 +1,5 @@
-import {expect, test} from '../../fixtures.mjs';
+import {expect, test}       from '../../fixtures.mjs';
+import {wholeGraphEnvelope} from '../../fixture/wholeGraphScene.mjs';
 
 /**
  * The Observatory keeper-view, driven by the real shell over the Neural Link: a bounded graph read lands
@@ -34,7 +35,7 @@ const
             route       : [q('pr-101'), q('issue-202'), q('issue-303')],
             nodes       : NODES,
             edges       : EDGES,
-            counts      : {nodes: 7, edges: 4, seeds: 3},
+            counts      : {nodes: 7, edges: 4, seeds: 3, communities: 3, paths: 1},
             budget      : {maxNodes: 150, maxEdges: 300, maxBytes: 32768},
             completeness: 'complete',
             ...scene
@@ -107,7 +108,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const drawn = await stats();
 
         expect(drawn).toMatchObject({currency: 'current', completeness: 'complete', snapshotId: 'snap-7f3a', selectedId: null});
-        expect(drawn.counts).toEqual({nodes: 7, edges: 4, seeds: 3});
+        expect(drawn.counts).toEqual({nodes: 7, edges: 4, seeds: 3, communities: 3, paths: 1});
         expect(drawn.canvas[0], 'the drawing buffer is sized').toBeGreaterThan(0);
 
         const [cssWidth, ratio] = await pane.locator('canvas').evaluate(node => [node.getBoundingClientRect().width, window.devicePixelRatio]);
@@ -178,7 +179,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const lost = await stats();
 
         expect(lost.selectedId).toBeNull();
-        expect(lost.counts).toEqual({nodes: 6, edges: 2, seeds: 2});
+        expect(lost.counts).toEqual({nodes: 6, edges: 2, seeds: 2, communities: 3, paths: 1});
 
         // a click on the empty surface clears a selection
         await selectNode(q('issue-202'));
@@ -198,7 +199,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const partial = await stats();
 
         expect(partial.currency).toBe('degraded');
-        expect(partial.counts, 'degraded draws what the read holds').toEqual({nodes: 7, edges: 4, seeds: 3});
+        expect(partial.counts, 'degraded draws what the read holds').toEqual({nodes: 7, edges: 4, seeds: 3, communities: 3, paths: 1});
 
         await land({capability: {state: 'unavailable', reason: 'route-read-failed'}, scene: null, snapshotId: null, capturedAt: CAPTURED_AT});
         await expect(currency).toHaveText('Unavailable · route-read-failed');
@@ -207,7 +208,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const cleared = await stats();
 
         expect(cleared.currency).toBe('unavailable');
-        expect(cleared.counts).toEqual({nodes: 0, edges: 0, seeds: 0})
+        expect(cleared.counts).toEqual({nodes: 0, edges: 0, seeds: 0, communities: 0})
     });
 
     test('the node list reaches the same selection as the canvas, the arrow keys move it, a relation row follows its edge, and the Golden Path pane selects a route node through the shared leaf', async ({page, neuralLink}) => {
@@ -286,7 +287,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         const before = await stats();
 
-        expect(before.counts).toEqual({nodes: 7, edges: 4, seeds: 3});
+        expect(before.counts).toEqual({nodes: 7, edges: 4, seeds: 3, communities: 3, paths: 1});
 
         // a read on the way back would answer unavailable (no fleet server takes part), so a current
         // line after the round trip is a read that did not happen
@@ -300,7 +301,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const back = await stats();
 
         expect(back.currency).toBe('current');
-        expect(back.counts, 'the scene survives the round trip').toEqual({nodes: 7, edges: 4, seeds: 3});
+        expect(back.counts, 'the scene survives the round trip').toEqual({nodes: 7, edges: 4, seeds: 3, communities: 3, paths: 1});
         expect(back.selectedId, 'and so does the selection').toBe(q('issue-303'));
         expect(back.canvas).toEqual(before.canvas);
 
@@ -311,7 +312,69 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         expect(resized.canvas[0], 'the drawing buffer follows the narrower view').toBeLessThan(back.canvas[0]);
         expect(resized.canvas[1], 'and the shorter one').toBeLessThan(back.canvas[1]);
-        expect(resized.counts, 'a resize keeps the scene').toEqual({nodes: 7, edges: 4, seeds: 3});
+        expect(resized.counts, 'a resize keeps the scene').toEqual({nodes: 7, edges: 4, seeds: 3, communities: 3, paths: 1});
         expect(resized.frames, 'the resized surface is drawn').toBeGreaterThan(back.frames)
+    });
+
+    // A synthetic graph at the scale Tobi's proof-of-concept drew: it certifies the FM path — envelope admission,
+    // the provider leaf, the pane, the layout, the canvas worker — never the Brain's data or the Fleet read.
+    test('a whole graph lands through the live read\'s write: 100k nodes draw through the level of detail, the wheel steps it far → mid → near, a drag orbits, and the route toggles without moving a node', async ({page, neuralLink}, testInfo) => {
+        test.setTimeout(300000);
+
+        const
+            {land, locate, pane, stats} = await openObservatory(page, neuralLink),
+            envelope                    = wholeGraphEnvelope(),
+            started                     = Date.now();
+
+        await land(envelope);
+        await expect.poll(async () => (await stats())?.counts?.nodes, {intervals: [250], timeout: 180000}).toBe(100000);
+        await expect.poll(async () => (await stats()).frames, {intervals: [100], timeout: 30000}).toBeGreaterThan(0);
+
+        const landedIn = Date.now() - started, drawn = await stats();
+
+        testInfo.annotations.push({type: 'landing to first frame', description: `${landedIn} ms`});
+        expect(drawn.counts).toMatchObject({nodes: 100000, seeds: 10, paths: 1});
+        expect(drawn.lod.level, 'the fitted camera draws the far level').toBe('far');
+        expect(drawn.lod.clusters, 'most of the 64 generated groups are found').toBeGreaterThan(48);
+
+        // the wheel over the canvas steps the level of detail in
+        const rect = await pane.locator('canvas').boundingBox(), levels = [drawn.lod.level];
+
+        await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+
+        for (let step = 0; step < 40 && levels.at(-1) !== 'near'; step++) {
+            await page.mouse.wheel(0, -120);
+            await page.waitForTimeout(80);
+
+            const {level} = (await stats()).lod;
+
+            level !== levels.at(-1) && levels.push(level)
+        }
+
+        expect(levels).toEqual(['far', 'mid', 'near']);
+
+        // a drag orbits
+        const {yaw} = (await stats()).camera;
+
+        await page.mouse.down();
+        await page.mouse.move(rect.x + rect.width / 2 + 160, rect.y + rect.height / 2 + 40, {steps: 8});
+        await page.mouse.up();
+        await expect.poll(async () => (await stats()).camera.yaw).not.toBe(yaw);
+
+        // the route is an overlay: it goes and comes back, and no node moves
+        const
+            ids    = [envelope.scene.route[0], envelope.scene.nodes[12345].id],
+            before = await Promise.all(ids.map(locate)),
+            toggle = pane.getByRole('button', {name: 'Route'});
+
+        await toggle.click();
+        await expect.poll(async () => (await stats()).counts.paths).toBe(0);
+        await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        expect(await Promise.all(ids.map(locate))).toEqual(before);
+
+        await toggle.click();
+        await expect.poll(async () => (await stats()).counts.paths).toBe(1);
+        expect(await Promise.all(ids.map(locate))).toEqual(before);
+        expect((await stats()).snapshotId).toBe(envelope.snapshotId)
     });
 });
