@@ -137,6 +137,8 @@ test.describe('AgentOS S5 add-agent journey (Neural Link)', () => {
             await expect(submit).toBeEnabled();
 
             await page.locator('.fm-add-agent-form input[type="text"]').fill(TEST_AGENT_ID);
+            // a Fleet-launched seat is the one that brings a PAT
+            await page.locator('.fm-add-owner-row button', {hasText: 'Fleet launches it'}).click();
             await page.locator('.fm-add-agent-form input[type="password"]').fill(TEST_CREDENTIAL);
             await submit.click();
 
