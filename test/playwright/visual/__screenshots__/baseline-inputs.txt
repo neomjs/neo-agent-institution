@@ -162,7 +162,7 @@ apps/agentos/store/ViewerWakeFeed.mjs
     2416a3352de08dc4fa72d503913c6450a6f8dab6
 
 apps/agentos/util/AddAgentFlow.mjs
-    29525ba0a0ee01d6fc63af657acf0abe885706b4
+    30b51db700ae77833cc68ba49f08907ecbcfcaee
 
 apps/agentos/util/AgentFreshness.mjs
     6e46a29e3d686fc10340783b676e3712fc03100e
@@ -240,7 +240,7 @@ apps/agentos/view/ViewportController.mjs
     87a87228211436b79a973d5a63db6ba179ae3828
 
 apps/agentos/view/accounts/Panel.mjs
-    5cacb2dbddecc446ee57ab4b65759f2f7420c82b
+    820b67031a35c6bce66e040692d96dcacb2eb014
 
 apps/agentos/view/fleet/activity/ActorChipComponent.mjs
     80e172b5f0d9a4ed464309e308fb14024fd14b4a
@@ -309,7 +309,7 @@ apps/agentos/view/fleet/health/SwatchComponent.mjs
     a2d3e1d8509ca2e06f4f024959aae9005a73dd13
 
 apps/agentos/view/fleet/instances/AddAgentForm.mjs
-    22c2ef5abc43d17c275be801bcc117e58a556fcc
+    bed92f9297e013e44912ccc849ff5e94495030e9
 
 apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f
@@ -567,10 +567,10 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     86ea1a29752775e70d21d86e0627a5902ca4d877
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    1b3443048b68c9ead6fdbda56690f40498505963
+    2713baaf7ebc9a5af9a08cfd3cd5460b8df42103
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
-    611aa30bf095d38cec239be42c7bd441ffe29b50
+    4e2398dc703b1fbf169de5f908026d6a17a55cb5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/activity-stream-chips.png
     9a9994c81fc7e1cfec81ca132ab913ea271f2a8e

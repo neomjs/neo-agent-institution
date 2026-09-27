@@ -408,6 +408,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // re-skin); the older reference-only `.agent-config-card` selector went stale with it.
         await expect(page.locator('.fm-agent-config-card')).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
+        // the rail tab's tooltip opens over this surface: dwell until it has shown, leave, and wait out its hide
+        await page.waitForTimeout(300);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(500);
 
         await expect(page.locator('.agent-panel-accounts')).toHaveScreenshot('accounts-config-surface.png')
     });
