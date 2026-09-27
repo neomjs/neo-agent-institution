@@ -119,8 +119,10 @@ class FleetAdmission extends Base {
         // that one-shot miss recovers the moment the bridge answers, through the pane's own
         // guarded refresh path
         owner.catchUpSnapshot?.capability?.state === 'unavailable' && cockpit.getCatchUpPane()?.onRefreshClick();
-        // the Golden Path read has the same construction-time miss; its leaf is the owner's own truth
-        provider?.getData('goldenPathEnvelope.capability.state') === 'unavailable' && owner.loadGoldenPath()
+        // the Golden Path and graph scene reads have the same construction-time miss; each leaf is the
+        // owner's own truth
+        provider?.getData('goldenPathEnvelope.capability.state') === 'unavailable' && owner.loadGoldenPath();
+        provider?.getData('graphSceneEnvelope.capability.state') === 'unavailable' && owner.loadGraphScene()
     }
 }
 

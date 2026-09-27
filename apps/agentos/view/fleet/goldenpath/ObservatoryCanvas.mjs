@@ -1,12 +1,18 @@
-import ObservatorySceneLayout from '../../../util/ObservatorySceneLayout.mjs';
-import SharedCanvas           from '../../../../../node_modules/neo.mjs/src/app/SharedCanvas.mjs';
+import SharedCanvas from '../../../../../node_modules/neo.mjs/src/app/SharedCanvas.mjs';
+
+/**
+ * How far, in CSS pixels, the pointer may travel between press and release for the click to still select:
+ * further, the gesture was an orbit.
+ * @type {Number}
+ */
+const CLICK_SLOP = 4;
 
 /**
  * @summary The App Worker half of the observatory: an offscreen canvas handed to the canvas worker's
- * {@link AgentOS.canvas.Observatory} renderer. It draws nothing itself: it derives the scene from the
- * envelope the pane binds through the pure layout, forwards it with the surface size and the pointer
- * (moves, buttons and the wheel, so the worker orbits and zooms), and asks the renderer which node the
- * pointer rests on. The envelope is a reactive config so a provider write reaches the worker as one
+ * {@link AgentOS.canvas.Observatory} renderer. It draws nothing itself: it forwards the scene and the selected
+ * id its pane derives, the surface size and the pointer (moves, buttons and the wheel, so the worker orbits and
+ * zooms), asks the renderer which node the pointer rests on, and reports a click that did not orbit as a
+ * selection. The scene and the selection are reactive configs, so either change reaches the worker as one
  * message.
  *
  * @class AgentOS.view.fleet.goldenpath.ObservatoryCanvas
@@ -29,12 +35,6 @@ class ObservatoryCanvas extends SharedCanvas {
          */
         cls: ['fm-observatory-canvas'],
         /**
-         * The `fleetGoldenPath` envelope the scene derives from, or `null` for the empty surface.
-         * @member {Object|null} envelope_=null
-         * @reactive
-         */
-        envelope_: null,
-        /**
          * @member {String} rendererClassName='AgentOS.canvas.Observatory'
          */
         rendererClassName: 'AgentOS.canvas.Observatory',
@@ -43,7 +43,20 @@ class ObservatoryCanvas extends SharedCanvas {
          * `src/worker/`), so a workspace app climbs out of `node_modules/neo.mjs` first.
          * @member {String} rendererImportPath='../../apps/agentos/canvas/Observatory.mjs'
          */
-        rendererImportPath: '../../apps/agentos/canvas/Observatory.mjs'
+        rendererImportPath: '../../apps/agentos/canvas/Observatory.mjs',
+        /**
+         * The layout scene to draw ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}), or `null` for
+         * the empty surface.
+         * @member {Object|null} scene_=null
+         * @reactive
+         */
+        scene_: null,
+        /**
+         * The id of the node to highlight, or `null`.
+         * @member {String|null} selectedId_=null
+         * @reactive
+         */
+        selectedId_: null
     }
 
     /**
@@ -51,6 +64,12 @@ class ObservatoryCanvas extends SharedCanvas {
      * @member {String|null} hoveredId=null
      */
     hoveredId = null
+    /**
+     * Where the last press landed, canvas-relative, or `null` — also once the pointer carried it past the
+     * slop, because from then on the gesture is an orbit, wherever it is released.
+     * @member {Number[]|null} pressedAt=null
+     */
+    pressedAt = null
 
     /**
      * @param {Object} config
@@ -74,16 +93,6 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
-     * Triggered after the envelope config got changed — the scene follows once the canvas is ready.
-     * @param {Object|null} value
-     * @param {Object|null} oldValue
-     * @protected
-     */
-    afterSetEnvelope(value, oldValue) {
-        this.pushScene()
-    }
-
-    /**
      * Triggered after the isCanvasReady config got changed — the first scene lands here.
      * @param {Boolean} value
      * @param {Boolean} oldValue
@@ -92,6 +101,26 @@ class ObservatoryCanvas extends SharedCanvas {
     afterSetIsCanvasReady(value, oldValue) {
         super.afterSetIsCanvasReady(value, oldValue);
         value && this.pushScene()
+    }
+
+    /**
+     * Triggered after the scene config got changed — the worker follows once the canvas is ready.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetScene(value, oldValue) {
+        this.pushScene()
+    }
+
+    /**
+     * Triggered after the selectedId config got changed — the worker inks the new selection.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetSelectedId(value, oldValue) {
+        this.pushScene()
     }
 
     /**
@@ -114,6 +143,34 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
+     * @summary A click the pointer did not travel for selects the node under it — or, on the empty surface,
+     * nothing — and fires `nodeSelect`; a click that ends an orbit selects nothing. The pick answers for the
+     * scene it was asked about: a read that landed meanwhile owns the selection, so a late answer is dropped.
+     * @param {Object} data
+     * @returns {Promise<void>}
+     */
+    async onClick(data) {
+        const me = this, {pressedAt, scene} = me;
+
+        super.onClick(data);
+
+        if (me.isCanvasReady && pressedAt && Math.hypot(data.offsetX - pressedAt[0], data.offsetY - pressedAt[1]) <= CLICK_SLOP) {
+            const node = await me.renderer.pick({x: data.offsetX, y: data.offsetY, windowId: me.windowId});
+
+            me.isDestroyed || me.scene !== scene || me.fire('nodeSelect', {node})
+        }
+    }
+
+    /**
+     * @summary Forwards the press and remembers where it landed.
+     * @param {Object} data
+     */
+    onMouseDown(data) {
+        super.onMouseDown(data);
+        this.pressedAt = typeof data.offsetX === 'number' ? [data.offsetX, data.offsetY] : null
+    }
+
+    /**
      * @summary The pointer left: the worker forgets it, and the pane names no node.
      * @param {Object} data
      */
@@ -123,14 +180,19 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
-     * @summary Forwards the move, then asks the renderer which node the pointer rests on.
+     * @summary Forwards the move, then asks the renderer which node the pointer rests on. A held press the
+     * move carries past the slop becomes an orbit for good.
      * @param {Object} data
      * @returns {Promise<void>}
      */
     async onMouseMove(data) {
-        const me = this;
+        const me = this, {pressedAt} = me;
 
         super.onMouseMove(data);
+
+        if (pressedAt && data.buttons && Math.hypot(data.offsetX - pressedAt[0], data.offsetY - pressedAt[1]) > CLICK_SLOP) {
+            me.pressedAt = null
+        }
 
         if (me.isCanvasReady && typeof data.offsetX === 'number') {
             const node = await me.renderer.pick({x: data.offsetX, y: data.offsetY, windowId: me.windowId});
@@ -140,18 +202,25 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
-     * @summary Hands the scene of the current envelope to the renderer, if both exist.
+     * @summary Where a node of the drawn scene lies on the surface, the inverse of the pointer's pick.
+     * @param {String} id The node's origin-qualified id
+     * @returns {Promise<Object|null>} `{x, y}`, canvas-relative CSS pixels, or `null`
+     */
+    async locate(id) {
+        const me = this;
+
+        return me.isCanvasReady && me.renderer ? me.renderer.locate({id, windowId: me.windowId}) : null
+    }
+
+    /**
+     * @summary Hands the scene and the selection to the renderer, once the canvas is ready.
      * @protected
      */
     pushScene() {
         const me = this;
 
         if (me.isCanvasReady && me.renderer) {
-            // the bound value is the provider's tracking proxy; the layout reads plain data and the
-            // worker message carries plain data
-            const envelope = me.envelope ? JSON.parse(JSON.stringify(me.envelope)) : null;
-
-            me.renderer.setScene({scene: ObservatorySceneLayout.fromGoldenPath(envelope), windowId: me.windowId})
+            me.renderer.setScene({scene: me.scene, selectedId: me.selectedId, windowId: me.windowId})
         }
     }
 
@@ -168,7 +237,7 @@ class ObservatoryCanvas extends SharedCanvas {
 
     /**
      * @summary Fires `nodeHover` when the node under the pointer changes.
-     * @param {Object|null} node `{id, kind, label, rank, score}` or `null`
+     * @param {Object|null} node `{id, kind, label, rank, hop, cluster}` or `null`
      * @protected
      */
     reportHover(node) {
