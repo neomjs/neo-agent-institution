@@ -129,31 +129,13 @@ class Accounts extends DashboardPanel {
                 placeholderText: 'neo-gpt',
                 required       : true
             }, {
-                module: Toolbar,
-                cls   : ['agent-launch-owner-picker'],
-                flex  : 'none',
-                // who launches the seat — AddAgentFlow.LAUNCH_OWNERS, the safe default first
-                items : [['external', 'Runs in its own harness'], ['fleet', 'Fleet launches it']].map(([value, valueLabel], index) => ({
-                    module        : Radio,
-                    checked       : index === 0,
-                    hideValueLabel: false,
-                    labelText     : index === 0 ? 'Launch' : '',
-                    labelWidth    : 136,
-                    listeners     : {change: 'up.onLaunchOwnerChange'},
-                    name          : 'launchOwner',
-                    value,
-                    valueLabel
-                }))
-            }, {
-                // a Fleet-launched seat only: one that runs in its own harness keeps its own credentials
                 module         : PasswordField,
                 clearable      : true,
-                hidden         : true,
                 labelText      : 'GitHub PAT',
                 labelWidth     : 136,
                 name           : 'credential',
                 placeholderText: 'stored Brain-side only',
-                required       : false
+                required       : true
             }, {
                 module: Toolbar,
                 cls   : ['agent-harness-picker'],
@@ -528,46 +510,26 @@ class Accounts extends DashboardPanel {
     }
 
     /**
-     * @summary The launch-owner radio moved: the PAT field shows, and is required, for a
-     * Fleet-launched seat only.
-     * @param {Object} data
-     * @param {String|null} data.value The checked radio's value, `null` for the one unchecked
-     */
-    async onLaunchOwnerChange({value}) {
-        value && await this.syncCredentialField(value)
-    }
-
-    /**
-     * @summary Show, and require, the PAT field for a Fleet-launched seat only.
-     * @param {String} launchOwner
-     * @returns {Promise<void>}
-     */
-    async syncCredentialField(launchOwner) {
-        const credential = await this.getReference('agent-form').getField('credential');
-
-        credential?.set({hidden: launchOwner !== 'fleet', required: launchOwner === 'fleet'})
-    }
-
-    /**
-     * @summary Load a sample public identity without inserting credential bytes. The sample is an
-     * existing peer, so it runs in its own harness: the launch choice and the PAT field follow, and
-     * the status says what adding it takes from this ingress.
+     * @summary Load a sample public identity without inserting credential bytes.
      * @returns {Promise<void>}
      */
     async onLoadSampleClick() {
         const
             bridge = AddAgentFlow.resolveRegistryBridge(),
-            intent = AddAgentFlow.createDefineAgentIntent({githubUsername: 'neo-gpt', harnessType: 'codex'}, bridge),
-            {valid, reason} = AddAgentFlow.validateDefinePayload(intent, {
-                externalAllowed: AddAgentFlow.canRegisterExternal(bridge)
-            });
+            form   = this.getReference('agent-form');
 
-        await this.getReference('agent-form').setValues(intent);
-        await this.syncCredentialField(intent.launchOwner);
+        await form.setValues(AddAgentFlow.createDefineAgentIntent({
+            credential    : '',
+            githubUsername: 'neo-gpt',
+            harnessType   : 'codex'
+        }, bridge));
 
-        this.updateBridgeStatus('is-waiting', valid
-            ? 'Sample loaded. It runs in its own harness, so no PAT is needed.'
-            : `Sample loaded. ${reason}`)
+        this.updateBridgeStatus(
+            'is-waiting',
+            AddAgentFlow.isShellCredentialIngress(bridge)
+                ? 'Sample loaded. The native shell will supply the credential when you add the agent.'
+                : 'Sample loaded. Enter a PAT to add the agent; the value clears after the attempt.'
+        )
     }
 
     /**
@@ -587,10 +549,7 @@ class Accounts extends DashboardPanel {
             valid      = await form.validate(),
             values     = await form.getSubmitValues(),
             payload    = AddAgentFlow.createDefineAgentIntent(values, bridge),
-            validation = AddAgentFlow.validateDefinePayload(payload, {
-                credentialRequired: !shellOwned,
-                externalAllowed   : AddAgentFlow.canRegisterExternal(bridge)
-            });
+            validation = AddAgentFlow.validateDefinePayload(payload, {credentialRequired: !shellOwned});
 
         if (!valid || !validation.valid) {
             this.updateBridgeStatus('is-error', `Agent setup incomplete. ${validation.reason}`);
@@ -609,21 +568,16 @@ class Accounts extends DashboardPanel {
             this.fire('agentDefinitionAccepted', {agent: outcome});
             this.updateBridgeStatus(
                 'is-live',
-                payload.launchOwner === 'external'
-                    ? 'Agent added. It runs in its own harness, so Fleet refuses to start it.'
-                    : shellOwned
-                        ? 'Agent added. Credential entry stayed in the native shell.'
-                        : 'Agent added. PAT was not retained in the app worker.'
+                shellOwned
+                    ? 'Agent added. Credential entry stayed in the native shell.'
+                    : 'Agent added. PAT was not retained in the app worker.'
             )
         } catch (error) {
-            // a refusal is an answer, and with no credential in the payload its text carries none
             this.updateBridgeStatus(
                 'is-error',
-                error?.fleetWireState === 'refused' && !payload.credential && error.message
-                    ? `Could not add agent. ${error.message}`
-                    : shellOwned
-                        ? 'Could not add agent. No credential entered App Worker state.'
-                        : 'Could not add agent. Nothing was stored in browser state; PAT field was cleared.'
+                shellOwned
+                    ? 'Could not add agent. No credential entered App Worker state.'
+                    : 'Could not add agent. Nothing was stored in browser state; PAT field was cleared.'
             )
         } finally {
             await this.clearCredentialField()

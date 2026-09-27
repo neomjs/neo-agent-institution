@@ -37,28 +37,12 @@ const ADD_AGENT_STATES = ['idle', 'validating', 'submitting', 'readback-confirme
 const SECRET_KEYS = ['authorization', 'credential', 'password', 'pat', 'token'];
 
 /**
- * The answers to "who launches this seat?", the default first. A seat that already runs in its own
- * harness is `external`: registering it must never let a Start spawn a second copy of it, and a
- * wrong `external` is undone by adopting the seat, while a wrong `fleet` is not undone by anything.
- * @member {String[]} LAUNCH_OWNERS
- */
-const LAUNCH_OWNERS = ['external', 'fleet'];
-
-/**
- * Why an ingress that cannot vouch for the Start refusal registers no `external` seat.
- * @member {String} EXTERNAL_REFUSAL
- */
-const EXTERNAL_REFUSAL = 'A seat that runs in its own harness can only be added from the installed shell: ' +
-    'this Fleet server cannot prove it will refuse to start it.';
-
-/**
  * Static validation and bridge-round-trip utilities for defining an AgentOS resident.
  * @class AgentOS.util.AddAgentFlow
  * @extends Neo.core.Base
  */
 class AddAgentFlow extends Base {
     static ADD_AGENT_STATES = ADD_AGENT_STATES
-    static LAUNCH_OWNERS    = LAUNCH_OWNERS
 
     static config = {
         /**
@@ -76,23 +60,14 @@ class AddAgentFlow extends Base {
      *     presence, never inspected further).
      * @param {String} payload.githubUsername
      * @param {String} payload.harnessType
-     * @param {String} [payload.launchOwner]  `external` needs no PAT: Fleet never launches the seat.
      * @param {Object}  [options]
      * @param {Boolean} [options.credentialRequired=true] Whether this ingress owns credential entry.
-     * @param {Boolean} [options.externalAllowed=false]   Whether this ingress may register an
-     *     `external` seat ({@link canRegisterExternal}); refused before any write when it may not.
      * @returns {{valid: Boolean, reason: String}} Operator-facing reason when invalid.
      */
     static validateDefinePayload(
-        {credential, githubUsername, harnessType, launchOwner}={},
-        {credentialRequired=true, externalAllowed=false}={}
+        {credential, githubUsername, harnessType}={},
+        {credentialRequired=true}={}
     ) {
-        if (launchOwner === 'external' && !externalAllowed) {
-            return {valid: false, reason: EXTERNAL_REFUSAL}
-        }
-
-        credentialRequired &&= launchOwner !== 'external';
-
         if (!githubUsername?.trim() || !harnessType || (credentialRequired && !credential)) {
             return {
                 valid : false,
@@ -158,30 +133,11 @@ class AddAgentFlow extends Base {
     }
 
     /**
-     * @summary Whether this ingress may register a seat that runs in its own harness. Such a row must
-     * be refused a Start from its first write, and only the shell can vouch for that: it forwards the
-     * define only through the Fleet it started from its bundled Brain, pinned at a commit whose
-     * registry records `launchOwnerSince` in the same write, and refuses it otherwise
-     * (`harness/fleetCapability.mjs`). A browser bridge may reach any Fleet server, and wire v1 carries
-     * no ownership semantics, so it cannot tell an older registry, which would store the row
-     * startable, from a current one. There the registration fails closed, before the write.
-     * @param {Object|null} bridge
-     * @returns {Boolean}
-     */
-    static canRegisterExternal(bridge) {
-        return AddAgentFlow.isShellCredentialIngress(bridge)
-    }
-
-    /**
      * @summary Project a form payload onto the exact define-agent request allowed across the bridge.
      * Shell mode carries public intent only; direct-browser mode preserves the credential-bearing
      * request. Explicit projection prevents unrelated form or caller fields from crossing either mode.
-     *
-     * The launch owner always crosses explicitly, because the explicit value is the ownership act
-     * the registry records with its time (`launchOwnerSince`). `fleet` makes this cockpit the seat's
-     * only launcher; `external` registers a seat that runs in its own harness, which the shell's
-     * Fleet then refuses to start until the operator adopts it ({@link canRegisterExternal}). An
-     * external seat keeps its own credentials, so no PAT crosses for it in either mode.
+     * A seat added here is born fleet-launched: this cockpit is its only launcher, so its first Start
+     * can come from here. Every other registration stays `external` until the operator adopts it.
      * @param {Object}      payload
      * @param {Object|null} bridge
      * @returns {Object}
@@ -190,10 +146,10 @@ class AddAgentFlow extends Base {
         const intent = {
             githubUsername: payload.githubUsername?.trim(),
             harnessType   : payload.harnessType,
-            launchOwner   : LAUNCH_OWNERS.includes(payload.launchOwner) ? payload.launchOwner : LAUNCH_OWNERS[0]
+            launchOwner   : 'fleet'
         };
 
-        if (intent.launchOwner === 'fleet' && !AddAgentFlow.isShellCredentialIngress(bridge)) {
+        if (!AddAgentFlow.isShellCredentialIngress(bridge)) {
             intent.credential = payload.credential
         }
 
@@ -210,7 +166,7 @@ class AddAgentFlow extends Base {
      *
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
-     * @param {Object}        config.payload          `{credential, githubUsername, harnessType, launchOwner}`.
+     * @param {Object}        config.payload          `{credential, githubUsername, harnessType}`.
      * @returns {Promise<Object>} One terminal outcome — this function never throws.
      */
     static async submitDefineAgent({bridgeResolver=null, payload}) {
@@ -218,10 +174,7 @@ class AddAgentFlow extends Base {
             bridge     = AddAgentFlow.resolveRegistryBridge(bridgeResolver),
             shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
             request    = AddAgentFlow.createDefineAgentIntent(payload, bridge),
-            validation = AddAgentFlow.validateDefinePayload(request, {
-                credentialRequired: !shellOwned,
-                externalAllowed   : AddAgentFlow.canRegisterExternal(bridge)
-            });
+            validation = AddAgentFlow.validateDefinePayload(request, {credentialRequired: !shellOwned});
 
         if (!validation.valid) {
             return {state: 'rejected', reason: validation.reason}
@@ -239,13 +192,8 @@ class AddAgentFlow extends Base {
         try {
             outcome = await bridge.defineAgent(request)
         } catch (error) {
-            // a refusal is an answer, and with no credential in the request its text carries none; any
-            // other failure stays generic — an error message assembled elsewhere is not a surface we
-            // allow to carry credential bytes into the DOM
-            if (error?.fleetWireState === 'refused' && !request.credential && error.message) {
-                return {state: 'rejected', reason: error.message}
-            }
-
+            // transport failure: the reason stays generic — an error message assembled elsewhere is
+            // not a surface we allow to carry credential bytes into the DOM
             return {state: 'rejected', reason: 'Could not reach the Fleet Registry. Nothing was stored in browser state.'}
         }
 

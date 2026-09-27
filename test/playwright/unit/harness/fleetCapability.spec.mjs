@@ -1,5 +1,4 @@
 import {expect, test} from '@playwright/test';
-import {execFile}     from 'node:child_process';
 import {
     createAbsentFleetCapability,
     createFleetCapability,
@@ -37,35 +36,6 @@ const createCapability = options => createFleetCapability({
     responseStates     : FLEET_WIRE_RESPONSE_STATES,
     wireMethods        : FLEET_WIRE_METHODS,
     ...options
-});
-
-// Defines one agent in a throwaway registry of the Brain root this suite runs on and reads the row
-// back. The registry is a Neo singleton on that root's own engine, so it runs in a child process,
-// booted the way the Brain daemons boot.
-const defineInBrainRegistry = params => new Promise((resolve, reject) => {
-    const script = [
-        "import Neo from 'neo.mjs/src/Neo.mjs';",
-        "import * as core from 'neo.mjs/src/core/_export.mjs';",
-        "import InstanceManager from 'neo.mjs/src/manager/Instance.mjs';",
-        "import fs from 'node:fs';",
-        "import os from 'node:os';",
-        "import path from 'node:path';",
-        "import FleetRegistryService from './ai/services/fleet/FleetRegistryService.mjs';",
-        "import {launchRefusalOf} from './src/fleet/contract/launchAuthority.mjs';",
-        "const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-define-'));",
-        "try {",
-        "    FleetRegistryService.dataDir = dataDir;",
-        "    const row = FleetRegistryService.getAgent(FleetRegistryService.defineAgent(JSON.parse(process.argv[1])).id);",
-        "    process.stdout.write(JSON.stringify({...row, launchRefusal: launchRefusalOf(row)}))",
-        "} finally {",
-        "    FleetRegistryService.dataDir = null;",
-        "    fs.rmSync(dataDir, {force: true, recursive: true})",
-        "}"
-    ].join('\n');
-
-    execFile(process.execPath, ['--input-type=module', '-e', script, JSON.stringify(params)], {
-        cwd: process.env.NEO_AGENTOS_RUNTIME_ROOT
-    }, (error, stdout, stderr) => error ? reject(new Error(String(stderr || error.message))) : resolve(JSON.parse(stdout)))
 });
 
 test.describe('harness Fleet capability', () => {
@@ -284,96 +254,6 @@ test.describe('harness Fleet capability', () => {
         });
         expect(projectPublicAgentIntent({githubUsername: 'alice', harnessType: 'codex', launchOwner: {fleet: true}}))
             .toEqual({githubUsername: 'alice', harnessType: 'codex'})
-    });
-
-    test('an external defineAgent crosses as public intent without asking for a credential; a Fleet-launched one, or one without a launch owner, still asks (#280)', async () => {
-        const
-            event      = {sender: 'trusted'},
-            calls      = {credential: [], fetch: []},
-            capability = createCapability({
-                bearerToken,
-                credentialProvider: async input => { calls.credential.push(input.intent); return 'github_pat_main_owned' },
-                fetchImpl         : async (url, init) => {
-                    calls.fetch.push(JSON.parse(init.body).params);
-                    return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {id: 'emmy'}})}
-                },
-                getBrain       : async () => ({bundledFleet: true, fleetPort: 9191, up: true}),
-                isTrustedSender: candidate => candidate === event
-            }),
-            define = params => capability.request(event, {method: 'defineAgent', params});
-
-        await expect(define({credential: 'github_pat_renderer_smuggled', githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'}))
-            .resolves.toMatchObject({ok: true});
-
-        // nothing was asked, and nothing but the public intent crossed
-        expect(calls.credential).toEqual([]);
-        expect(calls.fetch).toEqual([{githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'}]);
-
-        await define({githubUsername: 'alice', harnessType: 'codex', launchOwner: 'fleet'});
-        await define({githubUsername: 'bob',   harnessType: 'codex'});
-
-        expect(calls.credential.map(intent => intent.githubUsername)).toEqual(['alice', 'bob']);
-        expect(calls.fetch.slice(1).map(params => params.credential)).toEqual(['github_pat_main_owned', 'github_pat_main_owned'])
-    });
-
-    test('the Brain this shell runs on stores the external seat the shell forwards as refused a start from birth; a Fleet-launched one stays startable', async () => {
-        const
-            event      = {sender: 'trusted'},
-            forwarded  = [],
-            capability = createCapability({
-                credentialProvider: async () => 'github_pat_main_owned',
-                fetchImpl         : async (url, init) => {
-                    forwarded.push(JSON.parse(init.body).params);
-                    return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {}})}
-                },
-                getBrain       : async () => ({bundledFleet: true, fleetPort: 9191, up: true}),
-                isTrustedSender: candidate => candidate === event
-            }),
-            define = params => capability.request(event, {method: 'defineAgent', params});
-
-        await define({githubUsername: 'neo-gpt-emmy',    harnessType: 'codex-desktop', launchOwner: 'external'});
-        await define({githubUsername: 'neo-kimi-phoebe', harnessType: 'opencode',      launchOwner: 'fleet'});
-
-        const [external, fleet] = await Promise.all(forwarded.map(defineInBrainRegistry));
-
-        expect(external).toMatchObject({launchOwner: 'external', launchRefusal: 'released to its own harness: adopt it to start it here'});
-        expect(external.launchOwnerSince).toBe(external.createdAt);
-        expect(fleet).toMatchObject({launchOwner: 'fleet', launchRefusal: null});
-        expect(fleet.launchOwnerSince).toBe(fleet.createdAt)
-    });
-
-    test('a Fleet this shell did not start from its bundled Brain registers no external seat — a same-bearer reused or a checkout Fleet is refused before the write; a Fleet-launched seat still goes through', async () => {
-        const
-            event = {sender: 'trusted'},
-            // a reused incumbent answers on the same port, bearer and viewer; a checkout spawns its env-selected Brain
-            boots = [
-                {fleetPort: 9191, mode: 'attach', up: true},
-                {bundledFleet: false, fleetPort: 9191, mode: 'own', up: true}
-            ];
-
-        for (const boot of boots) {
-            const
-                calls      = {credential: [], fetch: []},
-                capability = createCapability({
-                    credentialProvider: async () => { calls.credential.push(1); return 'github_pat_main_owned' },
-                    fetchImpl         : async (url, init) => {
-                        calls.fetch.push(JSON.parse(init.body).params);
-                        return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {}})}
-                    },
-                    getBrain       : async () => boot,
-                    isTrustedSender: candidate => candidate === event
-                }),
-                define = params => capability.request(event, {method: 'defineAgent', params}),
-                refusal = await define({githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'});
-
-            expect(refusal).toMatchObject({state: FLEET_WIRE_RESPONSE_STATES.refused});
-            expect(refusal.error).toContain('bundled Brain');
-            expect(calls.fetch).toEqual([]);
-            expect(calls.credential).toEqual([]);
-
-            await define({githubUsername: 'alice', harnessType: 'codex', launchOwner: 'fleet'});
-            expect(calls.fetch.map(params => params.launchOwner)).toEqual(['fleet'])
-        }
     });
 
     test('projects connectTenant onto tenantUrl only before attaching the provider credential', async () => {
