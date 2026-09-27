@@ -42,10 +42,19 @@ const
         items
     },
     rem        = {undigested: 0, digested: 1010, recentCycles: 3},
+    handoff    = {
+        markdown: `## Computed Golden Path (Strategic Recommendation)\n\nCaptured at: 2026-07-05 09:30 UTC\n\nBased on the latest Tri-Vector Synthesis, the following work is recommended.\n\n1. **issue:12**: Score 9.10 (Semantic: 6.20, Structural: 2.90)\n   - *The shell shows the live roster through the plane*\n\n2. **issue:8**: Score 7.40 (Semantic: 4.10, Structural: 3.30)\n   - *Golden Path currency on the cockpit*\n\n### Strategic Interpretation\n\nThe producer's complete interpretation remains readable as Markdown; this pane does not reduce it to another route-card list.`,
+        mtimeMs     : Date.parse('2026-07-05T09:35:00.000Z'),
+        ageMs       : 60000,
+        staleAfterMs: 129600000,
+        stale       : false,
+        reason      : null
+    },
     wires      = {
         'current': {
             capability: {state: 'wired', capturedAt},
             admission : {admitted: true, fallback: 'current', reasonCode: 'current', requiredFacets: ['issues', 'discussions'], staleFacets: []},
+            handoff,
             rem,
             route,
             sources   : {route: {state: 'wired', reason: null}, admission: {state: 'current', reason: 'current'}, rem: {state: 'wired', reason: null}}
@@ -53,6 +62,7 @@ const
         'withheld': {
             capability: {state: 'wired', capturedAt},
             admission : {admitted: false, fallback: 'last-known-good', reasonCode: 'freshness-sla-breached', requiredFacets: ['issues', 'discussions'], staleFacets: ['discussions']},
+            handoff   : {...handoff, stale: true},
             rem       : {undigested: 990, digested: 1010, recentCycles: 0},
             route     : {...route, status: 'stale', capturedAt: '2026-07-04T18:40:00.000Z', expiresAt: '2026-07-04T20:40:00.000Z', expired: true},
             sources   : {route: {state: 'wired', reason: null}, admission: {state: 'withheld', reason: 'freshness-sla-breached'}, rem: {state: 'wired', reason: null}}
@@ -60,12 +70,14 @@ const
         'degraded': {
             capability: {state: 'degraded', capturedAt, reason: 'route-sidecar-missing'},
             admission : {admitted: true, fallback: 'current', reasonCode: 'current', requiredFacets: ['issues'], staleFacets: []},
+            handoff,
             rem       : {undigested: 990, digested: 1010, recentCycles: 0},
             route     : null,
             sources   : {route: {state: 'degraded', reason: 'route-sidecar-missing'}, admission: {state: 'current', reason: 'current'}, rem: {state: 'wired', reason: null}}
         },
         'unavailable': {
             capability: {state: 'unavailable', reason: 'fleet golden path source not wired'},
+            handoff   : {...handoff, markdown: null, mtimeMs: null, stale: true, reason: 'handoff-not-found'},
             admission : null,
             rem       : null,
             route     : null

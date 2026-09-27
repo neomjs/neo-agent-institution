@@ -1,5 +1,5 @@
-/* The Golden Path reading pane. The currency line leads and carries the state colour, so a route that
-   is not current never reads as one. Items and provenance stay neutral. Every value comes from the
+/* The Golden Path reading pane. The producer-written recommendation leads; typed-route metadata
+   remains a separate footer. Every value comes from the
    Fleet token layer: spacing from --fm-space-*, type from --fm-text-*, the corner from
    --fm-chip-radius, and hairlines use the `thin` keyword. The host owns surface, padding and rhythm,
    per the drawer-shell contract. */
@@ -7,8 +7,7 @@
     gap     : var(--fm-space-2);
     overflow: auto;
 
-    .fm-golden-path-head,
-    .fm-golden-path-item-head {
+    .fm-golden-path-head {
         gap: var(--fm-space-2);
     }
 
@@ -44,79 +43,40 @@
         }
     }
 
+    .fm-golden-path-handoff-state,
     .fm-golden-path-rem,
-    .fm-golden-path-provenance,
-    .fm-golden-path-item-meta,
-    .fm-golden-path-item-score {
+    .fm-golden-path-provenance {
         color: var(--fm-ink-dim);
         font : var(--fm-text-micro);
     }
 
-    .fm-golden-path-items {
-        gap: var(--fm-space-2);
+    .fm-golden-path-markdown {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-display);
+        font-weight  : 400;
+        line-height  : 1.6;
+        overflow-wrap: anywhere;
+        padding      : var(--fm-space-3) var(--fm-space-4);
 
-        /* a withheld route stays readable, but its titles drop to the dim ink: it is the last known
-           good route, not the day's */
-        &.is-withheld .fm-golden-path-item-title {
-            color: var(--fm-ink-dim);
+        h1, h2 {
+            font       : var(--fm-text-display);
+            font-size  : 1.5em;
+            line-height: 1.3;
+        }
+
+        h3, h4, h5, h6 {
+            font: var(--fm-text-display);
+        }
+
+        p, ol, ul, li, blockquote {
+            font: inherit;
+        }
+
+        .neo-md-quote {
+            background  : var(--fm-panel-2);
+            border-color: var(--fm-line);
+            padding     : var(--fm-space-2) var(--fm-space-3);
         }
     }
 
-    .fm-golden-path-item {
-        background   : var(--fm-panel);
-        border       : thin solid var(--fm-line-soft);
-        border-radius: var(--fm-chip-radius);
-        gap          : var(--fm-space-1);
-        padding      : var(--fm-space-2);
-
-        /* the item whose node the graph has selected, the Observatory's selection in this pane */
-        &.is-selected {
-            border-color: var(--fm-signal);
-        }
-    }
-
-    /* the graph button: a compact glyph on the item's line, the engine's button scale re-valued; its label
-       stays the accessible name, clipped rather than removed, and a disabled button only fades */
-    .fm-golden-path-item-graph {
-        --button-background-color: transparent;
-        --button-border-radius   : 6px;
-        --button-height          : 24px;
-        --button-min-width       : 24px;
-        --button-padding         : 0;
-
-        align-self: center;
-        flex      : none;
-
-        &.neo-disabled {
-            opacity: .35;
-        }
-
-        .neo-button-text {
-            clip-path: inset(50%);
-            height   : 1px;
-            overflow : hidden;
-            position : absolute;
-            width    : 1px;
-        }
-
-        .neo-button-glyph {
-            margin: 0;
-        }
-    }
-
-    .fm-golden-path-item-rank {
-        color      : var(--fm-signal);
-        font       : var(--fm-text-detail);
-        font-weight: 700;
-    }
-
-    .fm-golden-path-item-title {
-        color: var(--fm-ink);
-        font : var(--fm-text-body);
-    }
-
-    .fm-golden-path-empty {
-        color  : var(--fm-ink-dim);
-        padding: var(--fm-space-3) var(--fm-space-1);
-    }
 }

@@ -33,7 +33,7 @@ const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 
  *
  * Selection is one origin-qualified id, never a draw index, and every path reaches the same one: a click on a
  * node, a row of the node list (the arrow keys move it), a row of the selected node's relations (which moves
- * to the node at the other end) and the shell's `graphSelectionId` leaf, which the Golden Path pane shares. A
+ * to the node at the other end) and the shell's `graphSelectionId` leaf. A
  * click on the empty surface clears it, and a new read keeps it while the read still holds the id; a read that
  * lost the id clears the selection and the strip says why. Without a canvas worker the lists are the whole view.
  *

@@ -211,7 +211,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(cleared.counts).toEqual({nodes: 0, edges: 0, seeds: 0, communities: 0})
     });
 
-    test('the node list reaches the same selection as the canvas, the arrow keys move it, a relation row follows its edge, and the Golden Path pane selects a route node through the shared leaf', async ({page, neuralLink}) => {
+    test('the list and canvas share selection, and reading the Golden Path leaves that selection intact', async ({page, neuralLink}) => {
         const
             {land, pane, selection, selectNode, settle, stats} = await openObservatory(page, neuralLink),
             rows      = pane.locator('.fm-observatory-node-list .neo-list-item'),
@@ -237,7 +237,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(selection).toHaveText(/^Selected · two hops out · /);
         await expect(pane.locator('.fm-observatory-node-list .neo-selected'), 'a canvas pick marks its list row').toHaveText(/two hops out/);
 
-        // the Golden Path pane: its route items are the graph read's seeds, by their bare ids
+        // The human recommendation is a reader: visiting it must preserve the Observatory's selection.
         const
             app          = await neuralLink.connectToApp('AgentOS'),
             [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
@@ -245,6 +245,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [{
             capability: {state: 'wired', capturedAt: CAPTURED_AT},
+            handoff   : {markdown: '## Computed Golden Path\n\nThe full producer recommendation.', stale: false, mtimeMs: Date.parse(CAPTURED_AT)},
             admission : {admitted: true, fallback: 'current', reasonCode: 'current', requiredFacets: [], staleFacets: []},
             route     : {
                 schemaVersion: 'computed-route.v1', status: 'fresh', capturedAt: CAPTURED_AT, expiresAt: '2026-07-05T20:00:00.000Z', expired: false,
@@ -261,16 +262,13 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await page.getByRole('tab', {name: 'Fleet', exact: true}).click();
         await page.getByRole('tab', {name: 'Golden Path', exact: true}).click();
 
-        const cards = page.locator('.fm-golden-path-pane .fm-golden-path-item');
-
-        await expect(cards).toHaveCount(3);
-        await cards.nth(2).locator('.fm-golden-path-item-graph').click();
-        await expect(cards.nth(2), 'the chosen item is marked').toHaveClass(/(?:^|\s)is-selected(?:\s|$)/);
+        await expect(page.locator('.fm-golden-path-markdown')).toContainText('The full producer recommendation.');
+        await expect(page.locator('.fm-golden-path-item')).toHaveCount(0);
 
         await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
-        await expect(selection, 'the Observatory selects the same qualified id').toHaveText(/^Selected · third route item · issue · neomjs\/neo#issue-303 · rank 3 · /);
+        await expect(selection, 'reading the human recommendation preserves the graph selection').toHaveText(/^Selected · two hops out · /);
         await page.waitForTimeout(400);
-        expect((await stats()).selectedId).toBe(q('issue-303'))
+        expect((await stats()).selectedId).toBe(q('issue-404'))
     });
 
     test('the view keeps its scene and its selection across a switch away and back without a second read, and resizes with the window', async ({page, neuralLink}) => {

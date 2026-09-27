@@ -36,7 +36,8 @@ test.describe('goldenPathEnvelope — one closed shape, one currency', () => {
     test('the blank declares every key and reads unobserved', () => {
         const blank = GoldenPathEnvelope.blank();
 
-        expect(Object.keys(blank)).toEqual(['capability', 'admission', 'route', 'rem', 'sources']);
+        expect(Object.keys(blank)).toEqual(['capability', 'handoff', 'admission', 'route', 'rem', 'sources']);
+        expect(blank.handoff).toEqual({markdown: null, mtimeMs: null, ageMs: null, staleAfterMs: null, stale: null, reason: null});
         expect(blank.route.items).toEqual([]);
         expect(blank.route.provenance).toEqual({producer: null, runId: null, algorithmVersion: null});
         expect(GoldenPathEnvelope.currency(blank)).toBe('unobserved');
@@ -53,6 +54,17 @@ test.describe('goldenPathEnvelope — one closed shape, one currency', () => {
         expect(landed.route.expired, 'an object where a leaf is declared lands blank, so it cannot drill').toBeNull();
         expect(landed.sources.rem).toEqual({state: null, reason: null, detail: null});
         expect(GoldenPathEnvelope.currency(landed)).toBe('current')
+    });
+
+    test('a handoff keeps its producer Markdown and source freshness without changing typed-route currency', () => {
+        const landed = GoldenPathEnvelope.fromWire({...wired, handoff: {
+            markdown: '## Computed Golden Path (Strategic Recommendation)\n\nCaptured at: 2026-09-25 06:00 UTC',
+            mtimeMs: 1758780300000, ageMs: 60000, staleAfterMs: 129600000, stale: true, reason: null
+        }});
+
+        expect(landed.handoff.markdown).toContain('Captured at: 2026-09-25 06:00 UTC');
+        expect(landed.handoff.stale).toBe(true);
+        expect(GoldenPathEnvelope.currency(landed), 'handoff freshness does not revise the typed route').toBe('current')
     });
 
     test('an answer without a capability state lands unavailable, never unobserved', () => {

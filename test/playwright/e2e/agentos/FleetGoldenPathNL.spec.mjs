@@ -14,6 +14,7 @@ import {expect, test} from '../../fixtures.mjs';
 const
     CAPTURED_AT = '2026-07-05T08:00:00.000Z',
     EXPIRES_AT  = '2026-07-05T20:00:00.000Z',
+    LONG_TITLE  = 'Keep the full recommendation title and its supporting context readable when the pane narrows, so the operator can choose the next task without guessing at clipped labels',
     route       = overrides => ({
         schemaVersion: 'computed-route.v1',
         status       : 'fresh',
@@ -33,15 +34,19 @@ const
     }),
     wired  = {state: 'wired', capturedAt: CAPTURED_AT},
     rem    = {undigested: 990, digested: 1010, recentCycles: 0},
+    handoff = {
+        markdown: `## Computed Golden Path (Strategic Recommendation)\n\nCaptured at: 2026-07-05 08:00 UTC\n\n1. **neo#15252**: Score 0.91 (Semantic: 0.61, Structural: 0.30)\n   - *The five-beat multi-window film*\n\n2. **neo#210**: Score 0.87 (Semantic: 0.57, Structural: 0.30)\n   - *${LONG_TITLE}*\n\n> **Routing Guard:** Contradictory immediate routes were filtered by the producer.\n\n### Strategic Interpretation\n\nThe complete producer interpretation is a normal reading surface, not another reduced route list.`,
+        mtimeMs: Date.parse('2026-07-05T08:05:00.000Z'), ageMs: 60000, staleAfterMs: 129600000, stale: false, reason: null
+    },
     STATES = [
-        ['current', {capability: wired, admission: {admitted: true, fallback: 'current', reasonCode: 'current', requiredFacets: [], staleFacets: []}, route: route(), rem, sources: {}}],
-        ['withheld', {capability: wired, admission: {admitted: false, fallback: 'last-known-good', reasonCode: 'freshness-sla-breached', requiredFacets: ['issues', 'discussions'], staleFacets: ['issues']}, route: route(), rem, sources: {}}],
-        ['degraded', {capability: {...wired, state: 'degraded', reason: 'route-sidecar-missing'}, admission: null, route: null, rem, sources: {route: {state: 'degraded', reason: 'route-sidecar-missing'}}}],
-        ['unavailable', {capability: {state: 'unavailable', reason: 'fleet golden path source not wired'}, admission: null, route: null, rem: null, sources: {}}]
+        ['current', {capability: wired, handoff, admission: {admitted: true, fallback: 'current', reasonCode: 'current', requiredFacets: [], staleFacets: []}, route: route(), rem, sources: {}}],
+        ['withheld', {capability: wired, handoff: {...handoff, stale: true}, admission: {admitted: false, fallback: 'last-known-good', reasonCode: 'freshness-sla-breached', requiredFacets: ['issues', 'discussions'], staleFacets: ['issues']}, route: route(), rem, sources: {}}],
+        ['degraded', {capability: {...wired, state: 'degraded', reason: 'route-sidecar-missing'}, handoff, admission: null, route: null, rem, sources: {route: {state: 'degraded', reason: 'route-sidecar-missing'}}}],
+        ['unavailable', {capability: {state: 'unavailable', reason: 'fleet golden path source not wired'}, handoff: {...handoff, markdown: null, mtimeMs: null, stale: true, reason: 'handoff-not-found'}, admission: null, route: null, rem: null, sources: {}}]
     ];
 
 test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
-    test('each currency state leads with its line, in both skins', async ({page, neuralLink}) => {
+    test('complete recommendations stay readable with independent currency states in both skins', async ({page, neuralLink}) => {
         await page.setViewportSize({width: 1600, height: 1100});
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
@@ -54,7 +59,7 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
               currency = pane.locator('.fm-golden-path-currency');
 
         await expect(pane).toBeVisible({timeout: 10000});
-        await expect(currency, 'the failed read answers first, as unavailable').toHaveText(/^Unavailable · fleet golden path read failed$/);
+        await expect(currency, 'the failed read answers first, as unavailable').toHaveText(/^Typed route · unavailable · fleet golden path read failed$/);
 
         const
             [cockpit]     = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
@@ -81,10 +86,31 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
             }
         }
 
-        // producer order, not rank order: the current route's items read top to bottom as the producer wrote them
+        // The primary content is the whole producer section: its captured-at line, score breakdown and
+        // interpretation survive without re-rendering the same titles as route cards.
         await land(STATES[0][1]);
-        await expect(pane.locator('.fm-golden-path-item-title')).toHaveText([
-            'The five-beat multi-window film', 'Golden Path v2', 'The 13.2 release notes'
-        ])
+        await expect(pane.locator('.fm-golden-path-markdown')).toContainText('Captured at: 2026-07-05 08:00 UTC');
+        await expect(pane.locator('.fm-golden-path-markdown')).toContainText('Score 0.91 (Semantic: 0.61, Structural: 0.30)');
+        await expect(pane.locator('.fm-golden-path-markdown')).toContainText('Routing Guard: Contradictory immediate routes were filtered by the producer.');
+        await expect(pane.locator('.fm-golden-path-markdown')).toContainText('The complete producer interpretation is a normal reading surface');
+        const fonts = await pane.locator('.fm-golden-path-markdown').evaluate(el => ({
+            body: getComputedStyle(el).fontFamily,
+            heading: getComputedStyle(el.querySelector('h2')).fontFamily,
+            paragraph: getComputedStyle(el.querySelector('p')).fontFamily
+        }));
+        expect(fonts.heading).toBe(fonts.body);
+        expect(fonts.paragraph).toBe(fonts.body);
+        await expect(pane.locator('.fm-golden-path-item')).toHaveCount(0);
+        await expect(pane.locator('.fm-golden-path-markdown ol').nth(1)).toHaveAttribute('start', '2');
+
+        await page.setViewportSize({width: 620, height: 1100});
+        await settle();
+        await expect(pane.locator('.fm-golden-path-markdown')).toContainText(LONG_TITLE);
+        const width = await pane.evaluate(el => ({visible: el.clientWidth, content: el.scrollWidth}));
+        expect(width.content, 'the full recommendation wraps inside the narrow pane').toBeLessThanOrEqual(width.visible + 1);
+        await expect(pane).toHaveScreenshot('golden-path-current-narrow.png');
+        await pane.evaluate(el => { el.scrollTop = el.scrollHeight });
+        await expect(pane.locator('.fm-golden-path-markdown p').last()).toBeInViewport();
+        await expect(pane).toHaveScreenshot('golden-path-current-narrow-bottom.png')
     });
 });
