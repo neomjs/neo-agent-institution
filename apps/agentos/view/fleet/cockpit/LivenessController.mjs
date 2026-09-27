@@ -317,7 +317,8 @@ class LivenessController extends ComponentController {
      * contract and route honestly into the provider-owned store — every answered snapshot is
      * authoritative (the first replaces what the store holds, later ones reconcile; an EMPTY
      * answer renders the roster's own empty state, since nothing is seeded that it could erase),
-     * and absence/throw/malformed keeps the last-known roster (fail closed, never a blanked fleet).
+     * and absence/throw/malformed keeps the last-known roster (fail closed, never a blanked fleet);
+     * a throw or a malformed answer after a live one marks it stale, with the reason.
      * @protected
      */
     async loadRoster() {
@@ -353,8 +354,9 @@ class LivenessController extends ComponentController {
             }
 
             if (!Array.isArray(rows)) {
-                me.publishConnection('grid');
-                return // malformed answer → keep the last-known roster
+                // the read failed: the last-known roster stays, but never under a live badge
+                me.degradeWiredSurface('grid', 'Roster answer was malformed', grid);
+                return
             }
 
             const mapped = rows.filter(row => row?.id).map(row => me.mapRosterRow(row));
