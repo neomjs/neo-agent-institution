@@ -226,33 +226,37 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(controller.rosterWired).toBe(true)
     });
 
-    test('a malformed answer after a live one keeps the working rows as stale, with the reason; a well-formed answer on the same profile stays live', async () => {
-        const
-            working = {id: 'neo-gpt', lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'}, sources: liveSources()},
-            answer  = async () => ({rows: [working]}),
-            {controller, grid, provider} = await routeLoadRoster({fleetRoster: answer});
+    test('a failed read after a live one, thrown or malformed, keeps the working rows as stale, with the reason; a well-formed answer on the same profile stays live', async () => {
+        const working = {id: 'neo-gpt', lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'}, sources: liveSources()};
 
-        // control: a second well-formed read on the same profile is not what degrades the grid
-        await controller.loadRoster();
+        for (const [failedRead, reason] of [
+            [async () => { throw new Error('transport lost') }, 'transport lost'],
+            [async () => ({rows: {id: 'neo-gpt'}}),               'Roster answer was malformed']
+        ]) {
+            const {controller, grid, provider} = await routeLoadRoster({fleetRoster: async () => ({rows: [working]})});
 
-        expect(provider.data.gridAdapterState).toBe('live');
-        expect(grid.adapterState).toBe('live');
-        expect(provider.data.gridDegradedReason).toBeNull();
+            // control: a second well-formed read on the same profile is not what degrades the grid
+            await controller.loadRoster();
 
-        const {added, removed} = grid.store,
-              addedBefore      = added.length;
+            expect(provider.data.gridAdapterState).toBe('live');
+            expect(grid.adapterState).toBe('live');
+            expect(provider.data.gridDegradedReason).toBeNull();
 
-        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: {id: 'neo-gpt'}})}};
-        await controller.loadRoster();
+            const {added, removed} = grid.store,
+                  addedBefore      = added.length;
 
-        expect(provider.data.gridAdapterState).toBe('stale');
-        expect(grid.adapterState).toBe('stale');
-        expect(provider.data.gridDegradedReason).toBe('Roster answer was malformed');
-        // the working row is still the last-known truth: nothing cleared, removed or re-added
-        expect(grid.store.cleared).toBe(1);
-        expect(removed).toEqual([]);
-        expect(added).toHaveLength(addedBefore);
-        expect(added.at(-1)).toMatchObject({agentId: 'neo-gpt', state: 'ok'})
+            (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: failedRead}};
+            await controller.loadRoster();
+
+            expect(provider.data.gridAdapterState).toBe('stale');
+            expect(grid.adapterState).toBe('stale');
+            expect(provider.data.gridDegradedReason).toBe(reason);
+            // the working row is still the last-known truth: nothing cleared, removed or re-added
+            expect(grid.store.cleared).toBe(1);
+            expect(removed).toEqual([]);
+            expect(added).toHaveLength(addedBefore);
+            expect(added.at(-1)).toMatchObject({agentId: 'neo-gpt', state: 'ok'})
+        }
     });
 
     test('density: openLaneCount survives the FIRST authoritative load — a stamped live count is stored, a missing stamp degrades to null, an earlier number never outlives the replacement (#14598)', async () => {
