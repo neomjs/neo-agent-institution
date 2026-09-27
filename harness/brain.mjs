@@ -345,7 +345,7 @@ export function resolveBrainPaths({repoRoot, env = {}, execFileFn = execFile}) {
         "    chromaDataDir      : AiConfig.engines.chroma.dataDir,",
         "    chromaPort         : AiConfig.engines.chroma.port,",
         "    dbPath             : AiConfig.orchestrator.dbPath,",
-        "    fleetInstanceRoot  : AiConfig.fleet.instanceRoot,",
+        "    fleetAgentsRoot    : AiConfig.fleet.agentsRoot,",
         "    fleetPlaneBase     : AiConfig.fleet.planeBase,",
         "    orchestratorDataDir: AiConfig.orchestrator.dataDir",
         "}));"
@@ -392,7 +392,7 @@ export function buildBrainProfile({isolationRoot, chromaPort, fleetPort}) {
         NEO_AI_ORCHESTRATOR_DIR : path.join(isolationRoot, 'orchestrator'),
         NEO_BACKUP_PATH         : path.join(isolationRoot, 'backups'),
         NEO_CHROMA_DATA_DIR_TEST: path.join(isolationRoot, 'chroma'),
-        NEO_FLEET_INSTANCE_ROOT : path.join(isolationRoot, 'fleet', 'instances'),
+        NEO_FLEET_AGENTS_ROOT   : path.join(isolationRoot, 'fleet', 'agents'),
         NEO_REM_RUN_STATE_DIR   : path.join(isolationRoot, 'rem-runs'),
         UNIT_TEST_MODE          : '1',
 
@@ -492,7 +492,7 @@ export function buildPackagedBrainEnv({dataRoot}) {
         NEO_AI_ORCHESTRATOR_DIR    : path.join(dataRoot, 'orchestrator'),
         NEO_BACKUP_PATH            : path.join(dataRoot, 'backups'),
         NEO_CHROMA_DATA_DIR        : path.join(dataRoot, 'chroma', 'unified'),
-        NEO_FLEET_INSTANCE_ROOT    : path.join(dataRoot, 'fleet', 'instances'),
+        NEO_FLEET_AGENTS_ROOT      : path.join(dataRoot, 'fleet', 'agents'),
         NEO_MEMORY_EMBED_DAEMON_DIR: path.join(dataRoot, 'embed-daemon'),
         NEO_MEMORY_WAL_DIR         : path.join(dataRoot, 'memory-wal'),
         NEO_MESSAGE_WAL_DAEMON_DIR : path.join(dataRoot, 'message-daemon'),
@@ -534,7 +534,7 @@ export function assertIsolatedProfile({resolved, isolationRoot, chromaPort}) {
     const
         violations = [],
         root       = resolveRealPath(isolationRoot) + path.sep,
-        pathLeaves = ['backupPath', 'chromaDataDir', 'dbPath', 'fleetInstanceRoot', 'orchestratorDataDir'];
+        pathLeaves = ['backupPath', 'chromaDataDir', 'dbPath', 'fleetAgentsRoot', 'orchestratorDataDir'];
 
     for (const leafName of pathLeaves) {
         const value = resolved[leafName];
