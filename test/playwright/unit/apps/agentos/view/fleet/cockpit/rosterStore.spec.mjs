@@ -609,6 +609,36 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         store.destroy()
     });
 
+    // The density fold hides the idle tier through a store filter, so a folded resident lives only in
+    // the unfiltered twin: the reconcile has to count and find residents there, not in the view.
+    test('a fleet that shrinks under the idle fold loses its departed idle residents; a folded resident still in the snapshot updates in place', () => {
+        const
+            store        = Neo.create(FleetRoster, {data: []}),
+            {controller} = makeLiveHost(store, 21),
+            fleet        = [
+                ...Array.from({length: 6},  (_, i) => ({agentId: `busy-${i}`, state: 'ok'})),
+                ...Array.from({length: 14}, (_, i) => ({agentId: `idle-${i}`, state: 'idle'}))
+            ];
+
+        store.add(fleet);
+        // the roster Controller's fold preset, armed
+        store.filters = [{property: 'tierRank', filterBy: ({item}) => FleetAgent.tierRankFor(item.state) === 1}];
+
+        expect(store.count, 'the fold hides the idle tier').toBe(6);
+        expect(store.allItems.count).toBe(20);
+
+        const folded = store.allItems.get('idle-0');
+
+        controller.reconcileRoster(store, [...fleet.slice(0, 6), {agentId: 'idle-0', state: 'idle', lastActivityAt: '2026-09-27T10:00:00.000Z'}]);
+
+        expect(store.allItems.count, 'the departed idle residents leave the unfiltered twin').toBe(7);
+        expect(store.allItems.get('idle-0'), 'a folded resident still in the snapshot keeps its record').toBe(folded);
+        expect(folded.lastActivityAt, 'and takes its row in place, never re-added as a joiner').toBe('2026-09-27T10:00:00.000Z');
+        expect(store.count, 'the view still folds it').toBe(6);
+
+        store.destroy()
+    });
+
     test('onDetailRecordChange routes a roster mutation of the inspected agent to the detail — reactive to record MUTATION, not just a re-seat', () => {
         const
             record  = {agentId: 'vega'},

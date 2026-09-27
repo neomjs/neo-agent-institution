@@ -90,10 +90,8 @@ test.describe('AgentOS fleet grid — density-evidence scale (Neural Link)', () 
         await expect(page.locator('.fm-roster-fold')).toHaveText('+14 idle · show');
         // online (4) + benched (2) stay as cards — working-first keeps the glance priority,
         await expect(page.locator('.fm-fleet-cards .fm-agent-card')).toHaveCount(6);
-        // and dropping back BELOW threshold un-folds: every card renders again. Through the live
-        // reconcile the folded idle residents are never removed (its census reads the filtered view),
-        // so the fold survives the shrink — expected to fail until the ticket the annotation names lands.
-        test.fail(true, 'Institution issue 249: the live reconcile leaves folded idle residents behind on a shrink');
+        // and dropping back BELOW threshold un-folds: every card renders again, because the live
+        // reconcile removes the folded idle residents the snapshot no longer carries
         await landFleetRoster(page, fixture.slice(0, 6));
 
         await expect(page.locator('.fm-roster-fold')).toBeHidden();
