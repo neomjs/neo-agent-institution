@@ -55,6 +55,16 @@ class GraphSceneEnvelope extends Base {
     }
 
     /**
+     * @summary The landed leaf as plain data. The provider hands its tracking proxy, and a projection through
+     * the closed shape reads it without copying the scene's lists.
+     * @param {Object|null} envelope
+     * @returns {Object|null}
+     */
+    static plain(envelope) {
+        return envelope ? ClosedShape.project(envelope, SHAPE) : null
+    }
+
+    /**
      * @summary Lands one wire envelope in the closed shape. An answer without a capability state is
      * malformed, and it lands as unavailable, not as unobserved.
      * @param {Object|null} wire

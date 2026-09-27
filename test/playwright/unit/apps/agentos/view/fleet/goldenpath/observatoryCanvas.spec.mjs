@@ -10,16 +10,36 @@ import Neo               from '../../../../../../../../node_modules/neo.mjs/src/
 import * as core         from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import ObservatoryCanvas from '../../../../../../../../apps/agentos/view/fleet/goldenpath/ObservatoryCanvas.mjs';
 
-const nodeA = {id: 'neomjs/neo#issue-1', label: 'one', kind: 'issue'};
+const
+    nodeA = {id: 'neomjs/neo#issue-1', label: 'one', kind: 'issue', rank: 1,    hop: 0, cluster: 0, x: 0.1, y: 0.2, z: 0.3},
+    nodeB = {id: 'neomjs/neo#issue-2', label: 'two', kind: 'issue', rank: null, hop: 1, cluster: 0, x: 0.4, y: 0.5, z: 0.6};
+
+/**
+ * @summary A layout scene of the two nodes, the first a seed, one edge between them.
+ * @param {String} snapshotId
+ * @returns {Object}
+ */
+const sceneOf = snapshotId => ({
+    communities : 1,
+    completeness: 'complete',
+    currency    : 'current',
+    edges       : [[0, 1]],
+    edgeTypes   : ['relates'],
+    empty       : false,
+    index       : {[nodeA.id]: 0, [nodeB.id]: 1},
+    nodes       : [nodeA, nodeB],
+    seeds       : [0],
+    snapshotId
+});
 
 /**
  * @summary The pointer handlers are the class's own methods, through the engine's forwarding: a prototype
  * host whose own data properties shadow the reactive configs, a renderer that records what the worker would
  * receive, and a `fire` that records what the pane would hear.
- * @param {Function} pick The renderer's pick
+ * @param {Function} pick The renderer's pick, which answers a node index
  * @returns {{canvas: Object, selections: Array}}
  */
-function makeCanvas(pick = async () => nodeA) {
+function makeCanvas(pick = async () => 0) {
     const
         canvas     = Object.create(ObservatoryCanvas.prototype),
         selections = [];
@@ -32,7 +52,7 @@ function makeCanvas(pick = async () => nodeA) {
         isDestroyed  : false,
         pressedAt    : null,
         renderer     : {pick, updateMouseState: () => {}},
-        scene        : {snapshotId: 'snap-1'},
+        scene        : sceneOf('snap-1'),
         windowId     : 'window-1'
     }).forEach(([key, value]) => Object.defineProperty(canvas, key, {configurable: true, enumerable: true, value, writable: true}));
 
@@ -71,7 +91,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryCanvas — a click selec
         expect(selections, 'an orbit that comes back to where it was pressed').toHaveLength(2)
     });
 
-    test('a pick that answers after the scene changed selects nothing; the same pick on an unchanged scene selects', async () => {
+    test('a pick that answers after the scene changed selects nothing; the same pick on an unchanged scene selects; a miss selects nothing', async () => {
         let answer;
 
         const {canvas, selections} = makeCanvas(() => new Promise(resolve => { answer = resolve }));
@@ -80,8 +100,8 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryCanvas — a click selec
 
         const late = canvas.onClick(at(20, 20));
 
-        canvas.scene = {snapshotId: 'snap-2'};
-        answer(nodeA);
+        canvas.scene = sceneOf('snap-2');
+        answer(0);
         await late;
 
         expect(selections).toEqual([]);
@@ -90,9 +110,66 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryCanvas — a click selec
 
         const current = canvas.onClick(at(20, 20));
 
-        answer(nodeA);
+        answer(1);
         await current;
 
-        expect(selections).toEqual([nodeA.id])
+        canvas.onMouseDown(at(20, 20, 1));
+
+        const miss = canvas.onClick(at(20, 20));
+
+        answer(-1);
+        await miss;
+
+        expect(selections, 'the index resolves against the held scene; -1 is the empty surface').toEqual([nodeB.id, null])
+    });
+
+    test('a new selection or overlay crosses to the worker alone; only a new scene carries the scene, with both, as typed arrays by index and no node object or id', () => {
+        const {canvas} = makeCanvas(), calls = [];
+
+        canvas.renderer = {
+            setRouteOverlay: data => calls.push(['setRouteOverlay', data]),
+            setScene       : data => calls.push(['setScene', data]),
+            setSelection   : data => calls.push(['setSelection', data])
+        };
+
+        ['routeOverlay', 'selectedId'].forEach(key => Object.defineProperty(canvas, key, {configurable: true, enumerable: true, value: null, writable: true}));
+
+        canvas.afterSetSelectedId(nodeB.id, null);
+        canvas.afterSetRouteOverlay(false, true);
+        canvas.selectedId = nodeB.id;
+        canvas.pushScene();
+
+        expect(calls.slice(0, 2)).toEqual([
+            ['setSelection',    {selected: 1, windowId: 'window-1'}],
+            ['setRouteOverlay', {routeOverlay: false, windowId: 'window-1'}]
+        ]);
+
+        const [name, {scene, ...rest}] = calls[2];
+
+        expect(name).toBe('setScene');
+        expect(rest).toEqual({routeOverlay: null, selected: 1, windowId: 'window-1'});
+        expect(scene.positions).toBeInstanceOf(Float32Array);
+        expect([scene.clusters, scene.edges, scene.seeds, scene.ranks].every(array => array instanceof Uint32Array)).toBe(true);
+        expect(Object.values(scene).filter(value => Array.isArray(value) || (value && typeof value === 'object' && !ArrayBuffer.isView(value))), 'no plain array or object crosses').toEqual([]);
+
+        canvas.afterSetSelectedId('neomjs/neo#gone', null);
+        expect(calls.at(-1), 'an id the scene lacks crosses as no index').toEqual(['setSelection', {selected: -1, windowId: 'window-1'}])
+    });
+
+    test('a hover names the held scene\'s node; locate asks by index; the stats name the drawn selection by its id', async () => {
+        const {canvas} = makeCanvas(async () => 1), hovers = [], asked = [];
+
+        canvas.fire = (name, {node}) => name === 'nodeHover' && hovers.push(node?.id ?? null);
+
+        await canvas.onMouseMove(at(30, 30));
+        expect(hovers).toEqual([nodeB.id]);
+
+        canvas.renderer.locate   = async data => (asked.push(data), {x: 1, y: 2});
+        canvas.renderer.getStats = async () => ({counts: {nodes: 2}, selected: 1});
+
+        expect(await canvas.locate(nodeB.id)).toEqual({x: 1, y: 2});
+        expect(await canvas.locate('neomjs/neo#gone'), 'an id the scene lacks is not asked about').toBeNull();
+        expect(asked).toEqual([{index: 1, windowId: 'window-1'}]);
+        expect(await canvas.readStats()).toEqual({counts: {nodes: 2}, selectedId: nodeB.id})
     });
 });

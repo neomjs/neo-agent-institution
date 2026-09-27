@@ -168,6 +168,69 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.destroy()
     });
 
+    test('the lists keep to the budget: the route\'s seeds lead, the selection is always listed, and the titles say how many of how many', () => {
+        const
+            pane  = createPane(),
+            ids   = () => pane.nodeStore.items.map(({id}) => id.replace('neomjs/neo#', '')),
+            title = reference => pane.getReference(reference).text;
+
+        pane.listBudget = 1;
+        pane.envelope   = graphRead();
+
+        expect(ids()).toEqual(['pr-101']);
+        expect(title('observatory-nodes-title')).toBe('Nodes · 1 of 7 · relations reach the rest');
+
+        pane.onNodeSelect({node: {id: q('pr-101')}});
+        expect(pane.relationStore.getCount()).toBe(1);
+        expect(title('observatory-relations-title')).toBe('Relations of the selected node · 1 of 2');
+
+        // a relation reaches a node beyond the budget: it joins the list, selected
+        pane.onRelationListSelect({records: [pane.relationStore.getAt(0)]});
+        const list = pane.getReference('observatory-nodes');
+
+        expect(ids()).toEqual(['pr-101', 'concept-dock']);
+        expect(list.selectionModel.items).toEqual([list.getItemId(pane.nodeStore.get(q('concept-dock')))]);
+
+        // further selections beyond the budget take that one extra row, never another
+        pane.onNodeSelect({node: {id: q('issue-404')}});
+        expect(ids()).toEqual(['pr-101', 'issue-404']);
+        pane.onNodeSelect({node: {id: q('agent-grace')}});
+        expect(ids()).toEqual(['pr-101', 'agent-grace']);
+        expect(list.selectionModel.items).toEqual([list.getItemId(pane.nodeStore.get(q('agent-grace')))]);
+
+        // a listed selection needs no extra row
+        pane.onNodeSelect({node: {id: q('pr-101')}});
+        expect(ids()).toEqual(['pr-101']);
+
+        pane.listBudget = 500;
+        pane.envelope   = graphRead({completeness: 'truncated'}, {snapshotId: 'snap-8b21'});
+        expect(ids()).toHaveLength(7);
+        expect(title('observatory-nodes-title')).toBe('Nodes');
+        expect(title('observatory-relations-title')).toBe('Relations of the selected node');
+
+        pane.destroy()
+    });
+
+    test('the route toggle draws or drops the route: the overlay flips, and the toggle reads pressed for the eye and for assistive technology', () => {
+        const
+            pane   = createPane({envelope: graphRead()}),
+            toggle = pane.getReference('route-toggle'),
+            state  = () => [pane.routeOverlay, toggle.pressed, toggle.vdom['aria-pressed']];
+
+        // the ripple measures the rendered button, which the unit harness has none of
+        toggle.useRippleEffect = false;
+
+        expect(state()).toEqual([true, true, 'true']);
+
+        toggle.onClick({});
+        expect(state()).toEqual([false, false, 'false']);
+
+        toggle.onClick({});
+        expect(state()).toEqual([true, true, 'true']);
+
+        pane.destroy()
+    });
+
     test('a withheld Golden Path route is named beside the graph read\'s own words', () => {
         const
             pane     = createPane({envelope: graphRead()}),
