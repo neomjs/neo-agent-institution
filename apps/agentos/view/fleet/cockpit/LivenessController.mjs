@@ -578,6 +578,10 @@ class LivenessController extends ComponentController {
      * place (`record.set` — one card re-render, producer-foreign fields survive), joiners batch
      * in, and residents absent from the snapshot are removed (no ghost cards). Membership may
      * have removed the inspected resident, so the owner-held selection reconciles here too.
+     *
+     * The roster's view filters (the density fold, hide offline) leave a filtered-out resident only
+     * in the store's unfiltered twin, so membership is read there. A known resident is found in the
+     * view first, where hydrating it also writes the twin, and in the twin only when the view hides it.
      * @param {Neo.data.Store} store
      * @param {Object[]} rows Mapped snapshot rows keyed by `agentId`.
      * @protected
@@ -588,7 +592,7 @@ class LivenessController extends ComponentController {
             joiners     = [];
 
         rows.forEach(row => {
-            const record = store.get(row.agentId);
+            const record = store.get(row.agentId) ?? store.allItems?.get(row.agentId);
 
             record ? record.set(row) : joiners.push(row)
         });
@@ -596,7 +600,7 @@ class LivenessController extends ComponentController {
         // one batched add — every store mutation fires `load`, per-row adds would fan out
         joiners.length > 0 && store.add(joiners);
 
-        store.items
+        (store.allItems ?? store).items
             .filter(record => !snapshotIds.has(record.agentId))
             .map(record => record.agentId)
             .forEach(agentId => store.remove(agentId));
