@@ -146,6 +146,41 @@ class GoldenPathEnvelope extends Base {
     }
 
     /**
+     * @summary The currency line a Golden Path pane shows in its head: the currency word first, then the
+     * producer's own reason, or the route's capture instant and its item count. Pure; the envelope's
+     * fields pass through untouched. The instant goes through `formatStamp` (a pane passes the viewer's
+     * clock; the default is the UTC minute) and is left out when the value is unparseable or the
+     * formatter has nothing to say.
+     * @param {Object|null} envelope The landed envelope.
+     * @param {Function} [formatStamp] `(isoString) → String|null`
+     * @returns {{currency: String, text: String}}
+     */
+    static describeCurrency(envelope, formatStamp = at => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}Z`) {
+        const
+            currency = GoldenPathEnvelope.currency(envelope),
+            route    = GoldenPathEnvelope.routeOf(envelope),
+            count    = route && Array.isArray(route.items) ? route.items.length : 0,
+            items    = `${count} item${count === 1 ? '' : 's'}`,
+            stamp    = at => {
+                const text = typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? formatStamp(at) : null;
+
+                return text ? `captured ${text}` : null
+            },
+            reason   = envelope?.capability?.reason ?? null,
+            // one composer per currency word, evaluated only for the word at hand: the withheld
+            // reason reads the admission, which a blank or missing envelope does not carry
+            parts    = {
+                unobserved : () => ['Unobserved'],
+                unavailable: () => ['Unavailable', reason],
+                degraded   : () => ['Degraded', reason],
+                withheld   : () => ['Withheld', GoldenPathEnvelope.withheldReason(envelope), 'last known good route', stamp(route.capturedAt), items],
+                current    : () => ['Current', stamp(route.capturedAt), items]
+            }[currency]();
+
+        return {currency, text: parts.filter(Boolean).join(' · ')}
+    }
+
+    /**
      * @summary The producer's reason a route is withheld: the admission's reason code first, then the
      * route's own expiry or status.
      * @param {Object} envelope

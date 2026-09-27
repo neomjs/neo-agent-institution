@@ -320,3 +320,42 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         expect(presetDocument(cockpit, 'Overview').nodes['primary-split'].sizes, 'the seed is the declaration\'s').toEqual([0.6078, 0.3922])
     })
 });
+
+/**
+ * A stored layout can name a pane the cockpit has since retired, like the Route graph: retiring it
+ * closes it out of the document with the engine's own semantics, so the rest restores unchanged.
+ */
+test.describe('AgentOS.util.CockpitPerspectives — a stored layout naming a retired pane', () => {
+    const
+        declaredIds = Object.keys(SHIPPED.items),
+        route       = {reference: 'golden-path-graph', title: 'Route graph'};
+
+    test('a retired pane in its own strip closes out, and the strip and its split collapse back to the shipped document', () => {
+        const legacy = WorkspaceDocument.clone(SHIPPED);
+
+        legacy.items.goldenPathGraph = route;
+        legacy.nodes['stream-row']   = {type: 'split', orientation: 'horizontal', children: ['stream-tabs', 'route-tabs'], sizes: [0.5, 0.5]};
+        legacy.nodes['route-tabs']   = {type: 'tabs', items: ['goldenPathGraph'], activeItemId: 'goldenPathGraph'};
+        legacy.nodes['primary-split'].children = ['fleet-tabs', 'stream-row'];
+
+        expect(CockpitPerspectives.retireUndeclaredItems(legacy, declaredIds)).toEqual(SHIPPED)
+    });
+
+    test('a locked, active retired pane still closes out, and activation moves to its neighbour', () => {
+        const legacy = WorkspaceDocument.clone(SHIPPED);
+
+        legacy.items.goldenPathGraph = {...route, locked: true, closable: false};
+        legacy.nodes['stream-tabs'].items.push('goldenPathGraph');
+        legacy.nodes['stream-tabs'].activeItemId = 'goldenPathGraph';
+
+        const retired = CockpitPerspectives.retireUndeclaredItems(legacy, declaredIds);
+
+        expect(retired.items.goldenPathGraph).toBeUndefined();
+        expect(retired.nodes['stream-tabs'].items).toEqual(SHIPPED.nodes['stream-tabs'].items);
+        expect(retired.nodes['stream-tabs'].activeItemId).toBe('goldenPath')
+    });
+
+    test('a layout naming only declared panes comes back as the same document', () => {
+        expect(CockpitPerspectives.retireUndeclaredItems(SHIPPED, declaredIds)).toBe(SHIPPED)
+    })
+});

@@ -9,6 +9,7 @@ import {test, expect}       from '@playwright/test';
 import Neo                  from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core            from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import                           '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
+import CockpitPerspectives  from '../../../../../../../../apps/agentos/util/CockpitPerspectives.mjs';
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
@@ -176,5 +177,26 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         expect(provider.getData('dock.perspective.modified')).toBe(false);
         expect(provider.getData('dock.perspective.pending'), 'the request clears with the refresh, which never lands here').toBe('Focus');
         expect(cockpit.perspectiveStore.collection.activeLayoutId, 'the library is not the selection').toBeNull()
+    });
+
+    test('a stored perspective that names a retired pane applies without it — no refusal, no tab for a pane that is gone', async () => {
+        cockpit = createCockpit();
+        await cockpit.refreshPromise;
+
+        // a capture exported before the Route graph left the cockpit, filed the way an import files it
+        const legacy = WorkspaceDocument.clone(cockpit.getPerspectiveDocument());
+
+        legacy.items.goldenPathGraph = {reference: 'golden-path-graph', title: 'Route graph'};
+        legacy.nodes['stream-tabs'].items.push('goldenPathGraph');
+
+        const {layout} = CockpitPerspectives.captureSavedLayout(legacy, 'Legacy', Object.keys(cockpit.perspectives ?? {}));
+
+        cockpit.perspectiveStore.savePerspective(layout, {activate: true});
+
+        // the commit lands synchronously; its re-projection never settles in this harness (see above)
+        expect(cockpit.activatePerspective('Legacy')).toBeInstanceOf(Promise);
+        expect(cockpit.presetError, 'the apply is not refused').toBeNull();
+        expect(cockpit.dockModel.items.goldenPathGraph).toBeUndefined();
+        expect(cockpit.dockModel.nodes['stream-tabs'].items).toEqual(['stream', 'tasks', 'memories', 'operator', 'catchUp', 'goldenPath'])
     });
 });
