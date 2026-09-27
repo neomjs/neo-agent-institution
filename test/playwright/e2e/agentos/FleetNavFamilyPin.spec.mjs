@@ -24,6 +24,10 @@ test.describe('AgentOS shell — the nav tab family, pinned per skin', () => {
 
         expect(viewportId, 'the shell viewport must exist in the App Worker').toBeTruthy();
 
+        // the icon rail marks its active place with a pressed button: the shell renders no tab strip
+        // beside it, while the cockpit's own dock strips stay
+        await expect(page.locator('.agent-shell > .neo-tab-strip'), 'the shell strip has no rendered box').toHaveCount(0);
+
         const
             keeper = page.locator('.agent-shell > .neo-tab-header-toolbar'),
             south  = page.locator('.fm-fleet-cockpit .neo-tab-header-toolbar.neo-dock-top').nth(1),

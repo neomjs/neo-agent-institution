@@ -396,7 +396,6 @@
             /* The active place is the button itself, pressed: a raised tile with the signal glyph.
                An icon has no label to underline, so the rail renders no indicator line. */
             border-radius: 8px;
-            margin       : 4px 6px;
 
             /* upright, and without the gap a rotated label needed beside it */
             .neo-button-glyph {
@@ -421,6 +420,19 @@
                 .neo-button-glyph {
                     color: var(--fm-signal);
                 }
+            }
+        }
+
+        /* One tile size in both states, centered in the rail: the engine widens a pressed left-dock
+           button to the whole rail and unsets its side margins, which pushed the tile off the edge. */
+        &.neo-dock-left .neo-tab-header-button.neo-button {
+            &,
+            &.pressed,
+            &:not(:last-child) {
+                align-self: center;
+                margin    : 4px auto;
+                min-width : 0;   /* the stock button minimum would hold it at the rail's width */
+                width     : 36px;
             }
         }
     }

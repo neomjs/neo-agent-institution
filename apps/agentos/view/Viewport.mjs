@@ -158,7 +158,8 @@ class Viewport extends BaseViewport {
             flex                 : 1,
             reference            : 'shell',
             tabBarPosition       : 'left',
-            // the icon rail marks its active place with a pressed button, not an indicator line
+            // the icon rail marks its active place with a pressed button: no indicator, no strip beside it
+            tabStrip             : {hidden: true},
             useActiveTabIndicator: false,
             activeIndex          : 1, // default to the Fleet cockpit — mission control first
 
