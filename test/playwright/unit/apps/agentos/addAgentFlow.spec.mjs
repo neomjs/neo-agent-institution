@@ -132,6 +132,8 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
             cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git',
             repoSlug: 'neomjs/neo-agent-brain'
         });
+        // the Fleet names the checkout path in lowercase only, so a typed case never reaches its verb
+        expect(AddAgentFlow.repoOf('NeoMJS/Neo').repoSlug).toBe('neomjs/neo');
 
         for (const malformed of ['neo', 'a/b/c', 'https://github.com/x/y.git', 'x/y z']) {
             expect(AddAgentFlow.repoOf(malformed)).toBeNull()

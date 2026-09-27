@@ -117,12 +117,13 @@ class AddAgentFlow extends Base {
     /**
      * @summary A seat's working repository from the form's `owner/repo`: the slug and the GitHub clone
      * URL a provisioned Start clones, so the harness runs in the seat's own checkout. A blank entry
-     * means the default; anything that is not exactly `owner/repo` is `null`.
+     * means the default; anything that is not exactly `owner/repo` is `null`. The slug is lowercased:
+     * GitHub ignores case, and the Fleet names the checkout path in lowercase only.
      * @param {String} [repoSlug]
      * @returns {{cloneUrl: String, repoSlug: String}|null}
      */
     static repoOf(repoSlug) {
-        const slug = String(repoSlug ?? '').trim() || DEFAULT_REPO_SLUG;
+        const slug = String(repoSlug ?? '').trim().toLowerCase() || DEFAULT_REPO_SLUG;
 
         return /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(slug)
             ? {cloneUrl: `https://github.com/${slug}.git`, repoSlug: slug}
