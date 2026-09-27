@@ -47,7 +47,7 @@ class ObservatoryNodeList extends BaseList {
         const {hop, rank} = record;
 
         return [
-            {tag: 'span', cls: ['fm-observatory-row-place'], text: hop === 0 ? `#${rank}` : hop === null ? '—' : `${hop} hop${hop === 1 ? '' : 's'}`},
+            {tag: 'span', cls: hop === 0 ? ['fm-observatory-row-place', 'is-route'] : ['fm-observatory-row-place'], text: hop === 0 ? `#${rank}` : hop === null ? '—' : `${hop} hop${hop === 1 ? '' : 's'}`},
             {tag: 'span', cls: ['fm-observatory-row-label'], text: record.label ?? record.id},
             {tag: 'span', cls: ['fm-observatory-row-kind'],  text: record.kind ?? ''}
         ]

@@ -11,8 +11,8 @@
  * @type {Object}
  */
 export const PALETTES = {
-    dark : {ink: '#d6dce6', inkDim: '#8b97a8', signal: '#5eead4', line: '#262f3d', lineSoft: '#1c242f', panel: '#141a23', panel2: '#1a212c'},
-    light: {ink: '#1f2733', inkDim: '#5a6b80', signal: '#0f766e', line: '#d3dae4', lineSoft: '#e4e9f0', panel: '#ffffff', panel2: '#f7f9fc'}
+    dark : {ink: '#d6dce6', inkDim: '#8b97a8', signal: '#5eead4', route: '#f5c451', line: '#262f3d', lineSoft: '#1c242f', panel: '#141a23', panel2: '#1a212c'},
+    light: {ink: '#1f2733', inkDim: '#5a6b80', signal: '#0f766e', route: '#a16207', line: '#d3dae4', lineSoft: '#e4e9f0', panel: '#ffffff', panel2: '#f7f9fc'}
 };
 
 /**

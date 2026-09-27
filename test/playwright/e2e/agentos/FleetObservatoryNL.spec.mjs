@@ -318,7 +318,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
     // A synthetic graph at the scale Tobi's proof-of-concept drew: it certifies the FM path — envelope admission,
     // the provider leaf, the pane, the layout, the canvas worker — never the Brain's data or the Fleet read.
-    test('a whole graph lands through the live read\'s write: 100k nodes draw through the level of detail, the wheel steps it far → mid → near, a drag orbits, and the route toggles without moving a node', async ({page, neuralLink}, testInfo) => {
+    test('a whole graph lands through the live read\'s write: 100k nodes draw through the level of detail, the fitted camera every node, the wheel steps it in to near and back out to far, a drag orbits, and the route toggles without moving a node', async ({page, neuralLink}, testInfo) => {
         test.setTimeout(300000);
 
         const
@@ -334,13 +334,13 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         testInfo.annotations.push({type: 'landing to first frame', description: `${landedIn} ms`});
         expect(drawn.counts).toMatchObject({nodes: 100000, seeds: 10, paths: 1});
-        expect(drawn.lod.level, 'the fitted camera draws the far level').toBe('far');
+        expect(drawn.lod.level, 'the fitted camera draws every node').toBe('mid');
         expect(drawn.lod.clusters, 'most of the 64 generated groups are found').toBeGreaterThan(48);
 
         // the pictures a reviewer looks at, attached to the run: never compared, so never goldens
         const picture = async name => testInfo.attach(name, {body: await pane.screenshot(), contentType: 'image/png'});
 
-        await picture('100k · far')
+        await picture('100k · fitted')
 
         // the wheel over the canvas steps the level of detail in
         const rect = await pane.locator('canvas').boundingBox(), levels = [drawn.lod.level];
@@ -356,7 +356,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             level !== levels.at(-1) && levels.push(level)
         }
 
-        expect(levels).toEqual(['far', 'mid', 'near']);
+        expect(levels).toEqual(['mid', 'near']);
         await picture('100k · near');
 
         // a drag orbits
@@ -382,6 +382,21 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await toggle.click();
         await expect.poll(async () => (await stats()).counts.paths).toBe(1);
         expect(await Promise.all(ids.map(locate))).toEqual(before);
-        expect((await stats()).snapshotId).toBe(envelope.snapshotId)
+        expect((await stats()).snapshotId).toBe(envelope.snapshotId);
+
+        // drawn back past the whole graph: one centroid per community
+        await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+
+        for (let step = 0; step < 40 && levels.at(-1) !== 'far'; step++) {
+            await page.mouse.wheel(0, 120);
+            await page.waitForTimeout(80);
+
+            const {level} = (await stats()).lod;
+
+            level !== levels.at(-1) && levels.push(level)
+        }
+
+        expect(levels).toEqual(['mid', 'near', 'mid', 'far']);
+        await picture('100k · far')
     });
 });

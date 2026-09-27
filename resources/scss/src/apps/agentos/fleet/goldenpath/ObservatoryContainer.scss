@@ -153,6 +153,11 @@
             flex      : none;
             min-width : 4em;
 
+            /* a route rank in the route's gold, as the canvas draws it */
+            &.is-route {
+                color: var(--fm-route);
+            }
+
             &.is-unspecified {
                 color     : var(--fm-ink-dim);
                 font-style: italic;
@@ -173,8 +178,10 @@
         }
     }
 
-    /* the body's flex item: it takes the width the side panel leaves, never its own */
+    /* the body's flex item: it takes the width the side panel leaves, never its own; the deepest ground, so the
+       glowing communities stand off it */
     .fm-observatory-canvas {
+        background  : var(--fm-ground);
         cursor      : grab;
         display     : block;
         min-height  : 200px;

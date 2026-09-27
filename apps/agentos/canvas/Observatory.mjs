@@ -4,19 +4,20 @@ import {PALETTES, rgb} from './fmPalette.mjs';
 /**
  * Node sizes in the engine's unit, pixels at the camera's distance: every node takes `node` in a read of up to
  * `nodeScaleFrom` nodes, and a denser read shrinks it with the square root of the excess, down to `nodeMin`, so a
- * whole graph reads as a cloud, not a fog. While the route is drawn a seed shrinks down the route from the first
- * rank to the last between its two bounds. Under a selection the selected node grows by the `selected` factor and
- * a node outside its neighbourhood shrinks by the `faded` one, so the faded nodes cover less of the lit ones.
+ * whole graph reads as dust that glows where it gathers. While the route is drawn a seed shrinks down the route
+ * from the first rank to the last between its two bounds, at any scale. Under a selection the selected node grows
+ * by the `selected` factor, never below the last seed so it stands out of the dust, and a node outside its
+ * neighbourhood shrinks by the `faded` one.
  * @type {Object}
  */
-const SIZES = {faded: 0.6, node: 12, nodeMin: 3, nodeScaleFrom: 400, seedMax: 52, seedMin: 27, selected: 1.25};
+const SIZES = {faded: 0.6, node: 5, nodeMin: 0.4, nodeScaleFrom: 400, seedMax: 10, seedMin: 6, selected: 1.6};
 
 /**
- * The community palette: a golden-angle hue step from the signal's hue, at a low saturation so the route's signal
- * stays the brightest ink, and a lightness per skin.
+ * The community palette: a golden-angle hue step from the signal's hue that skips the `gold` band of hues, the
+ * route's alone, and a lightness per skin.
  * @type {Object}
  */
-const TONES = {lightness: {dark: 0.68, light: 0.42}, saturation: 0.28, step: 137.508};
+const TONES = {gold: {from: 25, span: 60}, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508};
 
 /**
  * @summary A hue in degrees, a saturation and a lightness as the three unit floats a WebGL attribute takes.
@@ -65,14 +66,14 @@ const LOD_FROM = 2000;
  * it the scene {@link AgentOS.util.ObservatorySceneLayout} derives from the graph read — nodes in unit space
  * with their community, the feed's edges as node index pairs, the route's seeds, the currency — with the
  * selected node's id and whether the route is drawn, and this class inks it into the engine's flat scene.
- * Each community takes its own muted hue ({@link #toneOf}), the nodes shrink as the read grows, and a large scene
- * hands its communities to the engine as `clusters`, so a far camera draws them through the level of detail. The
- * route is an overlay: while it is
- * drawn, its seeds grow by rank and a path joins them in route order, in the signal only while the read is
+ * Each community takes its own hue ({@link #toneOf}), the nodes shrink as the read grows, and a large scene
+ * hands its communities to the engine as `clusters`: the fitted camera draws every node over the bundles, a
+ * closer one adds the nearest communities' own edges, and only a camera drawn back shows one centroid per
+ * community. On the dark skin the points add up, so a dense community glows. The route is an overlay: while it
+ * is drawn, its seeds grow by rank and a gold path joins them in route order, gold only while the read is
  * current; switching it off inks the same positions again. A selection fades every node but the selected one
  * and its neighbours, except a drawn route's seeds, which only shrink. An empty scene clears the surface, and
- * the currency line above the canvas says why. A
- * theme change inks the same scene again.
+ * the currency line above the canvas says why. A theme change inks the same scene again.
  *
  * `pick` answers the node itself, `{id, kind, label, rank, hop, cluster}`, where the engine answers its index,
  * and `getStats` adds the pane's facts: its counts, currency, completeness, snapshot, selection and overlay.
@@ -89,6 +90,12 @@ class Observatory extends GraphScene {
          */
         className: 'AgentOS.canvas.Observatory',
         /**
+         * The engine's level of detail with the fitted camera one level in: it draws every node, and the
+         * centroids only once the camera is drawn back past the whole graph.
+         * @member {Object} lod={far: 1.3, near: 0.55, nearClusters: 6}
+         */
+        lod: {far: 1.3, near: 0.55, nearClusters: 6},
+        /**
          * Remote method access: the engine's set plus `locate`, the inverse of `pick`, and the two changes that
          * ink the drawn scene again without handing it over: the selection and the route overlay.
          * @member {Object} remote={app: ['locate', 'setRouteOverlay', 'setSelection']}
@@ -98,11 +105,12 @@ class Observatory extends GraphScene {
             app: ['locate', 'setRouteOverlay', 'setSelection']
         },
         /**
-         * The engine's look with a finer route: more, smaller and softer beads, so the route reads as a
-         * ribbon between its beacons, not a band over the graph.
-         * @member {Object} sceneStyle={beadAlpha: 0.35, beadSize: 12, beadsPerLeg: 24, edgeAlpha: 0.4, nodeAlpha: 0.95, pathAlpha: 0.9}
+         * Faint edges, so the web shows where it is dense and the nodes stay in front, and a route of small
+         * beads, so it reads as a line between its beacons, not a band over the graph; few enough that a short
+         * leg's beads, which add up on the dark skin, stay gold.
+         * @member {Object} sceneStyle={beadAlpha: 0.45, beadSize: 2, beadsPerLeg: 24, edgeAlpha: 0.14, nodeAlpha: 0.85, pathAlpha: 0.9}
          */
-        sceneStyle: {beadAlpha: 0.35, beadSize: 12, beadsPerLeg: 24, edgeAlpha: 0.4, nodeAlpha: 0.95, pathAlpha: 0.9},
+        sceneStyle: {beadAlpha: 0.45, beadSize: 2, beadsPerLeg: 24, edgeAlpha: 0.14, nodeAlpha: 0.85, pathAlpha: 0.9},
         /**
          * @member {Boolean} singleton=true
          * @protected
@@ -171,8 +179,8 @@ class Observatory extends GraphScene {
             me       = this,
             palette  = PALETTES[me.theme] || PALETTES.dark,
             tones    = Array.from({length: Math.max(1, scene.communities)}, (item, community) => me.toneOf(community)),
-            // only a current read spends the signal
-            seed     = rgb(scene.currency === 'current' ? palette.signal : palette.ink),
+            // only a current read spends the route's gold
+            seed     = rgb(scene.currency === 'current' ? palette.route : palette.ink),
             faded    = rgb(palette.line),
             selected = Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
             lit      = selected < 0 ? null : new Set([selected, ...scene.edges.filter(pair => pair.includes(selected)).flat()]),
@@ -182,7 +190,7 @@ class Observatory extends GraphScene {
             sizeOf   = (node, index) => {
                 const base = seeds?.has(index) ? (lastRank > 1 ? SIZES.seedMax - (node.rank - 1) / (lastRank - 1) * (SIZES.seedMax - SIZES.seedMin) : SIZES.seedMax) : nodeSize;
 
-                return base * (index === selected ? SIZES.selected : lit && !lit.has(index) ? SIZES.faded : 1)
+                return index === selected ? Math.max(base * SIZES.selected, SIZES.seedMin) : base * (lit && !lit.has(index) ? SIZES.faded : 1)
             };
 
         return {
@@ -230,6 +238,17 @@ class Observatory extends GraphScene {
         const index = super.pick(data), node = index < 0 ? null : this.sourceScene?.nodes[index];
 
         return node ? {id: node.id, kind: node.kind, label: node.label, rank: node.rank, hop: node.hop, cluster: node.cluster} : null
+    }
+
+    /**
+     * @summary The engine's frame in the skin's blend: on the dark ground the points add up, so a dense community
+     * glows; the light ground keeps the engine's blend, where added light would wash it out.
+     */
+    render() {
+        const {gl} = this;
+
+        gl?.blendFunc(gl.ONE, this.theme === 'light' ? gl.ONE_MINUS_SRC_ALPHA : gl.ONE);
+        super.render()
     }
 
     /**
@@ -281,14 +300,18 @@ class Observatory extends GraphScene {
 
     /**
      * @summary A community's ink in the current skin: the signal's hue stepped by the golden angle per community,
-     * muted, so neighbouring communities read apart and none outshines the route.
+     * so neighbouring communities read apart, around the gold band, so none reads as the route.
      * @param {Number} community
      * @returns {Number[]} `[r, g, b]`, each 0…1
      */
     toneOf(community) {
-        const palette = PALETTES[this.theme] || PALETTES.dark;
+        const
+            palette      = PALETTES[this.theme] || PALETTES.dark,
+            {from, span} = TONES.gold,
+            // step around a wheel without the band, then open the band where it lies
+            hue          = (hueOf(palette.signal) + community * TONES.step) % (360 - span);
 
-        return hsl((hueOf(palette.signal) + community * TONES.step) % 360, TONES.saturation, TONES.lightness[this.theme] ?? TONES.lightness.dark)
+        return hsl(hue < from ? hue : hue + span, TONES.saturation, TONES.lightness[this.theme] ?? TONES.lightness.dark)
     }
 
     /**
