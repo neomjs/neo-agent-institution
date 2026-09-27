@@ -77,14 +77,10 @@ async function openObservatory(page, neuralLink) {
         land     : envelope => app.callMethod(cockpitState.controller.id, 'writeGraphScene', [envelope]),
         locate,
         pane,
-        // clicks a node where the renderer draws it. The pointer rests on it first, as a hand does: the main
-        // thread coalesces a move into the next frame but sends a press at once, so a press that follows a
-        // jump in the same frame reaches the canvas as a moved press and orbits it off the node
+        // clicks a node where the renderer draws it
         selectNode: async id => {
             const rect = await pane.locator('canvas').boundingBox(), at = await locate(id);
 
-            await page.mouse.move(rect.x + at.x, rect.y + at.y, {steps: 4});
-            await page.waitForTimeout(100);
             await page.mouse.click(rect.x + at.x, rect.y + at.y)
         },
         selection: pane.locator('.fm-observatory-selection'),
