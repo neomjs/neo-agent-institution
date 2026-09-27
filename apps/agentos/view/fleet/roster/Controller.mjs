@@ -24,6 +24,13 @@ const SORT_MODES = Object.freeze({
 });
 
 /**
+ * Every record field a view filter's predicate reads: what `SourceHealth.resolveFleetDisplayState`
+ * reads for hide-offline, the participation for hide-benched, the session state for the fold.
+ * @type {String[]}
+ */
+const FILTER_INPUTS = Object.freeze(['participationStatus', 'sources', 'state']);
+
+/**
  * Controller for {@link AgentOS.view.fleet.roster.Container}: the roster's business logic, out of
  * the view (the portal `MainContainerController` discipline) — sort-mode switches, the
  * hide-offline / hide-benched filters, the density fold re-expressed as a filter preset, and the
@@ -235,17 +242,25 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary A session-`state` change moved a record between tiers: re-run the store's own sort
-     * so the plugin animates the reposition (a calculated field mutates silently — the collection
-     * does not watch record fields, so the tier move needs this one explicit re-sort trigger).
-     * Non-tier field changes re-render in place through the list's own `recordChange` path and
-     * need no ordering pass.
+     * @summary A record changed a fact the view reads. The collection re-filters on mutations and
+     * filter edits, never on a record's own field change, so an enabled filter whose predicate reads
+     * a changed field is re-run here: the offline filter reads everything the legend's resolver reads
+     * (session `state`, `sources`, `participationStatus`), the benched filter the participation, the
+     * fold the session state. A session-`state` change also moves a record between tiers, and the
+     * re-sort lets the plugin animate the reposition. Other field changes re-render in place through
+     * the list's own `recordChange` path.
      * @param {Object} data The store recordChange event `{fields, record}`.
      */
     onRosterRecordChange({fields}) {
-        const store = this.component.store;
+        const
+            store    = this.component.store,
+            changed  = new Set(fields.map(field => field.name)),
+            refilter = store?.filters?.some(filter => !filter.disabled) &&
+                       FILTER_INPUTS.some(name => changed.has(name));
 
-        if (store?.sorters?.length && fields.some(field => field.name === 'state')) {
+        refilter && store.filter();
+
+        if (store?.sorters?.length && (refilter || changed.has('state'))) {
             store.doSort()
         }
 

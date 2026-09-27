@@ -347,6 +347,47 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         grid.destroy()
     });
 
+    test('an enabled hide-offline follows every fact the legend reads: a runtime or bench change alone moves a card in or out, both ways; the tally and title keep the whole fleet', () => {
+        const
+            wired = {runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            rows  = roster(['ok', 'ok']);
+
+        rows[0].sources = wired;   // agent-02 works under a runtime Fleet supervises; agent-01 has none
+
+        const
+            store      = makeStore(rows),
+            grid       = Neo.create(FleetGrid, {appName, store}),
+            controller = grid.getController(),
+            bar        = grid.getReference('fleet-health'),
+            running    = store.get('agent-02'),
+            seat       = store.get('agent-01'),
+            visible    = () => store.items.map(record => record.agentId).sort(),
+            tally      = () => [swatchOf(bar, 'ok').count, swatchOf(bar, 'off').count];
+
+        controller.onFilterToggleClick({component: grid.getReference('filter-offline')});
+        expect(visible()).toEqual(['agent-02']);
+
+        // a source-only change: the seat comes under the runtime and joins the view
+        seat.set({sources: wired});
+        expect(visible()).toEqual(['agent-01', 'agent-02']);
+        expect(tally()).toEqual([2, 0]);
+
+        // a bench-only change: the running seat leaves the view, its process untouched
+        running.set({participationStatus: 'operator_benched'});
+        expect(visible()).toEqual(['agent-01']);
+        expect(tally()).toEqual([1, 1]);
+
+        // and back: the bench lifts, the runtime goes
+        running.set({participationStatus: 'active'});
+        seat.set({sources: {}});
+        expect(visible()).toEqual(['agent-02']);
+        expect(tally()).toEqual([1, 1]);
+
+        expect(grid.getReference('fleet-title').text).toBe('Fleet · 2 agents');
+
+        grid.destroy()
+    });
+
     test('the density fold is a filter preset: at threshold the idle tier hides behind the honest head count; the chip toggles it live', () => {
         // 4 online · 6 idle · 2 benched = 12 → folded
         const store = makeStore(roster([
