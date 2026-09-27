@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test';
+import {execFile}     from 'node:child_process';
 import {
     createAbsentFleetCapability,
     createFleetCapability,
@@ -36,6 +37,35 @@ const createCapability = options => createFleetCapability({
     responseStates     : FLEET_WIRE_RESPONSE_STATES,
     wireMethods        : FLEET_WIRE_METHODS,
     ...options
+});
+
+// Defines one agent in a throwaway registry of the Brain root this suite runs on and reads the row
+// back. The registry is a Neo singleton on that root's own engine, so it runs in a child process,
+// booted the way the Brain daemons boot.
+const defineInBrainRegistry = params => new Promise((resolve, reject) => {
+    const script = [
+        "import Neo from 'neo.mjs/src/Neo.mjs';",
+        "import * as core from 'neo.mjs/src/core/_export.mjs';",
+        "import InstanceManager from 'neo.mjs/src/manager/Instance.mjs';",
+        "import fs from 'node:fs';",
+        "import os from 'node:os';",
+        "import path from 'node:path';",
+        "import FleetRegistryService from './ai/services/fleet/FleetRegistryService.mjs';",
+        "import {launchRefusalOf} from './src/fleet/contract/launchAuthority.mjs';",
+        "const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-define-'));",
+        "try {",
+        "    FleetRegistryService.dataDir = dataDir;",
+        "    const row = FleetRegistryService.getAgent(FleetRegistryService.defineAgent(JSON.parse(process.argv[1])).id);",
+        "    process.stdout.write(JSON.stringify({...row, launchRefusal: launchRefusalOf(row)}))",
+        "} finally {",
+        "    FleetRegistryService.dataDir = null;",
+        "    fs.rmSync(dataDir, {force: true, recursive: true})",
+        "}"
+    ].join('\n');
+
+    execFile(process.execPath, ['--input-type=module', '-e', script, JSON.stringify(params)], {
+        cwd: process.env.NEO_AGENTOS_RUNTIME_ROOT
+    }, (error, stdout, stderr) => error ? reject(new Error(String(stderr || error.message))) : resolve(JSON.parse(stdout)))
 });
 
 test.describe('harness Fleet capability', () => {
@@ -284,6 +314,32 @@ test.describe('harness Fleet capability', () => {
 
         expect(calls.credential.map(intent => intent.githubUsername)).toEqual(['alice', 'bob']);
         expect(calls.fetch.slice(1).map(params => params.credential)).toEqual(['github_pat_main_owned', 'github_pat_main_owned'])
+    });
+
+    test('the Brain this shell runs on stores the external seat the shell forwards as refused a start from birth; a Fleet-launched one stays startable', async () => {
+        const
+            event      = {sender: 'trusted'},
+            forwarded  = [],
+            capability = createCapability({
+                credentialProvider: async () => 'github_pat_main_owned',
+                fetchImpl         : async (url, init) => {
+                    forwarded.push(JSON.parse(init.body).params);
+                    return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {}})}
+                },
+                getBrain       : async () => ({fleetPort: 9191, up: true}),
+                isTrustedSender: candidate => candidate === event
+            }),
+            define = params => capability.request(event, {method: 'defineAgent', params});
+
+        await define({githubUsername: 'neo-gpt-emmy',    harnessType: 'codex-desktop', launchOwner: 'external'});
+        await define({githubUsername: 'neo-kimi-phoebe', harnessType: 'opencode',      launchOwner: 'fleet'});
+
+        const [external, fleet] = await Promise.all(forwarded.map(defineInBrainRegistry));
+
+        expect(external).toMatchObject({launchOwner: 'external', launchRefusal: 'released to its own harness: adopt it to start it here'});
+        expect(external.launchOwnerSince).toBe(external.createdAt);
+        expect(fleet).toMatchObject({launchOwner: 'fleet', launchRefusal: null});
+        expect(fleet.launchOwnerSince).toBe(fleet.createdAt)
     });
 
     test('projects connectTenant onto tenantUrl only before attaching the provider credential', async () => {
