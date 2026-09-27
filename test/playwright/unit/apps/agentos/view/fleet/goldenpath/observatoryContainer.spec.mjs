@@ -191,6 +191,17 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         expect(ids()).toEqual(['pr-101', 'concept-dock']);
         expect(list.selectionModel.items).toEqual([list.getItemId(pane.nodeStore.get(q('concept-dock')))]);
 
+        // further selections beyond the budget take that one extra row, never another
+        pane.onNodeSelect({node: {id: q('issue-404')}});
+        expect(ids()).toEqual(['pr-101', 'issue-404']);
+        pane.onNodeSelect({node: {id: q('agent-grace')}});
+        expect(ids()).toEqual(['pr-101', 'agent-grace']);
+        expect(list.selectionModel.items).toEqual([list.getItemId(pane.nodeStore.get(q('agent-grace')))]);
+
+        // a listed selection needs no extra row
+        pane.onNodeSelect({node: {id: q('pr-101')}});
+        expect(ids()).toEqual(['pr-101']);
+
         pane.listBudget = 500;
         pane.envelope   = graphRead({completeness: 'truncated'}, {snapshotId: 'snap-8b21'});
         expect(ids()).toHaveLength(7);

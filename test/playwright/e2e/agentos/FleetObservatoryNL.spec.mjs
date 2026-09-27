@@ -316,8 +316,8 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(resized.frames, 'the resized surface is drawn').toBeGreaterThan(back.frames)
     });
 
-    // A synthetic graph at the scale Tobi's proof-of-concept drew: it certifies the FM path — envelope admission,
-    // the provider leaf, the pane, the layout, the canvas worker — never the Brain's data or the Fleet read.
+    // A synthetic graph at the proof of concept's scale: it certifies the FM path — envelope admission, the
+    // provider leaf, the pane, the layout, the canvas worker — never the Brain's data or the Fleet read.
     test('a whole graph lands through the live read\'s write: 100k nodes draw through the level of detail, the fitted camera every node, the wheel steps it in to near and back out to far, a drag orbits, and the route toggles without moving a node', async ({page, neuralLink}, testInfo) => {
         test.setTimeout(300000);
 
@@ -328,11 +328,12 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         await land(envelope);
         await expect.poll(async () => (await stats())?.counts?.nodes, {intervals: [250], timeout: 180000}).toBe(100000);
-        await expect.poll(async () => (await stats()).frames, {intervals: [100], timeout: 30000}).toBeGreaterThan(0);
+        // a frame of the landed scene, not the canvas's mount frame or the previous scene's
+        await expect.poll(async () => (await stats()).sceneFrames, {intervals: [50], timeout: 30000}).toBeGreaterThan(0);
 
         const landedIn = Date.now() - started, drawn = await stats();
 
-        testInfo.annotations.push({type: 'landing to first frame', description: `${landedIn} ms`});
+        testInfo.annotations.push({type: 'Neural Link write of the envelope to the first frame of its scene', description: `${landedIn} ms`});
         expect(drawn.counts).toMatchObject({nodes: 100000, seeds: 10, paths: 1});
         expect(drawn.lod.level, 'the fitted camera draws every node').toBe('mid');
         expect(drawn.lod.clusters, 'most of the 64 generated groups are found').toBeGreaterThan(48);

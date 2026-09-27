@@ -63,9 +63,10 @@ const LOD_FROM = 2000;
 
 /**
  * @summary The observatory renderer: {@link Neo.canvas.GraphScene} in the cockpit's ink. The App Worker hands
- * it the scene {@link AgentOS.util.ObservatorySceneLayout} derives from the graph read — nodes in unit space
- * with their community, the feed's edges as node index pairs, the route's seeds, the currency — with the
- * selected node's id and whether the route is drawn, and this class inks it into the engine's flat scene.
+ * it the scene {@link AgentOS.util.ObservatorySceneLayout} derives from the graph read in its wire form
+ * ({@link AgentOS.util.ObservatorySceneLayout#wire}): typed arrays by node index for positions, communities,
+ * edges and the route's seeds with their ranks, plus the currency. With it come the selected node's index and
+ * whether the route is drawn, and this class inks the scene into the engine's flat scene.
  * Each community takes its own hue ({@link #toneOf}), the nodes shrink as the read grows, and a large scene
  * hands its communities to the engine as `clusters`: the fitted camera draws every node over the bundles, a
  * closer one adds the nearest communities' own edges, and only a camera drawn back shows one centroid per
@@ -75,8 +76,9 @@ const LOD_FROM = 2000;
  * and its neighbours, except a drawn route's seeds, which only shrink. An empty scene clears the surface, and
  * the currency line above the canvas says why. A theme change inks the same scene again.
  *
- * `pick` answers the node itself, `{id, kind, label, rank, hop, cluster}`, where the engine answers its index,
- * and `getStats` adds the pane's facts: its counts, currency, completeness, snapshot, selection and overlay.
+ * No node object or id crosses: `pick` answers the engine's index and `locate` takes one, and the App Worker
+ * resolves them against the scene it holds. `getStats` adds the pane's facts: its counts, currency,
+ * completeness, snapshot, selected index and overlay.
  *
  * @class AgentOS.canvas.Observatory
  * @extends Neo.canvas.GraphScene
@@ -124,22 +126,38 @@ class Observatory extends GraphScene {
      */
     routeOverlay = true
     /**
-     * The id of the node the drawn scene highlights, or `null`.
-     * @member {String|null} selectedId=null
+     * The index of the node the drawn scene highlights, or `-1`.
+     * @member {Number} selected=-1
      */
-    selectedId = null
+    selected = -1
     /**
-     * The last scene the App Worker handed over, as the layout derived it, or `null`.
+     * The engine's frame count when the drawn scene arrived. `getStats` reports the frames drawn since, so a
+     * frame owed to that scene reads apart from any earlier one.
+     * @member {Number} sceneFrame=0
+     */
+    sceneFrame = 0
+    /**
+     * The last scene the App Worker handed over, in its wire form, or `null`.
      * @member {Object|null} sourceScene=null
      */
     sourceScene = null
+
+    /**
+     * @summary A node index the scene holds, else `-1`.
+     * @param {Object|null} scene A wire scene
+     * @param {Number} index
+     * @returns {Number}
+     */
+    static nodeIndex(scene, index) {
+        return scene && Number.isInteger(index) && index >= 0 && index < scene.count ? index : -1
+    }
 
     /**
      * @summary Forgets the pane's scene and selection with the engine's scene.
      */
     clearGraph() {
         super.clearGraph();
-        this.selectedId  = null;
+        this.selected    = -1;
         this.sourceScene = null
     }
 
@@ -149,95 +167,94 @@ class Observatory extends GraphScene {
      * @returns {Object}
      */
     getStats() {
-        const {routeOverlay, selectedId, sourceScene} = this, stats = super.getStats();
+        const {routeOverlay, selected, sourceScene} = this, stats = super.getStats();
 
         return {
             ...stats,
             completeness: sourceScene?.completeness ?? null,
-            counts      : sourceScene ? {...stats.counts, nodes: sourceScene.nodes.length, edges: sourceScene.edges.length, seeds: sourceScene.seeds.length, communities: sourceScene.communities} : null,
+            counts      : sourceScene ? {...stats.counts, nodes: sourceScene.count, edges: sourceScene.edges.length / 2, seeds: sourceScene.seeds.length, communities: sourceScene.communities} : null,
             currency    : sourceScene?.currency ?? null,
             routeOverlay,
-            selectedId,
+            sceneFrames : stats.frames - this.sceneFrame,
+            selected,
             snapshotId  : sourceScene?.snapshotId ?? null
         }
     }
 
     /**
-     * @summary The engine's flat scene for a layout scene in the current theme's ink, or `null` when there
-     * is nothing to draw.
-     * @param {Object|null} scene `{currency, empty, nodes, edges, seeds, index, communities}`
-     * @param {String|null} [selectedId=null] The node to highlight; an id the scene lacks highlights nothing
+     * @summary The engine's flat scene for a wire scene in the current theme's ink, or `null` when there is
+     * nothing to draw.
+     * @param {Object|null} scene A wire scene (`{count, positions, clusters, edges, seeds, ranks, currency, communities, empty}`)
+     * @param {Number}      [selectedIndex=-1] The index of the node to highlight; one the scene lacks highlights nothing
      * @param {Boolean}     [routeOverlay=true] Whether the route is drawn
      * @returns {Object|null} `{clusters, colors, edges, paths, positions, sizes}`
      */
-    ink(scene, selectedId = null, routeOverlay = true) {
+    ink(scene, selectedIndex = -1, routeOverlay = true) {
         if (!scene || scene.empty) {
             return null
         }
 
         const
             me       = this,
+            {clusters, count, edges, ranks, seeds} = scene,
+            selected = me.constructor.nodeIndex(scene, selectedIndex),
             palette  = PALETTES[me.theme] || PALETTES.dark,
             tones    = Array.from({length: Math.max(1, scene.communities)}, (item, community) => me.toneOf(community)),
             // only a current read spends the route's gold
             seed     = rgb(scene.currency === 'current' ? palette.route : palette.ink),
             faded    = rgb(palette.line),
-            selected = Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
-            lit      = selected < 0 ? null : new Set([selected, ...scene.edges.filter(pair => pair.includes(selected)).flat()]),
-            seeds    = routeOverlay ? new Set(scene.seeds) : null,
-            lastRank = Math.max(1, ...scene.seeds.map(index => scene.nodes[index].rank)),
-            nodeSize = Math.max(SIZES.nodeMin, SIZES.node * Math.min(1, Math.sqrt(SIZES.nodeScaleFrom / scene.nodes.length))),
-            sizeOf   = (node, index) => {
-                const base = seeds?.has(index) ? (lastRank > 1 ? SIZES.seedMax - (node.rank - 1) / (lastRank - 1) * (SIZES.seedMax - SIZES.seedMin) : SIZES.seedMax) : nodeSize;
+            lit      = selected < 0 ? null : new Set([selected]),
+            rankOf   = routeOverlay ? new Map(Array.from(seeds, (node, position) => [node, ranks[position]])) : null,
+            lastRank = Math.max(1, ...ranks),
+            nodeSize = Math.max(SIZES.nodeMin, SIZES.node * Math.min(1, Math.sqrt(SIZES.nodeScaleFrom / count))),
+            colors   = new Float32Array(count * 3),
+            sizes    = new Float32Array(count);
 
-                return index === selected ? Math.max(base * SIZES.selected, SIZES.seedMin) : base * (lit && !lit.has(index) ? SIZES.faded : 1)
-            };
+        for (let pair = 0; lit && pair < edges.length; pair += 2) {
+            edges[pair]     === selected && lit.add(edges[pair + 1]);
+            edges[pair + 1] === selected && lit.add(edges[pair])
+        }
+
+        for (let index = 0; index < count; index++) {
+            const
+                rank = rankOf?.get(index),
+                base = rank === undefined ? nodeSize : lastRank > 1 ? SIZES.seedMax - (rank - 1) / (lastRank - 1) * (SIZES.seedMax - SIZES.seedMin) : SIZES.seedMax,
+                out  = lit !== null && !lit.has(index);
+
+            // a drawn route keeps its colour under a selection: it recedes in size only
+            colors.set(rank !== undefined ? seed : out ? faded : tones[clusters[index]], index * 3);
+            sizes[index] = index === selected ? Math.max(base * SIZES.selected, SIZES.seedMin) : base * (out ? SIZES.faded : 1)
+        }
 
         return {
-            clusters : scene.nodes.length >= LOD_FROM ? scene.nodes.map(node => node.cluster) : null,
-            // a drawn route keeps its colour under a selection: it recedes in size only
-            colors   : scene.nodes.flatMap((node, index) => seeds?.has(index) ? seed : lit && !lit.has(index) ? faded : tones[node.cluster]),
-            edges    : scene.edges.flat(),
-            paths    : routeOverlay && scene.seeds.length > 1 ? [scene.seeds] : [],
-            positions: scene.nodes.flatMap(node => [node.x, node.y, node.z]),
-            sizes    : scene.nodes.map(sizeOf)
+            clusters : count >= LOD_FROM ? clusters : null,
+            colors,
+            edges,
+            paths    : routeOverlay && seeds.length > 1 ? [seeds] : [],
+            positions: scene.positions,
+            sizes
         }
     }
 
     /**
      * @summary Remote entry, the inverse of `pick`: where a node of the drawn scene lies on the surface.
      * @param {Object} data
-     * @param {String} data.id The node's origin-qualified id
-     * @returns {Object|null} `{x, y}`, canvas-relative CSS pixels, or `null` for an id the scene lacks
+     * @param {Number} data.index The node's index in the scene
+     * @returns {Object|null} `{x, y}`, canvas-relative CSS pixels, or `null` for an index the scene lacks
      */
-    locate({id}) {
-        const
-            me             = this,
-            {canvasSize}   = me,
-            index          = me.sourceScene && Object.hasOwn(me.sourceScene.index, id) ? me.sourceScene.index[id] : -1,
-            node           = index < 0 || !me.scene || !canvasSize ? null : me.sourceScene.nodes[index];
+    locate({index}) {
+        const me = this, {canvasSize, sourceScene} = me, node = me.constructor.nodeIndex(sourceScene, index);
 
-        if (!node) {
+        if (node < 0 || !me.scene || !canvasSize) {
             return null
         }
 
-        // the frame `pick` measures in
-        const [x, y] = me.constructor.project(me.matrix(), node.x, node.y, node.z, canvasSize.width, canvasSize.height);
+        const
+            {positions} = sourceScene,
+            // the frame `pick` measures in
+            [x, y]      = me.constructor.project(me.matrix(), positions[node * 3], positions[node * 3 + 1], positions[node * 3 + 2], canvasSize.width, canvasSize.height);
 
         return {x, y}
-    }
-
-    /**
-     * @summary The node under a canvas position, if any.
-     * @param {Object} data
-     * @param {Number} data.x Canvas-relative, CSS pixels
-     * @param {Number} data.y
-     * @returns {Object|null} `{id, kind, label, rank, hop, cluster}`
-     */
-    pick(data) {
-        const index = super.pick(data), node = index < 0 ? null : this.sourceScene?.nodes[index];
-
-        return node ? {id: node.id, kind: node.kind, label: node.label, rank: node.rank, hop: node.hop, cluster: node.cluster} : null
     }
 
     /**
@@ -260,42 +277,43 @@ class Observatory extends GraphScene {
     setRouteOverlay({routeOverlay}) {
         const me = this;
 
-        me.sourceScene && super.setScene(me.ink(me.sourceScene, me.selectedId, routeOverlay));
+        me.sourceScene && super.setScene(me.ink(me.sourceScene, me.selected, routeOverlay));
         me.routeOverlay = routeOverlay
     }
 
     /**
-     * @summary Remote entry: the App Worker hands over the layout's scene, or `null`, with the selected id and
+     * @summary Remote entry: the App Worker hands over the wire scene, or `null`, with the selected index and
      * the overlay; it is inked and drawn. The pane's scene and selection change only once the engine took the
      * inked scene, so a refused scene leaves `pick` and the stats answering for the scene still drawn.
      * @param {Object}      data
-     * @param {Object|null} data.scene
-     * @param {String|null} [data.selectedId=null]
+     * @param {Object|null} data.scene A wire scene ({@link AgentOS.util.ObservatorySceneLayout#wire})
+     * @param {Number}      [data.selected=-1] An index the scene lacks selects nothing
      * @param {Boolean}     [data.routeOverlay=true]
      * @param {String}      [data.windowId]
      * @throws {Error} when the engine refuses the inked scene
      */
-    setScene({routeOverlay = true, scene, selectedId = null}) {
-        const me = this, next = scene ?? null;
+    setScene({routeOverlay = true, scene, selected = -1}) {
+        const me = this, next = scene ?? null, index = me.constructor.nodeIndex(next, selected);
 
-        super.setScene(me.ink(next, selectedId, routeOverlay));
+        super.setScene(me.ink(next, index, routeOverlay));
         me.routeOverlay = routeOverlay;
+        me.sceneFrame   = me.frames;
         me.sourceScene  = next;
-        me.selectedId   = next && Object.hasOwn(next.index, selectedId) ? selectedId : null
+        me.selected     = index
     }
 
     /**
-     * @summary Remote entry: the selected id, or `null`. The drawn scene is inked again; an id the scene lacks
-     * selects nothing.
-     * @param {Object}      data
-     * @param {String|null} data.selectedId
-     * @param {String}      [data.windowId]
+     * @summary Remote entry: the selected index, or `-1`. The drawn scene is inked again; an index the scene
+     * lacks selects nothing.
+     * @param {Object} data
+     * @param {Number} data.selected
+     * @param {String} [data.windowId]
      */
-    setSelection({selectedId}) {
-        const me = this, scene = me.sourceScene, id = scene && Object.hasOwn(scene.index, selectedId) ? selectedId : null;
+    setSelection({selected}) {
+        const me = this, scene = me.sourceScene, index = me.constructor.nodeIndex(scene, selected);
 
-        scene && super.setScene(me.ink(scene, id, me.routeOverlay));
-        me.selectedId = id
+        scene && super.setScene(me.ink(scene, index, me.routeOverlay));
+        me.selected = index
     }
 
     /**
@@ -322,7 +340,7 @@ class Observatory extends GraphScene {
     updateResources(width, height) {
         const me = this;
 
-        me.sourceScene ? super.setScene(me.ink(me.sourceScene, me.selectedId, me.routeOverlay)) : super.updateResources(width, height)
+        me.sourceScene ? super.setScene(me.ink(me.sourceScene, me.selected, me.routeOverlay)) : super.updateResources(width, height)
     }
 }
 

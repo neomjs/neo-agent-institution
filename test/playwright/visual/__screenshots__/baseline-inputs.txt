@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    9016939ab5a44e12f8c997b75bf462f4965c172817e9434ec103c6c70996eccf
+    50f57dfe2ae2b8ca687fccd19f95755f3848343c573a95f9801c08468296d88d
 
 apps/agentos/CARD-CONTRACT.md
     52db715f9e6d1d7e0c29faf8d16897c65805d752
@@ -18,7 +18,7 @@ apps/agentos/app.mjs
     15ee159880412eba52bd3577a9b09e0e01b55fa8
 
 apps/agentos/canvas/Observatory.mjs
-    57eb09d82e7702c758e45c742b7f89c00d3a13ac
+    2527d97bb78a685c4ab73de9809d5c595dc28325
 
 apps/agentos/canvas/fmPalette.mjs
     5b24a21f9f0bcae970388dc9046a970e2e05346e
@@ -210,7 +210,7 @@ apps/agentos/util/NameSlot.mjs
     3fe98fcc20425319dc01e37d905079564c308f3f
 
 apps/agentos/util/ObservatorySceneLayout.mjs
-    0908839617bf259c8e317fe49897445ff5a9322e
+    4f43cd8bfbd3ac5cc65b159bba28fcfd9b3d532f
 
 apps/agentos/util/SourceHealth.mjs
     f92b9d452aa9754f764a2e530fac73da98e83b84
@@ -237,7 +237,7 @@ apps/agentos/view/Viewport.mjs
     c388ff73eaf396ec59e7fc2611f5b11c2e786eec
 
 apps/agentos/view/ViewportController.mjs
-    6d5d4603bceaa056602782af27f65b2697bb4b4c
+    87a87228211436b79a973d5a63db6ba179ae3828
 
 apps/agentos/view/accounts/Panel.mjs
     5cacb2dbddecc446ee57ab4b65759f2f7420c82b
@@ -291,10 +291,10 @@ apps/agentos/view/fleet/goldenpath/Container.mjs
     8f0e24513d52653a998c7d8831b0a8f75acfd46f
 
 apps/agentos/view/fleet/goldenpath/ObservatoryCanvas.mjs
-    489fbb2677850c19282cf05110fdfb2303e04b8e
+    042eb1202d488758ddf7578739ea3184ec8cf68a
 
 apps/agentos/view/fleet/goldenpath/ObservatoryContainer.mjs
-    cc1bc5b93dac45ec6ebbb9638693f3df26ee04f7
+    475e7d89741fd61c1c69c95319aa01f3b5f03736
 
 apps/agentos/view/fleet/goldenpath/ObservatoryNodeList.mjs
     5e368781abf3361bc7822276143dd0f04420f0f4
@@ -567,7 +567,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     86ea1a29752775e70d21d86e0627a5902ca4d877
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    1489ba24e18ee46f1b25ee974dc195b1720fdc27
+    1b3443048b68c9ead6fdbda56690f40498505963
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
     611aa30bf095d38cec239be42c7bd441ffe29b50

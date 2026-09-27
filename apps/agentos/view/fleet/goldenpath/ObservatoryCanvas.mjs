@@ -1,4 +1,5 @@
-import SharedCanvas from '../../../../../node_modules/neo.mjs/src/app/SharedCanvas.mjs';
+import ObservatorySceneLayout from '../../../util/ObservatorySceneLayout.mjs';
+import SharedCanvas           from '../../../../../node_modules/neo.mjs/src/app/SharedCanvas.mjs';
 
 /**
  * How far, in CSS pixels, the pointer may travel between press and release for the click to still select:
@@ -9,11 +10,13 @@ const CLICK_SLOP = 4;
 
 /**
  * @summary The App Worker half of the observatory: an offscreen canvas handed to the canvas worker's
- * {@link AgentOS.canvas.Observatory} renderer. It draws nothing itself: it forwards the scene, the selected id
+ * {@link AgentOS.canvas.Observatory} renderer. It draws nothing itself: it forwards the scene, the selection
  * and the route overlay its pane derives, the surface size and the pointer (moves, buttons and the wheel, so the
  * worker orbits and zooms), asks the renderer which node the pointer rests on, and reports a click that did not
  * orbit as a selection. The three are reactive configs: a new scene crosses to the worker with the other two,
- * and a new selection or overlay crosses alone, so a click never resends a whole graph.
+ * and a new selection or overlay crosses alone, so a click never resends a whole graph. The scene crosses in
+ * its wire form ({@link AgentOS.util.ObservatorySceneLayout#wire}), typed arrays by node index. A node crosses
+ * as its index, and this class resolves it against the scene it holds, so no node object or id ever crosses.
  *
  * @class AgentOS.view.fleet.goldenpath.ObservatoryCanvas
  * @extends Neo.app.SharedCanvas
@@ -142,7 +145,7 @@ class ObservatoryCanvas extends SharedCanvas {
     afterSetSelectedId(value, oldValue) {
         const me = this;
 
-        me.isCanvasReady && me.renderer && me.renderer.setSelection({selectedId: value, windowId: me.windowId})
+        me.isCanvasReady && me.renderer && me.renderer.setSelection({selected: me.indexOf(value), windowId: me.windowId})
     }
 
     /**
@@ -177,10 +180,30 @@ class ObservatoryCanvas extends SharedCanvas {
         super.onClick(data);
 
         if (me.isCanvasReady && pressedAt && Math.hypot(data.offsetX - pressedAt[0], data.offsetY - pressedAt[1]) <= CLICK_SLOP) {
-            const node = await me.renderer.pick({x: data.offsetX, y: data.offsetY, windowId: me.windowId});
+            const index = await me.renderer.pick({x: data.offsetX, y: data.offsetY, windowId: me.windowId});
 
-            me.isDestroyed || me.scene !== scene || me.fire('nodeSelect', {node})
+            me.isDestroyed || me.scene !== scene || me.fire('nodeSelect', {node: me.nodeAt(index)})
         }
+    }
+
+    /**
+     * @summary The index of a node in the held scene, the form the renderer takes; `-1` for an id it lacks.
+     * @param {String|null} id
+     * @returns {Number}
+     */
+    indexOf(id) {
+        const {scene} = this;
+
+        return scene && Object.hasOwn(scene.index, id) ? scene.index[id] : -1
+    }
+
+    /**
+     * @summary The held scene's node at an index the renderer answered, or `null`.
+     * @param {Number} index
+     * @returns {Object|null} `{id, kind, label, rank, hop, cluster, x, y, z}`
+     */
+    nodeAt(index) {
+        return index >= 0 ? this.scene?.nodes[index] ?? null : null
     }
 
     /**
@@ -208,7 +231,7 @@ class ObservatoryCanvas extends SharedCanvas {
      * @returns {Promise<void>}
      */
     async onMouseMove(data) {
-        const me = this, {pressedAt} = me;
+        const me = this, {pressedAt, scene} = me;
 
         super.onMouseMove(data);
 
@@ -217,44 +240,53 @@ class ObservatoryCanvas extends SharedCanvas {
         }
 
         if (me.isCanvasReady && typeof data.offsetX === 'number') {
-            const node = await me.renderer.pick({x: data.offsetX, y: data.offsetY, windowId: me.windowId});
+            const index = await me.renderer.pick({x: data.offsetX, y: data.offsetY, windowId: me.windowId});
 
-            me.isDestroyed || me.reportHover(node)
+            // an index answers for the scene it was asked about
+            me.isDestroyed || me.reportHover(me.scene === scene ? me.nodeAt(index) : null)
         }
     }
 
     /**
      * @summary Where a node of the drawn scene lies on the surface, the inverse of the pointer's pick.
      * @param {String} id The node's origin-qualified id
-     * @returns {Promise<Object|null>} `{x, y}`, canvas-relative CSS pixels, or `null`
+     * @returns {Promise<Object|null>} `{x, y}`, canvas-relative CSS pixels, or `null` for an id the scene lacks
      */
     async locate(id) {
-        const me = this;
+        const me = this, index = me.indexOf(id);
 
-        return me.isCanvasReady && me.renderer ? me.renderer.locate({id, windowId: me.windowId}) : null
+        return me.isCanvasReady && me.renderer && index >= 0 ? me.renderer.locate({index, windowId: me.windowId}) : null
     }
 
     /**
-     * @summary Hands the scene, the selection and the overlay to the renderer, once the canvas is ready.
+     * @summary Hands the scene in its wire form, the selected index and the overlay to the renderer, once the
+     * canvas is ready.
      * @protected
      */
     pushScene() {
         const me = this;
 
         if (me.isCanvasReady && me.renderer) {
-            me.renderer.setScene({routeOverlay: me.routeOverlay, scene: me.scene, selectedId: me.selectedId, windowId: me.windowId})
+            me.renderer.setScene({routeOverlay: me.routeOverlay, scene: ObservatorySceneLayout.wire(me.scene), selected: me.indexOf(me.selectedId), windowId: me.windowId})
         }
     }
 
     /**
      * @summary The renderer's live statistics — the camera, the surface, the counts, the frames — as
-     * the specs read them; `null` before the canvas is ready.
+     * the specs read them, with the selection the renderer draws named by its id; `null` before the canvas is
+     * ready.
      * @returns {Promise<Object|null>}
      */
     async readStats() {
         const me = this;
 
-        return me.isCanvasReady && me.renderer ? me.renderer.getStats({windowId: me.windowId}) : null
+        if (!(me.isCanvasReady && me.renderer)) {
+            return null
+        }
+
+        const {selected, ...stats} = await me.renderer.getStats({windowId: me.windowId});
+
+        return {...stats, selectedId: me.nodeAt(selected)?.id ?? null}
     }
 
     /**

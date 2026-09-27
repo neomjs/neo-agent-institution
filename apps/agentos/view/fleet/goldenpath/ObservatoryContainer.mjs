@@ -167,6 +167,11 @@ class ObservatoryContainer extends Container {
      * @member {Number} listBudget=500
      */
     listBudget = 500
+    /**
+     * The id of the one node-list row beyond the budget: the selection, while the listed nodes lack it.
+     * @member {String|null} extraId=null
+     */
+    extraId = null
 
     /**
      * The nodes of the current scene, one record each, in the layout's order.
@@ -376,6 +381,7 @@ class ObservatoryContainer extends Container {
         });
 
         me.relationCounts = counts;
+        me.extraId        = null;
         nodeStore.clear();
         listed.length && nodeStore.add(listed.map(node => me.rowOf(node)));
 
@@ -487,7 +493,16 @@ class ObservatoryContainer extends Container {
                 return [{direction: pair[0] === index ? 'out' : 'in', otherId: other.id, otherKind: other.kind, otherLabel: other.label, type: scene.edgeTypes[edge]}]
             });
 
-        index < 0 || nodeStore.get(selectedId) || nodeStore.add(me.rowOf(scene.nodes[index]));
+        // one row beyond the budget at most: the selection, while the listed nodes lack it
+        if (me.extraId && me.extraId !== selectedId) {
+            nodeStore.remove(me.extraId);
+            me.extraId = null
+        }
+
+        if (index >= 0 && !nodeStore.get(selectedId)) {
+            nodeStore.add(me.rowOf(scene.nodes[index]));
+            me.extraId = selectedId
+        }
 
         me.relationStore.clear();
         relations.length && me.relationStore.add(relations.slice(0, listBudget).map((relation, position) => ({...relation, position})));

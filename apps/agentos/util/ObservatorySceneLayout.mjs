@@ -398,6 +398,50 @@ class ObservatorySceneLayout extends Base {
             snapshotId
         }
     }
+
+    /**
+     * @summary A scene as the canvas worker takes it: typed arrays by node index, and no node objects or ids.
+     * A read of any size crosses the worker boundary as a few buffers, where 100k node objects cost a quarter
+     * of a second to clone on every read. The renderer answers indices, and the App Worker resolves them
+     * against the scene it holds.
+     * @param {Object|null} scene A {@link #fromGraphScene} scene
+     * @returns {Object|null} `{communities, completeness, count, currency, empty, snapshotId}` with
+     * `positions` (`x, y, z` per node), `clusters` (a community per node), `edges` (index pairs), `seeds`
+     * (node indices in route order) and `ranks` (one per seed)
+     */
+    static wire(scene) {
+        if (!scene) {
+            return null
+        }
+
+        const
+            {edges, nodes, seeds} = scene,
+            count     = nodes.length,
+            positions = new Float32Array(count * 3),
+            clusters  = new Uint32Array(count),
+            pairs     = new Uint32Array(edges.length * 2);
+
+        nodes.forEach(({cluster, x, y, z}, index) => {
+            positions.set([x, y, z], index * 3);
+            clusters[index] = cluster
+        });
+
+        edges.forEach((pair, index) => pairs.set(pair, index * 2));
+
+        return {
+            clusters,
+            communities : scene.communities,
+            completeness: scene.completeness,
+            count,
+            currency    : scene.currency,
+            edges       : pairs,
+            empty       : scene.empty,
+            positions,
+            ranks       : Uint32Array.from(seeds, index => nodes[index].rank),
+            seeds       : Uint32Array.from(seeds),
+            snapshotId  : scene.snapshotId
+        }
+    }
 }
 
 export default Neo.setupClass(ObservatorySceneLayout);
