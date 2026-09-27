@@ -44,7 +44,7 @@ async function startEmptyFleet() {
 }
 
 /**
- * @summary The empty fleet is the product's first-run moment (#69): with zero residents the roster
+ * @summary The empty fleet is the product's first-run moment: with zero residents the roster
  * shows one thing — the path to the first agent — and it must read as the card region's centered
  * call to action in the family's ink, not as chrome parked at the pane bottom in a foreign colour.
  *
@@ -81,17 +81,17 @@ test.describe('AgentOS fleet roster — the empty fleet\'s first-run CTA (#69)',
             await expect(cta).toHaveText('Add your first agent');
 
             // ── placement: the CTA's vertical center IS the card region's center ────────────────
+            // the region is the box the stylesheet centers the CTA over (`.fm-fleet-card-region`)
             const geometry = await page.evaluate(() => {
                 const
-                    rect     = selector => document.querySelector(selector).getBoundingClientRect(),
-                    roster   = rect('.fm-fleet-grid'),
-                    controls = rect('.fm-fleet-controls'),
-                    button   = rect('.fm-fleet-empty-cta');
+                    rect   = selector => document.querySelector(selector).getBoundingClientRect(),
+                    region = rect('.fm-fleet-card-region'),
+                    button = rect('.fm-fleet-empty-cta');
 
                 return {
-                    regionTop   : controls.bottom,
-                    regionBottom: roster.bottom,
-                    regionCenter: (controls.bottom + roster.bottom) / 2,
+                    regionTop   : region.top,
+                    regionBottom: region.bottom,
+                    regionCenter: (region.top + region.bottom) / 2,
                     ctaCenter   : button.top + button.height / 2,
                     ctaHeight   : button.height
                 }

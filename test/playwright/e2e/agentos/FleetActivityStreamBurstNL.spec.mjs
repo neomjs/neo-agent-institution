@@ -306,7 +306,8 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         await expect(page.locator('.fm-stream-counts')).toHaveText('mailbox · 36 / 24h · 412 total');
         await expect(page.locator('.fm-stream-retention')).toHaveText('500 retained');
         await expect(page.locator('.fm-stream-head.is-live')).toBeVisible();
-        await expect(page.locator('.fm-stream-state')).toHaveText('● streaming');
+        // the fixture's newest event is from 2026-08-22, so a live feed over it says it has been quiet since
+        await expect(page.locator('.fm-stream-state')).toHaveText(/^● streaming · quiet since .+$/);
         await expect(page.locator('.fm-activity-stream')).toHaveAttribute('role', 'log');
         await expect(list).toHaveAttribute('aria-live', 'off');
         await expect(page.locator('.fm-stream-announcer')).toHaveAttribute('role', 'status');
