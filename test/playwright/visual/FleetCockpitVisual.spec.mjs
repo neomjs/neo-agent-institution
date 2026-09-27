@@ -297,15 +297,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         const dark = await readContrast();
         expect(dark.contrast, `the wordmark reads on the dark band (${dark.theme})`).toBeGreaterThanOrEqual(4.5);
 
-        // the first click only makes the config default explicit (the controller assumes light while
-        // viewport.theme is unset and sets dark) — click until the light class is on the viewport
-        for (let i = 0; i < 3; i++) {
-            await page.locator('.agent-theme-button').click();
-
-            if (await page.locator('.agent-os-viewport.neo-theme-neo-light').waitFor({timeout: 2000}).then(() => true, () => false)) {
-                break
-            }
-        }
+        // one click from the dark the viewport opens in, with no theme stored and no dark preference
+        await page.locator('.agent-theme-button').click();
+        await expect(page.locator('.agent-os-viewport.neo-theme-neo-light'), 'the first click switches').toBeVisible();
 
         const light = await readContrast();
         expect(light.theme, 'the light skin is on the viewport').toBe('neo-theme-neo-light');
@@ -456,17 +450,15 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.fm-tasks-pane .fm-task-state.is-starved')).toBeInViewport()
     };
 
-    /** @summary The light skin on the viewport — the wordmark arm's click loop, shared. */
+    /** @summary The light skin on the viewport: the switch activated once, from the keyboard, from the dark the
+     * viewport opens in. A pointer on the switch would put its tooltip in the shot; the wordmark arm clicks. */
     const switchToLightSkin = async page => {
-        for (let i = 0; i < 3; i++) {
-            await page.locator('.agent-theme-button').click();
+        const toggle = page.locator('.agent-theme-button');
 
-            if (await page.locator('.agent-os-viewport.neo-theme-neo-light').waitFor({timeout: 2000}).then(() => true, () => false)) {
-                break
-            }
-        }
-
-        await expect(page.locator('.agent-os-viewport.neo-theme-neo-light')).toBeVisible();
+        await toggle.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('.agent-os-viewport.neo-theme-neo-light'), 'the first activation switches').toBeVisible();
+        await toggle.blur();
         await page.evaluate(() => document.fonts.ready)
     };
 
