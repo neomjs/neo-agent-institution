@@ -153,12 +153,14 @@ class Viewport extends BaseViewport {
                 }
             }]
         }, {
-            module        : TabContainer,
-            cls           : ['agent-shell'],
-            flex          : 1,
-            reference     : 'shell',
-            tabBarPosition: 'left',
-            activeIndex   : 1, // default to the Fleet cockpit — mission control first
+            module               : TabContainer,
+            cls                  : ['agent-shell'],
+            flex                 : 1,
+            reference            : 'shell',
+            tabBarPosition       : 'left',
+            // the icon rail marks its active place with a pressed button, not an indicator line
+            useActiveTabIndicator: false,
+            activeIndex          : 1, // default to the Fleet cockpit — mission control first
 
             items: [{
                 ntype : 'component',
