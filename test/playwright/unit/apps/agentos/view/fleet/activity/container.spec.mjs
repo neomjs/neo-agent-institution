@@ -337,6 +337,23 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(list.items.filter(Boolean)).toHaveLength(mounted)
     });
 
+    test('partial data stays visible without streaming or empty claims; failed empty is unavailable', async () => {
+        const {list} = await createStream({count: 20});
+        const mounted = list.items.filter(Boolean).length;
+        stream.adapterState = 'partial';
+        expect(stream.getReference('header').cls).toContain('is-partial');
+        expect(stream.getReference('header').cls).not.toContain('is-live');
+        expect(stream.getReference('state').text).toBe('partial — some sources unavailable');
+        expect(list.items.filter(Boolean)).toHaveLength(mounted);
+
+        store.clear();
+        stream.adapterState = 'stale';
+        expect(stream.getReference('state').text).toBe('unavailable');
+        expect(stream.getReference('empty-note').text).toBe('Activity unavailable');
+        stream.adapterState = 'live';
+        expect(stream.getReference('empty-note').text).toBe('no activity yet');
+    });
+
     test('describeQuietSince states an old newest event, and claims nothing it cannot read', () => {
         const
             now   = Date.UTC(2026, 8, 19, 12),

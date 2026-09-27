@@ -1,14 +1,15 @@
 import Base          from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import TargetBinding from './TargetBinding.mjs';
+import {FLEET_COCKPIT_EVENT_TYPES, FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @module apps/agentos/util/FleetAdmission
- * @summary The admission of an ANSWERED fleet surface — the one path a wired answer and a test's
+ * @summary The admission of an ANSWERED fleet surface — the one path a complete or partial answer and a test's
  * landing share, lifted beside the liveness owner (which holds the size bar) like the retirement in
  * {@link AgentOS.util.TargetBinding}. The owner's reads call it after their generation fence and
  * validation; the tests' landing (`test/playwright/fixture/FleetLanding.mjs`) calls it directly with
- * the rows or events it lands, as the answer of the bridge in hand. Whatever this path gains, both
- * callers get: the landed state is by construction the state a wired answer produces.
+ * the rows or events it lands, as the answer of the bridge in hand. Both callers share the Store
+ * admission and publish the same completeness state.
  */
 class FleetAdmission extends Base {
     static config = {
@@ -22,25 +23,47 @@ class FleetAdmission extends Base {
     /**
      * @summary Admits an answered activity feed: the events join the provider-owned store (the first
      * answer replaces, later ones merge), the feed is bound to the answering profile, and the surface
-     * reads `live` with the producer's counts.
+     * reads `live`, or `partial` with the failed source's reason. Counts retain their producer scope.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Object} answer
      * @param {Object[]} answer.events The producer's bounded page
      * @param {Object[]} [answer.counts=[]] The producer's fold counts
      * @param {String|null} [answer.profileId=null] The profile the answer belongs to
+     * @param {Boolean} [answer.partial=false] A usable page from an incomplete composed read
+     * @param {String|null} [answer.reason=null] Sanitized reason retained for a partial read
      */
-    static admitActivity(owner, {counts = [], events, profileId = null}) {
-        const store = owner.resolveFleetActivityEventsStore(), stream = owner.getReference('activity-stream');
+    static admitActivity(owner, {counts = [], events, profileId = null, partial = false, reason = null}) {
+        const store = owner.resolveFleetActivityEventsStore(), stream = owner.getReference('activity-stream'),
+              state = partial ? 'partial' : 'live';
 
         store.ingestSnapshot(Array.isArray(events) ? events : [], {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
         owner.publishConnection('stream', {data: {
             activityCounts      : Array.isArray(counts) ? counts : [],
-            streamAdapterState  : 'live',
-            streamDegradedReason: null
+            streamAdapterState  : state,
+            streamDegradedReason: partial ? reason : null
         }});
-        stream && (stream.adapterState = 'live')
+        stream && (stream.adapterState = state)
+    }
+
+    /**
+     * @summary Selects usable producer facts from a partial page. Failure diagnostics are not work;
+     * an unrecognized or malformed remaining row refuses the page instead of manufacturing activity.
+     * Store admission still validates identity uniqueness before changing retained records.
+     * @param {*} events The composed producer page
+     * @returns {Object[]} Valid activity rows, or an empty array when none can be admitted
+     */
+    static partialActivityEvents(events) {
+        if (!Array.isArray(events)) return [];
+        const rows = events.filter(event => event?.type !== 'source-degraded');
+        return rows.every(event =>
+            typeof event?.eventId === 'string' && event.eventId.trim() &&
+            FLEET_COCKPIT_EVENT_TYPES.includes(event.type) &&
+            Object.values(FLEET_COCKPIT_SOURCES).includes(event.source) &&
+            ['observed', 'inferred'].includes(event.confidence) &&
+            typeof event.occurredAt === 'string' && Number.isFinite(Date.parse(event.occurredAt))
+        ) ? rows : []
     }
 
     /**

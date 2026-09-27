@@ -25,6 +25,19 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
 
     const STATES = ['cold', 'stale', 'live'];
 
+    test('partial activity names its source failure without claiming stale or fully live data', () => {
+        const result = SpineBanner.deriveSpineBanner({
+            grid: {state: 'live'}, stream: {state: 'partial', reason: 'pr-lane: unavailable'}
+        });
+        expect(result.hidden).toBe(false);
+        expect(result.kind).toBe('degraded');
+        expect(result.text).toBe('feed partial');
+        expect(result.title).toContain('pr-lane: unavailable');
+        expect(result.title).not.toContain('last-known');
+        expect(SpineBanner.deriveSpineBanner({grid: {state: 'cold'}, stream: {state: 'partial'}}).kind).toBe('cold');
+        expect(SpineBanner.deriveSpineBanner({grid: {state: 'stale'}, stream: {state: 'partial'}}).text).toBe('fleet degraded');
+    });
+
     const HIDDEN_LIVE = {action: null, hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''};
 
     test.describe('connection observations belong to the deciding read', () => {

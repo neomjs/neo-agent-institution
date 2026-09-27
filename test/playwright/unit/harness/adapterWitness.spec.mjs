@@ -69,7 +69,9 @@ test.describe('isAdapterRenderCoherent — agreement, not a pinned state', () =>
             expect(isAdapterRenderCoherent(state, label, ROSTER_STATE_LABELS)).toBe(true);
         }
         for (const [state, label] of Object.entries(STREAM_STATE_LABELS)) {
-            expect(isAdapterRenderCoherent(state, label, STREAM_STATE_LABELS)).toBe(true);
+            for (const variant of Array.isArray(label) ? label : [label]) {
+                expect(isAdapterRenderCoherent(state, variant, STREAM_STATE_LABELS)).toBe(true);
+            }
         }
     })
 
@@ -92,6 +94,13 @@ test.describe('isAdapterRenderCoherent — agreement, not a pinned state', () =>
 });
 
 test.describe('computeFirstPaintVerdict — the final verdict, mutation-discriminated', () => {
+    test('partial and unavailable activity are honest paints, without accepting a false live label', () => {
+        expect(verdict({streamState: 'partial', activityLabel: 'partial — some sources unavailable'}).adaptersCoherent).toBe(true);
+        expect(verdict({streamState: 'partial', activityLabel: '● streaming'}).adaptersCoherent).toBe(false);
+        expect(verdict({streamState: 'stale', activityLabel: 'unavailable'}).adaptersCoherent).toBe(true);
+        expect(verdict({streamState: 'live', activityLabel: 'unavailable'}).adaptersCoherent).toBe(false);
+    });
+
     test('a matching LIVE populated cockpit passes the whole verdict', () => {
         const result = verdict();
 
