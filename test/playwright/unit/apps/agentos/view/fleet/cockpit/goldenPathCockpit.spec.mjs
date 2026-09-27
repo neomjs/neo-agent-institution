@@ -133,4 +133,30 @@ test.describe('FleetCockpit — graph scene owner routing', () => {
 
         expect(host.writes.map(({graphSceneEnvelope}) => graphSceneEnvelope.capability.reason)).toEqual(['new'])
     });
+
+    test('a read through another profile\'s bridge retires the landed scene before it waits; a same-profile refresh keeps its own', async () => {
+        let resolveB;
+
+        const host     = makeHost(),
+              sceneB   = {...scene, snapshotId: 'snap-b'},
+              pendingB = new Promise(resolve => { resolveB = resolve });
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {profileId: 'profile-a', fleetGraphScene: async () => scene}};
+        await host.loadGraphScene();
+        await host.loadGraphScene();
+
+        expect(host.writes.map(({graphSceneEnvelope}) => graphSceneEnvelope.snapshotId), 'a same-profile refresh never blanks').toEqual(['snap-1', 'snap-1']);
+
+        globalThis.AgentOS.fleet.registryBridge = {profileId: 'profile-b', fleetGraphScene: () => pendingB};
+
+        const readB = host.loadGraphScene();
+
+        expect(host.writes.at(-1), 'profile A\'s scene is retired while B is pending').toEqual({graphSceneEnvelope: GraphSceneEnvelope.blank()});
+
+        resolveB(sceneB);
+        await readB;
+
+        expect(host.writes.at(-1)).toEqual({graphSceneEnvelope: GraphSceneEnvelope.fromWire(sceneB)});
+        expect(host.writes).toHaveLength(4)
+    });
 });

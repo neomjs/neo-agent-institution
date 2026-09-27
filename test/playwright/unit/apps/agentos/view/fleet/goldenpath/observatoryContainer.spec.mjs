@@ -148,4 +148,36 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         pane.destroy()
     });
+
+    test('a pick that answers after its read was replaced cannot select an id the current read does not hold', () => {
+        const pane  = createPane({envelope: graphRead()}),
+              scene = graphRead().scene;
+
+        pane.onNodeSelect({node: {id: q('issue-505')}});
+        pane.envelope = graphRead({nodes: scene.nodes.filter(node => node.id !== q('issue-505'))}, {snapshotId: 'snap-9c40'});
+
+        // the canvas's pick for the old read resolves only now
+        pane.onNodeSelect({node: {id: q('issue-505')}});
+
+        expect(pane.selectedId).toBeNull();
+        expect(stripOf(pane).text, 'the clearing reason stays').toBe('Selection cleared · neomjs/neo#issue-505 is not in snapshot snap-9c40');
+
+        pane.onNodeSelect({node: {id: q('pr-101')}});
+        expect(pane.selectedId, 'an id the read holds still selects').toBe(q('pr-101'));
+
+        pane.destroy()
+    });
+
+    test('a retired read (another instance\'s) clears the selection without claiming the id left a read', () => {
+        const pane = createPane({envelope: graphRead()});
+
+        pane.onNodeSelect({node: {id: q('pr-101')}});
+        pane.envelope = GraphSceneEnvelope.blank();
+
+        expect(lineOf(pane)).toBe('Unobserved');
+        expect(pane.selectedId).toBeNull();
+        expect(stripOf(pane).text).toBe('No node selected');
+
+        pane.destroy()
+    });
 });

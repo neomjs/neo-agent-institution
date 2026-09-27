@@ -1,13 +1,14 @@
-import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import Base               from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import GraphSceneEnvelope from './GraphSceneEnvelope.mjs';
 
 /**
  * @module apps/agentos/util/TargetBinding
  * @summary The rule the cockpit's retained truth obeys: rows a store holds belong to the profile
  * whose answer produced them. `DeploymentStateRead` stamps its picture with the answering
- * `profileId`; this helper brings the roster and the activity feed under the same rule, lifted
- * beside the liveness owner (which holds the size bar). A read through a bridge bound to ANOTHER
- * profile first retires the previous profile's truth — both stores empty, both surfaces read
- * `cold`, the roster-derived consumers re-snapshot —
+ * `profileId`; this helper brings the roster, the activity feed and the graph scene under the same
+ * rule, lifted beside the liveness owner (which holds the size bar). A read through a bridge bound to
+ * ANOTHER profile first retires the previous profile's truth — both stores empty, both surfaces read
+ * `cold`, the graph leaf returns to unobserved, the roster-derived consumers re-snapshot —
  * so the new profile's first live answer is a first admission, and its failure shows its own cold
  * truth instead of another instance's residents labelled `stale`. The generation fences only drop
  * a LATE answer from the previous bridge; nothing else touched rows already admitted. A
@@ -77,6 +78,29 @@ class TargetBinding extends Base {
 
         owner.publishConnection('stream', {data: {activityCounts: [], streamAdapterState: 'cold', streamDegradedReason: null}});
         stream && (stream.adapterState = 'cold');
+
+        return true
+    }
+
+    /**
+     * @summary Retire the graph scene when the bridge in hand belongs to another profile than the read
+     * the leaf holds. The leaf returns to its unobserved declaration until the new profile answers, so
+     * the Observatory never draws one instance's neighbourhood under another's name; its selection
+     * clears with it.
+     * @param {AgentOS.view.fleet.cockpit.ReadingSurfacesController} owner The reading-surfaces owner.
+     * @param {Object} options
+     * @param {String|null} options.profileId The profile the bridge in hand is bound to.
+     * @returns {Boolean} whether a retirement happened
+     */
+    static retireGraphScene(owner, {profileId}) {
+        if (!owner.graphSceneHeld || owner.graphSceneProfileId === profileId) {
+            return false
+        }
+
+        owner.graphSceneHeld      = false;
+        owner.graphSceneProfileId = null;
+
+        owner.component.getStateProvider()?.setData({graphSceneEnvelope: GraphSceneEnvelope.blank()});
 
         return true
     }

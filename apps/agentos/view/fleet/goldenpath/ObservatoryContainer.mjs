@@ -144,7 +144,8 @@ class ObservatoryContainer extends Container {
         me.updateLine();
 
         if (selectedId && !Object.hasOwn(scene.index, selectedId)) {
-            me.selectionNote = `Selection cleared · ${selectedId} is not in ${scene.snapshotId ? `snapshot ${scene.snapshotId}` : 'this read'}`;
+            // an unobserved leaf is a retired read (another instance's): the id did not leave a read, no read is held
+            me.selectionNote = scene.currency === 'unobserved' ? null : `Selection cleared · ${selectedId} is not in ${scene.snapshotId ? `snapshot ${scene.snapshotId}` : 'this read'}`;
             me.selectedId    = null
         }
 
@@ -217,15 +218,20 @@ class ObservatoryContainer extends Container {
 
     /**
      * @summary The canvas reports a selecting click: its node becomes the selection, or the empty surface
-     * clears it. Either way the last automatic clearing is no longer news.
+     * clears it. Either way the last automatic clearing is no longer news. Only an id the current read holds
+     * can be selected: an answer about a replaced read changes nothing, and its clearing reason stays.
      * @param {Object} data
      * @param {Object|null} data.node
      */
     onNodeSelect({node}) {
-        const me = this;
+        const me = this, id = node?.id ?? null;
+
+        if (id && !Object.hasOwn(me.scene.index, id)) {
+            return
+        }
 
         me.selectionNote = null;
-        me.selectedId    = node?.id ?? null;
+        me.selectedId    = id;
         me.updateSelection()
     }
 

@@ -65,7 +65,8 @@ class ObservatoryCanvas extends SharedCanvas {
      */
     hoveredId = null
     /**
-     * Where the last press landed, canvas-relative, or `null`.
+     * Where the last press landed, canvas-relative, or `null` — also once the pointer carried it past the
+     * slop, because from then on the gesture is an orbit, wherever it is released.
      * @member {Number[]|null} pressedAt=null
      */
     pressedAt = null
@@ -143,19 +144,20 @@ class ObservatoryCanvas extends SharedCanvas {
 
     /**
      * @summary A click the pointer did not travel for selects the node under it — or, on the empty surface,
-     * nothing — and fires `nodeSelect`; a click that ends an orbit selects nothing.
+     * nothing — and fires `nodeSelect`; a click that ends an orbit selects nothing. The pick answers for the
+     * scene it was asked about: a read that landed meanwhile owns the selection, so a late answer is dropped.
      * @param {Object} data
      * @returns {Promise<void>}
      */
     async onClick(data) {
-        const me = this, {pressedAt} = me;
+        const me = this, {pressedAt, scene} = me;
 
         super.onClick(data);
 
         if (me.isCanvasReady && pressedAt && Math.hypot(data.offsetX - pressedAt[0], data.offsetY - pressedAt[1]) <= CLICK_SLOP) {
             const node = await me.renderer.pick({x: data.offsetX, y: data.offsetY, windowId: me.windowId});
 
-            me.isDestroyed || me.fire('nodeSelect', {node})
+            me.isDestroyed || me.scene !== scene || me.fire('nodeSelect', {node})
         }
     }
 
@@ -178,14 +180,19 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
-     * @summary Forwards the move, then asks the renderer which node the pointer rests on.
+     * @summary Forwards the move, then asks the renderer which node the pointer rests on. A held press the
+     * move carries past the slop becomes an orbit for good.
      * @param {Object} data
      * @returns {Promise<void>}
      */
     async onMouseMove(data) {
-        const me = this;
+        const me = this, {pressedAt} = me;
 
         super.onMouseMove(data);
+
+        if (pressedAt && data.buttons && Math.hypot(data.offsetX - pressedAt[0], data.offsetY - pressedAt[1]) > CLICK_SLOP) {
+            me.pressedAt = null
+        }
 
         if (me.isCanvasReady && typeof data.offsetX === 'number') {
             const node = await me.renderer.pick({x: data.offsetX, y: data.offsetY, windowId: me.windowId});
