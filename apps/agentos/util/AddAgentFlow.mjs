@@ -37,12 +37,21 @@ const ADD_AGENT_STATES = ['idle', 'validating', 'submitting', 'readback-confirme
 const SECRET_KEYS = ['authorization', 'credential', 'password', 'pat', 'token'];
 
 /**
+ * The answers to "who launches this seat?", the default first. A seat that already runs in its own
+ * harness is `external`: registering it must never let a Start spawn a second copy of it, and a
+ * wrong `external` is undone by adopting the seat, while a wrong `fleet` is not undone by anything.
+ * @member {String[]} LAUNCH_OWNERS
+ */
+const LAUNCH_OWNERS = ['external', 'fleet'];
+
+/**
  * Static validation and bridge-round-trip utilities for defining an AgentOS resident.
  * @class AgentOS.util.AddAgentFlow
  * @extends Neo.core.Base
  */
 class AddAgentFlow extends Base {
     static ADD_AGENT_STATES = ADD_AGENT_STATES
+    static LAUNCH_OWNERS    = LAUNCH_OWNERS
 
     static config = {
         /**
@@ -60,14 +69,17 @@ class AddAgentFlow extends Base {
      *     presence, never inspected further).
      * @param {String} payload.githubUsername
      * @param {String} payload.harnessType
+     * @param {String} [payload.launchOwner]  `external` needs no PAT: Fleet never launches the seat.
      * @param {Object}  [options]
      * @param {Boolean} [options.credentialRequired=true] Whether this ingress owns credential entry.
      * @returns {{valid: Boolean, reason: String}} Operator-facing reason when invalid.
      */
     static validateDefinePayload(
-        {credential, githubUsername, harnessType}={},
+        {credential, githubUsername, harnessType, launchOwner}={},
         {credentialRequired=true}={}
     ) {
+        credentialRequired &&= launchOwner !== 'external';
+
         if (!githubUsername?.trim() || !harnessType || (credentialRequired && !credential)) {
             return {
                 valid : false,
@@ -136,8 +148,12 @@ class AddAgentFlow extends Base {
      * @summary Project a form payload onto the exact define-agent request allowed across the bridge.
      * Shell mode carries public intent only; direct-browser mode preserves the credential-bearing
      * request. Explicit projection prevents unrelated form or caller fields from crossing either mode.
-     * A seat added here is born fleet-launched: this cockpit is its only launcher, so its first Start
-     * can come from here. Every other registration stays `external` until the operator adopts it.
+     *
+     * The launch owner always crosses explicitly, because the explicit value is the ownership act
+     * the registry records with its time (`launchOwnerSince`). `fleet` makes this cockpit the seat's
+     * only launcher; `external` registers a seat that runs in its own harness, which the fleet then
+     * refuses to start until the operator adopts it. An external seat keeps its own credentials, so
+     * no PAT crosses for it in either mode.
      * @param {Object}      payload
      * @param {Object|null} bridge
      * @returns {Object}
@@ -146,10 +162,10 @@ class AddAgentFlow extends Base {
         const intent = {
             githubUsername: payload.githubUsername?.trim(),
             harnessType   : payload.harnessType,
-            launchOwner   : 'fleet'
+            launchOwner   : LAUNCH_OWNERS.includes(payload.launchOwner) ? payload.launchOwner : LAUNCH_OWNERS[0]
         };
 
-        if (!AddAgentFlow.isShellCredentialIngress(bridge)) {
+        if (intent.launchOwner === 'fleet' && !AddAgentFlow.isShellCredentialIngress(bridge)) {
             intent.credential = payload.credential
         }
 
@@ -166,7 +182,7 @@ class AddAgentFlow extends Base {
      *
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
-     * @param {Object}        config.payload          `{credential, githubUsername, harnessType}`.
+     * @param {Object}        config.payload          `{credential, githubUsername, harnessType, launchOwner}`.
      * @returns {Promise<Object>} One terminal outcome — this function never throws.
      */
     static async submitDefineAgent({bridgeResolver=null, payload}) {

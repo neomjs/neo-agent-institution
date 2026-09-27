@@ -37,7 +37,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                 getSubmitValues: async () => ({
                     credential    : 'ghp_should_not_escape',
                     githubUsername: '  submitted-login  ',
-                    harnessType   : 'codex'
+                    harnessType   : 'codex',
+                    launchOwner   : 'fleet'
                 }),
                 validate: async () => true
             },
@@ -80,7 +81,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                 getSubmitValues: async () => ({
                     credential,
                     githubUsername: '  submitted-login  ',
-                    harnessType   : 'opencode'
+                    harnessType   : 'opencode',
+                    launchOwner   : 'fleet'
                 }),
                 validate: async () => true
             },
@@ -126,6 +128,62 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
         expect(calls[2]).toEqual(['fire', 'agentDefinitionAccepted', {agent: canonical}]);
         expect(calls[3]).toEqual(['status', 'is-live', 'Agent added. Credential entry stayed in the native shell.']);
         expect(calls[4]).toEqual(['clear'])
+    });
+
+    test('a seat that runs in its own harness is added without a PAT: the typed one never crosses (#280)', async () => {
+        const
+            canonical = {id: 'neo-gpt-emmy', githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'},
+            calls     = [],
+            form      = {
+                getSubmitValues: async () => ({
+                    credential    : 'ghp_typed_then_hidden',
+                    githubUsername: 'neo-gpt-emmy',
+                    harnessType   : 'codex-desktop',
+                    launchOwner   : 'external'
+                }),
+                validate: async () => true
+            },
+            stub      = {
+                clearCredentialField       : async () => calls.push(['clear']),
+                fire                       : (name, data) => calls.push(['fire', name, data]),
+                getReference               : reference => reference === 'agent-form' ? form : null,
+                submitToFleetRegistryBridge: async payload => {
+                    calls.push(['submit', payload]);
+                    return canonical
+                },
+                updateBridgeStatus         : (state, message) => calls.push(['status', state, message]),
+                upsertPublicAgentDefinition: (definition, credential) => calls.push(['upsert', definition, credential])
+            };
+
+        await Accounts.prototype.onSubmitAgentClick.call(stub);
+
+        expect(calls[0]).toEqual(['submit', {githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'}]);
+        expect(calls[1]).toEqual(['upsert', canonical, undefined]);
+        expect(calls[3]).toEqual(['status', 'is-live', 'Agent added. It runs in its own harness, so Fleet will not launch it.'])
+    });
+
+    test('the launch radio shows, and requires, the PAT for a Fleet-launched seat only (#280)', async () => {
+        const view = Neo.create(Accounts, {appName: 'AgentOSAccountsTest'});
+
+        try {
+            const credential = await view.getReference('agent-form').getField('credential');
+
+            expect(credential.hidden).toBe(true);
+            expect(credential.required).toBe(false);
+
+            await view.onLaunchOwnerChange({value: 'fleet'});
+            expect(credential.hidden).toBe(false);
+            expect(credential.required).toBe(true);
+
+            await view.onLaunchOwnerChange({value: null});   // the radio that was unchecked
+            expect(credential.hidden).toBe(false);
+
+            await view.onLaunchOwnerChange({value: 'external'});
+            expect(credential.hidden).toBe(true);
+            expect(credential.required).toBe(false)
+        } finally {
+            view.destroy()
+        }
     });
 
     test('shell mode removes the Accounts PAT field before mount', () => {
@@ -235,7 +293,8 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
             statuses   = [],
             store      = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: []}),
             form       = {
-                getSubmitValues: async () => ({credential: pat, githubUsername: 'submitted-login', harnessType: 'codex'}),
+                // a Fleet-launched seat: the one path a PAT crosses, so the leak checks are not vacuous
+                getSubmitValues: async () => ({credential: pat, githubUsername: 'submitted-login', harnessType: 'codex', launchOwner: 'fleet'}),
                 validate       : async () => true
             },
             stub       = {

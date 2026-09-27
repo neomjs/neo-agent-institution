@@ -254,6 +254,13 @@ export function createFleetCapability({
                     return reject(`fleet: malformed public intent for '${request.method}'`)
                 }
 
+                // a seat that runs in its own harness keeps its own credentials: Fleet never launches
+                // it, so nothing is asked for. Only the explicit intent qualifies; a define without a
+                // launch owner, or a Fleet-launched one, keeps the native credential custody
+                if (request.method === 'defineAgent' && intent.launchOwner === 'external') {
+                    return send(request.method, intent)
+                }
+
                 if (!credentialProvider) {
                     return reject(`fleet: shell credential ingress unavailable for '${request.method}'`)
                 }

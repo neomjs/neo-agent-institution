@@ -16,10 +16,12 @@ import AddAgentFlow from '../../../../../apps/agentos/util/AddAgentFlow.mjs';
 
 const CREDENTIAL = 'github_pat_11TESTSECRET_shouldNeverEscape';
 
+// a new resident Fleet launches: the one kind of seat that brings a PAT
 const cleanPayload = () => ({
     credential    : CREDENTIAL,
     githubUsername: 'neo-kimi-phoebe',
-    harnessType   : 'opencode'
+    harnessType   : 'opencode',
+    launchOwner   : 'fleet'
 });
 
 const cleanReadback = () => ({
@@ -54,11 +56,27 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), {})).toEqual({...cleanPayload(), launchOwner: 'fleet'})
     });
 
-    test('a seat added here is fleet-launched in both modes, and a caller cannot declare it external', () => {
-        const payload = {...cleanPayload(), launchOwner: 'external'};
+    test('the launch owner always crosses explicitly: external unless Fleet launches the seat, and an external seat carries no PAT in either mode (#280)', () => {
+        const {launchOwner, ...unowned} = cleanPayload();
 
-        expect(AddAgentFlow.createDefineAgentIntent(payload, {credentialIngress: 'shell'}).launchOwner).toBe('fleet');
-        expect(AddAgentFlow.createDefineAgentIntent(payload, {}).launchOwner).toBe('fleet')
+        for (const bridge of [{credentialIngress: 'shell'}, {}]) {
+            // the default, and anything outside the two answers, is the seat that runs in its own harness
+            for (const payload of [unowned, {...unowned, launchOwner: 'external'}, {...unowned, launchOwner: 'root'}]) {
+                expect(AddAgentFlow.createDefineAgentIntent(payload, bridge)).toEqual({
+                    githubUsername: 'neo-kimi-phoebe',
+                    harnessType   : 'opencode',
+                    launchOwner   : 'external'
+                })
+            }
+
+            expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), bridge).launchOwner).toBe('fleet')
+        }
+
+        // a direct-browser Fleet seat still brings its PAT, and validation still asks for one
+        expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), {}).credential).toBe(CREDENTIAL);
+        expect(AddAgentFlow.validateDefinePayload({...cleanPayload(), credential: ''}).valid).toBe(false);
+        expect(AddAgentFlow.validateDefinePayload({...unowned, credential: '', launchOwner: 'external'})).toEqual({valid: true, reason: ''});
+        expect(AddAgentFlow.LAUNCH_OWNERS).toEqual(['external', 'fleet'])
     });
 
     test('the readback guard fails closed on every poisoned shape and passes the canonical one', () => {
@@ -180,6 +198,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         const credentialField = await form.getField('credential');
         const usernameField   = await form.getField('githubUsername');
 
+        form.launchOwner      = 'fleet';
         usernameField.value   = 'neo-kimi-phoebe';
         credentialField.value = CREDENTIAL;
         form.harnessType      = 'opencode';
@@ -189,7 +208,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.flowStatus.state).toBe('readback-confirmed');
         expect(fired).toHaveLength(1);
         expect(fired[0].agent).toEqual(cleanReadback());
-        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet'}]);
+        expect(calls).toEqual([cleanPayload()]);
         // the settle rule: no terminal state leaves credential bytes in the field
         expect(credentialField.value ?? '').toBe('');
 
@@ -211,7 +230,9 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         });
 
         expect(form.items.some(item => item.name === 'credential')).toBe(false);
-        expect(form.flowStatus.reason).toContain('native shell');
+        // a Fleet-launched seat's credential is the native shell's to ask for
+        form.launchOwner = 'fleet';
+        expect(form.getReference('flow-status').text).toContain('native shell');
 
         const usernameField = await form.getField('githubUsername');
 
@@ -225,6 +246,42 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
             harnessType   : 'opencode',
             launchOwner   : 'fleet'
         });
+        expect(form.flowStatus.state).toBe('readback-confirmed');
+
+        form.destroy()
+    });
+
+    test('the form registers a seat that runs in its own harness by default: no PAT field, the choice marked, public intent only (#280)', async () => {
+        let received;
+
+        const form = Neo.create(AddAgentForm, {
+            appName       : 'AgentOSAddAgentFlowTest',
+            bridgeResolver: () => ({defineAgent: async payload => { received = payload; return cleanReadback() }})
+        });
+
+        const
+            credentialField = await form.getField('credential'),
+            chips           = () => form.getReference('owner-row').items.filter(chip => chip.cls.includes('is-selected')).map(chip => chip.launchOwner);
+
+        expect(form.launchOwner).toBe('external');
+        expect(chips()).toEqual(['external']);
+        expect(credentialField.hidden).toBe(true);
+        expect(form.getReference('flow-status').text).toContain('no PAT is needed');
+
+        // the other answer brings the PAT field back, and switching back hides it again
+        form.launchOwner = 'fleet';
+        expect(chips()).toEqual(['fleet']);
+        expect(credentialField.hidden).toBe(false);
+        form.launchOwner = 'external';
+        expect(credentialField.hidden).toBe(true);
+
+        (await form.getField('githubUsername')).value = 'neo-gpt-emmy';
+        credentialField.value                          = CREDENTIAL;   // typed, then hidden: it must not cross
+        form.harnessType                               = 'codex-desktop';
+
+        await form.onSubmitClick();
+
+        expect(received).toEqual({githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'});
         expect(form.flowStatus.state).toBe('readback-confirmed');
 
         form.destroy()

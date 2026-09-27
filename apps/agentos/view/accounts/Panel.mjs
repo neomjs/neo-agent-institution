@@ -129,13 +129,31 @@ class Accounts extends DashboardPanel {
                 placeholderText: 'neo-gpt',
                 required       : true
             }, {
+                module: Toolbar,
+                cls   : ['agent-launch-owner-picker'],
+                flex  : 'none',
+                // who launches the seat — AddAgentFlow.LAUNCH_OWNERS, the safe default first
+                items : [['external', 'Runs in its own harness'], ['fleet', 'Fleet launches it']].map(([value, valueLabel], index) => ({
+                    module        : Radio,
+                    checked       : index === 0,
+                    hideValueLabel: false,
+                    labelText     : index === 0 ? 'Launch' : '',
+                    labelWidth    : 136,
+                    listeners     : {change: 'up.onLaunchOwnerChange'},
+                    name          : 'launchOwner',
+                    value,
+                    valueLabel
+                }))
+            }, {
+                // a Fleet-launched seat only: one that runs in its own harness keeps its own credentials
                 module         : PasswordField,
                 clearable      : true,
+                hidden         : true,
                 labelText      : 'GitHub PAT',
                 labelWidth     : 136,
                 name           : 'credential',
                 placeholderText: 'stored Brain-side only',
-                required       : true
+                required       : false
             }, {
                 module: Toolbar,
                 cls   : ['agent-harness-picker'],
@@ -510,6 +528,20 @@ class Accounts extends DashboardPanel {
     }
 
     /**
+     * @summary The launch-owner radio moved: the PAT field shows, and is required, for a
+     * Fleet-launched seat only.
+     * @param {Object} data
+     * @param {String|null} data.value The checked radio's value, `null` for the one unchecked
+     */
+    async onLaunchOwnerChange({value}) {
+        if (!value) return;
+
+        const credential = await this.getReference('agent-form').getField('credential');
+
+        credential?.set({hidden: value !== 'fleet', required: value === 'fleet'})
+    }
+
+    /**
      * @summary Load a sample public identity without inserting credential bytes.
      * @returns {Promise<void>}
      */
@@ -568,9 +600,11 @@ class Accounts extends DashboardPanel {
             this.fire('agentDefinitionAccepted', {agent: outcome});
             this.updateBridgeStatus(
                 'is-live',
-                shellOwned
-                    ? 'Agent added. Credential entry stayed in the native shell.'
-                    : 'Agent added. PAT was not retained in the app worker.'
+                payload.launchOwner === 'external'
+                    ? 'Agent added. It runs in its own harness, so Fleet will not launch it.'
+                    : shellOwned
+                        ? 'Agent added. Credential entry stayed in the native shell.'
+                        : 'Agent added. PAT was not retained in the app worker.'
             )
         } catch (error) {
             this.updateBridgeStatus(
