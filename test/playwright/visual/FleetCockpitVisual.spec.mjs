@@ -690,6 +690,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await bootSettledCockpit(page);
         await openObservatoryPane(page);
+        // no tooltip in a shot: the pointer dwells until the tab's tooltip has shown, then leaves and waits out
+        // the hide, since an engine tooltip whose target is left inside its show delay stays up
+        await page.waitForTimeout(300);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(500);
 
         await feedObservatory(page, 'current', current);
         await expect(pane).toHaveScreenshot('observatory-pane-current.png');
@@ -812,22 +817,39 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card-light.png')
     });
 
-    test('the keeper nav is an icon rail — each tab keeps its label as its accessible name and speaks it as a tooltip', async ({page}) => {
+    test('the keeper nav is an icon rail — each tab keeps its label as its accessible name and speaks it as a tooltip to its right, clear of the rail', async ({page}) => {
         await bootSettledCockpit(page);
 
-        const nav = page.locator('.agent-shell > .neo-tab-header-toolbar');
+        const
+            nav    = page.locator('.agent-shell > .neo-tab-header-toolbar'),
+            labels = ['Home', 'Fleet', 'Observatory', 'System', 'Accounts', 'Chat'],
+            tabs   = labels.map(label => nav.getByRole('tab', {name: label, exact: true})),
+            tip    = page.locator('.neo-tooltip');
 
-        for (const label of ['Home', 'Fleet', 'Observatory', 'System', 'Accounts', 'Chat']) {
-            const tab = nav.getByRole('tab', {name: label, exact: true});
-
-            await expect(tab, `${label} keeps its accessible name`).toHaveCount(1);
+        for (const [index, tab] of tabs.entries()) {
+            await expect(tab, `${labels[index]} keeps its accessible name`).toHaveCount(1);
             // hidden visually only: a clipped box, never display:none, which would leave the tree
             await expect(tab.locator('.neo-button-text')).toHaveCSS('position', 'absolute');
             await expect(tab.locator('.neo-button-text')).not.toHaveCSS('display', 'none')
         }
 
-        await nav.getByRole('tab', {name: 'Observatory', exact: true}).hover();
-        await expect(page.locator('.neo-tooltip')).toHaveText('Observatory')
+        const boxes = await Promise.all(tabs.map(tab => tab.boundingBox()));
+
+        for (const [index, tab] of tabs.entries()) {
+            await tab.hover();
+            await expect(tip).toHaveText(labels[index]);
+            await expect(tip).toBeVisible();
+
+            const box = await tip.boundingBox();
+
+            expect(box.x, `${labels[index]}'s tooltip opens right of its icon`).toBeGreaterThanOrEqual(boxes[index].x + boxes[index].width);
+
+            for (const [other, rail] of boxes.entries()) {
+                const overlaps = box.x < rail.x + rail.width && rail.x < box.x + box.width && box.y < rail.y + rail.height && rail.y < box.y + box.height;
+
+                expect(overlaps, `${labels[index]}'s tooltip covers no part of ${labels[other]}`).toBe(false)
+            }
+        }
     });
 
     test('the cockpit before any answer and after an empty one — cold says "not answered yet", an empty answer offers the first agent; both skins', async ({page}) => {

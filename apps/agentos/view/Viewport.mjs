@@ -16,6 +16,16 @@ import TabContainer       from '../../../node_modules/neo.mjs/src/tab/Container.
 import ViewportController from './ViewportController.mjs';
 
 /**
+ * @summary A keeper-rail tab header. Its tooltip opens to the icon's right (`l-r`), clear of the rail; the
+ * default below-the-target placement lands on the next icon.
+ * @param {String} iconCls
+ * @param {String} route
+ * @param {String} text The tab's accessible name and tooltip
+ * @returns {Object}
+ */
+const railHeader = (iconCls, route, text) => ({iconCls, route, text, tooltip: {text, align: {edgeAlign: 'l-r'}}});
+
+/**
  * @class AgentOS.view.Viewport
  * @extends Neo.container.Viewport
  *
@@ -166,7 +176,7 @@ class Viewport extends BaseViewport {
             items: [{
                 ntype : 'component',
                 cls   : ['agent-welcome'],
-                header: {iconCls: 'fa-solid fa-house', route: '/home', text: 'Home', tooltip: 'Home'},
+                header: railHeader('fa-solid fa-house', '/home', 'Home'),
                 html  : '<div class="agent-welcome-inner">' +
                             '<p class="agent-welcome-eyebrow">Neo Agent OS</p>' +
                             '<h1 class="agent-welcome-h1">Mission control for a cross-model AI engineering team.</h1>' +
@@ -174,12 +184,12 @@ class Viewport extends BaseViewport {
                         '</div>'
             }, {
                 module   : FleetCockpit,
-                header   : {iconCls: 'fa-solid fa-satellite-dish', route: '/fleet', text: 'Fleet', tooltip: 'Fleet'},
+                header   : railHeader('fa-solid fa-satellite-dish', '/fleet', 'Fleet'),
                 reference: 'fleet-cockpit'
             }, {
                 // the Golden Path's neighbourhood as a scene takes the whole view: its follow-ups need room beside it
                 module   : ObservatoryPane,
-                header   : {iconCls: 'fa-solid fa-circle-nodes', route: '/observatory', text: 'Observatory', tooltip: 'Observatory'},
+                header   : railHeader('fa-solid fa-circle-nodes', '/observatory', 'Observatory'),
                 reference: 'observatory-view',
                 bind     : {
                     envelope     : data => data.graphSceneEnvelope,
@@ -190,14 +200,14 @@ class Viewport extends BaseViewport {
                 // the engine room beside mission control: what the planes are doing to the fleet's
                 // truth — a distinct subject, so a distinct place in the rail (never a cockpit pane)
                 module   : SystemView,
-                header   : {iconCls: 'fa-solid fa-server', route: '/system', text: 'System', tooltip: 'System'},
+                header   : railHeader('fa-solid fa-server', '/system', 'System'),
                 reference: 'system-view'
             }, {
                 // Accounts is likewise a dashboard.Panel — its own dashboard.Container host so the
                 // identity panel keeps the pop-out affordance and stays structurally idiomatic.
                 module   : Dashboard,
                 cls      : ['agent-accounts-dashboard'],
-                header   : {iconCls: 'fa-solid fa-id-badge', route: '/accounts', text: 'Accounts', tooltip: 'Accounts'},
+                header   : railHeader('fa-solid fa-id-badge', '/accounts', 'Accounts'),
                 popupUrl : 'apps/agentos/childapps/widget/index.html',
                 sortGroup: 'neo-connected-dashboard',
 
@@ -210,7 +220,7 @@ class Viewport extends BaseViewport {
             }, {
                 ntype : 'component',
                 cls   : ['agent-placeholder'],
-                header: {iconCls: 'fa-solid fa-comments', route: '/chat', text: 'Chat', tooltip: 'Chat'},
+                header: railHeader('fa-solid fa-comments', '/chat', 'Chat'),
                 html  : '<div class="agent-placeholder-inner">Chat — prompt an agent → a live widget pane you can dock and pop out. The dockable QT work-area lands here next.</div>'
             }]
         }]
