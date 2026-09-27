@@ -125,7 +125,7 @@ class HealthBar extends Container {
         /**
          * Wrap-capable: at a vessel width the swatches fold onto a second line inside the
          * bar instead of clipping the last states — a legend that drops a state says the state
-         * does not exist (#85). Wide rows stay one line.
+         * does not exist. Wide rows stay one line.
          * @member {Object} layout={ntype:'hbox',align:'center',wrap:'wrap'}
          * @reactive
          */

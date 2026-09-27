@@ -14,7 +14,7 @@ import SourceHealth from '../../../../../../apps/agentos/util/SourceHealth.mjs';
 
 /**
  * @summary The display-state resolver the card, the detail pane, the health tally and the roster's
- * offline filter share (#246): five states, and why an offline seat is offline as its reason.
+ * offline filter share: five states, and why an offline seat is offline as its reason.
  */
 test.describe('AgentOS.util.SourceHealth.resolveFleetDisplayState', () => {
     const
@@ -40,7 +40,7 @@ test.describe('AgentOS.util.SourceHealth.resolveFleetDisplayState', () => {
             }
         }
 
-        // no participation fact at all reads the same, and never benched (#17305)
+        // no participation fact at all reads the same, and an unmanaged seat never reads benched
         expect(resolve({sources: {}, state: 'off'})).toEqual({reason: 'unobserved', state: 'off'});
         expect(resolve()).toEqual({reason: 'unobserved', state: 'off'})
     });

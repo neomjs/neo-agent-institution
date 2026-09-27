@@ -195,7 +195,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(rowTexts()).toContain('status');
         expect(rowTexts()).toContain('operator benched');
 
-        // null (no identity-root fact) → no row, never guessed (#23 ledger: absent facts are absent)
+        // null (no identity-root fact) → no row, never guessed: in the ledger, absent facts are absent
         applySet(detail, {participationStatus: null});
         expect(rowTexts()).not.toContain('status');
 
@@ -224,7 +224,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }});
         expect(detail.down({ntype: 'fm-state-dot'}).state).toBe('off');
         expect(detail.down({ntype: 'fm-state-dot'}).live).toBe(false);
-        // the detail carries the reason too (#246)
+        // the detail carries the reason too
         expect(session()).toEqual({text: 'offline · unobserved', title: 'Fleet runs no process for it, so it has no session to read'});
 
         applySet(detail, {participationStatus: 'operator_benched'});
@@ -272,7 +272,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         expect(body(detail, 'lane').text).toBe('FM cockpit agent detail view · 17 open lanes');
         // a feed-gated pane never fabricates a stream — and never repeats the head's honest
-        // "not observed" as a body line either (#23): the body stays EMPTY, the awaiting truth
+        // "not observed" as a body line either: the body stays EMPTY, the awaiting truth
         // rides the freshness pill's title
         expect(body(detail, 'thought-stream').text).toBe('');
         expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting live feed');
@@ -308,7 +308,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         const nodes = ledger.vdom.cn ?? [];
 
         // carried, inert, and still READABLE — an operator needs the producer's evidence; it rides
-        // the pill's title ATTRIBUTE now (#23), which is an attribute string: inert like a text node
+        // the pill's title ATTRIBUTE, which is an attribute string: inert like a text node
         expect(nodes.some(node => node.title === hostile)).toBe(true);
 
         // …and nowhere as markup, on any node

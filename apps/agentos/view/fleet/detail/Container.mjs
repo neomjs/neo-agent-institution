@@ -231,7 +231,7 @@ class AgentDetail extends Container {
                 }]
             }]
         }, {
-            // ONE state ledger in the pane's own freshness-pill vocabulary (#23) — the identity
+            // ONE state ledger in the pane's own freshness-pill vocabulary — the identity
             // block above stays pure identity (name is the only display-tier line). Every
             // liveness/wiring axis renders exactly once as an `axis · pill` row: availability,
             // the wake telltale, capacity (SOURCE-GATED: the axis renders only when a producer
@@ -289,8 +289,8 @@ class AgentDetail extends Container {
         // render flush; a later re-seat (applyRecord) keeps the root, so the region survives.
         Object.assign(this.vdom, {role: 'region', 'aria-label': 'Agent detail'});
 
-        // shell-supplied window verbs ride the tab header bar's ACTION seam (#23, operator
-        // direction): one icon at the trailing edge of the tab strip, outside the content flow —
+        // shell-supplied window verbs ride the tab header bar's ACTION seam: one icon at the
+        // trailing edge of the tab strip, outside the content flow —
         // the old identity-header placement floated the verb OVER the identity block at rail
         // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
@@ -544,7 +544,7 @@ class AgentDetail extends Container {
 
     /**
      * @summary Render the ONE state ledger — every liveness/wiring axis once, as `axis · pill`
-     * rows in the pane's own freshness-pill vocabulary (#23: three vocabularies became one).
+     * rows in the pane's own freshness-pill vocabulary, the one pill language of the pane.
      *
      * Rows, in order: the session (the resolved display state; an offline one names its reason),
      * availability (participationStatus — a known status word or no row),
@@ -629,7 +629,7 @@ class AgentDetail extends Container {
      * claim). The `lane` pane additionally renders the record-known lane line + open-lane count; the
      * feed-gated panes (thought-stream / repo / prs) keep their body EMPTY until their Lane-C /
      * memory-surface leaf wires content — the head's freshness pill carries the awaiting truth on
-     * its title (#23: the per-section boilerplate collapsed into the one provenance pill).
+     * its title, the one provenance pill per section.
      * @protected
      */
     applyPaneFreshness() {
@@ -649,7 +649,7 @@ class AgentDetail extends Container {
             const freshnessChip = me.getReference(`pane-${pane.key}-freshness`);
 
             freshnessChip.set({cls, text: label});
-            // the awaiting truth rides the pill's title (one provenance pill per section — #23);
+            // the awaiting truth rides the pill's title (one provenance pill per section);
             // an attribute string is inert, like every text node here
             freshnessChip.vdom.title = ledger ? null : 'awaiting live feed — no source wired for this pane yet';
             freshnessChip.update();
@@ -662,8 +662,8 @@ class AgentDetail extends Container {
      * @summary The honest body content for one pane from the record's known facts. The `lane` pane
      * renders the real lane line + open-lane count; the feed-gated panes render NO body until
      * their source leaf lands — the head's freshness pill already states "not observed — source
-     * not wired" and carries the awaiting detail on its title, so a body line repeating it was
-     * the same fact told twice per section (#23).
+     * not wired" and carries the awaiting detail on its title, so a body line repeating it would
+     * tell the same fact twice per section.
      * @param {String} key Pane key.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
      * @returns {String}

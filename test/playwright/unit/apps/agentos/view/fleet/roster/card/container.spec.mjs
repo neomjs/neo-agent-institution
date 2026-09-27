@@ -689,7 +689,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         // card can never introduce a second state vocabulary; colour (dot) and word derive from one state
         expect(card.down({reference: 'card-state'}).text).toBe('stuck');
         expect(card.down({ntype: 'fm-state-dot'}).state).toBe('wedged');
-        // "stuck" says what it means on its title (#246); a word that says it all carries none
+        // "stuck" says what it means on its title; a word that says it all carries none
         expect(card.down({reference: 'card-state'}).vdom.title).toBe('running, no progress');
         applySet(card, {state: 'ok'});
         expect(card.down({reference: 'card-state'}).vdom.title).toBeFalsy();
@@ -738,7 +738,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
     test('state-honesty: a resident Fleet does not run reads offline, unobserved on its title — never working, never benched (#246)', () => {
         // NO runtime source at all: whatever the row's state says, the card must not claim the
         // resident is working (no session evidence) and must not claim they are benched (the bench
-        // is the roster's fact) — an un-wired `off` row included (#17305's arms)
+        // is the roster's fact) — an un-wired `off` row included: no unmanaged seat reads benched
         for (const state of ['ok', 'off']) {
             const card = createCard({agentId: `phoebe-${state}`, state, sources: {}}),
                   dot  = card.down({ntype: 'fm-state-dot'});

@@ -328,7 +328,7 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         expect(store.getCount()).toBe(3);
         expect(grid.getReference('filter-benched').pressed).toBe(true);
 
-        // hide offline: what the legend counts offline leaves — stopped and unobserved as well (#246)
+        // hide offline: what the legend counts offline leaves — stopped and unobserved as well
         controller.onFilterToggleClick({component: grid.getReference('filter-offline')});
         expect(store.items.map(record => record.state)).toEqual(['ok']);
 
@@ -629,7 +629,7 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         const store = makeStore(roster(['ok', 'ok', 'idle', 'off'])),
               bar   = Neo.create(HealthBar, {appName, store});
 
-        // five swatches: working · idle · stuck · rate-limited · offline (#246)
+        // five swatches: working · idle · stuck · rate-limited · offline
         expect(bar.items.map(sw => sw.state)).toEqual(['ok', 'idle', 'wedged', 'limited', 'off']);
         expect(swatchOf(bar, 'off').count).toBe(4);      // Fleet runs none of these roster-only rows
         expect(swatchOf(bar, 'wedged').count).toBe(0);   // zero still renders (confirms "none")

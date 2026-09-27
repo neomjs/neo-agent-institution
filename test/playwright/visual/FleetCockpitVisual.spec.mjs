@@ -236,7 +236,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         });
 
         expect(geometry.viewport, 'the viewport itself is the 314px vessel window').toBe(314);
-        // the five-state legend (#246) folds inside its bar at vessel width — never clips a state
+        // the five-state legend folds inside its bar at vessel width — never clips a state
         expect(geometry.head.swatches, 'all five legend states are rendered at vessel width').toBe(5);
         expect(geometry.head.scrollWidth, 'the head row hides nothing: no horizontal pressure').toBeLessThanOrEqual(geometry.head.clientWidth);
         expect(geometry.head.lastSwatchRight, 'the last legend state sits inside the head row').toBeLessThanOrEqual(geometry.head.right);
@@ -371,11 +371,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     });
 
     test('the Review preset at 1280×720 — the fleet head keeps its whole legend when the inspector docks beside it (geometry asserted)', async ({page}) => {
-        // the legend's exact case: the shipped Review preset narrows the fleet pane to ~896px. The
-        // seven-state legend did not fit beside the title there and wrapped under it; the five-state
-        // legend (#246) fits, so the Review preset keeps the one-line head the wide presets have. The
-        // head row still wraps (layout wrap) wherever the legend cannot fit. The capture pins the
-        // one-line form; the geometry pins the no-clip contract.
+        // the legend's exact case: the shipped Review preset narrows the fleet pane to ~896px, and
+        // the five-state legend still fits beside the title there, so the Review preset keeps the
+        // one-line head the wide presets have. The head row wraps (layout wrap) wherever the legend
+        // cannot fit. The capture pins the one-line form; the geometry pins the no-clip contract.
         await page.setViewportSize({width: 1280, height: 720});
         await bootSettledCockpit(page);
         // perspectives switch from their drawer: reveal it, apply Review, dismiss the reveal
