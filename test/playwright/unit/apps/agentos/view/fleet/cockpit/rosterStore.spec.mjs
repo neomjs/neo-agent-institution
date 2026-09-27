@@ -53,7 +53,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             load() { this.loads++ },
             add(rows) { this.added.push(...[].concat(rows)) },
             get(id) { return known[id] ?? null },
-            remove(id) { this.removed.push(id) }
+            remove(ids) { this.removed.push(...[].concat(ids)) }
         };
 
         return {adapterState: 'cold', store}
@@ -668,6 +668,45 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(store.allItems.get('idle-0'), 'a folded resident still in the snapshot keeps its record').toBe(folded);
         expect(folded.lastActivityAt, 'and takes its row in place, never re-added as a joiner').toBe('2026-09-27T10:00:00.000Z');
         expect(store.count, 'the view still folds it').toBe(6);
+
+        store.destroy()
+    });
+
+    test('a live answer lands as one load per batched mutation and one reconcile, never re-entering itself', async () => {
+        const
+            store        = Neo.create(FleetRoster, {data: []}),
+            {controller} = makeLiveHost(store, 22),
+            answer       = ids => async () => ({rows: ids.map(id => ({id, family: 'claude', lifecycle: {state: 'running'}}))}),
+            busy         = Array.from({length: 6},  (_, i) => `busy-${i}`),
+            idle         = Array.from({length: 14}, (_, i) => `idle-${i}`),
+            counts       = {loads: 0, reconciles: 0};
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: answer([...busy, ...idle])}};
+
+        await controller.loadRoster();
+        // a view filter hides the idle residents, the way the density fold does
+        store.filters = [{property: 'agentId', filterBy: ({item}) => !item.agentId.startsWith('idle-')}];
+
+        expect(store.allItems.count).toBe(20);
+
+        store.on({load: () => counts.loads++});
+        controller.reconcileRoster = function(...args) {
+            counts.reconciles++;
+            return FleetCockpitController.prototype.reconcileRoster.apply(this, args)
+        };
+
+        globalThis.AgentOS.fleet.registryBridge.fleetRoster = answer(busy);
+        await controller.loadRoster();
+
+        expect(store.allItems.count, 'the 14 hidden residents depart').toBe(6);
+        expect(counts, 'one removal for all of them').toEqual({loads: 1, reconciles: 1});
+
+        counts.loads = counts.reconciles = 0;
+        globalThis.AgentOS.fleet.registryBridge.fleetRoster = answer([...busy.slice(1), 'new-0']);
+        await controller.loadRoster();
+
+        expect(store.allItems.count).toBe(6);
+        expect(counts, 'one add and one removal').toEqual({loads: 2, reconciles: 1});
 
         store.destroy()
     });
