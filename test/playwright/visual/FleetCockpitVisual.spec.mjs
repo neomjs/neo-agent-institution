@@ -707,6 +707,15 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForTimeout(600);
         await expect(pane, 'a skin change inks the same scene and selection again').toHaveScreenshot('observatory-pane-truncated-light.png');
 
+        // a withheld Golden Path route is named beside the graph read's own words, never folded into them
+        const withheld = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=withheld&t=${++driverTick}`);
+
+        expect(withheld.success, `the driver loaded: ${JSON.stringify(withheld)}`).toBe(true);
+        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB · route withheld · freshness-sla-breached$/);
+        await expect(pane).toHaveScreenshot('observatory-pane-withheld-light.png');
+        await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=current&t=${++driverTick}`);
+        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ \/ 32 KiB$/);
+
         await feedObservatory(page, 'degraded', 'Degraded · graph-seam-refused · 16 nodes · 15 edges · complete');
         await expect(pane).toHaveScreenshot('observatory-pane-degraded-light.png');
 

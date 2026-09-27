@@ -64,6 +64,30 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
             .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · complete')
     });
 
+    test('a route item resolves only to a seed the read holds: a qualified id as itself, a bare id when one origin holds it', () => {
+        const
+            read = (route, ids) => GraphSceneEnvelope.fromWire(current({route, nodes: ids.map(id => ({id, label: id, kind: 'issue'}))})),
+            one  = read(['neomjs/neo#issue-1', 'neo#210'], ['neomjs/neo#issue-1', 'neo#210']),
+            ab   = read(['org/a#issue-1', 'org/b#issue-1'], ['org/a#issue-1', 'org/b#issue-1']),
+            ba   = read(['org/b#issue-1', 'org/a#issue-1'], ['org/a#issue-1', 'org/b#issue-1']);
+
+        expect(GraphSceneEnvelope.resolveRouteId(one, 'issue-1'), 'a bare id one origin holds').toBe('neomjs/neo#issue-1');
+        expect(GraphSceneEnvelope.resolveRouteId(one, 'neo#210'), 'a qualified id as itself').toBe('neo#210');
+        expect(GraphSceneEnvelope.resolveRouteId(one, 'issue-2')).toBeNull();
+        expect(GraphSceneEnvelope.resolveRouteId(one, '')).toBeNull();
+        expect(GraphSceneEnvelope.resolveRouteId(GraphSceneEnvelope.blank(), 'issue-1')).toBeNull();
+
+        expect(GraphSceneEnvelope.resolveRouteId(read(['neomjs/neo#issue-1'], []), 'issue-1'), 'a seed the budget cut').toBeNull();
+        expect(GraphSceneEnvelope.resolveRouteId(read(['neomjs/neo#issue-1'], []), 'neomjs/neo#issue-1')).toBeNull();
+
+        expect(GraphSceneEnvelope.resolveRouteId(ab, 'issue-1'), 'two origins and nothing to choose by').toBeNull();
+        expect(GraphSceneEnvelope.resolveRouteId(ba, 'issue-1'), 'in either route order').toBeNull();
+        expect(GraphSceneEnvelope.resolveRouteId(ab, 'org/b#issue-1'), 'the qualified id still resolves').toBe('org/b#issue-1');
+
+        expect(GraphSceneEnvelope.resolveRouteId(read(['org/a#issue-1'], ['org/a#issue-1', 'org/b#issue-1']), 'issue-1'), 'a neighbour sharing the bare id is no seed')
+            .toBe('org/a#issue-1')
+    });
+
     test('degraded and unavailable carry the producer reason; a degraded partial scene still says what it holds', () => {
         const partial = {...current(), capability: {state: 'degraded', reason: 'graph-seam-refused'}};
 

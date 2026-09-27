@@ -214,6 +214,68 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(cleared.counts).toEqual({nodes: 0, edges: 0, seeds: 0})
     });
 
+    test('the node list reaches the same selection as the canvas, the arrow keys move it, a relation row follows its edge, and the Golden Path pane selects a route node through the shared leaf', async ({page, neuralLink}) => {
+        const
+            {land, pane, selection, selectNode, settle, stats} = await openObservatory(page, neuralLink),
+            rows      = pane.locator('.fm-observatory-node-list .neo-list-item'),
+            relations = pane.locator('.fm-observatory-relation-list .neo-list-item');
+
+        await land(read());
+        await expect(rows).toHaveCount(7);
+        await settle();
+
+        await rows.nth(0).click();
+        await expect(selection).toHaveText(/^Selected · first route item · pull · neomjs\/neo#pr-101 · /);
+        expect((await stats()).selectedId, 'a list row selects on the canvas too').toBe(q('pr-101'));
+
+        await page.keyboard.press('ArrowDown');
+        await expect(selection, 'the arrow keys move the selection').toHaveText(/^Selected · second route item · issue · neomjs\/neo#issue-202 · /);
+        expect((await stats()).selectedId).toBe(q('issue-202'));
+
+        await expect(relations).toHaveText([/authored\s*from\s*Grace\s*agent/]);
+        await relations.nth(0).click();
+        await expect(selection, 'a relation row moves to its other end').toHaveText(/^Selected · Grace · agent · neomjs\/neo#agent-grace · /);
+
+        await selectNode(q('issue-404'));
+        await expect(selection).toHaveText(/^Selected · two hops out · /);
+        await expect(pane.locator('.fm-observatory-node-list .neo-selected'), 'a canvas pick marks its list row').toHaveText(/two hops out/);
+
+        // the Golden Path pane: its route items are the graph read's seeds, by their bare ids
+        const
+            app          = await neuralLink.connectToApp('AgentOS'),
+            [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+            cockpitState = await app.getComponent(cockpit.properties.id, ['controller']);
+
+        await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [{
+            capability: {state: 'wired', capturedAt: CAPTURED_AT},
+            admission : {admitted: true, fallback: 'current', reasonCode: 'current', requiredFacets: [], staleFacets: []},
+            route     : {
+                schemaVersion: 'computed-route.v1', status: 'fresh', capturedAt: CAPTURED_AT, expiresAt: '2026-07-05T20:00:00.000Z', expired: false,
+                kind: 'computed-ranked', freshness: {status: 'fresh'}, provenance: {producer: 'golden-path-synthesizer', runId: 'run-1', algorithmVersion: 'v1'},
+                items: [
+                    {id: 'pr-101',    title: 'first route item',  score: 3, rank: 1, citations: []},
+                    {id: 'issue-202', title: 'second route item', score: 2, rank: 2, citations: []},
+                    {id: 'issue-303', title: 'third route item',  score: 1, rank: 3, citations: []}
+                ]
+            },
+            rem: {undigested: 0, digested: 10, recentCycles: 1}, sources: {}
+        }]);
+
+        await page.getByRole('tab', {name: 'Fleet', exact: true}).click();
+        await page.getByRole('tab', {name: 'Golden Path', exact: true}).click();
+
+        const cards = page.locator('.fm-golden-path-pane .fm-golden-path-item');
+
+        await expect(cards).toHaveCount(3);
+        await cards.nth(2).locator('.fm-golden-path-item-graph').click();
+        await expect(cards.nth(2), 'the chosen item is marked').toHaveClass(/(?:^|\s)is-selected(?:\s|$)/);
+
+        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
+        await expect(selection, 'the Observatory selects the same qualified id').toHaveText(/^Selected · third route item · issue · neomjs\/neo#issue-303 · rank 3 · /);
+        await page.waitForTimeout(400);
+        expect((await stats()).selectedId).toBe(q('issue-303'))
+    });
+
     test('the view keeps its scene and its selection across a switch away and back without a second read, and resizes with the window', async ({page, neuralLink}) => {
         const {currency, land, selection, selectNode, stats} = await openObservatory(page, neuralLink);
 

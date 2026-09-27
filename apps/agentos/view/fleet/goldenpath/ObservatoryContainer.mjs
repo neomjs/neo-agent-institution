@@ -1,8 +1,13 @@
-import Container              from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import GraphSceneEnvelope     from '../../../util/GraphSceneEnvelope.mjs';
-import ObservatoryCanvas      from './ObservatoryCanvas.mjs';
-import ObservatorySceneLayout from '../../../util/ObservatorySceneLayout.mjs';
-import ViewerTime             from '../../../util/ViewerTime.mjs';
+import Container               from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import GoldenPathEnvelope      from '../../../util/GoldenPathEnvelope.mjs';
+import GraphSceneEnvelope      from '../../../util/GraphSceneEnvelope.mjs';
+import GraphSceneNodes         from '../../../store/GraphSceneNodes.mjs';
+import GraphSceneRelations     from '../../../store/GraphSceneRelations.mjs';
+import ObservatoryCanvas       from './ObservatoryCanvas.mjs';
+import ObservatoryNodeList     from './ObservatoryNodeList.mjs';
+import ObservatoryRelationList from './ObservatoryRelationList.mjs';
+import ObservatorySceneLayout  from '../../../util/ObservatorySceneLayout.mjs';
+import ViewerTime              from '../../../util/ViewerTime.mjs';
 
 /**
  * What the hover slot and the selection strip say while they have no node to name.
@@ -11,16 +16,20 @@ import ViewerTime             from '../../../util/ViewerTime.mjs';
 const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 'No node selected'};
 
 /**
- * @summary The Observatory keeper-view — the bounded graph neighbourhood of the Golden Path's route as a
- * navigable 3D scene on the canvas worker. The head carries the read's line first (capability, capture,
- * holdings, completeness — {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node under the pointer
- * beside it; the selection strip below names the selected node as the read has it. The pane binds the
- * shell's `graphSceneEnvelope` leaf, which the cockpit's graph read writes, derives the scene once
- * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas.
+ * @summary The Observatory keeper-view — the bounded graph neighbourhood of the Golden Path's route, as a
+ * navigable 3D scene on the canvas worker and as two lists beside it. The head carries the read's line first
+ * (capability, capture, holdings, completeness — {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node
+ * under the pointer beside it; the selection strip below names the selected node as the read has it. The pane
+ * binds the shell's `graphSceneEnvelope` leaf, which the cockpit's graph read writes, derives the scene once
+ * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas and the lists. The
+ * Golden Path leaf only qualifies the line: its route's admission is not the graph read's to report, so a
+ * withheld route is named beside the graph read's own words.
  *
- * Selection is one origin-qualified id, never a draw index: a click on a node selects it, a click on the
- * empty surface clears it, and a new read keeps it while the read still holds the id. A read that lost the id
- * clears the selection and the strip says why. Drag orbits, the wheel zooms.
+ * Selection is one origin-qualified id, never a draw index, and every path reaches the same one: a click on a
+ * node, a row of the node list (the arrow keys move it), a row of the selected node's relations (which moves
+ * to the node at the other end) and the shell's `graphSelectionId` leaf, which the Golden Path pane shares. A
+ * click on the empty surface clears it, and a new read keeps it while the read still holds the id; a read that
+ * lost the id clears the selection and the strip says why. Without a canvas worker the lists are the whole view.
  *
  * @class AgentOS.view.fleet.goldenpath.ObservatoryContainer
  * @extends Neo.container.Base
@@ -52,8 +61,9 @@ class ObservatoryContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The head (title, the read's line, the hovered node) and the selection strip; the canvas joins them
-         * in {@link #construct} where a canvas worker exists. The strip always holds its row, so a selection
+         * The head (title, the read's line, the hovered node), the selection strip and the body: the side
+         * panel with the node list and the selected node's relations, which the canvas joins in
+         * {@link #onConstructed} where a canvas worker exists. The strip always holds its row, so a selection
          * never resizes the canvas.
          * @member {Object[]} items
          */
@@ -73,15 +83,60 @@ class ObservatoryContainer extends Container {
             flex     : 'none',
             reference: 'observatory-selection',
             text     : HINTS.selection
+        }, {
+            ntype    : 'container',
+            cls      : ['fm-observatory-body'],
+            flex     : 1,
+            layout   : {ntype: 'hbox', align: 'stretch'},
+            reference: 'observatory-body',
+            items    : [{
+                ntype    : 'container',
+                cls      : ['fm-observatory-side'],
+                flex     : 'none',
+                layout   : {ntype: 'vbox', align: 'stretch'},
+                reference: 'observatory-side',
+                items    : [{
+                    module   : ObservatoryNodeList,
+                    flex     : 1,
+                    reference: 'observatory-nodes'
+                }, {
+                    ntype: 'component',
+                    cls  : ['fm-observatory-side-title'],
+                    flex : 'none',
+                    text : 'Relations of the selected node'
+                }, {
+                    module   : ObservatoryRelationList,
+                    flex     : 1,
+                    reference: 'observatory-relations'
+                }]
+            }]
         }],
         /**
-         * The selected node's origin-qualified id, or `null`.
+         * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf. Only its
+         * currency is read: a withheld route qualifies the line.
+         * @member {Object|null} routeEnvelope_=null
+         * @reactive
+         */
+        routeEnvelope_: null,
+        /**
+         * The selected node's origin-qualified id, or `null`. The Viewport binds it both ways to the shared
+         * `graphSelectionId` leaf.
          * @member {String|null} selectedId_=null
          * @reactive
          */
         selectedId_: null
     }
 
+    /**
+     * The nodes of the current scene, one record each, in the layout's order.
+     * @member {AgentOS.store.GraphSceneNodes|null} nodeStore=null
+     */
+    nodeStore = null
+    /**
+     * The relations of the selected node.
+     * @member {AgentOS.store.GraphSceneRelations|null} relationStore=null
+     */
+    relationStore = null
     /**
      * The scene of the current envelope, as the layout derived it.
      * @member {Object} scene
@@ -94,18 +149,39 @@ class ObservatoryContainer extends Container {
     selectionNote = null
 
     /**
-     * Mounts the canvas only where a canvas worker exists: without one (a config without it; the unit
-     * harness, whose stubs resolve the worker's readiness but never define `Neo.worker.Canvas`) the
-     * engine's canvas boot throws, so the pane keeps its head and strip and no surface.
+     * The projection stores exist before the configs apply, so an envelope in the config fills them.
      * @param {Object} config
      */
     construct(config) {
-        super.construct(config);
-
         const me = this;
 
+        me.nodeStore     = Neo.create(GraphSceneNodes);
+        me.relationStore = Neo.create(GraphSceneRelations);
+
+        super.construct(config)
+    }
+
+    /**
+     * The items exist from here on: the lists take their stores and report their choices, the canvas joins
+     * the body where a canvas worker exists — without one (a config without it; the unit harness, whose stubs
+     * resolve the worker's readiness but never define `Neo.worker.Canvas`) the engine's canvas boot throws, so
+     * the lists take the whole body — and an envelope in the config reaches the head, the strip and the lists.
+     */
+    onConstructed() {
+        super.onConstructed();
+
+        const
+            me        = this,
+            nodes     = me.getReference('observatory-nodes'),
+            relations = me.getReference('observatory-relations');
+
+        nodes.store     = me.nodeStore;
+        relations.store = me.relationStore;
+        nodes    .on('select', me.onNodeListSelect,     me);
+        relations.on('select', me.onRelationListSelect, me);
+
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
-            me.add({
+            me.getReference('observatory-body').insert(0, {
                 module    : ObservatoryCanvas,
                 flex      : 1,
                 reference : 'observatory-canvas',
@@ -113,21 +189,30 @@ class ObservatoryContainer extends Container {
                 selectedId: me.selectedId,
                 listeners : {nodeHover: me.onNodeHover, nodeSelect: me.onNodeSelect, scope: me}
             })
+        } else {
+            me.getReference('observatory-side').flex = 1
         }
+
+        me.updateLine();
+        me.syncLists();
+        me.updateSelection()
     }
 
     /**
-     * The head and the strip exist from here on; an envelope in the config landed before them.
+     * The stores go after the lists that render them.
+     * @param {...*} args
      */
-    onConstructed() {
-        super.onConstructed();
-        this.updateLine();
-        this.updateSelection()
+    destroy(...args) {
+        const {nodeStore, relationStore} = this;
+
+        super.destroy(...args);
+        nodeStore?.destroy();
+        relationStore?.destroy()
     }
 
     /**
-     * Triggered after the envelope config got changed: the scene is derived again, the read's line and the
-     * canvas follow, and a selection the new read no longer holds clears with its reason.
+     * Triggered after the envelope config got changed: the scene is derived again, the read's line, the node
+     * list and the canvas follow, and a selection the new read no longer holds clears with its reason.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
@@ -138,10 +223,19 @@ class ObservatoryContainer extends Container {
             {selectedId} = me,
             // the bound value is the provider's tracking proxy; the layout reads plain data and the worker
             // message carries plain data
-            scene        = ObservatorySceneLayout.fromGraphScene(value ? JSON.parse(JSON.stringify(value)) : null);
+            scene        = ObservatorySceneLayout.fromGraphScene(value ? JSON.parse(JSON.stringify(value)) : null),
+            relations    = scene.nodes.map(() => 0);
 
         me.scene = scene;
         me.updateLine();
+
+        scene.edges.forEach(([from, to]) => {
+            relations[from]++;
+            from !== to && relations[to]++
+        });
+
+        me.nodeStore.clear();
+        scene.nodes.length && me.nodeStore.add(scene.nodes.map(({hop, id, kind, label, rank}, index) => ({hop, id, kind, label, rank, relations: relations[index]})));
 
         if (selectedId && !Object.hasOwn(scene.index, selectedId)) {
             // an unobserved leaf is a retired read (another instance's): the id did not leave a read, no read is held
@@ -150,11 +244,23 @@ class ObservatoryContainer extends Container {
         }
 
         me.getReference('observatory-canvas')?.set({scene, selectedId: me.selectedId});
+        me.syncLists();
         me.updateSelection()
     }
 
     /**
-     * Triggered after the selectedId config got changed: the canvas inks it and the strip names it.
+     * Triggered after the routeEnvelope config got changed: the line follows the route's currency.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetRouteEnvelope(value, oldValue) {
+        this.updateLine()
+    }
+
+    /**
+     * Triggered after the selectedId config got changed: the canvas inks it, the lists follow and the strip
+     * names it.
      * @param {String|null} value
      * @param {String|null} oldValue
      * @protected
@@ -163,6 +269,7 @@ class ObservatoryContainer extends Container {
         const me = this;
 
         me.getReference('observatory-canvas')?.set({selectedId: value});
+        me.syncLists();
         me.updateSelection()
     }
 
@@ -197,6 +304,17 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary A row of the node list became selected — by a click or by the arrow keys.
+     * @param {Object} data
+     * @param {Object[]} data.records
+     */
+    onNodeListSelect({records}) {
+        const id = records?.[0]?.id;
+
+        id && id !== this.selectedId && this.onNodeSelect({node: {id}})
+    }
+
+    /**
      * @summary Names the node under the pointer in the head — its label, kind, and its route rank or its
      * distance from the route — and returns the gesture hint when the pointer rests on no node.
      * @param {Object} data
@@ -217,7 +335,7 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The canvas reports a selecting click: its node becomes the selection, or the empty surface
+     * @summary A choice of a node — a canvas click, a list row — becomes the selection, or the empty surface
      * clears it. Either way the last automatic clearing is no longer news. Only an id the current read holds
      * can be selected: an answer about a replaced read changes nothing, and its clearing reason stays.
      * @param {Object} data
@@ -236,15 +354,60 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary A relation row was chosen: the selection moves to the node at its other end.
+     * @param {Object} data
+     * @param {Object[]} data.records
+     */
+    onRelationListSelect({records}) {
+        const otherId = records?.[0]?.otherId;
+
+        otherId && this.onNodeSelect({node: {id: otherId}})
+    }
+
+    /**
+     * @summary Puts the node list's selection on the selected node and fills the relation list with that
+     * node's relations, seen from it. A reloaded node list has lost its selection, so it is placed again.
+     * @protected
+     */
+    syncLists() {
+        const
+            me                             = this,
+            {nodeStore, scene, selectedId} = me,
+            nodes                          = me.getReference('observatory-nodes'),
+            index                          = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
+            record                         = index < 0 ? null : nodeStore.get(selectedId);
+
+        me.relationStore.clear();
+
+        index < 0 || me.relationStore.add(scene.edges.flatMap((pair, edge) => {
+            if (!pair.includes(index)) {
+                return []
+            }
+
+            const other = scene.nodes[pair[0] === index ? pair[1] : pair[0]];
+
+            return [{direction: pair[0] === index ? 'out' : 'in', otherId: other.id, otherKind: other.kind, otherLabel: other.label, type: scene.edgeTypes[edge]}]
+        }).map((relation, position) => ({...relation, position})));
+
+        if (nodes?.selectionModel) {
+            nodes.selectionModel.deselectAll(true);
+            record && nodes.selectItem(record)
+        }
+    }
+
+    /**
      * @summary Writes the read's line into the head, with the capture instant in the viewer's own clock, the
-     * way the Golden Path text pane stamps it.
+     * way the Golden Path text pane stamps it, and a withheld route named beside it.
      * @protected
      */
     updateLine() {
-        const head = this.getReference('observatory-head');
+        const me = this, head = me.getReference('observatory-head'), route = me.routeEnvelope;
 
         if (head) {
-            head.vdom.cn[1].text = GraphSceneEnvelope.describe(this.envelope, at => ViewerTime.formatViewerTime(at)?.text ?? null).text;
+            head.vdom.cn[1].text = [
+                GraphSceneEnvelope.describe(me.envelope, at => ViewerTime.formatViewerTime(at)?.text ?? null).text,
+                GoldenPathEnvelope.currency(route) === 'withheld' && `route withheld · ${GoldenPathEnvelope.withheldReason(route)}`
+            ].filter(Boolean).join(' · ');
             head.update()
         }
     }

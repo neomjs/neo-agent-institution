@@ -19,6 +19,7 @@ import {expect, test}     from '@playwright/test';
 import Neo                from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core          from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import InstanceManager    from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
+import GoldenPathEnvelope from '../../../../../../../../apps/agentos/util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope from '../../../../../../../../apps/agentos/util/GraphSceneEnvelope.mjs';
 import ObservatoryPane    from '../../../../../../../../apps/agentos/view/fleet/goldenpath/ObservatoryContainer.mjs';
 
@@ -118,6 +119,69 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.envelope = graphRead({completeness: 'truncated'}, {snapshotId: 'snap-8b21'});
         expect(pane.selectedId, 'a new snapshot that still holds the id keeps it').toBe(q('issue-202'));
         expect(lineOf(pane)).toMatch(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
+
+        pane.destroy()
+    });
+
+    test('the node list holds every node of the read in the layout\'s order with its relation count; without a canvas the lists are the whole body', () => {
+        const pane = createPane({envelope: graphRead()});
+
+        expect(pane.nodeStore.items.map(({hop, id, rank, relations}) => [id.replace('neomjs/neo#', ''), hop, rank, relations])).toEqual([
+            ['pr-101',       0,    1,    2],
+            ['issue-202',    0,    2,    1],
+            ['issue-303',    0,    3,    0],
+            ['agent-grace',  1,    null, 2],
+            ['concept-dock', 1,    null, 2],
+            ['issue-404',    2,    null, 1],
+            ['issue-505',    null, null, 0]
+        ]);
+        expect(pane.getReference('observatory-side').flex).toBe(1);
+        expect(pane.getReference('observatory-nodes').store).toBe(pane.nodeStore);
+
+        pane.destroy()
+    });
+
+    test('a node row selects its node and lists its relations seen from it; a relation row moves the selection to its other end', () => {
+        const
+            pane      = createPane({envelope: graphRead()}),
+            relations = () => pane.relationStore.items.map(({direction, otherId, otherLabel, type}) => [type, direction, otherId.replace('neomjs/neo#', ''), otherLabel]);
+
+        pane.onNodeListSelect({records: [pane.nodeStore.get(q('pr-101'))]});
+
+        expect(pane.selectedId).toBe(q('pr-101'));
+        expect(relations()).toEqual([
+            ['mentions', 'out', 'concept-dock', 'Dock'],
+            ['authored', 'in',  'agent-grace',  'Grace']
+        ]);
+
+        pane.onRelationListSelect({records: [pane.relationStore.getAt(0)]});
+
+        expect(pane.selectedId).toBe(q('concept-dock'));
+        expect(relations(), 'an untyped relation keeps its absent type').toEqual([
+            ['mentions', 'in',  'pr-101',    'first route item'],
+            [null,       'out', 'issue-404', 'two hops out']
+        ]);
+
+        pane.onNodeSelect({node: null});
+        expect(pane.relationStore.getCount(), 'no selection, no relations').toBe(0);
+
+        pane.destroy()
+    });
+
+    test('a withheld Golden Path route is named beside the graph read\'s own words', () => {
+        const
+            pane     = createPane({envelope: graphRead()}),
+            withheld = GoldenPathEnvelope.fromWire({
+                capability: {state: 'wired', capturedAt: '2026-09-26T20:00:00.000Z'},
+                admission : {admitted: false, fallback: 'last-known-good', reasonCode: 'freshness-sla-breached', requiredFacets: [], staleFacets: []},
+                route     : {status: 'fresh', kind: 'computed-ranked', items: []}
+            });
+
+        pane.routeEnvelope = withheld;
+        expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · complete · route withheld · freshness-sla-breached$/);
+
+        pane.routeEnvelope = GoldenPathEnvelope.fromWire({...withheld, admission: {...withheld.admission, admitted: true, fallback: 'current', reasonCode: 'current'}});
+        expect(lineOf(pane)).toMatch(/ · complete$/);
 
         pane.destroy()
     });

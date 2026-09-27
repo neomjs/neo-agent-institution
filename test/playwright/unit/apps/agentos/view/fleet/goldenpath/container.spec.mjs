@@ -21,6 +21,7 @@ import * as core          from '../../../../../../../../node_modules/neo.mjs/src
 import InstanceManager    from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import GoldenPathEnvelope from '../../../../../../../../apps/agentos/util/GoldenPathEnvelope.mjs';
 import GoldenPathPane     from '../../../../../../../../apps/agentos/view/fleet/goldenpath/Container.mjs';
+import GraphSceneEnvelope from '../../../../../../../../apps/agentos/util/GraphSceneEnvelope.mjs';
 
 const CAPTURED_AT = '2026-09-25T06:00:00.000Z',
       EXPIRES_AT  = '2026-09-25T18:00:00.000Z';
@@ -101,8 +102,8 @@ test.describe('AgentOS.view.fleet.goldenpath.Container — the computed route as
 
         const [first, second] = itemsOf(pane);
 
-        expect(first.items[0].items.map(item => item.text)).toEqual(['#2', 'Sweep the notes', 'score 0.91']);
-        expect(second.items[0].items.map(item => item.text)).toEqual(['#1', 'Golden Path pane', 'score 0.87']);
+        expect(first.items[0].items.map(item => item.text)).toEqual(['#2', 'Sweep the notes', 'score 0.91', 'Select in the Observatory']);
+        expect(second.items[0].items.map(item => item.text)).toEqual(['#1', 'Golden Path pane', 'score 0.87', 'Select in the Observatory']);
         expect(pane.getReference('golden-path-provenance').text).toMatch(/^golden-path-synthesizer · run run-42 · gp-v2 · expires /);
 
         pane.destroy()
@@ -166,13 +167,74 @@ test.describe('AgentOS.view.fleet.goldenpath.Container — the computed route as
               [first, again] = itemsOf(repeated);
 
         expect(repeated.itemStore.getCount()).toBe(2);
-        expect(first.items[0].items.map(item => item.text)).toEqual(['—', 'first', '']);
+        expect(first.items[0].items.map(item => item.text)).toEqual(['—', 'first', '', 'Select in the Observatory']);
         expect(first.items[1].text).toBe('neo#1 · a · 2 more');
         expect(again.items[0].items[1].text).toBe('again');
         expect(itemsOf(empty)[0].text).toBe('No items in this route · kind none');
 
         repeated.destroy();
         empty.destroy()
+    });
+
+    test('an item selects its node in the graph read: the button is live only where the read lists the item, and the selected item is marked', () => {
+        const
+            listing = route => GraphSceneEnvelope.fromWire({capability: {state: 'current'}, scene: {route, nodes: route.map(id => ({id}))}}),
+            pane    = createPane({envelope: envelope(), graphEnvelope: listing(['neo#19226'])}),
+            buttons = () => itemsOf(pane).map(card => card.down({ntype: 'button'}).disabled),
+            marked  = () => itemsOf(pane).map(card => card.cls.includes('is-selected'));
+
+        expect(buttons(), 'the read lists only the first item').toEqual([false, true]);
+
+        pane.onItemChoose('neo#19226');
+        expect(pane.selectedId).toBe('neo#19226');
+        expect(marked()).toEqual([true, false]);
+
+        pane.onItemChoose('neo#210');
+        expect(pane.selectedId, 'an item the read does not list selects nothing').toBe('neo#19226');
+
+        pane.graphEnvelope = listing(['neo#19226', 'neo#210']);
+        expect(buttons(), 'a read that lists it enables it').toEqual([false, false]);
+
+        pane.selectedId = 'neo#210';
+        expect(marked(), 'a selection made elsewhere marks its item').toEqual([false, true]);
+
+        pane.destroy()
+    });
+
+    test('a bare route id selects the node the graph read qualified with its origin', () => {
+        const pane = createPane({
+            envelope     : envelope({route: {items: [{id: 'issue-9853', title: 'bare', score: 1, rank: 1, citations: []}]}}),
+            graphEnvelope: GraphSceneEnvelope.fromWire({capability: {state: 'current'}, scene: {route: ['neomjs/neo#issue-9853'], nodes: [{id: 'neomjs/neo#issue-9853'}]}})
+        });
+
+        pane.onItemChoose('issue-9853');
+        expect(pane.selectedId).toBe('neomjs/neo#issue-9853');
+
+        pane.destroy()
+    });
+
+    test('an item whose node the read cut, or cannot tell apart from another origin\'s, stays unselectable', () => {
+        const pane = createPane({
+            envelope     : envelope({route: {items: [
+                {id: 'issue-1', title: 'two origins', score: 1, rank: 1, citations: []},
+                {id: 'issue-2', title: 'cut',         score: 1, rank: 2, citations: []}
+            ]}}),
+            graphEnvelope: GraphSceneEnvelope.fromWire({capability: {state: 'current'}, scene: {
+                route: ['org/a#issue-1', 'org/b#issue-1', 'org/a#issue-2'],
+                nodes: [{id: 'org/a#issue-1'}, {id: 'org/b#issue-1'}]
+            }})
+        });
+
+        expect(itemsOf(pane).map(card => card.down({ntype: 'button'}).disabled)).toEqual([true, true]);
+
+        pane.selectedId = 'org/a#issue-1';
+        pane.onItemChoose('issue-1');
+        pane.onItemChoose('issue-2');
+
+        expect(pane.selectedId, 'neither choice moves the shared selection').toBe('org/a#issue-1');
+        expect(itemsOf(pane).map(card => card.cls.includes('is-selected')), 'the ambiguous item never claims it').toEqual([false, false]);
+
+        pane.destroy()
     });
 
     test('reads are intent-only: construction and Refresh each fire one request', () => {
