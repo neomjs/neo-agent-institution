@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    50f57dfe2ae2b8ca687fccd19f95755f3848343c573a95f9801c08468296d88d
+    8077534a5b433ea79fd8515de762ecea38e4c869905e12f7c11484ca097a734f
 
 apps/agentos/CARD-CONTRACT.md
     52db715f9e6d1d7e0c29faf8d16897c65805d752
@@ -195,7 +195,7 @@ apps/agentos/util/FleetStartPlan.mjs
     8133ea5500f9f193b515e5ab70ce1a172fa31921
 
 apps/agentos/util/GoldenPathEnvelope.mjs
-    49ad93e837ee21d8105f279233a781e8dcbc032b
+    b112a479ca39a63d579e8dc5f13926fe6a9aa3a0
 
 apps/agentos/util/GraphSceneEnvelope.mjs
     f460cc8825861f6e07f91b5fb06f75cff9979291
@@ -288,7 +288,7 @@ apps/agentos/view/fleet/detail/Container.mjs
     0548d040121c6c4ba84e44d3d506aeafe878befd
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
-    8f0e24513d52653a998c7d8831b0a8f75acfd46f
+    d4ccab07bc3f68123334b9f7438cf7c7f6dff3d8
 
 apps/agentos/view/fleet/goldenpath/ObservatoryCanvas.mjs
     042eb1202d488758ddf7578739ea3184ec8cf68a
@@ -444,7 +444,7 @@ resources/scss/src/apps/agentos/fleet/detail/Container.scss
     cb39bd986af84641a131e8ed06bef2e5451c65af
 
 resources/scss/src/apps/agentos/fleet/goldenpath/Container.scss
-    139fc272380c2475c929df23673055bba314e85a
+    f42259d82dcfe9af406d05f1ed313a41d834942c
 
 resources/scss/src/apps/agentos/fleet/goldenpath/ObservatoryContainer.scss
     c5c1cedb397eb48ffea8a9f193571157e7c65e36

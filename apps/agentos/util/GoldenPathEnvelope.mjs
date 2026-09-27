@@ -16,6 +16,7 @@ import ClosedShape from './ClosedShape.mjs';
  */
 const SHAPE = {
     capability: {state: null, capturedAt: null, reason: null},
+    handoff    : {markdown: null, mtimeMs: null, ageMs: null, staleAfterMs: null, stale: null, reason: null},
     admission : {admitted: null, fallback: null, reasonCode: null, requiredFacets: [], staleFacets: []},
     route     : {
         schemaVersion: null,
