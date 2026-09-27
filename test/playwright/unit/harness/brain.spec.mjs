@@ -199,7 +199,7 @@ test.describe('harness brain lifecycle', () => {
         const resolved = await resolveBrainPaths({repoRoot: resolveAgentOsRuntimeRoot(process.env)});
 
         expect(Object.keys(resolved).sort()).toEqual([
-            'backupPath', 'chromaDataDir', 'chromaPort', 'dbPath', 'fleetInstanceRoot', 'fleetPlaneBase', 'orchestratorDataDir'
+            'backupPath', 'chromaDataDir', 'chromaPort', 'dbPath', 'fleetAgentsRoot', 'fleetPlaneBase', 'orchestratorDataDir'
         ]);
         expect(path.isAbsolute(resolved.dbPath)).toBe(true);
         expect(Number.isInteger(Number(resolved.chromaPort))).toBe(true);
@@ -264,7 +264,7 @@ test.describe('harness brain lifecycle', () => {
     test('buildBrainProfile binds every mutable path under the isolation root and gates every side lane off', () => {
         const profile = buildBrainProfile({chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir});
 
-        for (const leafName of ['NEO_AI_DB_PATH', 'NEO_AI_ORCHESTRATOR_DIR', 'NEO_BACKUP_PATH', 'NEO_CHROMA_DATA_DIR_TEST', 'NEO_FLEET_INSTANCE_ROOT', 'NEO_REM_RUN_STATE_DIR']) {
+        for (const leafName of ['NEO_AI_DB_PATH', 'NEO_AI_ORCHESTRATOR_DIR', 'NEO_BACKUP_PATH', 'NEO_CHROMA_DATA_DIR_TEST', 'NEO_FLEET_AGENTS_ROOT', 'NEO_REM_RUN_STATE_DIR']) {
             expect(profile[leafName].startsWith(workDir + path.sep)).toBe(true)
         }
 
@@ -411,7 +411,7 @@ test.describe('harness brain lifecycle', () => {
             chromaDataDir      : path.join(workDir, 'chroma'),
             chromaPort         : 18500,
             dbPath             : path.join(workDir, 'sqlite', 'memory-core-graph.sqlite'),
-            fleetInstanceRoot  : path.join(workDir, 'fleet', 'instances'),
+            fleetAgentsRoot    : path.join(workDir, 'fleet', 'agents'),
             orchestratorDataDir: path.join(workDir, 'orchestrator')
         };
 
@@ -439,7 +439,7 @@ test.describe('harness brain lifecycle', () => {
                 chromaDataDir      : path.join(workDir, 'chroma'),
                 chromaPort         : 18500,
                 dbPath             : path.join(workDir, 'sqlite', 'memory-core-graph.sqlite'),
-                fleetInstanceRoot  : path.join(workDir, 'fleet', 'instances'),
+                fleetAgentsRoot    : path.join(workDir, 'fleet', 'agents'),
                 orchestratorDataDir: path.join(workDir, 'orchestrator')
             };
 
