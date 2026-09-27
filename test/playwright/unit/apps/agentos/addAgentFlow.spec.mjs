@@ -75,8 +75,34 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         // a direct-browser Fleet seat still brings its PAT, and validation still asks for one
         expect(AddAgentFlow.createDefineAgentIntent(cleanPayload(), {}).credential).toBe(CREDENTIAL);
         expect(AddAgentFlow.validateDefinePayload({...cleanPayload(), credential: ''}).valid).toBe(false);
-        expect(AddAgentFlow.validateDefinePayload({...unowned, credential: '', launchOwner: 'external'})).toEqual({valid: true, reason: ''});
+        expect(AddAgentFlow.validateDefinePayload({...unowned, credential: '', launchOwner: 'external'}, {externalAllowed: true}))
+            .toEqual({valid: true, reason: ''});
         expect(AddAgentFlow.LAUNCH_OWNERS).toEqual(['external', 'fleet'])
+    });
+
+    test('only the shell registers a seat that runs in its own harness — a browser bridge refuses it before the write, whatever Fleet it reaches (#280)', async () => {
+        const
+            {launchOwner, ...unowned} = cleanPayload(),
+            writes  = [],
+            browser = () => ({defineAgent: async payload => { writes.push(payload); return cleanReadback() }});
+
+        expect(AddAgentFlow.canRegisterExternal({credentialIngress: 'shell'})).toBe(true);
+        expect(AddAgentFlow.canRegisterExternal({})).toBe(false);
+        expect(AddAgentFlow.canRegisterExternal(null)).toBe(false);
+
+        const refused = AddAgentFlow.validateDefinePayload({...unowned, launchOwner: 'external'});
+
+        expect(refused.valid).toBe(false);
+        expect(refused.reason).toContain('can only be added from the installed shell');
+
+        // wire v1 reads the same on an older Fleet and a current one, so the gate precedes the bridge
+        expect(await AddAgentFlow.submitDefineAgent({bridgeResolver: browser, payload: {...unowned, launchOwner: 'external'}}))
+            .toEqual({state: 'rejected', reason: refused.reason});
+        expect(writes).toEqual([]);
+
+        // a Fleet-launched seat on the same bridge still writes, with its PAT
+        await AddAgentFlow.submitDefineAgent({bridgeResolver: browser, payload: cleanPayload()});
+        expect(writes).toEqual([{...cleanPayload(), launchOwner: 'fleet'}])
     });
 
     test('the readback guard fails closed on every poisoned shape and passes the canonical one', () => {
@@ -251,7 +277,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         form.destroy()
     });
 
-    test('the form registers a seat that runs in its own harness by default: no PAT field, the choice marked, public intent only (#280)', async () => {
+    test('the form defaults to a seat that runs in its own harness: no PAT field, the choice marked, and a browser bridge writes nothing for it (#280)', async () => {
         let received;
 
         const form = Neo.create(AddAgentForm, {
@@ -266,7 +292,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.launchOwner).toBe('external');
         expect(chips()).toEqual(['external']);
         expect(credentialField.hidden).toBe(true);
-        expect(form.getReference('flow-status').text).toContain('no PAT is needed');
+        expect(form.getReference('flow-status').text).toContain('can only be added from the installed shell');
 
         // the other answer brings the PAT field back, and switching back hides it again
         form.launchOwner = 'fleet';
@@ -276,7 +302,30 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(credentialField.hidden).toBe(true);
 
         (await form.getField('githubUsername')).value = 'neo-gpt-emmy';
-        credentialField.value                          = CREDENTIAL;   // typed, then hidden: it must not cross
+        credentialField.value                          = CREDENTIAL;
+        form.harnessType                               = 'codex-desktop';
+
+        await form.onSubmitClick();
+
+        expect(received).toBeUndefined();
+        expect(form.flowStatus.state).toBe('rejected');
+        expect(form.flowStatus.reason).toContain('can only be added from the installed shell');
+
+        form.destroy()
+    });
+
+    test('from the shell, the external default crosses as public intent only (#280)', async () => {
+        let received;
+
+        const form = Neo.create(AddAgentForm, {
+            appName       : 'AgentOSAddAgentFlowTest',
+            bridgeResolver: () => ({credentialIngress: 'shell', defineAgent: async payload => { received = payload; return cleanReadback() }})
+        });
+
+        expect(await form.getField('credential')).toBeFalsy();   // the shell owns credential entry
+        expect(form.getReference('flow-status').text).toContain('no PAT is needed');
+
+        (await form.getField('githubUsername')).value = 'neo-gpt-emmy';
         form.harnessType                               = 'codex-desktop';
 
         await form.onSubmitClick();
@@ -296,6 +345,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         const credentialField = await form.getField('credential');
         const usernameField   = await form.getField('githubUsername');
 
+        form.launchOwner      = 'fleet';   // the seat that brings a PAT
         usernameField.value   = 'neo-kimi-phoebe';
         credentialField.value = CREDENTIAL;
 

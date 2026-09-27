@@ -260,11 +260,16 @@ class AddAgentForm extends FormContainer {
      * @returns {String}
      */
     statusLineFor(state) {
-        const shellOwned = AddAgentFlow.isShellCredentialIngress(AddAgentFlow.resolveRegistryBridge(this.bridgeResolver));
+        const
+            bridge     = AddAgentFlow.resolveRegistryBridge(this.bridgeResolver),
+            shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
+            external   = this.launchOwner === 'external';
 
         return {
-            'idle'              : this.launchOwner === 'external'
-                ? 'Registers a seat that runs in its own harness: Fleet will not launch it, so no PAT is needed.'
+            'idle'              : external && !AddAgentFlow.canRegisterExternal(bridge)
+                ? AddAgentFlow.validateDefinePayload({launchOwner: 'external'}).reason
+                : external
+                ? 'Registers a seat that runs in its own harness: Fleet refuses to start it, so no PAT is needed.'
                 : shellOwned
                     ? 'Credential entry is owned by the native shell and never enters App Worker state.'
                     : 'PAT is submitted to the Brain-side registry and never stored in browser state.',
@@ -340,7 +345,10 @@ class AddAgentForm extends FormContainer {
         me.flowStatus = {state: 'validating', reason: ''};
 
         try {
-            const validation = AddAgentFlow.validateDefinePayload(payload, {credentialRequired: !shellOwned});
+            const validation = AddAgentFlow.validateDefinePayload(payload, {
+                credentialRequired: !shellOwned,
+                externalAllowed   : AddAgentFlow.canRegisterExternal(bridge)
+            });
 
             // an incomplete definition never renders `submitting` — nothing is in flight
             if (!validation.valid) {
