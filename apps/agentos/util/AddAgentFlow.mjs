@@ -159,11 +159,12 @@ class AddAgentFlow extends Base {
 
     /**
      * @summary Whether this ingress may register a seat that runs in its own harness. Such a row must
-     * be refused a Start from its first write, and only the shell can vouch for that: its Fleet server
-     * is its own bundled Brain, pinned at a commit whose registry records `launchOwnerSince` in the
-     * same write. A browser bridge may reach any Fleet server, and wire v1 carries no ownership
-     * semantics, so it cannot tell an older registry, which would store the row startable, from a
-     * current one. There the registration fails closed, before the write.
+     * be refused a Start from its first write, and only the shell can vouch for that: it forwards the
+     * define only through the Fleet it started from its bundled Brain, pinned at a commit whose
+     * registry records `launchOwnerSince` in the same write, and refuses it otherwise
+     * (`harness/fleetCapability.mjs`). A browser bridge may reach any Fleet server, and wire v1 carries
+     * no ownership semantics, so it cannot tell an older registry, which would store the row
+     * startable, from a current one. There the registration fails closed, before the write.
      * @param {Object|null} bridge
      * @returns {Boolean}
      */
@@ -238,8 +239,13 @@ class AddAgentFlow extends Base {
         try {
             outcome = await bridge.defineAgent(request)
         } catch (error) {
-            // transport failure: the reason stays generic — an error message assembled elsewhere is
-            // not a surface we allow to carry credential bytes into the DOM
+            // a refusal is an answer, and with no credential in the request its text carries none; any
+            // other failure stays generic — an error message assembled elsewhere is not a surface we
+            // allow to carry credential bytes into the DOM
+            if (error?.fleetWireState === 'refused' && !request.credential && error.message) {
+                return {state: 'rejected', reason: error.message}
+            }
+
             return {state: 'rejected', reason: 'Could not reach the Fleet Registry. Nothing was stored in browser state.'}
         }
 

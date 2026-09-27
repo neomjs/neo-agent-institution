@@ -105,6 +105,27 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(writes).toEqual([{...cleanPayload(), launchOwner: 'fleet'}])
     });
 
+    test('a refusal reads as the refusal when nothing secret crossed: the shell\'s reason for an external seat renders, a PAT-bearing failure stays generic (#280)', async () => {
+        const
+            {launchOwner, ...unowned} = cleanPayload(),
+            reason  = 'fleet: a seat that runs in its own harness can only be added through the Fleet this app started from its bundled Brain',
+            refused = message => Object.assign(new Error(message), {fleetWireState: 'refused'});
+
+        expect(await AddAgentFlow.submitDefineAgent({
+            bridgeResolver: () => ({credentialIngress: 'shell', defineAgent: async () => { throw refused(reason) }}),
+            payload       : {...unowned, launchOwner: 'external'}
+        })).toEqual({state: 'rejected', reason});
+
+        // a direct-browser Fleet seat carries its PAT: whatever the server said stays out of the DOM
+        const generic = await AddAgentFlow.submitDefineAgent({
+            bridgeResolver: () => ({defineAgent: async () => { throw refused(`echo ${CREDENTIAL}`) }}),
+            payload       : cleanPayload()
+        });
+
+        expect(generic.reason).toBe('Could not reach the Fleet Registry. Nothing was stored in browser state.');
+        expect(generic.reason).not.toContain(CREDENTIAL)
+    });
+
     test('the readback guard fails closed on every poisoned shape and passes the canonical one', () => {
         // missing public identity
         expect(AddAgentFlow.validateReadback({githubUsername: 'x', harnessType: 'y'}, CREDENTIAL).valid).toBe(false);

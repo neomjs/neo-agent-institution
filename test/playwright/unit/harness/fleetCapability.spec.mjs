@@ -297,7 +297,7 @@ test.describe('harness Fleet capability', () => {
                     calls.fetch.push(JSON.parse(init.body).params);
                     return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {id: 'emmy'}})}
                 },
-                getBrain       : async () => ({fleetPort: 9191, up: true}),
+                getBrain       : async () => ({bundledFleet: true, fleetPort: 9191, up: true}),
                 isTrustedSender: candidate => candidate === event
             }),
             define = params => capability.request(event, {method: 'defineAgent', params});
@@ -326,7 +326,7 @@ test.describe('harness Fleet capability', () => {
                     forwarded.push(JSON.parse(init.body).params);
                     return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {}})}
                 },
-                getBrain       : async () => ({fleetPort: 9191, up: true}),
+                getBrain       : async () => ({bundledFleet: true, fleetPort: 9191, up: true}),
                 isTrustedSender: candidate => candidate === event
             }),
             define = params => capability.request(event, {method: 'defineAgent', params});
@@ -340,6 +340,40 @@ test.describe('harness Fleet capability', () => {
         expect(external.launchOwnerSince).toBe(external.createdAt);
         expect(fleet).toMatchObject({launchOwner: 'fleet', launchRefusal: null});
         expect(fleet.launchOwnerSince).toBe(fleet.createdAt)
+    });
+
+    test('a Fleet this shell did not start from its bundled Brain registers no external seat — a same-bearer reused or a checkout Fleet is refused before the write; a Fleet-launched seat still goes through', async () => {
+        const
+            event = {sender: 'trusted'},
+            // a reused incumbent answers on the same port, bearer and viewer; a checkout spawns its env-selected Brain
+            boots = [
+                {fleetPort: 9191, mode: 'attach', up: true},
+                {bundledFleet: false, fleetPort: 9191, mode: 'own', up: true}
+            ];
+
+        for (const boot of boots) {
+            const
+                calls      = {credential: [], fetch: []},
+                capability = createCapability({
+                    credentialProvider: async () => { calls.credential.push(1); return 'github_pat_main_owned' },
+                    fetchImpl         : async (url, init) => {
+                        calls.fetch.push(JSON.parse(init.body).params);
+                        return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {}})}
+                    },
+                    getBrain       : async () => boot,
+                    isTrustedSender: candidate => candidate === event
+                }),
+                define = params => capability.request(event, {method: 'defineAgent', params}),
+                refusal = await define({githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'});
+
+            expect(refusal).toMatchObject({state: FLEET_WIRE_RESPONSE_STATES.refused});
+            expect(refusal.error).toContain('bundled Brain');
+            expect(calls.fetch).toEqual([]);
+            expect(calls.credential).toEqual([]);
+
+            await define({githubUsername: 'alice', harnessType: 'codex', launchOwner: 'fleet'});
+            expect(calls.fetch.map(params => params.launchOwner)).toEqual(['fleet'])
+        }
     });
 
     test('projects connectTenant onto tenantUrl only before attaching the provider credential', async () => {

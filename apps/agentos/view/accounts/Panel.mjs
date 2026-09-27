@@ -616,11 +616,14 @@ class Accounts extends DashboardPanel {
                         : 'Agent added. PAT was not retained in the app worker.'
             )
         } catch (error) {
+            // a refusal is an answer, and with no credential in the payload its text carries none
             this.updateBridgeStatus(
                 'is-error',
-                shellOwned
-                    ? 'Could not add agent. No credential entered App Worker state.'
-                    : 'Could not add agent. Nothing was stored in browser state; PAT field was cleared.'
+                error?.fleetWireState === 'refused' && !payload.credential && error.message
+                    ? `Could not add agent. ${error.message}`
+                    : shellOwned
+                        ? 'Could not add agent. No credential entered App Worker state.'
+                        : 'Could not add agent. Nothing was stored in browser state; PAT field was cleared.'
             )
         } finally {
             await this.clearCredentialField()

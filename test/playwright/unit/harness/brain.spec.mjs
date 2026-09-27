@@ -21,6 +21,7 @@ import {
     loadFleetRuntimeContracts,
     probeFleetServing,
     probePort,
+    provesBundledFleet,
     registerOwnedChild,
     resolveAgentOsRuntimeRoot,
     resolveBrainPaths,
@@ -389,6 +390,21 @@ test.describe('harness brain lifecycle', () => {
             startFleet       : false,
             startOrchestrator: false
         })
+    });
+
+    test('provesBundledFleet: only a packaged shell that spawned its own Fleet proves the Brain pin', () => {
+        // a reused incumbent is any process on the same port, bearer and viewer; a checkout spawns an env-selected root
+        expect(provesBundledFleet({packaged: true,  startFleet: true })).toBe(true);
+        expect(provesBundledFleet({packaged: true,  startFleet: false})).toBe(false);
+        expect(provesBundledFleet({packaged: false, startFleet: true })).toBe(false);
+        expect(provesBundledFleet({packaged: false, startFleet: false})).toBe(false);
+
+        // the plan a free port yields spawns, the plan a serving incumbent yields reuses
+        const spawns = resolveProductBrainPlan({fleetServing: false, orchestratorAlive: false, planeBase: ''}),
+              reuses = resolveProductBrainPlan({fleetServing: true,  orchestratorAlive: false, planeBase: ''});
+
+        expect(provesBundledFleet({packaged: true, startFleet: spawns.startFleet})).toBe(true);
+        expect(provesBundledFleet({packaged: true, startFleet: reuses.startFleet})).toBe(false)
     });
 
     test('resolveProductBrainPlan: without a plane, host liveness selects attach else own', () => {

@@ -183,6 +183,33 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
         }
     });
 
+    test('the shell\'s refusal of an external seat renders its reason; nothing secret crossed (#280)', async () => {
+        const
+            previousOS = globalThis.AgentOS,
+            reason     = 'fleet: a seat that runs in its own harness can only be added through the Fleet this app started from its bundled Brain',
+            calls      = [];
+
+        globalThis.AgentOS = {...previousOS, fleet: {...previousOS?.fleet, registryBridge: {credentialIngress: 'shell', defineAgent: async () => ({})}}};
+
+        try {
+            await Accounts.prototype.onSubmitAgentClick.call({
+                clearCredentialField       : async () => calls.push(['clear']),
+                fire                       : () => calls.push(['unexpected-fire']),
+                getReference               : () => ({
+                    getSubmitValues: async () => ({githubUsername: 'neo-gpt-emmy', harnessType: 'codex-desktop', launchOwner: 'external'}),
+                    validate       : async () => true
+                }),
+                submitToFleetRegistryBridge: async () => { throw Object.assign(new Error(reason), {fleetWireState: 'refused'}) },
+                updateBridgeStatus         : (state, message) => calls.push(['status', state, message]),
+                upsertPublicAgentDefinition: () => calls.push(['unexpected-upsert'])
+            });
+
+            expect(calls).toEqual([['status', 'is-error', `Could not add agent. ${reason}`], ['clear']])
+        } finally {
+            globalThis.AgentOS = previousOS
+        }
+    });
+
     test('the sample is an existing peer: it selects the harness it runs in, hides the PAT, and says what adding it takes (#280)', async () => {
         const
             previousOS = globalThis.AgentOS,
