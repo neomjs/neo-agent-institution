@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    9016939ab5a44e12f8c997b75bf462f4965c172817e9434ec103c6c70996eccf
+    50f57dfe2ae2b8ca687fccd19f95755f3848343c573a95f9801c08468296d88d
 
 apps/agentos/CARD-CONTRACT.md
     52db715f9e6d1d7e0c29faf8d16897c65805d752
