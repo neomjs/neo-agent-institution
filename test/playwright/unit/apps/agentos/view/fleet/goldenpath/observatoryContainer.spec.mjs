@@ -69,6 +69,24 @@ const
     stripOf    = pane => pane.getReference('observatory-selection');
 
 test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canonical selection over the bounded read', () => {
+    test('the head counts the edges the layout drew and names the read\'s others: an end the read lacks, an index pair, a repeat', () => {
+        const pane = createPane();
+
+        pane.envelope = graphRead();
+        expect(lineOf(pane), 'a read drawn whole').toMatch(/ · 7 nodes · 4 edges · complete$/);
+
+        pane.envelope = graphRead({edges: [
+            ...graphRead().scene.edges,
+            {from: q('agent-grace'), to: q('issue-999'), type: 'authored'},
+            {from: 0, to: 2},
+            {from: q('agent-grace'), to: q('pr-101'), type: 'authored'}
+        ]});
+        expect(pane.scene.edges).toHaveLength(4);
+        expect(lineOf(pane)).toMatch(/ · 7 nodes · 4 edges · 3 edges not drawn · complete$/);
+
+        pane.destroy()
+    });
+
     test('a cold pane reads unobserved, selects nothing and mounts no canvas without a canvas worker', () => {
         const pane = createPane();
 

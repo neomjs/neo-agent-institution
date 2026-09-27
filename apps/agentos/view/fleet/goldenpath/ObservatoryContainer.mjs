@@ -527,11 +527,16 @@ class ObservatoryContainer extends Container {
      * @protected
      */
     updateLine() {
-        const me = this, head = me.getReference('observatory-head'), route = me.routeEnvelope;
+        const
+            me    = this,
+            head  = me.getReference('observatory-head'),
+            route = me.routeEnvelope,
+            // the line counts what the layout drew, and names what the read carried beyond it
+            drawn = me.scene && {nodes: me.scene.nodes.length, edges: me.scene.edges.length};
 
         if (head) {
             head.vdom.cn[1].text = [
-                GraphSceneEnvelope.describe(me.envelope, at => ViewerTime.formatViewerTime(at)?.text ?? null).text,
+                GraphSceneEnvelope.describe(me.envelope, at => ViewerTime.formatViewerTime(at)?.text ?? null, drawn).text,
                 GoldenPathEnvelope.currency(route) === 'withheld' && `route withheld · ${GoldenPathEnvelope.withheldReason(route)}`
             ].filter(Boolean).join(' · ');
             head.update()
