@@ -1,13 +1,5 @@
 const MAX_CREDENTIAL_LENGTH = 1024;
 
-/**
- * Why this shell registers no seat that runs in its own harness through a Fleet it did not start
- * from its bundled Brain.
- * @type {String}
- */
-const EXTERNAL_UNPROVEN = 'fleet: a seat that runs in its own harness can only be added through the Fleet this app ' +
-    'started from its bundled Brain; this one was reused or comes from a checkout, so it cannot prove it will refuse to start it';
-
 function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -260,17 +252,6 @@ export function createFleetCapability({
 
                 if (!intent) {
                     return reject(`fleet: malformed public intent for '${request.method}'`)
-                }
-
-                // a seat that runs in its own harness keeps its own credentials: Fleet never launches
-                // it, so nothing is asked for. Only the explicit intent qualifies; a define without a
-                // launch owner, or a Fleet-launched one, keeps the native credential custody. And only
-                // the Fleet this shell started from its bundled Brain proves the refusal is recorded at
-                // birth: a reused incumbent or a checkout's Brain may store the seat startable
-                if (request.method === 'defineAgent' && intent.launchOwner === 'external') {
-                    const boot = await Promise.resolve().then(getBrain).catch(() => null);
-
-                    return boot?.bundledFleet === true ? send(request.method, intent) : reject(EXTERNAL_UNPROVEN)
                 }
 
                 if (!credentialProvider) {

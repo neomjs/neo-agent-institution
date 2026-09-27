@@ -101,12 +101,9 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             const
                 usernameField   = page.getByRole('textbox', {name: 'GitHub username', exact: true}),
                 credentialField = page.getByRole('textbox', {name: 'GitHub PAT', exact: true}),
-                fleetLaunch     = page.locator('.agent-launch-owner-picker .neo-radiofield').filter({hasText: 'Fleet launches it'}),
                 harnessField    = page.locator('.agent-harness-picker .neo-radiofield').filter({hasText: 'Antigravity'});
 
             await usernameField.fill(createdAgentId);
-            // a Fleet-launched seat is the one that brings a PAT; the choice outlives the attempt
-            await fleetLaunch.locator('label').click();
             await credentialField.fill(createdSecret);
             await harnessField.locator('label').click();
             await expect(harnessField.locator('input[type="radio"]')).toBeChecked();

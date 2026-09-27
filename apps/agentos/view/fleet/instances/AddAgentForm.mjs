@@ -71,22 +71,13 @@ class AddAgentForm extends FormContainer {
          */
         harnessType_: null,
         /**
-         * Who launches the seat: `external` (it already runs in its own harness, so it needs no PAT
-         * and Fleet refuses to start it) or `fleet` (a new resident this cockpit launches). Chip-driven
-         * like the harness; the default is the choice that can never start a second copy of a live peer.
-         * @member {String} launchOwner_='external'
-         * @reactive
-         */
-        launchOwner_: 'external',
-        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The form anatomy — heading · username · launch-owner chip row · PAT (a Fleet-launched seat
-         * only) · harness chip row (registry-derived) · actions (submit) · status line. Geometry + skin
-         * in `AddAgentForm.scss`, colors token-only.
+         * The form anatomy — heading · username · PAT · harness chip row (registry-derived) ·
+         * actions (submit) · status line. Geometry + skin in `AddAgentForm.scss`, colors token-only.
          * @member {Object[]} items
          */
         // every row is flex:'none': the vbox default (grow 1) would distribute a stretched host's
@@ -107,26 +98,6 @@ class AddAgentForm extends FormContainer {
             placeholderText: 'neo-kimi-phoebe',
             reference      : 'field-username',
             required       : true
-        }, {
-            ntype    : 'container',
-            cls      : ['fm-add-owner-row'],
-            flex     : 'none',
-            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
-            reference: 'owner-row',
-
-            items: [{
-                module     : Button,
-                cls        : ['fm-chip'],
-                handler    : 'up.onLaunchOwnerChipClick',
-                launchOwner: 'external',
-                text       : 'Runs in its own harness'
-            }, {
-                module     : Button,
-                cls        : ['fm-chip'],
-                handler    : 'up.onLaunchOwnerChipClick',
-                launchOwner: 'fleet',
-                text       : 'Fleet launches it'
-            }]
         }, {
             module         : PasswordField,
             clearable      : true,
@@ -196,12 +167,15 @@ class AddAgentForm extends FormContainer {
             secretField && me.remove(secretField);
         }
 
-        me.syncLaunchOwner();
-
         if (!bridge?.defineAgent) {
             me.flowStatus = {
                 state : 'gated',
                 reason: 'Fleet Registry bridge unavailable — agent setup fails closed. Start the fleet server from the neo-agent-brain checkout.'
+            }
+        } else if (shellOwned) {
+            me.flowStatus = {
+                state : 'idle',
+                reason: 'Credential entry is owned by the native shell and never enters App Worker state.'
             }
         }
     }
@@ -244,35 +218,17 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
-     * Triggered after the launchOwner config got changed — re-mark the chip row, show the PAT field
-     * only for a Fleet-launched seat, and restate the idle line for the new choice.
-     * @param {String} value
-     * @param {String} oldValue
-     * @protected
-     */
-    afterSetLaunchOwner(value, oldValue) {
-        oldValue !== undefined && this.syncLaunchOwner()
-    }
-
-    /**
      * @summary Default operator-facing line per flow state, used when an outcome carries no reason.
      * @param {String} state
      * @returns {String}
      */
     statusLineFor(state) {
-        const
-            bridge     = AddAgentFlow.resolveRegistryBridge(this.bridgeResolver),
-            shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
-            external   = this.launchOwner === 'external';
+        const shellOwned = AddAgentFlow.isShellCredentialIngress(AddAgentFlow.resolveRegistryBridge(this.bridgeResolver));
 
         return {
-            'idle'              : external && !AddAgentFlow.canRegisterExternal(bridge)
-                ? AddAgentFlow.validateDefinePayload({launchOwner: 'external'}).reason
-                : external
-                ? 'Registers a seat that runs in its own harness: Fleet refuses to start it, so no PAT is needed.'
-                : shellOwned
-                    ? 'Credential entry is owned by the native shell and never enters App Worker state.'
-                    : 'PAT is submitted to the Brain-side registry and never stored in browser state.',
+            'idle'              : shellOwned
+                ? 'Credential entry is owned by the native shell and never enters App Worker state.'
+                : 'PAT is submitted to the Brain-side registry and never stored in browser state.',
             'validating'        : 'Checking the definition…',
             'submitting'        : 'Submitting through the Fleet Registry bridge…',
             'readback-confirmed': 'Agent added — roster renders the registry\'s canonical readback.'
@@ -291,36 +247,11 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
-     * @summary Mark the selected launch-owner chip, keep the PAT field for a Fleet-launched seat only
-     * (a seat that runs in its own harness keeps its own credentials), and restate the idle line,
-     * which depends on the choice.
-     */
-    syncLaunchOwner() {
-        const me = this;
-
-        me.getReference('owner-row')?.items.forEach(chip => {
-            chip[chip.launchOwner === me.launchOwner ? 'addCls' : 'removeCls']('is-selected')
-        });
-
-        me.getReference('field-credential')?.set({hidden: me.launchOwner !== 'fleet'});
-
-        me.flowStatus.state === 'idle' && me.getReference('flow-status')?.set({text: me.statusLineFor('idle')})
-    }
-
-    /**
      * @summary One chip click = the harness selection (config-card interaction twin).
      * @param {Object} data
      */
     onHarnessChipClick(data) {
         this.harnessType = data.component.harnessType
-    }
-
-    /**
-     * @summary One chip click = who launches the seat.
-     * @param {Object} data
-     */
-    onLaunchOwnerChipClick(data) {
-        this.launchOwner = data.component.launchOwner
     }
 
     /**
@@ -338,17 +269,13 @@ class AddAgentForm extends FormContainer {
             payload    = AddAgentFlow.createDefineAgentIntent({
                 credential    : values.credential,
                 githubUsername: values.githubUsername,
-                harnessType   : me.harnessType,
-                launchOwner   : me.launchOwner
+                harnessType   : me.harnessType
             }, bridge);
 
         me.flowStatus = {state: 'validating', reason: ''};
 
         try {
-            const validation = AddAgentFlow.validateDefinePayload(payload, {
-                credentialRequired: !shellOwned,
-                externalAllowed   : AddAgentFlow.canRegisterExternal(bridge)
-            });
+            const validation = AddAgentFlow.validateDefinePayload(payload, {credentialRequired: !shellOwned});
 
             // an incomplete definition never renders `submitting` — nothing is in flight
             if (!validation.valid) {

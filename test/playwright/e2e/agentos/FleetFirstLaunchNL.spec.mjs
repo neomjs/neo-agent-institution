@@ -116,8 +116,6 @@ test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neu
         await page.locator('.fm-fleet-empty-cta').click();
         await expect(page.locator('.fm-add-agent-form')).toBeVisible({timeout: 30000});
         await page.locator('.fm-add-agent-form input[type="text"]').fill(ADDED_SEAT);
-        // a seat the cockpit starts is one Fleet launches, the one that brings a PAT
-        await page.locator('.fm-add-owner-row button', {hasText: 'Fleet launches it'}).click();
         await page.locator('.fm-add-agent-form input[type="password"]').fill(PAT);
         await page.locator('.fm-add-submit').click();
         await expect(page.locator('.fm-add-status.is-readback-confirmed')).toBeVisible({timeout: 15000});
