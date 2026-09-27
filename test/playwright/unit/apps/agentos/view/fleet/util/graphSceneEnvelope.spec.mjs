@@ -64,6 +64,16 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
             .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · complete')
     });
 
+    test('a route item resolves to the id the read qualified: bare ids by their origin, qualified ids as themselves, the rest to nothing', () => {
+        const read = GraphSceneEnvelope.fromWire(current({route: ['neomjs/neo#issue-1', 'neo#210', 'other/repo#issue-1']}));
+
+        expect(GraphSceneEnvelope.resolveRouteId(read, 'issue-1'), 'the first origin in route order wins').toBe('neomjs/neo#issue-1');
+        expect(GraphSceneEnvelope.resolveRouteId(read, 'neo#210')).toBe('neo#210');
+        expect(GraphSceneEnvelope.resolveRouteId(read, 'issue-2')).toBeNull();
+        expect(GraphSceneEnvelope.resolveRouteId(GraphSceneEnvelope.blank(), 'issue-1')).toBeNull();
+        expect(GraphSceneEnvelope.resolveRouteId(read, '')).toBeNull()
+    });
+
     test('degraded and unavailable carry the producer reason; a degraded partial scene still says what it holds', () => {
         const partial = {...current(), capability: {state: 'degraded', reason: 'graph-seam-refused'}};
 

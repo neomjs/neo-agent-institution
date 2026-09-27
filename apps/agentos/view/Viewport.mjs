@@ -85,6 +85,9 @@ class Viewport extends BaseViewport {
                 // the bounded graph neighbourhood around that route, its own read and its own currency:
                 // a graph read never rewrites the Golden Path leaf, and the Observatory binds this one
                 graphSceneEnvelope: GraphSceneEnvelope.blank(),
+                // the one selected graph node, by its origin-qualified id: the Observatory and the Golden
+                // Path pane both bind it both ways, so a choice in either is the selection in both
+                graphSelectionId: null,
                 // that read owner's connection observation, the System view's own surface
                 systemConnection: {state: null, reason: null},
                 // the instant of that owner's latest cadence tick it could not spend on a read (its
@@ -175,7 +178,11 @@ class Viewport extends BaseViewport {
                 module   : ObservatoryPane,
                 header   : {iconCls: 'fa-solid fa-circle-nodes', route: '/observatory', text: 'Observatory'},
                 reference: 'observatory-view',
-                bind     : {envelope: data => data.graphSceneEnvelope}
+                bind     : {
+                    envelope     : data => data.graphSceneEnvelope,
+                    routeEnvelope: data => data.goldenPathEnvelope,
+                    selectedId   : {key: 'graphSelectionId', twoWay: true}
+                }
             }, {
                 // the engine room beside mission control: what the planes are doing to the fleet's
                 // truth — a distinct subject, so a distinct place in the rail (never a cockpit pane)

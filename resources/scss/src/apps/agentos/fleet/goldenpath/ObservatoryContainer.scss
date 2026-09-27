@@ -63,6 +63,63 @@
         }
     }
 
+    /* the side panel: the node list and the selected node's relations, a fixed column beside the surface
+       (or the whole body where no canvas worker draws) on the chrome scale, each row one line */
+    .fm-observatory-side {
+        border-left: thin solid var(--fm-line-soft);
+        min-height : 0;
+        width      : 320px;
+    }
+
+    .fm-observatory-side-title {
+        border-top    : thin solid var(--fm-line-soft);
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        padding       : var(--fm-space-1) var(--fm-space-3);
+        text-transform: uppercase;
+    }
+
+    .fm-observatory-node-list,
+    .fm-observatory-relation-list {
+        min-height: 0;
+        overflow-y: auto;
+
+        .neo-list-item {
+            align-items: baseline;
+            color      : var(--fm-ink);
+            display    : flex;
+            font       : var(--fm-text-detail);
+            gap        : var(--fm-space-2);
+            padding    : var(--fm-space-1) var(--fm-space-3);
+            white-space: nowrap;
+        }
+
+        .fm-observatory-row-place {
+            color     : var(--fm-signal);
+            flex      : none;
+            min-width : 4em;
+
+            &.is-unspecified {
+                color     : var(--fm-ink-dim);
+                font-style: italic;
+            }
+        }
+
+        .fm-observatory-row-direction,
+        .fm-observatory-row-kind {
+            color: var(--fm-ink-dim);
+            flex : none;
+        }
+
+        .fm-observatory-row-label {
+            flex         : 1;
+            min-width    : 0;
+            overflow     : hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
     .fm-observatory-canvas {
         cursor      : grab;
         display     : block;

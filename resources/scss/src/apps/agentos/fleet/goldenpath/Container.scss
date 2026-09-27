@@ -68,6 +68,28 @@
         border-radius: var(--fm-chip-radius);
         gap          : var(--fm-space-1);
         padding      : var(--fm-space-2);
+
+        /* the item whose node the graph has selected, the Observatory's selection in this pane */
+        &.is-selected {
+            border-color: var(--fm-signal);
+        }
+    }
+
+    /* the graph button shows its glyph; its label stays the accessible name, clipped rather than removed */
+    .fm-golden-path-item-graph {
+        flex: none;
+
+        .neo-button-text {
+            clip-path: inset(50%);
+            height   : 1px;
+            overflow : hidden;
+            position : absolute;
+            width    : 1px;
+        }
+
+        .neo-button-glyph {
+            margin: 0;
+        }
     }
 
     .fm-golden-path-item-rank {

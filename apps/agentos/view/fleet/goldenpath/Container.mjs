@@ -3,6 +3,7 @@ import Component          from '../../../../../node_modules/neo.mjs/src/componen
 import Container          from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import GoldenPathEnvelope from '../../../util/GoldenPathEnvelope.mjs';
 import GoldenPathItems    from '../../../store/GoldenPathItems.mjs';
+import GraphSceneEnvelope from '../../../util/GraphSceneEnvelope.mjs';
 import ViewerTime         from '../../../util/ViewerTime.mjs';
 
 /**
@@ -14,6 +15,10 @@ import ViewerTime         from '../../../util/ViewerTime.mjs';
  * current says so before any item shows. The envelope is the cockpit's `goldenPathEnvelope` leaf, bound
  * like every other Golden Path pane's. Reads are intent events that the owning cockpit relays to the
  * authenticated fleet bridge.
+ *
+ * Each item can select its node in the graph read: the item's graph button writes the node's qualified id
+ * to the shell's shared `graphSelectionId` leaf, the one the Observatory binds, and the selected item is
+ * marked. An item the graph read's route does not list has nothing to select, and its button says so.
  *
  * @class AgentOS.view.fleet.goldenpath.Container
  * @extends Neo.container.Base
@@ -47,10 +52,23 @@ class GoldenPathPane extends Container {
          */
         envelope_: null,
         /**
+         * The `fleetGraphScene` envelope, bound from the shell's `graphSceneEnvelope` leaf: its route maps an
+         * item's id to the node's qualified id ({@link AgentOS.util.GraphSceneEnvelope#resolveRouteId}).
+         * @member {Object|null} graphEnvelope_=null
+         * @reactive
+         */
+        graphEnvelope_: null,
+        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
         layout: {ntype: 'vbox', align: 'stretch'},
+        /**
+         * The selected graph node's qualified id, bound both ways to the shell's `graphSelectionId` leaf.
+         * @member {String|null} selectedId_=null
+         * @reactive
+         */
+        selectedId_: null,
         /**
          * @member {Object[]} items
          */
@@ -128,6 +146,55 @@ class GoldenPathPane extends Container {
      */
     afterSetEnvelope(value, oldValue) {
         this.itemStore && this.applyEnvelope()
+    }
+
+    /**
+     * Triggered after the graphEnvelope config got changed: which items can select a node follows the read.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetGraphEnvelope(value, oldValue) {
+        this.updateItemSelection()
+    }
+
+    /**
+     * Triggered after the selectedId config got changed: the selected item is marked.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetSelectedId(value, oldValue) {
+        this.updateItemSelection()
+    }
+
+    /**
+     * @summary An item's graph button: its node, where the graph read lists it, becomes the selection.
+     * @param {String} routeItemId The item's id as the route writes it
+     */
+    onItemChoose(routeItemId) {
+        const id = GraphSceneEnvelope.resolveRouteId(this.graphEnvelope, routeItemId);
+
+        id && (this.selectedId = id)
+    }
+
+    /**
+     * @summary Marks the item whose node is selected and enables the graph button of every item the graph
+     * read lists. Cards follow the Store's order, one per record.
+     * @protected
+     */
+    updateItemSelection() {
+        const
+            me      = this,
+            cards   = me.getReference('golden-path-items')?.items ?? [],
+            records = me.itemStore?.items ?? [];
+
+        records.forEach((record, index) => {
+            const card = cards[index], id = GraphSceneEnvelope.resolveRouteId(me.graphEnvelope, record.id), button = card?.down?.({ntype: 'button'});
+
+            card?.toggleCls('is-selected', Boolean(id) && id === me.selectedId);
+            button && (button.disabled = !id)
+        })
     }
 
     /** @summary Re-read the computed route. */
@@ -221,20 +288,22 @@ class GoldenPathPane extends Container {
     }
 
     /**
-     * @summary Builds one item card from a Store record: rank, title and score as written, then the id
-     * and a bounded list of citations.
+     * @summary Builds one item card from a Store record: rank, title and score as written, the graph button
+     * (enabled where the graph read lists the item), then the id and a bounded list of citations.
      * @param {Neo.data.Model} record
      * @returns {Object}
      */
     itemConfig(record) {
-        const labels   = (record.citations || []).map(GoldenPathEnvelope.citationLabel).filter(Boolean),
-              visible  = labels.slice(0, this.citationLimit),
+        const me       = this,
+              labels   = (record.citations || []).map(GoldenPathEnvelope.citationLabel).filter(Boolean),
+              visible  = labels.slice(0, me.citationLimit),
               overflow = labels.length - visible.length,
-              meta     = [record.id, ...visible, ...(overflow > 0 ? [`${overflow} more`] : [])];
+              meta     = [record.id, ...visible, ...(overflow > 0 ? [`${overflow} more`] : [])],
+              graphId  = GraphSceneEnvelope.resolveRouteId(me.graphEnvelope, record.id);
 
         return {
             module: Container,
-            cls   : ['fm-golden-path-item'],
+            cls   : ['fm-golden-path-item', ...(graphId && graphId === me.selectedId ? ['is-selected'] : [])],
             flex  : 'none',
             layout: {ntype: 'vbox', align: 'stretch'},
             items : [{
@@ -244,7 +313,17 @@ class GoldenPathPane extends Container {
                 items : [
                     {module: Component, cls: ['fm-golden-path-item-rank'],  text: Number.isInteger(record.rank) ? `#${record.rank}` : '—'},
                     {module: Component, cls: ['fm-golden-path-item-title'], flex: 1, text: record.title || record.id},
-                    {module: Component, cls: ['fm-golden-path-item-score'], text: typeof record.score === 'number' ? `score ${record.score}` : ''}
+                    {module: Component, cls: ['fm-golden-path-item-score'], text: typeof record.score === 'number' ? `score ${record.score}` : ''},
+                    {
+                        module  : Button,
+                        cls     : ['fm-golden-path-item-graph'],
+                        disabled: !graphId,
+                        handler : () => me.onItemChoose(record.id),
+                        iconCls : 'fa-solid fa-circle-nodes',
+                        text    : 'Select in the Observatory',
+                        tooltip : 'Select in the Observatory',
+                        ui      : 'ghost'
+                    }
                 ]
             }, {
                 module: Component,

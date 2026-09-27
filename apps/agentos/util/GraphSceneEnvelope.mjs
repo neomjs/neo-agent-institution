@@ -102,6 +102,26 @@ class GraphSceneEnvelope extends Base {
 
         return {currency, text: parts.filter(Boolean).join(' · ')}
     }
+
+    /**
+     * @summary The scene's id for a Golden Path route item, or `null` when the read's route does not list it.
+     * The route names an item by the graph's own id (`issue-9853`) and the scene qualifies it with its origin
+     * (`neomjs/neo#issue-9853`); the scene's own route list carries the qualified form, so the match needs no
+     * origin of its own. An id that is already qualified matches itself; of two origins sharing one bare id,
+     * the first in route order wins.
+     * @param {Object|null} envelope A landed envelope.
+     * @param {String} routeItemId
+     * @returns {String|null}
+     */
+    static resolveRouteId(envelope, routeItemId) {
+        const route = envelope?.scene?.route;
+
+        if (typeof routeItemId !== 'string' || !routeItemId || !Array.isArray(route)) {
+            return null
+        }
+
+        return route.find(id => id === routeItemId || id.endsWith(`#${routeItemId}`)) ?? null
+    }
 }
 
 export default Neo.setupClass(GraphSceneEnvelope);
