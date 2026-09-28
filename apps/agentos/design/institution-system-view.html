@@ -23,6 +23,7 @@
     --fm-space-1: 4px; --fm-space-2: 8px; --fm-space-3: 12px; --fm-space-4: 16px;
     --fm-chip-mark-w: 3px; --fm-chip-pad-y: 2px; --fm-chip-pad-x: 8px; --fm-chip-radius: 4px;
     --fm-motion-fast: 120ms;
+    --fm-motion-pulse: 2400ms;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -84,14 +85,20 @@
   .chip { display: inline-flex; align-items: center; gap: 6px; font: var(--fm-text-micro); color: var(--fm-ink-dim); padding: var(--fm-chip-pad-y) var(--fm-chip-pad-x); border: 1px solid var(--fm-line); border-radius: var(--fm-chip-radius); --fm-chip: var(--fm-ink-faint); }
   .chip::before { content: ""; width: var(--fm-chip-mark-w); height: 10px; background: var(--fm-chip); border-radius: 1px; }
   .chip.observe { --fm-chip: var(--fm-signal); }
+  .chip.illus { --fm-chip: var(--fm-state-limited); }
   .sv-fresh { margin-left: auto; font: var(--fm-text-micro); color: var(--fm-ink-dim); display: inline-flex; align-items: center; gap: 6px; --fm-chip: var(--fm-state-ok); }
   .sv-fresh::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--fm-chip); }
   .sv-fresh.stale { --fm-chip: var(--fm-state-idle); color: var(--fm-ink); }
+  .sv-fresh.none { --fm-chip: var(--fm-state-unobserved); color: var(--fm-ink); }
 
   /* ---- a band: one of the three questions ---- */
   .band { display: grid; gap: var(--fm-space-2); }
+  .band.dim { opacity: .55; }
   .band-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--fm-space-1) var(--fm-space-3); }
   .band-head .eyebrow { color: var(--fm-ink); }
+  .band-head a.eyebrow { text-decoration: underline; text-decoration-color: var(--fm-line); text-underline-offset: 3px; }
+  .band-head a.eyebrow:hover { text-decoration-color: var(--fm-signal); }
+  .band-head a.eyebrow:focus-visible { outline: 2px solid var(--fm-signal); outline-offset: 2px; }
   .band-head .sub { font: var(--fm-text-micro); color: var(--fm-ink-dim); }
 
   /* ---- 1 · self-healing ---- */
@@ -128,7 +135,7 @@
   .bar { position: relative; height: 6px; background: var(--fm-line-soft); border-radius: 3px; overflow: hidden; }
   .bar > i { position: absolute; inset: 0 auto 0 0; width: var(--pct); background: var(--fm-signal); border-radius: 3px; }
   .bar.unknown > i { width: 100%; opacity: .55; background: repeating-linear-gradient(-45deg, var(--fm-ink-faint) 0 6px, transparent 6px 12px); background-size: 34px 100%; }
-  .bar.backlog > i { background: var(--fm-state-ok); }
+  .encodings { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--fm-space-3); }
 
   /* ---- 3 · containers ---- */
   .rows { display: grid; gap: var(--fm-space-2); }
@@ -157,7 +164,7 @@
   .facts dd.quiet { color: var(--fm-ink-dim); }
   @container (max-width: 360px) { .facts { grid-template-columns: 1fr; gap: 1px; } .facts dt { margin-top: var(--fm-space-1); } }
 
-  /* ---- maintenance timeline (frame 3) ---- */
+  /* ---- maintenance timeline (frame 2) ---- */
   .track { display: grid; gap: var(--fm-space-2); }
   .lane-row { display: grid; grid-template-columns: 17ch 1fr; align-items: center; gap: var(--fm-space-3); }
   .lane-row .who { font: var(--fm-text-detail); color: var(--fm-ink-dim); text-align: right; }
@@ -200,8 +207,8 @@
   /* motion: the one moving thing is work that is running now; nothing else animates */
   @media (prefers-reduced-motion: no-preference) {
     .theme { transition: background var(--fm-motion-fast); }
-    .bar.unknown > i { animation: drift 2.4s linear infinite; }
-    .blk.now { animation: breathe 2.8s ease-in-out infinite; }
+    .bar.unknown > i { animation: drift var(--fm-motion-pulse) linear infinite; }
+    .blk.now { animation: breathe var(--fm-motion-pulse) ease-in-out infinite; }
   }
   @keyframes drift { to { background-position: 34px 0; } }
   @keyframes breathe { 50% { opacity: .55; } }
@@ -211,7 +218,7 @@
 <div class="board">
   <header class="board-head">
     <div>
-      <div class="eyebrow">Design sketch v4 · neomjs/neo-agent-institution#308 · design only · real data: deployment-state snapshot 2026-09-28 14:29:50 UTC, orchestrator log 13:00–14:30 UTC, REM run ledger read 14:33 UTC</div>
+      <div class="eyebrow">Design sketch v4 · neomjs/neo-agent-institution#308 · design only · real data: deployment-state snapshot 2026-09-28 14:29:50 UTC, orchestrator log 13:00–14:30 UTC, REM run ledger read 14:33 UTC, heal and recovery ledgers and the Docker API 14:50–14:56 UTC</div>
       <h1>System — the plane diagnosing and healing itself</h1>
       <p class="lede">Agent OS runs on self-diagnostics and self-healing. The diagnostics daemon notices and classifies (ADR 0025); the recovery actuator takes one bounded action at a time (ADR 0026). This view shows that loop at work, the maintenance that keeps the plane healthy, and what it runs on. Nobody is asked to act: where healing stops, the view names the gap in the daemons that has to close. Observe-only by declaration.</p>
       <p class="delta"><b>v4 (2026-09-28, operator direction).</b> The installed view clipped its content and led with detector vocabulary ("restart churn", "class · threshold 90% · 2 samples"): fields a writer emits, not answers a keeper needs. v4 leads with the healing loop, moves every raw field one step down into each container's detail, and brings the scheduler back inside System as maintenance <i>now · waiting · next</i>, reversing v3's split. Progress is shown only where the plane measures it.</p>
@@ -255,14 +262,22 @@
       <h2 id="s4"><span class="n">4 · source coverage</span>Every line traced to its producer; what is missing is named</h2>
       <div class="tbl"><table>
         <tr><th>Content</th><th>Producer today</th><th>Coverage</th><th>Gap owner</th></tr>
-        <tr><td>Self-healing · diagnosed and acted</td><td>snapshot <code>services[].diagnosis</code>, <code>recoveryRuns</code> (rung, attempt, reason) and <code>selfHeal</code> (the heal-event ledger)</td><td class="unsure">available, but one repeating diagnosis fills the 5,000-event ledger (4,996 today), so older heals fall out within three days</td><td>the view collapses repeats into one condition; the retention is the same defect-note as the next row</td></tr>
-        <tr><td>Self-healing · memory in use</td><td>snapshot <code>stats.memoryUsageBytes</code>, and the diagnosis's <code>calculateDockerMemoryPercent</code></td><td class="unsure">raw usage, file cache included: Chroma reads 84% while it uses 70%</td><td>Brain defect-note, 2026-09-28: diagnose memory the way the kernel reclaims it</td></tr>
+        <tr><td>Self-healing · diagnosed and acted</td><td>snapshot <code>services[].diagnosis</code>, <code>recoveryRuns</code> (rung, attempt, reason) and <code>selfHeal</code> (the heal-event ledger)</td><td class="unsure">available, but one repeating diagnosis fills the 5,000-event ledger (4,996 today), so older heals fall out within three days</td><td>the view collapses repeats into one condition; the ledger's retention is not yet ticketed</td></tr>
+        <tr><td>Self-healing · memory in use</td><td>snapshot <code>stats.memoryUsageBytes</code>, and the diagnosis's <code>calculateDockerMemoryPercent</code></td><td class="unsure">raw usage, file cache included: Chroma reads 84% while it uses 70%</td><td>neomjs/neo-agent-brain#614 (PR #615): count usage minus the inactive file cache, and publish <code>memoryInUseBytes</code></td></tr>
         <tr><td>Self-healing · where it stops</td><td>the recovery run's refusal (<code>executor-failed</code>, the knob band) and the ADR section it enforces</td><td class="miss">the refusal is on the wire; the issue that owns the gap is not</td><td>open for review, item 1</td></tr>
         <tr><td>Self-healing · backup</td><td>snapshot <code>maintenance.health</code> + <code>lastBackup</code> receipt</td><td class="unsure">available, but health derives three codes from the run's one exit</td><td>Brain defect-note, 2026-09-28: a written bundle is recorded as a failed run</td></tr>
         <tr><td>Maintenance · now (lease holder)</td><td><code>heavyMaintenanceStarvation.leaseHolder</code></td><td class="unsure">only as fresh as the watchdog cycle: at 14:21:59 it read <code>summary</code> while the log shows REM holding the lease at 14:27</td><td>new Brain leaf: a published schedule</td></tr>
-        <tr><td>Maintenance · now (phase, progress)</td><td>REM: <code>rem-runs/active-rem-call.json</code> (phase, chunk <i>n</i> of <i>m</i>, attempt) and <code>get_rem_pipeline_state</code> (backlog); the others: none</td><td class="unsure">REM only, and not on the wire; universal progress is not established</td><td>same leaf; the view shows elapsed time where nothing is measured</td></tr>
+        <tr><td>Maintenance · now (phase, progress)</td><td>REM: <code>rem-runs/active-rem-call.json</code> (phase, chunk <i>n</i> of <i>m</i>, attempt), the run's own counters. <code>get_rem_pipeline_state</code>'s undigested count is bounded by <code>summarizationBatchLimit</code> (2,000), so it samples the latest sessions and is not the backlog. The other tasks: none</td><td class="unsure">REM only, and not on the wire; no task publishes a completion total</td><td>same leaf; the view fills a bar only from a run's own counter, hatches it where nothing counts, and gives the sample as a bounded number</td></tr>
         <tr><td>Maintenance · waiting and why</td><td>orchestrator log lines <i>"Deferring X; heavy maintenance task Y is active"</i></td><td class="miss">log only, not on the wire</td><td>same leaf</td></tr>
-        <tr><td>Maintenance · order and next due</td><td>none. <code>scheduling/picker.mjs#pickNextCandidate</code> decides one winner per poll (priority-0 backup, then staleness against cadence, then registry order); <code>TaskStateService</code> holds each task's last run; the registry holds cadences</td><td class="miss">missing</td><td>same leaf: a <code>schedule</code> section in the deployment-state snapshot, computed read-only from those three</td></tr>
+        <tr><td>Maintenance · order and next due</td><td>none. <code>scheduling/picker.mjs#pickNextCandidate</code> picks one winner per poll, by rank:
+          <ol>
+            <li>priority-0, such as backup, when due;</li>
+            <li>bootstrap-critical: a corpus never ingested;</li>
+            <li>fairness promotion: a registered waiter the winner would yield to;</li>
+            <li>the most overdue heavy task, by staleness against its cadence;</li>
+            <li>registry order across the class boundary.</li>
+          </ol>
+          <code>TaskStateService</code> holds each task's last run, and the registry holds cadences.</td><td class="miss">missing</td><td>same leaf: a <code>schedule</code> section in the deployment-state snapshot, computed read-only from those three</td></tr>
         <tr><td>Tasks-pane order</td><td>Brain <code>fleetTasksSource.mjs#orderSection</code></td><td class="unsure">display order, never the scheduler's</td><td>not relabelled as execution order anywhere in this design</td></tr>
         <tr><td>Containers · state, memory, deaths</td><td>snapshot <code>services[]</code>: <code>status</code>, <code>stats</code>, <code>deaths</code>, <code>diagnosis</code></td><td class="ok">available</td><td>probe containers of the same image are misattributed as deaths (Brain defect-note, <span class="nw">2026-09-28</span>)</td></tr>
         <tr><td>Containers · CPU starvation</td><td>none: mc-server runs at 57% of its quota, and nothing on the wire says it is throttled</td><td class="miss">missing</td><td>neomjs/neo-agent-brain#594 (the throttling fact)</td></tr>
@@ -274,8 +289,8 @@
       <h2 id="s5"><span class="n">5 · interaction</span>Glance, then one click, never a dead end</h2>
       <ul>
         <li><b>Glance:</b> the three bands, in that order, at every width. They stack in a narrow band and never truncate a word; nothing scrolls sideways.</li>
-        <li><b>One click:</b> a container row opens its detail in place, where the raw fields live; the <i>Maintenance</i> heading opens the heavy-lane timeline (frame 3). The disclosure is a native <code>&lt;details&gt;</code>, so it is keyboard-reachable and reads its state aloud.</li>
-        <li><b>Staleness</b> is a stopped clock on the head, never a silently current picture (frame 4). The timeline carries a text alternative, the task list it draws.</li>
+        <li><b>One click:</b> a container row opens its detail in place, where the raw fields live, and the <i>Maintenance</i> heading links to the heavy-lane timeline (frame 2). Both work in frame 1. The disclosure is a native <code>&lt;details&gt;</code>, so it is keyboard-reachable and reads its state aloud.</li>
+        <li><b>Staleness</b> is a stopped clock on the head, never a silently current picture (frame 3). With no snapshot at all, one reason stands for the whole view (frame 4). The timeline carries a text alternative, the task list it draws.</li>
         <li><b>Peers</b> read the same bands as data through the Neural Link; a peer never needs a screenshot to learn what the lease holds.</li>
       </ul>
     </section>
@@ -283,13 +298,14 @@
 
   <!-- Frame 1 -->
   <section class="frame" aria-labelledby="f1">
-    <div class="frame-label"><span class="eyebrow" id="f1">6 · visual · Frame 1 · at rest</span><p>Our plane as captured this afternoon. Container values come from the 14:29:50 snapshot. Chroma's split between memory in use and file cache comes from the Docker API at 14:55, and the heal history from the orchestrator's heal and recovery ledgers. Maintenance values come from the orchestrator log and the REM run ledger. Where the wire does not publish a value yet (section 4), the view draws it the way the proposed contract would.</p></div>
+    <div class="frame-label"><span class="eyebrow" id="f1">6 · visual · Frame 1 · at rest</span><p>Our plane this afternoon, composed from several reads, and marked as such in its own head. Container values come from the 14:29:50 snapshot. Chroma's split between memory in use and file cache comes from the Docker API at 14:55, the heal history from the orchestrator's heal and recovery ledgers at 14:50, and maintenance from the orchestrator log and the REM run ledger. The running view reads one snapshot, so all of its values share one time. Where the wire does not publish a value yet (section 4), the view draws it the way the proposed contract would, and says so where the value is used.</p></div>
     <div class="viewport">
       <div class="sv-head">
         <h2 class="sv-title">System</h2>
         <span class="sv-scope">diagnosing <b>local-agent-os</b> · via fleet-server</span>
         <span class="chip observe">observe-only</span>
-        <span class="sv-fresh">snapshot <span class="nw">30 s</span> old · the orchestrator writes every <span class="nw">30 s</span></span>
+        <span class="chip illus">illustration · composed from reads 13:00–14:56 UTC</span>
+        <span class="sv-fresh">snapshot 14:29:50 · <span class="nw">30 s</span> old · the orchestrator writes every <span class="nw">30 s</span></span>
       </div>
 
       <div class="band" aria-labelledby="b1">
@@ -303,7 +319,7 @@
               <dt>acted</dt><dd>raise the limit, three times an hour; each is refused by design, because 16 GiB is the top of the band the actuator may set (ADR 0026 §2.8). Between attempts it records.</dd>
               <dt>now</dt><dd>serving, no restart since 24 Sep. Chroma uses 11.3 GiB (70%); the other 2.2 GiB is file cache the kernel reclaims under pressure.</dd>
             </dl>
-            <p class="next"><b>Next for the daemons:</b> diagnose memory the way the kernel reclaims it (Brain defect-note, <span class="nw">2026-09-28</span>). The growth underneath is real: Chroma's use went from 3.4 GiB on 10 Aug to 11.3 GiB, and past the cap the actuator has no next step. That is ADR 0026 §2.8's corpus-architecture question, open on <span class="nw">neomjs/neo-agent-brain#60</span>.</p>
+            <p class="next"><b>Next for the daemons:</b> diagnose memory the way the kernel reclaims it (<span class="nw">neomjs/neo-agent-brain#614</span>, in review as PR #615). The growth underneath is real: Chroma's use went from 3.4 GiB on 10 Aug to 11.3 GiB, and past the cap the actuator has no next step. That is ADR 0026 §2.8's corpus-architecture question, open on <span class="nw">neomjs/neo-agent-brain#60</span>.</p>
             <p class="evidence">13.51 GiB = 11.27 in use + 2.24 reclaimable file cache · the diagnosis divides raw usage by the limit, where <code>docker stats</code> subtracts the cache · 4,996 of the last 5,000 heal events are this one diagnosis</p>
           </article>
           <article class="heal stops">
@@ -335,15 +351,16 @@
       </div>
 
       <div class="band" aria-labelledby="b2">
-        <div class="band-head"><span class="eyebrow" id="b2">Maintenance</span><span class="sub">one heavy task at a time holds the lease; light tasks run beside it</span></div>
+        <div class="band-head"><a class="eyebrow" id="b2" href="#f2">Maintenance</a><span class="sub">one heavy task at a time holds the lease; light tasks run beside it · the heading opens its timeline</span></div>
         <div class="maint">
           <div class="col">
             <span class="eyebrow">Now</span>
             <div class="job">
               <span class="job-name">REM sleep extraction</span>
-              <span class="job-line"><b>heavy</b> · a session's memories into the graph · phase <b>tri-vector</b> · chunk 1 of 1 · attempt 1 of 3</span>
-              <div class="bar backlog" role="img" aria-label="1,562 of 2,000 sessions digested"><i style="--pct: 78.1%"></i></div>
-              <span class="job-line">backlog <b>438 sessions</b> left of 2,000 · <span class="kind">measured</span></span>
+              <span class="job-line"><b>heavy</b> · a session's memories into the graph · phase <b>tri-vector</b> · chunk <b>1 of 1</b> · attempt 1 of 3 · <span class="kind">measured</span></span>
+              <div class="bar unknown" role="img" aria-label="Progress within the chunk is not measured"><i></i></div>
+              <span class="job-line">inside the chunk nothing counts · running since 14:27</span>
+              <span class="job-line">undigested among the latest 2,000 sessions: <b>438</b> · a bounded sample, not the backlog</span>
             </div>
             <span class="job-line">light tasks run beside it · last: memory summary backfill, 14:28, 4 s</span>
           </div>
@@ -356,19 +373,18 @@
           </div>
           <div class="col">
             <span class="eyebrow">Next</span>
+            <span class="derived">proposed contract · the order the picker's ranks give (section 4); the plane publishes none of it yet</span>
             <div class="job">
               <span class="job-name">Session summarization</span>
-              <span class="job-line">every 10 min when the lease is free · last 14:21–14:22 · due 14:32 · 503 sessions pending</span>
-              <span class="derived">derived from cadence · the plane does not publish it</span>
-            </div>
-            <div class="job">
-              <span class="job-name">Backup</span>
-              <span class="job-line">daily · <span class="nw">2026-09-29 13:14</span> · takes the lease first</span>
+              <span class="job-line"><b>staleness</b> · every 10 min · last 14:21–14:22 · due 14:32 · 503 sessions pending</span>
             </div>
             <div class="job">
               <span class="job-name">Tenant repo sync</span>
-              <span class="job-line">every 30 min, ±20% · after the heavy lane frees</span>
-              <span class="derived">order among the waiting is the picker's, not published</span>
+              <span class="job-line"><b>staleness</b> · each repository every 30 min, ±20% · held back twice · it and summarization compete on how overdue each is, a ratio the plane does not publish</span>
+            </div>
+            <div class="job">
+              <span class="job-name">Backup</span>
+              <span class="job-line"><b>priority-0</b> once due · <span class="nw">2026-09-29 13:14</span> · then it outranks every staleness</span>
             </div>
           </div>
         </div>
@@ -379,18 +395,59 @@
         <div class="rows">
           <details class="row serving">
             <summary><span class="row-name">Chroma<small>chroma · vector store</small></span><span class="row-word">serving</span><span class="row-line">11.3 of 16 GiB in use, plus 2.2 GiB file cache · read as out of memory (above)</span><span class="row-more">details</span></summary>
+            <div class="detail">
+              <p>The diagnosis counts 13.5 GiB against the 16 GiB limit, above the store's 80% threshold, and classifies that as exhaustion. 2.2 GiB of it is file cache the kernel reclaims, so the store itself uses 70%. The raise the actuator would make is refused at the top of its band, so it records instead of acting.</p>
+              <dl class="facts">
+                <dt>memory</dt><dd class="hot">84.36% of 17,179,869,184 B counted · window 32 s · 2 samples</dd>
+                <dt>in use</dt><dd>11.27 GiB · inactive file 2.24 GiB · Docker API, 14:55</dd>
+                <dt>class</dt><dd>store · threshold 80% · declared</dd>
+                <dt>diagnosis</dt><dd>exhaustion · confidence 0.8 · action raise-ceiling · store-ceiling-exhaustion</dd>
+                <dt>recovery</dt><dd>rung 2 · attempt 3 · no-action · backoff-active until 14:32:20</dd>
+                <dt>self-heal</dt><dd>last 5,000: 2,887 deferred · 1,932 recorded · 180 failed · 1 actioned</dd>
+              </dl>
+            </div>
           </details>
           <details class="row serving">
             <summary><span class="row-name">Memory Core<small>mc-server</small></span><span class="row-word">serving</span><span class="row-line">0.9 of 3 GiB · restarted twice today after running out of memory</span><span class="row-more">details</span></summary>
+            <div class="detail">
+              <p>Two of today's restarts were out-of-memory kills, both caused by one unbounded read (a fix is in review). Two further "deaths" at 11:31 and 11:34 were short-lived probe containers of the same image, recorded against this service by mistake: the death list needs a reader.</p>
+              <dl class="facts">
+                <dt>deaths</dt><dd>11:34 exit 0 · 11:31 exit 0 (probe, misattributed) · 11:10 OOM-killed · 08:22 OOM-killed · 09-27 16:34 exit 137 (every service stopped within 11 s)</dd>
+                <dt>cpu</dt><dd>57% of its one-CPU quota · whether it is throttled is not on the wire yet (neomjs/neo-agent-brain#594)</dd>
+                <dt>memory</dt><dd class="quiet">unknown · window not yet spanned · heap scope</dd>
+                <dt>class</dt><dd>transient · threshold 90% · 2 samples</dd>
+                <dt>restart churn</dt><dd>baseline written · detecting</dd>
+                <dt>diagnosis</dt><dd class="quiet">healthy · no action</dd>
+              </dl>
+            </div>
           </details>
           <details class="row serving">
-            <summary><span class="row-name">Orchestrator<small>orchestrator</small></span><span class="row-word">serving</span><span class="row-line">1.7 of 12 GiB · runs the maintenance above</span><span class="row-more">details</span></summary>
+            <summary><span class="row-name">Orchestrator<small>orchestrator</small></span><span class="row-word">serving</span><span class="row-line">1.6 of 12 GiB · runs the maintenance above</span><span class="row-more">details</span></summary>
+            <div class="detail">
+              <p>Runs the maintenance lane and both daemons: the diagnosis and the recovery actuator.</p>
+              <dl class="facts">
+                <dt>memory</dt><dd>1.65 of 12 GiB · 13.7%</dd>
+                <dt>diagnosis</dt><dd class="quiet">advisory · no action</dd>
+              </dl>
+            </div>
           </details>
           <details class="row serving">
             <summary><span class="row-name">Knowledge Base<small>kb-server</small></span><span class="row-word">serving</span><span class="row-line">0.4 of 1.5 GiB</span><span class="row-more">details</span></summary>
+            <div class="detail">
+              <dl class="facts">
+                <dt>memory</dt><dd>0.37 of 1.5 GiB · 24.5%</dd>
+                <dt>diagnosis</dt><dd class="quiet">healthy · no action</dd>
+              </dl>
+            </div>
           </details>
           <details class="row serving">
-            <summary><span class="row-name">Fleet server<small>fleet-server</small></span><span class="row-word">serving</span><span class="row-line">0.05 of 0.75 GiB</span><span class="row-more">details</span></summary>
+            <summary><span class="row-name">Fleet server<small>fleet-server</small></span><span class="row-word">serving</span><span class="row-line">0.05 of 0.75 GiB · serves this view</span><span class="row-more">details</span></summary>
+            <div class="detail">
+              <dl class="facts">
+                <dt>memory</dt><dd>0.05 of 0.75 GiB · 6.5%</dd>
+                <dt>diagnosis</dt><dd class="quiet">advisory · no action</dd>
+              </dl>
+            </div>
           </details>
         </div>
       </div>
@@ -399,45 +456,9 @@
 
   <!-- Frame 2 -->
   <section class="frame" aria-labelledby="f2">
-    <div class="frame-label"><span class="eyebrow" id="f2">Frame 2 · a container, opened</span><p>The raw fields live here, one click down: the writer's own words, now framed by a plain sentence of what they add up to. Memory Core is opened too, because its death list shows why raw evidence needs a reader: two of its five entries are not its own.</p></div>
+    <div class="frame-label"><span class="eyebrow" id="f2">Frame 2 · maintenance, in depth</span><p>The heavy lane over the last 95 minutes, from the orchestrator's own log, where the Maintenance heading leads. One lane for the lease, because heavy tasks are exclusive. Hatched spans mark REM sleep extraction, whose start and end the log does not record: it names REM as the lease holder only when deferring others. The one moving mark is the work running now. Below the timeline, the three ways the view draws progress.</p></div>
     <div class="viewport">
-      <div class="rows">
-        <details class="row serving" open>
-          <summary><span class="row-name">Chroma<small>chroma · vector store</small></span><span class="row-word">serving</span><span class="row-line">11.3 of 16 GiB in use, plus 2.2 GiB file cache</span><span class="row-more">details</span></summary>
-          <div class="detail">
-            <p>The diagnosis counts 13.5 GiB against the 16 GiB limit, above the store's 80% threshold, and classifies that as exhaustion. 2.2 GiB of it is file cache the kernel reclaims, so the store itself uses 70%. The raise the actuator would make is refused at the top of its band, so it records instead of acting.</p>
-            <dl class="facts">
-              <dt>memory</dt><dd class="hot">84.36% of 17,179,869,184 B counted · window 32 s · 2 samples</dd>
-              <dt>in use</dt><dd>11.27 GiB · inactive file 2.24 GiB · Docker API, 14:55</dd>
-              <dt>class</dt><dd>store · threshold 80% · declared</dd>
-              <dt>diagnosis</dt><dd>exhaustion · confidence 0.8 · action raise-ceiling · store-ceiling-exhaustion</dd>
-              <dt>recovery</dt><dd>rung 2 · attempt 3 · no-action · backoff-active until 14:32:20</dd>
-              <dt>self-heal</dt><dd>last 5,000: 2,887 deferred · 1,932 recorded · 180 failed · 1 actioned</dd>
-            </dl>
-          </div>
-        </details>
-        <details class="row serving" open>
-          <summary><span class="row-name">Memory Core<small>mc-server</small></span><span class="row-word">serving</span><span class="row-line">0.9 of 3 GiB · restarted twice today after running out of memory</span><span class="row-more">details</span></summary>
-          <div class="detail">
-            <p>Two of today's restarts were out-of-memory kills, both caused by one unbounded read (a fix is in review). Two further "deaths" at 11:31 and 11:34 were short-lived probe containers of the same image, recorded against this service by mistake.</p>
-            <dl class="facts">
-              <dt>deaths</dt><dd>11:34 exit 0 · 11:31 exit 0 (probe, misattributed) · 11:10 OOM-killed · 08:22 OOM-killed · 09-27 16:34 exit 137 (every service stopped within 11 s)</dd>
-              <dt>memory</dt><dd class="quiet">unknown · window not yet spanned · heap scope</dd>
-              <dt>class</dt><dd>transient · threshold 90% · 2 samples</dd>
-              <dt>restart churn</dt><dd>baseline written · detecting</dd>
-              <dt>diagnosis</dt><dd class="quiet">healthy · no action</dd>
-            </dl>
-          </div>
-        </details>
-      </div>
-    </div>
-  </section>
-
-  <!-- Frame 3 -->
-  <section class="frame" aria-labelledby="f3">
-    <div class="frame-label"><span class="eyebrow" id="f3">Frame 3 · maintenance, in depth</span><p>The heavy lane over the last 95 minutes, from the orchestrator's own log. One lane for the lease, because heavy tasks are exclusive; hatched spans mark REM sleep extraction, whose start and end the log does not record (it only names REM as the lease holder when deferring others). The one moving mark is the work running now.</p></div>
-    <div class="viewport">
-      <div class="track" role="img" aria-labelledby="f3-text">
+      <div class="track" role="img" aria-labelledby="f2-text">
         <div class="lane-row"><span class="who"><b>Backup</b>daily</span><div class="strip"><span class="blk fail" style="--l: 15.4%; --w: 4.7%" title="13:14:41–13:19:08 · bundle written · run reported failure"></span></div></div>
         <div class="lane-row"><span class="who"><b>Session summarization</b>every 10 min</span><div class="strip">
           <span class="blk" style="--l: 20.9%; --w: .4%"></span><span class="blk" style="--l: 31.4%; --w: .1%"></span><span class="blk" style="--l: 42.0%; --w: .6%"></span><span class="blk" style="--l: 53.3%; --w: .3%"></span><span class="blk" style="--l: 64.2%; --w: .1%"></span><span class="blk" style="--l: 74.7%; --w: .9%"></span><span class="blk" style="--l: 86.2%; --w: .5%"></span>
@@ -454,19 +475,52 @@
         <span style="--sw: var(--fm-state-idle)">held back by the lease</span>
         <span style="--sw: var(--fm-ink-faint)">light run</span>
       </div>
-      <p id="f3-text" class="sr-only">Backup ran 13:14:41 to 13:19:08 and reported failure. Session summarization ran seven times between 13:19 and 14:22, every ten minutes. REM sleep extraction held the lease around 14:20 and from 14:27 on. Tenant repo sync was held back at 14:20 and 14:27. The memory summary backfill ran four times between 14:18 and 14:28.</p>
+      <div class="encodings" aria-label="How the view draws progress">
+        <div class="col"><span class="eyebrow">Measured</span><div class="job">
+          <span class="job-name">REM sleep extraction, 10:19</span>
+          <div class="bar" role="img" aria-label="1 of 4 chunks done"><i style="--pct: 25%"></i></div>
+          <span class="job-line">1 of 4 chunks done, chunk 2 running · the run's own counter fills the bar</span>
+        </div></div>
+        <div class="col"><span class="eyebrow">Not measured</span><div class="job">
+          <span class="job-name">REM sleep extraction, 14:27</span>
+          <div class="bar unknown" role="img" aria-label="Progress within the chunk is not measured"><i></i></div>
+          <span class="job-line">chunk 1 of 1 · inside a chunk nothing counts, so the bar is hatched, with the running time beside it</span>
+        </div></div>
+        <div class="col"><span class="eyebrow">Sampled</span><div class="job">
+          <span class="job-name">Undigested sessions</span>
+          <span class="job-line"><b>438</b> among the latest 2,000 · a count with its bound, never a bar: it is not a total</span>
+        </div></div>
+      </div>
+      <p id="f2-text" class="sr-only">Backup ran 13:14:41 to 13:19:08 and reported failure. Session summarization ran seven times between 13:19 and 14:22, every ten minutes. REM sleep extraction held the lease around 14:20 and from 14:27 on. Tenant repo sync was held back at 14:20 and 14:27. The memory summary backfill ran four times between 14:18 and 14:28.</p>
     </div>
   </section>
 
-  <!-- Frame 4 -->
-  <section class="frame" aria-labelledby="f4">
-    <div class="frame-label"><span class="eyebrow" id="f4">Frame 4 · stale · unavailable</span><p>Kept from v3. Past the two-minute horizon the head stops the clock and says how old the picture is. With no snapshot at all, one reason stands for the whole view, and no band guesses on its own.</p></div>
+  <!-- Frame 3 -->
+  <section class="frame" aria-labelledby="f3">
+    <div class="frame-label"><span class="eyebrow" id="f3">Frame 3 · stale</span><p>Past the two-minute horizon the head stops the clock and says how old the picture is. The bands keep their last known values, dimmed, so nothing reads as current.</p></div>
     <div class="viewport">
       <div class="sv-head">
         <h2 class="sv-title">System</h2>
         <span class="sv-scope">diagnosing <b>local-agent-os</b> · via fleet-server</span>
         <span class="chip observe">observe-only</span>
-        <span class="sv-fresh stale">snapshot 6 min old, past the horizon · showing the last known picture</span>
+        <span class="sv-fresh stale">snapshot 14:29:50 · 6 min old, past the horizon · showing the last known picture</span>
+      </div>
+      <div class="band dim">
+        <div class="band-head"><span class="eyebrow">Self-healing · 3</span><span class="sub">as of 14:29:50</span></div>
+        <article class="heal stops"><span class="heal-word">healing stops here</span><h3>Chroma reads as out of memory, but the excess is file cache</h3></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Frame 4 -->
+  <section class="frame" aria-labelledby="f4">
+    <div class="frame-label"><span class="eyebrow" id="f4">Frame 4 · unavailable</span><p>Kept from v3. With no snapshot at all, one reason stands for the whole view, and no band guesses on its own.</p></div>
+    <div class="viewport">
+      <div class="sv-head">
+        <h2 class="sv-title">System</h2>
+        <span class="sv-scope">diagnosing <b>local-agent-os</b> · via fleet-server</span>
+        <span class="chip observe">observe-only</span>
+        <span class="sv-fresh none">no snapshot</span>
       </div>
       <div class="reason">
         <span class="word">No deployment-state snapshot at the fleet server</span>
@@ -481,15 +535,15 @@
     <div class="viewport narrow">
       <div class="band">
         <div class="band-head"><span class="eyebrow">Self-healing · 3</span></div>
-        <article class="heal stops"><span class="heal-word">healing stops here</span><h3>Chroma reads as out of memory, but the excess is file cache</h3><p class="next"><b>Next for the daemons:</b> diagnose memory the way the kernel reclaims it; past the cap, <span class="nw">neomjs/neo-agent-brain#60</span>.</p></article>
+        <article class="heal stops"><span class="heal-word">healing stops here</span><h3>Chroma reads as out of memory, but the excess is file cache</h3><p class="next"><b>Next for the daemons:</b> diagnose memory the way the kernel reclaims it (<span class="nw">neomjs/neo-agent-brain#614</span>); past the cap, <span class="nw">neomjs/neo-agent-brain#60</span>.</p></article>
       </div>
       <div class="band">
         <div class="band-head"><span class="eyebrow">Maintenance</span></div>
-        <div class="col"><span class="eyebrow">Now</span><div class="job"><span class="job-name">REM sleep extraction</span><div class="bar backlog"><i style="--pct: 78.1%"></i></div><span class="job-line">backlog 438 of 2,000 · <span class="kind">measured</span></span></div></div>
+        <div class="col"><span class="eyebrow">Now</span><div class="job"><span class="job-name">REM sleep extraction</span><span class="job-line">chunk 1 of 1 · attempt 1 of 3 · <span class="kind">measured</span></span><div class="bar unknown" role="img" aria-label="Progress within the chunk is not measured"><i></i></div><span class="job-line">inside the chunk nothing counts · running since 14:27</span></div></div>
       </div>
       <div class="band">
         <div class="band-head"><span class="eyebrow">Containers · 5</span></div>
-        <div class="rows"><details class="row serving"><summary><span class="row-name">Memory Core<small>mc-server</small></span><span class="row-word">serving</span><span class="row-line">0.9 of 3 GiB · restarted twice today after running out of memory</span><span class="row-more">details</span></summary></details></div>
+        <div class="rows"><details class="row serving"><summary><span class="row-name">Memory Core<small>mc-server</small></span><span class="row-word">serving</span><span class="row-line">0.9 of 3 GiB · restarted twice today after running out of memory</span><span class="row-more">details</span></summary><div class="detail"><dl class="facts"><dt>deaths</dt><dd>11:34 exit 0 · 11:31 exit 0 (probe, misattributed) · 11:10 OOM-killed · 08:22 OOM-killed</dd></dl></div></details></div>
       </div>
     </div>
   </section>
@@ -503,16 +557,17 @@
         <li><b>A container's word is its run state</b> (serving, restarting, stopped). The diagnosis lives in the self-healing band, so a wrong diagnosis cannot paint a serving store red.</li>
         <li><b>Raw vocabulary one level down.</b> Detector fields stay in each container's detail, framed by a plain sentence. The overview never shows a field the operator would have to decode.</li>
         <li><b>The scheduler lives inside System</b> as maintenance <i>now · waiting · next</i>. This reverses v3's split: the heavy lane is the plane's own state, not a separate pane.</li>
-        <li><b>No invented progress.</b> A bar only where the plane measures (REM backlog, chunk <i>n</i> of <i>m</i>); otherwise elapsed time and a hatched bar that says so. No percentages or ETAs.</li>
+        <li><b>No invented progress</b> (the three encodings under frame 2). A bar fills only from a run's own counter, such as REM's chunk <i>n</i> of <i>m</i>. Inside a chunk, or for a task that counts nothing, the bar is hatched and the running time stands beside it. A sampled count, such as the 438 undigested among the latest 2,000, is a number with its bound, never a bar. No percentages of a whole, no ETAs.</li>
+        <li><b>One picture, one time.</b> The running view reads one snapshot, so every value shares its time. Frame 1 is composed from several reads and says so in its own head, not only in its caption.</li>
         <li><b>A misleading reading is not repeated.</b> The overview says what happened: Chroma uses 11.3 GiB, not the 84% the diagnosis counts, and each backup bundle is written while the run fails one requirement, not the three codes the ledger derives from one exit.</li>
-        <li><b>Derived values are marked.</b> "Due 14:32" is computed from a cadence the plane does not publish, and it says so beside the value until the schedule is on the wire.</li>
+        <li><b>The proposed schedule is marked where it is used.</b> The Next column says the picker's ranks give its order and that the plane publishes none of it yet. Each job names the rank it competes on: priority-0 or staleness. Where the order between two jobs depends on a ratio the plane does not publish, the job says so.</li>
       </ol>
     </div>
     <div>
       <h2>Implementation gaps → work</h2>
       <ul>
         <li><b>A published schedule</b> (lease holder, phase and progress where measured, waiting reasons, order, next due): a Brain leaf to file when this design is accepted. It is the one contract the Maintenance band cannot exist without.</li>
-        <li><b>Memory counted with file cache</b> (the diagnosis and the snapshot both divide raw usage by the limit), and the heal ledger it fills: Brain defect-note, 2026-09-28.</li>
+        <li><b>Memory counted with file cache</b> (the diagnosis and the snapshot both divided raw usage by the limit): neomjs/neo-agent-brain#614, fixed in PR #615, which also publishes <code>memoryInUseBytes</code> for this view. The heal ledger's retention, which one repeating record can fill, is not yet ticketed.</li>
         <li><b>Chroma past its cap:</b> neomjs/neo-agent-brain#60, the open ticket on Chroma's cap and working set; ADR 0026 §2.8 leaves the next step to the corpus architecture.</li>
         <li><b>CPU throttling as a fact:</b> neomjs/neo-agent-brain#594.</li>
         <li><b>The out-of-memory cause</b> on Memory Core: neomjs/neo-agent-brain#610.</li>
@@ -524,8 +579,8 @@
       <h2>Tokens consumed, nothing minted</h2>
       <ul>
         <li><b>Type and space:</b> v3's five roles and space-1…4 only.</li>
-        <li><b>Color:</b> the closed state set. A stop in self-healing takes the idle amber: the edge of what the daemons do, not a failure. A healed condition and a serving container take the ok green, the wedged red marks only a run that reported failure (frame 3), and a derived value takes the limited violet.</li>
-        <li><b>Motion:</b> one moving thing, the work running now (a slow breathe; a drifting hatch where progress is unmeasured). Reduced motion stops both, and nothing else animates.</li>
+        <li><b>Color:</b> the closed state set. A stop in self-healing takes the idle amber: the edge of what the daemons do, not a failure. A healed condition and a serving container take the ok green, the wedged red marks only a run that reported failure (frame 2), and a derived value or an illustration takes the limited violet.</li>
+        <li><b>Motion:</b> only the work running now moves. Its lease block breathes, and a bar whose progress is not measured drifts. Both run on the theme's liveness period, <code>--fm-motion-pulse</code> (2,400 ms, <code>Viewport.scss</code>), and only under no-preference. Reduced motion stops both, and nothing else animates.</li>
       </ul>
     </div>
     <div>
