@@ -126,7 +126,9 @@
   .col { background: var(--fm-panel-2); border: 1px solid var(--fm-line-soft); padding: var(--fm-space-3); display: grid; gap: var(--fm-space-2); align-content: start; }
   .col > .eyebrow { color: var(--fm-ink-dim); }
   .job { display: grid; gap: 6px; }
-  .job + .job { border-top: 1px solid var(--fm-line-soft); padding-top: var(--fm-space-2); }
+  .job + .job, .cands + .job { border-top: 1px solid var(--fm-line-soft); padding-top: var(--fm-space-2); }
+  .cands { display: grid; gap: var(--fm-space-2); border-left: 2px solid var(--fm-line-soft); padding-left: var(--fm-space-2); }
+  .cands-head { font: var(--fm-text-micro); color: var(--fm-ink-faint); text-transform: uppercase; letter-spacing: var(--fm-text-chrome-tracking); }
   .job-name { font: var(--fm-text-display); color: var(--fm-ink); }
   .job-line { font: var(--fm-text-detail); color: var(--fm-ink-dim); overflow-wrap: anywhere; }
   .job-line b { color: var(--fm-ink); font-weight: 500; }
@@ -252,7 +254,7 @@
       <h2 id="s3"><span class="n">3 · content &amp; actions</span>Ranked, and why each piece is present</h2>
       <ol>
         <li><b>Self-healing</b> leads, because it is the plane's own account of its health. Each condition reads as the loop: <i>diagnosed → acted → now</i>. A condition that healed says so and gets out of the way. A condition at the edge of autonomy says why the loop stops there, as when ADR 0026 §2.8 refuses a raise past the knob's cap by design, and names the daemon work that moves the edge, with its ticket. No item tells a human to act.</li>
-        <li><b>Maintenance</b> comes second, because the heavy lane decides what the plane can do next. <i>Now</i> shows the lease holder with its phase and measured progress, <i>waiting</i> shows what the lease is holding back, and <i>next</i> shows what the schedule says comes after it.</li>
+        <li><b>Maintenance</b> comes second, because the heavy lane decides what the plane can do next. <i>Now</i> shows the lease holder with its phase and measured progress, <i>waiting</i> shows what the lease is holding back, and <i>next</i> shows the candidates the schedule picks from, and the rule it picks by.</li>
         <li><b>Containers</b> come last, as an inventory: name, state word and one plain line each. The detector fields (pressure disposition, class, thresholds, churn baseline, diagnosis records) are still here, inside each container's detail. They inform the diagnosis; they are not the overview.</li>
         <li><b>No verbs, and no asks.</b> The view carries no restart, raise or fix, and no "decide" line. Healing belongs to the daemons. A gap in it is maintainer work, routed through its ticket, not an operator runtime task.</li>
       </ol>
@@ -373,18 +375,21 @@
           </div>
           <div class="col">
             <span class="eyebrow">Next</span>
-            <span class="derived">proposed contract · the order the picker's ranks give (section 4); the plane publishes none of it yet</span>
-            <div class="job">
-              <span class="job-name">Session summarization</span>
-              <span class="job-line"><b>staleness</b> · every 10 min · last 14:21–14:22 · due 14:32 · 503 sessions pending</span>
-            </div>
-            <div class="job">
-              <span class="job-name">Tenant repo sync</span>
-              <span class="job-line"><b>staleness</b> · each repository every 30 min, ±20% · held back twice · it and summarization compete on how overdue each is, a ratio the plane does not publish</span>
+            <span class="derived">proposed contract · candidates, not an order. When the lease frees, the picker takes a registered waiter the winner would yield to, else the most overdue against its cadence (section 4). The plane publishes neither the waiters nor the last runs, so these two stay unranked</span>
+            <div class="cands" role="group" aria-label="Unranked candidates for the next lease">
+              <span class="cands-head">either</span>
+              <div class="job">
+                <span class="job-name">Session summarization</span>
+                <span class="job-line"><b>staleness</b> · every 10 min · last 14:21–14:22 · due 14:32 · 503 sessions pending</span>
+              </div>
+              <div class="job">
+                <span class="job-name">Tenant repo sync</span>
+                <span class="job-line"><b>staleness</b> · each repository every 30 min, ±20% · held back at 14:20 and 14:27 · no last run in these reads</span>
+              </div>
             </div>
             <div class="job">
               <span class="job-name">Backup</span>
-              <span class="job-line"><b>priority-0</b> once due · <span class="nw">2026-09-29 13:14</span> · then it outranks every staleness</span>
+              <span class="job-line"><b>priority-0</b> once due · <span class="nw">2026-09-29 13:14</span> · then it outranks both</span>
             </div>
           </div>
         </div>
@@ -560,7 +565,7 @@
         <li><b>No invented progress</b> (the three encodings under frame 2). A bar fills only from a run's own counter, such as REM's chunk <i>n</i> of <i>m</i>. Inside a chunk, or for a task that counts nothing, the bar is hatched and the running time stands beside it. A sampled count, such as the 438 undigested among the latest 2,000, is a number with its bound, never a bar. No percentages of a whole, no ETAs.</li>
         <li><b>One picture, one time.</b> The running view reads one snapshot, so every value shares its time. Frame 1 is composed from several reads and says so in its own head, not only in its caption.</li>
         <li><b>A misleading reading is not repeated.</b> The overview says what happened: Chroma uses 11.3 GiB, not the 84% the diagnosis counts, and each backup bundle is written while the run fails one requirement, not the three codes the ledger derives from one exit.</li>
-        <li><b>The proposed schedule is marked where it is used.</b> The Next column says the picker's ranks give its order and that the plane publishes none of it yet. Each job names the rank it competes on: priority-0 or staleness. Where the order between two jobs depends on a ratio the plane does not publish, the job says so.</li>
+        <li><b>The proposed schedule is marked where it is used.</b> The Next column is a proposed contract, and it lists candidates, not an order. The picker's choice between two staleness jobs needs the waiter ledger and each task's last run, and the plane publishes neither yet, so the view groups those jobs unranked beside the rule that will decide. Each job names the rank it competes on: priority-0 or staleness.</li>
       </ol>
     </div>
     <div>
