@@ -89,10 +89,14 @@ class GraphSceneEnvelope extends Base {
      *
      * The counts are what the pane drew, when it passes them: a node without an id, an edge whose ends are not
      * both nodes of the read, or a repeated edge is not drawn, and the line says how many of the read's own
-     * were not. Without `drawn` it counts the read.
+     * were not. What the pane chose to hide is named as such (mail nodes hidden, halo nodes hidden) and a
+     * drawn halo says how many it holds, so "not drawn" is left to what the read carried and the pane could
+     * not draw. Without `drawn` it counts the read.
      * @param {Object|null} envelope A landed envelope.
      * @param {Function} [formatStamp] `(isoString) → String|null`
-     * @param {Object|null} [drawn=null] `{nodes, edges}`: what the pane drew from this read
+     * @param {Object|null} [drawn=null] `{nodes, edges, halo, hidden}`: what the pane drew from this read, the
+     *     nodes of it in the halo, and `hidden` as {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}
+     *     counts it (`{mail: {nodes, edges}, halo: {nodes, edges}}`)
      * @returns {{currency: String, text: String}}
      */
     static describe(envelope, formatStamp = at => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}Z`, drawn = null) {
@@ -104,9 +108,16 @@ class GraphSceneEnvelope extends Base {
             stamp    = typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? formatStamp(at) : null,
             plural   = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`,
             read     = {nodes: scene?.nodes?.length ?? 0, edges: scene?.edges?.length ?? 0},
-            {nodes, edges} = drawn ?? read,
-            unseen   = [[read.nodes - nodes, 'node'], [read.edges - edges, 'edge']].filter(([count]) => count > 0).map(([count, word]) => `${plural(count, word)} not drawn`),
-            holds    = read.nodes ? [`${plural(nodes, 'node')} · ${plural(edges, 'edge')}`, ...unseen].join(' · ') : null,
+            {edges, halo = 0, hidden = null, nodes} = drawn ?? read,
+            mail     = hidden?.mail ?? {nodes: 0, edges: 0},
+            haloed   = hidden?.halo ?? {nodes: 0, edges: 0},
+            chosen   = [
+                mail.nodes   > 0 && `${plural(mail.nodes, 'mail node')} hidden`,
+                halo         > 0 && `${halo} in the halo`,
+                haloed.nodes > 0 && `${plural(haloed.nodes, 'halo node')} hidden`
+            ].filter(Boolean),
+            unseen   = [[read.nodes - nodes - mail.nodes - haloed.nodes, 'node'], [read.edges - edges - mail.edges - haloed.edges, 'edge']].filter(([count]) => count > 0).map(([count, word]) => `${plural(count, word)} not drawn`),
+            holds    = read.nodes ? [`${plural(nodes, 'node')} · ${plural(edges, 'edge')}`, ...chosen, ...unseen].join(' · ') : null,
             budget   = scene?.budget,
             cut      = scene?.completeness === 'truncated'
                 ? `partial, budget ${budget?.maxNodes ?? '?'} nodes / ${budget?.maxEdges ?? '?'} edges / ${budget?.maxBytes ? `${Math.round(budget.maxBytes / 1024)} KiB` : '?'}`

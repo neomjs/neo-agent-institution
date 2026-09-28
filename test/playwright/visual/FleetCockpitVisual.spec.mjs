@@ -679,11 +679,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForTimeout(600)
     };
 
-    test('the Observatory pane — a read draws its communities and the route as an overlay of rank beacons the toggle removes; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
+    test('the Observatory pane — a read draws its density wells, the nodes in no well in a faint halo, and the route as an overlay of rank beacons the toggle removes; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
         const
             pane    = page.locator('.fm-observatory-pane'),
             toggle  = pane.getByRole('button', {name: 'Route'}),
-            current = /^Current · captured .+ · 16 nodes · 15 edges · complete$/,
+            current = /^Current · captured .+ · 16 nodes · 15 edges · 3 in the halo · complete$/,
             // no tooltip in a shot. The pointer dwells until any pending tooltip has shown, then leaves and
             // waits out the hide: an engine tooltip whose target is left inside its show delay stays up.
             rest    = async () => {
@@ -699,6 +699,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await feedObservatory(page, 'current', current);
         await expect(pane).toHaveScreenshot('observatory-pane-current.png');
 
+        // a toggle's state is its label's ink, which the pixel budget cannot see: Mail is off, Halo on
+        const inkOf = name => pane.getByRole('button', {name}).locator('.neo-button-text').evaluate(label => getComputedStyle(label).color);
+
+        expect(await inkOf('Mail'), 'an off toggle reads apart from an on one').not.toBe(await inkOf('Halo'));
+
         // the route is an overlay: switched off, the same graph stays where it was
         await toggle.click();
         await rest();
@@ -712,7 +717,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(pane.locator('.fm-observatory-selection')).toHaveText('Selected · Golden Path currency on the cockpit · issue · neomjs/neo#issue-8 · rank 2 · 4 relations (1 authored, 1 relates, 1 resolves, 1 tagged)');
         await expect(pane).toHaveScreenshot('observatory-pane-selected.png');
 
-        await feedObservatory(page, 'truncated', /^Current · captured .+ · 16 nodes · 15 edges · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
+        await feedObservatory(page, 'truncated', /^Current · captured .+ · 16 nodes · 15 edges · 3 in the halo · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
         await expect(pane.locator('.fm-observatory-selection'), 'a new snapshot that holds the id keeps the selection').toHaveText(/^Selected · Golden Path currency on the cockpit · /);
         await expect(pane).toHaveScreenshot('observatory-pane-truncated.png');
 
@@ -729,7 +734,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=current&t=${++driverTick}`);
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ \/ 32 KiB$/);
 
-        await feedObservatory(page, 'degraded', 'Degraded · graph-seam-refused · 16 nodes · 15 edges · complete');
+        await feedObservatory(page, 'degraded', 'Degraded · graph-seam-refused · 16 nodes · 15 edges · 3 in the halo · complete');
         await expect(pane).toHaveScreenshot('observatory-pane-degraded-light.png');
 
         await feedObservatory(page, 'routeless', 'Degraded · route-not-found');

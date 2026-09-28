@@ -17,11 +17,13 @@ import ViewerTime              from '../../../util/ViewerTime.mjs';
 const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 'No node selected'};
 
 /**
- * @summary The Observatory keeper-view — the graph read in its communities, as a navigable 3D scene on the
- * canvas worker and as two lists beside it, with the Golden Path's route as an overlay the head's toggle draws
- * or leaves out. The head carries the read's line first (capability, capture, holdings, completeness —
- * {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node under the pointer beside it; the selection
- * strip below names the selected node as the read has it. The pane binds the shell's `graphSceneEnvelope` leaf,
+ * @summary The Observatory keeper-view — the graph read in its wells, as a navigable 3D scene on the canvas
+ * worker and as two lists beside it, with the Golden Path's route as an overlay the Route toggle draws or
+ * leaves out. The {@link #geography} is density wells by default, the read's most connected nodes drawing the
+ * rest around them; mail stays out of the scene until the Mail toggle brings it in, and the nodes in no
+ * well sit in an outer halo the Halo toggle hides. The head carries the read's line first (capability, capture,
+ * holdings, what the view hid, completeness — {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node
+ * under the pointer beside it; the selection strip below names the selected node as the read has it. The pane binds the shell's `graphSceneEnvelope` leaf,
  * which the cockpit's graph read writes, derives the scene once
  * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas and the lists. The
  * Golden Path leaf only qualifies the line: its route's admission is not the graph read's to report, so a
@@ -41,6 +43,14 @@ const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 
  * @extends Neo.container.Base
  */
 class ObservatoryContainer extends Container {
+    /**
+     * Valid values for {@link #geography}.
+     * @member {String[]} geographies=['communities', 'density']
+     * @protected
+     * @static
+     */
+    static geographies = ['communities', 'density']
+
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.goldenpath.ObservatoryContainer'
@@ -63,34 +73,72 @@ class ObservatoryContainer extends Container {
          */
         envelope_: null,
         /**
+         * How the scene places its nodes: `density` (wells around the read's most connected nodes) or
+         * `communities` (the topology's Louvain communities). Switching moves the nodes and keeps the selection.
+         * @member {String} geography_='density'
+         * @reactive
+         */
+        geography_: 'density',
+        /**
+         * Whether the nodes in no well (no edge, or no path to a hub) are drawn in an outer halo; the Halo toggle
+         * flips it, and the line counts them either way.
+         * @member {Boolean} halo_=true
+         * @reactive
+         */
+        halo_: true,
+        /**
          * @member {Object} layout={ntype: 'vbox', align: 'stretch'}
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The head (title, the read's line, the hovered node), the selection strip and the body: the side
-         * panel with the node list and the selected node's relations, which the canvas joins in
-         * {@link #onConstructed} where a canvas worker exists. The strip always holds its row, so a selection
-         * never resizes the canvas.
+         * The head (title, the read's line, the hovered node), the strip (the selection, then the Mail, Halo and
+         * Route toggles, so the read's line keeps the head's whole width) and the body: the side panel with the
+         * node list and the selected node's relations, which the canvas joins in {@link #onConstructed} where a
+         * canvas worker exists. The strip always holds its row, so a selection never resizes the canvas.
          * @member {Object[]} items
          */
         items: [{
+            ntype    : 'component',
+            cls      : ['fm-observatory-head'],
+            flex     : 'none',
+            reference: 'observatory-head',
+            vdom     : {cn: [
+                {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
+                {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
+                {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HINTS.hover}
+            ]}
+        }, {
             ntype : 'container',
-            cls   : ['fm-observatory-bar'],
+            cls   : ['fm-observatory-strip'],
             flex  : 'none',
             layout: {ntype: 'hbox', align: 'center'},
             items : [{
                 ntype    : 'component',
-                cls      : ['fm-observatory-head'],
+                cls      : ['fm-observatory-selection', 'is-empty', 'is-hint'],
                 flex     : 1,
-                reference: 'observatory-head',
-                vdom     : {cn: [
-                    {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
-                    {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
-                    {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HINTS.hover}
-                ]}
+                reference: 'observatory-selection',
+                text     : HINTS.selection
             }, {
                 module   : Button,
-                cls      : ['fm-observatory-route'],
+                cls      : ['fm-observatory-toggle', 'fm-observatory-mail'],
+                flex     : 'none',
+                pressed  : false,
+                reference: 'mail-toggle',
+                text     : 'Mail',
+                tooltip  : 'Draw agent messages and their relations in the graph',
+                ui       : 'ghost'
+            }, {
+                module   : Button,
+                cls      : ['fm-observatory-toggle', 'fm-observatory-halo'],
+                flex     : 'none',
+                pressed  : true,
+                reference: 'halo-toggle',
+                text     : 'Halo',
+                tooltip  : 'Draw the nodes in no well (no edge, or no path to a hub) in an outer halo',
+                ui       : 'ghost'
+            }, {
+                module   : Button,
+                cls      : ['fm-observatory-toggle', 'fm-observatory-route'],
                 flex     : 'none',
                 pressed  : true,
                 reference: 'route-toggle',
@@ -98,12 +146,6 @@ class ObservatoryContainer extends Container {
                 tooltip  : 'Draw the Golden Path route over the graph',
                 ui       : 'ghost'
             }]
-        }, {
-            ntype    : 'component',
-            cls      : ['fm-observatory-selection', 'is-empty', 'is-hint'],
-            flex     : 'none',
-            reference: 'observatory-selection',
-            text     : HINTS.selection
         }, {
             ntype    : 'container',
             cls      : ['fm-observatory-body'],
@@ -140,6 +182,13 @@ class ObservatoryContainer extends Container {
             }]
         }],
         /**
+         * Whether mail (agent messages, their broadcast sentinels and the relations routing them) stays in the
+         * scene; the Mail toggle flips it, and the line counts what it hides.
+         * @member {Boolean} mail_=false
+         * @reactive
+         */
+        mail_: false,
+        /**
          * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf. Only its
          * currency is read: a withheld route qualifies the line.
          * @member {Object|null} routeEnvelope_=null
@@ -147,7 +196,7 @@ class ObservatoryContainer extends Container {
          */
         routeEnvelope_: null,
         /**
-         * Whether the route is drawn over the graph; the head's toggle flips it.
+         * Whether the route is drawn over the graph; the Route toggle flips it.
          * @member {Boolean} routeOverlay_=true
          * @reactive
          */
@@ -230,6 +279,8 @@ class ObservatoryContainer extends Container {
         relations.store = me.relationStore;
         nodes    .on('select', me.onNodeListSelect,     me);
         relations.on('select', me.onRelationListSelect, me);
+        me.getReference('halo-toggle') .set({handler: 'onHaloToggleClick',  handlerScope: me});
+        me.getReference('mail-toggle') .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle').set({handler: 'onRouteToggleClick', handlerScope: me});
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
@@ -247,7 +298,7 @@ class ObservatoryContainer extends Container {
         }
 
         me.updateLine();
-        me.updateRouteToggle();
+        me.updateToggles();
         me.fillNodeList();
         me.syncLists();
         me.updateSelection()
@@ -266,32 +317,51 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * Triggered after the envelope config got changed: the scene is derived again, the read's line, the node
-     * list and the canvas follow, and a selection the new read no longer holds clears with its reason.
+     * Triggered after the envelope config got changed: the scene is derived again from the new read.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
      */
     afterSetEnvelope(value, oldValue) {
-        const
-            me           = this,
-            {selectedId} = me,
-            // the bound value is the provider's tracking proxy; the layout reads the plain projection
-            scene        = ObservatorySceneLayout.fromGraphScene(GraphSceneEnvelope.plain(value));
+        this.applyScene(this.layOut(value), 'read')
+    }
 
-        me.scene = scene;
-        me.updateLine();
+    /**
+     * Triggered after the geography config got changed: the same read is laid out again, and the selection stays
+     * with its node. The first value is the one the envelope's layout already read.
+     * @param {String} value
+     * @param {String|undefined} oldValue
+     * @protected
+     */
+    afterSetGeography(value, oldValue) {
+        oldValue !== undefined && this.applyScene(this.layOut(this.envelope), 'view')
+    }
 
-        if (selectedId && !Object.hasOwn(scene.index, selectedId)) {
-            // an unobserved leaf is a retired read (another instance's): the id did not leave a read, no read is held
-            me.selectionNote = scene.currency === 'unobserved' ? null : `Selection cleared · ${selectedId} is not in ${scene.snapshotId ? `snapshot ${scene.snapshotId}` : 'this read'}`;
-            me.selectedId    = null
+    /**
+     * Triggered after the halo config got changed: the nodes in no well join or leave the scene, and the toggle
+     * says which.
+     * @param {Boolean} value
+     * @param {Boolean|undefined} oldValue
+     * @protected
+     */
+    afterSetHalo(value, oldValue) {
+        if (oldValue !== undefined) {
+            this.applyScene(this.layOut(this.envelope), 'view');
+            this.updateToggles()
         }
+    }
 
-        me.getReference('observatory-canvas')?.set({scene, selectedId: me.selectedId});
-        me.fillNodeList();
-        me.syncLists();
-        me.updateSelection()
+    /**
+     * Triggered after the mail config got changed: mail joins or leaves the scene, and the toggle says which.
+     * @param {Boolean} value
+     * @param {Boolean|undefined} oldValue
+     * @protected
+     */
+    afterSetMail(value, oldValue) {
+        if (oldValue !== undefined) {
+            this.applyScene(this.layOut(this.envelope), 'view');
+            this.updateToggles()
+        }
     }
 
     /**
@@ -313,7 +383,7 @@ class ObservatoryContainer extends Container {
      */
     afterSetRouteOverlay(value, oldValue) {
         this.getReference('observatory-canvas')?.set({routeOverlay: value});
-        this.updateRouteToggle()
+        this.updateToggles()
     }
 
     /**
@@ -329,6 +399,44 @@ class ObservatoryContainer extends Container {
         me.getReference('observatory-canvas')?.set({selectedId: value});
         me.syncLists();
         me.updateSelection()
+    }
+
+    /**
+     * @summary Hands a freshly laid-out scene to the head, the canvas and the lists. A selection the scene no
+     * longer holds clears with its reason: a new read that lost the id says so, a view that hides it says that.
+     * @param {Object} scene A {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene} scene
+     * @param {String} cause `read` when a new read replaced the scene, `view` when a toggle or the geography did
+     * @protected
+     */
+    applyScene(scene, cause) {
+        const me = this, {selectedId} = me;
+
+        me.scene = scene;
+        me.updateLine();
+
+        if (selectedId && !Object.hasOwn(scene.index, selectedId)) {
+            // an unobserved leaf is a retired read (another instance's): the id did not leave a read, no read is held
+            me.selectionNote = cause === 'view'
+                ? `Selection cleared · ${selectedId} is hidden in this view`
+                : scene.currency === 'unobserved' ? null : `Selection cleared · ${selectedId} is not in ${scene.snapshotId ? `snapshot ${scene.snapshotId}` : 'this read'}`;
+            me.selectedId = null
+        }
+
+        me.getReference('observatory-canvas')?.set({scene, selectedId: me.selectedId});
+        me.fillNodeList();
+        me.syncLists();
+        me.updateSelection()
+    }
+
+    /**
+     * Triggered before the geography config gets changed: only a known geography applies.
+     * @param {String} value
+     * @param {String} oldValue
+     * @returns {String|undefined}
+     * @protected
+     */
+    beforeSetGeography(value, oldValue) {
+        return this.beforeSetEnumValue(value, oldValue, 'geography', ObservatoryContainer.geographies)
     }
 
     /**
@@ -393,6 +501,34 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary The scene of a read as this view places it: its geography, and mail and the halo as the toggles
+     * have them.
+     * @param {Object|null} envelope The bound envelope
+     * @returns {Object} A {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene} scene
+     * @protected
+     */
+    layOut(envelope) {
+        const {geography, halo, mail} = this;
+
+        // the bound value is the provider's tracking proxy; the layout reads the plain projection
+        return ObservatorySceneLayout.fromGraphScene(GraphSceneEnvelope.plain(envelope), {geography, halo, mail})
+    }
+
+    /**
+     * @summary The Halo toggle was clicked: the nodes in no well join or leave the scene.
+     */
+    onHaloToggleClick() {
+        this.halo = !this.halo
+    }
+
+    /**
+     * @summary The Mail toggle was clicked: mail joins or leaves the scene.
+     */
+    onMailToggleClick() {
+        this.mail = !this.mail
+    }
+
+    /**
      * @summary A row of the node list became selected — by a click or by the arrow keys.
      * @param {Object} data
      * @param {Object[]} data.records
@@ -454,7 +590,7 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The head's route toggle was clicked: the overlay flips.
+     * @summary The Route toggle was clicked: the overlay flips.
      */
     onRouteToggleClick() {
         this.routeOverlay = !this.routeOverlay
@@ -531,8 +667,8 @@ class ObservatoryContainer extends Container {
             me    = this,
             head  = me.getReference('observatory-head'),
             route = me.routeEnvelope,
-            // the line counts what the layout drew, and names what the read carried beyond it
-            drawn = me.scene && {nodes: me.scene.nodes.length, edges: me.scene.edges.length};
+            // the line counts what the layout drew, names what the view hid, and what the read carried beyond it
+            drawn = me.scene && {nodes: me.scene.nodes.length, edges: me.scene.edges.length, halo: me.scene.halo, hidden: me.scene.hidden};
 
         if (head) {
             head.vdom.cn[1].text = [
@@ -544,18 +680,22 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The route toggle shows the overlay's state: pressed while the route is drawn, for the eye and for
-     * assistive technology alike.
+     * @summary The strip's toggles show their state: Mail pressed while mail is drawn, Halo while the halo is,
+     * Route while the route is, for the eye and for assistive technology alike.
      * @protected
      */
-    updateRouteToggle() {
-        const {routeOverlay} = this, toggle = this.getReference('route-toggle');
+    updateToggles() {
+        const me = this;
 
-        if (toggle) {
-            toggle.pressed               = routeOverlay;
-            toggle.vdom['aria-pressed'] = String(routeOverlay);
-            toggle.update()
-        }
+        [['mail-toggle', me.mail], ['halo-toggle', me.halo], ['route-toggle', me.routeOverlay]].forEach(([reference, pressed]) => {
+            const toggle = me.getReference(reference);
+
+            if (toggle) {
+                toggle.pressed               = pressed;
+                toggle.vdom['aria-pressed'] = String(pressed);
+                toggle.update()
+            }
+        })
     }
 
     /**

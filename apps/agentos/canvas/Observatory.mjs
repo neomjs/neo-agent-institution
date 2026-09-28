@@ -2,66 +2,6 @@ import GraphScene      from '../../../node_modules/neo.mjs/src/canvas/GraphScene
 import {PALETTES, rgb} from './fmPalette.mjs';
 
 /**
- * Node sizes in the engine's unit, pixels at the camera's distance: every node takes `node` in a read of up to
- * `nodeScaleFrom` nodes, and a denser read shrinks it with the square root of the excess, down to `nodeMin`, so a
- * whole graph reads as dust that glows where it gathers. While the route is drawn a seed shrinks down the route
- * from the first rank to the last between its two bounds, at any scale. Under a selection the selected node grows
- * by the `selected` factor, never below the last seed so it stands out of the dust, and a node outside its
- * neighbourhood shrinks by the `faded` one.
- * @type {Object}
- */
-const SIZES = {faded: 0.6, node: 5, nodeMin: 0.4, nodeScaleFrom: 400, seedMax: 10, seedMin: 6, selected: 1.6};
-
-/**
- * The community palette: a golden-angle hue step from the signal's hue that skips the `gold` band of hues, the
- * route's alone, and a lightness per skin.
- * @type {Object}
- */
-const TONES = {gold: {from: 25, span: 60}, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508};
-
-/**
- * @summary A hue in degrees, a saturation and a lightness as the three unit floats a WebGL attribute takes.
- * @param {Number} hue
- * @param {Number} saturation
- * @param {Number} lightness
- * @returns {Number[]}
- */
-function hsl(hue, saturation, lightness) {
-    const chroma = saturation * Math.min(lightness, 1 - lightness), channel = n => {
-        const k = (n + hue / 30) % 12;
-
-        return lightness - chroma * Math.max(-1, Math.min(k - 3, 9 - k, 1))
-    };
-
-    return [channel(0), channel(8), channel(4)]
-}
-
-/**
- * @summary The hue of a `#rrggbb` colour, in degrees.
- * @param {String} hex
- * @returns {Number}
- */
-function hueOf(hex) {
-    const [r, g, b] = rgb(hex), max = Math.max(r, g, b), span = max - Math.min(r, g, b);
-
-    if (!span) {
-        return 0
-    }
-
-    const hue = max === r ? (g - b) / span % 6 : max === g ? (b - r) / span + 2 : (r - g) / span + 4;
-
-    return (hue * 60 + 360) % 360
-}
-
-/**
- * The fewest nodes a scene draws through the engine's level of detail. Its far level shows each community as
- * one centroid, which a large graph needs and a small read does not: below this, every node is drawn and can
- * be picked at any distance.
- * @type {Number}
- */
-const LOD_FROM = 2000;
-
-/**
  * @summary The observatory renderer: {@link Neo.canvas.GraphScene} in the cockpit's ink. The App Worker hands
  * it the scene {@link AgentOS.util.ObservatorySceneLayout} derives from the graph read in its wire form
  * ({@link AgentOS.util.ObservatorySceneLayout#wire}): typed arrays by node index for positions, communities,
@@ -92,11 +32,34 @@ class Observatory extends GraphScene {
          */
         className: 'AgentOS.canvas.Observatory',
         /**
+         * The community palette: a golden-angle hue step from the signal's hue that skips the `gold` band of hues,
+         * the route's alone, and a lightness per skin.
+         * @member {Object} communityTones={gold: {from: 25, span: 60}, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508}
+         */
+        communityTones: {gold: {from: 25, span: 60}, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508},
+        /**
          * The engine's level of detail with the fitted camera one level in: it draws every node, and the
          * centroids only once the camera is drawn back past the whole graph.
          * @member {Object} lod={far: 1.3, near: 0.55, nearClusters: 6}
          */
         lod: {far: 1.3, near: 0.55, nearClusters: 6},
+        /**
+         * The fewest nodes a scene draws through the engine's level of detail. Its far level shows each community
+         * as one centroid, which a large graph needs and a small read does not: below this, every node is drawn
+         * and can be picked at any distance.
+         * @member {Number} lodFrom=2000
+         */
+        lodFrom: 2000,
+        /**
+         * Node sizes in the engine's unit, pixels at the camera's distance: every node takes `node` in a read of up
+         * to `nodeScaleFrom` nodes, and a denser read shrinks it with the square root of the excess, down to
+         * `nodeMin`, so a whole graph reads as dust that glows where it gathers. While the route is drawn a seed
+         * shrinks down the route from the first rank to the last between its two bounds, at any scale. Under a
+         * selection the selected node grows by the `selected` factor, never below the last seed so it stands out
+         * of the dust, and a node outside its neighbourhood shrinks by the `faded` one.
+         * @member {Object} nodeSizes={faded: 0.6, node: 5, nodeMin: 0.4, nodeScaleFrom: 400, seedMax: 10, seedMin: 6, selected: 1.6}
+         */
+        nodeSizes: {faded: 0.6, node: 5, nodeMin: 0.4, nodeScaleFrom: 400, seedMax: 10, seedMin: 6, selected: 1.6},
         /**
          * Remote method access: the engine's set plus `locate`, the inverse of `pick`, and the two changes that
          * ink the drawn scene again without handing it over: the selection and the route overlay.
@@ -182,6 +145,40 @@ class Observatory extends GraphScene {
     }
 
     /**
+     * @summary A hue in degrees, a saturation and a lightness as the three unit floats a WebGL attribute takes.
+     * @param {Number} hue
+     * @param {Number} saturation
+     * @param {Number} lightness
+     * @returns {Number[]}
+     */
+    hsl(hue, saturation, lightness) {
+        const chroma = saturation * Math.min(lightness, 1 - lightness), channel = n => {
+            const k = (n + hue / 30) % 12;
+
+            return lightness - chroma * Math.max(-1, Math.min(k - 3, 9 - k, 1))
+        };
+
+        return [channel(0), channel(8), channel(4)]
+    }
+
+    /**
+     * @summary The hue of a `#rrggbb` colour, in degrees.
+     * @param {String} hex
+     * @returns {Number}
+     */
+    hueOf(hex) {
+        const [r, g, b] = rgb(hex), max = Math.max(r, g, b), span = max - Math.min(r, g, b);
+
+        if (!span) {
+            return 0
+        }
+
+        const hue = max === r ? (g - b) / span % 6 : max === g ? (b - r) / span + 2 : (r - g) / span + 4;
+
+        return (hue * 60 + 360) % 360
+    }
+
+    /**
      * @summary The engine's flat scene for a wire scene in the current theme's ink, or `null` when there is
      * nothing to draw.
      * @param {Object|null} scene A wire scene (`{count, positions, clusters, edges, seeds, ranks, currency, communities, empty}`)
@@ -195,20 +192,23 @@ class Observatory extends GraphScene {
         }
 
         const
-            me       = this,
+            me        = this,
             {clusters, count, edges, ranks, seeds} = scene,
-            selected = me.constructor.nodeIndex(scene, selectedIndex),
-            palette  = PALETTES[me.theme] || PALETTES.dark,
-            tones    = Array.from({length: Math.max(1, scene.communities)}, (item, community) => me.toneOf(community)),
+            nodeSizes = me.nodeSizes,
+            selected  = me.constructor.nodeIndex(scene, selectedIndex),
+            palette   = PALETTES[me.theme] || PALETTES.dark,
+            tones     = Array.from({length: Math.max(1, scene.communities)}, (item, community) => me.toneOf(community)),
             // only a current read spends the route's gold
-            seed     = rgb(scene.currency === 'current' ? palette.route : palette.ink),
-            faded    = rgb(palette.line),
-            lit      = selected < 0 ? null : new Set([selected]),
-            rankOf   = routeOverlay ? new Map(Array.from(seeds, (node, position) => [node, ranks[position]])) : null,
-            lastRank = Math.max(1, ...ranks),
-            nodeSize = Math.max(SIZES.nodeMin, SIZES.node * Math.min(1, Math.sqrt(SIZES.nodeScaleFrom / count))),
-            colors   = new Float32Array(count * 3),
-            sizes    = new Float32Array(count);
+            seed      = rgb(scene.currency === 'current' ? palette.route : palette.ink),
+            faded     = rgb(palette.line),
+            lit       = selected < 0 ? null : new Set([selected]),
+            rankOf    = routeOverlay ? new Map(Array.from(seeds, (node, position) => [node, ranks[position]])) : null,
+            lastRank  = Math.max(1, ...ranks),
+            nodeSize  = Math.max(nodeSizes.nodeMin, nodeSizes.node * Math.min(1, Math.sqrt(nodeSizes.nodeScaleFrom / count))),
+            colors    = new Float32Array(count * 3),
+            sizes     = new Float32Array(count),
+            // the halo's sector clusters are dust around the wells: faint and small, never a community's tone
+            haloFrom  = scene.haloFrom ?? Infinity;
 
         for (let pair = 0; lit && pair < edges.length; pair += 2) {
             edges[pair]     === selected && lit.add(edges[pair + 1]);
@@ -218,16 +218,17 @@ class Observatory extends GraphScene {
         for (let index = 0; index < count; index++) {
             const
                 rank = rankOf?.get(index),
-                base = rank === undefined ? nodeSize : lastRank > 1 ? SIZES.seedMax - (rank - 1) / (lastRank - 1) * (SIZES.seedMax - SIZES.seedMin) : SIZES.seedMax,
-                out  = lit !== null && !lit.has(index);
+                base = rank === undefined ? nodeSize : lastRank > 1 ? nodeSizes.seedMax - (rank - 1) / (lastRank - 1) * (nodeSizes.seedMax - nodeSizes.seedMin) : nodeSizes.seedMax,
+                out  = lit !== null && !lit.has(index),
+                halo = clusters[index] >= haloFrom;
 
             // a drawn route keeps its colour under a selection: it recedes in size only
-            colors.set(rank !== undefined ? seed : out ? faded : tones[clusters[index]], index * 3);
-            sizes[index] = index === selected ? Math.max(base * SIZES.selected, SIZES.seedMin) : base * (out ? SIZES.faded : 1)
+            colors.set(rank !== undefined ? seed : out || halo ? faded : tones[clusters[index]], index * 3);
+            sizes[index] = index === selected ? Math.max(base * nodeSizes.selected, nodeSizes.seedMin) : base * (out || halo ? nodeSizes.faded : 1)
         }
 
         return {
-            clusters : count >= LOD_FROM ? clusters : null,
+            clusters : count >= me.lodFrom ? clusters : null,
             colors,
             edges,
             paths    : routeOverlay && seeds.length > 1 ? [seeds] : [],
@@ -324,12 +325,14 @@ class Observatory extends GraphScene {
      */
     toneOf(community) {
         const
-            palette      = PALETTES[this.theme] || PALETTES.dark,
-            {from, span} = TONES.gold,
+            me           = this,
+            tones        = me.communityTones,
+            palette      = PALETTES[me.theme] || PALETTES.dark,
+            {from, span} = tones.gold,
             // step around a wheel without the band, then open the band where it lies
-            hue          = (hueOf(palette.signal) + community * TONES.step) % (360 - span);
+            hue          = (me.hueOf(palette.signal) + community * tones.step) % (360 - span);
 
-        return hsl(hue < from ? hue : hue + span, TONES.saturation, TONES.lightness[this.theme] ?? TONES.lightness.dark)
+        return me.hsl(hue < from ? hue : hue + span, tones.saturation, tones.lightness[me.theme] ?? tones.lightness.dark)
     }
 
     /**

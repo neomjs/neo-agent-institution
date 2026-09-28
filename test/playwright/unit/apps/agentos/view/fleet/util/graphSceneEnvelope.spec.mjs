@@ -73,6 +73,24 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
             .toBe('Current · captured viewer 22:05 · 0 nodes · 0 edges · 2 nodes not drawn · 1 edge not drawn · complete')
     });
 
+    test('the line names what the view hid and what its halo holds, and leaves "not drawn" to what the pane could not draw', () => {
+        const
+            read   = current({
+                nodes: [...current().scene.nodes, {id: 'neomjs/neo#message-1', kind: 'MESSAGE'}, {id: 'neomjs/neo#issue-3', kind: 'issue'}, {id: 'neomjs/neo#issue-4', kind: 'issue'}],
+                edges: [...current().scene.edges, {from: 'neomjs/neo#message-1', to: 'neomjs/neo#issue-1', type: 'TAGGED_CONCEPT'}]
+            }),
+            landed = GraphSceneEnvelope.fromWire(read),
+            stamp  = at => `viewer ${at.slice(11, 16)}`,
+            none   = {nodes: 0, edges: 0};
+
+        expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 4, edges: 1, halo: 2, hidden: {mail: {nodes: 1, edges: 1}, halo: none}}).text, 'mail hidden, the halo drawn')
+            .toBe('Current · captured viewer 22:05 · 4 nodes · 1 edge · 1 mail node hidden · 2 in the halo · complete');
+        expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 2, edges: 1, halo: 0, hidden: {mail: {nodes: 1, edges: 1}, halo: {nodes: 2, edges: 0}}}).text, 'the halo hidden too')
+            .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · 1 mail node hidden · 2 halo nodes hidden · complete');
+        expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 3, edges: 1, halo: 2, hidden: {mail: {nodes: 1, edges: 1}, halo: none}}).text, 'a node the pane could not draw is still named')
+            .toBe('Current · captured viewer 22:05 · 3 nodes · 1 edge · 1 mail node hidden · 2 in the halo · 1 node not drawn · complete')
+    });
+
     test('a route item resolves only to a seed the read holds: a qualified id as itself, a bare id when one origin holds it', () => {
         const
             read = (route, ids) => GraphSceneEnvelope.fromWire(current({route, nodes: ids.map(id => ({id, label: id, kind: 'issue'}))})),
