@@ -3,207 +3,450 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Institution catch-up pane — information design (the #20 catch-up slice, §04-scored)</title>
+<title>Catch Up — what changed while you were away (design v2, #309)</title>
 <style>
   :root {
-    --ground:#0b0e13; --panel:#141a23; --panel-2:#1a212c;
-    --line:#262f3d; --line-soft:#1c242f;
-    --ink:#d6dce6; --ink-dim:#8b97a8; --ink-faint:#5a6575;
-    --signal:#5eead4;
-    --warn:#f5b544; --bad:#f4718b;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    /* §04 T1 role tokens, mirrored for the sketch (values = TOKENS.md) */
-    --t-display:600 14px/1.3 var(--sans);
-    --t-body:400 12px/1.45 var(--sans);
-    --t-detail:400 11px/1.4 var(--mono);
-    --t-micro:400 10px/1.3 var(--mono);
-    --t-chrome:400 11px/1 var(--mono);
-    /* §04 T2 chip geometry */
-    --chip-pad-y:2px; --chip-pad-x:8px; --chip-radius:4px; --chip-gap:8px; --chip-mark-w:3px;
-    /* §04 rhythm */
-    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+    color-scheme: light;
+    --fm-ground: #f2f5f9; --fm-panel: #ffffff; --fm-panel-2: #f7f9fc;
+    --fm-line: #d3dae4; --fm-line-soft: #e4e9f0;
+    --fm-ink: #1f2733; --fm-ink-dim: #5a6b80; --fm-ink-faint: #8494a7; --fm-signal: #0f766e;
+    --fm-state-ok: #047857; --fm-state-idle: #b45309; --fm-state-wedged: #be123c; --fm-state-limited: #6d28d9;
+    --fm-state-unobserved: #5f6d7c;
+    --fm-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --fm-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --fm-text-display: 600 14px/1.3 var(--fm-font-sans);
+    --fm-text-body: 12px/1.45 var(--fm-font-sans);
+    --fm-text-detail: 11px/1.4 var(--fm-font-mono);
+    --fm-text-micro: 10px/1.3 var(--fm-font-mono);
+    --fm-text-chrome: 11px/1 var(--fm-font-mono);
+    --fm-text-chrome-tracking: .08em;
+    --fm-space-1: 4px; --fm-space-2: 8px; --fm-space-3: 12px; --fm-space-4: 16px;
+    --fm-chip-mark-w: 3px; --fm-chip-pad-y: 2px; --fm-chip-pad-x: 8px; --fm-chip-radius: 4px;
+    --fm-motion-fast: 120ms;
   }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:1120px;margin:0 auto;padding:36px 24px 64px}
-  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--signal);margin:0}
-  h1{font-size:26px;letter-spacing:-.01em;margin:10px 0 6px;font-weight:640}
-  .lede{font-size:14px;color:var(--ink-dim);max-width:76ch;margin:0 0 26px}
-  .lede b{color:var(--ink)}
-  /* §04 text-color contract: information-bearing text renders --ink-dim (5.90:1 on panel) or
-     --ink; --ink-faint (2.96:1) survives only on decorative marks and borders */
-  .col-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:26px 0 8px}
-  .note{font-size:12px;color:var(--ink-dim);max-width:76ch;margin:8px 0 0}
-  .note b{color:var(--ink);font-weight:600}
-  .falsifier{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:6px;max-width:86ch}
-  .divider{border-top:1px solid var(--line-soft);margin:34px 0 26px}
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --fm-ground: #0b0e13; --fm-panel: #141a23; --fm-panel-2: #1a212c;
+      --fm-line: #262f3d; --fm-line-soft: #1c242f;
+      --fm-ink: #d6dce6; --fm-ink-dim: #8b97a8; --fm-ink-faint: #5a6575; --fm-signal: #5eead4;
+      --fm-state-ok: #34d399; --fm-state-idle: #f5b544; --fm-state-wedged: #f4718b; --fm-state-limited: #a78bfa;
+      --fm-state-unobserved: #6b7f94;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --fm-ground: #0b0e13; --fm-panel: #141a23; --fm-panel-2: #1a212c;
+    --fm-line: #262f3d; --fm-line-soft: #1c242f;
+    --fm-ink: #d6dce6; --fm-ink-dim: #8b97a8; --fm-ink-faint: #5a6575; --fm-signal: #5eead4;
+    --fm-state-ok: #34d399; --fm-state-idle: #f5b544; --fm-state-wedged: #f4718b; --fm-state-limited: #a78bfa;
+    --fm-state-unobserved: #6b7f94;
+  }
 
-  /* ── the pane stage (drawer-shell owns the real frame) ── */
-  .pane{background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;max-width:680px;overflow:hidden}
-  .pane-head{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
-  .pane-title{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);flex:1}
-  .authority{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fm-ground); color: var(--fm-ink); font: var(--fm-text-body); }
+  a { color: var(--fm-signal); }
+  code { font: var(--fm-text-detail); }
+  .board { max-width: 1120px; margin: 0 auto; padding: var(--fm-space-4) var(--fm-space-4) 48px; display: grid; gap: 24px; }
+  .board-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--fm-space-2) var(--fm-space-4); border-bottom: 1px solid var(--fm-line); padding-bottom: var(--fm-space-3); }
+  .eyebrow { font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); text-transform: uppercase; color: var(--fm-ink-dim); }
+  h1 { font: 600 22px/1.2 var(--fm-font-sans); margin: var(--fm-space-1) 0 0; text-wrap: balance; }
+  .lede { max-width: 70ch; color: var(--fm-ink-dim); margin: var(--fm-space-2) 0 0; }
+  .theme { font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); text-transform: uppercase; background: var(--fm-panel); color: var(--fm-ink); border: 1px solid var(--fm-line); border-radius: var(--fm-chip-radius); padding: 6px 10px; cursor: pointer; }
+  .theme:focus-visible, summary:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--fm-signal); outline-offset: 2px; }
+  .delta { border-left: 3px solid var(--fm-signal); padding: var(--fm-space-1) var(--fm-space-3); color: var(--fm-ink-dim); max-width: 80ch; margin: var(--fm-space-2) 0 0; }
+  .delta b { color: var(--fm-ink); font-weight: 600; }
 
-  /* ── the window receipt: THE headline of the pane — a designed sentence, not chrome ── */
-  .window{display:flex;align-items:baseline;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3);
-          border-bottom:1px solid var(--line-soft)}
-  .window .span{font:var(--t-display);color:var(--ink)}
-  .window .scope{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
-  .window.is-cold .span{font:var(--t-body);color:var(--ink-dim);font-weight:400}
+  /* ---- the brief: purpose → questions → division → order → coverage → journeys ---- */
+  .brief { display: grid; gap: var(--fm-space-4); }
+  .brief section { display: grid; gap: var(--fm-space-2); }
+  .brief h2 { font: var(--fm-text-display); margin: 0; }
+  .brief h2 .n { font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); color: var(--fm-signal); margin-right: var(--fm-space-2); }
+  .brief p, .brief li { margin: 0; color: var(--fm-ink-dim); max-width: 86ch; }
+  .brief b { color: var(--fm-ink); font-weight: 600; }
+  .brief ol, .brief ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .qgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--fm-space-3); }
+  .qcard { background: var(--fm-panel); border: 1px solid var(--fm-line-soft); padding: var(--fm-space-3); display: grid; gap: var(--fm-space-2); }
+  .qcard .eyebrow { color: var(--fm-signal); }
 
-  /* partition chips: affordance class (selection is structural — border + weight, never hue-alone) */
-  .parts{display:flex;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
-  .part{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;
-        padding:var(--chip-pad-y) var(--chip-pad-x);background:var(--panel-2);cursor:pointer}
-  .part.is-active{color:var(--ink);font-weight:600;border-color:var(--ink-dim)}
+  .frame { display: grid; gap: var(--fm-space-2); }
+  .frame-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--fm-space-2) var(--fm-space-3); }
+  .frame-label .eyebrow { color: var(--fm-signal); }
+  .frame-label p { margin: 0; color: var(--fm-ink-dim); max-width: 76ch; }
+  .viewport { background: var(--fm-ground); border: 1px solid var(--fm-line); padding: var(--fm-space-3); container-type: inline-size; }
+  .viewport.narrow { max-width: 296px; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--fm-space-3); align-items: start; }
 
-  /* actions row */
-  .actions{display:flex;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
-  .abtn{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line);border-radius:var(--chip-radius);
-        padding:var(--chip-pad-y) var(--chip-pad-x);background:var(--panel-2);cursor:pointer}
-  .abtn:hover{border-color:var(--ink-dim);color:var(--ink)}
-  .abtn.is-primary{color:var(--ink);border-color:var(--ink-dim)}
-  .spacer{flex:1}
+  /* ---- the pane ---- */
+  .cu { background: var(--fm-panel); border: 1px solid var(--fm-line-soft); display: grid; max-width: 720px; }
+  .cu > * { padding: var(--fm-space-3) var(--fm-space-4); }
+  .cu > * + * { border-top: 1px solid var(--fm-line-soft); }
+  .cu-head { display: grid; gap: var(--fm-space-1); }
+  .cu-title { font: var(--fm-text-chrome); letter-spacing: var(--fm-text-chrome-tracking); text-transform: uppercase; color: var(--fm-ink-dim); margin: 0; }
+  .cu-window { font: 600 17px/1.3 var(--fm-font-sans); color: var(--fm-ink); margin: 0; text-wrap: balance; }
+  .cu-window .span { font-weight: 400; color: var(--fm-ink-dim); }
+  .cu-basis { color: var(--fm-ink-dim); margin: 0; }
+  .cu-basis b { color: var(--fm-ink); font-weight: 500; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font: var(--fm-text-micro); color: var(--fm-ink-dim); padding: var(--fm-chip-pad-y) var(--fm-chip-pad-x); border: 1px solid var(--fm-line); border-radius: var(--fm-chip-radius); --fm-chip: var(--fm-ink-faint); vertical-align: 1px; }
+  .chip::before { content: ""; width: var(--fm-chip-mark-w); height: 10px; background: var(--fm-chip); border-radius: 1px; }
+  .chip.illus { --fm-chip: var(--fm-state-limited); }
+  .lookback { display: inline-flex; flex-wrap: wrap; gap: var(--fm-space-1); align-items: center; }
+  .lookback button { font: var(--fm-text-micro); color: var(--fm-ink-dim); background: none; border: 1px solid var(--fm-line); border-radius: var(--fm-chip-radius); padding: var(--fm-chip-pad-y) var(--fm-chip-pad-x); cursor: pointer; }
+  .lookback button[aria-pressed="true"] { color: var(--fm-ink); border-color: var(--fm-ink-dim); font-weight: 600; }
 
-  /* ── source SECTION header (the list.Base useHeaders record) ── */
-  .shead{display:flex;align-items:center;gap:var(--chip-gap);padding:var(--sp-2) var(--sp-3) var(--sp-1);
-         background:var(--panel-2);border-bottom:1px solid var(--line-soft)}
-  .stitle{font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);flex:1}
-  .sstate{font:var(--t-micro);border-radius:var(--chip-radius);padding:var(--chip-pad-y) var(--chip-pad-x);
-          border:1px solid var(--line);color:var(--ink-dim);position:relative;
-          padding-left:calc(var(--chip-pad-x) + var(--chip-mark-w) + 3px)}
-  .sstate::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--chip-mark-w);
-          border-radius:var(--chip-radius) 0 0 var(--chip-radius);background:var(--ink-faint)}
-  .sstate.is-live::before{background:var(--signal)}
-  .sstate.is-degraded::before{background:var(--warn)}
-  .sstate.is-unavailable::before{background:var(--bad)}
+  .cu-band { display: grid; gap: var(--fm-space-2); }
+  .cu-band-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--fm-space-1) var(--fm-space-3); }
+  .cu-band-head h3 { font: var(--fm-text-display); margin: 0; }
+  .cu-band-head .count { font: var(--fm-text-micro); color: var(--fm-ink-dim); }
+  .src { font: var(--fm-text-micro); color: var(--fm-ink-dim); overflow-wrap: anywhere; }
+  .src.warn { color: var(--fm-state-idle); }
+  .cu-dim { opacity: .55; }
 
-  /* freshness as designed metadata: a PILL GROUP, not a suffix sentence */
-  .fresh{display:flex;gap:var(--sp-1);padding:var(--sp-1) var(--sp-3);flex-wrap:wrap;
-         border-bottom:1px solid var(--line-soft)}
-  .pill{font:var(--t-micro);color:var(--ink-dim);border:1px solid var(--line-soft);border-radius:999px;
-        padding:1px 7px;display:inline-flex;gap:4px;align-items:baseline}
-  .pill b{color:var(--ink);font-weight:600}
-  .pill.is-warn{border-color:var(--warn);color:var(--warn)}
+  .items { display: grid; margin: 0; padding: 0; list-style: none; }
+  .item + .item { border-top: 1px solid var(--fm-line-soft); }
+  .item { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 2px var(--fm-space-3); padding: 6px 0; align-items: baseline; }
+  .item a.what { color: var(--fm-ink); text-decoration: none; overflow-wrap: anywhere; }
+  .item a.what:hover { text-decoration: underline; text-decoration-color: var(--fm-signal); }
+  .item .kind { font: var(--fm-text-micro); color: var(--fm-ink-faint); margin-right: 6px; }
+  .item .meta { grid-column: 1 / -1; font: var(--fm-text-micro); color: var(--fm-ink-dim); overflow-wrap: anywhere; }
+  .item .when { font: var(--fm-text-micro); color: var(--fm-ink-dim); }
+  .fold summary { list-style: none; cursor: pointer; font: var(--fm-text-detail); color: var(--fm-ink-dim); padding: 6px 0; border-top: 1px solid var(--fm-line-soft); }
+  .fold summary::-webkit-details-marker { display: none; }
+  .fold summary::after { content: " ▾"; color: var(--fm-signal); }
+  .fold[open] summary::after { content: " ▴"; }
+  .fold ul { margin: 0 0 6px; padding-left: 18px; font: var(--fm-text-micro); color: var(--fm-ink-dim); display: grid; gap: 3px; }
 
-  /* synthesis: the ONE prose block, body-tier, 68ch */
-  .synth{font:var(--t-body);color:var(--ink);max-width:68ch;padding:var(--sp-2) var(--sp-3)}
-  .synth.is-fallback{color:var(--ink-dim)}
-  .reason{font:var(--t-detail);color:var(--warn);padding:0 var(--sp-3) var(--sp-2);max-width:68ch}
+  .none { color: var(--fm-ink-dim); margin: 0; }
+  .none b { color: var(--fm-ink); font-weight: 500; }
+  .gone { border-left: 3px solid var(--fm-state-idle); padding: 2px var(--fm-space-3); margin: 0; color: var(--fm-ink); }
+  .gone small { display: block; color: var(--fm-ink-dim); font: var(--fm-text-micro); margin-top: 2px; }
 
-  /* citation rows: the repeated unit — detail-tier mono, one row per receipt */
-  .cite{display:grid;grid-template-columns:auto 1fr auto;gap:0 var(--chip-gap);
-        padding:var(--sp-1) var(--sp-3);align-items:baseline}
-  .cite + .cite{border-top:1px solid var(--line-soft)}
-  .ckind{font:var(--t-micro);color:var(--ink-dim);text-transform:uppercase;letter-spacing:.08em}
-  .cid{font:var(--t-detail);color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .cid a{color:var(--signal);text-decoration:none}
-  .cid a:hover{text-decoration:underline}
-  .ctag{font:var(--t-micro);color:var(--ink-dim)}
-  .coverflow{font:var(--t-micro);color:var(--ink-dim);padding:var(--sp-1) var(--sp-3) var(--sp-2)}
+  .partition { display: inline-flex; align-items: center; gap: 6px; font: var(--fm-text-micro); color: var(--fm-ink-dim); }
+  .partition select { font: var(--fm-text-micro); color: var(--fm-ink); background: var(--fm-panel-2); border: 1px solid var(--fm-line); border-radius: var(--fm-chip-radius); padding: 1px 4px; }
+  .summary-text { margin: 0; color: var(--fm-ink); max-width: 68ch; display: grid; gap: 6px; }
+  .summary-text p { margin: 0; }
+  .cites summary { list-style: none; cursor: pointer; font: var(--fm-text-micro); color: var(--fm-signal); }
+  .cites summary::-webkit-details-marker { display: none; }
+  .cites ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; font: var(--fm-text-micro); color: var(--fm-ink-dim); }
 
-  .empty{padding:var(--sp-4) var(--sp-3);font:var(--t-body);color:var(--ink-dim)}
-  .choice{display:flex;gap:var(--sp-1);align-items:center;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line-soft)}
-  .choice .q{font:var(--t-body);color:var(--ink);flex:1}
+  .cu-close { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fm-space-2) var(--fm-space-3); }
+  .cu-close button { font: 500 12px/1 var(--fm-font-sans); color: var(--fm-ink); background: var(--fm-panel-2); border: 1px solid var(--fm-ink-dim); border-radius: var(--fm-chip-radius); padding: 7px 12px; cursor: pointer; }
+  .cu-close .receipt { font: var(--fm-text-micro); color: var(--fm-ink-dim); }
+  .cu-close a { margin-left: auto; font: var(--fm-text-detail); }
 
-  table{border-collapse:collapse;font-size:12px;color:var(--ink-dim);margin-top:10px}
-  th,td{border:1px solid var(--line-soft);padding:6px 10px;text-align:left;vertical-align:top}
-  th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-dim)}
-  td b{color:var(--ink)}
-  td .mono{font-family:var(--mono)}
+  .whole { background: var(--fm-panel); border: 1px solid var(--fm-line-soft); border-left: 3px solid var(--fm-state-unobserved); padding: var(--fm-space-3) var(--fm-space-4); display: grid; gap: var(--fm-space-1); max-width: 720px; }
+  .whole .word { font: var(--fm-text-display); color: var(--fm-ink); }
+  .whole p { margin: 0; color: var(--fm-ink-dim); max-width: 72ch; }
+
+  pre.peer { margin: 0; background: var(--fm-panel); border: 1px solid var(--fm-line-soft); padding: var(--fm-space-3); font: var(--fm-text-detail); color: var(--fm-ink); overflow-x: auto; max-width: 720px; }
+
+  /* ---- notes + tables ---- */
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--fm-space-4); border-top: 1px solid var(--fm-line); padding-top: var(--fm-space-4); }
+  .notes h2 { font: var(--fm-text-display); margin: 0 0 var(--fm-space-2); }
+  .notes p, .notes li { color: var(--fm-ink-dim); margin: 0; }
+  .notes ul, .notes ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .notes b { color: var(--fm-ink); font-weight: 600; }
+  .tbl { overflow-x: auto; }
+  .tbl table { border-collapse: collapse; width: 100%; font: var(--fm-text-detail); }
+  .tbl th, .tbl td { text-align: left; padding: 5px var(--fm-space-2); border-bottom: 1px solid var(--fm-line-soft); vertical-align: top; }
+  .tbl th { font: var(--fm-text-micro); text-transform: uppercase; letter-spacing: var(--fm-text-chrome-tracking); color: var(--fm-ink-dim); }
+  .tbl td { color: var(--fm-ink); }
+  .ok { color: var(--fm-state-ok); } .miss { color: var(--fm-state-wedged); } .unsure { color: var(--fm-state-idle); }
+  .nw { white-space: nowrap; }
+
+  @container (max-width: 420px) {
+    .cu > * { padding: var(--fm-space-2) var(--fm-space-3); }
+    .item { grid-template-columns: 1fr; }
+    .cu-close a { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .theme, .cu-close button { transition: background var(--fm-motion-fast); }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <p class="eyebrow">institution pane information design · #20 · catch-up slice</p>
-  <h1>The catch-up pane — what happened since you looked, as a receipt</h1>
-  <p class="lede">The pane renders two <b>source-owned Bird View envelopes</b> (Memory per partition, resolved PRs fleet-wide) without synthesizing anything itself — every honest state the wire can produce is a first-class rendering: first-use window choice, per-source unavailable/degraded/empty, synthesis fallbacks, census-only citations, bounded overflow. The design job is HIERARCHY: today the window receipt, the source states, the coverage facts and the citations all render at one visual weight as appended "·"-chained text. The contract below gives each fact its tier — <b>the window is the headline, freshness is metadata pills, citations are receipt rows</b> — and states the target component-library primitive with its section shape.</p>
+<div class="board">
+  <header class="board-head">
+    <div>
+      <div class="eyebrow">Design sketch v2 · neomjs/neo-agent-institution#309 · design only · real data: the org's pull requests from GitHub, read 2026-09-28 17:40 UTC · <code>explore_memory_history</code> and <code>explore_pull_request_history</code> on our plane, read 17:36 UTC</div>
+      <h1>Catch Up — what changed while you were away, and where it leads</h1>
+      <p class="lede">Catch Up is the briefing for someone coming back: the work that landed and the decisions made since they last looked, each one step from its evidence. It reports; it does not rank, decide or ask. When the reader is done, they close the window themselves, and the next visit starts there.</p>
+      <p class="delta"><b>v2 (2026-09-28, operator direction: purpose and content first, visual design after).</b> The installed pane opened with a question (three period buttons), a technical label (<i>query-time · not authority</i>) and three action buttons over a mostly empty area. It treated every visit after a Fleet-service restart as a first visit, and its pull-request section read one repository without being able to sign in to GitHub. v2 leads with what changed, in plain words. It keeps one window per visit and puts the acknowledgement last, and it names the five source gaps behind today's empty pane.</p>
+    </div>
+    <button class="theme" type="button" id="themeToggle" aria-label="Toggle the skin">Skin: auto</button>
+  </header>
 
-  <div class="col-label">the designed pane · live window, one live + one degraded source</div>
-  <div class="pane">
-    <div class="pane-head"><span class="pane-title">Since you last looked</span><span class="authority">query-time · not authority</span></div>
-    <div class="window">
-      <span class="span">Aug 28, 19:04 → Aug 29, 18:20</span>
-      <span class="scope">whole fleet</span>
-    </div>
-    <div class="parts">
-      <span class="part is-active">Fleet</span><span class="part">Ada</span><span class="part">Clio</span><span class="part">Emmy</span><span class="part">Euclid</span><span class="part">Grace</span><span class="part">Vega</span>
-    </div>
-    <div class="actions">
-      <span class="abtn">⚡ Live activity</span>
-      <span class="spacer"></span>
-      <span class="abtn">↻ Refresh</span>
-      <span class="abtn is-primary">✓ Mark caught up</span>
-    </div>
+  <div class="brief">
+    <section aria-labelledby="s1">
+      <h2 id="s1"><span class="n">1 · purpose</span>One job: "I was away. What happened that I should know, and where do I look?"</h2>
+      <p>For the operator and for peers alike. A person gets it as a pane, and a peer gets it as the same objects through the Neural Link. Catch Up is <b>not</b> the live feed, the picture of now or the plane's health; those have their own views (section 3).</p>
+    </section>
 
-    <div class="shead"><span class="stitle">Memory · fleet</span><span class="sstate is-live">live</span></div>
-    <div class="fresh">
-      <span class="pill">generated <b>18:20</b></span>
-      <span class="pill">coverage <b>41/41</b></span>
-      <span class="pill">manifest <b>b41f…c9</b></span>
-    </div>
-    <div class="synth">The cockpit rebuild landed through review and merge; the fleet spent the window on the #17836 resize arc, two Brain policy leaves, and the §04 chrome passes. One correction cycle: the e2e "CI gap" broadcast was retracted after the operator retired the scheduler in both repos.</div>
-    <div class="cite"><span class="ckind">memory</span><span class="cid">turn 93088c11 · cockpit rebuild PR opened</span><span class="ctag"></span></div>
-    <div class="cite"><span class="ckind">memory</span><span class="cid">turn 5ccc8123 · Brain PR #235 merge-eligible</span><span class="ctag">census only</span></div>
-    <div class="coverflow">3 more citations in the source manifest</div>
+    <section aria-labelledby="s2">
+      <h2 id="s2"><span class="n">2 · questions</span>What a returning reader asks, in the order they ask it</h2>
+      <div class="qgrid">
+        <div class="qcard"><span class="eyebrow">The operator</span>
+          <ol>
+            <li><b>How long was I away, and what does this cover?</b> The window, as a sentence.</li>
+            <li><b>What landed?</b> The work that merged, in the team's own titles.</li>
+            <li><b>What was decided or reversed?</b> Work closed without landing, accepted decision records, graduated Discussions.</li>
+            <li><b>Why does it matter?</b> Each change names the ticket it resolves, and the team's summary gives the thread through them.</li>
+            <li><b>Where do I look?</b> Every change opens its pull request, which names its ticket, and a cited memory opens in the Memories pane.</li>
+          </ol>
+        </div>
+        <div class="qcard"><span class="eyebrow">A peer, through the Neural Link</span>
+          <ol>
+            <li>The same five questions, answered by the same stores: a window with its basis, each band with its state and coverage, items with canonical ids.</li>
+            <li><b>How complete is this?</b> A peer must tell "nothing happened" from "a source could not answer", so every band carries its state (the compact answer below Frame 4).</li>
+          </ol>
+        </div>
+      </div>
+    </section>
 
-    <div class="shead"><span class="stitle">Resolved pull requests · fleet</span><span class="sstate is-degraded">degraded</span></div>
-    <div class="fresh">
-      <span class="pill">generated <b>18:19</b></span>
-      <span class="pill is-warn">coverage <b>9/12</b></span>
-      <span class="pill">manifest <b>77aa…e1</b></span>
-    </div>
-    <div class="synth is-fallback">Synthesis unavailable · summariser budget exhausted for this window</div>
-    <div class="reason">Coverage degraded · three PR bodies exceeded the excerpt bound</div>
-    <div class="cite"><span class="ckind">pr</span><span class="cid"><a href="#">neomjs/neo#17852 · menu polish merged</a></span><span class="ctag"></span></div>
-    <div class="cite"><span class="ckind">pr</span><span class="cid"><a href="#">neomjs/neo-agent-brain#234 · policy ledger</a></span><span class="ctag"></span></div>
+    <section aria-labelledby="s3">
+      <h2 id="s3"><span class="n">3 · division</span>One returning-reader job, one view; the neighbours keep theirs</h2>
+      <div class="tbl"><table>
+        <tr><th>View</th><th>Its question</th><th>Time</th><th>Never</th></tr>
+        <tr><td>Home (#244)</td><td>Is the team alive, and where do I go?</td><td>now, ambient</td><td>lists history or asks for reading</td></tr>
+        <tr><td><b>Catch Up</b></td><td>What changed since I last looked, and where does it lead?</td><td>your last look → now</td><td>streams live events, ranks, or draws the graph</td></tr>
+        <tr><td>Observatory (D#19317)</td><td>What does the organism know, where is its attention, where is the Golden Path taking it, who is on what?</td><td>now</td><td>turns into a windowed list</td></tr>
+        <tr><td>System (#308)</td><td>Is the plane healing itself?</td><td>now</td><td>carries team history</td></tr>
+        <tr><td>Activity (south tab)</td><td>What is happening this minute?</td><td>live, bounded</td><td>stands in for history</td></tr>
+      </table></div>
+      <p>Hand-offs, one link each: a Catch Up line opens its pull request or ticket, a cited memory opens in the Memories pane, and the live feed is a link at the end, never merged into the bands.</p>
+    </section>
+
+    <section aria-labelledby="s4">
+      <h2 id="s4"><span class="n">4 · order</span>Why the pane reads top to bottom as it does</h2>
+      <ol>
+        <li><b>The window comes first,</b> as a sentence: "Since you last looked · 24 hours". It is the one thing that frames everything below it.</li>
+        <li><b>Landed comes next.</b> It is structured and checkable, and it is what most returns are for. Dependency bots fold into one line, so today 8 changes read where 20 merges happened.</li>
+        <li><b>Decided comes third:</b> what was reversed, or settled without landing.</li>
+        <li><b>The team's words come last.</b> The summary is context, not a record. In today's window it misnamed what two merged fixes did and named a repository that does not exist. Placed below the facts, it cannot contradict them unnoticed.</li>
+        <li><b>The close comes at the end.</b> The reader acknowledges after reading, never before, and never by just opening the pane.</li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="s5">
+      <h2 id="s5"><span class="n">5 · source coverage</span>What each band reads today, and what is missing</h2>
+      <div class="tbl"><table>
+        <tr><th>Content</th><th>Producer today</th><th>Coverage</th><th>Gap</th></tr>
+        <tr><td>The window: your last look</td><td>Brain <code>fleetCatchUpSource</code>: <code>lastSeen</code> (the explicit close) and <code>lastVisitAt</code></td><td class="unsure">process lifetime only: "Runtime anchors only. A new source instance (Fleet-service restart) starts empty by design." Every plane cut forgets every reader, so the next visit reads as a first one</td><td>gap 1: the last look survives a restart</td></tr>
+        <tr><td>Landed: merged pull requests</td><td><code>explore_pull_request_history</code>, <code>resolution: all_resolved</code></td><td class="miss">one repository per call (<code>repo:owner/repo</code>). Catch Up passes none, so it reads <code>neomjs/neo</code> only, while today's 8 non-bot merges were in the Brain and the Institution. On our plane it also cannot sign in: "Could not authenticate with GitHub", 0 resolved, degraded</td><td>gaps 2 and 3</td></tr>
+        <tr><td>Landed: why each change matters</td><td>the pull request's own title, and the ticket it resolves</td><td class="unsure">titles are written as outcomes, and they carry the ticket number; nothing links a pull request to its ticket's epic, so the band groups by time, not by goal</td><td>gap 5</td></tr>
+        <tr><td>Decided: closed without landing</td><td>the same read, <code>resolution: closed_unmerged</code></td><td class="unsure">the same limits as Landed; none in today's window (GitHub, org-wide)</td><td>gaps 2 and 3</td></tr>
+        <tr><td>Decided: decision records, graduations</td><td>none</td><td class="miss">accepted ADRs and graduated Discussions reach Catch Up only as prose inside the summary</td><td>gap 4</td></tr>
+        <tr><td>In the team's words</td><td><code>explore_memory_history</code>, partition <code>unified</code> or one <code>@peer</code></td><td class="ok">available: today 66 records from 16 identities, 60 of them cited in the summary. Fluent but loose, so it is labelled as a summary and sits last</td><td>the summary's accuracy (Brain defect-note, 2026-09-28)</td></tr>
+        <tr><td>Done reading</td><td><code>markFleetCaughtUp(windowEnd)</code></td><td class="unsure">available; advances only through the exact rendered end; process lifetime, as the window</td><td>gap 1</td></tr>
+        <tr><td>The live feed</td><td><code>fleetActivity</code></td><td class="ok">available, live and bounded</td><td>none: it is linked, never read as history</td></tr>
+      </table></div>
+    </section>
+
+    <section aria-labelledby="s6">
+      <h2 id="s6"><span class="n">6 · journeys</span>Every state the reads can produce has one rendering</h2>
+      <ul>
+        <li><b>Returning,</b> with a last look on record: since then (Frame 1).</li>
+        <li><b>Last look unknown,</b> either a first visit or the plane restarted since the last one. The source cannot tell these apart, so the pane says what it knows: "This plane doesn't know when you last looked", shows the last day, and offers the source's own look-backs (a day, three days, a week) in one control. There is no question before content (Frame 2).</li>
+        <li><b>Partial:</b> a band whose source failed says so in one line with the source's reason, and the other bands render. An unavailable source never reads as "nothing happened" (Frame 2, today's plane).</li>
+        <li><b>Reading:</b> one line under the head, and no bands yet. The source settles both reads before it answers, in one envelope, so the bands arrive together (Frame 3).</li>
+        <li><b>Quiet:</b> the reads ran and found nothing, and the pane says so per band (Frame 3).</li>
+        <li><b>Unavailable:</b> with no history read at all, one reason stands for the pane (Frame 3).</li>
+        <li><b>Narrow:</b> the same order at 296 pixels (Frame 4).</li>
+      </ul>
+    </section>
   </div>
-  <p class="note"><b>The hierarchy, stated:</b> the window receipt is the pane's ONE display-tier line (it answers the pane's title); partition scope rides it as a pill, never a suffix. Source sections are chrome-tier headers with the state as a §04 family chip (mark + word — never hue-alone). <b>Freshness is a metadata pill group</b> — generated-instant, coverage fraction, manifest hash — each pill one fact with the value in ink; a degraded coverage fraction carries the warn tone on the WHOLE pill (border + text, two channels). The synthesis is the one body-tier prose block at 68ch; fallbacks render the same block dimmed with their reason on its own detail-tier line. Citations are receipt ROWS (kind · id · flags), mono detail-tier — they read as a ledger, not as prose.</p>
-  <p class="falsifier">falsifier: render the degraded PR section and gray-filter the screenshot — state must survive via the chip word + mark geometry and the warn pill must survive via its border; if either fact lives in hue alone, the contract is violated (§04 law-1).</p>
 
-  <div class="divider"></div>
+  <section class="frame" aria-labelledby="f1">
+    <div class="frame-label"><span class="eyebrow" id="f1">7 · visual · Frame 1 · returning</span><p>The proposed contract with every gap closed, composed from real reads. The window is the 24 hours ending 17:35 UTC, as if the reader had closed their last window then. The merged pull requests come from GitHub across the org, read at 17:40, because the running read covers only <code>neomjs/neo</code> today (gap 2). The summary is <code>explore_memory_history</code>'s own text, read at 17:36 and shown verbatim.</p></div>
+    <div class="viewport">
+      <article class="cu" aria-label="Catch Up">
+        <div class="cu-head">
+          <p class="cu-title">Catch Up <span class="chip illus">composed from reads, 17:36–17:40 UTC</span></p>
+          <p class="cu-window">Since you last looked <span class="span">· Sun 17:35 → Mon 17:35 UTC · 24 hours</span></p>
+          <p class="cu-basis">From <b>pull requests across 4 repositories</b> and <b>the team's memory</b>, read when you opened this.</p>
+        </div>
 
-  <div class="col-label">honest cold states · designed, not apologised for</div>
-  <div class="pane" style="margin-bottom:14px">
-    <div class="pane-head"><span class="pane-title">Since you last looked</span><span class="authority">query-time · not authority</span></div>
-    <div class="window is-cold"><span class="span">No runtime anchor yet</span></div>
-    <div class="choice">
-      <span class="q">Choose the first window — no history window is invented.</span>
-      <span class="abtn">24h</span><span class="abtn">3 days</span><span class="abtn">Week</span>
+        <section class="cu-band" aria-labelledby="f1-landed">
+          <div class="cu-band-head"><h3 id="f1-landed">Landed</h3><span class="count">8 changes · 12 dependency updates · newest first</span></div>
+          <ul class="items">
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/610"><span class="kind">fix</span>Page pollDigest and resync instead of materialising the whole log</a><span class="when">17:05</span><span class="meta">Brain #610 · resolves #561 · Eos</span></li>
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/615"><span class="kind">fix</span>Container memory counts what the kernel cannot reclaim first</a><span class="when">16:56</span><span class="meta">Brain #615 · resolves #614 · Vega</span></li>
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/594"><span class="kind">fix</span>Container health diagnosis sees a service starved at its CPU quota</a><span class="when">16:39</span><span class="meta">Brain #594 · resolves #593 · Vega</span></li>
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-institution/pull/313"><span class="kind">feat</span>The Observatory draws readable wells before any Brain change</a><span class="when">15:37</span><span class="meta">Institution #313 · resolves #310 · Vega</span></li>
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/605"><span class="kind">feat</span>Carry graph attribution through the scene</a><span class="when">14:06</span><span class="meta">Brain #605 · resolves #604 · Emmy</span></li>
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/601"><span class="kind">refactor</span>Bind the two ADR escapes to the token they defend</a><span class="when">13:17</span><span class="meta">Brain #601 · resolves #600 · Eos</span></li>
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/602"><span class="kind">fix</span>Replace superseded profile source revisions</a><span class="when">12:00</span><span class="meta">Brain #602 · resolves #597 · Emmy</span></li>
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-institution/pull/307"><span class="kind">feat</span>Consume the full-graph Brain revision</a><span class="when">10:03</span><span class="meta">Institution #307 · resolves #302 · Emmy</span></li>
+          </ul>
+          <details class="fold"><summary>12 dependency updates · neo, Brain, Institution, devindex</summary>
+            <ul><li>monaco-editor 0.56.0 → 0.57.0 · neo #19316, Institution #316, devindex #45</li><li>neo-agent-skills → 0.1.18 · neo #19315, Brain #596, devindex #46</li><li>the shared PR baseline workflow 0.1.17 → 0.1.19 · Institution #314, devindex #43</li><li>grouped updates · neo #19314, Institution #315, devindex #44, Brain #595</li></ul>
+          </details>
+        </section>
+
+        <section class="cu-band" aria-labelledby="f1-decided">
+          <div class="cu-band-head"><h3 id="f1-decided">Decided</h3></div>
+          <p class="none"><b>Nothing was closed without landing.</b> Accepted decision records and graduated Discussions are not read yet (gap 4); until they are, they appear only in the summary below.</p>
+        </section>
+
+        <section class="cu-band" aria-labelledby="f1-words">
+          <div class="cu-band-head"><h3 id="f1-words">In the team's words</h3>
+            <label class="partition">for <select aria-label="Whose memory"><option>the whole team</option><option>Ada</option><option>Clio</option><option>Emmy</option><option>Eos</option><option>Euclid</option><option>Grace</option><option>Vega</option></select></label>
+          </div>
+          <div class="summary-text">
+            <p>This window was characterized by high-intensity technical troubleshooting, complex pull request (PR) management across multiple repositories (Brain, Institution, and Vega), and the establishment of strategic architectural stages for the "Observatory" feature.</p>
+            <p>Successful Merges: PR #615 was merged to resolve parameter syncing issues (<code>c0ea55dc</code>), and PR #594 was merged to align with identity proofing/ledger requirements (<code>a5313f5d</code>).</p>
+          </div>
+          <p class="src">A summary, not the record: it cites 60 of 66 memory records from 16 identities, generated 17:36. Where it and Landed disagree, Landed is right.</p>
+          <details class="cites"><summary>The whole summary and its 60 citations</summary>
+            <ul><li>memory · 406d66d6 · session ec438462</li><li>memory · 0e10bef8 · session ec438462</li><li>session · summary dc1fa59b</li><li>…57 more, in source order; 6 census-only records are marked as such</li></ul>
+          </details>
+        </section>
+
+        <div class="cu-close">
+          <button type="button">Done reading — start the next window here</button>
+          <span class="receipt">Next visit starts at 17:35 UTC.</span>
+          <a href="#f1">The live feed →</a>
+        </div>
+      </article>
     </div>
-  </div>
-  <div class="pane">
-    <div class="pane-head"><span class="pane-title">Since you last looked</span><span class="authority">query-time · not authority</span></div>
-    <div class="window is-cold"><span class="span">History not observed yet</span></div>
-    <div class="empty">Catch-up source unavailable.</div>
-  </div>
-  <p class="note"><b>First-use is a question, not an empty state:</b> the three window buttons render beside the question at body tier — the pane's only moment where the affordance outranks content. The unobserved/unavailable pane keeps the full chrome (head, window line) so the surface reads as the same instrument in a waiting state, never as a broken one.</p>
+  </section>
 
-  <div class="divider"></div>
+  <section class="frame" aria-labelledby="f2">
+    <div class="frame-label"><span class="eyebrow" id="f2">Frame 2 · today's plane: last look unknown, pull requests down</span><p>What our plane can produce right now, from the same 17:36 reads. The catch-up source holds no last look, so the pane shows the last day and offers the source's own look-backs. The pull-request read failed to sign in to GitHub, so Landed and Decided state that failure instead of looking empty. Only the summary answers.</p></div>
+    <div class="viewport">
+      <article class="cu" aria-label="Catch Up, partial">
+        <div class="cu-head">
+          <p class="cu-title">Catch Up</p>
+          <p class="cu-window">The last 24 hours <span class="span">· Sun 17:35 → Mon 17:35 UTC</span></p>
+          <p class="cu-basis">This plane doesn't know when you last looked. <span class="lookback" role="group" aria-label="Look back">Look back <button type="button" aria-pressed="true">a day</button><button type="button" aria-pressed="false">3 days</button><button type="button" aria-pressed="false">a week</button></span></p>
+        </div>
+        <section class="cu-band" aria-labelledby="f2-landed">
+          <div class="cu-band-head"><h3 id="f2-landed">Landed</h3></div>
+          <p class="gone">Pull requests can't be read right now.<small>The plane could not sign in to GitHub · explore_pull_request_history, 17:36 · it would read neomjs/neo only (gap 2)</small></p>
+        </section>
+        <section class="cu-band" aria-labelledby="f2-decided">
+          <div class="cu-band-head"><h3 id="f2-decided">Decided</h3></div>
+          <p class="gone">Nothing can be said about closures: they come from the same read.</p>
+        </section>
+        <section class="cu-band" aria-labelledby="f2-words">
+          <div class="cu-band-head"><h3 id="f2-words">In the team's words</h3>
+            <label class="partition">for <select aria-label="Whose memory"><option>the whole team</option></select></label>
+          </div>
+          <div class="summary-text"><p>This window was characterized by high-intensity technical troubleshooting, complex pull request (PR) management across multiple repositories (Brain, Institution, and Vega), and the establishment of strategic architectural stages for the "Observatory" feature.</p></div>
+          <p class="src">A summary, not the record: it cites 60 of 66 memory records from 16 identities, generated 17:36.</p>
+        </section>
+        <div class="cu-close">
+          <button type="button">Done reading — start the next window here</button>
+          <a href="#f2">The live feed →</a>
+        </div>
+      </article>
+    </div>
+  </section>
 
-  <div class="col-label">the state model · every wire state → one designed rendering</div>
-  <table>
-    <tr><th>wire state</th><th>rendering (tier)</th><th>rule</th></tr>
-    <tr><td><b>window present</b></td><td>display-tier span pair + scope pill; both bounds on the hover receipt</td><td>a window is citable only as a PAIR — naming one end would be worse than none (landed rule, kept)</td></tr>
-    <tr><td><b>needsFirstUseWindow</b></td><td>cold window line + the three-button question row</td><td>no invented window; the choice is the content</td></tr>
-    <tr><td><b>source live</b></td><td>signal-marked state chip; synthesis at body tier</td><td>nominal earns quiet — no extra ornament on the happy path</td></tr>
-    <tr><td><b>source degraded</b></td><td>warn-marked chip; degraded coverage pill in warn tone; reason on its own detail line</td><td>the reason renders verbatim (source-owned text), never rewritten</td></tr>
-    <tr><td><b>source unavailable</b></td><td>bad-marked chip; the unavailableReason as the body block (dimmed)</td><td>absence of an envelope is a stated fact, not an empty div</td></tr>
-    <tr><td><b>coverage 0</b></td><td>"No source records in this window." as the dimmed body block</td><td>empty ≠ failed — the window ran and found nothing</td></tr>
-    <tr><td><b>synthesis unavailable</b></td><td>dimmed body block with the source's own reason</td><td>census still renders below — citations outlive the narrative</td></tr>
-    <tr><td><b>citation, linkable</b></td><td>receipt row, id as signal link (canonical PR targets only)</td><td>only source-owned PR ids resolve to hrefs; everything else renders non-navigating (landed rule)</td></tr>
-    <tr><td><b>citation, census-only</b></td><td>receipt row + "census only" flag at micro tier</td><td>inSynthesis:false is a fact on the row, not a style</td></tr>
-    <tr><td><b>citation overflow</b></td><td>one micro-tier count line closing the section</td><td>the bound is honest; the manifest holds the rest</td></tr>
-    <tr><td><b>mark outcome</b></td><td>one detail-tier line under the actions row (accepted/refused verbatim)</td><td>write receipts render where the write was asked</td></tr>
-  </table>
+  <section class="frame" aria-labelledby="f3">
+    <div class="frame-label"><span class="eyebrow" id="f3">Frame 3 · reading, quiet, and unavailable</span><p>First, the reads are in flight. Second, they ran and found nothing, and each band says so. Third, no history read answered at all, so one reason stands for the pane and no band guesses. The copy is illustrative; the states are the source's own.</p></div>
+    <div class="viewport">
+      <div class="pair">
+        <article class="cu" aria-label="Catch Up, reading" aria-busy="true">
+          <div class="cu-head">
+            <p class="cu-title">Catch Up</p>
+            <p class="cu-basis" role="status">Reading the team's history…</p>
+          </div>
+        </article>
+        <article class="cu" aria-label="Catch Up, quiet">
+          <div class="cu-head">
+            <p class="cu-title">Catch Up</p>
+            <p class="cu-window">Since you last looked <span class="span">· 2 hours</span></p>
+          </div>
+          <section class="cu-band"><div class="cu-band-head"><h3>Landed</h3></div><p class="none">Nothing merged in these 2 hours.</p></section>
+          <section class="cu-band"><div class="cu-band-head"><h3>Decided</h3></div><p class="none">Nothing was closed without landing.</p></section>
+          <section class="cu-band"><div class="cu-band-head"><h3>In the team's words</h3></div><p class="none">No memory records in this window.</p></section>
+        </article>
+        <div class="whole" role="status">
+          <span class="word">Catch Up can't read the team's history right now</span>
+          <p>Neither the memory history nor the pull-request history answered. The source's reason: <code>fleet history source not wired</code>. Nothing below it is guessed, and closing a window is not offered, because there is nothing to close.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-  <div class="divider"></div>
+  <section class="frame" aria-labelledby="f4">
+    <div class="frame-label"><span class="eyebrow" id="f4">Frame 4 · narrow</span><p>Frame 1 at 296 pixels: the window wraps, each change keeps its title whole, and the meta line moves under it.</p></div>
+    <div class="viewport narrow">
+      <article class="cu" aria-label="Catch Up, narrow">
+        <div class="cu-head">
+          <p class="cu-title">Catch Up</p>
+          <p class="cu-window">Since you last looked <span class="span">· 24 hours</span></p>
+        </div>
+        <section class="cu-band">
+          <div class="cu-band-head"><h3>Landed</h3><span class="count">8 · 12 dependency updates</span></div>
+          <ul class="items">
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/610"><span class="kind">fix</span>Page pollDigest and resync instead of materialising the whole log</a><span class="when">17:05</span><span class="meta">Brain #610 · resolves #561 · Eos</span></li>
+            <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/615"><span class="kind">fix</span>Container memory counts what the kernel cannot reclaim first</a><span class="when">16:56</span><span class="meta">Brain #615 · resolves #614 · Vega</span></li>
+          </ul>
+          <details class="fold"><summary>6 more changes</summary><ul><li>Brain #594, Institution #313, Brain #605, #601, #602, Institution #307</li></ul></details>
+        </section>
+        <div class="cu-close"><button type="button">Done reading</button><a href="#f4">The live feed →</a></div>
+      </article>
+    </div>
+  </section>
 
-  <div class="col-label">target primitive · the coordinate this contract binds</div>
-  <p class="note"><b>Primitive call: <span class="mono">Neo.list.Base</span> with <span class="mono">useHeaders</span> section records — the fixed-section list shape (the tasks pane's precedent), not <span class="mono">Neo.grid.Container</span>.</b> The component-library conformance epic's primitive map names grid for this surface as direction "refined per leaf"; this contract records the refinement: the pane renders exactly TWO fixed sections whose rows are heterogeneous (freshness pills, one prose block, N citation rows, one overflow line) with no column semantics, no sort/filter need, and a hard citation bound (<span class="mono">citationLimit</span>) — buffered rendering has nothing to buffer, and a column grid would force prose into cells. The flattened store shape: <span class="mono">[sectionHeader(memory), freshness, synthesis, citation×N, overflow?, sectionHeader(prs), …]</span> — one record type per row class, the list item renderer keyed by <span class="mono">record.kind</span>. The window/partition/actions chrome above the list stays pane composition (it is chrome, not data). <b>Implementation coordinate:</b> the catch-up migration leaf of the conformance epic consumes this contract; the existing <span class="mono">CatchUpEntries</span> store already models source records and extends to the flattened row classes.</p>
-  <p class="note"><b>What the landed anatomy already covers</b> (absorbed): partition chips, the first-use choice, per-source honest states, citation bounds + census flags, the mark receipt — all landed with the drawer-shell-era passes and preserved here. <b>What the migration must add:</b> the three-tier hierarchy (window headline / freshness pills / receipt rows), the shared chip family on the state markers (the §04 design bar), the warn-toned coverage pill, and the <span class="mono">list.Base</span> section structure replacing the nested-container cards.</p>
-  <p class="falsifier">falsifier: after the migration, `grep -c "module: Container" view/fleet/catchup/` inside the source-card path returns 0 (the sections are list records, not nested containers), and the §04 acceptance sweep finds zero font-size literals in the catch-up SCSS.</p>
+  <section class="frame" aria-labelledby="peer">
+    <div class="frame-label"><span class="eyebrow" id="peer">The peer's compact answer</span><p>The same objects the pane renders, as a peer reads them through the Neural Link: Frame 1's values, with every band's state, so "nothing happened" and "a source could not answer" never share a shape.</p></div>
+<pre class="peer">{
+  "window" : {"from": "2026-09-27T17:35:00Z", "to": "2026-09-28T17:35:00Z", "basis": "last-look"},
+  "landed" : {"state": "available", "repositories": 4,
+              "items": [{"id": "neomjs/neo-agent-brain#610", "resolves": "#561", "author": "@neo-preview", "mergedAt": "2026-09-28T17:05Z",
+                         "title": "fix(memory-core): page pollDigest and resync instead of materialising the whole log (#561)"}, "…7 more"],
+              "folded": {"dependencyUpdates": 12}},
+  "decided": {"state": "available", "items": [], "notRead": ["decision-record", "discussion-graduation"]},
+  "summary": {"state": "available", "notAuthority": true, "records": 66, "identities": 16, "cited": 60,
+              "generatedAt": "2026-09-28T17:36:04Z", "text": "This window was characterized by …"},
+  "close"  : {"windowEnd": "2026-09-28T17:35:00Z"}
+}</pre>
+  </section>
+
+  <section class="notes" aria-label="Decisions and gaps">
+    <div>
+      <h2>Decisions</h2>
+      <ol>
+        <li><b>Facts before the summary.</b> Landed and Decided come from records; the summary comes last and says where it defers.</li>
+        <li><b>One window, said as a sentence.</b> The half-open pair from #20 stays, and the head reads it in words.</li>
+        <li><b>No question before content.</b> An unknown last look shows the last day and offers the source's own look-backs in one control. No arbitrary periods are added.</li>
+        <li><b>Reading never marks.</b> The close is explicit, at the end, and advances only to the rendered window's end, as #20 landed it.</li>
+        <li><b>Nothing is ranked.</b> Each band is newest first. Dependency bots fold by who wrote them, which is a grouping, not a synthesis.</li>
+        <li><b>Technical words leave the head.</b> <i>query-time · not authority</i> becomes "A summary, not the record" on the one band it describes.</li>
+        <li><b>The partition moves to the summary,</b> the only source that partitions; pull requests stay org-wide.</li>
+        <li><b>Kept from #20:</b> source-owned states, citation bounds and census flags, links out only for canonical pull-request ids, the close's receipt. <b>Dropped:</b> the first-use question row, the top action row (Live activity and Mark became a link and the close; Refresh is gone, since the pane reads on open), and the per-source pill groups. The manifest hash stays in the source detail.</li>
+      </ol>
+    </div>
+    <div>
+      <h2>Gaps, each a Brain leaf to file when this design is accepted</h2>
+      <ol>
+        <li><b>The last look survives a restart:</b> persist the per-viewer anchor, today "runtime anchors only".</li>
+        <li><b>Pull requests across the org:</b> the history reads one repository per call, and Catch Up passes none.</li>
+        <li><b>The plane can read GitHub:</b> <code>explore_pull_request_history</code> cannot authenticate from our plane's Memory Core (degraded, 0 resolved, 17:36 UTC).</li>
+        <li><b>A decisions source:</b> accepted ADRs and graduated Discussions, as records.</li>
+        <li><b>A change's goal:</b> the ticket's epic, so Landed can group by what moved instead of by time.</li>
+      </ol>
+      <p style="margin-top:8px">Also reported, not a gap in this design: the summary's accuracy (Brain defect-note, 2026-09-28).</p>
+    </div>
+  </section>
 </div>
+<script>
+  (() => {
+    const root = document.documentElement, button = document.getElementById('themeToggle'), order = ['auto', 'dark', 'light'];
+    let index = 0;
+    try { const saved = localStorage.getItem('catchup-sketch-theme'); if (saved && order.includes(saved)) index = order.indexOf(saved); } catch (e) {}
+    const apply = () => {
+      const mode = order[index];
+      if (mode === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', mode);
+      button.textContent = 'Skin: ' + mode;
+      try { localStorage.setItem('catchup-sketch-theme', mode); } catch (e) {}
+    };
+    button.addEventListener('click', () => { index = (index + 1) % order.length; apply(); });
+    apply();
+  })();
+</script>
 </body>
 </html>
