@@ -10,6 +10,7 @@ import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
+import GraphSceneEnvelope     from '../../../../../../apps/agentos/util/GraphSceneEnvelope.mjs';
 import ObservatorySceneLayout from '../../../../../../apps/agentos/util/ObservatorySceneLayout.mjs';
 import {wholeGraphEnvelope}   from '../../../../fixture/wholeGraphScene.mjs';
 
@@ -333,6 +334,46 @@ test.describe('AgentOS.util.ObservatorySceneLayout — density wells, mail off, 
         expect(legacy.haloFrom).toBeNull();
         expect(haloed.communities, 'the unlinked community leaves the geography').toBe(legacy.communities - 1);
         expect(haloed.halo).toBe(2)
+    });
+
+    test('neither filter hides a route seed: with the halo off a seed in no well keeps its place on the shell, and a mail seed stays with mail off, so the route skips no rank', () => {
+        const
+            q     = id => `neomjs/neo#${id}`,
+            read  = graphRead({
+                route: [q('a'), q('b'), q('c')],
+                nodes: ['a', 'b', 'c', 'd', 'h'].map(id => ({id: q(id), label: id, kind: 'issue'})),
+                edges: [{from: q('a'), to: q('h')}, {from: q('c'), to: q('h')}]
+            }),
+            gone  = ObservatorySceneLayout.fromGraphScene(read, {geography: 'density', halo: false}),
+            ranks = scene => scene.seeds.map(index => scene.nodes[index].rank);
+
+        expect(ranks(ObservatorySceneLayout.fromGraphScene(read, {geography: 'density'})), 'the control, halo on').toEqual([1, 2, 3]);
+        expect(ranks(gone), 'the isolated middle seed still draws, so no path joins a to c').toEqual([1, 2, 3]);
+        expect(Object.hasOwn(gone.index, q('d')), 'an ordinary node in no well still leaves').toBe(false);
+        expect(gone.hidden.halo.nodes).toBe(1);
+        expect(gone.halo, 'the kept seed sits on the shell').toBe(1);
+        expect(gone.nodes[gone.index[q('b')]].cluster).toBeGreaterThanOrEqual(gone.haloFrom);
+
+        const mailRoute = starsRead();
+
+        mailRoute.scene.route = [q('message-0')];
+
+        const mailed = ObservatorySceneLayout.fromGraphScene(mailRoute, {mail: false});
+
+        expect(Object.hasOwn(mailed.index, q('message-0')), 'a mail seed stays with mail off').toBe(true);
+        expect(mailed.hidden.mail.nodes, 'the other four messages and the sentinel still leave').toBe(5)
+    });
+
+    test('the head names hidden mail by what the Mail toggle removes: a broadcast sentinel alone reads as one mail node, never a message', () => {
+        const
+            q      = id => `neomjs/neo#${id}`,
+            read   = graphRead({route: [], nodes: [{id: q('issue-1'), label: 'one', kind: 'issue'}, {id: q('broadcast'), label: 'Broadcast', kind: 'BroadcastSentinel'}], edges: []}),
+            scene  = ObservatorySceneLayout.fromGraphScene(read, {mail: false}),
+            {text} = GraphSceneEnvelope.describe(read, undefined, {nodes: scene.nodes.length, edges: scene.edges.length, halo: scene.halo, hidden: scene.hidden});
+
+        expect(scene.hidden.mail.nodes).toBe(1);
+        expect(text).toContain('1 mail node hidden');
+        expect(text).not.toMatch(/message/)
     });
 
     test('wells lay out identically under shuffle, and a geography switch keeps every node, so a selection survives it', () => {

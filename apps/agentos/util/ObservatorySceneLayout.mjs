@@ -164,8 +164,9 @@ class ObservatorySceneLayout extends Base {
      * With `mail` off, the {@link #mailKinds} nodes and the {@link #mailTypes} relations leave the scene
      * before it is laid out. `halo` places the nodes in no well (no edge, or no path to a hub): `true` on an
      * outer shell cut into sector clusters, `false` out of the scene, `null` as the communities geography always
-     * has, in one community of their own (the density geography treats `null` as `true`). `hidden` counts what
-     * left the scene, so the line above it can say so.
+     * has, in one community of their own (the density geography treats `null` as `true`). Neither filter hides a
+     * route seed: a seed in no well keeps its place on the shell, so the route never skips an item. `hidden`
+     * counts what left the scene, so the line above it can say so.
      *
      * The route's seeds come first in route order and carry their position as `rank`; a node's `hop` is its
      * distance to the nearest seed, `null` for a node no seed reaches. An edge with an absent endpoint is
@@ -195,15 +196,21 @@ class ObservatorySceneLayout extends Base {
             hidden     = {mail: {nodes: 0, edges: 0}, halo: {nodes: 0, edges: 0}},
             mailIds    = new Set(),
             mailKinds  = new Set(me.mailKinds),
-            mailTypes  = new Set(me.mailTypes);
+            mailTypes  = new Set(me.mailTypes),
+            routeAt    = new Map();
 
         if (currency === 'unavailable' || !Array.isArray(scene?.nodes)) {
             return {currency, empty: true, geography, nodes: [], edges: [], edgeTypes: [], seeds: [], index: {}, communities: 0, haloFrom: null, halo: 0, hidden, wells: [], completeness: scene?.completeness ?? null, snapshotId}
         }
 
+        // the seeds are known before either filter runs: a view filter hides dust, never the route
+        for (const id of Array.isArray(scene.route) ? scene.route : []) {
+            routeAt.has(id) || routeAt.set(id, routeAt.size)
+        }
+
         for (const node of scene.nodes) {
             if (typeof node?.id === 'string' && !byId.has(node.id) && !mailIds.has(node.id)) {
-                !mail && mailKinds.has(node.kind) ? mailIds.add(node.id) : byId.set(node.id, node)
+                !mail && mailKinds.has(node.kind) && !routeAt.has(node.id) ? mailIds.add(node.id) : byId.set(node.id, node)
             }
         }
 
@@ -214,14 +221,9 @@ class ObservatorySceneLayout extends Base {
             ids     = [...byId.keys()].sort(compare),
             count   = ids.length,
             at      = new Map(ids.map((id, position) => [id, position])),
-            routeAt = new Map(),
             seen    = new Set(),
             links   = [],
             pairs   = new Set();
-
-        for (const id of Array.isArray(scene.route) ? scene.route : []) {
-            routeAt.has(id) || routeAt.set(id, routeAt.size)
-        }
 
         for (const edge of Array.isArray(scene.edges) ? scene.edges : []) {
             const {from, to} = edge ?? {}, type = edge?.type ?? null;
@@ -348,7 +350,7 @@ class ObservatorySceneLayout extends Base {
         const {around, bands, depth, radius: shell} = me.haloGeometry;
 
         for (const position of outside) {
-            if (haloMode === false) {
+            if (haloMode === false && !routeAt.has(ids[position])) {
                 shown[position] = 0
             } else {
                 const [u, v, w] = units[position];
@@ -358,7 +360,9 @@ class ObservatorySceneLayout extends Base {
             }
         }
 
-        hidden.halo.nodes = haloMode === false ? outside.length : 0;
+        const haloed = outside.filter(position => shown[position] === 1).length;
+
+        hidden.halo.nodes = outside.length - haloed;
 
         // breadth-first from every seed at once
         let frontier = seeds.map(id => at.get(id));
@@ -418,8 +422,8 @@ class ObservatorySceneLayout extends Base {
             seeds       : drawn.map((id, position) => position),
             index,
             communities,
-            haloFrom    : haloMode === true ? communities : null,
-            halo        : haloMode === true ? outside.length : 0,
+            haloFrom    : haloMode === true || haloed > 0 ? communities : null,
+            halo        : haloed,
             hidden,
             wells,
             completeness: scene.completeness ?? null,

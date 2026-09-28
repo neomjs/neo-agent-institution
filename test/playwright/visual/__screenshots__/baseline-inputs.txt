@@ -192,7 +192,7 @@ apps/agentos/util/GoldenPathEnvelope.mjs
     b112a479ca39a63d579e8dc5f13926fe6a9aa3a0
 
 apps/agentos/util/GraphSceneEnvelope.mjs
-    d9575b36836749bf3bbaab6583fd60c164d8bc01
+    c72832895b8c48537626f58b8b80ccaa6ad302db
 
 apps/agentos/util/KindRegistry.mjs
     b33024720f4b84257113f91ea0664f7be2e26081
@@ -204,7 +204,7 @@ apps/agentos/util/NameSlot.mjs
     3fe98fcc20425319dc01e37d905079564c308f3f
 
 apps/agentos/util/ObservatorySceneLayout.mjs
-    b140d2e1a816f8ad2d40b19ae6824ce55bfc81a3
+    2e63e3576f03fcbceeafe84b2265edabd90b8115
 
 apps/agentos/util/SourceHealth.mjs
     f92b9d452aa9754f764a2e530fac73da98e83b84

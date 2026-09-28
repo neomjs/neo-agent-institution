@@ -84,11 +84,11 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
             none   = {nodes: 0, edges: 0};
 
         expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 4, edges: 1, halo: 2, hidden: {mail: {nodes: 1, edges: 1}, halo: none}}).text, 'mail hidden, the halo drawn')
-            .toBe('Current · captured viewer 22:05 · 4 nodes · 1 edge · 1 message hidden · 2 in the halo · complete');
+            .toBe('Current · captured viewer 22:05 · 4 nodes · 1 edge · 1 mail node hidden · 2 in the halo · complete');
         expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 2, edges: 1, halo: 0, hidden: {mail: {nodes: 1, edges: 1}, halo: {nodes: 2, edges: 0}}}).text, 'the halo hidden too')
-            .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · 1 message hidden · 2 halo nodes hidden · complete');
+            .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · 1 mail node hidden · 2 halo nodes hidden · complete');
         expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 3, edges: 1, halo: 2, hidden: {mail: {nodes: 1, edges: 1}, halo: none}}).text, 'a node the pane could not draw is still named')
-            .toBe('Current · captured viewer 22:05 · 3 nodes · 1 edge · 1 message hidden · 2 in the halo · 1 node not drawn · complete')
+            .toBe('Current · captured viewer 22:05 · 3 nodes · 1 edge · 1 mail node hidden · 2 in the halo · 1 node not drawn · complete')
     });
 
     test('a route item resolves only to a seed the read holds: a qualified id as itself, a bare id when one origin holds it', () => {

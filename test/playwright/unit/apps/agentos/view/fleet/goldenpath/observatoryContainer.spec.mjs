@@ -264,7 +264,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         expect(pane.scene.geography, 'density wells by default').toBe('density');
         expect([pressed(mail), pressed(halo)]).toEqual([[false, 'false'], [true, 'true']]);
-        expect(lineOf(pane)).toMatch(/ · 7 nodes · 4 edges · 1 message hidden · 2 in the halo · complete$/);
+        expect(lineOf(pane)).toMatch(/ · 7 nodes · 4 edges · 1 mail node hidden · 2 in the halo · complete$/);
         expect(Object.hasOwn(pane.scene.index, q('message-1'))).toBe(false);
 
         mail.onClick({});
@@ -272,13 +272,13 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         expect(lineOf(pane), 'mail drawn: the message joins the well of the concept it names').toMatch(/ · 8 nodes · 5 edges · 2 in the halo · complete$/);
 
         mail.onClick({});
-        pane.onNodeSelect({node: {id: q('issue-303')}});
+        pane.onNodeSelect({node: {id: q('issue-505')}});
 
         halo.onClick({});
         expect(pressed(halo)).toEqual([false, 'false']);
-        expect(lineOf(pane)).toMatch(/ · 5 nodes · 4 edges · 1 message hidden · 2 halo nodes hidden · complete$/);
+        expect(lineOf(pane), 'the halo hides its dust, never the route: seed issue-303 stays on the shell').toMatch(/ · 6 nodes · 4 edges · 1 mail node hidden · 1 in the halo · 1 halo node hidden · complete$/);
         expect(pane.selectedId, 'a node the view hides cannot stay selected').toBeNull();
-        expect(stripOf(pane).text).toBe(`Selection cleared · ${q('issue-303')} is hidden in this view`);
+        expect(stripOf(pane).text).toBe(`Selection cleared · ${q('issue-505')} is hidden in this view`);
 
         pane.destroy()
     });

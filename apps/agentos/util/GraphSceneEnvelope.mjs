@@ -89,7 +89,7 @@ class GraphSceneEnvelope extends Base {
      *
      * The counts are what the pane drew, when it passes them: a node without an id, an edge whose ends are not
      * both nodes of the read, or a repeated edge is not drawn, and the line says how many of the read's own
-     * were not. What the pane chose to hide is named as such (messages hidden, halo nodes hidden) and a
+     * were not. What the pane chose to hide is named as such (mail nodes hidden, halo nodes hidden) and a
      * drawn halo says how many it holds, so "not drawn" is left to what the read carried and the pane could
      * not draw. Without `drawn` it counts the read.
      * @param {Object|null} envelope A landed envelope.
@@ -112,7 +112,7 @@ class GraphSceneEnvelope extends Base {
             mail     = hidden?.mail ?? {nodes: 0, edges: 0},
             haloed   = hidden?.halo ?? {nodes: 0, edges: 0},
             chosen   = [
-                mail.nodes   > 0 && `${plural(mail.nodes, 'message')} hidden`,
+                mail.nodes   > 0 && `${plural(mail.nodes, 'mail node')} hidden`,
                 halo         > 0 && `${halo} in the halo`,
                 haloed.nodes > 0 && `${plural(haloed.nodes, 'halo node')} hidden`
             ].filter(Boolean),
