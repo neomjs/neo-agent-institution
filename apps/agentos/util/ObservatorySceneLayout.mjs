@@ -1,7 +1,6 @@
 import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
- * @module apps/agentos/util/ObservatorySceneLayout
  * @summary Pure scene builder for the observatory pane: derives the scene a canvas-worker renderer
  * draws — nodes with a cluster and unit-space positions, edges as node index pairs — from the landed
  * `fleetGraphScene` envelope ({@link AgentOS.util.GraphSceneEnvelope}). The feed carries neither clusters
@@ -11,202 +10,11 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * Two geographies place the nodes. Topology communities (Louvain) answer no question by design; density
  * wells, where the best-connected nodes attract, show what is central. Mail can leave the scene, and the
  * nodes in no well can sit in an outer halo or leave it too; the scene counts what it hid.
- */
-
-/**
- * Geometry of the scene in unit space; the camera orbits the origin a few units out. Community centres lie on
- * a sphere of `radius`. The largest community fills a ball of at most `spread`, less when many communities
- * share the sphere, and a smaller one shrinks with the cube root of its share, down to `minSpread`.
- * @type {Object}
- */
-const GEOMETRY = {minSpread: 0.05, radius: 1, spread: 0.32};
-
-/**
- * Bounds of the community search: the levels it aggregates and the passes a level makes. A clustered graph
- * settles in a few of each, so the caps only bound a pathological read.
- * @type {Object}
- */
-const SEARCH = {levels: 12, passes: 24};
-
-/**
- * What mail is in the graph: agent messages, their broadcast sentinels, and the three relations that route
- * them. Dropping the relations alone does not free the geography, because a message stays attached to the
- * concepts it names through `TAGGED_CONCEPT`.
- * @type {Object}
- */
-const MAIL = {kinds: new Set(['BroadcastSentinel', 'MESSAGE']), types: new Set(['DELIVERED_TO', 'SENT_BY', 'SENT_TO'])};
-
-/**
- * Density wells: at most `hubs` of the best-connected nodes attract. Well centres lie on a sphere of `radius`;
- * a hub sits at its centre and a member steps outward with its hop distance, up to `maxHop` steps.
- * @type {Object}
- */
-const WELLS = {hubs: 48, maxHop: 4, radius: 1.25};
-
-/**
- * The outer halo of the nodes in no well: a shell from `radius` to `radius + depth`, cut into `bands` × `around`
- * sectors. Each sector is a cluster of its own, so a drawn-back camera shows the halo's centroids on the shell,
- * never one centroid at the centre of the sky.
- * @type {Object}
- */
-const HALO = {around: 8, bands: 3, depth: 0.4, radius: 1.9};
-
-/**
- * @summary One level of modularity local moving: each node, in order, joins the neighbouring community that
- * gains the most modularity, staying on a tie with its own and preferring the smaller index on any other tie,
- * until a pass moves nothing. Weights are integer sums, so the arithmetic is exact and the result depends on
- * the nodes' order and the graph alone.
- * @param {Object} graph `{count, offsets, targets, weights, selfWeights}`, weighted compressed rows
- * @returns {{moved: Boolean, community: Uint32Array, communities: Number}}
- */
-function moveLocally({count, offsets, targets, weights, selfWeights}) {
-    const
-        degree    = new Float64Array(count),
-        total     = new Float64Array(count),
-        community = Uint32Array.from({length: count}, (item, node) => node),
-        linkTo    = new Float64Array(count),
-        touched   = [];
-    let moved = false, twiceM = 0;
-
-    for (let node = 0; node < count; node++) {
-        let sum = 2 * selfWeights[node];
-
-        for (let k = offsets[node]; k < offsets[node + 1]; k++) {
-            sum += weights[k]
-        }
-
-        degree[node] = total[node] = sum;
-        twiceM += sum
-    }
-
-    for (let pass = 0; twiceM && pass < SEARCH.passes; pass++) {
-        let changes = 0;
-
-        for (let node = 0; node < count; node++) {
-            const own = community[node], share = degree[node] / twiceM;
-
-            for (let k = offsets[node]; k < offsets[node + 1]; k++) {
-                const target = community[targets[k]];
-
-                linkTo[target] === 0 && touched.push(target);
-                linkTo[target] += weights[k]
-            }
-
-            total[own] -= degree[node];
-
-            let best = own, bestGain = linkTo[own] - total[own] * share;
-
-            for (const candidate of touched) {
-                const gain = linkTo[candidate] - total[candidate] * share;
-
-                if (gain > bestGain || gain === bestGain && best !== own && candidate < best) {
-                    best     = candidate;
-                    bestGain = gain
-                }
-            }
-
-            total[best] += degree[node];
-
-            if (best !== own) {
-                community[node] = best;
-                changes++
-            }
-
-            for (const candidate of touched) {
-                linkTo[candidate] = 0
-            }
-
-            touched.length = 0
-        }
-
-        if (!changes) {
-            break
-        }
-
-        moved = true
-    }
-
-    const numbering = new Map();
-
-    community.forEach((label, node) => {
-        numbering.has(label) || numbering.set(label, numbering.size);
-        community[node] = numbering.get(label)
-    });
-
-    return {moved, community, communities: numbering.size}
-}
-
-/**
- * @summary The graph of the communities: one node each, the weights between two summed, a community's
- * internal weight kept as its self weight.
- * @param {Object}      graph       See {@link moveLocally}
- * @param {Uint32Array} community   The level's community per node
- * @param {Number}      communities
- * @returns {Object} The next level's graph
- */
-function aggregate({count, offsets, targets, weights, selfWeights}, community, communities) {
-    const inner = new Float64Array(communities), links = Array.from({length: communities}, () => new Map());
-
-    for (let node = 0; node < count; node++) {
-        const own = community[node];
-
-        inner[own] += selfWeights[node];
-
-        for (let k = offsets[node]; k < offsets[node + 1]; k++) {
-            const other = community[targets[k]];
-
-            // an inner edge is visited from both ends
-            other === own ? inner[own] += weights[k] / 2 : links[own].set(other, (links[own].get(other) ?? 0) + weights[k])
-        }
-    }
-
-    const next = new Uint32Array(communities + 1);
-
-    links.forEach((map, own) => next[own + 1] = next[own] + map.size);
-
-    const nextTargets = new Uint32Array(next[communities]), nextWeights = new Float64Array(next[communities]);
-
-    links.forEach((map, own) => {
-        let k = next[own];
-
-        for (const [other, weight] of map) {
-            nextTargets[k]   = other;
-            nextWeights[k++] = weight
-        }
-    });
-
-    return {count: communities, offsets: next, targets: nextTargets, weights: nextWeights, selfWeights: inner}
-}
-
-/**
- * @summary Three unit floats drawn from an id, the same on every run: an FNV-1a hash seeds a mulberry32 draw.
- * @param {String} id
- * @returns {Number[]} `[u, v, w]`, each in `[0, 1)`
- */
-function unitsOf(id) {
-    let hash = 2166136261;
-
-    for (let i = 0; i < id.length; i++) {
-        hash = Math.imul(hash ^ id.charCodeAt(i), 16777619)
-    }
-
-    const draw = () => {
-        hash = hash + 0x6D2B79F5 | 0;
-
-        let t = Math.imul(hash ^ hash >>> 15, 1 | hash);
-
-        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-
-        return ((t ^ t >>> 14) >>> 0) / 4294967296
-    };
-
-    return [draw(), draw(), draw()]
-}
-
-/**
- * Static observatory scene utilities.
+ *
+ * Every tunable value is a config and every step a method, so `Neo.overwrites` or a subclass changes either.
  * @class AgentOS.util.ObservatorySceneLayout
  * @extends Neo.core.Base
+ * @singleton
  */
 class ObservatorySceneLayout extends Base {
     static config = {
@@ -214,33 +22,121 @@ class ObservatorySceneLayout extends Base {
          * @member {String} className='AgentOS.util.ObservatorySceneLayout'
          * @protected
          */
-        className: 'AgentOS.util.ObservatorySceneLayout'
+        className: 'AgentOS.util.ObservatorySceneLayout',
+        /**
+         * Geometry of the communities geography in unit space; the camera orbits the origin a few units out.
+         * Community centres lie on a sphere of `radius`. The largest community fills a ball of at most `spread`,
+         * less when many communities share the sphere, and a smaller one shrinks with the cube root of its
+         * share, down to `minSpread`.
+         * @member {Object} geometry={minSpread: 0.05, radius: 1, spread: 0.32}
+         */
+        geometry: {minSpread: 0.05, radius: 1, spread: 0.32},
+        /**
+         * The outer halo of the nodes in no well: a shell from `radius` to `radius + depth`, cut into
+         * `bands` × `around` sectors. Each sector is a cluster of its own, so a drawn-back camera shows the
+         * halo's centroids on the shell, never one centroid at the centre of the sky.
+         * @member {Object} haloGeometry={around: 8, bands: 3, depth: 0.4, radius: 1.9}
+         */
+        haloGeometry: {around: 8, bands: 3, depth: 0.4, radius: 1.9},
+        /**
+         * The node kinds that are mail: agent messages and their broadcast sentinels. Dropping the mail
+         * relations alone does not free the geography, because a message stays attached to the concepts it
+         * names through `TAGGED_CONCEPT`.
+         * @member {String[]} mailKinds=['BroadcastSentinel', 'MESSAGE']
+         */
+        mailKinds: ['BroadcastSentinel', 'MESSAGE'],
+        /**
+         * The relation types that route mail, dropped with it even between two nodes that are not mail.
+         * @member {String[]} mailTypes=['DELIVERED_TO', 'SENT_BY', 'SENT_TO']
+         */
+        mailTypes: ['DELIVERED_TO', 'SENT_BY', 'SENT_TO'],
+        /**
+         * Bounds of the community search: the levels it aggregates and the passes a level makes. A clustered
+         * graph settles in a few of each, so the caps only bound a pathological read.
+         * @member {Object} search={levels: 12, passes: 24}
+         */
+        search: {levels: 12, passes: 24},
+        /**
+         * @member {Boolean} singleton=true
+         * @protected
+         */
+        singleton: true,
+        /**
+         * Density wells: at most `hubs` of the best-connected nodes attract. Well centres lie on a sphere of
+         * `radius`; a hub sits at its centre and a member steps outward with its hop distance, up to `maxHop`
+         * steps.
+         * @member {Object} wellGeometry={hubs: 48, maxHop: 4, radius: 1.25}
+         */
+        wellGeometry: {hubs: 48, maxHop: 4, radius: 1.25}
+    }
+
+    /**
+     * @summary The graph of the communities: one node each, the weights between two summed, a community's
+     * internal weight kept as its self weight.
+     * @param {Object}      graph       See {@link #moveLocally}
+     * @param {Uint32Array} community   The level's community per node
+     * @param {Number}      communities
+     * @returns {Object} The next level's graph
+     */
+    aggregate({count, offsets, targets, weights, selfWeights}, community, communities) {
+        const inner = new Float64Array(communities), links = Array.from({length: communities}, () => new Map());
+
+        for (let node = 0; node < count; node++) {
+            const own = community[node];
+
+            inner[own] += selfWeights[node];
+
+            for (let k = offsets[node]; k < offsets[node + 1]; k++) {
+                const other = community[targets[k]];
+
+                // an inner edge is visited from both ends
+                other === own ? inner[own] += weights[k] / 2 : links[own].set(other, (links[own].get(other) ?? 0) + weights[k])
+            }
+        }
+
+        const next = new Uint32Array(communities + 1);
+
+        links.forEach((map, own) => next[own + 1] = next[own] + map.size);
+
+        const nextTargets = new Uint32Array(next[communities]), nextWeights = new Float64Array(next[communities]);
+
+        links.forEach((map, own) => {
+            let k = next[own];
+
+            for (const [other, weight] of map) {
+                nextTargets[k]   = other;
+                nextWeights[k++] = weight
+            }
+        });
+
+        return {count: communities, offsets: next, targets: nextTargets, weights: nextWeights, selfWeights: inner}
     }
 
     /**
      * @summary The communities of a graph in compressed rows, by modularity (Louvain): local moving on each
-     * level ({@link moveLocally}), then the communities aggregate into the next level's nodes, until a level
-     * moves nothing. A node without an edge joins the one community of unlinked nodes. Communities are numbered
-     * by their first member, so the result depends on the nodes' order and the edges alone.
+     * level ({@link #moveLocally}), then the communities aggregate into the next level's nodes
+     * ({@link #aggregate}), until a level moves nothing. A node without an edge joins the one community of
+     * unlinked nodes. Communities are numbered by their first member, so the result depends on the nodes'
+     * order and the edges alone.
      * @param {Number}      count   The nodes
      * @param {Uint32Array} offsets `count + 1` row starts into `targets`
      * @param {Uint32Array} targets Neighbour positions
      * @returns {{communities: Number, of: Uint32Array, unlinked: Number|null}} `unlinked` is the community of
      *     the nodes without an edge, `null` when every node has one
      */
-    static communitiesOf(count, offsets, targets) {
-        const member = Uint32Array.from({length: count}, (item, node) => node);
+    communitiesOf(count, offsets, targets) {
+        const me = this, member = Uint32Array.from({length: count}, (item, node) => node);
         let graph = {count, offsets, targets, weights: new Float64Array(targets.length).fill(1), selfWeights: new Float64Array(count)};
 
-        for (let level = 0; level < SEARCH.levels; level++) {
-            const {moved, community, communities} = moveLocally(graph);
+        for (let level = 0; level < me.search.levels; level++) {
+            const {moved, community, communities} = me.moveLocally(graph);
 
             if (!moved) {
                 break
             }
 
             member.forEach((node, original) => member[original] = community[node]);
-            graph = aggregate(graph, community, communities)
+            graph = me.aggregate(graph, community, communities)
         }
 
         const of = new Uint32Array(count), numbering = new Map();
@@ -257,75 +153,6 @@ class ObservatorySceneLayout extends Base {
     }
 
     /**
-     * @summary The density wells of a graph in compressed rows: the `hubs` best-connected nodes (degree, then
-     * position) attract, never a leaf, since a node with one relation is no centre, so a small graph gets no
-     * wells of one. A breadth-first walk from all hubs at once gives every node the hub it reaches
-     * first, with its hop distance. A node that two wells reach in the same step joins the one that ranks
-     * first, so the result depends on the graph alone, never on the order of its rows. A node no hub reaches,
-     * and a node without an edge, is in no well. Wells are numbered by size, the largest first.
-     * @param {Number}      count   The nodes
-     * @param {Uint32Array} offsets `count + 1` row starts into `targets`
-     * @param {Uint32Array} targets Neighbour positions
-     * @param {Number}      [hubs=WELLS.hubs] The most wells
-     * @returns {{wells: Number, of: Int32Array, hop: Int32Array, hubs: Number[], sizes: Number[]}} `of` is a
-     *     well per node, `-1` for none; `hubs` and `sizes` are by well
-     */
-    static wellsOf(count, offsets, targets, hubs = WELLS.hubs) {
-        const
-            degreeOf = node => offsets[node + 1] - offsets[node],
-            anchors  = Array.from({length: count}, (item, node) => node)
-                .filter(node => degreeOf(node) > 1)
-                .sort((a, b) => degreeOf(b) - degreeOf(a) || a - b)
-                .slice(0, hubs),
-            well     = new Int32Array(count).fill(-1),
-            hop      = new Int32Array(count).fill(-1);
-
-        anchors.forEach((node, rank) => {
-            well[node] = rank;
-            hop[node]  = 0
-        });
-
-        // every level of the walk holds its nodes in well rank order (the hubs start it in rank order, and each
-        // level is discovered from the one before in that order), so the first well to reach a node is the best
-        // ranked of those reaching it in that step, whatever the order of a node's rows
-        for (let frontier = anchors, step = 1; frontier.length; step++) {
-            const next = [];
-
-            for (const node of frontier) {
-                for (let k = offsets[node]; k < offsets[node + 1]; k++) {
-                    const other = targets[k];
-
-                    if (hop[other] < 0) {
-                        hop[other]  = step;
-                        well[other] = well[node];
-                        next.push(other)
-                    }
-                }
-            }
-
-            frontier = next
-        }
-
-        const sizes = new Uint32Array(anchors.length);
-
-        well.forEach(rank => rank >= 0 && sizes[rank]++);
-
-        const
-            bySize   = anchors.map((node, rank) => rank).sort((a, b) => sizes[b] - sizes[a] || a - b),
-            renumber = new Int32Array(anchors.length);
-
-        bySize.forEach((rank, position) => renumber[rank] = position);
-
-        return {
-            wells: anchors.length,
-            of   : well.map(rank => rank < 0 ? -1 : renumber[rank]),
-            hop,
-            hubs : bySize.map(rank => anchors[rank]),
-            sizes: bySize.map(rank => sizes[rank])
-        }
-    }
-
-    /**
      * @summary The scene of a `fleetGraphScene` read: every node in its cluster, and the feed's own edges.
      * The `geography` places the nodes. `communities` finds them from the edges ({@link #communitiesOf},
      * visiting the nodes by id), their centres on a golden-angle sphere and each node at a point its id draws
@@ -334,7 +161,7 @@ class ObservatorySceneLayout extends Base {
      * and the edges: two reads of one snapshot, or the same rows in any order, lay out identically, and the
      * route never moves a node, so the pane can draw it as an overlay or leave it out.
      *
-     * With `mail` off, messages, their broadcast sentinels and the relations that route them leave the scene
+     * With `mail` off, the {@link #mailKinds} nodes and the {@link #mailTypes} relations leave the scene
      * before it is laid out. `halo` places the nodes in no well (no edge, or no path to a hub): `true` on an
      * outer shell cut into sector clusters, `false` out of the scene, `null` as the communities geography always
      * has, in one community of their own (the density geography treats `null` as `true`). `hidden` counts what
@@ -355,17 +182,20 @@ class ObservatorySceneLayout extends Base {
      *     cluster, x, y, z}`, the seeds first in route order, then by id; `edges[]` pairs index into `nodes`,
      *     `edgeTypes[]` aligned; `seeds[]` indexes the seeds in route order. `communities` counts the
      *     geography's clusters; halo sectors are the clusters from `haloFrom` on (`null` without a halo), and
-     *     `halo` counts their nodes. `hidden` is `{mail: {nodes, edges}, halo}`; `wells[]` is `{id, label,
-     *     size}` per density well, largest first.
+     *     `halo` counts their nodes. `hidden` is `{mail: {nodes, edges}, halo: {nodes, edges}}`; `wells[]` is
+     *     `{id, label, size}` per density well, largest first.
      */
-    static fromGraphScene(envelope, {geography = 'communities', halo = null, mail = true} = {}) {
+    fromGraphScene(envelope, {geography = 'communities', halo = null, mail = true} = {}) {
         const
+            me         = this,
             currency   = envelope?.capability?.state ?? 'unobserved',
             scene      = envelope?.scene ?? null,
             snapshotId = envelope?.snapshotId ?? null,
             byId       = new Map(),
             hidden     = {mail: {nodes: 0, edges: 0}, halo: {nodes: 0, edges: 0}},
-            mailIds    = new Set();
+            mailIds    = new Set(),
+            mailKinds  = new Set(me.mailKinds),
+            mailTypes  = new Set(me.mailTypes);
 
         if (currency === 'unavailable' || !Array.isArray(scene?.nodes)) {
             return {currency, empty: true, geography, nodes: [], edges: [], edgeTypes: [], seeds: [], index: {}, communities: 0, haloFrom: null, halo: 0, hidden, wells: [], completeness: scene?.completeness ?? null, snapshotId}
@@ -373,7 +203,7 @@ class ObservatorySceneLayout extends Base {
 
         for (const node of scene.nodes) {
             if (typeof node?.id === 'string' && !byId.has(node.id) && !mailIds.has(node.id)) {
-                !mail && MAIL.kinds.has(node.kind) ? mailIds.add(node.id) : byId.set(node.id, node)
+                !mail && mailKinds.has(node.kind) ? mailIds.add(node.id) : byId.set(node.id, node)
             }
         }
 
@@ -396,7 +226,7 @@ class ObservatorySceneLayout extends Base {
         for (const edge of Array.isArray(scene.edges) ? scene.edges : []) {
             const {from, to} = edge ?? {}, type = edge?.type ?? null;
 
-            if (!mail && (MAIL.types.has(type) || mailIds.has(from) || mailIds.has(to))) {
+            if (!mail && (mailTypes.has(type) || mailIds.has(from) || mailIds.has(to))) {
                 hidden.mail.edges++;
                 continue
             }
@@ -435,7 +265,7 @@ class ObservatorySceneLayout extends Base {
             density  = geography === 'density',
             // the density geography has no community of the unlinked to fall back on
             haloMode = density && halo === null ? true : halo,
-            units    = ids.map(unitsOf),
+            units    = ids.map(id => me.unitsOf(id)),
             cluster  = new Int32Array(count),
             spot     = new Float64Array(count * 3),
             shown    = new Uint8Array(count).fill(1),
@@ -462,7 +292,10 @@ class ObservatorySceneLayout extends Base {
         let communities, wells = [], outside = [];
 
         if (density) {
-            const {hop, hubs, of, sizes, wells: found} = ObservatorySceneLayout.wellsOf(count, offsets, targets), largest = Math.max(1, sizes[0] ?? 1);
+            const
+                {maxHop, radius}                     = me.wellGeometry,
+                {hop, hubs, of, sizes, wells: found} = me.wellsOf(count, offsets, targets),
+                largest                              = Math.max(1, sizes[0] ?? 1);
 
             communities = found;
             wells       = hubs.map((position, well) => ({id: ids[position], label: byId.get(ids[position]).label ?? null, size: sizes[well]}));
@@ -476,16 +309,16 @@ class ObservatorySceneLayout extends Base {
                 // spread the ranks over the sphere, so the largest wells do not stack at one pole
                 const
                     slot  = (well * 7919 + 13) % communities,
-                    steps = Math.min(hop[position], WELLS.maxHop),
+                    steps = Math.min(hop[position], maxHop),
                     reach = steps === 0 ? 0 : (0.07 + 0.3 * Math.cbrt(sizes[well] / largest)) * (0.16 + 0.21 * steps) * (0.7 + 0.6 * units[position][2]);
 
                 cluster[position] = well;
-                place(position, sphereAt(slot, communities, WELLS.radius), reach)
+                place(position, sphereAt(slot, communities, radius), reach)
             })
         } else {
             const
-                {communities: found, of, unlinked} = ObservatorySceneLayout.communitiesOf(count, offsets, targets),
-                {minSpread, radius, spread}        = GEOMETRY,
+                {communities: found, of, unlinked} = me.communitiesOf(count, offsets, targets),
+                {minSpread, radius, spread}        = me.geometry,
                 // with a halo, the community of the unlinked leaves the geography
                 apart                              = haloMode !== null && unlinked !== null,
                 sizes                              = new Uint32Array(found);
@@ -512,14 +345,16 @@ class ObservatorySceneLayout extends Base {
             }
         }
 
+        const {around, bands, depth, radius: shell} = me.haloGeometry;
+
         for (const position of outside) {
             if (haloMode === false) {
                 shown[position] = 0
             } else {
                 const [u, v, w] = units[position];
 
-                cluster[position] = communities + Math.min(HALO.bands - 1, Math.floor(u * HALO.bands)) * HALO.around + Math.min(HALO.around - 1, Math.floor(v * HALO.around));
-                place(position, [0, 0, 0], HALO.radius + HALO.depth * w)
+                cluster[position] = communities + Math.min(bands - 1, Math.floor(u * bands)) * around + Math.min(around - 1, Math.floor(v * around));
+                place(position, [0, 0, 0], shell + depth * w)
             }
         }
 
@@ -593,6 +428,185 @@ class ObservatorySceneLayout extends Base {
     }
 
     /**
+     * @summary One level of modularity local moving: each node, in order, joins the neighbouring community that
+     * gains the most modularity, staying on a tie with its own and preferring the smaller index on any other tie,
+     * until a pass moves nothing. Weights are integer sums, so the arithmetic is exact and the result depends on
+     * the nodes' order and the graph alone.
+     * @param {Object} graph `{count, offsets, targets, weights, selfWeights}`, weighted compressed rows
+     * @returns {{moved: Boolean, community: Uint32Array, communities: Number}}
+     */
+    moveLocally({count, offsets, targets, weights, selfWeights}) {
+        const
+            degree    = new Float64Array(count),
+            total     = new Float64Array(count),
+            community = Uint32Array.from({length: count}, (item, node) => node),
+            linkTo    = new Float64Array(count),
+            touched   = [];
+        let moved = false, twiceM = 0;
+
+        for (let node = 0; node < count; node++) {
+            let sum = 2 * selfWeights[node];
+
+            for (let k = offsets[node]; k < offsets[node + 1]; k++) {
+                sum += weights[k]
+            }
+
+            degree[node] = total[node] = sum;
+            twiceM += sum
+        }
+
+        for (let pass = 0; twiceM && pass < this.search.passes; pass++) {
+            let changes = 0;
+
+            for (let node = 0; node < count; node++) {
+                const own = community[node], share = degree[node] / twiceM;
+
+                for (let k = offsets[node]; k < offsets[node + 1]; k++) {
+                    const target = community[targets[k]];
+
+                    linkTo[target] === 0 && touched.push(target);
+                    linkTo[target] += weights[k]
+                }
+
+                total[own] -= degree[node];
+
+                let best = own, bestGain = linkTo[own] - total[own] * share;
+
+                for (const candidate of touched) {
+                    const gain = linkTo[candidate] - total[candidate] * share;
+
+                    if (gain > bestGain || gain === bestGain && best !== own && candidate < best) {
+                        best     = candidate;
+                        bestGain = gain
+                    }
+                }
+
+                total[best] += degree[node];
+
+                if (best !== own) {
+                    community[node] = best;
+                    changes++
+                }
+
+                for (const candidate of touched) {
+                    linkTo[candidate] = 0
+                }
+
+                touched.length = 0
+            }
+
+            if (!changes) {
+                break
+            }
+
+            moved = true
+        }
+
+        const numbering = new Map();
+
+        community.forEach((label, node) => {
+            numbering.has(label) || numbering.set(label, numbering.size);
+            community[node] = numbering.get(label)
+        });
+
+        return {moved, community, communities: numbering.size}
+    }
+
+    /**
+     * @summary Three unit floats drawn from an id, the same on every run: an FNV-1a hash seeds a mulberry32 draw.
+     * @param {String} id
+     * @returns {Number[]} `[u, v, w]`, each in `[0, 1)`
+     */
+    unitsOf(id) {
+        let hash = 2166136261;
+
+        for (let i = 0; i < id.length; i++) {
+            hash = Math.imul(hash ^ id.charCodeAt(i), 16777619)
+        }
+
+        const draw = () => {
+            hash = hash + 0x6D2B79F5 | 0;
+
+            let t = Math.imul(hash ^ hash >>> 15, 1 | hash);
+
+            t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+
+            return ((t ^ t >>> 14) >>> 0) / 4294967296
+        };
+
+        return [draw(), draw(), draw()]
+    }
+
+    /**
+     * @summary The density wells of a graph in compressed rows: the `hubs` best-connected nodes (degree, then
+     * position) attract, never a leaf, since a node with one relation is no centre, so a small graph gets no
+     * wells of one. A breadth-first walk from all hubs at once gives every node the hub it reaches first, with
+     * its hop distance. A node that two wells reach in the same step joins the one that ranks first, so the
+     * result depends on the graph alone, never on the order of its rows. A node no hub reaches, and a node
+     * without an edge, is in no well. Wells are numbered by size, the largest first.
+     * @param {Number}      count   The nodes
+     * @param {Uint32Array} offsets `count + 1` row starts into `targets`
+     * @param {Uint32Array} targets Neighbour positions
+     * @param {Number}      [hubs=this.wellGeometry.hubs] The most wells
+     * @returns {{wells: Number, of: Int32Array, hop: Int32Array, hubs: Number[], sizes: Number[]}} `of` is a
+     *     well per node, `-1` for none; `hubs` and `sizes` are by well
+     */
+    wellsOf(count, offsets, targets, hubs = this.wellGeometry.hubs) {
+        const
+            degreeOf = node => offsets[node + 1] - offsets[node],
+            anchors  = Array.from({length: count}, (item, node) => node)
+                .filter(node => degreeOf(node) > 1)
+                .sort((a, b) => degreeOf(b) - degreeOf(a) || a - b)
+                .slice(0, hubs),
+            well     = new Int32Array(count).fill(-1),
+            hop      = new Int32Array(count).fill(-1);
+
+        anchors.forEach((node, rank) => {
+            well[node] = rank;
+            hop[node]  = 0
+        });
+
+        // every level of the walk holds its nodes in well rank order (the hubs start it in rank order, and each
+        // level is discovered from the one before in that order), so the first well to reach a node is the best
+        // ranked of those reaching it in that step, whatever the order of a node's rows
+        for (let frontier = anchors, step = 1; frontier.length; step++) {
+            const next = [];
+
+            for (const node of frontier) {
+                for (let k = offsets[node]; k < offsets[node + 1]; k++) {
+                    const other = targets[k];
+
+                    if (hop[other] < 0) {
+                        hop[other]  = step;
+                        well[other] = well[node];
+                        next.push(other)
+                    }
+                }
+            }
+
+            frontier = next
+        }
+
+        const sizes = new Uint32Array(anchors.length);
+
+        well.forEach(rank => rank >= 0 && sizes[rank]++);
+
+        const
+            bySize   = anchors.map((node, rank) => rank).sort((a, b) => sizes[b] - sizes[a] || a - b),
+            renumber = new Int32Array(anchors.length);
+
+        bySize.forEach((rank, position) => renumber[rank] = position);
+
+        return {
+            wells: anchors.length,
+            of   : well.map(rank => rank < 0 ? -1 : renumber[rank]),
+            hop,
+            hubs : bySize.map(rank => anchors[rank]),
+            sizes: bySize.map(rank => sizes[rank])
+        }
+    }
+
+    /**
      * @summary A scene as the canvas worker takes it: typed arrays by node index, and no node objects or ids.
      * A read of any size crosses the worker boundary as a few buffers, where 100k node objects cost a quarter
      * of a second to clone on every read. The renderer answers indices, and the App Worker resolves them
@@ -602,7 +616,7 @@ class ObservatorySceneLayout extends Base {
      * `positions` (`x, y, z` per node), `clusters` (a cluster per node), `edges` (index pairs), `seeds`
      * (node indices in route order) and `ranks` (one per seed)
      */
-    static wire(scene) {
+    wire(scene) {
         if (!scene) {
             return null
         }
@@ -639,4 +653,3 @@ class ObservatorySceneLayout extends Base {
 }
 
 export default Neo.setupClass(ObservatorySceneLayout);
-export {GEOMETRY, HALO, MAIL, WELLS};

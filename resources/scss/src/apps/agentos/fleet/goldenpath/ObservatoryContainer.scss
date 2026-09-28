@@ -1,6 +1,6 @@
 /* The observatory pane — the graph read as a 3D scene on the FM tonal stack, the Golden Path's route an
-   overlay: the read's line, the hovered node and the route toggle in the chrome role above, the selection
-   strip below them, the canvas worker's WebGL surface filling the rest on the panel ground (the surface clears
+   overlay: the read's line and the hovered node in the chrome role above, the selection strip with the view's
+   toggles below them, the canvas worker's WebGL surface filling the rest on the panel ground (the surface clears
    to transparent, so the ground is this stylesheet's). The scene is painted from the same tokens by the
    renderer (apps/agentos/canvas/Observatory.mjs), which reads the token VALUES from their one mirror
    (apps/agentos/canvas/fmPalette.mjs) because a worker has no stylesheet to read. */
@@ -8,19 +8,21 @@
     background: var(--fm-panel);
     min-height: 0;
 
-    .fm-observatory-bar {
+    .fm-observatory-strip {
         border-bottom: thin solid var(--fm-line-soft);
         min-width    : 0;
     }
 
-    /* the head's toggles (Mail, Halo, Route): the roster's quiet ghost verb, whose pressed state carries the
-       choice. Real Neo Buttons, so the engine's 48px chrome height and its label type rule are re-bound here. */
+    /* the strip's toggles (Mail, Halo, Route): the roster's quiet ghost verb, whose pressed state carries the
+       choice. Real Neo Buttons, so the engine's 48px chrome height, its label type rule and its ghost variables
+       are re-bound here: the ghost skin colours the label itself and draws no border, pressed or not. */
     .fm-observatory-toggle {
-        --button-height: auto;
+        --button-ghost-border        : 1px solid transparent;
+        --button-ghost-border-pressed: 1px solid var(--fm-line-soft);
+        --button-ghost-text-color    : var(--fm-ink-dim);
+        --button-height              : auto;
 
-        border       : 1px solid transparent;
         border-radius: 999px;
-        color        : var(--fm-ink-dim);
         font         : var(--fm-text-micro);
         margin-right : var(--fm-space-2);
         padding      : 2px var(--fm-space-2);
@@ -30,8 +32,7 @@
         }
 
         &.pressed {
-            border-color: var(--fm-line-soft);
-            color       : var(--fm-ink);
+            --button-ghost-text-color: var(--fm-ink);
         }
 
         &:focus-visible {
@@ -43,6 +44,7 @@
     .fm-observatory-head {
         display        : flex;
         align-items    : baseline;
+        border-bottom  : thin solid var(--fm-line-soft);
         gap            : var(--fm-space-3);
         min-width      : 0;
         padding        : var(--fm-space-2) var(--fm-space-3);
@@ -78,9 +80,9 @@
        reason, which names an id; both of those without a node read dim, and the hint is chrome */
     .fm-observatory-selection {
         padding      : var(--fm-space-1) var(--fm-space-3);
-        border-bottom: thin solid var(--fm-line-soft);
         font         : var(--fm-text-chrome);
         color        : var(--fm-ink);
+        min-width    : 0;
         white-space  : nowrap;
         overflow     : hidden;
         text-overflow: ellipsis;

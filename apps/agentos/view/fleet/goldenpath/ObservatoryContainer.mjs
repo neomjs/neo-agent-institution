@@ -18,9 +18,9 @@ const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 
 
 /**
  * @summary The Observatory keeper-view — the graph read in its wells, as a navigable 3D scene on the canvas
- * worker and as two lists beside it, with the Golden Path's route as an overlay the head's toggle draws or
+ * worker and as two lists beside it, with the Golden Path's route as an overlay the Route toggle draws or
  * leaves out. The {@link #geography} is density wells by default, the read's most connected nodes drawing the
- * rest around them; mail stays out of the scene until the head's Mail toggle brings it in, and the nodes in no
+ * rest around them; mail stays out of the scene until the Mail toggle brings it in, and the nodes in no
  * well sit in an outer halo the Halo toggle hides. The head carries the read's line first (capability, capture,
  * holdings, what the view hid, completeness — {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node
  * under the pointer beside it; the selection strip below names the selected node as the read has it. The pane binds the shell's `graphSceneEnvelope` leaf,
@@ -80,8 +80,8 @@ class ObservatoryContainer extends Container {
          */
         geography_: 'density',
         /**
-         * Whether the nodes in no well (no edge, or no path to a hub) are drawn in an outer halo; the head's Halo
-         * toggle flips it, and the line counts them either way.
+         * Whether the nodes in no well (no edge, or no path to a hub) are drawn in an outer halo; the Halo toggle
+         * flips it, and the line counts them either way.
          * @member {Boolean} halo_=true
          * @reactive
          */
@@ -91,27 +91,33 @@ class ObservatoryContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The head (title, the read's line, the hovered node), the selection strip and the body: the side
-         * panel with the node list and the selected node's relations, which the canvas joins in
-         * {@link #onConstructed} where a canvas worker exists. The strip always holds its row, so a selection
-         * never resizes the canvas.
+         * The head (title, the read's line, the hovered node), the strip (the selection, then the Mail, Halo and
+         * Route toggles, so the read's line keeps the head's whole width) and the body: the side panel with the
+         * node list and the selected node's relations, which the canvas joins in {@link #onConstructed} where a
+         * canvas worker exists. The strip always holds its row, so a selection never resizes the canvas.
          * @member {Object[]} items
          */
         items: [{
+            ntype    : 'component',
+            cls      : ['fm-observatory-head'],
+            flex     : 'none',
+            reference: 'observatory-head',
+            vdom     : {cn: [
+                {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
+                {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
+                {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HINTS.hover}
+            ]}
+        }, {
             ntype : 'container',
-            cls   : ['fm-observatory-bar'],
+            cls   : ['fm-observatory-strip'],
             flex  : 'none',
             layout: {ntype: 'hbox', align: 'center'},
             items : [{
                 ntype    : 'component',
-                cls      : ['fm-observatory-head'],
+                cls      : ['fm-observatory-selection', 'is-empty', 'is-hint'],
                 flex     : 1,
-                reference: 'observatory-head',
-                vdom     : {cn: [
-                    {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
-                    {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
-                    {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HINTS.hover}
-                ]}
+                reference: 'observatory-selection',
+                text     : HINTS.selection
             }, {
                 module   : Button,
                 cls      : ['fm-observatory-toggle', 'fm-observatory-mail'],
@@ -140,12 +146,6 @@ class ObservatoryContainer extends Container {
                 tooltip  : 'Draw the Golden Path route over the graph',
                 ui       : 'ghost'
             }]
-        }, {
-            ntype    : 'component',
-            cls      : ['fm-observatory-selection', 'is-empty', 'is-hint'],
-            flex     : 'none',
-            reference: 'observatory-selection',
-            text     : HINTS.selection
         }, {
             ntype    : 'container',
             cls      : ['fm-observatory-body'],
@@ -183,7 +183,7 @@ class ObservatoryContainer extends Container {
         }],
         /**
          * Whether mail (agent messages, their broadcast sentinels and the relations routing them) stays in the
-         * scene; the head's Mail toggle flips it, and the line counts what it hides.
+         * scene; the Mail toggle flips it, and the line counts what it hides.
          * @member {Boolean} mail_=false
          * @reactive
          */
@@ -196,7 +196,7 @@ class ObservatoryContainer extends Container {
          */
         routeEnvelope_: null,
         /**
-         * Whether the route is drawn over the graph; the head's toggle flips it.
+         * Whether the route is drawn over the graph; the Route toggle flips it.
          * @member {Boolean} routeOverlay_=true
          * @reactive
          */
@@ -515,14 +515,14 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The head's Halo toggle was clicked: the nodes in no well join or leave the scene.
+     * @summary The Halo toggle was clicked: the nodes in no well join or leave the scene.
      */
     onHaloToggleClick() {
         this.halo = !this.halo
     }
 
     /**
-     * @summary The head's Mail toggle was clicked: mail joins or leaves the scene.
+     * @summary The Mail toggle was clicked: mail joins or leaves the scene.
      */
     onMailToggleClick() {
         this.mail = !this.mail
@@ -590,7 +590,7 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The head's route toggle was clicked: the overlay flips.
+     * @summary The Route toggle was clicked: the overlay flips.
      */
     onRouteToggleClick() {
         this.routeOverlay = !this.routeOverlay
@@ -680,7 +680,7 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The head's toggles show their state: Mail pressed while mail is drawn, Halo while the halo is,
+     * @summary The strip's toggles show their state: Mail pressed while mail is drawn, Halo while the halo is,
      * Route while the route is, for the eye and for assistive technology alike.
      * @protected
      */

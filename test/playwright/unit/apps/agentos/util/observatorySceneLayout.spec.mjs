@@ -10,8 +10,8 @@ import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
-import ObservatorySceneLayout, {GEOMETRY} from '../../../../../../apps/agentos/util/ObservatorySceneLayout.mjs';
-import {wholeGraphEnvelope}               from '../../../../fixture/wholeGraphScene.mjs';
+import ObservatorySceneLayout from '../../../../../../apps/agentos/util/ObservatorySceneLayout.mjs';
+import {wholeGraphEnvelope}   from '../../../../fixture/wholeGraphScene.mjs';
 
 /**
  * @summary The observatory scene's contract: every node sits in the community its edges put it in, only the
@@ -122,7 +122,7 @@ test.describe('AgentOS.util.ObservatorySceneLayout — every node in its communi
             apart   = Math.min(...centres.flatMap((a, i) => centres.slice(i + 1).map(b => distance(a, b))));
 
         // a member lies within its community's ball; the group's mean sits near the ball's centre
-        expect(reach).toBeLessThan(GEOMETRY.spread * 1.25);
+        expect(reach).toBeLessThan(ObservatorySceneLayout.geometry.spread * 1.25);
         expect(apart, 'the nearest two communities lie further apart than any member from its centre').toBeGreaterThan(reach)
     });
 
