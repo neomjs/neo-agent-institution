@@ -212,3 +212,154 @@ test.describe('AgentOS.util.ObservatorySceneLayout — every node in its communi
         expect(again).toEqual(once)
     });
 });
+
+/**
+ * A read of three stars (hubs with six, four and three leaves), two nodes without an edge, and a mail cloud:
+ * five messages tagged to the second hub and sent to an agent, a broadcast sentinel delivering to that agent,
+ * and one mail relation between two ordinary nodes.
+ * @param {Object} [options]
+ * @param {Boolean} [options.mail=true] Whether the read carries the mail cloud
+ * @returns {Object} The envelope
+ */
+function starsRead({mail = true} = {}) {
+    const q = id => `neomjs/neo#${id}`, nodes = [], edges = [];
+
+    [6, 4, 3].forEach((leaves, star) => {
+        nodes.push({id: q(`hub-${star}`), label: `hub ${star}`, kind: 'concept'});
+
+        for (let leaf = 0; leaf < leaves; leaf++) {
+            nodes.push({id: q(`leaf-${star}-${leaf}`), label: `leaf ${star}.${leaf}`, kind: 'issue'});
+            edges.push({from: q(`hub-${star}`), to: q(`leaf-${star}-${leaf}`), type: 'relates'})
+        }
+    });
+
+    nodes.push({id: q('loose-0'), label: 'loose 0', kind: 'issue'}, {id: q('loose-1'), label: 'loose 1', kind: 'issue'});
+
+    if (mail) {
+        for (let message = 0; message < 5; message++) {
+            nodes.push({id: q(`message-${message}`), label: `message ${message}`, kind: 'MESSAGE'});
+            edges.push({from: q(`message-${message}`), to: q('hub-1'), type: 'TAGGED_CONCEPT'}, {from: q(`message-${message}`), to: q('agent-ada'), type: 'SENT_TO'})
+        }
+
+        nodes.push({id: q('agent-ada'), label: 'Ada', kind: 'agent'}, {id: q('broadcast'), label: 'Broadcast', kind: 'BroadcastSentinel'});
+        edges.push({from: q('broadcast'), to: q('agent-ada'), type: 'DELIVERED_TO'}, {from: q('hub-2'), to: q('agent-ada'), type: 'SENT_BY'})
+    }
+
+    return graphRead({route: [], nodes, edges, counts: {nodes: nodes.length, edges: edges.length, seeds: 0}})
+}
+
+/**
+ * Compressed rows of an undirected edge list over `count` positions, in the list's order.
+ * @param {Number} count
+ * @param {Number[][]} pairs
+ * @returns {{offsets: Uint32Array, targets: Uint32Array}}
+ */
+function rowsOf(count, pairs) {
+    const offsets = new Uint32Array(count + 1), targets = new Uint32Array(pairs.length * 2), fill = new Uint32Array(count);
+
+    pairs.forEach(([a, b]) => {
+        offsets[a + 1]++;
+        offsets[b + 1]++
+    });
+
+    for (let node = 0; node < count; node++) {
+        offsets[node + 1] += offsets[node]
+    }
+
+    pairs.forEach(([a, b]) => {
+        targets[offsets[a] + fill[a]++] = b;
+        targets[offsets[b] + fill[b]++] = a
+    });
+
+    return {offsets, targets}
+}
+
+test.describe('AgentOS.util.ObservatorySceneLayout — density wells, mail off, and the halo of the nodes in no well', () => {
+    test('mail off: messages, their broadcast sentinel and every relation routing mail leave the scene, and the scene counts them', () => {
+        const
+            kept    = ObservatorySceneLayout.fromGraphScene(starsRead()),
+            dropped = ObservatorySceneLayout.fromGraphScene(starsRead(), {mail: false});
+
+        expect(kept.nodes.some(node => node.kind === 'MESSAGE'), 'the layout keeps mail unless told').toBe(true);
+        expect(dropped.nodes.some(node => node.kind === 'MESSAGE' || node.kind === 'BroadcastSentinel')).toBe(false);
+        // five messages and the sentinel; five tags, five deliveries, the broadcast's and the one between ordinary nodes
+        expect(dropped.hidden.mail).toEqual({nodes: 6, edges: 12});
+        expect(Object.hasOwn(dropped.index, 'neomjs/neo#agent-ada'), 'the agent stays, only its mail goes').toBe(true);
+        expect(dropped.edges, 'the three stars keep their relations').toHaveLength(13)
+    });
+
+    test('density: each star is one well, largest first; its hub sits at the centre and its leaves around it, a leaf never attracts', () => {
+        const scene = ObservatorySceneLayout.fromGraphScene(starsRead(), {geography: 'density', mail: false});
+
+        expect(scene.geography).toBe('density');
+        expect(scene.communities).toBe(3);
+        expect(scene.wells.map(well => [well.label, well.size])).toEqual([['hub 0', 7], ['hub 1', 5], ['hub 2', 4]]);
+
+        const byId = Object.fromEntries(scene.nodes.map(node => [node.id, node]));
+
+        [0, 1, 2].forEach(star => {
+            const hub = byId[`neomjs/neo#hub-${star}`], leaves = scene.nodes.filter(node => node.id.includes(`#leaf-${star}-`));
+
+            expect(hub.cluster, `hub ${star} anchors the well of its rank`).toBe(star);
+            expect(leaves.every(leaf => leaf.cluster === hub.cluster), `star ${star} is one well`).toBe(true);
+            expect(leaves.every(leaf => distance(leaf, hub) > 0 && distance(leaf, hub) < 0.5), `the leaves of ${star} lie around its hub`).toBe(true)
+        });
+
+        expect(distance(byId['neomjs/neo#hub-0'], byId['neomjs/neo#hub-1']), 'wells lie apart').toBeGreaterThan(1)
+    });
+
+    test('the halo: the nodes in no well sit on the outer shell in sector clusters; halo off takes them out and says how many', () => {
+        const
+            shown   = ObservatorySceneLayout.fromGraphScene(starsRead(), {geography: 'density', mail: false}),
+            gone    = ObservatorySceneLayout.fromGraphScene(starsRead(), {geography: 'density', mail: false, halo: false}),
+            outside = shown.nodes.filter(node => node.cluster >= shown.haloFrom);
+
+        // the two loose nodes, and the agent whose only relations were mail
+        expect(shown.halo).toBe(3);
+        expect(shown.haloFrom).toBe(shown.communities);
+        expect(outside.map(node => node.id).sort()).toEqual(['neomjs/neo#agent-ada', 'neomjs/neo#loose-0', 'neomjs/neo#loose-1']);
+        // wells centre on a sphere of 1.25 and reach less than a quarter unit: the shell lies outside all of them
+        outside.forEach(node => expect(Math.hypot(node.x, node.y, node.z), `${node.id} outside every well`).toBeGreaterThan(1.5));
+
+        expect(gone.halo).toBe(0);
+        expect(gone.haloFrom).toBeNull();
+        expect(gone.hidden.halo).toEqual({nodes: 3, edges: 0});
+        expect(gone.nodes).toHaveLength(shown.nodes.length - 3);
+        expect(Object.hasOwn(gone.index, 'neomjs/neo#loose-0')).toBe(false);
+
+        // the communities geography keeps its community of the unlinked unless a halo is asked for
+        const legacy = ObservatorySceneLayout.fromGraphScene(starsRead({mail: false})), haloed = ObservatorySceneLayout.fromGraphScene(starsRead({mail: false}), {halo: true});
+
+        expect(legacy.haloFrom).toBeNull();
+        expect(haloed.communities, 'the unlinked community leaves the geography').toBe(legacy.communities - 1);
+        expect(haloed.halo).toBe(2)
+    });
+
+    test('wells lay out identically under shuffle, and a geography switch keeps every node, so a selection survives it', () => {
+        const
+            read   = starsRead(),
+            once   = ObservatorySceneLayout.fromGraphScene(read, {geography: 'density', mail: false}),
+            again  = ObservatorySceneLayout.fromGraphScene(graphRead({...read.scene, nodes: [...read.scene.nodes].reverse(), edges: [...read.scene.edges].reverse()}), {geography: 'density', mail: false}),
+            topo   = ObservatorySceneLayout.fromGraphScene(read, {geography: 'communities', halo: true, mail: false});
+
+        expect(once.wells, 'the three wells, not a vacuous match of two communities layouts').toHaveLength(3);
+        expect(again).toEqual(once);
+        expect(Object.keys(topo.index).sort()).toEqual(Object.keys(once.index).sort())
+    });
+
+    test('wellsOf: the walk gives a node two wells reach in one step to the better-ranked hub, whatever the row order, and numbers wells by size', () => {
+        // hub 0 (degree 4) and hub 1 (degree 3) each reach node 7 in two steps, through 4 and 6
+        const
+            pairs = [[0, 2], [0, 3], [0, 4], [0, 8], [1, 5], [1, 6], [1, 9], [4, 7], [6, 7]],
+            ahead = rowsOf(10, pairs),
+            back  = rowsOf(10, [...pairs].reverse()),
+            one   = ObservatorySceneLayout.wellsOf(10, ahead.offsets, ahead.targets, 2),
+            two   = ObservatorySceneLayout.wellsOf(10, back.offsets, back.targets, 2);
+
+        expect(Array.from(one.of)).toEqual([0, 1, 0, 0, 0, 1, 1, 0, 0, 1]);
+        expect(Array.from(two.of), 'the reversed rows give the same wells').toEqual(Array.from(one.of));
+        expect(Array.from(one.hop)).toEqual([0, 0, 1, 1, 1, 1, 1, 2, 1, 1]);
+        expect(one.hubs).toEqual([0, 1]);
+        expect(one.sizes).toEqual([6, 4])
+    });
+});

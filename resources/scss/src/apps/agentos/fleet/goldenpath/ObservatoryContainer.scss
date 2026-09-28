@@ -13,9 +13,9 @@
         min-width    : 0;
     }
 
-    /* the route toggle: the roster's quiet ghost verb, whose pressed state carries the choice. A real Neo
-       Button, so the engine's 48px chrome height and its label type rule are re-bound here. */
-    .fm-observatory-route {
+    /* the head's toggles (Mail, Halo, Route): the roster's quiet ghost verb, whose pressed state carries the
+       choice. Real Neo Buttons, so the engine's 48px chrome height and its label type rule are re-bound here. */
+    .fm-observatory-toggle {
         --button-height: auto;
 
         border       : 1px solid transparent;

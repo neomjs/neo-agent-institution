@@ -192,6 +192,21 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect([off.positions, off.clusters, off.edges]).toEqual([on.positions, on.clusters, on.edges])
     });
 
+    test('the halo\'s sector clusters ink faint and small, never in a community\'s tone; a scene without a halo inks as before', () => {
+        const
+            {dark} = PALETTES,
+            base   = wireScene('current'),
+            haloed = {...base, haloFrom: 1},
+            flat   = Observatory.ink(haloed, -1, false);
+
+        Array.from(haloed.clusters).forEach((cluster, index) => {
+            expect(rounded(colorOf(flat.colors, index)), `node ${index}`).toEqual(rounded(cluster >= 1 ? rgb(dark.line) : toneOf(dark, cluster)));
+            expect(Math.round(flat.sizes[index] * 100) / 100).toBe(cluster >= 1 ? 3 : 5)
+        });
+
+        expect(Observatory.ink({...base, haloFrom: null}, -1, false)).toEqual(Observatory.ink(base, -1, false))
+    });
+
     test('a degraded read never spends the route\'s gold; an empty or missing scene draws nothing', () => {
         const flat = Observatory.ink(wireScene('degraded')), {dark} = PALETTES;
 

@@ -208,7 +208,9 @@ class Observatory extends GraphScene {
             lastRank = Math.max(1, ...ranks),
             nodeSize = Math.max(SIZES.nodeMin, SIZES.node * Math.min(1, Math.sqrt(SIZES.nodeScaleFrom / count))),
             colors   = new Float32Array(count * 3),
-            sizes    = new Float32Array(count);
+            sizes    = new Float32Array(count),
+            // the halo's sector clusters are dust around the wells: faint and small, never a community's tone
+            haloFrom = scene.haloFrom ?? Infinity;
 
         for (let pair = 0; lit && pair < edges.length; pair += 2) {
             edges[pair]     === selected && lit.add(edges[pair + 1]);
@@ -219,11 +221,12 @@ class Observatory extends GraphScene {
             const
                 rank = rankOf?.get(index),
                 base = rank === undefined ? nodeSize : lastRank > 1 ? SIZES.seedMax - (rank - 1) / (lastRank - 1) * (SIZES.seedMax - SIZES.seedMin) : SIZES.seedMax,
-                out  = lit !== null && !lit.has(index);
+                out  = lit !== null && !lit.has(index),
+                halo = clusters[index] >= haloFrom;
 
             // a drawn route keeps its colour under a selection: it recedes in size only
-            colors.set(rank !== undefined ? seed : out ? faded : tones[clusters[index]], index * 3);
-            sizes[index] = index === selected ? Math.max(base * SIZES.selected, SIZES.seedMin) : base * (out ? SIZES.faded : 1)
+            colors.set(rank !== undefined ? seed : out || halo ? faded : tones[clusters[index]], index * 3);
+            sizes[index] = index === selected ? Math.max(base * SIZES.selected, SIZES.seedMin) : base * (out || halo ? SIZES.faded : 1)
         }
 
         return {

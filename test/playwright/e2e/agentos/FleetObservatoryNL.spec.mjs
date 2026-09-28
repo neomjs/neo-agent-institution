@@ -102,7 +102,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(selection).toHaveText('No node selected');
 
         await land(read());
-        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · complete$/);
+        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete$/);
         await settle();
 
         const drawn = await stats();
@@ -179,7 +179,8 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const lost = await stats();
 
         expect(lost.selectedId).toBeNull();
-        expect(lost.counts).toEqual({nodes: 6, edges: 2, seeds: 2, communities: 3, paths: 1});
+        // without pr-101 no node holds two relations, so no well forms and all six sit in the halo
+        expect(lost.counts).toEqual({nodes: 6, edges: 2, seeds: 2, communities: 0, paths: 1});
 
         // a click on the empty surface clears a selection
         await selectNode(q('issue-202'));
@@ -188,12 +189,12 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(selection).toHaveText('No node selected');
 
         await land(read({completeness: 'truncated'}, {snapshotId: 'snap-a1'}));
-        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
+        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
         await settle();
         expect((await stats()).completeness).toBe('truncated');
 
         await land(read({}, {capability: {state: 'degraded', reason: 'graph-seam-refused'}}));
-        await expect(currency).toHaveText('Degraded · graph-seam-refused · 7 nodes · 4 edges · complete');
+        await expect(currency).toHaveText('Degraded · graph-seam-refused · 7 nodes · 4 edges · 2 in the halo · complete');
         await settle();
 
         const partial = await stats();
@@ -276,7 +277,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         await expect(currency, 'cold, the read is unavailable').toHaveText(/^Unavailable · /);
         await land(read());
-        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · complete$/);
+        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete$/);
         await page.waitForTimeout(400);
 
         await selectNode(q('issue-303'));
@@ -292,7 +293,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await page.getByRole('tab', {name: 'Fleet', exact: true}).click();
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible();
         await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
-        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · complete$/);
+        await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete$/);
         await expect(selection).toHaveText(/^Selected · third route item · /);
         await page.waitForTimeout(400);
 
@@ -334,7 +335,9 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         testInfo.annotations.push({type: 'Neural Link write of the envelope to the first frame of its scene', description: `${landedIn} ms`});
         expect(drawn.counts).toMatchObject({nodes: 100000, seeds: 10, paths: 1});
         expect(drawn.lod.level, 'the fitted camera draws every node').toBe('mid');
-        expect(drawn.lod.clusters, 'most of the 64 generated groups are found').toBeGreaterThan(48);
+        // the pane's default geography: density wells around the read's 48 best-connected nodes, plus a halo
+        // sector for any node none of them reaches
+        expect(drawn.lod.clusters, 'the 48 density wells are drawn').toBeGreaterThanOrEqual(48);
 
         // the pictures a reviewer looks at, attached to the run: never compared, so never goldens
         const picture = async name => testInfo.attach(name, {body: await pane.screenshot(), contentType: 'image/png'});

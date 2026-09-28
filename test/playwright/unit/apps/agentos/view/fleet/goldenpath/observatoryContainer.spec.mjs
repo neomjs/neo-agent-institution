@@ -73,7 +73,8 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         const pane = createPane();
 
         pane.envelope = graphRead();
-        expect(lineOf(pane), 'a read drawn whole').toMatch(/ · 7 nodes · 4 edges · complete$/);
+        // the two nodes without an edge sit in the halo, drawn and counted
+        expect(lineOf(pane), 'a read drawn whole').toMatch(/ · 7 nodes · 4 edges · 2 in the halo · complete$/);
 
         pane.envelope = graphRead({edges: [
             ...graphRead().scene.edges,
@@ -82,7 +83,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
             {from: q('agent-grace'), to: q('pr-101'), type: 'authored'}
         ]});
         expect(pane.scene.edges).toHaveLength(4);
-        expect(lineOf(pane)).toMatch(/ · 7 nodes · 4 edges · 3 edges not drawn · complete$/);
+        expect(lineOf(pane)).toMatch(/ · 7 nodes · 4 edges · 2 in the halo · 3 edges not drawn · complete$/);
 
         pane.destroy()
     });
@@ -101,7 +102,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
     test('a read lands as its line and its scene; a selected node is named with its kind, qualified id, rank and typed relations', () => {
         const pane = createPane({envelope: graphRead()});
 
-        expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · complete$/);
+        expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete$/);
         expect(pane.scene.nodes.map(node => node.id).slice(0, 3)).toEqual([q('pr-101'), q('issue-202'), q('issue-303')]);
 
         pane.onNodeSelect({node: {id: q('pr-101')}});
@@ -249,6 +250,64 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.destroy()
     });
 
+    test('mail stays out and the nodes in no well sit in the halo by default; the Mail and Halo toggles bring mail in and the halo out, and the line says what the view hid', () => {
+        const
+            pane    = createPane({envelope: graphRead({
+                nodes: [...graphRead().scene.nodes, {id: q('message-1'), label: 'a message', kind: 'MESSAGE'}],
+                edges: [...graphRead().scene.edges, {from: q('message-1'), to: q('concept-dock'), type: 'TAGGED_CONCEPT'}]
+            })}),
+            mail    = pane.getReference('mail-toggle'),
+            halo    = pane.getReference('halo-toggle'),
+            pressed = toggle => [toggle.pressed, toggle.vdom['aria-pressed']];
+
+        mail.useRippleEffect = halo.useRippleEffect = false;
+
+        expect(pane.scene.geography, 'density wells by default').toBe('density');
+        expect([pressed(mail), pressed(halo)]).toEqual([[false, 'false'], [true, 'true']]);
+        expect(lineOf(pane)).toMatch(/ · 7 nodes · 4 edges · 1 message hidden · 2 in the halo · complete$/);
+        expect(Object.hasOwn(pane.scene.index, q('message-1'))).toBe(false);
+
+        mail.onClick({});
+        expect(pressed(mail)).toEqual([true, 'true']);
+        expect(lineOf(pane), 'mail drawn: the message joins the well of the concept it names').toMatch(/ · 8 nodes · 5 edges · 2 in the halo · complete$/);
+
+        mail.onClick({});
+        pane.onNodeSelect({node: {id: q('issue-303')}});
+
+        halo.onClick({});
+        expect(pressed(halo)).toEqual([false, 'false']);
+        expect(lineOf(pane)).toMatch(/ · 5 nodes · 4 edges · 1 message hidden · 2 halo nodes hidden · complete$/);
+        expect(pane.selectedId, 'a node the view hides cannot stay selected').toBeNull();
+        expect(stripOf(pane).text).toBe(`Selection cleared · ${q('issue-303')} is hidden in this view`);
+
+        pane.destroy()
+    });
+
+    test('a geography switch lays the same read out again and keeps the selection with its node; an unknown geography changes nothing', () => {
+        const pane = createPane({envelope: graphRead()});
+
+        pane.onNodeSelect({node: {id: q('issue-404')}});
+
+        const before = pane.scene.nodes.find(node => node.id === q('issue-404'));
+
+        pane.geography = 'communities';
+        expect(pane.scene.geography).toBe('communities');
+        expect(pane.selectedId).toBe(q('issue-404'));
+        expect(stripOf(pane).text).toMatch(/^Selected · two hops out · issue/);
+        expect(pane.scene.nodes.find(node => node.id === q('issue-404')), 'the node moved with its geography').not.toEqual(before);
+
+        const errors = [], error = console.error;
+
+        console.error = (...args) => errors.push(args[0]);
+        pane.geography = 'constellations';
+        console.error = error;
+
+        expect(pane.geography).toBe('communities');
+        expect(errors, 'the refusal is named').toEqual(['Supported values for geography are:']);
+
+        pane.destroy()
+    });
+
     test('a withheld Golden Path route is named beside the graph read\'s own words', () => {
         const
             pane     = createPane({envelope: graphRead()}),
@@ -259,7 +318,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
             });
 
         pane.routeEnvelope = withheld;
-        expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · complete · route withheld · freshness-sla-breached$/);
+        expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete · route withheld · freshness-sla-breached$/);
 
         pane.routeEnvelope = GoldenPathEnvelope.fromWire({...withheld, admission: {...withheld.admission, admitted: true, fallback: 'current', reasonCode: 'current'}});
         expect(lineOf(pane)).toMatch(/ · complete$/);
