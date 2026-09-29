@@ -262,7 +262,8 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         mail.useRippleEffect = halo.useRippleEffect = false;
 
-        expect(pane.scene.geography, 'density wells by default').toBe('density');
+        expect(pane.geography, 'strategic wells by default').toBe('strategic');
+        expect(pane.scene.geography, 'a read without an anchor draws density wells').toBe('density');
         expect([pressed(mail), pressed(halo)]).toEqual([[false, 'false'], [true, 'true']]);
         expect(lineOf(pane)).toMatch(/ · 7 nodes · 4 edges · 1 mail node hidden · 2 in the halo · complete$/);
         expect(Object.hasOwn(pane.scene.index, q('message-1'))).toBe(false);

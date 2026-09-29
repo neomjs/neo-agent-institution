@@ -19,8 +19,9 @@ const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 
 /**
  * @summary The Observatory keeper-view — the graph read in its wells, as a navigable 3D scene on the canvas
  * worker and as two lists beside it, with the Golden Path's route as an overlay the Route toggle draws or
- * leaves out. The {@link #geography} is density wells by default, the read's most connected nodes drawing the
- * rest around them; mail stays out of the scene until the Mail toggle brings it in, and the nodes in no
+ * leaves out. The {@link #geography} is strategic wells by default, the Brain's strategic anchors drawing the rest
+ * around them, and density wells on a read that carries no anchor; mail stays out of the scene until the Mail
+ * toggle brings it in, and the nodes in no
  * well sit in an outer halo the Halo toggle hides. The head carries the read's line first (capability, capture,
  * holdings, what the view hid, completeness — {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node
  * under the pointer beside it; the selection strip below names the selected node as the read has it. The pane binds the shell's `graphSceneEnvelope` leaf,
@@ -45,11 +46,11 @@ const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 
 class ObservatoryContainer extends Container {
     /**
      * Valid values for {@link #geography}.
-     * @member {String[]} geographies=['communities', 'density']
+     * @member {String[]} geographies=['communities', 'density', 'strategic']
      * @protected
      * @static
      */
-    static geographies = ['communities', 'density']
+    static geographies = ['communities', 'density', 'strategic']
 
     static config = {
         /**
@@ -73,12 +74,14 @@ class ObservatoryContainer extends Container {
          */
         envelope_: null,
         /**
-         * How the scene places its nodes: `density` (wells around the read's most connected nodes) or
-         * `communities` (the topology's Louvain communities). Switching moves the nodes and keeps the selection.
-         * @member {String} geography_='density'
+         * How the scene places its nodes: `strategic` (wells around the Brain's strategic anchors, each held to a
+         * cap), `density` (wells around the read's most connected nodes) or `communities` (the topology's Louvain
+         * communities). A read without an anchor lays `strategic` out as `density`, and the scene's own `geography`
+         * names what was drawn. Switching moves the nodes and keeps the selection.
+         * @member {String} geography_='strategic'
          * @reactive
          */
-        geography_: 'density',
+        geography_: 'strategic',
         /**
          * Whether the nodes in no well (no edge, or no path to a hub) are drawn in an outer halo; the Halo toggle
          * flips it, and the line counts them either way.

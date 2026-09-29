@@ -404,3 +404,92 @@ test.describe('AgentOS.util.ObservatorySceneLayout — density wells, mail off, 
         expect(one.sizes).toEqual([6, 4])
     });
 });
+
+/**
+ * The stars read with the Brain's strategic columns on two of its hubs: `hub-1` and `hub-2` are anchors, and
+ * `hub-0`, the best-connected, is not.
+ * @param {Object} [weights] Strategic weight per anchored hub
+ * @returns {Object}
+ */
+function anchoredStarsRead(weights = {'hub-1': 2, 'hub-2': 5}) {
+    const read = starsRead();
+
+    read.scene.nodes = read.scene.nodes.map(node => {
+        const weight = weights[node.id.replace('neomjs/neo#', '')];
+
+        return weight === undefined ? node : {...node, gravityWell: true, strategicWeight: weight}
+    });
+
+    return read
+}
+
+test.describe('AgentOS.util.ObservatorySceneLayout — strategic wells at the Brain\'s anchors, each held to its cap', () => {
+    test('strategicWellsOf ranks by pull, not degree: with one well, the strongest pull attracts although another node is better connected', () => {
+        // node 0 has degree 3 and pull 1, node 1 has degree 2 and pull 9; node 5 is no anchor
+        const
+            {offsets, targets} = rowsOf(6, [[0, 2], [0, 3], [0, 4], [1, 5], [1, 4]]),
+            pull               = Float64Array.from([1, 9, -1, -1, -1, -1]),
+            one                = ObservatorySceneLayout.strategicWellsOf(6, offsets, targets, pull, {anchors: 1, maxShare: 10});
+
+        expect(one.hubs, 'the pull decides, not the degree').toEqual([1]);
+        expect(Array.from(one.of)).toEqual([0, 0, 0, 0, 0, 0])
+    });
+
+    test('strategicWellsOf holds a well to its cap: a full well stops growing, and a well with room claims what it can reach', () => {
+        // anchor 0 (pull 10) reaches 2–7, anchor 1 (pull 1) shares 6 and 7 and alone reaches 8. Uncapped, the walk
+        // reaches 9 nodes over 2 wells, so maxShare 1 caps a well at 5
+        const
+            {offsets, targets} = rowsOf(9, [[0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [1, 6], [1, 7], [1, 8]]),
+            pull               = Float64Array.from([10, 1, -1, -1, -1, -1, -1, -1, -1]),
+            capped             = ObservatorySceneLayout.strategicWellsOf(9, offsets, targets, pull, {anchors: 2, maxShare: 1}),
+            open               = ObservatorySceneLayout.strategicWellsOf(9, offsets, targets, pull, {anchors: 2, maxShare: 100});
+
+        expect(capped.cap).toBe(5);
+        expect(Array.from(capped.of), 'the strongest well stops at 5, and the other claims 6 and 7').toEqual([0, 1, 0, 0, 0, 0, 1, 1, 1]);
+        expect(capped.sizes).toEqual([5, 4]);
+        expect(open.sizes, 'the control: without a binding cap the strongest well takes the shared nodes').toEqual([7, 2])
+    });
+
+    test('a node only a full well could reach is in no well, and the scene puts it in the halo', () => {
+        // anchor 0 reaches 2–5 alone; anchor 1 reaches only 6. Uncapped: 7 nodes over 2 wells, maxShare 1 caps at 4
+        const
+            {offsets, targets} = rowsOf(7, [[0, 2], [0, 3], [0, 4], [0, 5], [1, 6]]),
+            walk               = ObservatorySceneLayout.strategicWellsOf(7, offsets, targets, Float64Array.from([3, 1, -1, -1, -1, -1, -1]), {anchors: 2, maxShare: 1});
+
+        expect(walk.cap).toBe(4);
+        expect(Array.from(walk.of).filter(well => well < 0), 'the one node beyond the cap').toHaveLength(1)
+    });
+
+    test('the strategic geography anchors the wells on the Brain\'s anchors and reports its cap; a star without an anchor sits in the halo', () => {
+        const scene = ObservatorySceneLayout.fromGraphScene(anchoredStarsRead(), {geography: 'strategic', mail: false});
+
+        expect(scene.geography).toBe('strategic');
+        expect(scene.wells.map(well => well.label).sort(), 'hub-0 is best connected but no anchor').toEqual(['hub 1', 'hub 2']);
+        expect(Number.isInteger(scene.wellCap) && scene.wellCap > 0).toBe(true);
+
+        const byId = Object.fromEntries(scene.nodes.map(node => [node.id, node]));
+
+        expect(byId['neomjs/neo#hub-0'].cluster, 'the unanchored star is in the halo').toBeGreaterThanOrEqual(scene.haloFrom);
+        expect(byId['neomjs/neo#leaf-1-0'].cluster).toBe(byId['neomjs/neo#hub-1'].cluster)
+    });
+
+    test('a read without an anchor lays out as density, and says so: an older Brain keeps W2', () => {
+        const
+            strategic = ObservatorySceneLayout.fromGraphScene(starsRead(), {geography: 'strategic', mail: false}),
+            density   = ObservatorySceneLayout.fromGraphScene(starsRead(), {geography: 'density', mail: false});
+
+        expect(strategic.geography).toBe('density');
+        expect(strategic.wellCap).toBeNull();
+        expect(strategic).toEqual(density)
+    });
+
+    test('strategic wells lay out identically under shuffle', () => {
+        const
+            read  = anchoredStarsRead(),
+            once  = ObservatorySceneLayout.fromGraphScene(read, {geography: 'strategic', mail: false}),
+            again = ObservatorySceneLayout.fromGraphScene(graphRead({...read.scene, nodes: [...read.scene.nodes].reverse(), edges: [...read.scene.edges].reverse()}), {geography: 'strategic', mail: false});
+
+        expect(once.wells).toHaveLength(2);
+        expect(again).toEqual(once)
+    });
+});
