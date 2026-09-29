@@ -112,6 +112,29 @@ test.describe('Fleet cockpit — the tasks read (loadTasks)', () => {
         }
     });
 
+    test('a landed answer invalidates a pending read before it can replace the fixture', async () => {
+        const wires = [];
+
+        setFleetBridge({fleetTasks: () => new Promise(resolve => wires.push(resolve))});
+
+        try {
+            const pane    = {snapshot: null},
+                  host    = makeHost(pane),
+                  pending = host.loadTasks(),
+                  landed  = {capability: {state: 'wired'}, running: [{id: 'fixture'}], queued: [], recent: []};
+
+            host.admitTasks(landed);
+            wires[0]({capability: {state: 'unavailable'}, running: [], queued: [], recent: []});
+            await pending;
+
+            expect(host.tasksSnapshot).toBe(landed);
+            expect(pane.snapshot).toBe(landed);
+            expect(host.tasksReadInFlight).toBe(0)
+        } finally {
+            clearFleetBridge()
+        }
+    });
+
     test('the pipeline (#113): a starved-plane envelope through the REAL bridge lands on the live pane and renders — the wait as text, the row\'s own cause, the lease line, counts starved · known · shown', async () => {
         const
             TasksPane = (await import('../../../../../../../../apps/agentos/view/fleet/tasks/Container.mjs')).default,

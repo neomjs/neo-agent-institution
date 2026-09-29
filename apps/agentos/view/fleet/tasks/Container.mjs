@@ -18,31 +18,6 @@ const SECTIONS = Object.freeze([
 ]);
 
 /**
- * @summary The cold-spine rows: one per section, labeled `sample` at the section AND the row, so
- * the pane teaches its shape before any bridge answered — exactly like the static roster — without
- * a single row claiming to be the deployment.
- * @type {Object[]}
- */
-const SAMPLE_ROWS = Object.freeze([
-    {id: 'sample:running', section: 'running', name: 'Tenant repo sync',       source: 'orchestrator', state: 'in progress', at: null, progressKind: 'determinate', progressDone: 42, progressTotal: 100, detail: null},
-    {id: 'sample:queued',  section: 'queued',  name: 'Repo sync · 1a2b3c4d',   source: 'orchestrator', state: 'scheduled',   at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null},
-    // the queue's starved shape at the live queue's density — the instant it was deferred, both
-    // flags, its own cause naming the task it yielded to: the pressure a real waiter puts on a row,
-    // so the cold spine teaches (and the goldens witness) the layout the plane will fill
-    {id: 'sample:starved', section: 'queued',  name: 'core-corpus-projection', source: 'orchestrator', state: 'starved',     at: '2026-07-05T06:13:43.059Z', progressKind: null, progressDone: null, progressTotal: null, detail: null, waitMs: 42_300_000, thresholdMs: 3_600_000, reasonCode: 'heavy-maintenance-yield-to-waiter', blockingTaskName: 'dream', leaseOwner: null, priorityZero: true, bootstrapCritical: true},
-    // the queue's second producer: the digest backlog is a queue fact under its own word, never a task
-    {id: 'sample:digest',  section: 'queued',  name: 'REM digest',             source: 'mc',           state: 'backlog',     at: null, progressKind: 'backlog',     progressDone: 1040, progressTotal: 2000, detail: '960 undigested · 1040 digested'},
-    {id: 'sample:recent',  section: 'recent',  name: 'KB ingestion',           source: 'kb',           state: 'completed',   at: null, progressKind: null,          progressDone: null, progressTotal: null, detail: null}
-]);
-
-/**
- * @summary The cold-spine lease line — the queued section's summary shape, labeled sample by the
- * section pill above it, never a claim about a real lease.
- * @type {Object}
- */
-const SAMPLE_SCHEDULER = Object.freeze({leaseHolder: 'summary', leaseStatus: 'active', posture: 'degraded', checkedAt: null, degradeAfterMs: 3_600_000, starvedTotal: 1, unreadableCount: 0});
-
-/**
  * @summary Whether the watchdog's reading left part of the queue unobserved: unreadable ledger
  * entries, the `unknown` posture they produce, or a lease file the check could not read. An empty
  * visible queue under such a reading is not an absence — the writer's own contract keeps a corrupt
@@ -84,7 +59,7 @@ function unobservedQueueLine(scheduler) {
  * controller} fires the read intent, and the owning FleetCockpit holds the authenticated bridge
  * and drives the read at boot and on every liveness tick.
  *
- * Honest states are first-class: the cold spine renders sample-labeled rows (shape, not claim),
+ * Honest states are first-class: the cold spine renders unanswered empty sections,
  * an unavailable read names its reason, a wired read with an empty section says so in words, a
  * run with no reported fraction carries its state word instead of a bar that would lie, and a
  * backlog gauge is labeled as a queue — never as progress.
@@ -213,13 +188,13 @@ class Container extends BaseContainer {
     /**
      * @summary Project the latest envelope into the Store as the full render set — one header
      * record per section under its freshness pill and its counts, the queued section's lease line
-     * when the envelope carries the scheduler summary, then that section's rows (sample on the cold
-     * spine, the mapped envelope rows on a wired read, the honest empty line otherwise). A
+     * when the envelope carries the scheduler summary, then mapped envelope rows or the
+     * honest empty line. A
      * replace is wholesale — rows are a glance at one instant, never an accumulation — and the
      * meta line names every source axis by its own state word, so a partial read is readable as
      * exactly that. Provenance rides once per homogeneous section: the source chip sits on the
-     * head when every row shares it, and a row carries its own only where a section mixes sources
-     * (the cold spine's `sample` pill follows the same rule). A row is marked `changed` only when
+     * head when every row shares it, and a row carries its own only where a section mixes sources.
+     * A row is marked `changed` only when
      * what it shows moved against the previous projection — a wait that grew under a new watchdog
      * stamp, a state that changed — so neither the liveness tick nor a re-fetched envelope with the
      * same stamp animates anything.
@@ -231,19 +206,15 @@ class Container extends BaseContainer {
             metaEl   = me.getReference('tasks-meta'),
             state    = snapshot?.capability?.state,
             wired    = state === 'wired' || state === 'partial',
-            // A transport-level fallback (no bridge, unwired verb, a thrown read) carries NO source
-            // axes — the cockpit never reached the source. That is the COLD spine, and the cockpit's
-            // convention for it is the Activity stream's: keep the labeled sample in place rather
-            // than blanking the surface. An envelope WITH axes that all failed is a different fact —
-            // the source answered, and the honest render is its empty lines under the reason.
-            axes     = Boolean(snapshot?.sources) && Object.keys(snapshot.sources).length > 0,
-            cold     = !snapshot || (!wired && !axes);
+            // Null means no read has answered. A transport fallback is an unavailable answer even
+            // when it carries no source axes; neither state can supply a task row.
+            cold     = !snapshot;
 
         if (!me.taskStore) return;
 
         const
-            pill      = cold ? 'sample' : wired ? 'live' : 'unavailable',
-            scheduler = cold ? SAMPLE_SCHEDULER : wired && snapshot.scheduler && typeof snapshot.scheduler === 'object' ? snapshot.scheduler : null,
+            pill      = cold ? 'cold' : wired ? 'live' : 'unavailable',
+            scheduler = wired && snapshot.scheduler && typeof snapshot.scheduler === 'object' ? snapshot.scheduler : null,
             counts    = wired && snapshot.counts && typeof snapshot.counts === 'object' ? snapshot.counts : null,
             previous  = me.previousFacts,
             facts     = new Map(),
@@ -275,10 +246,8 @@ class Container extends BaseContainer {
             records   = SECTIONS.flatMap(section => {
                 const
                     queued  = section.id === 'queued',
-                    rows    = cold
-                        ? SAMPLE_ROWS.filter(row => row.section === section.id).map(row => ({...row, sample: true}))
-                        : wiredRows.filter(row => row.section === section.id),
-                    sources = new Set(rows.map(row => row.sample ? 'sample' : (row.source ?? 'unknown'))),
+                    rows    = wiredRows.filter(row => row.section === section.id),
+                    sources = new Set(rows.map(row => row.source ?? 'unknown')),
                     hoisted = rows.length > 0 && sources.size === 1 ? [...sources][0] : null,
                     header  = {
                         id          : `header:${section.id}`,
@@ -290,14 +259,12 @@ class Container extends BaseContainer {
                         starvedTotal: queued ? (scheduler?.starvedTotal ?? null) : null,
                         knownCount  : queued ? (counts?.queuedKnown ?? null) : null,
                         shownCount  : counts?.[section.id] ?? null,
-                        // the cold spine's pill already says sample; a live homogeneous section hoists its source
-                        source      : hoisted && hoisted !== 'sample' && hoisted !== 'unknown' ? hoisted : null
+                        source      : hoisted && hoisted !== 'unknown' ? hoisted : null
                     },
                     meta    = queued && scheduler ? [{
                         id             : 'meta:queued',
                         rowKind        : 'meta',
                         section        : 'queued',
-                        sample         : cold,
                         leaseHolder    : scheduler.leaseHolder ?? null,
                         leaseStatus    : scheduler.leaseStatus ?? null,
                         posture        : scheduler.posture ?? null,
@@ -321,9 +288,11 @@ class Container extends BaseContainer {
                         id     : `empty:${section.id}`,
                         rowKind: 'empty',
                         section: section.id,
-                        label  : !wired
-                            ? 'The task sources did not answer. Nothing here claims to be the deployment.'
-                            : queued && isQueueUnobserved(scheduler) ? unobservedQueueLine(scheduler) : section.empty
+                        label  : cold
+                            ? 'Tasks not answered yet.'
+                            : !wired
+                                ? 'The task sources did not answer. Nothing here claims to be the deployment.'
+                                : queued && isQueueUnobserved(scheduler) ? unobservedQueueLine(scheduler) : section.empty
                     }])
                 ]
             });
@@ -334,12 +303,10 @@ class Container extends BaseContainer {
 
         if (metaEl) {
             metaEl.text = !snapshot
-                ? 'Tasks not observed yet — the rows below show the shape, not the deployment.'
-                : cold
-                    ? `Tasks unavailable · ${snapshot.capability?.reason || 'unknown reason'} — the rows below show the shape, not the deployment.`
-                    : wired
-                        ? `captured ${me.formatStamp(snapshot.capability.capturedAt)} · ${me.sourceLine(snapshot.sources)}`
-                        : `Tasks unavailable · ${snapshot.capability?.reason || 'unknown reason'}`;
+                ? 'Tasks not observed yet'
+                : wired
+                    ? `captured ${me.formatStamp(snapshot.capability.capturedAt)} · ${me.sourceLine(snapshot.sources)}`
+                    : `Tasks unavailable · ${snapshot.capability?.reason || 'unknown reason'}`;
 
             // T5 receipt; falsy removes, so the unobserved and unavailable branches — which render
             // no stamp — cannot leave a previous read's instant hovering behind their copy

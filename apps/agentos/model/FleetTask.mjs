@@ -100,16 +100,11 @@ class FleetTask extends Model {
             convert     : value => typeof value === 'string' && value ? value : null,
             defaultValue: null
         }, {
-            // header rows only: the freshness pill word (`sample` · `live` · `unavailable`)
+            // header rows only: the freshness pill word (`cold` · `live` · `unavailable`)
             name        : 'pill',
             type        : 'String',
             convert     : value => typeof value === 'string' && value ? value : null,
             defaultValue: null
-        }, {
-            // cold-spine rows render the `sample` pill instead of a source claim
-            name        : 'sample',
-            type        : 'Boolean',
-            defaultValue: false
         }, {
             // ── the heavy-maintenance queue: a starved waiter's own facts as the producer's
             // receipt carries them — the wait as numbers (rendered as TEXT, never a bar: a wait is

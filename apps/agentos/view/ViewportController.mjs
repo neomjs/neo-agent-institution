@@ -535,7 +535,7 @@ class ViewportController extends Controller {
     wireFleetBridge(config) {
         // The injector IS the selection act: Neural Link, tests, and dev tooling wiring a bridge
         // here means "this source was deliberately chosen" — its empty registry renders the true
-        // zero state. The packaged/default boot installs elsewhere and keeps the sample flagship.
+        // zero state. The packaged/default boot installs elsewhere and stays unanswered until read.
         // The bridge carries the canonical profile identity of its endpoint (the custody switch's
         // own contract), so the cockpit's target binding can tell one injected endpoint from the
         // next; a caller that already holds the identity passes it through.

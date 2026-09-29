@@ -4,15 +4,14 @@ import {isDescriptor} from '../../../node_modules/neo.mjs/src/core/ConfigSymbols
 /**
  * @summary The tests' fleet landing: loaded INTO the App worker through `Neo.worker.App.loadModule`,
  * it keeps one instance under a fixed id whose reactive configs a spec sets from the page through
- * `Neo.worker.App.setConfigs` — no remote of the App worker lands rows otherwise. A landed roster or
- * activity is handed to the liveness owner's own admission — `admitRoster` / `admitActivity`, the
- * methods its reads call after their fence and validation — as the answer of the bridge in hand, so
- * the owner's later reads treat it as the fleet's answer: a late seed `load` reconciles back to it, a
- * read that fails degrades it to `stale`, a profile switch retires it, and every step the admission
- * gains the landing gets. Every set lands — the configs compare nothing — so a spec re-lands the same
- * rows at will. Loading the module again (a fresh `t`) finds the instance and leaves it.
+ * `Neo.worker.App.setConfigs` — no remote of the App worker lands rows otherwise. A landed roster,
+ * activity, or tasks envelope is handed to the cockpit owner's own admission. Roster and activity
+ * follow the liveness admission used by their reads; tasks follow `Controller.admitTasks`, which
+ * invalidates an older in-flight read. Every set lands — the configs compare nothing — so a spec
+ * re-lands the same facts at will. Loading the module again (a fresh `t`) finds the instance.
  *
  * @see apps/agentos/view/fleet/cockpit/LivenessController.mjs (`admitRoster`, `admitActivity`)
+ * @see apps/agentos/view/fleet/cockpit/Controller.mjs (`admitTasks`)
  */
 class FleetLanding extends Base {
     static config = {
@@ -30,7 +29,12 @@ class FleetLanding extends Base {
          * The activity to land, `{events}` shaped like the stream's snapshot.
          * @member {Object|null} activity_=null
          */
-        activity_: {[isDescriptor]: true, value: null, isEqual: () => false}
+        activity_: {[isDescriptor]: true, value: null, isEqual: () => false},
+        /**
+         * One `fleetTasks` envelope to land as the owner's answer.
+         * @member {Object|null} tasks_=null
+         */
+        tasks_: {[isDescriptor]: true, value: null, isEqual: () => false}
     }
 
     /**
@@ -62,6 +66,13 @@ class FleetLanding extends Base {
     }
 
     /**
+     * @param {Object|null} value
+     */
+    afterSetTasks(value) {
+        value && this.landTasks(value.snapshot)
+    }
+
+    /**
      * The events, admitted as a wired answer of the bridge in hand.
      * @param {Object[]} events
      */
@@ -79,6 +90,14 @@ class FleetLanding extends Base {
         const {owner} = this;
 
         owner.admitRoster({profileId: owner.bridge?.profileId ?? null, rows})
+    }
+
+    /**
+     * @summary Land a task envelope or an explicit unobserved state through the cockpit owner.
+     * @param {Object|null} snapshot
+     */
+    landTasks(snapshot) {
+        this.owner.admitTasks(snapshot)
     }
 }
 

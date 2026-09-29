@@ -687,14 +687,27 @@ class Controller extends ReadingSurfacesController {
         }
 
         if (generation === me.tasksReadGeneration && !me.isDestroyed) {
-            me.tasksSnapshot = snapshot;
-
-            const livePane = me.component.getTasksPane();
-
-            livePane && (livePane.snapshot = snapshot)
+            me.admitTasks(snapshot)
         }
 
         return snapshot
+    }
+
+    /**
+     * @summary Admit one task answer to the cockpit and its mounted pane. Advancing the read
+     * generation prevents a read already in flight from replacing a newer admitted answer; the
+     * tests' App-worker landing uses this same owner path.
+     * @param {Object|null} snapshot One `fleetTasks` envelope or the unobserved state.
+     */
+    admitTasks(snapshot) {
+        const me = this;
+
+        me.tasksReadGeneration++;
+        me.tasksSnapshot = snapshot;
+
+        const livePane = me.component.getTasksPane();
+
+        livePane && (livePane.snapshot = snapshot)
     }
 
     /**

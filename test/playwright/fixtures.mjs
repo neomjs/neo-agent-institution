@@ -31,7 +31,7 @@ let fleetLandingTick = 0;
  * @summary Sets the landing's configs inside the App worker: the module loads under a fresh URL each
  * time (its instance survives, the load finds it), then `Neo.worker.App.setConfigs` carries the payload.
  * @param {Object} page The Playwright page.
- * @param {Object} configs `{roster: {rows}}` and/or `{activity: {events}}`.
+ * @param {Object} configs `{roster: {rows}}`, `{activity: {events}}`, and/or `{tasks: {snapshot}}`.
  * @returns {Promise<void>}
  */
 async function landFleet(page, configs) {
@@ -67,6 +67,17 @@ export async function landFleetActivity(page, events) {
  */
 export async function landFleetRoster(page, rows) {
     await landFleet(page, {roster: {rows}})
+}
+
+/**
+ * @summary Land a test-owned tasks envelope, or `null` for the unobserved cold state, through
+ * the cockpit owner's App-worker admission path.
+ * @param {Object} page The Playwright page.
+ * @param {Object|null} snapshot One `fleetTasks` envelope or the unobserved state.
+ * @returns {Promise<void>}
+ */
+export async function landFleetTasks(page, snapshot) {
+    await landFleet(page, {tasks: {snapshot}})
 }
 
 /**

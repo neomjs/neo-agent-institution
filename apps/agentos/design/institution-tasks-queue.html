@@ -359,7 +359,7 @@
         <li><b>Motion on a new stamp only</b>; the section's capture time may advance while the queue stands still (Frame 2).</li>
         <li><b>Cap per section</b>: the count line keeps <em>starved</em>, <em>unreadable</em>, <em>known</em> and <em>shown</em> distinct under the Queued head — "known" is the pre-cap total the pane could read, never a claim to be the whole scheduler queue; blocked rows first as display order, never scheduler order.</li>
         <li><b>Posture is the watchdog's precedence</b>: any readable breach → <em>degraded</em>; none readable but unreadable entries → <em>unknown</em>, said with the count (Frame 3a / 3b).</li>
-        <li><b>Provenance once per homogeneous section</b> (operator design read, 2026-09-05): the source chip sits in the section head when every row shares it — the queue is orchestrator-sourced by construction, while Running and Recent may carry <em>mc</em> or <em>kb</em> rows; a row carries its own chip only in a section that mixes sources. Pure function of the section's rows, no state; the cold spine's <em>sample</em> pill follows the same rule.</li>
+        <li><b>Provenance once per homogeneous section</b> (operator design read, 2026-09-05): the source chip sits in the section head when every row shares it — the queue is orchestrator-sourced by construction, while Running and Recent may carry <em>mc</em> or <em>kb</em> rows; a row carries its own chip only in a section that mixes sources. Pure function of the section's rows, no state. An unanswered pane has empty sections and a <em>cold</em> pill, without a source claim.</li>
       </ol>
     </div>
     <div>

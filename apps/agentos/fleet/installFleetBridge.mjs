@@ -76,7 +76,7 @@ export const FLEET_LOCAL_TRANSPORT_ERRORS = Object.freeze({
  *     profile wiring.
  * @param {Boolean}  [opts.selected=false]                 Whether this install is an explicit source
  *     selection (the injector path) versus the boot default. Selected bridges render an empty
- *     registry's true zero state; unselected defaults keep the zero-setup sample.
+ *     registry's true zero state; the boot default remains unanswered until a source responds.
  * @param {Object}   [opts.target=globalThis]              Injectable global for tests.
  * @returns {Object} the installed registry bridge (also reachable at `target.AgentOS.fleet.registryBridge`).
  */
@@ -337,7 +337,7 @@ export function installFleetBridge({
 
     // An explicitly wired bridge (the ViewportController injector — Neural Link, tests, dev
     // tooling) marks `selected: true`: an empty registry from a deliberately chosen source renders
-    // its TRUE zero state, while the boot-default install keeps the zero-setup sample flagship.
+    // its TRUE zero state. The boot-default install remains unanswered until a source responds.
     Object.defineProperty(registryBridge, 'selected', {
         configurable: true,
         value       : selected

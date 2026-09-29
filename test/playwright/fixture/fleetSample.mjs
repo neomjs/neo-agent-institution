@@ -75,3 +75,32 @@ export const sampleActivity = [
     {eventId: 'fixture:review-activity:1', type: 'review-activity', agentId: 'neo-opus-vega',  occurredAt: '2026-07-05T10:26:00.000Z', payload: {text: 'APPROVED — transaction archive Architectural Pillar'}},
     {eventId: 'fixture:a2a-activity:2',    type: 'a2a-activity',    agentId: 'neo-opus-vega',  occurredAt: '2026-07-05T10:52:00.000Z', payload: {recipientClass: 'broadcast', text: '[lane-claim] harness-UI shell + nav'}}
 ];
+
+/**
+ * @summary A dense, test-owned task answer for the visual width bands: a determinate run, a
+ * starved waiter with its own cause and flags, a mixed-source queue, a completion, and the
+ * scheduler lease line. The app never imports this envelope.
+ * @type {Object}
+ */
+export const sampleTasks = {
+    capability: {state: 'wired', capturedAt: '2026-09-05T12:50:00.000Z'},
+    viewer    : '@fixture-operator',
+    sources   : {
+        deployment: {state: 'wired', reason: null, observedAt: '2026-09-05T12:47:55.668Z'},
+        rem       : {state: 'wired', reason: null},
+        ingestion : {state: 'unwired', reason: 'ingestion-verb-unreachable-from-this-process', scope: null}
+    },
+    scheduler: {leaseHolder: 'summary', leaseStatus: 'active', posture: 'degraded', checkedAt: '2026-09-05T12:49:36.362Z', degradeAfterMs: 3_600_000, starvedTotal: 1, unreadableCount: 0},
+    running  : [
+        {id: 'fixture:running', section: 'running', name: 'Tenant repo sync', source: 'orchestrator', state: 'in progress', at: null, progress: {kind: 'determinate', done: 42, total: 100}, detail: null}
+    ],
+    queued: [
+        {id: 'fixture:queued', section: 'queued', name: 'Repo sync · 1a2b3c4d', source: 'orchestrator', state: 'scheduled', at: null, progress: null, detail: null},
+        {id: 'fixture:starved', section: 'queued', name: 'core-corpus-projection', source: 'orchestrator', state: 'starved', at: '2026-07-05T06:13:43.059Z', progress: null, detail: null, waitMs: 42_300_000, thresholdMs: 3_600_000, reasonCode: 'heavy-maintenance-yield-to-waiter', blockingTaskName: 'dream', leaseOwner: null, priorityZero: true, bootstrapCritical: true},
+        {id: 'fixture:digest', section: 'queued', name: 'REM digest', source: 'mc', state: 'backlog', at: null, progress: {kind: 'backlog', done: 1040, total: 2000}, detail: '960 undigested · 1040 digested'}
+    ],
+    recent: [
+        {id: 'fixture:recent', section: 'recent', name: 'KB ingestion', source: 'kb', state: 'completed', at: null, progress: null, detail: null}
+    ],
+    counts: {running: 1, queued: 3, recent: 1, queuedKnown: 3}
+};

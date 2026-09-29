@@ -75,7 +75,7 @@ const
     emptyIn   = (pane, section) => nodesOf(pane).find(node => node.cls?.includes('fm-tasks-empty-row') && node.cls?.includes(`is-${section}`))?.cn[0],
     cellsOf   = row => row.cn,
     cellOf    = (row, cls) => row.cn.find(cell => cell.cls?.includes(cls)),
-    taskCount = pane => pane.taskStore.items.filter(record => record.rowKind === 'task' && !record.sample).length;
+    taskCount = pane => pane.taskStore.items.filter(record => record.rowKind === 'task').length;
 
 /**
  * @summary The live plane read at 2026-09-05T12:49:36Z as the `fleetTasks` producer emits it
@@ -128,81 +128,50 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
         pane.destroy()
     });
 
-    test('the cold spine renders sample-labeled rows per section — shape, never a claim; the sample pill sits once on the head, and the queue teaches its starved shape', () => {
+    test('a null snapshot is cold: empty sections say not answered yet and invent no task or lease', () => {
         const {pane}  = createPane(),
               headers = headersOf(pane);
 
-        expect(pane.getReference('tasks-meta').text).toContain('not observed yet');
-        expect(headers).toHaveLength(3);
+        expect(pane.getReference('tasks-meta').text).toBe('Tasks not observed yet');
         expect(headers.map(header => labelOf(header).text)).toEqual(['Running', 'Queued · next', 'Recent']);
 
         for (const header of headers) {
-            expect(pillOf(header).text).toBe('sample');
-            expect(pillOf(header).cls).toContain('is-sample');
-            expect(chipOf(header), 'the sample pill IS the section\'s provenance — no second chip').toBeUndefined()
+            expect(pillOf(header).text).toBe('cold');
+            expect(chipOf(header)).toBeUndefined();
+            expect(countOf(header)).toBeUndefined()
         }
 
-        // provenance once per homogeneous section: the sample word sits on the head, never repeated per row
-        for (const [section, count] of [['running', 1], ['queued', 3], ['recent', 1]]) {
-            const rows = rowsIn(pane, section);
-
-            expect(rows, section).toHaveLength(count);
-            rows.forEach(row => expect(cellOf(row, 'is-sample'), 'no row repeats the sample pill').toBeUndefined())
+        for (const section of ['running', 'queued', 'recent']) {
+            expect(rowsIn(pane, section)).toHaveLength(0);
+            expect(emptyIn(pane, section).text).toBe('Tasks not answered yet.')
         }
 
-        // the running sample carries the determinate idiom: a native progress element PLUS the text
-        const progress = cellsOf(rowsIn(pane, 'running')[0]).find(cell => cell.cls?.includes('fm-task-progress'));
-
-        expect(progress.cn[0]).toMatchObject({tag: 'progress', value: 42, max: 100});
-        expect(progress.cn[1].text).toBe('42%');
-
-        // the queue's starved sample at the live queue's density: an instant, the wait as text with
-        // its bound, the cause from its own code naming the task it yielded to, both flags as words
-        const starved = rowsIn(pane, 'queued')[1];
-
-        expect(cellOf(starved, 'fm-task-time').text, 'a deferred-since instant renders, never the dash').not.toBe('—');
-        expect(cellOf(starved, 'fm-task-state').text).toBe('starved');
-        expect(cellOf(starved, 'fm-task-state').cls).toContain('is-starved');
-        expect(cellOf(starved, 'fm-task-wait').cn[0].text).toBe('waiting 11 h 45 min');
-        expect(cellOf(starved, 'fm-task-wait').cn[1].text).toBe('threshold 1 h');
-        expect(cellOf(starved, 'fm-task-cause').html).toBe('yielded to <b>dream</b>');
-        expect(cellsOf(starved).filter(cell => cell.cls?.includes('is-flag')).map(cell => cell.text)).toEqual(['priority zero', 'bootstrap critical']);
-
-        // the queue's second producer teaches the backlog gauge under its own word
-        const digest = rowsIn(pane, 'queued')[2];
-
-        expect(cellOf(digest, 'fm-task-state').text).toBe('backlog');
-        expect(cellsOf(digest).find(cell => cell.cls?.includes('fm-task-progress')).cn[0]).toMatchObject({tag: 'progress', value: 1040, max: 2000});
-
-        // the lease line is part of the shape too — labeled sample by the head above it
-        expect(metaIn(pane, 'queued').html).toContain('maintenance lease · <b>summary</b> · active · posture <span class="is-degraded">degraded</span>');
-
-        // the Store is the full render projection now — sample rows enter LABELED (`sample: true`,
-        // the pill word), never as deployment claims: zero unlabeled task records on the cold spine
-        expect(taskCount(pane), 'no record claims to be the deployment').toBe(0);
-        expect(pane.taskStore.items.filter(record => record.sample && record.rowKind === 'task')).toHaveLength(5);
+        expect(metaIn(pane, 'queued')).toBeUndefined();
+        expect(taskCount(pane)).toBe(0);
+        expect(pane.taskStore.items).toHaveLength(6);
 
         pane.destroy()
     });
 
-    test('a transport-level fallback (no bridge, unwired verb, thrown read) is the cold spine — the labeled sample stays, the reason is named', () => {
-        const {pane} = createPane({snapshot: {capability: {state: 'unavailable', reason: 'fleet tasks verb not wired'}, viewer: null, sources: {}, running: [], queued: [], recent: [], counts: {running: 0, queued: 0, recent: 0}}});
+    test('a transport fallback names its reason and has only unavailable empty sections', () => {
+        const {pane} = createPane({snapshot: {capability: {state: 'unavailable', reason: 'fleet tasks verb not wired'}, viewer: null, sources: {}, running: [], queued: [], recent: [], counts: {running: 0, queued: 0, recent: 0}}}),
+              meta   = pane.getReference('tasks-meta');
 
-        const meta = pane.getReference('tasks-meta');
-
-        expect(meta.text).toContain('fleet tasks verb not wired');
-        expect(meta.text).toContain('show the shape, not the deployment');
+        expect(meta.text).toBe('Tasks unavailable · fleet tasks verb not wired');
         expect(meta.vdom.title, 'no stamp hovers behind an unavailable read').toBeFalsy();
 
         for (const header of headersOf(pane)) {
-            expect(pillOf(header).text).toBe('sample')
+            expect(pillOf(header).text).toBe('unavailable');
+            expect(countOf(header)).toBeUndefined();
+            expect(chipOf(header)).toBeUndefined()
         }
 
-        for (const [section, count] of [['running', 1], ['queued', 3], ['recent', 1]]) {
-            expect(rowsIn(pane, section)).toHaveLength(count);
-            rowsIn(pane, section).forEach(row => expect(cellOf(row, 'is-sample')).toBeUndefined())
+        for (const section of ['running', 'queued', 'recent']) {
+            expect(rowsIn(pane, section)).toHaveLength(0);
+            expect(emptyIn(pane, section).text).toContain('did not answer')
         }
 
+        expect(metaIn(pane, 'queued')).toBeUndefined();
         expect(taskCount(pane)).toBe(0);
 
         pane.destroy()
@@ -226,6 +195,26 @@ test.describe('AgentOS tasks surface — the WHAT view as a store-driven list', 
             expect(rowsIn(pane, section)).toHaveLength(0);
             expect(emptyIn(pane, section).text).toContain('did not answer')
         }
+
+        pane.destroy()
+    });
+
+    test('a live zero answer renders each section empty with the live pill and supplied zero counts', () => {
+        const {pane} = createPane({snapshot: envelope({
+            running: [], queued: [], recent: [],
+            counts: {running: 0, queued: 0, recent: 0}
+        })});
+
+        for (const header of headersOf(pane)) {
+            expect(pillOf(header).text).toBe('live');
+            expect(countOf(header).html).toBe('<b>0</b> shown')
+        }
+
+        expect(emptyIn(pane, 'running').text).toBe('Nothing in flight.');
+        expect(emptyIn(pane, 'queued').text).toBe('Nothing scheduled.');
+        expect(emptyIn(pane, 'recent').text).toBe('Nothing completed recently.');
+        expect(metaIn(pane, 'queued')).toBeUndefined();
+        expect(taskCount(pane)).toBe(0);
 
         pane.destroy()
     });
