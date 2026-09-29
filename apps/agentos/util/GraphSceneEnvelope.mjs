@@ -20,6 +20,8 @@ import ClosedShape from './ClosedShape.mjs';
  */
 const SHAPE = {
     capability: {state: null, reason: null},
+    // the Golden Path route's admission, as the producer wrote it; the capability is the graph read's own
+    admission : {admitted: null, fallback: null, reasonCode: null, requiredFacets: [], staleFacets: []},
     scene     : {
         route       : [],
         nodes       : [],

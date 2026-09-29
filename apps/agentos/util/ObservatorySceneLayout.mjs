@@ -7,9 +7,11 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * nor coordinates, so those are the only derived facts: nothing here merges or caches, and the same read
  * yields the same scene on every run.
  *
- * Two geographies place the nodes. Topology communities (Louvain) answer no question by design; density
- * wells, where the best-connected nodes attract, show what is central. Mail can leave the scene, and the
- * nodes in no well can sit in an outer halo or leave it too; the scene counts what it hid.
+ * Three geographies place the nodes. Topology communities (Louvain) answer no question by design; density
+ * wells, where the best-connected nodes attract, show what is central; strategic wells, around the Brain's own
+ * strategic anchors, show where the roadmap's weight lies, and fall back to density on a read without anchors.
+ * Mail can leave the scene, and the nodes in no well can sit in an outer halo or leave it too; the scene counts
+ * what it hid.
  *
  * Every tunable value is a config and every step a method, so `Neo.overwrites` or a subclass changes either.
  * @class AgentOS.util.ObservatorySceneLayout
@@ -61,6 +63,14 @@ class ObservatorySceneLayout extends Base {
          * @protected
          */
         singleton: true,
+        /**
+         * Strategic wells: at most `anchors` of the Brain's strategic anchors attract, and a well holds at most
+         * `maxShare` times the mean size the uncapped walk would give each well. One concept can reach most of a
+         * graph, so without the cap a single well swallows the reached nodes; what a full well cannot take, a
+         * well with room claims, or it sits in the halo. Placement follows {@link #wellGeometry}.
+         * @member {Object} strategicGeometry={anchors: 48, maxShare: 4}
+         */
+        strategicGeometry: {anchors: 48, maxShare: 4},
         /**
          * Density wells: at most `hubs` of the best-connected nodes attract. Well centres lie on a sphere of
          * `radius`; a hub sits at its centre and a member steps outward with its hop distance, up to `maxHop`
@@ -157,7 +167,9 @@ class ObservatorySceneLayout extends Base {
      * The `geography` places the nodes. `communities` finds them from the edges ({@link #communitiesOf},
      * visiting the nodes by id), their centres on a golden-angle sphere and each node at a point its id draws
      * inside its community's ball. `density` gathers them into wells ({@link #wellsOf}): the hub at a well's
-     * centre, a member stepping outward with its hop distance. Positions and clusters depend only on the ids
+     * centre, a member stepping outward with its hop distance. `strategic` does the same around the Brain's
+     * strategic anchors ({@link #strategicWellsOf}), and a read without an anchor lays out as `density`, which the
+     * returned `geography` then names. Positions and clusters depend only on the ids
      * and the edges: two reads of one snapshot, or the same rows in any order, lay out identically, and the
      * route never moves a node, so the pane can draw it as an overlay or leave it out.
      *
@@ -175,16 +187,16 @@ class ObservatorySceneLayout extends Base {
      * cut it.
      * @param {Object|null} envelope The landed `fleetGraphScene` envelope, as plain data.
      * @param {Object} [options]
-     * @param {String} [options.geography='communities'] `communities` or `density`
+     * @param {String} [options.geography='communities'] `communities`, `density` or `strategic`
      * @param {Boolean|null} [options.halo=null] Where the nodes in no well go (see above)
      * @param {Boolean} [options.mail=true] Whether mail stays in the scene
      * @returns {Object} `{currency, empty, geography, nodes, edges, edgeTypes, seeds, index, communities,
-     *     haloFrom, halo, hidden, wells, completeness, snapshotId}`: `nodes[]` = `{id, kind, label, rank, hop,
-     *     cluster, x, y, z}`, the seeds first in route order, then by id; `edges[]` pairs index into `nodes`,
+     *     haloFrom, halo, hidden, wells, wellCap, completeness, snapshotId}`: `nodes[]` = `{id, kind, label, rank,
+     *     hop, cluster, x, y, z}`, the seeds first in route order, then by id; `edges[]` pairs index into `nodes`,
      *     `edgeTypes[]` aligned; `seeds[]` indexes the seeds in route order. `communities` counts the
      *     geography's clusters; halo sectors are the clusters from `haloFrom` on (`null` without a halo), and
      *     `halo` counts their nodes. `hidden` is `{mail: {nodes, edges}, halo: {nodes, edges}}`; `wells[]` is
-     *     `{id, label, size}` per density well, largest first.
+     *     `{id, label, size}` per well, largest first; `wellCap` is the strategic walk's cap, `null` otherwise.
      */
     fromGraphScene(envelope, {geography = 'communities', halo = null, mail = true} = {}) {
         const
@@ -200,7 +212,7 @@ class ObservatorySceneLayout extends Base {
             routeAt    = new Map();
 
         if (currency === 'unavailable' || !Array.isArray(scene?.nodes)) {
-            return {currency, empty: true, geography, nodes: [], edges: [], edgeTypes: [], seeds: [], index: {}, communities: 0, haloFrom: null, halo: 0, hidden, wells: [], completeness: scene?.completeness ?? null, snapshotId}
+            return {currency, empty: true, geography, nodes: [], edges: [], edgeTypes: [], seeds: [], index: {}, communities: 0, haloFrom: null, halo: 0, hidden, wells: [], wellCap: null, completeness: scene?.completeness ?? null, snapshotId}
         }
 
         // the seeds are known before either filter runs: a view filter hides dust, never the route
@@ -262,11 +274,28 @@ class ObservatorySceneLayout extends Base {
             targets[offsets[b] + fill[b]++] = a
         }
 
+        // an anchor's pull: the Brain's strategic weight, damped by how connected the anchor is in this read
+        const pull = new Float64Array(count).fill(-1);
+        let anchored = false;
+
+        if (geography === 'strategic') {
+            ids.forEach((id, position) => {
+                const node = byId.get(id), degree = offsets[position + 1] - offsets[position];
+
+                if (node.gravityWell === true && degree > 0) {
+                    pull[position] = (Number.isFinite(node.strategicWeight) ? node.strategicWeight : 0) * Math.log1p(degree);
+                    anchored       = true
+                }
+            })
+        }
+
         const
-            golden   = Math.PI * (3 - Math.sqrt(5)),
-            density  = geography === 'density',
-            // the density geography has no community of the unlinked to fall back on
-            haloMode = density && halo === null ? true : halo,
+            golden    = Math.PI * (3 - Math.sqrt(5)),
+            // a read without an anchor has no strategic wells, so it lays out as density
+            effective = geography === 'strategic' && !anchored ? 'density' : geography,
+            density   = effective === 'density' || effective === 'strategic',
+            // the well geographies have no community of the unlinked to fall back on
+            haloMode  = density && halo === null ? true : halo,
             units    = ids.map(id => me.unitsOf(id)),
             cluster  = new Int32Array(count),
             spot     = new Float64Array(count * 3),
@@ -291,15 +320,17 @@ class ObservatorySceneLayout extends Base {
                 spot[position * 3 + 2] = cz + reach * around * Math.sin(phi)
             };
 
-        let communities, wells = [], outside = [];
+        let communities, wells = [], outside = [], wellCap = null;
 
         if (density) {
             const
                 {maxHop, radius}                     = me.wellGeometry,
-                {hop, hubs, of, sizes, wells: found} = me.wellsOf(count, offsets, targets),
+                walk                                 = effective === 'strategic' ? me.strategicWellsOf(count, offsets, targets, pull) : me.wellsOf(count, offsets, targets),
+                {hop, hubs, of, sizes, wells: found} = walk,
                 largest                              = Math.max(1, sizes[0] ?? 1);
 
             communities = found;
+            wellCap     = walk.cap ?? null;
             wells       = hubs.map((position, well) => ({id: ids[position], label: byId.get(ids[position]).label ?? null, size: sizes[well]}));
 
             of.forEach((well, position) => {
@@ -415,7 +446,7 @@ class ObservatorySceneLayout extends Base {
         return {
             currency,
             empty       : nodes.length === 0,
-            geography,
+            geography   : effective,
             nodes,
             edges       : edges.map(edge => edge.pair),
             edgeTypes   : edges.map(edge => edge.type),
@@ -426,6 +457,7 @@ class ObservatorySceneLayout extends Base {
             halo        : haloed,
             hidden,
             wells,
+            wellCap,
             completeness: scene.completeness ?? null,
             snapshotId
         }
@@ -561,43 +593,51 @@ class ObservatorySceneLayout extends Base {
             anchors  = Array.from({length: count}, (item, node) => node)
                 .filter(node => degreeOf(node) > 1)
                 .sort((a, b) => degreeOf(b) - degreeOf(a) || a - b)
-                .slice(0, hubs),
-            well     = new Int32Array(count).fill(-1),
-            hop      = new Int32Array(count).fill(-1);
+                .slice(0, hubs);
 
-        anchors.forEach((node, rank) => {
-            well[node] = rank;
-            hop[node]  = 0
-        });
+        return this.numberWells(anchors, this.walkWells(count, offsets, targets, anchors))
+    }
 
-        // every level of the walk holds its nodes in well rank order (the hubs start it in rank order, and each
-        // level is discovered from the one before in that order), so the first well to reach a node is the best
-        // ranked of those reaching it in that step, whatever the order of a node's rows
-        for (let frontier = anchors, step = 1; frontier.length; step++) {
-            const next = [];
+    /**
+     * @summary The strategic wells of a graph in compressed rows: at most `anchors` of the nodes with a pull
+     * attract, the strongest first (then by degree, then position), and the walk gives each node the well that
+     * reaches it first, as in {@link #wellsOf}, except that a well holds at most `cap` nodes. The cap is `maxShare`
+     * times the mean size the uncapped walk gives each well, so it scales with the read. A full well stops
+     * growing, a node it no longer takes stays open to a well with room, and a node no well takes is in no well.
+     * Wells are numbered by size, the largest first.
+     * @param {Number}       count   The nodes
+     * @param {Uint32Array}  offsets `count + 1` row starts into `targets`
+     * @param {Uint32Array}  targets Neighbour positions
+     * @param {Float64Array} pull    Per node, its pull when it may anchor a well, negative otherwise
+     * @param {Object}       [geometry=this.strategicGeometry] `{anchors, maxShare}`
+     * @returns {{wells: Number, of: Int32Array, hop: Int32Array, hubs: Number[], sizes: Number[], cap: Number}}
+     */
+    strategicWellsOf(count, offsets, targets, pull, {anchors = this.strategicGeometry.anchors, maxShare = this.strategicGeometry.maxShare} = {}) {
+        const
+            me      = this,
+            chosen  = Array.from({length: count}, (item, node) => node)
+                .filter(node => pull[node] >= 0)
+                .sort((a, b) => pull[b] - pull[a] || (offsets[b + 1] - offsets[b]) - (offsets[a + 1] - offsets[a]) || a - b)
+                .slice(0, anchors),
+            reached = me.walkWells(count, offsets, targets, chosen).hop.reduce((sum, hop) => hop < 0 ? sum : sum + 1, 0),
+            cap     = Math.max(1, Math.ceil(maxShare * reached / Math.max(1, chosen.length)));
 
-            for (const node of frontier) {
-                for (let k = offsets[node]; k < offsets[node + 1]; k++) {
-                    const other = targets[k];
+        return {...me.numberWells(chosen, me.walkWells(count, offsets, targets, chosen, cap)), cap}
+    }
 
-                    if (hop[other] < 0) {
-                        hop[other]  = step;
-                        well[other] = well[node];
-                        next.push(other)
-                    }
-                }
-            }
-
-            frontier = next
-        }
-
-        const sizes = new Uint32Array(anchors.length);
+    /**
+     * @summary Numbers the wells of a walk by size, the largest first and by rank on a tie: the answer
+     * {@link #wellsOf} and {@link #strategicWellsOf} share.
+     * @param {Number[]} anchors The anchor of each well, by rank
+     * @param {Object}   walk    {@link #walkWells}' `{well, hop}`
+     * @returns {{wells: Number, of: Int32Array, hop: Int32Array, hubs: Number[], sizes: Number[]}}
+     */
+    numberWells(anchors, {well, hop}) {
+        const sizes = new Uint32Array(anchors.length), renumber = new Int32Array(anchors.length);
 
         well.forEach(rank => rank >= 0 && sizes[rank]++);
 
-        const
-            bySize   = anchors.map((node, rank) => rank).sort((a, b) => sizes[b] - sizes[a] || a - b),
-            renumber = new Int32Array(anchors.length);
+        const bySize = anchors.map((node, rank) => rank).sort((a, b) => sizes[b] - sizes[a] || a - b);
 
         bySize.forEach((rank, position) => renumber[rank] = position);
 
@@ -608,6 +648,52 @@ class ObservatorySceneLayout extends Base {
             hubs : bySize.map(rank => anchors[rank]),
             sizes: bySize.map(rank => sizes[rank])
         }
+    }
+
+    /**
+     * @summary A breadth-first walk from every anchor at once, which gives each node the well that reaches it
+     * first and its hop distance. A well that holds `cap` nodes stops growing.
+     * @param {Number}      count   The nodes
+     * @param {Uint32Array} offsets `count + 1` row starts into `targets`
+     * @param {Uint32Array} targets Neighbour positions
+     * @param {Number[]}    anchors The anchor of each well, by rank
+     * @param {Number}      [cap=Infinity] The most nodes a well holds
+     * @returns {{well: Int32Array, hop: Int32Array}} A well rank and a hop per node, `-1` for none
+     */
+    walkWells(count, offsets, targets, anchors, cap = Infinity) {
+        const well = new Int32Array(count).fill(-1), hop = new Int32Array(count).fill(-1), sizes = new Uint32Array(anchors.length);
+
+        anchors.forEach((node, rank) => {
+            well[node]  = rank;
+            hop[node]   = 0;
+            sizes[rank] = 1
+        });
+
+        // every level of the walk holds its nodes in well rank order (the anchors start it in rank order, and each
+        // level is discovered from the one before in that order), so the first well to reach a node is the best
+        // ranked of those reaching it in that step, whatever the order of a node's rows
+        for (let frontier = anchors, step = 1; frontier.length; step++) {
+            const next = [];
+
+            for (const node of frontier) {
+                const rank = well[node];
+
+                for (let k = offsets[node]; k < offsets[node + 1] && sizes[rank] < cap; k++) {
+                    const other = targets[k];
+
+                    if (hop[other] < 0) {
+                        hop[other]  = step;
+                        well[other] = rank;
+                        sizes[rank]++;
+                        next.push(other)
+                    }
+                }
+            }
+
+            frontier = next
+        }
+
+        return {well, hop}
     }
 
     /**

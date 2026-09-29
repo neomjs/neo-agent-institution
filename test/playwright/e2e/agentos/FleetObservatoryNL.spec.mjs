@@ -68,12 +68,14 @@ async function openObservatory(page, neuralLink) {
     const
         [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
         cockpitState = await app.getComponent(cockpit.properties.id, ['controller']),
-        [canvas]     = await app.queryComponent({className: 'AgentOS.view.fleet.goldenpath.ObservatoryCanvas'}, ['id']);
+        [canvas]     = await app.queryComponent({className: 'AgentOS.view.fleet.goldenpath.ObservatoryCanvas'}, ['id']),
+        [container]  = await app.queryComponent({className: 'AgentOS.view.fleet.goldenpath.ObservatoryContainer'}, ['id']);
 
     const locate = id => app.callMethod(canvas.properties.id, 'locate', [id]);
 
     return {
         currency : pane.locator('.fm-observatory-currency'),
+        geography: async () => (await app.getComponent(container.properties.id, ['geography'])).geography,
         hover    : pane.locator('.fm-observatory-hover'),
         land     : envelope => app.callMethod(cockpitState.controller.id, 'writeGraphScene', [envelope]),
         locate,
@@ -321,7 +323,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         test.setTimeout(300000);
 
         const
-            {land, locate, pane, stats} = await openObservatory(page, neuralLink),
+            {geography, land, locate, pane, stats} = await openObservatory(page, neuralLink),
             envelope                    = wholeGraphEnvelope(),
             started                     = Date.now();
 
@@ -335,8 +337,9 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         testInfo.annotations.push({type: 'Neural Link write of the envelope to the first frame of its scene', description: `${landedIn} ms`});
         expect(drawn.counts).toMatchObject({nodes: 100000, seeds: 10, paths: 1});
         expect(drawn.lod.level, 'the fitted camera draws every node').toBe('mid');
-        // the pane's default geography: density wells around the read's 48 best-connected nodes, plus a halo
-        // sector for any node none of them reaches
+        // the pane's default geography is strategic wells; this synthetic read carries no strategic anchor, so it
+        // lays out as density wells around its 48 best-connected nodes, plus a halo sector for any node none reaches
+        expect(await geography(), 'strategic wells by default').toBe('strategic');
         expect(drawn.lod.clusters, 'the 48 density wells are drawn').toBeGreaterThanOrEqual(48);
 
         // the pictures a reviewer looks at, attached to the run: never compared, so never goldens

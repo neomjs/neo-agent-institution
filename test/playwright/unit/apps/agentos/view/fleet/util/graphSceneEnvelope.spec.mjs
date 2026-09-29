@@ -14,6 +14,8 @@ import GraphSceneEnvelope from '../../../../../../../../apps/agentos/util/GraphS
 
 const current = (scene = {}) => ({
     capability: {state: 'current', reason: null},
+    // the route's admission as the live plane writes it: five fields, carried whole
+    admission : {admitted: true, fallback: 'current', reasonCode: 'projection-current', requiredFacets: ['issues', 'discussions'], staleFacets: []},
     scene     : {
         route       : ['neomjs/neo#issue-1'],
         nodes       : [{id: 'neomjs/neo#issue-1', label: 'one', kind: 'issue'}, {id: 'neomjs/neo#issue-2', label: 'two', kind: 'issue'}],
@@ -35,7 +37,8 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
     test('the blank declares every key and reads unobserved', () => {
         const blank = GraphSceneEnvelope.blank();
 
-        expect(Object.keys(blank)).toEqual(['capability', 'scene', 'snapshotId', 'capturedAt']);
+        expect(Object.keys(blank)).toEqual(['capability', 'admission', 'scene', 'snapshotId', 'capturedAt']);
+        expect(blank.admission, 'no read, so no admission is claimed').toEqual({admitted: null, fallback: null, reasonCode: null, requiredFacets: [], staleFacets: []});
         expect(blank.scene).toEqual({route: [], nodes: [], edges: [], counts: {nodes: null, edges: null, seeds: null},
             budget: {maxNodes: null, maxEdges: null, maxBytes: null}, completeness: null});
         expect(GraphSceneEnvelope.describe(blank)).toEqual({currency: 'unobserved', text: 'Unobserved'})
@@ -48,6 +51,19 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
         expect(landed.scene.nodes).toEqual([]);
         expect(landed.snapshotId).toBeNull();
         expect(GraphSceneEnvelope.fromWire(current())).toEqual(current())
+    });
+
+    test('the route\'s admission lands whole, a withheld one with its stale facets; an unserved route keeps its reason and its graph', () => {
+        const
+            withheld = {admitted: false, fallback: 'last-known-good', reasonCode: 'projection-stale', requiredFacets: ['issues', 'discussions'], staleFacets: ['discussions']},
+            landed   = GraphSceneEnvelope.fromWire({...current(), admission: withheld}),
+            unserved = GraphSceneEnvelope.fromWire({...current({route: []}), capability: {state: 'degraded', reason: 'route-sidecar-missing'}, admission: null});
+
+        expect(landed.admission).toEqual(withheld);
+        expect(unserved.admission.admitted, 'no route answered, so nothing is admitted or refused').toBeNull();
+        expect(unserved.scene.nodes, 'the graph is served either way').toHaveLength(2);
+        expect(GraphSceneEnvelope.describe(unserved).text).toMatch(/^Degraded · route-sidecar-missing · 2 nodes/);
+        expect(GraphSceneEnvelope.describe(current({route: []})).currency, 'a served route with no items is a current read').toBe('current')
     });
 
     test('an answer without a capability state lands unavailable, never unobserved', () => {
