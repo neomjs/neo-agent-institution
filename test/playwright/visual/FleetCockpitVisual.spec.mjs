@@ -542,23 +542,23 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(tab).toBeVisible({timeout: 30000});
         await tab.click();
         await expect(page.locator('.fm-memories-pane')).toBeVisible({timeout: 30000});
-        await expect(page.locator('.fm-memories-pane .fm-memories-title')).toHaveText('What they remember');
+        await expect(page.locator('.fm-memories-pane .fm-pane-title')).toHaveText('What they remember');
         await expect(page.locator('.fm-memories-pane')).toContainText('Select an agent card in the roster');
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)
     };
 
-    test('the Memories pane at the 720 band — the head on the panel rhythm, the registers without grid chrome; both skins', async ({page}) => {
+    test('the Memories pane at the 720 band — the head on the pane contract, the registers without grid chrome; both skins', async ({page}) => {
         await page.setViewportSize({width: 720, height: 900});
         await bootSettledCockpit(page);
         await openMemoriesPane(page);
 
-        // the rhythm the roster root declares too: the panel padding, one gap between the head and
-        // the meta line. The registers are not in the DOM until a seat is chosen, so their chrome
-        // (the container frame, the cell lattice) is the Neural Link witness's arm on live cards.
+        // the pane contract's inset, one gap between the head and the meta line. The registers are
+        // not in the DOM until a seat is chosen, so their chrome (the container frame, the cell
+        // lattice) is the Neural Link witness's arm on live cards.
         const rhythm = await page.evaluate(() => {
             const pane  = document.querySelector('.fm-memories-pane'),
-                  head  = pane.querySelector('.fm-memories-head'),
+                  head  = pane.querySelector('.fm-pane-head'),
                   meta  = pane.querySelector('.fm-memories-meta'),
                   style = getComputedStyle(pane);
 
@@ -569,13 +569,66 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             }
         });
 
-        expect(rhythm.paddingTop, 'the panel padding (--fm-space-4)').toBe('16px');
+        expect(rhythm.paddingTop, 'the pane inset (--fm-space-3), every pane\'s').toBe('12px');
         expect(rhythm.rowGap, 'the panel gap (--fm-space-3)').toBe('12px');
         expect(rhythm.headToMeta, 'the meta line sits one gap under the head').toBe(12);
         await expect(page.locator('.fm-memories-pane')).toHaveScreenshot('memories-pane-720.png');
 
         await switchToLightSkin(page);
         await expect(page.locator('.fm-memories-pane')).toHaveScreenshot('memories-pane-720-light.png')
+    });
+
+    test('every strip and rail pane reads one head — the chrome title on the pane inset, no button at a slab\'s scale (computed, no golden)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        // [tab, pane root, the title's inset from the pane's host]: the strip pane and the rail's
+        // reveal well both frame on --fm-space-3; the Add agent form is a card IN the well (the
+        // drawer ruling), so its head sits on the card's own inset inside its 1px border
+        const panes = [
+            ['Activity', '.fm-activity-stream', 12], ['Tasks', '.fm-tasks-pane', 12], ['Memories', '.fm-memories-pane', 12],
+            ['Mailbox', '.fm-operator-mailbox', 12], ['Catch up', '.fm-catch-up-pane', 12], ['Golden Path', '.fm-golden-path-pane', 12],
+            ['Perspectives', '.fm-perspectives-pane', 12], ['Add agent', '.fm-add-agent-form', 25], ['Wake routes', '.fm-wakeroutes-pane', 12]
+        ];
+
+        for (const [label, root, inset] of panes) {
+            const name  = new RegExp(`^\\s*${label}\\s*$`, 'i'),
+                  strip = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+                  tab   = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first();
+
+            await tab.click();
+            // a strip tab selects, a rail tab reveals: both end pressed, so a click that did not land
+            // fails here, apart from a pane that did not render
+            await expect(tab, `${label}: the tab took the click`).toHaveClass(/\bpressed\b/, {timeout: 10000});
+            await expect(page.locator(root).first()).toBeVisible({timeout: 30000});
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+            const read = await page.evaluate(selector => {
+                const pane  = [...document.querySelectorAll(selector)].find(el => el.getClientRects().length),
+                      title = pane.querySelector('.fm-pane-head > .fm-pane-title'),
+                      probe = pane.appendChild(Object.assign(document.createElement('span'), {style: 'color: var(--fm-ink-dim)'})),
+                      ink   = getComputedStyle(probe).color,
+                      style = title && getComputedStyle(title);
+
+                probe.remove();
+
+                return {
+                    ink,
+                    title  : title && {color: style.color, inset: Math.round(title.getBoundingClientRect().left - pane.parentElement.getBoundingClientRect().left), size: style.fontSize, tracking: style.letterSpacing, transform: style.textTransform},
+                    buttons: [...pane.querySelectorAll('.neo-button')]
+                        .filter(button => button.getClientRects().length && !button.closest('.neo-tab-header-toolbar'))
+                        .map(button => ({height: Math.round(button.getBoundingClientRect().height), size: parseFloat(getComputedStyle(button.querySelector('.neo-button-text') ?? button).fontSize), text: button.textContent.trim()}))
+                }
+            }, root);
+
+            expect(read.title, `${label}: the head's title`).not.toBeNull();
+            expect(read.title, `${label}: the chrome role, uppercase, tracked, in the dim ink`).toEqual({color: read.ink, inset, size: '11px', tracking: '0.88px', transform: 'uppercase'});
+
+            for (const button of read.buttons) {
+                expect(button.size, `${label}: "${button.text}" speaks at the chrome scale or below`).toBeLessThanOrEqual(11);
+                expect(button.height, `${label}: "${button.text}" is a verb, not a slab`).toBeLessThanOrEqual(24)
+            }
+        }
     });
 
     test('the Tasks pane in the 314 vessel window — the narrow-band regime is in force and nothing clips (geometry asserted, no golden)', async ({page}) => {
@@ -1000,6 +1053,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                   pane  = page.locator(`${root}:visible`).first();
 
             await tab.click();
+            await expect(tab, `${label}: the tab took the click`).toHaveClass(/\bpressed\b/, {timeout: 10000});
             await expect(pane).toBeVisible({timeout: 30000});
             await settle();
             await expect(pane, label).toHaveScreenshot(golden)

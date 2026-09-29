@@ -386,7 +386,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             // the roster selection revealed the inspector on the right rail; a mousedown outside the
             // rail dismisses the reveal (Rail#onAppMouseDown → the machine's outsideClick) — the
             // register must be uncovered for the drill button and for the goldens
-            await pane.locator('.fm-memories-title').click();
+            await pane.locator('.fm-pane-title').click();
             await expect(page.locator('.neo-dashboard-dock-rail-tab.pressed'), 'the reveal is dismissed').toHaveCount(0, {timeout: 10000});
             await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
 

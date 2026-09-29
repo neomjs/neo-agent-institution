@@ -1,10 +1,20 @@
 /* AgentOS.view.fleet.tasks.List — the WHAT surface's rows as a real list (#17561): a flat ul of
    section-header, task and empty-line items projected from one envelope. The list owns the scroll;
-   the chrome above (head · meta · actions, in Container.scss) stays put. Every color reads from
-   the --fm-* token layer, every text node from a --fm-text-* role, every gap from the --fm-space-*
-   rhythm. The progress bar is the native element: the fill width is DATA (value / max), so no
-   script ever writes a style — the skin only paints the track and the fill. */
+   the pane head and meta line above stay put. Every color reads from the --fm-* token layer, every
+   text node from a --fm-text-* role, every gap from the --fm-space-* rhythm. The progress bar is
+   the native element: the fill width is DATA (value / max), so no script ever writes a style — the
+   skin only paints the track and the fill. */
 .fm-tasks-list {
+    /* the list is the rows' geometry, never their surface: the stock item paint (the theme's grey
+       band behind every section head and the lease line) becomes the pane's own ground in every
+       state (a glance list: `disableSelection`), so only the task plates carry a surface. Opaque,
+       not transparent: the section heads are the engine's sticky list headers, and rows scroll
+       beneath them. The pane lives in the strip and the vessel, both on the ground. */
+    --list-item-background-color         : var(--fm-ground);
+    --list-item-background-color-active  : var(--fm-ground);
+    --list-item-background-color-hover   : var(--fm-ground);
+    --list-item-background-color-selected: var(--fm-ground);
+
     overflow  : auto;
     min-height: 0;
     margin    : 0;

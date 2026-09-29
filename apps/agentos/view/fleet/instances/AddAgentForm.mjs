@@ -76,18 +76,20 @@ class AddAgentForm extends FormContainer {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The form anatomy — heading · username · PAT · harness chip row (registry-derived) ·
-         * actions (submit) · status line. Geometry + skin in `AddAgentForm.scss`, colors token-only.
+         * The form anatomy — the shell's pane head · username · PAT · harness chip row
+         * (registry-derived) · the action slot (submit) · status line. Geometry + skin in
+         * `AddAgentForm.scss`, colors token-only.
          * @member {Object[]} items
          */
         // every row is flex:'none': the vbox default (grow 1) would distribute a stretched host's
         // height evenly across the anatomy — exactly the multi-hundred-px gaps the drawer showed.
         // Rows keep their natural height; a taller mount leaves quiet well space instead.
         items: [{
-            ntype: 'component',
-            cls  : ['fm-add-heading'],
-            flex : 'none',
-            vdom : {cn: [{tag: 'strong', text: 'Add an agent'}]}
+            ntype : 'container',
+            cls   : ['fm-pane-head'],
+            flex  : 'none',
+            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+            items : [{ntype: 'component', cls: ['fm-pane-title'], text: 'Add an agent'}]
         }, {
             module         : TextField,
             clearable      : true,
@@ -137,7 +139,7 @@ class AddAgentForm extends FormContainer {
             }))
         }, {
             ntype : 'container',
-            cls   : ['fm-add-actions'],
+            cls   : ['fm-pane-actions'],
             flex  : 'none',
             layout: {ntype: 'hbox', align: 'center'},
 

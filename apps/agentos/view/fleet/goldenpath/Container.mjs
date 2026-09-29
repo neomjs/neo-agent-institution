@@ -29,9 +29,9 @@ class GoldenPathPane extends Container {
          */
         ntype: 'fm-golden-path-pane',
         /**
-         * @member {String[]} baseCls=['fm-golden-path-pane']
+         * @member {String[]} baseCls=['fm-golden-path-pane','fm-pane']
          */
-        baseCls: ['fm-golden-path-pane'],
+        baseCls: ['fm-golden-path-pane', 'fm-pane'],
         /**
          * The envelope in the closed shape of {@link AgentOS.util.GoldenPathEnvelope}. `null` and the
          * blank are both unobserved, never empty.
@@ -49,21 +49,25 @@ class GoldenPathPane extends Container {
          */
         items: [{
             ntype : 'container',
-            cls   : ['fm-golden-path-head'],
+            cls   : ['fm-pane-head'],
             flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
+            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             items : [{
                 ntype: 'component',
-                cls  : ['fm-golden-path-title'],
-                flex : 1,
+                cls  : ['fm-pane-title'],
                 text : 'Golden Path'
             }, {
-                module   : Button,
-                reference: 'golden-path-refresh',
-                text     : 'Refresh',
-                iconCls  : 'fa fa-rotate',
-                ui       : 'ghost',
-                handler  : 'up.onRefreshClick'
+                ntype : 'container',
+                cls   : ['fm-pane-actions'],
+                layout: {ntype: 'hbox', align: 'center'},
+                items : [{
+                    module   : Button,
+                    reference: 'golden-path-refresh',
+                    text     : 'Refresh',
+                    iconCls  : 'fa fa-rotate',
+                    ui       : 'ghost',
+                    handler  : 'up.onRefreshClick'
+                }]
             }]
         }, {
             ntype    : 'component',

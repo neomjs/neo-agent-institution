@@ -1,27 +1,9 @@
 /* AgentOS.view.fleet.perspectives.Container — the saved-layouts pane in the pinned drawer.
-   Head (title · authority) over the meta line, one card per perspective (name + title line + the
-   apply verb), and the capture rail (name field + verb). Mount-agnostic by the drawer-shell
-   contract: the HOST owns surface, padding and rhythm — this root declares no frame; every colour
-   reads from the --fm-* token layer. Mirrors the wake-routes pane's grammar so the two rail
-   drawers read as siblings. */
+   The shell's pane head (title · authority — the pane contract in Viewport.scss, which also owns
+   the inset) over the meta line, one card per perspective (name + title line + the apply verb),
+   and the capture rail (name field + verb); every colour reads from the --fm-* token layer.
+   Mirrors the wake-routes pane's grammar so the two rail drawers read as siblings. */
 .fm-perspectives-pane {
-
-    .fm-perspectives-head {
-        gap        : var(--fm-space-2);
-        align-items: baseline;
-        flex-wrap  : wrap;
-    }
-
-    .fm-perspectives-title {
-        color      : var(--fm-ink);
-        font-weight: 700;
-    }
-
-    .fm-perspectives-authority,
-    .fm-perspectives-meta {
-        color: var(--fm-ink-dim);
-        font : var(--fm-text-micro);
-    }
 
     /* the cards own the scroll — the chrome above and the capture rail below stay put */
     .fm-perspectives-rows {
@@ -62,7 +44,8 @@
 
     /* honest quiet state — absence is not an error (drawer-shell contract item 5) */
     .fm-perspectives-empty {
-        padding: 14px var(--fm-space-1);
         color  : var(--fm-ink-dim);
+        font   : var(--fm-text-body);
+        padding: var(--fm-space-3) 0;   /* on the pane's inset, like every other line */
     }
 }

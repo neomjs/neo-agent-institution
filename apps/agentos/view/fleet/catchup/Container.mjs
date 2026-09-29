@@ -52,9 +52,15 @@ class CatchUpPane extends Container {
          */
         ntype: 'fm-catch-up-pane',
         /**
-         * @member {String[]} baseCls=['fm-catch-up-pane']
+         * The partition choices are selector chips, whose skin (fleet/mailbox/Chips.scss) has no
+         * view class of its own: named here so it loads in every window this pane renders in.
+         * @member {String[]} additionalThemeFiles=['AgentOS.view.fleet.mailbox.Chips']
          */
-        baseCls: ['fm-catch-up-pane'],
+        additionalThemeFiles: ['AgentOS.view.fleet.mailbox.Chips'],
+        /**
+         * @member {String[]} baseCls=['fm-catch-up-pane','fm-pane']
+         */
+        baseCls: ['fm-catch-up-pane', 'fm-pane'],
         /**
          * Active Memory partition. PR history stays Fleet-wide.
          * @member {String} activePartition_='unified'
@@ -94,22 +100,47 @@ class CatchUpPane extends Container {
          */
         items: [{
             ntype : 'container',
-            cls   : ['fm-catch-up-head'],
+            cls   : ['fm-pane-head'],
             flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
+            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             items : [{
                 ntype: 'component',
-                cls  : ['fm-catch-up-title'],
-                flex : 1,
+                cls  : ['fm-pane-title'],
                 text : 'Since you last looked'
             }, {
                 ntype: 'component',
-                cls  : ['fm-catch-up-authority'],
+                cls  : ['fm-pane-meta'],
                 text : 'query-time · not authority'
+            }, {
+                ntype : 'container',
+                cls   : ['fm-pane-actions'],
+                layout: {ntype: 'hbox', align: 'center'},
+                items : [{
+                    module : Button,
+                    text   : 'Live activity',
+                    iconCls: 'fa fa-bolt',
+                    ui     : 'ghost',
+                    handler: 'up.onLiveActivityClick'
+                }, {
+                    module   : Button,
+                    reference: 'catch-up-refresh',
+                    text     : 'Refresh',
+                    iconCls  : 'fa fa-rotate',
+                    ui       : 'ghost',
+                    handler  : 'up.onRefreshClick'
+                }, {
+                    module   : Button,
+                    reference: 'catch-up-mark',
+                    text     : 'Mark caught up',
+                    iconCls  : 'fa fa-check',
+                    ui       : 'ghost',
+                    hidden   : true,
+                    handler  : 'up.onMarkClick'
+                }]
             }]
         }, {
             ntype    : 'component',
-            cls      : ['fm-catch-up-window'],
+            cls      : ['fm-pane-meta', 'fm-catch-up-window'],
             flex     : 'none',
             reference: 'catch-up-window',
             text     : 'History not observed yet'
@@ -145,36 +176,6 @@ class CatchUpPane extends Container {
                 text   : 'Week',
                 ui     : 'ghost',
                 handler: 'up.onWeeklyClick'
-            }]
-        }, {
-            ntype : 'container',
-            cls   : ['fm-catch-up-actions'],
-            flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
-            items : [{
-                module : Button,
-                text   : 'Live activity',
-                iconCls: 'fa fa-bolt',
-                ui     : 'ghost',
-                handler: 'up.onLiveActivityClick'
-            }, {
-                ntype: 'component',
-                flex : 1
-            }, {
-                module   : Button,
-                reference: 'catch-up-refresh',
-                text     : 'Refresh',
-                iconCls  : 'fa fa-rotate',
-                ui       : 'ghost',
-                handler  : 'up.onRefreshClick'
-            }, {
-                module   : Button,
-                reference: 'catch-up-mark',
-                text     : 'Mark caught up',
-                iconCls  : 'fa fa-check',
-                ui       : 'ghost',
-                hidden   : true,
-                handler  : 'up.onMarkClick'
             }]
         }, {
             ntype    : 'component',
@@ -294,7 +295,8 @@ class CatchUpPane extends Container {
     }
 
     /**
-     * @summary Populate the partition Store and rebuild semantic Buttons in source order.
+     * @summary Populate the partition Store and rebuild semantic Buttons in source order: selector
+     * chips of the chip family (pick-one), the active one `is-selected`.
      */
     refreshPartitions() {
         if (!this.partitionStore) return;
@@ -310,9 +312,8 @@ class CatchUpPane extends Container {
         target?.removeAll(true);
         target?.add(this.partitionStore.items.map(record => ({
             module : Button,
-            cls    : record.partition === this.activePartition ? ['fm-catch-up-partition', 'is-active'] : ['fm-catch-up-partition'],
+            cls    : ['fm-chip', 'fm-catch-up-partition', ...(record.partition === this.activePartition ? ['is-selected'] : [])],
             text   : record.label || record.partition,
-            ui     : 'ghost',
             handler: () => this.onPartitionClick(record.partition)
         })))
     }

@@ -1,8 +1,9 @@
-/* The S5 add-agent surface — panel geometry + the honest-lifecycle status line. Colors
+/* The S5 add-agent surface — a card in the rail well: panel geometry + the honest-lifecycle status
+   line; its head and its submit slot are the shell's pane contract (Viewport.scss). Colors
    token-only; every flow state pairs its hue with a non-color carrier (text IS the reason line,
    weight/style mark emphasis) so no state reads by color alone. */
-/* §04 rhythm record (#17265): off-rhythm survivors — harness-row gap 6, actions margin-top 2,
-   status pad-top 6 — recorded, deferred to #17268. */
+/* §04 rhythm record (#17265): off-rhythm survivors — harness-row gap 6, status pad-top 6 —
+   recorded, deferred to #17268. */
 .fm-add-agent-form {
     background     : var(--fm-panel);
     border         : 1px solid var(--fm-line);
@@ -13,15 +14,6 @@
     gap            : var(--fm-space-2);
     padding        : var(--fm-space-3);
 
-    .fm-add-heading {
-        color: var(--fm-ink);
-        font : var(--fm-text-body);   /* 13 → body: the ruled tie-to-smaller migration */
-
-        strong {
-            font-weight : 600;
-        }
-    }
-
     /* the inline-label fields ride the form's own 8px gap — the stock field margin would
        double the rhythm */
     .neo-textfield {
@@ -30,11 +22,6 @@
 
     .fm-add-harness-row {
         gap: 6px;
-    }
-
-    .fm-add-actions {
-        gap        : var(--fm-space-2);
-        margin-top : 2px;
     }
 
     /* the form's one primary action carries the signal — the fm-fleet-start idiom, never the

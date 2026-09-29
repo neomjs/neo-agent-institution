@@ -46,9 +46,9 @@ class OperatorMailbox extends Container {
          */
         ntype: 'fm-operator-mailbox',
         /**
-         * @member {String[]} baseCls=['fm-operator-mailbox']
+         * @member {String[]} baseCls=['fm-operator-mailbox','fm-pane']
          */
-        baseCls: ['fm-operator-mailbox'],
+        baseCls: ['fm-operator-mailbox', 'fm-pane'],
         /**
          * The operator identity record (only `githubUsername` is read — the pane's subject-match
          * authority); injected by the cockpit. `null` = the inbox's honest unwired state.

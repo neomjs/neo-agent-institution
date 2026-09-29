@@ -17,18 +17,6 @@
        for free. Same defect, two geometries, only one of them forgiving. */
     min-width : 0;
 
-    .fm-mailbox-head {
-        gap        : var(--fm-space-2);
-        align-items: center;
-    }
-
-    .fm-mailbox-title {
-        flex       : 1;
-        font       : var(--fm-text-body);
-        font-weight: 500;
-        color      : var(--fm-ink);
-    }
-
     /* the freshness ledger chip — the S1 vocabulary, verbatim from the AgentDetail sibling so the
        cockpit speaks ONE freshness language in both mounts (values must not drift; see
        AgentDetail.scss for the tone rationale incl. the .is-lost AA treatment) */

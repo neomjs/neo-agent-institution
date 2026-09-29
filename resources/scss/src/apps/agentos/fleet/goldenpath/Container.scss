@@ -1,20 +1,10 @@
-/* The Golden Path reading pane. The producer-written recommendation leads; typed-route metadata
-   remains a separate footer. Every value comes from the
-   Fleet token layer: spacing from --fm-space-*, type from --fm-text-*, the corner from
-   --fm-chip-radius, and hairlines use the `thin` keyword. The host owns surface, padding and rhythm,
-   per the drawer-shell contract. */
+/* The Golden Path reading pane. The shell's pane head (the pane contract in Viewport.scss, which
+   also owns the inset) over the producer-written recommendation; typed-route metadata remains a
+   separate footer. Every value comes from the Fleet token layer: spacing from --fm-space-*, type
+   from --fm-text-*, the corner from --fm-chip-radius, and hairlines use the `thin` keyword. */
 .fm-golden-path-pane {
     gap     : var(--fm-space-2);
     overflow: auto;
-
-    .fm-golden-path-head {
-        gap: var(--fm-space-2);
-    }
-
-    .fm-golden-path-title {
-        color      : var(--fm-ink);
-        font-weight: 700;
-    }
 
     .fm-golden-path-currency {
         border       : thin solid var(--fm-line-soft);

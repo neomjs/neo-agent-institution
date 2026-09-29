@@ -17,7 +17,7 @@ import ViewerTime            from '../../../util/ViewerTime.mjs';
  * Choosing whose memories to read is an explicit act — the pane never auto-defaults to a roster
  * agent.
  *
- * **No paging chrome** (operator direction 2026-08-28, the #40/#41 mailbox precedent): the
+ * **No paging chrome** (operator direction 2026-08-28, as in the mailbox): the
  * buffered grids scroll, and the pane DRAINS the remote corpus itself — after each accepted
  * coherent envelope it fires exactly ONE follow-up read intent while the producer's `total` says
  * more corpus exists (armed per envelope arrival, floored per rendered depth so a repeated or
@@ -47,11 +47,11 @@ class MemoriesPane extends Container {
          */
         ntype: 'fm-memories-pane',
         /**
-         * @member {String[]} baseCls=['fm-memories-pane']
+         * @member {String[]} baseCls=['fm-memories-pane','fm-pane']
          */
-        baseCls: ['fm-memories-pane'],
+        baseCls: ['fm-memories-pane', 'fm-pane'],
         /**
-         * Optional SHELL-supplied tool configs appended to the actions row. The pane stays
+         * Optional SHELL-supplied tool configs appended to the head's actions. The pane stays
          * layout-blind: it places these controls beside its own verbs and never inspects what
          * they do — ownership, handlers and state sync remain with the supplying shell.
          * @member {Object[]|null} shellTools=null
@@ -96,22 +96,35 @@ class MemoriesPane extends Container {
          */
         items: [{
             ntype : 'container',
-            cls   : ['fm-memories-head'],
+            cls   : ['fm-pane-head'],
             flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
+            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             items : [{
                 ntype: 'component',
-                cls  : ['fm-memories-title'],
-                flex : 1,
+                cls  : ['fm-pane-title'],
                 text : 'What they remember'
             }, {
                 ntype: 'component',
-                cls  : ['fm-memories-authority'],
+                cls  : ['fm-pane-meta'],
                 text : 'session summaries · query-time · not authority'
+            }, {
+                ntype    : 'container',
+                cls      : ['fm-pane-actions'],
+                layout   : {ntype: 'hbox', align: 'center'},
+                reference: 'memories-actions',
+                items    : [{
+                    module   : Button,
+                    reference: 'memories-refresh',
+                    text     : 'Refresh',
+                    iconCls  : 'fa fa-rotate',
+                    ui       : 'ghost',
+                    hidden   : true,
+                    handler  : 'up.onRefreshClick'
+                }]
             }]
         }, {
             ntype    : 'component',
-            cls      : ['fm-memories-meta'],
+            cls      : ['fm-pane-meta', 'fm-memories-meta'],
             flex     : 'none',
             reference: 'memories-meta',
             text     : 'Memories not observed yet'
@@ -159,24 +172,6 @@ class MemoriesPane extends Container {
             flex     : 1,
             hidden   : true,
             reference: 'memories-turn-grid'
-        }, {
-            ntype    : 'container',
-            cls      : ['fm-memories-actions'],
-            flex     : 'none',
-            layout   : {ntype: 'hbox', align: 'center'},
-            reference: 'memories-actions',
-            items    : [{
-                ntype: 'component',
-                flex : 1
-            }, {
-                module   : Button,
-                reference: 'memories-refresh',
-                text     : 'Refresh',
-                iconCls  : 'fa fa-rotate',
-                ui       : 'ghost',
-                hidden   : true,
-                handler  : 'up.onRefreshClick'
-            }]
         }]
     }
 

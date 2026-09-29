@@ -56,9 +56,15 @@
         outline-offset: 1px;
     }
 
-    /* button-composed chips: the stock glyph/text spans follow the chip's ink */
+    /* button-composed chips: the stock glyph/text spans follow the chip's ink, and the text its
+       metrics — the engine sizes the text span itself (16px, 13px under 600px), so without this
+       every button chip spoke at the slab's size inside the chip's box */
     .neo-button-glyph,
     .neo-button-text {
         color: inherit;
+    }
+
+    .neo-button-text {
+        font: inherit;
     }
 }

@@ -4,11 +4,11 @@
    Container.scss (the read-half mirror pane); same token vocabulary so the cockpit speaks one
    language across read and write. */
 /* the parent pane's root frame lives in OperatorMailbox.scss (#17209) — this file owns the form only */
-/* §04 rhythm record (#17265): off-rhythm survivors — root gap 10, list-item pad 6/10, outcome
-   gap 2 + row pad 3/8, actions margin-top 4 + pad-top 10 — recorded, deferred to #17268. */
+/* §04 rhythm record (#17265): off-rhythm survivors — root gap 10, outcome gap 2 + row pad 3/8,
+   actions margin-top 4 + pad-top 10 — recorded, deferred to #17268. */
+/* no inset of its own: the pane's (the pane contract, Viewport.scss) frames both halves */
 .fm-operator-compose-form {
-    gap    : 10px;
-    padding: var(--fm-space-3);
+    gap: 10px;
 
     /* stacked field labels (labelPosition: top) get an even rhythm and a quiet label */
     .neo-form-field {
@@ -82,14 +82,22 @@
             font-weight: 600;
         }
 
+        /* at the cockpit's field scale (the SSOT's search field: the body role, a 4/8 inset), and on
+           no stock surface — the theme's item grey never reaches a row, in any state */
         .fm-operator-compose-recipients-list {
+            --list-item-background-color       : transparent;
+            --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+            --list-item-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+
             border       : 1px solid var(--fm-line-soft);
             border-radius: 6px;
+            color        : var(--fm-ink-dim);
+            font         : var(--fm-text-body);
             overflow-y   : auto;
 
             .neo-list-item {
                 cursor : pointer;
-                padding: 6px 10px;
+                padding: var(--fm-space-1) var(--fm-space-2);
 
                 &.neo-selected {
                     background: color-mix(in srgb, var(--fm-signal) 16%, transparent);

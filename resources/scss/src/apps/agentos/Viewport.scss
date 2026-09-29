@@ -158,6 +158,98 @@
         }
     }
 
+    /* THE VERB SCALE: every ghost button, and every button in a pane's action slot, at the §04
+       chrome role — icon plus word, never a heading's size. The geometry re-values the
+       engine's own variables (the top-toolbar mechanism below); the type is DIRECT, because the
+       engine writes the text's font-size itself under 600px (13px in every vessel window). Both
+       rules below carry zero selector weight, so a surface re-values them in its own sheet. */
+    :where(.neo-button.neo-button-ghost),
+    .fm-pane-actions :where(.neo-button) {
+        --button-glyph-margin: 0 var(--fm-space-1) 0 0;
+        --button-height      : auto;
+        --button-min-width   : 0;
+        --button-padding     : var(--fm-chip-pad-y) var(--fm-space-2);
+
+        .neo-button-text {
+            font: var(--fm-text-chrome);
+        }
+    }
+
+    /* THE GHOST SKIN — one for the whole shell: dim ink on no surface, a soft field under the
+       pointer, and a pressed choice carried by ink plus a hairline. Disabled reads faint: the
+       engine's disabled ink (`--sem-color-text-neutral-disabled`) is declared by no theme sheet,
+       so without it a disabled verb inherits the stock near-white text. */
+    :where(.neo-button.neo-button-ghost) {
+        --button-background-color-disabled    : transparent;
+        --button-border-disabled              : 1px solid transparent;
+        --button-border-radius                : 999px;
+        --button-glyph-color-disabled         : var(--fm-ink-faint);
+        --button-text-color-disabled          : var(--fm-ink-faint);
+        --button-ghost-background-color       : transparent;
+        --button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, transparent);
+        --button-ghost-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+        --button-ghost-border                 : 1px solid transparent;
+        --button-ghost-border-active          : 1px solid transparent;
+        --button-ghost-border-hover           : 1px solid transparent;
+        --button-ghost-border-pressed         : 1px solid var(--fm-line-soft);
+        --button-ghost-glyph-color            : var(--fm-ink-dim);
+        --button-ghost-glyph-color-active     : var(--fm-ink);
+        --button-ghost-glyph-color-hover      : var(--fm-ink);
+        --button-ghost-text-color             : var(--fm-ink-dim);
+        --button-ghost-text-color-active      : var(--fm-ink);
+        --button-ghost-text-color-hover       : var(--fm-ink);
+
+        &.pressed {
+            --button-ghost-glyph-color: var(--fm-ink);
+            --button-ghost-text-color : var(--fm-ink);
+        }
+
+        &:focus-visible {
+            outline       : 2px solid var(--fm-signal);
+            outline-offset: 1px;
+        }
+    }
+
+    /* THE PANE CONTRACT — one head and one inset for every strip and rail pane, declared
+       here so it travels into the vessel window with the pane. The head is the SSOT's `.pane-head`
+       (institution-mailbox-pane.html): a chrome-role title, a micro meta line, the actions at the
+       right. The inset is the rail well's (cockpit/Container.scss), at zero weight so the well's
+       reset for the panes it frames wins whichever sheet loads last: a pane reads the same docked,
+       revealed and windowed. */
+    :where(.fm-pane) {
+        padding: var(--fm-space-3);
+    }
+
+    /* direction, alignment and wrap are the head's layout config (`{ntype: 'hbox', align: 'center',
+       wrap: 'wrap'}`): a narrow pane drops the actions under the title instead of clipping them */
+    .fm-pane-head {
+        column-gap: var(--fm-chip-gap);
+        row-gap   : var(--fm-space-1);
+    }
+
+    .fm-pane-title {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+    }
+
+    .fm-pane-meta {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);
+    }
+
+    /* an action slot trails its row — a head's verbs, a form's submit; in a head that states a fact
+       instead (Mailbox, the detail's sections), the freshness chip takes its place. Zero weight: a
+       pane that stacks its head at a narrow width re-values it in its own sheet. */
+    :where(.fm-pane-actions, .fm-pane-head > .fm-freshness) {
+        margin-left: auto;
+    }
+
+    .fm-pane-actions {
+        gap: var(--fm-space-1);
+    }
+
     /* HEIGHT CONTAINMENT FOR THE SHELL'S FLEX SPINE.
        A flex item's automatic minimum size is its CONTENT size, and `min-height: auto` only
        resolves to zero when the item's overflow is not `visible`. Every box listed here sits in the
@@ -204,7 +296,7 @@
            every FM pane */
         background: var(--fm-rail);
         min-height: 50px;
-        padding   : 0 var(--fm-frame-gutter);
+        padding   : 0 var(--fm-frame-gutter) 0 9px;   /* §04 recorded exception: see the mark's line below */
 
         /* The band's control scale — the identity row, not a touch surface: the engine's button
            reads these four at the element (button/Base.scss: height, min-width, padding,
@@ -216,7 +308,7 @@
         --button-border-radius: 6px;
 
         @media (max-width: 560px) {
-            padding: 0 var(--fm-space-3);
+            padding: 0 var(--fm-space-3) 0 9px;
         }
     }
 
@@ -225,6 +317,9 @@
         gap    : 20px;
     }
 
+    /* the mark heads the keeper rail: its 30px centers on the 48px rail's icon axis below it —
+       the band's 9px left inset is (48 − 30) / 2, where the frame gutter floated it 11px right of
+       that axis */
     .agent-logo {
         align-items : center;
         display     : flex;
