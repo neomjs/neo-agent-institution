@@ -1,35 +1,20 @@
-/* Invoked catch-up rail pane. Source cards remain visually independent so one degraded producer
-   cannot paint the other red; all values come from the Fleet token layer. Mount-agnostic by the
-   drawer-shell contract: the HOST owns surface, padding, and rhythm — this root keeps only its
-   inner-body scroll ownership.
+/* The catch-up reading pane. Source cards remain visually independent so one degraded producer
+   cannot paint the other red; all values come from the Fleet token layer. The shell's pane head
+   (title · authority · the verbs — the pane contract in Viewport.scss, which also owns the inset)
+   leads; this root keeps its rhythm and its inner-body scroll ownership. The partition choices
+   are the chip family's selector chips (Chips.scss).
    §04 rhythm record (#17265): off-rhythm survivors — partitions row-gap 6, sources gap 10,
-   source-card gap 7 + pad 10, citations pad-top 3, empty pad 14/4 — recorded here, deferred to
-   the #17268 pane-composition pass. Affordance buttons ride the chip family's recorded voice
-   rule (detail metrics, inherited family — Chips.scss). */
+   source-card gap 7 + pad 10, citations pad-top 3 — recorded here, deferred to the #17268
+   pane-composition pass. */
 .fm-catch-up-pane {
+    gap     : var(--fm-space-2);
     overflow: auto;
 
-    .fm-catch-up-head,
-    .fm-catch-up-actions,
     .fm-catch-up-first-use,
     .fm-catch-up-partitions {
         gap: var(--fm-space-2);
     }
 
-    /* the head tolerates narrow drawers: the authority line wraps under the title instead of
-       squeezing it (drawer-shell contract item 3) */
-    .fm-catch-up-head {
-        align-items: baseline;
-        flex-wrap  : wrap;
-    }
-
-    .fm-catch-up-title {
-        color      : var(--fm-ink);
-        font-weight: 700;
-    }
-
-    .fm-catch-up-authority,
-    .fm-catch-up-window,
     .fm-catch-up-source-meta,
     .fm-catch-up-mark-outcome,
     .fm-catch-up-citation-overflow {
@@ -42,35 +27,6 @@
     .fm-catch-up-partitions {
         flex-wrap: wrap;
         row-gap  : 6px;
-    }
-
-    /* partition choices are selector chips (pick-one) — the .fm-chip idiom: quiet bordered pills,
-       selection structural (border + weight + a signal wash), never the stock button slab */
-    .neo-button.fm-catch-up-partition {
-        background   : none;
-        border       : 1px solid var(--fm-line);
-        border-radius: 6px;
-        box-shadow   : none;
-        color        : var(--fm-ink-dim);
-        font         : var(--fm-text-detail);
-        font-family  : inherit;   /* affordance-class voice rule (Chips.scss) */
-        font-weight  : 500;
-        min-width    : 0;
-
-        &:hover {
-            color: var(--fm-ink);
-        }
-
-        &.is-active {
-            background  : color-mix(in srgb, var(--fm-signal) 16%, transparent);
-            border-color: var(--fm-signal);
-            color       : var(--fm-ink);
-            font-weight : 600;
-        }
-
-        .neo-button-text {
-            color: inherit;
-        }
     }
 
     .fm-catch-up-sources {
@@ -129,7 +85,8 @@
     }
 
     .fm-catch-up-empty {
-        padding: 14px var(--fm-space-1);
         color  : var(--fm-ink-dim);
+        font   : var(--fm-text-body);
+        padding: var(--fm-space-3) 0;   /* on the pane's inset, like every other line */
     }
 }

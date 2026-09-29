@@ -1,29 +1,14 @@
 /* AgentOS.view.fleet.MemoriesPane — the per-agent session-summary recall in the cockpit's south
-   register (and, torn out, in its own window). Head (title · authority) over the meta line, the
-   session cards, the drill, and the actions rail. Neither host hands the pane a rhythm, so the root
-   carries the panel rhythm the roster declares too (padding --fm-space-4, gap --fm-space-3); every
-   color reads from the --fm-* token layer.
+   register (and, torn out, in its own window). The shell's pane head (title · authority · Refresh
+   and the window verb — the pane contract in Viewport.scss, which also owns the inset) over the
+   meta line, the session cards and the drill. The root carries only the rhythm (gap
+   --fm-space-3); every color reads from the --fm-* token layer.
    §04 rhythm record (#17265): off-rhythm survivors — agent-chip gap 6, rows gap 10, card gap 7 +
-   pad 10, empty pad 14/4, provenance pill pad 1/6, turn gap 6 + pad 9/10 — recorded here,
-   deferred to the #17268 pane-composition pass. Affordance buttons ride the chip family's
-   recorded voice rule (detail metrics, inherited family — Chips.scss). */
+   pad 10, provenance pill pad 1/6, turn gap 6 + pad 9/10 — recorded here,
+   deferred to the #17268 pane-composition pass. */
 .fm-memories-pane {
-    padding: var(--fm-space-4);   /* the spec-named panel padding — the roster root's, in both hosts */
-    gap    : var(--fm-space-3);   /* head · meta · registers · actions on one rhythm */
+    gap: var(--fm-space-3);   /* head · meta · registers on one rhythm */
 
-    .fm-memories-head {
-        gap        : var(--fm-space-2);
-        align-items: baseline;
-        flex-wrap  : wrap;
-    }
-
-    .fm-memories-title {
-        color      : var(--fm-ink);
-        font-weight: 700;
-    }
-
-    .fm-memories-authority,
-    .fm-memories-meta,
     .fm-memories-card-meta,
     .fm-memories-card-attribution {
         color: var(--fm-ink-dim);
@@ -61,14 +46,11 @@
         white-space: pre-wrap;
     }
 
-    .fm-memories-actions {
-        gap: var(--fm-space-2);
-    }
-
     /* honest quiet state — absence is not an error (drawer-shell contract item 5) */
     .fm-memories-empty {
-        padding: 14px var(--fm-space-1);
         color  : var(--fm-ink-dim);
+        font   : var(--fm-text-body);
+        padding: var(--fm-space-3) 0;   /* on the pane's inset, like every other line */
     }
 
     /* provenance vocabulary — DERIVED (summaries) vs AUTHORED (turn records) must read as two
@@ -91,24 +73,6 @@
 
     .fm-memories-card-head {
         gap: var(--fm-space-2);
-    }
-
-    .neo-button.fm-memories-drill-back {
-        background : none;
-        box-shadow : none;
-        color      : var(--fm-ink-dim);
-        font       : var(--fm-text-detail);
-        font-family: inherit;   /* affordance-class voice rule (Chips.scss) */
-        font-weight: 500;
-        min-width  : 0;
-
-        &:hover {
-            color: var(--fm-ink);
-        }
-
-        .neo-button-text {
-            color: inherit;
-        }
     }
 
     /* the drill-in view: head (back · session title · provenance) over the turn rows */

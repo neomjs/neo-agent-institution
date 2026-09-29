@@ -1,17 +1,17 @@
 /* Agent detail — the drill-in inspector: identity header (family rail · avatar · name/engine/id ·
    availability) over the freshness-labeled panes (thought-stream · lane · repo · PRs), scoped under
    the component root. Geometry + the avatar frame only; every color reads from the token layer.
-   §04 rhythm record (#17265): off-rhythm survivors — root gap 10 + padding 10/12, empty-state pad
+   §04 rhythm record (#17265): off-rhythm survivors — root gap 10, empty-state pad
    24/8, header gap 10 + pad-bottom 10, identity gap 2, name-row gap 7, pane pad 8/10, freshness
    pill pad 2/7, mailbox frame-tune 8/2/2, telltale/sources gaps 6×10 — recorded here, deferred to
    the #17268 pane-composition pass rather than silently snapped. The inner detail-tab strip
    rides the shell-root tab family (#17269 cut 2 — Viewport.scss; the #17265 deferral, resolved).
    Pill registers keep their site-visible `line-height: 1`. */
+/* the inset is the shell's pane contract (Viewport.scss), in every mount */
 .fm-agent-detail {
     container-type: inline-size;
     gap           : 10px;
     overflow      : hidden;
-    padding       : 10px var(--fm-space-3);
 
     /* one continuous surface with the panel below — layout containers inside the detail
        otherwise inherit Neo's stock dark container background, reading as mismatched boxes */
@@ -125,18 +125,6 @@
         border-radius: 6px;
     }
 
-    .fm-detail-pane-head {
-        gap        : var(--fm-space-2);
-        align-items: center;
-    }
-
-    .fm-detail-pane-title {
-        flex       : 1;
-        font       : var(--fm-text-body);
-        font-weight: 500;
-        color      : var(--fm-ink);
-    }
-
     .fm-detail-pane-body {
         font : var(--fm-text-detail);   /* 11px readouts → detail: the inspector's mono meta voice */
         color: var(--fm-ink-dim);
@@ -196,6 +184,11 @@
 
         .fm-freshness {
             align-self: flex-start;
+        }
+
+        /* stacked, the chip sits under the title: the contract's trailing margin would push it right */
+        .fm-detail-pane-head > .fm-freshness {
+            margin-left: 0;
         }
     }
 

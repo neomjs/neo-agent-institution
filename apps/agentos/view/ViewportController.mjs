@@ -596,6 +596,22 @@ class ViewportController extends Controller {
     }
 
     /**
+     * @summary The Observatory opened a session's evidence: the route moves to the Fleet cockpit, whose
+     * Memories pane drills into the session.
+     * @param {Object}      data
+     * @param {String}      data.sessionId
+     * @param {String|null} data.title
+     * @returns {Promise<Object>} The cockpit's `{opened, sessionId}`
+     */
+    async onObservatorySessionOpen({sessionId, title}) {
+        const me = this;
+
+        await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
+
+        return me.getReference('fleet-cockpit').getController().openMemoriesSession({sessionId, title})
+    }
+
+    /**
      * @summary Activates the System keeper-view from the route.
      */
     onSystemRoute() {

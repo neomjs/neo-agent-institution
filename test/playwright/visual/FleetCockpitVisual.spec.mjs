@@ -542,23 +542,23 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(tab).toBeVisible({timeout: 30000});
         await tab.click();
         await expect(page.locator('.fm-memories-pane')).toBeVisible({timeout: 30000});
-        await expect(page.locator('.fm-memories-pane .fm-memories-title')).toHaveText('What they remember');
+        await expect(page.locator('.fm-memories-pane .fm-pane-title')).toHaveText('What they remember');
         await expect(page.locator('.fm-memories-pane')).toContainText('Select an agent card in the roster');
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)
     };
 
-    test('the Memories pane at the 720 band — the head on the panel rhythm, the registers without grid chrome; both skins', async ({page}) => {
+    test('the Memories pane at the 720 band — the head on the pane contract, the registers without grid chrome; both skins', async ({page}) => {
         await page.setViewportSize({width: 720, height: 900});
         await bootSettledCockpit(page);
         await openMemoriesPane(page);
 
-        // the rhythm the roster root declares too: the panel padding, one gap between the head and
-        // the meta line. The registers are not in the DOM until a seat is chosen, so their chrome
-        // (the container frame, the cell lattice) is the Neural Link witness's arm on live cards.
+        // the pane contract's inset, one gap between the head and the meta line. The registers are
+        // not in the DOM until a seat is chosen, so their chrome (the container frame, the cell
+        // lattice) is the Neural Link witness's arm on live cards.
         const rhythm = await page.evaluate(() => {
             const pane  = document.querySelector('.fm-memories-pane'),
-                  head  = pane.querySelector('.fm-memories-head'),
+                  head  = pane.querySelector('.fm-pane-head'),
                   meta  = pane.querySelector('.fm-memories-meta'),
                   style = getComputedStyle(pane);
 
@@ -569,13 +569,66 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             }
         });
 
-        expect(rhythm.paddingTop, 'the panel padding (--fm-space-4)').toBe('16px');
+        expect(rhythm.paddingTop, 'the pane inset (--fm-space-3), every pane\'s').toBe('12px');
         expect(rhythm.rowGap, 'the panel gap (--fm-space-3)').toBe('12px');
         expect(rhythm.headToMeta, 'the meta line sits one gap under the head').toBe(12);
         await expect(page.locator('.fm-memories-pane')).toHaveScreenshot('memories-pane-720.png');
 
         await switchToLightSkin(page);
         await expect(page.locator('.fm-memories-pane')).toHaveScreenshot('memories-pane-720-light.png')
+    });
+
+    test('every strip and rail pane reads one head — the chrome title on the pane inset, no button at a slab\'s scale (computed, no golden)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        // [tab, pane root, the title's inset from the pane's host]: the strip pane and the rail's
+        // reveal well both frame on --fm-space-3; the Add agent form is a card IN the well (the
+        // drawer ruling), so its head sits on the card's own inset inside its 1px border
+        const panes = [
+            ['Activity', '.fm-activity-stream', 12], ['Tasks', '.fm-tasks-pane', 12], ['Memories', '.fm-memories-pane', 12],
+            ['Mailbox', '.fm-operator-mailbox', 12], ['Catch up', '.fm-catch-up-pane', 12], ['Golden Path', '.fm-golden-path-pane', 12],
+            ['Perspectives', '.fm-perspectives-pane', 12], ['Add agent', '.fm-add-agent-form', 25], ['Wake routes', '.fm-wakeroutes-pane', 12]
+        ];
+
+        for (const [label, root, inset] of panes) {
+            const name  = new RegExp(`^\\s*${label}\\s*$`, 'i'),
+                  strip = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+                  tab   = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first();
+
+            await tab.click();
+            // a strip tab selects, a rail tab reveals: both end pressed, so a click that did not land
+            // fails here, apart from a pane that did not render
+            await expect(tab, `${label}: the tab took the click`).toHaveClass(/\bpressed\b/, {timeout: 10000});
+            await expect(page.locator(root).first()).toBeVisible({timeout: 30000});
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+            const read = await page.evaluate(selector => {
+                const pane  = [...document.querySelectorAll(selector)].find(el => el.getClientRects().length),
+                      title = pane.querySelector('.fm-pane-head > .fm-pane-title'),
+                      probe = pane.appendChild(Object.assign(document.createElement('span'), {style: 'color: var(--fm-ink-dim)'})),
+                      ink   = getComputedStyle(probe).color,
+                      style = title && getComputedStyle(title);
+
+                probe.remove();
+
+                return {
+                    ink,
+                    title  : title && {color: style.color, inset: Math.round(title.getBoundingClientRect().left - pane.parentElement.getBoundingClientRect().left), size: style.fontSize, tracking: style.letterSpacing, transform: style.textTransform},
+                    buttons: [...pane.querySelectorAll('.neo-button')]
+                        .filter(button => button.getClientRects().length && !button.closest('.neo-tab-header-toolbar'))
+                        .map(button => ({height: Math.round(button.getBoundingClientRect().height), size: parseFloat(getComputedStyle(button.querySelector('.neo-button-text') ?? button).fontSize), text: button.textContent.trim()}))
+                }
+            }, root);
+
+            expect(read.title, `${label}: the head's title`).not.toBeNull();
+            expect(read.title, `${label}: the chrome role, uppercase, tracked, in the dim ink`).toEqual({color: read.ink, inset, size: '11px', tracking: '0.88px', transform: 'uppercase'});
+
+            for (const button of read.buttons) {
+                expect(button.size, `${label}: "${button.text}" speaks at the chrome scale or below`).toBeLessThanOrEqual(11);
+                expect(button.height, `${label}: "${button.text}" is a verb, not a slab`).toBeLessThanOrEqual(24)
+            }
+        }
     });
 
     test('the Tasks pane in the 314 vessel window — the narrow-band regime is in force and nothing clips (geometry asserted, no golden)', async ({page}) => {
@@ -687,7 +740,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.fm-observatory-pane')).toBeVisible({timeout: 30000});
         await expect(page.locator('.fm-observatory-pane .fm-observatory-currency')).toHaveText(/^Unavailable · /);
         await expect(page.locator('.fm-observatory-pane .fm-observatory-hover')).toHaveText('drag orbits · wheel zooms · click selects');
-        await expect(page.locator('.fm-observatory-pane .fm-observatory-selection')).toHaveText('No node selected');
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-selected-label')).toHaveText('No node selected');
         await expect(page.locator('.fm-observatory-pane canvas')).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)
@@ -715,7 +768,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the Observatory pane — a read draws its density wells, the nodes in no well in a faint halo, and the route as an overlay of rank beacons the toggle removes; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
         const
             pane    = page.locator('.fm-observatory-pane'),
-            toggle  = pane.getByRole('button', {name: 'Route'}),
+            toggle  = pane.getByRole('button', {name: 'Golden Path'}),
+            label   = pane.locator('.fm-observatory-selected-label'),
             current = /^Current · captured .+ · 16 nodes · 15 edges · 3 in the halo · complete$/,
             // no tooltip in a shot. The pointer dwells until any pending tooltip has shown, then leaves and
             // waits out the hide: an engine tooltip whose target is left inside its show delay stays up.
@@ -732,10 +786,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await feedObservatory(page, 'current', current);
         await expect(pane).toHaveScreenshot('observatory-pane-current.png');
 
-        // a toggle's state is its label's ink, which the pixel budget cannot see: Mail is off, Halo on
-        const inkOf = name => pane.getByRole('button', {name}).locator('.neo-button-text').evaluate(label => getComputedStyle(label).color);
+        // a control's state is its label's ink, which the pixel budget cannot see: Messages is off, Outside wells on
+        const inkOf = name => pane.getByRole('button', {name}).locator('.neo-button-text').evaluate(text => getComputedStyle(text).color);
 
-        expect(await inkOf('Mail'), 'an off toggle reads apart from an on one').not.toBe(await inkOf('Halo'));
+        expect(await inkOf('Messages'), 'an off control reads apart from an on one').not.toBe(await inkOf('Outside wells'));
 
         // the route is an overlay: switched off, the same graph stays where it was
         await toggle.click();
@@ -747,11 +801,15 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
         await feedObservatory(page, 'current', current, 'neomjs/neo#issue-8');
-        await expect(pane.locator('.fm-observatory-selection')).toHaveText('Selected · Golden Path currency on the cockpit · issue · neomjs/neo#issue-8 · rank 2 · 4 relations (1 authored, 1 relates, 1 resolves, 1 tagged)');
+        // this read's kinds are no graph kind, so the section says it has no source view for them
+        await expect(label).toHaveText('Golden Path currency on the cockpit');
+        await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText('Golden Path rank 2');
+        await expect(pane.locator('.fm-observatory-selected-no-source')).toHaveText('No source view for issue');
+        await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveCount(4);
         await expect(pane).toHaveScreenshot('observatory-pane-selected.png');
 
         await feedObservatory(page, 'truncated', /^Current · captured .+ · 16 nodes · 15 edges · 3 in the halo · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
-        await expect(pane.locator('.fm-observatory-selection'), 'a new snapshot that holds the id keeps the selection').toHaveText(/^Selected · Golden Path currency on the cockpit · /);
+        await expect(label, 'a new snapshot that holds the id keeps the selection').toHaveText('Golden Path currency on the cockpit');
         await expect(pane).toHaveScreenshot('observatory-pane-truncated.png');
 
         await switchToLightSkin(page);
@@ -763,6 +821,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         expect(withheld.success, `the driver loaded: ${JSON.stringify(withheld)}`).toBe(true);
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB · route withheld · freshness-sla-breached$/);
+        await expect(toggle, 'the control says so without a hover').toHaveText('Golden Path · withheld');
         await expect(pane).toHaveScreenshot('observatory-pane-withheld-light.png');
         await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=current&t=${++driverTick}`);
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ \/ 32 KiB$/);
@@ -771,7 +830,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(pane).toHaveScreenshot('observatory-pane-degraded-light.png');
 
         await feedObservatory(page, 'routeless', 'Degraded · route-not-found');
-        await expect(pane.locator('.fm-observatory-selection')).toHaveText('Selection cleared · neomjs/neo#issue-8 is not in this read');
+        await expect(label).toHaveText('Selection cleared · neomjs/neo#issue-8 is not in this read');
+        await expect(pane.locator('.fm-observatory-selected-facts'), 'a cleared selection keeps none of its facts').toHaveCount(0);
         await expect(pane).toHaveScreenshot('observatory-pane-routeless-light.png');
 
         await feedObservatory(page, 'unavailable', 'Unavailable · fleet graph scene verb not wired');
@@ -782,7 +842,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         const
             pane  = page.locator('.fm-observatory-pane'),
             peer  = id => pane.locator('.fm-observatory-peer-list .neo-list-item').filter({hasText: id}),
-            heat  = pane.getByRole('button', {name: 'Heat'}),
+            heat  = pane.getByRole('button', {name: 'Attention'}),
             lensed = / · lens · 5 nodes · 2 peers$/,
             rest  = async () => {
                 await page.waitForTimeout(300);
@@ -814,14 +874,34 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await rest();
         await expect(pane).toHaveScreenshot('observatory-pane-heat-light.png');
 
-        // the Heat tooltip shows once the pointer dwells, and would stay up if the pointer left inside its delay
+        // the Attention tooltip shows once the pointer dwells, and would stay up if the pointer left inside its delay
         await heat.click();
         await rest();
         await peer('@neo-opus-vega').click();
         await peer('@neo-opus-grace').click();
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(lensed);
         await rest();
-        await expect(pane).toHaveScreenshot('observatory-pane-lens-light.png')
+        await expect(pane).toHaveScreenshot('observatory-pane-lens-light.png');
+
+        // a work item of the graph's own kinds says what the read carries about it and opens its page
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete · lens · /, 'neomjs/neo#issue-8');
+        await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText(/^open, as last ingested · authored by @neo-opus-grace · last activity .+ · Golden Path rank 2$/);
+        await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveAttribute('href', 'https://github.com/neomjs/neo/issues/8');
+        await rest();
+        await expect(pane).toHaveScreenshot('observatory-pane-selected-source-light.png');
+
+        // the id is behind Copy: the panel never shows it, and the action copies it
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+        const copy = pane.getByRole('button', {name: 'Copy id'});
+
+        await copy.click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('neomjs/neo#issue-8');
+        await expect(copy, 'the focus the selection took returns to the action').toBeFocused();
+
+        await page.evaluate(() => navigator.clipboard.writeText(''));
+        await copy.press('Enter');
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()), 'and so does the keyboard').toBe('neomjs/neo#issue-8');
+        await expect(copy).toBeFocused()
     });
 
     /**
@@ -974,5 +1054,45 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
         await expect(cockpit).toHaveScreenshot('cockpit-empty-light.png')
+    });
+
+    test('every strip and rail pane at 1280 — its head, its inset and its verbs, as the operator reads them', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+        await landFleetTasks(page, sampleTasks);
+
+        const settle = async () => {
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+            await page.mouse.move(0, 0);
+            await page.waitForTimeout(400)
+        };
+
+        for (const [label, root, golden] of [
+            ['Activity', '.fm-activity-stream', 'pane-activity.png'], ['Tasks', '.fm-tasks-pane', 'pane-tasks.png'],
+            ['Memories', '.fm-memories-pane', 'pane-memories.png'], ['Mailbox', '.fm-operator-mailbox', 'pane-mailbox.png'],
+            ['Catch up', '.fm-catch-up-pane', 'pane-catch-up.png'], ['Golden Path', '.fm-golden-path-pane', 'pane-golden-path.png'],
+            ['Perspectives', '.fm-perspectives-pane', 'pane-perspectives.png'], ['Add agent', '.fm-add-agent-form', 'pane-add-agent.png'],
+            ['Wake routes', '.fm-wakeroutes-pane', 'pane-wake-routes.png']
+        ]) {
+            const name  = new RegExp(`^\\s*${label}\\s*$`, 'i'),
+                  strip = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+                  tab   = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first(),
+                  pane  = page.locator(`${root}:visible`).first();
+
+            await tab.click();
+            await expect(tab, `${label}: the tab took the click`).toHaveClass(/\bpressed\b/, {timeout: 10000});
+            await expect(pane).toBeVisible({timeout: 30000});
+            await settle();
+            await expect(pane, label).toHaveScreenshot(golden)
+        }
+
+        // the inspector's section heads, drilled into the first resident
+        const detail = page.locator('.fm-agent-detail:visible').first();
+
+        await page.locator('.fm-agent-card').first().click();
+        await expect(detail.locator('.fm-detail-pane-head').first()).toBeVisible({timeout: 30000});
+        await page.waitForFunction(() => [...document.querySelectorAll('.fm-agent-detail img')].every(img => img.complete), null, {timeout: 10000});
+        await settle();
+        await expect(detail, 'Agent detail').toHaveScreenshot('pane-agent-detail.png')
     });
 });

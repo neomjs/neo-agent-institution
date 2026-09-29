@@ -167,7 +167,7 @@ test.describe('AgentOS Tasks pane — the WHAT surface through the authenticated
                 counts : {running: 0, queued: 0, recent: 1}
             });
 
-            await pane.locator('.fm-tasks-actions .neo-button', {hasText: 'Refresh'}).click();
+            await pane.locator('.fm-pane-actions .neo-button', {hasText: 'Refresh'}).click();
 
             await expect(pane.locator('.fm-tasks-empty-row.is-running .fm-tasks-empty')).toHaveText('Nothing in flight.', {timeout: 30000});
             await expect(pane.locator('.fm-tasks-empty-row.is-queued .fm-tasks-empty')).toHaveText('Nothing scheduled.');

@@ -190,6 +190,7 @@ class Viewport extends BaseViewport {
                 // the Golden Path's neighbourhood as a scene takes the whole view: its follow-ups need room beside it
                 module   : ObservatoryPane,
                 header   : railHeader('fa-solid fa-circle-nodes', '/observatory', 'Observatory'),
+                listeners: {sessionOpen: 'onObservatorySessionOpen'},
                 reference: 'observatory-view',
                 bind     : {
                     envelope     : data => data.graphSceneEnvelope,
