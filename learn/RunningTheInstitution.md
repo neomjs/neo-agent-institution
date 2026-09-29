@@ -28,6 +28,6 @@ The checkout's [contributor workflow](../README.md#contributor-mode-vs-live-inst
 
 ## Read the result, then act
 
-After connecting, verify a pane's answer rather than stopping at the banner. A transport can be reachable while an individual source is unavailable; the roster can answer with no agents while memories still require a selection. A live empty roster offers the first-agent path, and a live empty activity read says **no activity yet**. A stale or partial pane names what it retained and what failed. [Tour the cockpit](CockpitTour.md) gives those reading cues before an operator uses lifecycle controls.
+After connecting, verify a pane's answer rather than stopping at the banner. In my native saved-plane read, the roster answered empty and offered the first-agent path, Activity streamed recent events, and Tasks showed orchestrator work while two other sources named gaps. Observatory could not read its graph. The transport and pane-level results were different propositions on the same screen. [Tour the cockpit](CockpitTour.md) follows those observations before an operator uses lifecycle controls.
 
 The optional [native vessel](TheNativeVessel.md) adds an installed shell, a supervised local lifecycle, and its own saved plane connection. It does not change which repository owns Fleet truth. Start in the browser to understand the client; choose the vessel when its install and lifecycle properties solve a real operational need.

@@ -63,7 +63,7 @@ The current cockpit includes:
 - activity, task, memory, mailbox, wake, and catch-up surfaces;
 - account and agent-definition setup with explicit credential boundaries;
 - instance/tenant switching and reason-carrying connection state;
-- Fleet, Focus, and Review perspectives over the same cockpit state;
+- Overview, Focus, and Review perspectives over the same cockpit state;
 - dockable and pop-out panes backed by Neo.mjs object permanence and SharedWorker topology;
 - a cold, unanswered state when no Fleet transport has supplied a read.
 
