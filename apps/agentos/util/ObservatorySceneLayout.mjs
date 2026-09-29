@@ -191,12 +191,14 @@ class ObservatorySceneLayout extends Base {
      * @param {Boolean|null} [options.halo=null] Where the nodes in no well go (see above)
      * @param {Boolean} [options.mail=true] Whether mail stays in the scene
      * @returns {Object} `{currency, empty, geography, nodes, edges, edgeTypes, seeds, index, communities,
-     *     haloFrom, halo, hidden, wells, wellCap, completeness, snapshotId}`: `nodes[]` = `{id, kind, label, rank,
+     *     haloFrom, halo, hidden, wells, wellCap, overCap, completeness, snapshotId}`: `nodes[]` = `{id, kind, label, rank,
      *     hop, cluster, x, y, z}`, the seeds first in route order, then by id; `edges[]` pairs index into `nodes`,
      *     `edgeTypes[]` aligned; `seeds[]` indexes the seeds in route order. `communities` counts the
      *     geography's clusters; halo sectors are the clusters from `haloFrom` on (`null` without a halo), and
      *     `halo` counts their nodes. `hidden` is `{mail: {nodes, edges}, halo: {nodes, edges}}`; `wells[]` is
-     *     `{id, label, size}` per well, largest first; `wellCap` is the strategic walk's cap, `null` otherwise.
+     *     `{id, label, size}` per well, largest first; `wellCap` is the strategic walk's cap, `null` otherwise, and
+     *     `overCap` counts the nodes in no well that an anchor reached, the ones only a full well could have taken,
+     *     so the rest of the halo is what no well reached.
      */
     fromGraphScene(envelope, {geography = 'communities', halo = null, mail = true} = {}) {
         const
@@ -212,7 +214,7 @@ class ObservatorySceneLayout extends Base {
             routeAt    = new Map();
 
         if (currency === 'unavailable' || !Array.isArray(scene?.nodes)) {
-            return {currency, empty: true, geography, nodes: [], edges: [], edgeTypes: [], seeds: [], index: {}, communities: 0, haloFrom: null, halo: 0, hidden, wells: [], wellCap: null, completeness: scene?.completeness ?? null, snapshotId}
+            return {currency, empty: true, geography, nodes: [], edges: [], edgeTypes: [], seeds: [], index: {}, communities: 0, haloFrom: null, halo: 0, hidden, wells: [], wellCap: null, overCap: 0, completeness: scene?.completeness ?? null, snapshotId}
         }
 
         // the seeds are known before either filter runs: a view filter hides dust, never the route
@@ -320,14 +322,14 @@ class ObservatorySceneLayout extends Base {
                 spot[position * 3 + 2] = cz + reach * around * Math.sin(phi)
             };
 
-        let communities, wells = [], outside = [], wellCap = null;
+        let communities, wells = [], outside = [], wellCap = null, overCap = 0;
 
         if (density) {
             const
-                {maxHop, radius}                     = me.wellGeometry,
-                walk                                 = effective === 'strategic' ? me.strategicWellsOf(count, offsets, targets, pull) : me.wellsOf(count, offsets, targets),
-                {hop, hubs, of, sizes, wells: found} = walk,
-                largest                              = Math.max(1, sizes[0] ?? 1);
+                {maxHop, radius}                              = me.wellGeometry,
+                walk                                          = effective === 'strategic' ? me.strategicWellsOf(count, offsets, targets, pull) : me.wellsOf(count, offsets, targets),
+                {hop, hubs, of, reached, sizes, wells: found} = walk,
+                largest                                       = Math.max(1, sizes[0] ?? 1);
 
             communities = found;
             wellCap     = walk.cap ?? null;
@@ -335,6 +337,8 @@ class ObservatorySceneLayout extends Base {
 
             of.forEach((well, position) => {
                 if (well < 0) {
+                    // reached yet in no well: only a full well could have taken it
+                    reached?.[position] && overCap++;
                     outside.push(position);
                     return
                 }
@@ -458,6 +462,7 @@ class ObservatorySceneLayout extends Base {
             hidden,
             wells,
             wellCap,
+            overCap,
             completeness: scene.completeness ?? null,
             snapshotId
         }
@@ -610,19 +615,54 @@ class ObservatorySceneLayout extends Base {
      * @param {Uint32Array}  targets Neighbour positions
      * @param {Float64Array} pull    Per node, its pull when it may anchor a well, negative otherwise
      * @param {Object}       [geometry=this.strategicGeometry] `{anchors, maxShare}`
-     * @returns {{wells: Number, of: Int32Array, hop: Int32Array, hubs: Number[], sizes: Number[], cap: Number}}
+     * @returns {{wells: Number, of: Int32Array, hop: Int32Array, hubs: Number[], sizes: Number[], cap: Number, reached: Uint8Array}}
+     *     `reached` flags every node the anchors reach ({@link #reachOf}), so a node it flags in no well is one the cap refused
      */
     strategicWellsOf(count, offsets, targets, pull, {anchors = this.strategicGeometry.anchors, maxShare = this.strategicGeometry.maxShare} = {}) {
         const
-            me      = this,
-            chosen  = Array.from({length: count}, (item, node) => node)
+            me     = this,
+            chosen = Array.from({length: count}, (item, node) => node)
                 .filter(node => pull[node] >= 0)
                 .sort((a, b) => pull[b] - pull[a] || (offsets[b + 1] - offsets[b]) - (offsets[a + 1] - offsets[a]) || a - b)
                 .slice(0, anchors),
-            reached = me.walkWells(count, offsets, targets, chosen).hop.reduce((sum, hop) => hop < 0 ? sum : sum + 1, 0),
-            cap     = Math.max(1, Math.ceil(maxShare * reached / Math.max(1, chosen.length)));
+            reach  = me.reachOf(count, offsets, targets, chosen),
+            cap    = Math.max(1, Math.ceil(maxShare * reach.count / Math.max(1, chosen.length)));
 
-        return {...me.numberWells(chosen, me.walkWells(count, offsets, targets, chosen, cap)), cap}
+        return {...me.numberWells(chosen, me.walkWells(count, offsets, targets, chosen, cap)), cap, reached: reach.reached}
+    }
+
+    /**
+     * @summary The nodes a breadth-first walk from the anchors reaches, and how many: the walk without its wells,
+     * one flag per node. What an uncapped walk would put in a well, it reaches.
+     * @param {Number}      count   The nodes
+     * @param {Uint32Array} offsets `count + 1` row starts into `targets`
+     * @param {Uint32Array} targets Neighbour positions
+     * @param {Number[]}    anchors Where the walk starts
+     * @returns {{reached: Uint8Array, count: Number}} `reached` is 1 for each node the walk reaches, anchors included
+     */
+    reachOf(count, offsets, targets, anchors) {
+        const reached = new Uint8Array(count), queue = new Uint32Array(count);
+        let tail = 0;
+
+        for (const node of anchors) {
+            if (!reached[node]) {
+                reached[node]  = 1;
+                queue[tail++] = node
+            }
+        }
+
+        for (let head = 0; head < tail; head++) {
+            const node = queue[head];
+
+            for (let k = offsets[node]; k < offsets[node + 1]; k++) {
+                if (!reached[targets[k]]) {
+                    reached[targets[k]] = 1;
+                    queue[tail++]      = targets[k]
+                }
+            }
+        }
+
+        return {reached, count: tail}
     }
 
     /**

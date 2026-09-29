@@ -662,16 +662,18 @@ class ObservatoryContainer extends Container {
 
     /**
      * @summary Writes the read's line into the head, with the capture instant in the viewer's own clock, the
-     * way the Golden Path text pane stamps it, and a withheld route named beside it.
+     * way the Golden Path text pane stamps it, and a withheld route named beside it. The Golden Path leaf is the
+     * pane's one source for the route's admission: it alone knows whether the route expired.
      * @protected
      */
     updateLine() {
         const
-            me    = this,
-            head  = me.getReference('observatory-head'),
-            route = me.routeEnvelope,
+            me      = this,
+            head    = me.getReference('observatory-head'),
+            route   = me.routeEnvelope,
+            {scene} = me,
             // the line counts what the layout drew, names what the view hid, and what the read carried beyond it
-            drawn = me.scene && {nodes: me.scene.nodes.length, edges: me.scene.edges.length, halo: me.scene.halo, hidden: me.scene.hidden};
+            drawn   = scene && {nodes: scene.nodes.length, edges: scene.edges.length, halo: scene.halo, hidden: scene.hidden, overCap: scene.overCap, wellCap: scene.wellCap};
 
         if (head) {
             head.vdom.cn[1].text = [

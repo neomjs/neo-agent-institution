@@ -457,7 +457,35 @@ test.describe('AgentOS.util.ObservatorySceneLayout — strategic wells at the Br
             walk               = ObservatorySceneLayout.strategicWellsOf(7, offsets, targets, Float64Array.from([3, 1, -1, -1, -1, -1, -1]), {anchors: 2, maxShare: 1});
 
         expect(walk.cap).toBe(4);
-        expect(Array.from(walk.of).filter(well => well < 0), 'the one node beyond the cap').toHaveLength(1)
+        expect(Array.from(walk.of).filter(well => well < 0), 'the one node beyond the cap').toHaveLength(1);
+        expect(Array.from(walk.reached), 'the reach counts it, so the scene can tell it from a node no anchor reaches').toEqual([1, 1, 1, 1, 1, 1, 1])
+    });
+
+    test('the halo says why a node is there: over a full well\'s cap, or reached by no well', () => {
+        const
+            q     = id => `neomjs/neo#${id}`,
+            weigh = {'anchor-a': 3, 'anchor-b': 1},
+            ids   = ['anchor-a', 'anchor-b', 'leaf-a-1', 'leaf-a-2', 'leaf-a-3', 'leaf-a-4', 'leaf-b-1', 'lonely'],
+            read  = graphRead({
+                route: [],
+                nodes: ids.map(id => ({id: q(id), label: id, kind: 'issue', ...(weigh[id] ? {gravityWell: true, strategicWeight: weigh[id]} : {})})),
+                edges: [...['leaf-a-1', 'leaf-a-2', 'leaf-a-3', 'leaf-a-4'].map(leaf => ({from: q('anchor-a'), to: q(leaf)})), {from: q('anchor-b'), to: q('leaf-b-1')}]
+            }),
+            saved = ObservatorySceneLayout.strategicGeometry;
+
+        // two anchors reach 7 nodes; at 1× the mean a well holds 4, so anchor-a keeps three of its four leaves
+        ObservatorySceneLayout.strategicGeometry = {anchors: 2, maxShare: 1};
+
+        try {
+            const scene = ObservatorySceneLayout.fromGraphScene(read, {geography: 'strategic', mail: false});
+
+            expect(scene.wellCap).toBe(4);
+            expect(scene.halo, 'the leaf past the cap and the node no well reaches').toBe(2);
+            expect(scene.overCap, 'the leaf past the cap only').toBe(1);
+            expect(ObservatorySceneLayout.fromGraphScene(read, {geography: 'density', mail: false}).overCap, 'density wells hold no cap').toBe(0)
+        } finally {
+            ObservatorySceneLayout.strategicGeometry = saved
+        }
     });
 
     test('the strategic geography anchors the wells on the Brain\'s anchors and reports its cap; a star without an anchor sits in the halo', () => {
