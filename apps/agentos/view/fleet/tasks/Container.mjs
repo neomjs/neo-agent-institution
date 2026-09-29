@@ -80,9 +80,9 @@ class Container extends BaseContainer {
          */
         ntype: 'fm-tasks-pane',
         /**
-         * @member {String[]} baseCls=['fm-tasks-pane']
+         * @member {String[]} baseCls=['fm-tasks-pane','fm-pane']
          */
-        baseCls: ['fm-tasks-pane'],
+        baseCls: ['fm-tasks-pane', 'fm-pane'],
         /**
          * @member {Neo.controller.Component} controller=TasksController
          * @reactive
@@ -104,22 +104,33 @@ class Container extends BaseContainer {
          */
         items: [{
             ntype : 'container',
-            cls   : ['fm-tasks-head'],
+            cls   : ['fm-pane-head'],
             flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
+            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             items : [{
                 ntype: 'component',
-                cls  : ['fm-tasks-title'],
-                flex : 1,
+                cls  : ['fm-pane-title'],
                 text : 'What is running'
             }, {
                 ntype: 'component',
-                cls  : ['fm-tasks-authority'],
+                cls  : ['fm-pane-meta'],
                 text : 'orchestrator · memory core · knowledge base · query-time'
+            }, {
+                ntype : 'container',
+                cls   : ['fm-pane-actions'],
+                layout: {ntype: 'hbox', align: 'center'},
+                items : [{
+                    module   : Button,
+                    reference: 'tasks-refresh',
+                    text     : 'Refresh',
+                    iconCls  : 'fa fa-rotate',
+                    ui       : 'ghost',
+                    handler  : 'onRefreshClick'
+                }]
             }]
         }, {
             ntype    : 'component',
-            cls      : ['fm-tasks-meta'],
+            cls      : ['fm-pane-meta', 'fm-tasks-meta'],
             flex     : 'none',
             reference: 'tasks-meta',
             text     : 'Tasks not observed yet'
@@ -127,22 +138,6 @@ class Container extends BaseContainer {
             module   : TasksList,
             flex     : 1,
             reference: 'tasks-list'
-        }, {
-            ntype : 'container',
-            cls   : ['fm-tasks-actions'],
-            flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
-            items : [{
-                ntype: 'component',
-                flex : 1
-            }, {
-                module   : Button,
-                reference: 'tasks-refresh',
-                text     : 'Refresh',
-                iconCls  : 'fa fa-rotate',
-                ui       : 'ghost',
-                handler  : 'onRefreshClick'
-            }]
         }]
     }
 

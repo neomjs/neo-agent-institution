@@ -37,16 +37,15 @@ const paneConfig = pane => ({
 
     items: [{
         ntype: 'container',
-        cls  : ['fm-detail-pane-head'],
+        cls  : ['fm-pane-head', 'fm-detail-pane-head'],
         // The vbox stretch default otherwise gives this head `flex: 1 1 0%`, pinning its height
         // below wrapped title/provenance content. The body owns the remaining vertical space.
         flex  : 'none',
-        layout: {ntype: 'hbox', align: 'center'},
+        layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
 
         items: [{
             ntype: 'component',
-            cls  : ['fm-detail-pane-title'],
-            flex : 1,
+            cls  : ['fm-pane-title', 'fm-detail-pane-title'],
             html : pane.title
         }, {
             ntype    : 'component',
@@ -103,9 +102,9 @@ class AgentDetail extends Container {
          */
         ntype: 'fm-agent-detail',
         /**
-         * @member {String[]} baseCls=['fm-agent-detail']
+         * @member {String[]} baseCls=['fm-agent-detail','fm-pane']
          */
-        baseCls: ['fm-agent-detail'],
+        baseCls: ['fm-agent-detail', 'fm-pane'],
         /**
          * Optional SHELL-supplied tool configs appended to the identity header. The pane stays
          * layout-blind: it places these controls at its header's trailing edge and never inspects

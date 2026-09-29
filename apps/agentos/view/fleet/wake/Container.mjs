@@ -35,9 +35,9 @@ class WakeRoutePane extends Container {
          */
         ntype: 'fm-wakeroutes-pane',
         /**
-         * @member {String[]} baseCls=['fm-wakeroutes-pane']
+         * @member {String[]} baseCls=['fm-wakeroutes-pane','fm-pane']
          */
-        baseCls: ['fm-wakeroutes-pane'],
+        baseCls: ['fm-wakeroutes-pane', 'fm-pane'],
         /**
          * Latest wake-routes envelope. `null` is unobserved, never empty.
          * @member {Object|null} snapshot_=null
@@ -54,22 +54,33 @@ class WakeRoutePane extends Container {
          */
         items: [{
             ntype : 'container',
-            cls   : ['fm-wakeroutes-head'],
+            cls   : ['fm-pane-head'],
             flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
+            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             items : [{
                 ntype: 'component',
-                cls  : ['fm-wakeroutes-title'],
-                flex : 1,
+                cls  : ['fm-pane-title'],
                 text : 'Can they be woken?'
             }, {
                 ntype: 'component',
-                cls  : ['fm-wakeroutes-authority'],
+                cls  : ['fm-pane-meta'],
                 text : 'per-seat route axes · query-time · never fused'
+            }, {
+                ntype : 'container',
+                cls   : ['fm-pane-actions'],
+                layout: {ntype: 'hbox', align: 'center'},
+                items : [{
+                    module   : Button,
+                    reference: 'wakeroutes-refresh',
+                    text     : 'Read routes',
+                    iconCls  : 'fa fa-tower-broadcast',
+                    ui       : 'ghost',
+                    handler  : 'up.onRefreshClick'
+                }]
             }]
         }, {
             ntype    : 'component',
-            cls      : ['fm-wakeroutes-meta'],
+            cls      : ['fm-pane-meta', 'fm-wakeroutes-meta'],
             flex     : 'none',
             reference: 'wakeroutes-meta',
             text     : 'Wake routes not observed yet'
@@ -79,22 +90,6 @@ class WakeRoutePane extends Container {
             flex     : 1,
             layout   : {ntype: 'vbox', align: 'stretch'},
             reference: 'wakeroutes-rows'
-        }, {
-            ntype : 'container',
-            cls   : ['fm-wakeroutes-actions'],
-            flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
-            items : [{
-                ntype: 'component',
-                flex : 1
-            }, {
-                module   : Button,
-                reference: 'wakeroutes-refresh',
-                text     : 'Read routes',
-                iconCls  : 'fa fa-tower-broadcast',
-                ui       : 'ghost',
-                handler  : 'up.onRefreshClick'
-            }]
         }]
     }
 

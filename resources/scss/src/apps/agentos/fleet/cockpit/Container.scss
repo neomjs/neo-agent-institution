@@ -215,8 +215,7 @@
     /* the content well is the ONE frame owner (drawer-shell contract items 1 + 3): outer surface,
        outer padding, and the section rhythm live HERE, so every hosted pane — present or future —
        inherits a sane frame without declaring its own. Pane roots stay transparent and frame-free;
-       they own only internal composition (card gaps, inner-body scrolling). The seam is pinned by
-       check-agentos-theme check 5. */
+       they own only internal composition (card gaps, inner-body scrolling). */
     .neo-dashboard-dock-reveal-pane-slot {
         min-height: 0;
         overflow  : hidden;
@@ -239,11 +238,11 @@
             width     : 100%;
         }
 
-        /* AgentDetail is DUAL-MOUNT: pinned/vessel mounts legitimately keep the root frame its own
-           skin declares, but in the transient auto-hide reveal THIS slot already provides the well —
-           without the override the two frames stack (12px slot + 10px 12px root). The ownership
-           split lives slot-side so the other mounts stay untouched; guard check 5 demands it. */
-        > .fm-agent-detail {
+        /* Every pane is DUAL-MOUNT: docked in a strip and windowed it keeps the contract's inset
+           (Viewport.scss `.fm-pane`), but in the transient auto-hide reveal THIS slot already
+           provides the well — without the override the two frames stack (12px slot + 12px root).
+           The ownership split lives slot-side so the other mounts stay untouched. */
+        > .fm-pane {
             padding: 0;
         }
     }

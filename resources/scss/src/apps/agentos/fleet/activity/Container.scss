@@ -1,19 +1,16 @@
 /* Store-backed activity history: stable header + list.Buffered scroll seat. Counts are producer
-   truth, retention is local-ring truth, and the new-events affordance never steals the viewport. */
+   truth, retention is local-ring truth, and the new-events affordance never steals the viewport.
+   The head and the inset are the shell's pane contract (Viewport.scss); the head's trailing cells
+   speak the chrome role beside its title. */
 .fm-activity-stream {
     background    : var(--fm-rail);
     container-name: fm-activity-stream;
     container-type: inline-size;
     min-height    : 0;
     overflow      : hidden;
-    padding       : var(--fm-space-3) 14px;
     position      : relative;
 
     .fm-stream-head {
-        align-items   : center;
-        column-gap    : var(--fm-space-3);
-        display       : flex;
-        flex-wrap     : wrap;
         font          : var(--fm-text-chrome);
         letter-spacing: var(--fm-text-chrome-tracking);
         margin-bottom : var(--fm-space-2);
@@ -48,11 +45,6 @@
         font          : var(--fm-text-chrome);
         letter-spacing: var(--fm-text-chrome-tracking);
         padding       : var(--fm-space-3) 0;
-    }
-
-    .fm-stream-label {
-        color         : var(--fm-ink-dim);
-        text-transform: uppercase;
     }
 
     .fm-stream-counts,
@@ -106,7 +98,6 @@
 
 @container fm-activity-stream (max-width: 560px) {
     .fm-activity-stream .fm-stream-head {
-        column-gap: var(--fm-space-2);
-        font      : var(--fm-text-micro);
+        font: var(--fm-text-micro);
     }
 }

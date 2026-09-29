@@ -50,48 +50,20 @@
         white-space  : nowrap;
     }
 
-    /* the sort/filter cluster: quiet ghost verbs; the pressed state carries the choice.
-       Wrap-capable: at vessel widths the cluster exceeds the zone and hard-clipped at both
-       edges — wrapping engages only when space runs out, so the wide single-line form is
+    /* the sort/filter cluster: the shell's ghost verbs (Viewport.scss); the pressed state carries
+       the choice. Wrap-capable: at vessel widths the cluster exceeds the zone and hard-clipped at
+       both edges — wrapping engages only when space runs out, so the wide single-line form is
        untouched. */
     .fm-fleet-controls {
         flex-wrap: wrap;
         gap      : var(--fm-space-1);
 
-        .fm-roster-sort,
-        .fm-roster-filter,
+        /* the fold chip carries the honest idle count while the density preset is armed: a dashed
+           hairline in every state, so it reads as a count, not a choice */
         .fm-roster-fold {
-            /* These are real Neo Buttons since the list conversion: the engine sizes them through
-               the --button-height token (48px chrome tier) and renders the label inside
-               .neo-button-text with its own type rule — both must be re-bound here or the quiet
-               ghost-verb contract silently loses to the component defaults. */
-            --button-height: auto;
-
-            border       : 1px solid transparent;
-            border-radius: 999px;
-            color        : var(--fm-ink-dim);
-            font         : var(--fm-text-micro);
-            padding      : 2px var(--fm-space-2);
-
-            .neo-button-text {
-                font: inherit;
-            }
-
-            &.pressed {
-                border-color: var(--fm-line-soft);
-                color       : var(--fm-ink);
-            }
-
-            &:focus-visible {
-                outline       : 2px solid var(--fm-signal);
-                outline-offset: 1px;
-            }
-        }
-
-        /* the fold chip carries the honest idle count while the density preset is armed */
-        .fm-roster-fold {
-            border-color: var(--fm-line-soft);
-            border-style: dashed;
+            --button-ghost-border        : 1px dashed var(--fm-line-soft);
+            --button-ghost-border-hover  : 1px dashed var(--fm-line-soft);
+            --button-ghost-border-pressed: 1px dashed var(--fm-line-soft);
         }
     }
 

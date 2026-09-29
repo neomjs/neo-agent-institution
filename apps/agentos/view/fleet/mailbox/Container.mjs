@@ -66,10 +66,11 @@ function isRecognizedPage(page) {
  *  - `degraded` — the source failed for a non-admission reason: the honest reason line.
  *  - `empty` — wired, admitted, zero active rows: an explicit empty state.
  *
- * **Rows** render through {@link AgentOS.view.fleet.mailbox.Grid} — the #24 law-0 buffered
+ * **Rows** render through {@link AgentOS.view.fleet.mailbox.Grid} — the buffered
  * `grid.Container` with one pooled {@link AgentOS.view.fleet.mailbox.RowComponent} per rendered
- * row (the merged #36/#38 sketch is the scored row spec). The grid owns thread collapse and its
- * delegated toggle; this pane keeps the states, the admission gate and the snapshot projection.
+ * row (the row spec is the mailbox sketch, `design/institution-mailbox-pane.html`). The grid
+ * owns thread collapse and its delegated toggle; this pane keeps the states, the admission gate
+ * and the snapshot projection.
  * No paging chrome exists anywhere on the surface (operator direction 2026-08-28): the window
  * scrolls, and its honest end is the only end. Pane-grain freshness reuses the S1 `agentFreshness`
  * closed vocabulary (fresh / stale / lost / `unobserved` as the fail-closed degrade tier) against
@@ -136,14 +137,13 @@ class MailboxPane extends Container {
          */
         items: [{
             ntype : 'container',
-            cls   : ['fm-mailbox-head'],
+            cls   : ['fm-pane-head'],
             flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
+            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
 
             items: [{
                 ntype    : 'component',
-                cls      : ['fm-mailbox-title'],
-                flex     : 1,
+                cls      : ['fm-pane-title'],
                 text     : 'A2A Mailbox',
                 reference: 'mailbox-title'
             }, {
@@ -157,7 +157,7 @@ class MailboxPane extends Container {
             cls      : ['fm-mailbox-state'],
             reference: 'mailbox-state'
         }, {
-            // the rows body IS the buffered grid (#24 law 0): one pooled RowComponent per rendered
+            // the rows body IS the buffered grid: one pooled RowComponent per rendered
             // row, thread collapse delegated inside the grid itself — this pane keeps the honest
             // states, the admission gate and the snapshot projection, and hands the grid its store
             module   : MailboxGrid,

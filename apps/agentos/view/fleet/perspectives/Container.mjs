@@ -35,9 +35,9 @@ class PerspectivesPane extends Container {
          */
         ntype: 'fm-perspectives-pane',
         /**
-         * @member {String[]} baseCls=['fm-perspectives-pane']
+         * @member {String[]} baseCls=['fm-perspectives-pane','fm-pane']
          */
-        baseCls: ['fm-perspectives-pane'],
+        baseCls: ['fm-perspectives-pane', 'fm-pane'],
         /**
          * The projected perspective list, as the cockpit publishes it:
          * `{items: [{layoutId, perspectiveName, title, captureScope}], captureNote}` — the declared
@@ -76,22 +76,21 @@ class PerspectivesPane extends Container {
          */
         items: [{
             ntype : 'container',
-            cls   : ['fm-perspectives-head'],
+            cls   : ['fm-pane-head'],
             flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
+            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             items : [{
                 ntype: 'component',
-                cls  : ['fm-perspectives-title'],
-                flex : 1,
+                cls  : ['fm-pane-title'],
                 text : 'Saved layouts'
             }, {
                 ntype: 'component',
-                cls  : ['fm-perspectives-authority'],
+                cls  : ['fm-pane-meta'],
                 text : 'the dock document as data · apply or capture'
             }]
         }, {
             ntype    : 'component',
-            cls      : ['fm-perspectives-meta'],
+            cls      : ['fm-pane-meta', 'fm-perspectives-meta'],
             flex     : 'none',
             reference: 'perspectives-meta',
             text     : 'No layouts projected yet'

@@ -108,9 +108,9 @@ class ActivityStream extends Container {
          */
         ntype: 'fm-activity-stream',
         /**
-         * @member {String[]} baseCls=['fm-activity-stream']
+         * @member {String[]} baseCls=['fm-activity-stream','fm-pane']
          */
-        baseCls: ['fm-activity-stream'],
+        baseCls: ['fm-activity-stream', 'fm-pane'],
         /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
@@ -169,7 +169,7 @@ class ActivityStream extends Container {
 
         me.add([{
             module   : Container,
-            cls      : ['fm-stream-head'],
+            cls      : ['fm-pane-head', 'fm-stream-head'],
             flex     : 'none',
             // Without an explicit layout the container default (vbox) stamps neo-flex-direction-column
             // onto the element, which outranks the stylesheet's initial row direction — the header is
@@ -178,7 +178,7 @@ class ActivityStream extends Container {
             reference: 'header',
             items    : [{
                 module   : Component,
-                cls      : ['fm-stream-label'],
+                cls      : ['fm-pane-title'],
                 flex     : 1,
                 reference: 'label',
                 text     : 'Live activity'
@@ -382,7 +382,7 @@ class ActivityStream extends Container {
             return
         }
 
-        header.cls = ['fm-stream-head', stateCls, ...(quiet ? ['is-quiet'] : [])];
+        header.cls = ['fm-pane-head', 'fm-stream-head', stateCls, ...(quiet ? ['is-quiet'] : [])];
 
         // the feed's own empty state: an ANSWER with no events says so in the list region; a cold
         // feed (no answer yet) leaves the region quiet — the head already says "not answered yet"
