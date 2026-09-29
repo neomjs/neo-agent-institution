@@ -123,31 +123,41 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryCanvas — a click selec
         expect(selections, 'the index resolves against the held scene; -1 is the empty surface').toEqual([nodeB.id, null])
     });
 
-    test('a new selection or overlay crosses to the worker alone; only a new scene carries the scene, with both, as typed arrays by index and no node object or id', () => {
-        const {canvas} = makeCanvas(), calls = [];
+    test('a new selection, overlay or channel crosses to the worker alone; only a new scene carries the scene, with all of them, as typed arrays by index and no node object or id', () => {
+        const
+            {canvas} = makeCanvas(),
+            calls    = [],
+            heat     = Float32Array.from([1, 0]),
+            lens     = {lens: Uint16Array.from([0, 1]), hues: Float32Array.from([178.75])};
 
         canvas.renderer = {
+            setHeat        : data => calls.push(['setHeat', data]),
+            setLens        : data => calls.push(['setLens', data]),
             setRouteOverlay: data => calls.push(['setRouteOverlay', data]),
             setScene       : data => calls.push(['setScene', data]),
             setSelection   : data => calls.push(['setSelection', data])
         };
 
-        ['routeOverlay', 'selectedId'].forEach(key => Object.defineProperty(canvas, key, {configurable: true, enumerable: true, value: null, writable: true}));
+        ['heat', 'lens', 'routeOverlay', 'selectedId'].forEach(key => Object.defineProperty(canvas, key, {configurable: true, enumerable: true, value: null, writable: true}));
 
         canvas.afterSetSelectedId(nodeB.id, null);
         canvas.afterSetRouteOverlay(false, true);
-        canvas.selectedId = nodeB.id;
+        canvas.afterSetHeat(heat, null);
+        canvas.afterSetLens(lens, null);
+        Object.assign(canvas, {heat, lens, selectedId: nodeB.id});
         canvas.pushScene();
 
-        expect(calls.slice(0, 2)).toEqual([
+        expect(calls.slice(0, 4)).toEqual([
             ['setSelection',    {selected: 1, windowId: 'window-1'}],
-            ['setRouteOverlay', {routeOverlay: false, windowId: 'window-1'}]
+            ['setRouteOverlay', {routeOverlay: false, windowId: 'window-1'}],
+            ['setHeat',         {heat, windowId: 'window-1'}],
+            ['setLens',         {lens, windowId: 'window-1'}]
         ]);
 
-        const [name, {scene, ...rest}] = calls[2];
+        const [name, {scene, ...rest}] = calls[4];
 
         expect(name).toBe('setScene');
-        expect(rest).toEqual({routeOverlay: null, selected: 1, windowId: 'window-1'});
+        expect(rest).toEqual({heat, lens, routeOverlay: null, selected: 1, windowId: 'window-1'});
         expect(scene.positions).toBeInstanceOf(Float32Array);
         expect([scene.clusters, scene.edges, scene.seeds, scene.ranks].every(array => array instanceof Uint32Array)).toBe(true);
         expect(Object.values(scene).filter(value => Array.isArray(value) || (value && typeof value === 'object' && !ArrayBuffer.isView(value))), 'no plain array or object crosses').toEqual([]);

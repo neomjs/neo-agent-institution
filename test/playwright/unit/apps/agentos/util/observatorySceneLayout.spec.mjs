@@ -423,6 +423,88 @@ function anchoredStarsRead(weights = {'hub-1': 2, 'hub-2': 5}) {
     return read
 }
 
+/**
+ * A read carrying the Brain's attribution, state and recency columns, around one instant: an open issue changed
+ * two hours ago (authored by Ada, assigned to Vega), a PR Vega authored that merged an hour ago, an assignment of
+ * Vega's untouched for thirty days, a memory of Vega's from 36 hours ago, a message sent now, a concept without a
+ * source next to the open issue and the memory, an issue whose state the read omits, and one whose stored state
+ * the heat cannot interpret.
+ * @param {Number} now Epoch ms
+ * @returns {Object}
+ */
+function teamRead(now) {
+    const q = id => `neomjs/neo#${id}`, hour = 3600000;
+
+    return graphRead({
+        route: [],
+        nodes: [
+            {id: q('issue-1'),   label: 'open',             kind: 'ISSUE',        authoredBy: '@ada',  assignedTo: ['@vega'], state: 'OPEN',   lastActivityAt: now - 2 * hour},
+            {id: q('pr-2'),      label: 'merged',           kind: 'PULL_REQUEST', authoredBy: '@vega', assignedTo: [],        state: 'MERGED', lastActivityAt: now - hour},
+            {id: q('issue-3'),   label: 'old assignment',   kind: 'ISSUE',        authoredBy: '@ada',  assignedTo: ['@vega'], state: 'OPEN',   lastActivityAt: now - 30 * 24 * hour},
+            {id: q('memory-4'),  label: 'a memory',         kind: 'AGENT_MEMORY', memoryOf  : '@vega',                                         lastActivityAt: now - 36 * hour},
+            {id: q('message-5'), label: 'a message',        kind: 'MESSAGE',                                                                   lastActivityAt: now},
+            {id: q('concept-6'), label: 'a concept',        kind: 'CONCEPT'},
+            {id: q('issue-7'),   label: 'state not in read', kind: 'ISSUE',       authoredBy: '@emmy',                                         lastActivityAt: now},
+            {id: q('issue-8'),   label: 'state not known',  kind: 'ISSUE',                                                   state: 'ON_HOLD', lastActivityAt: now - hour}
+        ],
+        edges: [{from: q('concept-6'), to: q('issue-1')}, {from: q('concept-6'), to: q('memory-4')}]
+    })
+}
+
+test.describe('AgentOS.util.ObservatorySceneLayout — the team lens and the heat, channels over any geography', () => {
+    const
+        NOW   = Date.parse('2026-09-29T12:00:00.000Z'),
+        scene = () => ObservatorySceneLayout.fromGraphScene(teamRead(NOW), {geography: 'communities', mail: true}),
+        at    = (built, id) => built.index[`neomjs/neo#${id}`];
+
+    test('the peers are the read\'s own attribution, each counted once per node, by identity', () => {
+        expect(ObservatorySceneLayout.peersOf(scene())).toEqual([{id: '@ada', nodes: 2}, {id: '@emmy', nodes: 1}, {id: '@vega', nodes: 4}]);
+        expect(ObservatorySceneLayout.peersOf(ObservatorySceneLayout.fromGraphScene(graphRead())), 'a read without attribution names no peer').toEqual([])
+    });
+
+    test('the lens is the union of the checked peers, a shared node taking the first-checked one; nothing checked is no lens', () => {
+        const built = scene(), vega = ObservatorySceneLayout.lensOf(built, ['@vega']), both = ObservatorySceneLayout.lensOf(built, ['@ada', '@vega']);
+
+        expect(['issue-1', 'pr-2', 'issue-3', 'memory-4', 'issue-7', 'concept-6'].map(id => vega[at(built, id)])).toEqual([1, 1, 1, 1, 0, 0]);
+        expect(['issue-1', 'pr-2', 'issue-3', 'memory-4', 'issue-7'].map(id => both[at(built, id)]), 'Ada authored the issues Vega is assigned').toEqual([1, 2, 1, 2, 0]);
+        expect(ObservatorySceneLayout.lensOf(built, [])).toBeNull()
+    });
+
+    test('a role names what a node is to its peer, and an old assignment never reads as current work', () => {
+        const built = scene(), node = id => built.nodes[at(built, id)];
+
+        expect(ObservatorySceneLayout.roleOf(node('issue-1'), ['@vega'], NOW)).toEqual({peer: '@vega', role: 'assigned · changed recently'});
+        expect(ObservatorySceneLayout.roleOf(node('issue-3'), ['@vega'], NOW), 'thirty days untouched: history, not work').toEqual({peer: '@vega', role: 'assigned'});
+        expect(ObservatorySceneLayout.roleOf(node('pr-2'), ['@vega'], NOW)).toEqual({peer: '@vega', role: 'authored · changed recently'});
+        expect(ObservatorySceneLayout.roleOf(node('memory-4'), ['@vega'], NOW)).toEqual({peer: '@vega', role: 'memory · changed recently'});
+        expect(ObservatorySceneLayout.roleOf(node('issue-1'), ['@ada', '@vega'], NOW), 'the first-checked peer names it').toEqual({peer: '@ada', role: 'authored · changed recently'});
+        expect(ObservatorySceneLayout.roleOf(node('concept-6'), ['@vega'], NOW)).toBeNull()
+    });
+
+    test('the heat follows the named events: open work by recency, a merged item retired, memories counted, messages not, a sourceless kind from its neighbours, an unread state unknown', () => {
+        const built = scene(), heat = ObservatorySceneLayout.heatOf(built, NOW), of = id => heat[at(built, id)];
+
+        expect(of('issue-1'), 'two hours into a three-day window').toBeCloseTo(1 - 2 / 72, 5);
+        expect(of('pr-2'), 'merged: retired, however recent').toBe(0);
+        expect(of('issue-3'), 'past the window').toBe(0);
+        expect(of('memory-4')).toBeCloseTo(0.5, 5);
+        expect(of('message-5'), 'volume, not attention').toBe(0);
+        expect(of('concept-6'), 'half its hottest neighbour\'s').toBeCloseTo((1 - 2 / 72) * 0.5, 5);
+        expect(of('issue-7'), 'the read omits its state, so it may have retired').toBeNaN();
+        expect(of('issue-8'), 'a stored state outside the known ones is unknown, never cold').toBeNaN();
+        expect(Array.from(ObservatorySceneLayout.heatOf(ObservatorySceneLayout.fromGraphScene(graphRead()), NOW)).every(Number.isNaN), 'a read without activity times is unknown throughout').toBe(true)
+    });
+
+    test('neither channel moves a node: the lens and the heat read the scene, and the scene is the same with or without them', () => {
+        const once = scene();
+
+        ObservatorySceneLayout.lensOf(once, ['@vega']);
+        ObservatorySceneLayout.heatOf(once, NOW);
+
+        expect(once).toEqual(scene())
+    });
+});
+
 test.describe('AgentOS.util.ObservatorySceneLayout — strategic wells at the Brain\'s anchors, each held to its cap', () => {
     test('strategicWellsOf ranks by pull, not degree: with one well, the strongest pull attracts although another node is better connected', () => {
         // node 0 has degree 3 and pull 1, node 1 has degree 2 and pull 9; node 5 is no anchor
@@ -457,7 +539,35 @@ test.describe('AgentOS.util.ObservatorySceneLayout — strategic wells at the Br
             walk               = ObservatorySceneLayout.strategicWellsOf(7, offsets, targets, Float64Array.from([3, 1, -1, -1, -1, -1, -1]), {anchors: 2, maxShare: 1});
 
         expect(walk.cap).toBe(4);
-        expect(Array.from(walk.of).filter(well => well < 0), 'the one node beyond the cap').toHaveLength(1)
+        expect(Array.from(walk.of).filter(well => well < 0), 'the one node beyond the cap').toHaveLength(1);
+        expect(Array.from(walk.reached), 'the reach counts it, so the scene can tell it from a node no anchor reaches').toEqual([1, 1, 1, 1, 1, 1, 1])
+    });
+
+    test('the halo says why a node is there: over a full well\'s cap, or reached by no well', () => {
+        const
+            q     = id => `neomjs/neo#${id}`,
+            weigh = {'anchor-a': 3, 'anchor-b': 1},
+            ids   = ['anchor-a', 'anchor-b', 'leaf-a-1', 'leaf-a-2', 'leaf-a-3', 'leaf-a-4', 'leaf-b-1', 'lonely'],
+            read  = graphRead({
+                route: [],
+                nodes: ids.map(id => ({id: q(id), label: id, kind: 'issue', ...(weigh[id] ? {gravityWell: true, strategicWeight: weigh[id]} : {})})),
+                edges: [...['leaf-a-1', 'leaf-a-2', 'leaf-a-3', 'leaf-a-4'].map(leaf => ({from: q('anchor-a'), to: q(leaf)})), {from: q('anchor-b'), to: q('leaf-b-1')}]
+            }),
+            saved = ObservatorySceneLayout.strategicGeometry;
+
+        // two anchors reach 7 nodes; at 1× the mean a well holds 4, so anchor-a keeps three of its four leaves
+        ObservatorySceneLayout.strategicGeometry = {anchors: 2, maxShare: 1};
+
+        try {
+            const scene = ObservatorySceneLayout.fromGraphScene(read, {geography: 'strategic', mail: false});
+
+            expect(scene.wellCap).toBe(4);
+            expect(scene.halo, 'the leaf past the cap and the node no well reaches').toBe(2);
+            expect(scene.overCap, 'the leaf past the cap only').toBe(1);
+            expect(ObservatorySceneLayout.fromGraphScene(read, {geography: 'density', mail: false}).overCap, 'density wells hold no cap').toBe(0)
+        } finally {
+            ObservatorySceneLayout.strategicGeometry = saved
+        }
     });
 
     test('the strategic geography anchors the wells on the Brain\'s anchors and reports its cap; a star without an anchor sits in the halo', () => {

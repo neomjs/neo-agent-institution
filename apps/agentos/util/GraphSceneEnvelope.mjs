@@ -19,9 +19,9 @@ import ClosedShape from './ClosedShape.mjs';
  * @type {Object}
  */
 const SHAPE = {
+    // the graph read's own capability; the route's admission is the Golden Path leaf's, the one the pane reads,
+    // so the copy the graph read carries does not land
     capability: {state: null, reason: null},
-    // the Golden Path route's admission, as the producer wrote it; the capability is the graph read's own
-    admission : {admitted: null, fallback: null, reasonCode: null, requiredFacets: [], staleFacets: []},
     scene     : {
         route       : [],
         nodes       : [],
@@ -93,12 +93,14 @@ class GraphSceneEnvelope extends Base {
      * both nodes of the read, or a repeated edge is not drawn, and the line says how many of the read's own
      * were not. What the pane chose to hide is named as such (mail nodes hidden, halo nodes hidden) and a
      * drawn halo says how many it holds, so "not drawn" is left to what the read carried and the pane could
-     * not draw. Without `drawn` it counts the read.
+     * not draw. The nodes a full strategic well refused are named with the cap that refused them; the rest of
+     * the halo is what no well reached. Without `drawn` it counts the read.
      * @param {Object|null} envelope A landed envelope.
      * @param {Function} [formatStamp] `(isoString) → String|null`
-     * @param {Object|null} [drawn=null] `{nodes, edges, halo, hidden}`: what the pane drew from this read, the
-     *     nodes of it in the halo, and `hidden` as {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}
-     *     counts it (`{mail: {nodes, edges}, halo: {nodes, edges}}`)
+     * @param {Object|null} [drawn=null] `{nodes, edges, halo, hidden, overCap, wellCap}`: what the pane drew from
+     *     this read, the nodes of it in the halo, and `hidden`, `overCap` and `wellCap` as
+     *     {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene} gives them (`hidden` is
+     *     `{mail: {nodes, edges}, halo: {nodes, edges}}`)
      * @returns {{currency: String, text: String}}
      */
     static describe(envelope, formatStamp = at => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}Z`, drawn = null) {
@@ -110,13 +112,14 @@ class GraphSceneEnvelope extends Base {
             stamp    = typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? formatStamp(at) : null,
             plural   = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`,
             read     = {nodes: scene?.nodes?.length ?? 0, edges: scene?.edges?.length ?? 0},
-            {edges, halo = 0, hidden = null, nodes} = drawn ?? read,
+            {edges, halo = 0, hidden = null, nodes, overCap = 0, wellCap = null} = drawn ?? read,
             mail     = hidden?.mail ?? {nodes: 0, edges: 0},
             haloed   = hidden?.halo ?? {nodes: 0, edges: 0},
             chosen   = [
                 mail.nodes   > 0 && `${plural(mail.nodes, 'mail node')} hidden`,
                 halo         > 0 && `${halo} in the halo`,
-                haloed.nodes > 0 && `${plural(haloed.nodes, 'halo node')} hidden`
+                haloed.nodes > 0 && `${plural(haloed.nodes, 'halo node')} hidden`,
+                overCap      > 0 && `${plural(overCap, 'node')} over the well cap of ${wellCap}`
             ].filter(Boolean),
             unseen   = [[read.nodes - nodes - mail.nodes - haloed.nodes, 'node'], [read.edges - edges - mail.edges - haloed.edges, 'edge']].filter(([count]) => count > 0).map(([count, word]) => `${plural(count, word)} not drawn`),
             holds    = read.nodes ? [`${plural(nodes, 'node')} · ${plural(edges, 'edge')}`, ...chosen, ...unseen].join(' · ') : null,

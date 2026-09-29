@@ -8,7 +8,7 @@ import GraphSceneEnvelope from '../../../apps/agentos/util/GraphSceneEnvelope.mj
  * instant sits on the visual suite's pinned 2026-07-05 day. Every distinct URL executes once (module cache),
  * so a spec varies the `t` parameter per call.
  *
- * `?state=current|truncated|degraded|routeless|unavailable[&select=<qualified id>]&t=<n>`
+ * `?state=current|team|truncated|degraded|routeless|unavailable[&select=<qualified id>]&t=<n>`
  */
 const
     params   = new URL(import.meta.url).searchParams,
@@ -68,7 +68,26 @@ const
         budget      : {maxNodes: 150, maxEdges: 300, maxBytes: 32768},
         completeness: 'complete'
     },
+    // the Brain's attribution, state and recency on the same read, timed against this worker's clock, the one
+    // the heat reads: Grace's and Vega's work around the route, the operator's closed issue and cold PR, Eos's
+    // issue, and two of Euclid's the read cannot time or place
+    hour       = 3600000,
+    now        = Date.now(),
+    team       = {
+        'issue-12'        : {kind: 'ISSUE',        authoredBy: '@neo-opus-grace', assignedTo: ['@neo-opus-vega'], state: 'OPEN',   lastActivityAt: now - 2 * hour},
+        'issue-8'         : {kind: 'ISSUE',        authoredBy: '@neo-opus-grace', assignedTo: [],                 state: 'OPEN',   lastActivityAt: now - 20 * hour},
+        'issue-64'        : {kind: 'ISSUE',        authoredBy: '@neo-opus-vega',  assignedTo: [],                 state: 'OPEN',   lastActivityAt: now - 40 * hour},
+        'issue-14800'     : {kind: 'ISSUE',        authoredBy: '@tobiu',          assignedTo: [],                 state: 'CLOSED', lastActivityAt: now - hour},
+        'pr-212'          : {kind: 'PULL_REQUEST', authoredBy: '@neo-opus-vega',  assignedTo: [],                 state: 'MERGED', lastActivityAt: now - 3 * hour},
+        'pr-499'          : {kind: 'PULL_REQUEST', authoredBy: '@neo-opus-grace', assignedTo: [],                 state: 'OPEN',   lastActivityAt: now - hour / 2},
+        'pr-19227'        : {kind: 'PULL_REQUEST', authoredBy: '@tobiu',          assignedTo: [],                 state: 'OPEN',   lastActivityAt: now - 120 * hour},
+        'issue-211'       : {kind: 'ISSUE',        authoredBy: '@neo-preview',    assignedTo: [],                 state: 'OPEN',   lastActivityAt: now - 10 * hour},
+        'issue-498'       : {kind: 'ISSUE',        authoredBy: '@neo-gpt',        assignedTo: [],                 state: 'OPEN'},
+        'discussion-19151': {kind: 'DISCUSSION',                                                                  state: 'OPEN',   lastActivityAt: now - 60 * hour},
+        'issue-9999'      : {kind: 'ISSUE',        authoredBy: '@neo-gpt',        assignedTo: [],                                  lastActivityAt: now}
+    },
     wires      = {
+        team       : {capability: {state: 'current', reason: null}, scene: {...scene, nodes: scene.nodes.map(node => ({...node, ...team[node.id.replace('neomjs/neo#', '')]}))}, snapshotId: 'snap-9c32', capturedAt},
         current    : {capability: {state: 'current', reason: null}, scene, snapshotId: 'snap-7f3a', capturedAt},
         truncated  : {capability: {state: 'current', reason: null}, scene: {...scene, completeness: 'truncated'}, snapshotId: 'snap-8b21', capturedAt},
         degraded   : {capability: {state: 'degraded', reason: 'graph-seam-refused'}, scene, snapshotId: 'snap-7f3a', capturedAt},

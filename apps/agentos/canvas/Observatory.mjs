@@ -1,5 +1,5 @@
-import GraphScene      from '../../../node_modules/neo.mjs/src/canvas/GraphScene.mjs';
-import {PALETTES, rgb} from './fmPalette.mjs';
+import GraphScene            from '../../../node_modules/neo.mjs/src/canvas/GraphScene.mjs';
+import {GOLD, PALETTES, rgb} from './fmPalette.mjs';
 
 /**
  * @summary The observatory renderer: {@link Neo.canvas.GraphScene} in the cockpit's ink. The App Worker hands
@@ -13,8 +13,11 @@ import {PALETTES, rgb} from './fmPalette.mjs';
  * community. On the dark skin the points add up, so a dense community glows. The route is an overlay: while it
  * is drawn, its seeds grow by rank and a gold path joins them in route order, gold only while the read is
  * current; switching it off inks the same positions again. A selection fades every node but the selected one
- * and its neighbours, except a drawn route's seeds, which only shrink. An empty scene clears the surface, and
- * the currency line above the canvas says why. A theme change inks the same scene again.
+ * and its neighbours, except a drawn route's seeds, which only shrink. Two channels ink over any geography and move
+ * no node: the team lens draws each checked peer's nodes in the peer's hue and fades the rest, and the heat
+ * overlay brightens and grows what drew attention in the window, fading the cold and greying the unknown. Both
+ * speak for a route's seeds too, and the path, drawn in its seeds' ink, carries their colours. An empty scene
+ * clears the surface, and the currency line above the canvas says why. A theme change inks the same scene again.
  *
  * No node object or id crosses: `pick` answers the engine's index and `locate` takes one, and the App Worker
  * resolves them against the scene it holds. `getStats` adds the pane's facts: its counts, currency,
@@ -34,9 +37,9 @@ class Observatory extends GraphScene {
         /**
          * The community palette: a golden-angle hue step from the signal's hue that skips the `gold` band of hues,
          * the route's alone, and a lightness per skin.
-         * @member {Object} communityTones={gold: {from: 25, span: 60}, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508}
+         * @member {Object} communityTones={gold: GOLD, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508}
          */
-        communityTones: {gold: {from: 25, span: 60}, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508},
+        communityTones: {gold: {...GOLD}, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508},
         /**
          * The engine's level of detail with the fitted camera one level in: it draws every node, and the
          * centroids only once the camera is drawn back past the whole graph.
@@ -56,18 +59,19 @@ class Observatory extends GraphScene {
          * `nodeMin`, so a whole graph reads as dust that glows where it gathers. While the route is drawn a seed
          * shrinks down the route from the first rank to the last between its two bounds, at any scale. Under a
          * selection the selected node grows by the `selected` factor, never below the last seed so it stands out
-         * of the dust, and a node outside its neighbourhood shrinks by the `faded` one.
-         * @member {Object} nodeSizes={faded: 0.6, node: 5, nodeMin: 0.4, nodeScaleFrom: 400, seedMax: 10, seedMin: 6, selected: 1.6}
+         * of the dust, and a node outside its neighbourhood shrinks by the `faded` one. Under the heat a node grows
+         * from `faded` when cold to `heat` at its hottest.
+         * @member {Object} nodeSizes={faded: 0.6, heat: 1.5, node: 5, nodeMin: 0.4, nodeScaleFrom: 400, seedMax: 10, seedMin: 6, selected: 1.6}
          */
-        nodeSizes: {faded: 0.6, node: 5, nodeMin: 0.4, nodeScaleFrom: 400, seedMax: 10, seedMin: 6, selected: 1.6},
+        nodeSizes: {faded: 0.6, heat: 1.5, node: 5, nodeMin: 0.4, nodeScaleFrom: 400, seedMax: 10, seedMin: 6, selected: 1.6},
         /**
-         * Remote method access: the engine's set plus `locate`, the inverse of `pick`, and the two changes that
-         * ink the drawn scene again without handing it over: the selection and the route overlay.
-         * @member {Object} remote={app: ['locate', 'setRouteOverlay', 'setSelection']}
+         * Remote method access: the engine's set plus `locate`, the inverse of `pick`, and the changes that ink
+         * the drawn scene again without handing it over: the heat, the lens, the route overlay and the selection.
+         * @member {Object} remote={app: ['locate', 'setHeat', 'setLens', 'setRouteOverlay', 'setSelection']}
          * @protected
          */
         remote: {
-            app: ['locate', 'setRouteOverlay', 'setSelection']
+            app: ['locate', 'setHeat', 'setLens', 'setRouteOverlay', 'setSelection']
         },
         /**
          * Faint edges, so the web shows where it is dense and the nodes stay in front, and a route of small
@@ -83,6 +87,17 @@ class Observatory extends GraphScene {
         singleton: true
     }
 
+    /**
+     * The heat of the drawn scene's nodes, 0…1 or `NaN` for unknown, or `null` while the overlay is off.
+     * @member {Float32Array|null} heat=null
+     */
+    heat = null
+    /**
+     * The team lens of the drawn scene, or `null` while no peer is checked: `lens` holds 1 + a node's peer index,
+     * 0 for none, and `hues` a hue per checked peer.
+     * @member {Object|null} lens=null
+     */
+    lens = null
     /**
      * Whether the route is drawn over the graph.
      * @member {Boolean} routeOverlay=true
@@ -120,6 +135,8 @@ class Observatory extends GraphScene {
      */
     clearGraph() {
         super.clearGraph();
+        this.heat        = null;
+        this.lens        = null;
         this.selected    = -1;
         this.sourceScene = null
     }
@@ -130,13 +147,20 @@ class Observatory extends GraphScene {
      * @returns {Object}
      */
     getStats() {
-        const {routeOverlay, selected, sourceScene} = this, stats = super.getStats();
+        const {heat, lens, routeOverlay, selected, sourceScene} = this, stats = super.getStats();
+
+        let unknown = 0, lensed = 0;
+
+        heat?.forEach(value => Number.isNaN(value) && unknown++);
+        lens?.lens.forEach(peer => peer && lensed++);
 
         return {
             ...stats,
             completeness: sourceScene?.completeness ?? null,
             counts      : sourceScene ? {...stats.counts, nodes: sourceScene.count, edges: sourceScene.edges.length / 2, seeds: sourceScene.seeds.length, communities: sourceScene.communities} : null,
             currency    : sourceScene?.currency ?? null,
+            heat        : heat ? {nodes: heat.length - unknown, unknown} : null,
+            lens        : lens ? {peers: lens.hues.length, nodes: lensed} : null,
             routeOverlay,
             sceneFrames : stats.frames - this.sceneFrame,
             selected,
@@ -184,9 +208,11 @@ class Observatory extends GraphScene {
      * @param {Object|null} scene A wire scene (`{count, positions, clusters, edges, seeds, ranks, currency, communities, empty}`)
      * @param {Number}      [selectedIndex=-1] The index of the node to highlight; one the scene lacks highlights nothing
      * @param {Boolean}     [routeOverlay=true] Whether the route is drawn
+     * @param {Object}      [channels] The overlays by node index: `heat` ({@link #heat}) and `lens` ({@link #lens}),
+     *     each `null` while off; the ones this renderer holds by default
      * @returns {Object|null} `{clusters, colors, edges, paths, positions, sizes}`
      */
-    ink(scene, selectedIndex = -1, routeOverlay = true) {
+    ink(scene, selectedIndex = -1, routeOverlay = true, {heat: heatIn = this.heat, lens: lensIn = this.lens} = {}) {
         if (!scene || scene.empty) {
             return null
         }
@@ -194,6 +220,9 @@ class Observatory extends GraphScene {
         const
             me        = this,
             {clusters, count, edges, ranks, seeds} = scene,
+            // a channel of another scene's nodes is not this scene's: it waits for the scene it belongs to
+            heat      = heatIn?.length === count ? heatIn : null,
+            lens      = lensIn?.lens?.length === count ? lensIn : null,
             nodeSizes = me.nodeSizes,
             selected  = me.constructor.nodeIndex(scene, selectedIndex),
             palette   = PALETTES[me.theme] || PALETTES.dark,
@@ -201,6 +230,11 @@ class Observatory extends GraphScene {
             // only a current read spends the route's gold
             seed      = rgb(scene.currency === 'current' ? palette.route : palette.ink),
             faded     = rgb(palette.line),
+            // a peer's hue in the communities' saturation and the skin's lightness; the heat runs from the line's
+            // ink to the signal's, and the unknown takes the dim ink, apart from the cold
+            peerInk   = lens ? Array.from(lens.hues, hue => me.hsl(hue, me.communityTones.saturation, me.communityTones.lightness[me.theme] ?? me.communityTones.lightness.dark)) : null,
+            hot       = rgb(palette.signal),
+            unknown   = rgb(palette.inkDim),
             lit       = selected < 0 ? null : new Set([selected]),
             rankOf    = routeOverlay ? new Map(Array.from(seeds, (node, position) => [node, ranks[position]])) : null,
             lastRank  = Math.max(1, ...ranks),
@@ -220,11 +254,24 @@ class Observatory extends GraphScene {
                 rank = rankOf?.get(index),
                 base = rank === undefined ? nodeSize : lastRank > 1 ? nodeSizes.seedMax - (rank - 1) / (lastRank - 1) * (nodeSizes.seedMax - nodeSizes.seedMin) : nodeSizes.seedMax,
                 out  = lit !== null && !lit.has(index),
-                halo = clusters[index] >= haloFrom;
+                halo = clusters[index] >= haloFrom,
+                peer = lens ? lens.lens[index] : 0,
+                warm = heat ? heat[index] : 0,
+                // a lens fades what no checked peer holds, the heat lights the halo too, and without either the halo is dust
+                dim  = out || (lens ? !peer : halo && !heat),
+                grow = !heat ? 1 : Number.isNaN(warm) ? nodeSizes.faded : nodeSizes.faded + (nodeSizes.heat - nodeSizes.faded) * warm;
 
-            // a drawn route keeps its colour under a selection: it recedes in size only
-            colors.set(rank !== undefined ? seed : out || halo ? faded : tones[clusters[index]], index * 3);
-            sizes[index] = index === selected ? Math.max(base * nodeSizes.selected, nodeSizes.seedMin) : base * (out || halo ? nodeSizes.faded : 1)
+            // the lens and the heat colour every node they speak for, a route's too, whose path and ranks still draw
+            // it; a route node nothing speaks for keeps its gold under a selection or a lens, receding in size only
+            if (!out && !lens && heat && !Number.isNaN(warm)) {
+                for (let channel = 0; channel < 3; channel++) {
+                    colors[index * 3 + channel] = faded[channel] + (hot[channel] - faded[channel]) * warm
+                }
+            } else {
+                colors.set(!out && peer ? peerInk[peer - 1] : !out && !lens && heat ? unknown : rank !== undefined ? seed : dim ? faded : tones[clusters[index]], index * 3)
+            }
+
+            sizes[index] = index === selected ? Math.max(base * nodeSizes.selected, nodeSizes.seedMin) : base * (dim ? nodeSizes.faded : grow)
         }
 
         return {
@@ -270,6 +317,34 @@ class Observatory extends GraphScene {
     }
 
     /**
+     * @summary Remote entry: the heat of the drawn scene's nodes, or `null` to switch the overlay off. The drawn
+     * scene is inked again; nothing moves.
+     * @param {Object}            data
+     * @param {Float32Array|null} data.heat {@link #heat}
+     * @param {String}            [data.windowId]
+     */
+    setHeat({heat = null}) {
+        const me = this;
+
+        me.sourceScene && super.setScene(me.ink(me.sourceScene, me.selected, me.routeOverlay, {heat, lens: me.lens}));
+        me.heat = heat
+    }
+
+    /**
+     * @summary Remote entry: the team lens of the drawn scene, or `null` to lift it. The drawn scene is inked
+     * again; nothing moves.
+     * @param {Object}      data
+     * @param {Object|null} data.lens {@link #lens}
+     * @param {String}      [data.windowId]
+     */
+    setLens({lens = null}) {
+        const me = this;
+
+        me.sourceScene && super.setScene(me.ink(me.sourceScene, me.selected, me.routeOverlay, {heat: me.heat, lens}));
+        me.lens = lens
+    }
+
+    /**
      * @summary Remote entry: whether the route is drawn. The drawn scene is inked again; nothing moves.
      * @param {Object}  data
      * @param {Boolean} data.routeOverlay
@@ -283,20 +358,25 @@ class Observatory extends GraphScene {
     }
 
     /**
-     * @summary Remote entry: the App Worker hands over the wire scene, or `null`, with the selected index and
-     * the overlay; it is inked and drawn. The pane's scene and selection change only once the engine took the
-     * inked scene, so a refused scene leaves `pick` and the stats answering for the scene still drawn.
-     * @param {Object}      data
-     * @param {Object|null} data.scene A wire scene ({@link AgentOS.util.ObservatorySceneLayout#wire})
-     * @param {Number}      [data.selected=-1] An index the scene lacks selects nothing
-     * @param {Boolean}     [data.routeOverlay=true]
-     * @param {String}      [data.windowId]
+     * @summary Remote entry: the App Worker hands over the wire scene, or `null`, with the selected index, the
+     * overlay and the channels by the new scene's node indices; it is inked and drawn. The pane's scene, selection
+     * and channels change only once the engine took the inked scene, so a refused scene leaves `pick` and the stats
+     * answering for the scene still drawn.
+     * @param {Object}            data
+     * @param {Object|null}       data.scene A wire scene ({@link AgentOS.util.ObservatorySceneLayout#wire})
+     * @param {Float32Array|null} [data.heat=null] {@link #heat}
+     * @param {Object|null}       [data.lens=null] {@link #lens}
+     * @param {Number}            [data.selected=-1] An index the scene lacks selects nothing
+     * @param {Boolean}           [data.routeOverlay=true]
+     * @param {String}            [data.windowId]
      * @throws {Error} when the engine refuses the inked scene
      */
-    setScene({routeOverlay = true, scene, selected = -1}) {
+    setScene({heat = null, lens = null, routeOverlay = true, scene, selected = -1}) {
         const me = this, next = scene ?? null, index = me.constructor.nodeIndex(next, selected);
 
-        super.setScene(me.ink(next, index, routeOverlay));
+        super.setScene(me.ink(next, index, routeOverlay, {heat, lens}));
+        me.heat         = heat;
+        me.lens         = lens;
         me.routeOverlay = routeOverlay;
         me.sceneFrame   = me.frames;
         me.sourceScene  = next;

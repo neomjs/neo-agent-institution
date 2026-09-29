@@ -14,7 +14,7 @@ import GraphSceneEnvelope from '../../../../../../../../apps/agentos/util/GraphS
 
 const current = (scene = {}) => ({
     capability: {state: 'current', reason: null},
-    // the route's admission as the live plane writes it: five fields, carried whole
+    // the route's admission as the live plane writes it; the landing leaves it to the Golden Path leaf
     admission : {admitted: true, fallback: 'current', reasonCode: 'projection-current', requiredFacets: ['issues', 'discussions'], staleFacets: []},
     scene     : {
         route       : ['neomjs/neo#issue-1'],
@@ -37,8 +37,7 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
     test('the blank declares every key and reads unobserved', () => {
         const blank = GraphSceneEnvelope.blank();
 
-        expect(Object.keys(blank)).toEqual(['capability', 'admission', 'scene', 'snapshotId', 'capturedAt']);
-        expect(blank.admission, 'no read, so no admission is claimed').toEqual({admitted: null, fallback: null, reasonCode: null, requiredFacets: [], staleFacets: []});
+        expect(Object.keys(blank)).toEqual(['capability', 'scene', 'snapshotId', 'capturedAt']);
         expect(blank.scene).toEqual({route: [], nodes: [], edges: [], counts: {nodes: null, edges: null, seeds: null},
             budget: {maxNodes: null, maxEdges: null, maxBytes: null}, completeness: null});
         expect(GraphSceneEnvelope.describe(blank)).toEqual({currency: 'unobserved', text: 'Unobserved'})
@@ -50,17 +49,21 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
         expect(landed.capability).toEqual({state: 'degraded', reason: 'route-not-fresh'});
         expect(landed.scene.nodes).toEqual([]);
         expect(landed.snapshotId).toBeNull();
-        expect(GraphSceneEnvelope.fromWire(current())).toEqual(current())
+
+        const graph = current();
+
+        delete graph.admission;
+        expect(GraphSceneEnvelope.fromWire(current()), 'everything but the route\'s admission').toEqual(graph)
     });
 
-    test('the route\'s admission lands whole, a withheld one with its stale facets; an unserved route keeps its reason and its graph', () => {
+    test('the route\'s admission stays the Golden Path leaf\'s: a withheld one never lands with the graph read; an unserved route keeps its reason and its graph', () => {
         const
             withheld = {admitted: false, fallback: 'last-known-good', reasonCode: 'projection-stale', requiredFacets: ['issues', 'discussions'], staleFacets: ['discussions']},
             landed   = GraphSceneEnvelope.fromWire({...current(), admission: withheld}),
             unserved = GraphSceneEnvelope.fromWire({...current({route: []}), capability: {state: 'degraded', reason: 'route-sidecar-missing'}, admission: null});
 
-        expect(landed.admission).toEqual(withheld);
-        expect(unserved.admission.admitted, 'no route answered, so nothing is admitted or refused').toBeNull();
+        expect(landed, 'one admission source for the pane: the leaf that also knows when the route expired').not.toHaveProperty('admission');
+        expect(GraphSceneEnvelope.describe(landed).text, 'the graph read\'s line never speaks for the route').not.toMatch(/withheld|stale|admission/);
         expect(unserved.scene.nodes, 'the graph is served either way').toHaveLength(2);
         expect(GraphSceneEnvelope.describe(unserved).text).toMatch(/^Degraded · route-sidecar-missing · 2 nodes/);
         expect(GraphSceneEnvelope.describe(current({route: []})).currency, 'a served route with no items is a current read').toBe('current')
@@ -105,6 +108,18 @@ test.describe('graphSceneEnvelope — one closed shape, one honest line', () => 
             .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · 1 mail node hidden · 2 halo nodes hidden · complete');
         expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 3, edges: 1, halo: 2, hidden: {mail: {nodes: 1, edges: 1}, halo: none}}).text, 'a node the pane could not draw is still named')
             .toBe('Current · captured viewer 22:05 · 3 nodes · 1 edge · 1 mail node hidden · 2 in the halo · 1 node not drawn · complete')
+    });
+
+    test('the line names the nodes a full well refused, with the cap that refused them, and a cap that refused none stays out', () => {
+        const
+            landed = GraphSceneEnvelope.fromWire(current()),
+            stamp  = at => `viewer ${at.slice(11, 16)}`,
+            none   = {mail: {nodes: 0, edges: 0}, halo: {nodes: 0, edges: 0}};
+
+        expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 2, edges: 1, halo: 2, hidden: none, overCap: 1, wellCap: 4}).text)
+            .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · 2 in the halo · 1 node over the well cap of 4 · complete');
+        expect(GraphSceneEnvelope.describe(landed, stamp, {nodes: 2, edges: 1, halo: 2, hidden: none, overCap: 0, wellCap: 4}).text)
+            .toBe('Current · captured viewer 22:05 · 2 nodes · 1 edge · 2 in the halo · complete')
     });
 
     test('a route item resolves only to a seed the read holds: a qualified id as itself, a bare id when one origin holds it', () => {

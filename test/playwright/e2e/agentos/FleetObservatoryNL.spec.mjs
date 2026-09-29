@@ -43,6 +43,17 @@ const
         snapshotId: 'snap-7f3a',
         capturedAt: CAPTURED_AT,
         ...envelope
+    }),
+    HOUR        = 3600000,
+    // the Brain's attribution, state and recency on the same nodes, around the instant an arm runs: an open PR
+    // the operator authored and Vega is assigned, Vega's issue untouched for thirty days, the operator's closed
+    // one, Eos's issue whose state the read omits, and an issue without an activity time
+    team        = now => ({
+        [q('pr-101')]   : {kind: 'PULL_REQUEST', authoredBy: '@tobiu',         assignedTo: ['@neo-opus-vega'], state: 'OPEN',   lastActivityAt: now - HOUR},
+        [q('issue-202')]: {kind: 'ISSUE',        authoredBy: '@neo-opus-vega', assignedTo: [],                 state: 'OPEN',   lastActivityAt: now - 30 * 24 * HOUR},
+        [q('issue-303')]: {kind: 'ISSUE',        authoredBy: '@tobiu',         assignedTo: [],                 state: 'CLOSED', lastActivityAt: now - 2 * HOUR},
+        [q('issue-404')]: {kind: 'ISSUE',        authoredBy: '@neo-preview',   assignedTo: [],                                  lastActivityAt: now},
+        [q('issue-505')]: {kind: 'ISSUE',                                                                      state: 'OPEN'}
     });
 
 /**
@@ -403,5 +414,43 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         expect(levels).toEqual(['mid', 'near', 'mid', 'far']);
         await picture('100k · far')
+    });
+
+    test('the team lens and the heat draw over the same places: a checked peer reaches the worker, the rows name each node\'s role, the Heat toggle counts what it cannot read, and no node moves', async ({page, neuralLink}) => {
+        const {currency, land, locate, pane, settle, stats} = await openObservatory(page, neuralLink), attribution = team(Date.now());
+
+        await land(read({nodes: NODES.map(node => ({...node, ...attribution[node.id]}))}));
+        await expect(currency).toHaveText(/^Current · captured .+ · complete$/);
+        await settle();
+
+        const
+            places = () => Promise.all(NODES.map(({id}) => locate(id))),
+            before = await places(),
+            peers  = pane.locator('.fm-observatory-peer-list .neo-list-item'),
+            vega   = peers.filter({hasText: '@neo-opus-vega'}),
+            heat   = pane.getByRole('button', {name: 'Heat'});
+
+        await expect(peers).toHaveText([/@neo-opus-vega.*2 nodes/, /@neo-preview.*1 node/, /@tobiu.*2 nodes/]);
+        expect((await stats()).lens, 'nothing checked, no lens').toBeNull();
+
+        await vega.click();
+        await expect(currency).toHaveText(/ · lens · 2 nodes · 1 peer$/);
+        await expect.poll(async () => (await stats()).lens).toEqual({peers: 1, nodes: 2});
+        await expect(pane.locator('.fm-observatory-node-list .fm-observatory-row-role'), 'thirty days untouched: authored, not changed recently').toHaveText(['assigned · changed recently', 'authored']);
+
+        await heat.click();
+        await expect(heat).toHaveAttribute('aria-pressed', 'true');
+        await expect(currency).toHaveText(/ · lens · 2 nodes · 1 peer · heat · last 3 days · 2 unknown$/);
+        await expect.poll(async () => (await stats()).heat).toEqual({nodes: 5, unknown: 2});
+        expect(await places(), 'the lens and the heat move no node').toEqual(before);
+
+        await vega.click();
+        await heat.click();
+        await expect.poll(async () => {
+            const {heat, lens} = await stats();
+
+            return [heat, lens]
+        }).toEqual([null, null]);
+        await expect(currency).toHaveText(/ · complete$/)
     });
 });

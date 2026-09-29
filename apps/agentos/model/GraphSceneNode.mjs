@@ -6,8 +6,10 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  *
  * @summary One node of the Observatory's bounded graph read, as the scene layout derived it
  * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}): the feed's own fields, plus the route
- * rank a seed carries, the hop to the nearest seed and the count of the feed's relations touching it.
- * The key is the origin-qualified id, the one form every selection speaks.
+ * rank a seed carries, the hop to the nearest seed and the count of the feed's relations touching it,
+ * and under the team lens what the node is to its checked peer, with that peer's hue
+ * ({@link AgentOS.util.ObservatorySceneLayout#roleOf}). The key is the origin-qualified id, the one form every
+ * selection speaks.
  */
 class GraphSceneNode extends Model {
     static config = {
@@ -42,6 +44,14 @@ class GraphSceneNode extends Model {
             name        : 'relations',
             type        : 'Integer',
             defaultValue: 0
+        }, {
+            name        : 'role',
+            type        : 'String',
+            defaultValue: null
+        }, {
+            name        : 'roleHue',
+            type        : 'Number',
+            defaultValue: null
         }]
     }
 }

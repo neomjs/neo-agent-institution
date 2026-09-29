@@ -3,12 +3,15 @@ import Container               from '../../../../../node_modules/neo.mjs/src/con
 import GoldenPathEnvelope      from '../../../util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope      from '../../../util/GraphSceneEnvelope.mjs';
 import GraphSceneNodes         from '../../../store/GraphSceneNodes.mjs';
+import GraphScenePeers         from '../../../store/GraphScenePeers.mjs';
 import GraphSceneRelations     from '../../../store/GraphSceneRelations.mjs';
 import ObservatoryCanvas       from './ObservatoryCanvas.mjs';
 import ObservatoryNodeList     from './ObservatoryNodeList.mjs';
+import ObservatoryPeerList     from './ObservatoryPeerList.mjs';
 import ObservatoryRelationList from './ObservatoryRelationList.mjs';
 import ObservatorySceneLayout  from '../../../util/ObservatorySceneLayout.mjs';
 import ViewerTime              from '../../../util/ViewerTime.mjs';
+import {peerHues}              from '../../../canvas/fmPalette.mjs';
 
 /**
  * What the hover slot and the selection strip say while they have no node to name.
@@ -29,6 +32,13 @@ const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 
  * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas and the lists. The
  * Golden Path leaf only qualifies the line: its route's admission is not the graph read's to report, so a
  * withheld route is named beside the graph read's own words.
+ *
+ * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, at the top of the
+ * side panel, lists every peer the read attributes nodes to, each in its own hue; checking peers draws their nodes
+ * in their hues, the union of them, fades the rest, and names in the node list what each node is to its peer
+ * ({@link AgentOS.util.ObservatorySceneLayout#roleOf}). The Heat toggle brightens what drew attention within the
+ * stated window by a named event taxonomy ({@link AgentOS.util.ObservatorySceneLayout#heatOf}), and the line says
+ * how much of it is unknown.
  *
  * The lists stay at a human scale: up to {@link #listBudget} nodes, the route's seeds first, and the selected
  * node always; the relations of the selected node under the same budget. A title says when a list holds less
@@ -90,14 +100,21 @@ class ObservatoryContainer extends Container {
          */
         halo_: true,
         /**
+         * Whether the heat overlay is drawn: what drew attention within the stated window brightens and grows, the
+         * cold fades and the unknown greys. The Heat toggle flips it; nothing moves.
+         * @member {Boolean} heatOverlay_=false
+         * @reactive
+         */
+        heatOverlay_: false,
+        /**
          * @member {Object} layout={ntype: 'vbox', align: 'stretch'}
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The head (title, the read's line, the hovered node), the strip (the selection, then the Mail, Halo and
-         * Route toggles, so the read's line keeps the head's whole width) and the body: the side panel with the
-         * node list and the selected node's relations, which the canvas joins in {@link #onConstructed} where a
-         * canvas worker exists. The strip always holds its row, so a selection never resizes the canvas.
+         * The head (title, the read's line, the hovered node), the strip (the selection, then the Mail, Halo, Heat
+         * and Route toggles, so the read's line keeps the head's whole width) and the body: the side panel with the
+         * team lens's peers, the node list and the selected node's relations, which the canvas joins in
+         * {@link #onConstructed} where a canvas worker exists. The strip always holds its row, so a selection never resizes the canvas.
          * @member {Object[]} items
          */
         items: [{
@@ -141,6 +158,15 @@ class ObservatoryContainer extends Container {
                 ui       : 'ghost'
             }, {
                 module   : Button,
+                cls      : ['fm-observatory-toggle', 'fm-observatory-heat'],
+                flex     : 'none',
+                pressed  : false,
+                reference: 'heat-toggle',
+                text     : 'Heat',
+                tooltip  : 'Brighten what drew attention within the stated window: open work, memories and gaps',
+                ui       : 'ghost'
+            }, {
+                module   : Button,
                 cls      : ['fm-observatory-toggle', 'fm-observatory-route'],
                 flex     : 'none',
                 pressed  : true,
@@ -162,6 +188,16 @@ class ObservatoryContainer extends Container {
                 layout   : {ntype: 'vbox', align: 'stretch'},
                 reference: 'observatory-side',
                 items    : [{
+                    ntype    : 'component',
+                    cls      : ['fm-observatory-side-title'],
+                    flex     : 'none',
+                    reference: 'observatory-peers-title',
+                    text     : 'Team'
+                }, {
+                    module   : ObservatoryPeerList,
+                    flex     : 'none',
+                    reference: 'observatory-peers'
+                }, {
                     ntype    : 'component',
                     cls      : ['fm-observatory-side-title'],
                     flex     : 'none',
@@ -191,6 +227,14 @@ class ObservatoryContainer extends Container {
          * @reactive
          */
         mail_: false,
+        /**
+         * The identities the team lens shows, in the order they were checked: their nodes take their hues, a node two
+         * of them share takes the first one's, and the rest fades. A peer a new read no longer lists stays checked
+         * and matches nothing until it returns. Nothing moves.
+         * @member {String[]} lensPeers_=[]
+         * @reactive
+         */
+        lensPeers_: [],
         /**
          * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf. Only its
          * currency is read: a withheld route qualifies the line.
@@ -231,6 +275,21 @@ class ObservatoryContainer extends Container {
      */
     nodeStore = null
     /**
+     * The overlays last handed to the canvas, by the current scene's node indices ({@link #channels}).
+     * @member {Object} overlays={heat: null, lens: null}
+     */
+    overlays = {heat: null, lens: null}
+    /**
+     * The peers of the current scene's team lens, one record each, by identity.
+     * @member {AgentOS.store.GraphScenePeers|null} peerStore=null
+     */
+    peerStore = null
+    /**
+     * True while a new read's peer list gets its checks back, so the restore is not read as the viewer's choice.
+     * @member {Boolean} restoringPeers=false
+     */
+    restoringPeers = false
+    /**
      * Each node's relations in the current read, by layout index.
      * @member {Uint32Array|null} relationCounts=null
      */
@@ -259,6 +318,7 @@ class ObservatoryContainer extends Container {
         const me = this;
 
         me.nodeStore     = Neo.create(GraphSceneNodes);
+        me.peerStore     = Neo.create(GraphScenePeers);
         me.relationStore = Neo.create(GraphSceneRelations);
 
         super.construct(config)
@@ -276,13 +336,17 @@ class ObservatoryContainer extends Container {
         const
             me        = this,
             nodes     = me.getReference('observatory-nodes'),
+            peers     = me.getReference('observatory-peers'),
             relations = me.getReference('observatory-relations');
 
         nodes.store     = me.nodeStore;
+        peers.store     = me.peerStore;
         relations.store = me.relationStore;
         nodes    .on('select', me.onNodeListSelect,     me);
         relations.on('select', me.onRelationListSelect, me);
+        peers.selectionModel.on('selectionChange', me.onPeerSelectionChange, me);
         me.getReference('halo-toggle') .set({handler: 'onHaloToggleClick',  handlerScope: me});
+        me.getReference('heat-toggle') .set({handler: 'onHeatToggleClick',  handlerScope: me});
         me.getReference('mail-toggle') .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle').set({handler: 'onRouteToggleClick', handlerScope: me});
 
@@ -294,6 +358,7 @@ class ObservatoryContainer extends Container {
                 routeOverlay: me.routeOverlay,
                 scene       : me.scene,
                 selectedId  : me.selectedId,
+                ...me.channels(),
                 listeners   : {nodeHover: me.onNodeHover, nodeSelect: me.onNodeSelect, scope: me}
             })
         } else {
@@ -302,6 +367,7 @@ class ObservatoryContainer extends Container {
 
         me.updateLine();
         me.updateToggles();
+        me.fillPeerList();
         me.fillNodeList();
         me.syncLists();
         me.updateSelection()
@@ -312,10 +378,11 @@ class ObservatoryContainer extends Container {
      * @param {...*} args
      */
     destroy(...args) {
-        const {nodeStore, relationStore} = this;
+        const {nodeStore, peerStore, relationStore} = this;
 
         super.destroy(...args);
         nodeStore?.destroy();
+        peerStore?.destroy();
         relationStore?.destroy()
     }
 
@@ -351,6 +418,48 @@ class ObservatoryContainer extends Container {
         if (oldValue !== undefined) {
             this.applyScene(this.layOut(this.envelope), 'view');
             this.updateToggles()
+        }
+    }
+
+    /**
+     * Triggered after the heatOverlay config got changed: the canvas draws or drops the heat, the toggle says
+     * which, and the line says what the heat could not read. Nothing moves.
+     * @param {Boolean} value
+     * @param {Boolean|undefined} oldValue
+     * @protected
+     */
+    afterSetHeatOverlay(value, oldValue) {
+        const me = this;
+
+        if (oldValue !== undefined) {
+            // read before the canvas, which a pane without a canvas worker lacks: the line counts the heat either way
+            const {heat} = me.channels();
+
+            me.getReference('observatory-canvas')?.set({heat});
+            me.updateToggles();
+            me.updateLine()
+        }
+    }
+
+    /**
+     * Triggered after the lensPeers config got changed: the canvas draws the checked peers' nodes in their hues,
+     * the node list names what each node is to its peer, and the line counts the lens. Nothing moves.
+     * @param {String[]} value
+     * @param {String[]|undefined} oldValue
+     * @protected
+     */
+    afterSetLensPeers(value, oldValue) {
+        const me = this;
+
+        if (oldValue !== undefined) {
+            const {lens} = me.channels();
+
+            me.getReference('observatory-canvas')?.set({lens});
+            me.peerStore.items.forEach(record => record.set({hue: me.hueOf(record.id)}));
+            me.fillNodeList();
+            me.syncLists();
+            me.syncPeers();
+            me.updateLine()
         }
     }
 
@@ -415,6 +524,7 @@ class ObservatoryContainer extends Container {
         const me = this, {selectedId} = me;
 
         me.scene = scene;
+        me.channels();
         me.updateLine();
 
         if (selectedId && !Object.hasOwn(scene.index, selectedId)) {
@@ -425,7 +535,9 @@ class ObservatoryContainer extends Container {
             me.selectedId = null
         }
 
-        me.getReference('observatory-canvas')?.set({scene, selectedId: me.selectedId});
+        // the overlays are indexed by the new scene's nodes, so they cross with it in one batch
+        me.getReference('observatory-canvas')?.set({scene, selectedId: me.selectedId, ...me.overlays});
+        me.fillPeerList();
         me.fillNodeList();
         me.syncLists();
         me.updateSelection()
@@ -440,6 +552,22 @@ class ObservatoryContainer extends Container {
      */
     beforeSetGeography(value, oldValue) {
         return this.beforeSetEnumValue(value, oldValue, 'geography', ObservatoryContainer.geographies)
+    }
+
+    /**
+     * @summary The two overlays over the current scene, by its node indices, kept in {@link #overlays}: the heat
+     * while the Heat toggle is on, and the lens with one hue per checked peer while a peer is checked; each `null`
+     * otherwise.
+     * @returns {{heat: Float32Array|null, lens: Object|null}}
+     * @protected
+     */
+    channels() {
+        const me = this, {heatOverlay, lensPeers, scene} = me, lens = ObservatorySceneLayout.lensOf(scene, lensPeers);
+
+        return me.overlays = {
+            heat: heatOverlay ? ObservatorySceneLayout.heatOf(scene) : null,
+            lens: lens && {lens, hues: Float32Array.from(peerHues(lensPeers))}
+        }
     }
 
     /**
@@ -504,6 +632,38 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary Fills the team lens's peers from the current scene, by identity, each with its hue and node
+     * count, and checks again the ones the lens holds, so a new read keeps the viewer's choice. The title says
+     * when the read attributes no node, so an empty list is never read as a lens without peers to offer.
+     * @protected
+     */
+    fillPeerList() {
+        const me = this, peers = ObservatorySceneLayout.peersOf(me.scene), title = me.getReference('observatory-peers-title');
+
+        me.peerStore.clear();
+        peers.length && me.peerStore.add(peers.map(({id, nodes}) => ({hue: me.hueOf(id), id, nodes})));
+
+        if (title) {
+            title.text = peers.length ? 'Team' : 'Team · no peer in this read'
+        }
+
+        me.syncPeers()
+    }
+
+    /**
+     * @summary The hue a peer is drawn in: while checked, its place among the lens's hues, where a peer checked
+     * before it may hold its own; otherwise its own place in the palette.
+     * @param {String} identity
+     * @returns {Number} Degrees
+     * @protected
+     */
+    hueOf(identity) {
+        const {lensPeers} = this, at = lensPeers.indexOf(identity);
+
+        return at < 0 ? peerHues([identity])[0] : peerHues(lensPeers)[at]
+    }
+
+    /**
      * @summary The scene of a read as this view places it: its geography, and mail and the halo as the toggles
      * have them.
      * @param {Object|null} envelope The bound envelope
@@ -522,6 +682,13 @@ class ObservatoryContainer extends Container {
      */
     onHaloToggleClick() {
         this.halo = !this.halo
+    }
+
+    /**
+     * @summary The Heat toggle was clicked: the heat overlay flips.
+     */
+    onHeatToggleClick() {
+        this.heatOverlay = !this.heatOverlay
     }
 
     /**
@@ -582,6 +749,25 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary The viewer checked or unchecked a peer, and the lens keeps its check order: an unchecked peer
+     * leaves it, a checked one joins its end, and a checked peer this read does not list keeps its place. A new
+     * read restoring its checks is no choice.
+     * @param {Object}   data
+     * @param {String[]} data.selection The checked rows' ids
+     */
+    onPeerSelectionChange({selection}) {
+        const me = this, list = me.getReference('observatory-peers');
+
+        if (!me.restoringPeers && list) {
+            const
+                checked = new Set(selection.map(itemId => me.peerStore.get(list.getItemRecordId(itemId))?.id).filter(Boolean)),
+                kept    = me.lensPeers.filter(id => checked.has(id) || !me.peerStore.get(id));
+
+            me.lensPeers = [...kept, ...[...checked].filter(id => !kept.includes(id))]
+        }
+    }
+
+    /**
      * @summary A relation row was chosen: the selection moves to the node at its other end.
      * @param {Object} data
      * @param {Object[]} data.records
@@ -600,13 +786,21 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary A node of the current scene as a node-list row, with its relations in the read.
+     * @summary A node of the current scene as a node-list row, with its relations in the read and, under the
+     * lens, what it is to its peer and that peer's hue.
      * @param {Object} node A layout node
      * @returns {Object}
      * @protected
      */
-    rowOf({hop, id, kind, label, rank}) {
-        return {hop, id, kind, label, rank, relations: this.relationCounts?.[this.scene.index[id]] ?? 0}
+    rowOf(node) {
+        const {hop, id, kind, label, rank} = node, lens = ObservatorySceneLayout.roleOf(node, this.lensPeers);
+
+        return {
+            hop, id, kind, label, rank,
+            relations: this.relationCounts?.[this.scene.index[id]] ?? 0,
+            role     : lens?.role ?? null,
+            roleHue  : lens ? this.hueOf(lens.peer) : null
+        }
     }
 
     /**
@@ -661,22 +855,54 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary Puts the peer list's checks on the peers the lens holds that the list shows, without reading the
+     * restore as the viewer's choice.
+     * @protected
+     */
+    syncPeers() {
+        const me = this, model = me.getReference('observatory-peers')?.selectionModel;
+
+        if (model) {
+            const records = me.lensPeers.map(id => me.peerStore.get(id)).filter(Boolean);
+
+            me.restoringPeers = true;
+
+            try {
+                model.deselectAll(true);
+                records.length && model.select(records)
+            } finally {
+                me.restoringPeers = false
+            }
+        }
+    }
+
+    /**
      * @summary Writes the read's line into the head, with the capture instant in the viewer's own clock, the
-     * way the Golden Path text pane stamps it, and a withheld route named beside it.
+     * way the Golden Path text pane stamps it, and a withheld route named beside it. The Golden Path leaf is the
+     * pane's one source for the route's admission: it alone knows whether the route expired. Under the lens the
+     * line counts its nodes and peers; under the heat it states the window and how many nodes it could not read.
      * @protected
      */
     updateLine() {
         const
-            me    = this,
-            head  = me.getReference('observatory-head'),
-            route = me.routeEnvelope,
+            me             = this,
+            head           = me.getReference('observatory-head'),
+            route          = me.routeEnvelope,
+            {scene}        = me,
+            {heat, lens}   = me.overlays,
+            plural         = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`,
+            days           = ObservatorySceneLayout.attention.windowMs / 86400000,
+            lensed         = lens ? lens.lens.reduce((sum, peer) => sum + (peer > 0 ? 1 : 0), 0) : 0,
+            unknown        = heat ? heat.reduce((sum, value) => sum + (Number.isNaN(value) ? 1 : 0), 0) : 0,
             // the line counts what the layout drew, names what the view hid, and what the read carried beyond it
-            drawn = me.scene && {nodes: me.scene.nodes.length, edges: me.scene.edges.length, halo: me.scene.halo, hidden: me.scene.hidden};
+            drawn          = scene && {nodes: scene.nodes.length, edges: scene.edges.length, halo: scene.halo, hidden: scene.hidden, overCap: scene.overCap, wellCap: scene.wellCap};
 
         if (head) {
             head.vdom.cn[1].text = [
                 GraphSceneEnvelope.describe(me.envelope, at => ViewerTime.formatViewerTime(at)?.text ?? null, drawn).text,
-                GoldenPathEnvelope.currency(route) === 'withheld' && `route withheld · ${GoldenPathEnvelope.withheldReason(route)}`
+                GoldenPathEnvelope.currency(route) === 'withheld' && `route withheld · ${GoldenPathEnvelope.withheldReason(route)}`,
+                lens && `lens · ${plural(lensed, 'node')} · ${plural(me.lensPeers.length, 'peer')}`,
+                heat && `heat · last ${plural(days, 'day')}${unknown ? ` · ${unknown} unknown` : ''}`
             ].filter(Boolean).join(' · ');
             head.update()
         }
@@ -684,13 +910,13 @@ class ObservatoryContainer extends Container {
 
     /**
      * @summary The strip's toggles show their state: Mail pressed while mail is drawn, Halo while the halo is,
-     * Route while the route is, for the eye and for assistive technology alike.
+     * Heat while the heat is, Route while the route is, for the eye and for assistive technology alike.
      * @protected
      */
     updateToggles() {
         const me = this;
 
-        [['mail-toggle', me.mail], ['halo-toggle', me.halo], ['route-toggle', me.routeOverlay]].forEach(([reference, pressed]) => {
+        [['mail-toggle', me.mail], ['halo-toggle', me.halo], ['heat-toggle', me.heatOverlay], ['route-toggle', me.routeOverlay]].forEach(([reference, pressed]) => {
             const toggle = me.getReference(reference);
 
             if (toggle) {

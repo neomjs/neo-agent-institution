@@ -56,6 +56,9 @@
     --fm-signal        : #0f766e;
     // the Golden Path's own ink: its route in the Observatory, gold and nowhere else
     --fm-route         : #a16207;
+    // a peer's ink is its hue (`--fm-peer-hue`, drawn from the identity) at this lightness; the Observatory's canvas
+    // inks its communities and peers at the same one (`communityTones`), and the two change together
+    --fm-peer-lightness: 42%;
 
     --fm-state-ok      : #047857;
     --fm-state-idle    : #b45309;

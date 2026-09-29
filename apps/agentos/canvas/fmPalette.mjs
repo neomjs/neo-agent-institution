@@ -16,6 +16,49 @@ export const PALETTES = {
 };
 
 /**
+ * The band of hues the route owns alone: no community and no peer takes a hue inside it.
+ * @type {Object}
+ */
+export const GOLD = {from: 25, span: 60};
+
+/**
+ * The peers' palette: eight hues spread evenly over the wheel outside the gold band, far enough apart to tell
+ * apart at the peer lightness of either skin, which hues hashed from the whole wheel are not.
+ * @type {Number[]}
+ */
+export const PEER_HUES = Array.from({length: 8}, (_, place) => (GOLD.from + GOLD.span + (place + .5) * (360 - GOLD.span) / 8) % 360);
+
+/**
+ * @summary The hues of peers shown together, in the order they were checked. Each takes its identity's place in
+ * {@link PEER_HUES}, drawn from the identity alone by an FNV-1a hash so a peer keeps it on every read, every
+ * machine and both skins, unless a peer before it holds that place; then it takes the next free one. Two peers
+ * shown together share a hue only once the palette has run out.
+ * @param {String[]} identities
+ * @returns {Number[]} Degrees, one per identity
+ */
+export function peerHues(identities) {
+    const taken = new Set();
+
+    return identities.map(identity => {
+        let hash = 2166136261, place;
+
+        for (let i = 0; i < identity.length; i++) {
+            hash = Math.imul(hash ^ identity.charCodeAt(i), 16777619)
+        }
+
+        place = (hash >>> 0) % PEER_HUES.length;
+
+        for (let step = 0; step < PEER_HUES.length && taken.has(place); step++) {
+            place = (place + 1) % PEER_HUES.length
+        }
+
+        taken.add(place);
+
+        return PEER_HUES[place]
+    })
+}
+
+/**
  * @summary A hex colour as the three unit floats a WebGL attribute takes.
  * @param {String} hex `#rrggbb`
  * @returns {Number[]} `[r, g, b]`, each 0…1
