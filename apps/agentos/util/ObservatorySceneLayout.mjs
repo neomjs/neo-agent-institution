@@ -36,11 +36,18 @@ class ObservatorySceneLayout extends Base {
          * The heat overlay's named attention events, per node kind that carries a source (the Brain's
          * `activitySources`): whether that field records attention (`true`), a change that is not (`false`: a
          * message is volume, not attention, and a file's mtime moves with every checkout), or attention only while
-         * the item is open (`'open'`, so a merged or closed item retires). A kind this map does not name takes
+         * the item is open (`'open'`, read through {@link #workStates}). A kind this map does not name takes
          * `spread` of its hottest neighbour's heat ({@link #attention}).
          * @member {Object} heatEvents
          */
         heatEvents: {AGENT_MEMORY: true, DIRECTORY: false, DISCUSSION: 'open', FILE: false, ISSUE: 'open', KB_GAP: true, MESSAGE: false, PULL_REQUEST: 'open', RETROSPECTIVE: true, TOOLING_GAP: true},
+        /**
+         * The work-item states the heat can interpret, as the Brain's ingestion stores them: an `open` item heats by
+         * its recency, and a `retired` one reads cold however recent. A state this map does not name is one the
+         * read cannot interpret, so its heat is unknown, as if it were missing.
+         * @member {Object} workStates={CLOSED: 'retired', MERGED: 'retired', OPEN: 'open'}
+         */
+        workStates: {CLOSED: 'retired', MERGED: 'retired', OPEN: 'open'},
         /**
          * Geometry of the communities geography in unit space; the camera orbits the origin a few units out.
          * Community centres lie on a sphere of `radius`. The largest community fills a ball of at most `spread`,
@@ -494,13 +501,13 @@ class ObservatorySceneLayout extends Base {
     /**
      * @summary The heat overlay over a scene: per node, how much attention it drew within the
      * {@link #attention} window, by the named events of {@link #heatEvents}, which also name the kinds that carry
-     * a source. An event's heat falls from 1 at its instant to 0 at the window's end. An open work item heats; a
-     * merged or closed one retires to 0. Its state and its time are what the Brain's last ingestion stored, and the
-     * read does not say how fresh that is, so an item merged since still heats until the next ingestion. This is a
-     * work item's lifecycle, never a task's. A node of a kind the events do not name takes a share of its hottest
-     * neighbour's heat. Heat is unknown (`NaN`) where the read cannot say: a read that carries no activity time at
-     * all (an older Brain), a node without its time, or a work item whose state the read omits. The heat moves no
-     * node; it is a channel beside the positions.
+     * a source. An event's heat falls from 1 at its instant to 0 at the window's end. An open work item heats, and
+     * a merged or closed one retires to 0, by {@link #workStates}. Its state and its time are what the Brain's last
+     * ingestion stored, and the read does not say how fresh that is, so an item merged since still heats until the
+     * next ingestion. This is a work item's lifecycle, never a task's. A node of a kind the events do not name takes
+     * a share of its hottest neighbour's heat. Heat is unknown (`NaN`) where the read cannot say: a read that carries
+     * no activity time at all (an older Brain), a node without its time, or a work item whose state the read omits
+     * or cannot interpret. The heat moves no node; it is a channel beside the positions.
      * @param {Object} scene A {@link #fromGraphScene} scene
      * @param {Number} [now=Date.now()] Epoch ms
      * @returns {Float32Array} Per node, 0…1, or `NaN` for unknown
@@ -526,7 +533,9 @@ class ObservatorySceneLayout extends Base {
             } else if (event === false) {
                 heat[index] = 0
             } else if (event === 'open') {
-                heat[index] = node.state === null ? NaN : node.state === 'OPEN' ? fade(node.lastActivityAt) : 0
+                const state = me.workStates[node.state];
+
+                heat[index] = state === 'open' ? fade(node.lastActivityAt) : state === 'retired' ? 0 : NaN
             } else if (event === true) {
                 heat[index] = fade(node.lastActivityAt)
             }

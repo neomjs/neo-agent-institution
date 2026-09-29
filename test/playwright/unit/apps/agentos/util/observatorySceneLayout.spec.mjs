@@ -427,7 +427,8 @@ function anchoredStarsRead(weights = {'hub-1': 2, 'hub-2': 5}) {
  * A read carrying the Brain's attribution, state and recency columns, around one instant: an open issue changed
  * two hours ago (authored by Ada, assigned to Vega), a PR Vega authored that merged an hour ago, an assignment of
  * Vega's untouched for thirty days, a memory of Vega's from 36 hours ago, a message sent now, a concept without a
- * source next to the open issue and the memory, and an issue whose state the read omits.
+ * source next to the open issue and the memory, an issue whose state the read omits, and one whose stored state
+ * the heat cannot interpret.
  * @param {Number} now Epoch ms
  * @returns {Object}
  */
@@ -443,7 +444,8 @@ function teamRead(now) {
             {id: q('memory-4'),  label: 'a memory',         kind: 'AGENT_MEMORY', memoryOf  : '@vega',                                         lastActivityAt: now - 36 * hour},
             {id: q('message-5'), label: 'a message',        kind: 'MESSAGE',                                                                   lastActivityAt: now},
             {id: q('concept-6'), label: 'a concept',        kind: 'CONCEPT'},
-            {id: q('issue-7'),   label: 'state not in read', kind: 'ISSUE',       authoredBy: '@emmy',                                         lastActivityAt: now}
+            {id: q('issue-7'),   label: 'state not in read', kind: 'ISSUE',       authoredBy: '@emmy',                                         lastActivityAt: now},
+            {id: q('issue-8'),   label: 'state not known',  kind: 'ISSUE',                                                   state: 'ON_HOLD', lastActivityAt: now - hour}
         ],
         edges: [{from: q('concept-6'), to: q('issue-1')}, {from: q('concept-6'), to: q('memory-4')}]
     })
@@ -489,6 +491,7 @@ test.describe('AgentOS.util.ObservatorySceneLayout — the team lens and the hea
         expect(of('message-5'), 'volume, not attention').toBe(0);
         expect(of('concept-6'), 'half its hottest neighbour\'s').toBeCloseTo((1 - 2 / 72) * 0.5, 5);
         expect(of('issue-7'), 'the read omits its state, so it may have retired').toBeNaN();
+        expect(of('issue-8'), 'a stored state outside the known ones is unknown, never cold').toBeNaN();
         expect(Array.from(ObservatorySceneLayout.heatOf(ObservatorySceneLayout.fromGraphScene(graphRead()), NOW)).every(Number.isNaN), 'a read without activity times is unknown throughout').toBe(true)
     });
 

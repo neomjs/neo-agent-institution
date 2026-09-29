@@ -210,7 +210,7 @@ apps/agentos/util/NameSlot.mjs
     3fe98fcc20425319dc01e37d905079564c308f3f
 
 apps/agentos/util/ObservatorySceneLayout.mjs
-    5a8d9f5ae29e2f5786b17a92c890e5713e7ed09d
+    6fac0202d5ba4fba4753d00933ea4882483e1a2a
 
 apps/agentos/util/SourceHealth.mjs
     f92b9d452aa9754f764a2e530fac73da98e83b84

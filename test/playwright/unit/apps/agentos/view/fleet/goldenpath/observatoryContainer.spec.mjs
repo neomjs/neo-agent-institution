@@ -500,6 +500,9 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         expect(lineOf(pane), 'a state the read omits and a missing time are unknown').toMatch(/ · heat · last 3 days · 2 unknown$/);
         expect(places()).toEqual(before);
 
+        pane.envelope = teamRead({'issue-202': {state: 'ON_HOLD'}}, {snapshotId: 'snap-7d11'});
+        expect(lineOf(pane), 'a state the heat cannot interpret joins the unknown count, never the cold').toMatch(/ · heat · last 3 days · 3 unknown$/);
+
         pane.envelope = graphRead({}, {snapshotId: 'snap-8b21'});
         expect(lineOf(pane), 'a read without activity times is unknown throughout').toMatch(/ · heat · last 3 days · 7 unknown$/);
 
