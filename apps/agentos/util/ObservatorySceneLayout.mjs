@@ -495,7 +495,9 @@ class ObservatorySceneLayout extends Base {
      * @summary The heat overlay over a scene: per node, how much attention it drew within the
      * {@link #attention} window, by the named events of {@link #heatEvents}, which also name the kinds that carry
      * a source. An event's heat falls from 1 at its instant to 0 at the window's end. An open work item heats; a
-     * merged or closed one retires to 0. A node of a kind the events do not name takes a share of its hottest
+     * merged or closed one retires to 0. Its state and its time are what the Brain's last ingestion stored, and the
+     * read does not say how fresh that is, so an item merged since still heats until the next ingestion. This is a
+     * work item's lifecycle, never a task's. A node of a kind the events do not name takes a share of its hottest
      * neighbour's heat. Heat is unknown (`NaN`) where the read cannot say: a read that carries no activity time at
      * all (an older Brain), a node without its time, or a work item whose state the read omits. The heat moves no
      * node; it is a channel beside the positions.
