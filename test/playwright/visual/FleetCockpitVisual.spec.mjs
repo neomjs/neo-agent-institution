@@ -975,4 +975,43 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForTimeout(400);
         await expect(cockpit).toHaveScreenshot('cockpit-empty-light.png')
     });
+
+    test('every strip and rail pane at 1280 — its head, its inset and its verbs, as the operator reads them', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+        await landFleetTasks(page, sampleTasks);
+
+        const settle = async () => {
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+            await page.mouse.move(0, 0);
+            await page.waitForTimeout(400)
+        };
+
+        for (const [label, root, golden] of [
+            ['Activity', '.fm-activity-stream', 'pane-activity.png'], ['Tasks', '.fm-tasks-pane', 'pane-tasks.png'],
+            ['Memories', '.fm-memories-pane', 'pane-memories.png'], ['Mailbox', '.fm-operator-mailbox', 'pane-mailbox.png'],
+            ['Catch up', '.fm-catch-up-pane', 'pane-catch-up.png'], ['Golden Path', '.fm-golden-path-pane', 'pane-golden-path.png'],
+            ['Perspectives', '.fm-perspectives-pane', 'pane-perspectives.png'], ['Add agent', '.fm-add-agent-form', 'pane-add-agent.png'],
+            ['Wake routes', '.fm-wakeroutes-pane', 'pane-wake-routes.png']
+        ]) {
+            const name  = new RegExp(`^\\s*${label}\\s*$`, 'i'),
+                  strip = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+                  tab   = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first(),
+                  pane  = page.locator(`${root}:visible`).first();
+
+            await tab.click();
+            await expect(pane).toBeVisible({timeout: 30000});
+            await settle();
+            await expect(pane, label).toHaveScreenshot(golden)
+        }
+
+        // the inspector's section heads, drilled into the first resident
+        const detail = page.locator('.fm-agent-detail:visible').first();
+
+        await page.locator('.fm-agent-card').first().click();
+        await expect(detail.locator('.fm-detail-pane-head').first()).toBeVisible({timeout: 30000});
+        await page.waitForFunction(() => [...document.querySelectorAll('.fm-agent-detail img')].every(img => img.complete), null, {timeout: 10000});
+        await settle();
+        await expect(detail, 'Agent detail').toHaveScreenshot('pane-agent-detail.png')
+    });
 });
