@@ -6,8 +6,9 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  *
  * @summary One of the feed's relations touching the Observatory's selected node, seen from that node: the
  * relation type exactly as the feed carried it (`null` where the graph named none), its direction, and the
- * node at the other end. The key is `position`, the relation's index in the selected node's list, because
- * two relations can join the same pair under different types.
+ * node at the other end. A header record opens each group of one type and direction and counts it. The key is
+ * `position`, the row's index in the selected node's list, because two relations can join the same pair under
+ * different types.
  */
 class GraphSceneRelation extends Model {
     static config = {
@@ -44,6 +45,15 @@ class GraphSceneRelation extends Model {
         }, {
             name        : 'otherKind',
             type        : 'String',
+            defaultValue: null
+        }, {
+            // a group's header carries its `type` and `direction`, and how many relations the group holds in the read
+            name        : 'isHeader',
+            type        : 'Boolean',
+            defaultValue: false
+        }, {
+            name        : 'count',
+            type        : 'Integer',
             defaultValue: null
         }]
     }

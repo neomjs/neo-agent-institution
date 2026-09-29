@@ -1,22 +1,28 @@
 /* The observatory pane — the graph read as a 3D scene on the FM tonal stack, the Golden Path's route an
-   overlay: the read's line and the hovered node in the chrome role above, the selection strip with the view's
-   toggles below them, the canvas worker's WebGL surface filling the rest on the panel ground (the surface clears
-   to transparent, so the ground is this stylesheet's). The scene is painted from the same tokens by the
-   renderer (apps/agentos/canvas/Observatory.mjs), which reads the token VALUES from their one mirror
+   overlay: the read's line and the hovered node in the chrome role above, the canvas worker's WebGL surface
+   filling the rest on the panel ground (the surface clears to transparent, so the ground is this stylesheet's)
+   beside the side panel's sections. The scene is painted from the same tokens by the renderer
+   (apps/agentos/canvas/Observatory.mjs), which reads the token VALUES from their one mirror
    (apps/agentos/canvas/fmPalette.mjs) because a worker has no stylesheet to read. */
 .fm-observatory-pane {
     background: var(--fm-panel);
     min-height: 0;
 
-    .fm-observatory-strip {
-        border-bottom: thin solid var(--fm-line-soft);
-        min-width    : 0;
+    /* the View section's rows and the selected node's actions: the shell's ghost verb at the chrome scale
+       (Viewport.scss `.fm-pane-actions`), whose pressed state carries the choice; they lead their row, so the head's
+       trailing-slot margin does not apply */
+    .fm-observatory-view-row,
+    .fm-observatory-selected-actions {
+        margin-left: 0;
     }
 
-    /* the strip's toggles (Mail, Halo, Route, Heat): the shell's ghost verb (Viewport.scss), whose pressed
-       state carries the choice */
-    .fm-observatory-toggle {
-        margin-right: var(--fm-space-2);
+    .fm-observatory-view-row {
+        padding: 0 var(--fm-space-3) var(--fm-space-2);
+    }
+
+    .fm-observatory-view-label {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);
     }
 
     .fm-observatory-head {
@@ -68,29 +74,76 @@
         }
     }
 
-    /* the selected node keeps its own case, like the hovered one, and so does a cleared selection's
-       reason, which names an id; both of those without a node read dim, and the hint is chrome */
-    .fm-observatory-selection {
-        padding      : var(--fm-space-1) var(--fm-space-3);
-        font         : var(--fm-text-chrome);
-        color        : var(--fm-ink);
-        min-width    : 0;
-        white-space  : nowrap;
-        overflow     : hidden;
-        text-overflow: ellipsis;
+    /* the selected node: its label in its own case, like the hovered one, then the kind and the facts dim; a
+       cleared selection's reason names an id and keeps its case, and the hint is chrome. The id is a read-only
+       field without chrome, the text the Copy action selects */
+    .fm-observatory-selected {
+        min-height: 0;
+    }
 
-        &.is-empty {
-            color: var(--fm-ink-dim);
+    .fm-observatory-selected-head {
+        align-items: baseline;
+        display    : flex;
+        gap        : var(--fm-space-2);
+        min-width  : 0;
+        padding    : var(--fm-space-1) var(--fm-space-3) 0;
+
+        .fm-observatory-selected-label {
+            color        : var(--fm-ink);
+            font         : var(--fm-text-body);
+            min-width    : 0;
+            overflow     : hidden;
+            text-overflow: ellipsis;
+            white-space  : nowrap;
+
+            /* a clearing note wraps: its reason is the point */
+            &.is-empty {
+                color      : var(--fm-ink-dim);
+                white-space: normal;
+            }
+
+            &.is-hint {
+                color         : var(--fm-ink-dim);
+                font          : var(--fm-text-chrome);
+                letter-spacing: var(--fm-text-chrome-tracking);
+                text-transform: uppercase;
+            }
         }
 
-        &.is-hint {
-            letter-spacing: var(--fm-text-chrome-tracking);
-            text-transform: uppercase;
+        .fm-observatory-selected-kind {
+            color: var(--fm-ink-dim);
+            flex : none;
+            font : var(--fm-text-micro);
         }
     }
 
-    /* the side panel: the node list and the selected node's relations, a fixed column beside the surface
-       (or the whole body where no canvas worker draws) on the chrome scale, each row one line */
+    .fm-observatory-selected-facts {
+        color  : var(--fm-ink-dim);
+        font   : var(--fm-text-detail);
+        padding: var(--fm-space-1) var(--fm-space-3) 0;
+    }
+
+    .fm-observatory-selected-actions {
+        padding: var(--fm-space-1) var(--fm-space-3);
+    }
+
+    .fm-observatory-selected-no-source {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);
+    }
+
+    .fm-observatory-selected-id {
+        background: transparent;
+        border    : none;
+        color     : var(--fm-ink-dim);
+        font      : var(--fm-text-micro);
+        margin    : 0 var(--fm-space-3) var(--fm-space-1);
+        min-width : 0;
+        padding   : 0;
+    }
+
+    /* the side panel: the team, the view, the nodes and the selected node, a fixed column beside the surface
+       (or the whole body where no canvas worker draws) on the chrome scale, each list row one line */
     .fm-observatory-side {
         border-left: thin solid var(--fm-line-soft);
         min-height : 0;
@@ -104,11 +157,11 @@
         letter-spacing: var(--fm-text-chrome-tracking);
         padding       : var(--fm-space-1) var(--fm-space-3);
         text-transform: uppercase;
+    }
 
-        /* the selection strip above already draws the line */
-        &:first-child {
-            border-top: none;
-        }
+    /* the head above already draws the panel's first line */
+    .fm-observatory-side > .fm-observatory-side-title:first-child {
+        border-top: none;
     }
 
     /* the team lens: the engine's check list, a few rows high, each peer in its own hue */
@@ -176,6 +229,19 @@
         .fm-observatory-row-kind {
             color: var(--fm-ink-dim);
             flex : none;
+        }
+
+        /* a relation group's header: its type, direction and count, on the pane's own ground because the engine
+           keeps a header in view while its group scrolls under it */
+        .neo-list-header {
+            background-color: var(--fm-panel);
+            font            : var(--fm-text-chrome);
+        }
+
+        .fm-observatory-row-count {
+            color      : var(--fm-ink-dim);
+            flex       : none;
+            margin-left: auto;
         }
 
         /* under the team lens: what the node is to its peer, in the peer's hue */

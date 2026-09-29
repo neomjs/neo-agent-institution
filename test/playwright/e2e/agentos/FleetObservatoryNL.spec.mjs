@@ -97,7 +97,8 @@ async function openObservatory(page, neuralLink) {
 
             await page.mouse.click(rect.x + at.x, rect.y + at.y)
         },
-        selection: pane.locator('.fm-observatory-selection'),
+        // the selected node's label, or why the selection cleared
+        selection: pane.locator('.fm-observatory-selected-label'),
         settle   : async () => {
             await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
             await page.waitForTimeout(400)
@@ -140,7 +141,8 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const rect = await pane.locator('canvas').boundingBox();
 
         await selectNode(q('pr-101'));
-        await expect(selection).toHaveText('Selected · first route item · pull · neomjs/neo#pr-101 · rank 1 · 2 relations (1 authored, 1 mentions)');
+        await expect(selection).toHaveText('first route item');
+        await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText('Golden Path rank 1');
         await expect(hover).toHaveText('first route item · pull · rank 1');
         await page.waitForTimeout(400);
         expect((await stats()).selectedId).toBe(q('pr-101'));
@@ -177,7 +179,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         expect(shuffled.selectedId).toBe(q('pr-101'));
         expect(shuffled.camera.dist, 'a taken camera keeps its distance across scenes').toBe(zoomed.camera.dist);
-        await expect(selection).toHaveText(/^Selected · first route item · /);
+        await expect(selection).toHaveText('first route item');
 
         // a read without the selected id clears the selection and says why
         await land(read({
@@ -197,7 +199,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         // a click on the empty surface clears a selection
         await selectNode(q('issue-202'));
-        await expect(selection).toHaveText(/^Selected · second route item · /);
+        await expect(selection).toHaveText('second route item');
         await page.mouse.click(rect.x + 6, rect.y + 6);
         await expect(selection).toHaveText('No node selected');
 
@@ -229,26 +231,32 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const
             {land, pane, selection, selectNode, settle, stats} = await openObservatory(page, neuralLink),
             rows      = pane.locator('.fm-observatory-node-list .neo-list-item'),
-            relations = pane.locator('.fm-observatory-relation-list .neo-list-item');
+            relations = pane.locator('.fm-observatory-relation-list .neo-list-item:not(.neo-list-header)');
 
         await land(read());
         await expect(rows).toHaveCount(7);
         await settle();
 
         await rows.nth(0).click();
-        await expect(selection).toHaveText(/^Selected · first route item · pull · neomjs\/neo#pr-101 · /);
+        await expect(selection).toHaveText('first route item');
         expect((await stats()).selectedId, 'a list row selects on the canvas too').toBe(q('pr-101'));
 
         await page.keyboard.press('ArrowDown');
-        await expect(selection, 'the arrow keys move the selection').toHaveText(/^Selected · second route item · issue · neomjs\/neo#issue-202 · /);
+        await expect(selection, 'the arrow keys move the selection').toHaveText('second route item');
         expect((await stats()).selectedId).toBe(q('issue-202'));
 
-        await expect(relations).toHaveText([/authored\s*from\s*Grace\s*agent/]);
+        await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveText([/authored\s*from\s*1/]);
+        await expect(relations).toHaveText([/Grace\s*agent/]);
+
+        const held = await stats();
+
         await relations.nth(0).click();
-        await expect(selection, 'a relation row moves to its other end').toHaveText(/^Selected · Grace · agent · neomjs\/neo#agent-grace · /);
+        await expect(selection, 'a relation row moves to its other end').toHaveText('Grace');
+        expect((await stats()).camera, 'following a relation keeps the camera').toEqual(held.camera);
+        expect((await stats()).canvas, 'and a selection never resizes the canvas').toEqual(held.canvas);
 
         await selectNode(q('issue-404'));
-        await expect(selection).toHaveText(/^Selected · two hops out · /);
+        await expect(selection).toHaveText('two hops out');
         await expect(pane.locator('.fm-observatory-node-list .neo-selected'), 'a canvas pick marks its list row').toHaveText(/two hops out/);
 
         // The human recommendation is a reader: visiting it must preserve the Observatory's selection.
@@ -280,7 +288,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(page.locator('.fm-golden-path-item')).toHaveCount(0);
 
         await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
-        await expect(selection, 'reading the human recommendation preserves the graph selection').toHaveText(/^Selected · two hops out · /);
+        await expect(selection, 'reading the human recommendation preserves the graph selection').toHaveText('two hops out');
         await page.waitForTimeout(400);
         expect((await stats()).selectedId).toBe(q('issue-404'))
     });
@@ -294,7 +302,8 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await page.waitForTimeout(400);
 
         await selectNode(q('issue-303'));
-        await expect(selection).toHaveText(/^Selected · third route item · issue · neomjs\/neo#issue-303 · rank 3 · /);
+        await expect(selection).toHaveText('third route item');
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-selected-facts')).toHaveText('Golden Path rank 3');
         await page.waitForTimeout(400);
 
         const before = await stats();
@@ -307,7 +316,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible();
         await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
         await expect(currency).toHaveText(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete$/);
-        await expect(selection).toHaveText(/^Selected · third route item · /);
+        await expect(selection).toHaveText('third route item');
         await page.waitForTimeout(400);
 
         const back = await stats();
@@ -387,7 +396,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const
             ids    = [envelope.scene.route[0], envelope.scene.nodes[12345].id],
             before = await Promise.all(ids.map(locate)),
-            toggle = pane.getByRole('button', {name: 'Route'});
+            toggle = pane.getByRole('button', {name: 'Golden Path'});
 
         await toggle.click();
         await expect.poll(async () => (await stats()).counts.paths).toBe(0);
@@ -428,7 +437,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             before = await places(),
             peers  = pane.locator('.fm-observatory-peer-list .neo-list-item'),
             vega   = peers.filter({hasText: '@neo-opus-vega'}),
-            heat   = pane.getByRole('button', {name: 'Heat'});
+            heat   = pane.getByRole('button', {name: 'Attention'});
 
         await expect(peers).toHaveText([/@neo-opus-vega.*2 nodes/, /@neo-preview.*1 node/, /@tobiu.*2 nodes/]);
         expect((await stats()).lens, 'nothing checked, no lens').toBeNull();
@@ -452,5 +461,54 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             return [heat, lens]
         }).toEqual([null, null]);
         await expect(currency).toHaveText(/ · complete$/)
+    });
+
+    test('the selected node says what it is and opens its evidence one step away, from the keyboard: a work item its GitHub page, a session its Memories drill in the cockpit, a concept that it has no source view', async ({page, neuralLink}) => {
+        const
+            {land, pane, selection, settle} = await openObservatory(page, neuralLink),
+            session = q('session:019fe5e8-b963-7e93-8762-c8e4af16bdec'),
+            now     = Date.now(),
+            rows    = pane.locator('.fm-observatory-node-list .neo-list-item'),
+            head    = pane.locator('.fm-observatory-selected-head'),
+            // the arrow keys walk the focused node list until the section names the node, one landed step at a time
+            walkTo  = async label => {
+                for (let step = 0; step < 12; step++) {
+                    const named = await selection.textContent();
+
+                    if (named === label) break;
+
+                    await page.keyboard.press('ArrowDown');
+                    await expect(selection).not.toHaveText(named)
+                }
+
+                await expect(selection).toHaveText(label)
+            };
+
+        await land(read({
+            nodes: [...NODES.map(node => ({...node, ...team(now)[node.id]})), {id: session, label: 'a session', kind: 'SESSION'}],
+            edges: [...EDGES, {from: session, to: q('issue-202'), type: 'MENTIONS'}]
+        }));
+        await settle();
+
+        await rows.first().click();
+        await expect(selection).toHaveText('first route item');
+        await expect(head, 'the qualified id stays out of the head').not.toContainText('neomjs/neo#');
+        await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText(/^open, as last ingested · authored by @tobiu · assigned to @neo-opus-vega · last activity .+ · Golden Path rank 1$/);
+        await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/101');
+        await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveText([/authored\s*from\s*1/, /mentions\s*to\s*1/]);
+
+        await walkTo('a session');
+        await pane.getByRole('button', {name: 'Open in Memories'}).press('Enter');
+        await expect(page.locator('.fm-fleet-cockpit'), 'the route moves to the cockpit').toBeVisible();
+        await expect(page.locator('.fm-memories-drill-title'), 'whose Memories pane drills into the session').toHaveText('a session');
+
+        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
+        await expect(selection, 'the Observatory kept its selection').toHaveText('a session');
+        await settle();
+        await rows.first().click();
+        await expect(selection).toHaveText('first route item');
+        await walkTo('Dock');
+        await expect(pane.locator('.fm-observatory-selected-no-source')).toHaveText('No source view for concept');
+        await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveCount(0)
     });
 });

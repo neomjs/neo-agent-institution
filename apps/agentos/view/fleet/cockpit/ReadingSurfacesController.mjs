@@ -123,26 +123,62 @@ class ReadingSurfacesController extends LivenessController {
      */
     async openCatchUpLiveSurface({target} = {}) {
         const
-            me      = this,
-            cockpit = me.component,
-            stream  = target === 'activity-stream' ? me.getReference('activity-stream') : null;
+            me     = this,
+            stream = target === 'activity-stream' ? me.getReference('activity-stream') : null;
 
         if (!stream) {
             return {opened: false, target: target || 'unknown'}
         }
 
-        const strip = cockpit.down({dockNodeId: 'stream-tabs'}),
-              index = cockpit.dockModel?.nodes?.['stream-tabs']?.items?.indexOf('stream') ?? -1;
+        await me.revealResidentTab('stream');
+        stream.focus(stream.id, false, true);
+
+        return {opened: true, target}
+    }
+
+    /**
+     * @summary Open one session's turns in the Memories pane, for a view outside the cockpit (the
+     * Observatory's selected session): the pane's tab comes forward and the pane drills into the session
+     * ({@link AgentOS.view.fleet.memories.Container#openSession}), whose `sessionDetailRequest` reads it the
+     * way a summary card's does.
+     * @param {Object}      request
+     * @param {String}      request.sessionId
+     * @param {String|null} [request.title] Display only
+     * @returns {Promise<{opened: Boolean, sessionId: String|null}>}
+     */
+    async openMemoriesSession({sessionId, title = null} = {}) {
+        const me = this, pane = me.component.getMemoriesPane();
+
+        if (typeof sessionId !== 'string' || !sessionId || !pane) {
+            return {opened: false, sessionId: sessionId ?? null}
+        }
+
+        await me.revealResidentTab('memories');
+        pane.openSession({sessionId, title});
+
+        return {opened: true, sessionId}
+    }
+
+    /**
+     * @summary Bring a resident tab forward in whichever dock node holds it under the current perspective. A
+     * pane that left the dock (a vessel window) or a node that already shows it needs nothing.
+     * @param {String} itemId The dock item, e.g. `stream` or `memories`
+     * @returns {Promise<void>}
+     * @protected
+     */
+    async revealResidentTab(itemId) {
+        const
+            cockpit = this.component,
+            nodes   = cockpit.dockModel?.nodes ?? {},
+            nodeId  = Object.keys(nodes).find(id => nodes[id]?.items?.includes(itemId)),
+            strip   = nodeId && cockpit.down({dockNodeId: nodeId}),
+            index   = nodeId ? nodes[nodeId].items.indexOf(itemId) : -1;
 
         if (strip && index > -1 && strip.activeIndex !== index) {
             strip.activeIndex = index;
             // the card layout mounts the newly active item asynchronously; focus needs the DOM
             await cockpit.timeout(50)
         }
-
-        stream.focus(stream.id, false, true);
-
-        return {opened: true, target}
     }
 
     /**

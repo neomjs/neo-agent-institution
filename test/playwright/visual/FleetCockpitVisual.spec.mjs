@@ -740,7 +740,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.fm-observatory-pane')).toBeVisible({timeout: 30000});
         await expect(page.locator('.fm-observatory-pane .fm-observatory-currency')).toHaveText(/^Unavailable · /);
         await expect(page.locator('.fm-observatory-pane .fm-observatory-hover')).toHaveText('drag orbits · wheel zooms · click selects');
-        await expect(page.locator('.fm-observatory-pane .fm-observatory-selection')).toHaveText('No node selected');
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-selected-label')).toHaveText('No node selected');
         await expect(page.locator('.fm-observatory-pane canvas')).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)
@@ -768,7 +768,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the Observatory pane — a read draws its density wells, the nodes in no well in a faint halo, and the route as an overlay of rank beacons the toggle removes; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
         const
             pane    = page.locator('.fm-observatory-pane'),
-            toggle  = pane.getByRole('button', {name: 'Route'}),
+            toggle  = pane.getByRole('button', {name: 'Golden Path'}),
+            label   = pane.locator('.fm-observatory-selected-label'),
             current = /^Current · captured .+ · 16 nodes · 15 edges · 3 in the halo · complete$/,
             // no tooltip in a shot. The pointer dwells until any pending tooltip has shown, then leaves and
             // waits out the hide: an engine tooltip whose target is left inside its show delay stays up.
@@ -785,10 +786,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await feedObservatory(page, 'current', current);
         await expect(pane).toHaveScreenshot('observatory-pane-current.png');
 
-        // a toggle's state is its label's ink, which the pixel budget cannot see: Mail is off, Halo on
-        const inkOf = name => pane.getByRole('button', {name}).locator('.neo-button-text').evaluate(label => getComputedStyle(label).color);
+        // a control's state is its label's ink, which the pixel budget cannot see: Messages is off, Outside wells on
+        const inkOf = name => pane.getByRole('button', {name}).locator('.neo-button-text').evaluate(text => getComputedStyle(text).color);
 
-        expect(await inkOf('Mail'), 'an off toggle reads apart from an on one').not.toBe(await inkOf('Halo'));
+        expect(await inkOf('Messages'), 'an off control reads apart from an on one').not.toBe(await inkOf('Outside wells'));
 
         // the route is an overlay: switched off, the same graph stays where it was
         await toggle.click();
@@ -800,11 +801,15 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
         await feedObservatory(page, 'current', current, 'neomjs/neo#issue-8');
-        await expect(pane.locator('.fm-observatory-selection')).toHaveText('Selected · Golden Path currency on the cockpit · issue · neomjs/neo#issue-8 · rank 2 · 4 relations (1 authored, 1 relates, 1 resolves, 1 tagged)');
+        // this read's kinds are no graph kind, so the section says it has no source view for them
+        await expect(label).toHaveText('Golden Path currency on the cockpit');
+        await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText('Golden Path rank 2');
+        await expect(pane.locator('.fm-observatory-selected-no-source')).toHaveText('No source view for issue');
+        await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveCount(4);
         await expect(pane).toHaveScreenshot('observatory-pane-selected.png');
 
         await feedObservatory(page, 'truncated', /^Current · captured .+ · 16 nodes · 15 edges · 3 in the halo · partial, budget 150 nodes \/ 300 edges \/ 32 KiB$/);
-        await expect(pane.locator('.fm-observatory-selection'), 'a new snapshot that holds the id keeps the selection').toHaveText(/^Selected · Golden Path currency on the cockpit · /);
+        await expect(label, 'a new snapshot that holds the id keeps the selection').toHaveText('Golden Path currency on the cockpit');
         await expect(pane).toHaveScreenshot('observatory-pane-truncated.png');
 
         await switchToLightSkin(page);
@@ -816,6 +821,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         expect(withheld.success, `the driver loaded: ${JSON.stringify(withheld)}`).toBe(true);
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB · route withheld · freshness-sla-breached$/);
+        await expect(toggle, 'the control says so without a hover').toHaveText('Golden Path · withheld');
         await expect(pane).toHaveScreenshot('observatory-pane-withheld-light.png');
         await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=current&t=${++driverTick}`);
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ \/ 32 KiB$/);
@@ -824,7 +830,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(pane).toHaveScreenshot('observatory-pane-degraded-light.png');
 
         await feedObservatory(page, 'routeless', 'Degraded · route-not-found');
-        await expect(pane.locator('.fm-observatory-selection')).toHaveText('Selection cleared · neomjs/neo#issue-8 is not in this read');
+        await expect(label).toHaveText('Selection cleared · neomjs/neo#issue-8 is not in this read');
+        await expect(pane.locator('.fm-observatory-selected-facts'), 'a cleared selection keeps none of its facts').toHaveCount(0);
         await expect(pane).toHaveScreenshot('observatory-pane-routeless-light.png');
 
         await feedObservatory(page, 'unavailable', 'Unavailable · fleet graph scene verb not wired');
@@ -835,7 +842,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         const
             pane  = page.locator('.fm-observatory-pane'),
             peer  = id => pane.locator('.fm-observatory-peer-list .neo-list-item').filter({hasText: id}),
-            heat  = pane.getByRole('button', {name: 'Heat'}),
+            heat  = pane.getByRole('button', {name: 'Attention'}),
             lensed = / · lens · 5 nodes · 2 peers$/,
             rest  = async () => {
                 await page.waitForTimeout(300);
@@ -867,14 +874,21 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await rest();
         await expect(pane).toHaveScreenshot('observatory-pane-heat-light.png');
 
-        // the Heat tooltip shows once the pointer dwells, and would stay up if the pointer left inside its delay
+        // the Attention tooltip shows once the pointer dwells, and would stay up if the pointer left inside its delay
         await heat.click();
         await rest();
         await peer('@neo-opus-vega').click();
         await peer('@neo-opus-grace').click();
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(lensed);
         await rest();
-        await expect(pane).toHaveScreenshot('observatory-pane-lens-light.png')
+        await expect(pane).toHaveScreenshot('observatory-pane-lens-light.png');
+
+        // a work item of the graph's own kinds says what the read carries about it and opens its page
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete · lens · /, 'neomjs/neo#issue-8');
+        await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText(/^open, as last ingested · authored by @neo-opus-grace · last activity .+ · Golden Path rank 2$/);
+        await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveAttribute('href', 'https://github.com/neomjs/neo/issues/8');
+        await rest();
+        await expect(pane).toHaveScreenshot('observatory-pane-selected-source-light.png')
     });
 
     /**

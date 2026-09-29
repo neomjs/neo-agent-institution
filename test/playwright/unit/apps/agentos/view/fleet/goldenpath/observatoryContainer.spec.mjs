@@ -64,9 +64,16 @@ function graphRead(scene = {}, envelope = {}) {
 }
 
 const
-    createPane = (config = {}) => Neo.create(ObservatoryPane, {appName, ...config}),
-    lineOf     = pane => pane.getReference('observatory-head').vdom.cn[1].text,
-    stripOf    = pane => pane.getReference('observatory-selection');
+    createPane     = (config = {}) => Neo.create(ObservatoryPane, {appName, ...config}),
+    lineOf         = pane => pane.getReference('observatory-head').vdom.cn[1].text,
+    selectedOf     = pane => pane.getReference('observatory-selected'),
+    // the selected node's label and kind as the section heads them, `null` for a part it leaves out
+    headOf         = pane => selectedOf(pane).getReference('selected-head').vdom.cn.map(({removeDom, text}) => removeDom ? null : text),
+    labelClsOf     = pane => selectedOf(pane).getReference('selected-head').vdom.cn[0].cls,
+    factsOf        = pane => selectedOf(pane).getReference('selected-facts').text,
+    relationsTitle = pane => pane.getReference('observatory-relations-title').text,
+    rowsOf         = pane => pane.relationStore.items.filter(record => !record.isHeader),
+    headersOf      = pane => pane.relationStore.items.filter(record => record.isHeader).map(({count, direction, type}) => [type, direction, count]);
 
 test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canonical selection over the bounded read', () => {
     test('the head counts the edges the layout drew and names the read\'s others: an end the read lacks, an index pair, a repeat', () => {
@@ -92,15 +99,19 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         const pane = createPane();
 
         expect(lineOf(pane)).toBe('Unobserved');
-        expect(stripOf(pane).text).toBe('No node selected');
-        expect(stripOf(pane).cls).toEqual(expect.arrayContaining(['is-empty', 'is-hint']));
+        expect(pane.items.map(item => item.reference), 'the head and the body, no strip').toEqual(['observatory-head', 'observatory-body']);
+        expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the team, the view, the nodes, then the selected node')
+            .toEqual(['observatory-peers-title', 'observatory-peers', 'observatory-view-section', 'observatory-nodes-title', 'observatory-nodes', 'observatory-selected']);
+        expect(headOf(pane)).toEqual(['No node selected', null]);
+        expect(labelClsOf(pane)).toContain('is-hint');
+        expect(selectedOf(pane).getReference('selected-actions').hidden, 'no node, no action').toBe(true);
         expect(pane.getReference('observatory-canvas')).toBeFalsy();
 
         InstanceManager.get(pane.id) && pane.destroy()
     });
 
-    test('a read lands as its line and its scene; a selected node is named with its kind, qualified id, rank and typed relations', () => {
-        const pane = createPane({envelope: graphRead()});
+    test('a read lands as its line and its scene; a selected node reads its label and kind first, what the scene carries about it, and its relations counted by group', () => {
+        const pane = createPane({envelope: graphRead()}), selected = selectedOf(pane);
 
         expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete$/);
         expect(pane.scene.nodes.map(node => node.id).slice(0, 3)).toEqual([q('pr-101'), q('issue-202'), q('issue-303')]);
@@ -108,18 +119,23 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.onNodeSelect({node: {id: q('pr-101')}});
 
         expect(pane.selectedId).toBe(q('pr-101'));
-        expect(stripOf(pane).text).toBe('Selected · first route item · pull · neomjs/neo#pr-101 · rank 1 · 2 relations (1 authored, 1 mentions)');
-        expect(stripOf(pane).cls).not.toContain('is-empty');
+        expect(headOf(pane)).toEqual(['first route item', 'pull']);
+        expect(factsOf(pane), 'a read without state, attribution or time claims none').toBe('Golden Path rank 1');
+        expect(selected.getReference('selected-id').vdom.value, 'the id sits in the field the Copy action copies').toBe(q('pr-101'));
+        expect(headOf(pane), 'and never in the head').not.toContain(q('pr-101'));
+        expect(relationsTitle(pane)).toBe('Relations · 2');
+        expect(headersOf(pane)).toEqual([['authored', 'in', 1], ['mentions', 'out', 1]]);
 
         pane.onNodeSelect({node: {id: q('issue-404')}});
-        expect(stripOf(pane).text, 'an untyped relation is unspecified, never a fabricated label').toBe('Selected · two hops out · issue · neomjs/neo#issue-404 · 1 relation (1 unspecified)');
+        expect(headersOf(pane)).toEqual([[null, 'in', 1]]);
+        expect(pane.getReference('observatory-relations').createItemContent(pane.relationStore.getAt(0))[0].text, 'an untyped relation is unspecified, never a fabricated label').toBe('unspecified');
 
         pane.onNodeSelect({node: {id: q('issue-505')}});
-        expect(stripOf(pane).text).toBe('Selected · no seed reaches · issue · neomjs/neo#issue-505 · no relations in this read');
+        expect([factsOf(pane), relationsTitle(pane)]).toEqual(['the read carries nothing more about this node', 'Relations · none in this read']);
 
         pane.onNodeSelect({node: null});
         expect(pane.selectedId, 'a click on the empty surface clears').toBeNull();
-        expect(stripOf(pane).text).toBe('No node selected');
+        expect(headOf(pane)).toEqual(['No node selected', null]);
 
         pane.destroy()
     });
@@ -129,11 +145,11 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         pane.onNodeSelect({node: {id: q('issue-202')}});
 
-        const named = stripOf(pane).text;
+        const named = selectedOf(pane).facts;
 
         pane.envelope = graphRead({nodes: [...graphRead().scene.nodes].reverse(), edges: [...graphRead().scene.edges].reverse()});
         expect(pane.selectedId).toBe(q('issue-202'));
-        expect(stripOf(pane).text).toBe(named);
+        expect(selectedOf(pane).facts).toEqual(named);
 
         pane.envelope = graphRead({completeness: 'truncated'}, {snapshotId: 'snap-8b21'});
         expect(pane.selectedId, 'a new snapshot that still holds the id keeps it').toBe(q('issue-202'));
@@ -160,23 +176,27 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.destroy()
     });
 
-    test('a node row selects its node and lists its relations seen from it; a relation row moves the selection to its other end', () => {
+    test('a node row selects its node and lists its relations seen from it, grouped; a relation row moves the selection to its other end, a header nowhere', () => {
         const
             pane      = createPane({envelope: graphRead()}),
-            relations = () => pane.relationStore.items.map(({direction, otherId, otherLabel, type}) => [type, direction, otherId.replace('neomjs/neo#', ''), otherLabel]);
+            relations = () => rowsOf(pane).map(({direction, otherId, otherLabel, type}) => [type, direction, otherId.replace('neomjs/neo#', ''), otherLabel]),
+            row       = id => rowsOf(pane).find(record => record.otherId === q(id));
 
         pane.onNodeListSelect({records: [pane.nodeStore.get(q('pr-101'))]});
 
         expect(pane.selectedId).toBe(q('pr-101'));
-        expect(relations()).toEqual([
-            ['mentions', 'out', 'concept-dock', 'Dock'],
-            ['authored', 'in',  'agent-grace',  'Grace']
+        expect(relations(), 'by type, then direction, whatever the feed\'s order').toEqual([
+            ['authored', 'in',  'agent-grace',  'Grace'],
+            ['mentions', 'out', 'concept-dock', 'Dock']
         ]);
 
         pane.onRelationListSelect({records: [pane.relationStore.getAt(0)]});
+        expect(pane.selectedId, 'a header moves nothing').toBe(q('pr-101'));
+
+        pane.onRelationListSelect({records: [row('concept-dock')]});
 
         expect(pane.selectedId).toBe(q('concept-dock'));
-        expect(relations(), 'an untyped relation keeps its absent type').toEqual([
+        expect(relations(), 'an untyped relation keeps its absent type, and its group comes last').toEqual([
             ['mentions', 'in',  'pr-101',    'first route item'],
             [null,       'out', 'issue-404', 'two hops out']
         ]);
@@ -200,11 +220,11 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         expect(title('observatory-nodes-title')).toBe('Nodes · 1 of 7 · relations reach the rest');
 
         pane.onNodeSelect({node: {id: q('pr-101')}});
-        expect(pane.relationStore.getCount()).toBe(1);
-        expect(title('observatory-relations-title')).toBe('Relations of the selected node · 1 of 2');
+        expect(rowsOf(pane)).toHaveLength(1);
+        expect(relationsTitle(pane)).toBe('Relations · 2 · the first 1 listed');
 
         // a relation reaches a node beyond the budget: it joins the list, selected
-        pane.onRelationListSelect({records: [pane.relationStore.getAt(0)]});
+        pane.onRelationListSelect({records: [rowsOf(pane)[0]]});
         const list = pane.getReference('observatory-nodes');
 
         expect(ids()).toEqual(['pr-101', 'concept-dock']);
@@ -225,7 +245,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.envelope   = graphRead({completeness: 'truncated'}, {snapshotId: 'snap-8b21'});
         expect(ids()).toHaveLength(7);
         expect(title('observatory-nodes-title')).toBe('Nodes');
-        expect(title('observatory-relations-title')).toBe('Relations of the selected node');
+        expect(relationsTitle(pane)).toBe('Relations · 2');
 
         pane.destroy()
     });
@@ -279,7 +299,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         expect(pressed(halo)).toEqual([false, 'false']);
         expect(lineOf(pane), 'the halo hides its dust, never the route: seed issue-303 stays on the shell').toMatch(/ · 6 nodes · 4 edges · 1 mail node hidden · 1 in the halo · 1 halo node hidden · complete$/);
         expect(pane.selectedId, 'a node the view hides cannot stay selected').toBeNull();
-        expect(stripOf(pane).text).toBe(`Selection cleared · ${q('issue-505')} is hidden in this view`);
+        expect(headOf(pane)).toEqual([`Selection cleared · ${q('issue-505')} is hidden in this view`, null]);
 
         pane.destroy()
     });
@@ -294,7 +314,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.geography = 'communities';
         expect(pane.scene.geography).toBe('communities');
         expect(pane.selectedId).toBe(q('issue-404'));
-        expect(stripOf(pane).text).toMatch(/^Selected · two hops out · issue/);
+        expect(headOf(pane)).toEqual(['two hops out', 'issue']);
         expect(pane.scene.nodes.find(node => node.id === q('issue-404')), 'the node moved with its geography').not.toEqual(before);
 
         const errors = [], error = console.error;
@@ -309,9 +329,11 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.destroy()
     });
 
-    test('a withheld Golden Path route is named beside the graph read\'s own words', () => {
+    test('a withheld Golden Path route is named beside the graph read\'s own words, and its control reads withheld without a hover', () => {
         const
             pane     = createPane({envelope: graphRead()}),
+            control  = pane.getReference('route-toggle'),
+            state    = () => [control.text, control.disabled, control.pressed],
             withheld = GoldenPathEnvelope.fromWire({
                 capability: {state: 'wired', capturedAt: '2026-09-26T20:00:00.000Z'},
                 admission : {admitted: false, fallback: 'last-known-good', reasonCode: 'freshness-sla-breached', requiredFacets: [], staleFacets: []},
@@ -320,9 +342,12 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         pane.routeEnvelope = withheld;
         expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete · route withheld · freshness-sla-breached$/);
+        expect(state(), 'the route the graph read carries still draws, and the control still drops it').toEqual(['Golden Path · withheld', false, true]);
+        expect(control.tooltip.text, 'the reason sits in the detail').toMatch(/\(freshness-sla-breached\)/);
 
         pane.routeEnvelope = GoldenPathEnvelope.fromWire({...withheld, admission: {...withheld.admission, admitted: true, fallback: 'current', reasonCode: 'current'}});
         expect(lineOf(pane)).toMatch(/ · complete$/);
+        expect(state()).toEqual(['Golden Path', false, true]);
 
         pane.destroy()
     });
@@ -337,19 +362,21 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.envelope = graphRead({nodes: scene.nodes.filter(node => node.id !== q('issue-505'))}, {snapshotId: 'snap-9c40'});
 
         expect(pane.selectedId).toBeNull();
-        expect(stripOf(pane).text).toBe('Selection cleared · neomjs/neo#issue-505 is not in snapshot snap-9c40');
-        expect(stripOf(pane).cls).toContain('is-empty');
-        expect(stripOf(pane).cls, 'the note names an id and keeps its case').not.toContain('is-hint');
+        expect(headOf(pane)[0]).toBe('Selection cleared · neomjs/neo#issue-505 is not in snapshot snap-9c40');
+        expect(['selected-facts', 'selected-actions', 'selected-id', 'observatory-relations-title'].map(reference => selectedOf(pane).getReference(reference).vdom.removeDom), 'only the head speaks')
+            .toEqual([true, true, true, true]);
+        expect(labelClsOf(pane)).toContain('is-empty');
+        expect(labelClsOf(pane), 'the note names an id and keeps its case').not.toContain('is-hint');
 
         pane.onNodeSelect({node: {id: q('pr-101')}});
         pane.envelope = GraphSceneEnvelope.fromWire({capability: {state: 'unavailable', reason: 'route-read-failed'}});
 
         expect(lineOf(pane)).toBe('Unavailable · route-read-failed');
         expect(pane.scene.empty).toBe(true);
-        expect(stripOf(pane).text, 'a read without a snapshot names none').toBe('Selection cleared · neomjs/neo#pr-101 is not in this read');
+        expect(headOf(pane)[0], 'a read without a snapshot names none').toBe('Selection cleared · neomjs/neo#pr-101 is not in this read');
 
         pane.onNodeSelect({node: null});
-        expect(stripOf(pane).text, 'a click retires the note').toBe('No node selected');
+        expect(headOf(pane)[0], 'a click retires the note').toBe('No node selected');
 
         pane.destroy()
     });
@@ -365,7 +392,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.onNodeSelect({node: {id: q('issue-505')}});
 
         expect(pane.selectedId).toBeNull();
-        expect(stripOf(pane).text, 'the clearing reason stays').toBe('Selection cleared · neomjs/neo#issue-505 is not in snapshot snap-9c40');
+        expect(headOf(pane)[0], 'the clearing reason stays').toBe('Selection cleared · neomjs/neo#issue-505 is not in snapshot snap-9c40');
 
         pane.onNodeSelect({node: {id: q('pr-101')}});
         expect(pane.selectedId, 'an id the read holds still selects').toBe(q('pr-101'));
@@ -381,7 +408,64 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         expect(lineOf(pane)).toBe('Unobserved');
         expect(pane.selectedId).toBeNull();
-        expect(stripOf(pane).text).toBe('No node selected');
+        expect(headOf(pane)).toEqual(['No node selected', null]);
+
+        pane.destroy()
+    });
+
+    test('the View section names each control by its question and presses the wells drawn; the geography control switches them and keeps the selection', () => {
+        const
+            pane      = createPane({envelope: graphRead()}),
+            control   = reference => pane.getReference(reference),
+            pressed   = () => ['geography-strategic', 'geography-density', 'heat-toggle', 'route-toggle', 'mail-toggle', 'halo-toggle'].map(reference => control(reference).pressed),
+            texts     = ['geography-strategic', 'geography-density', 'heat-toggle', 'route-toggle', 'mail-toggle', 'halo-toggle'].map(reference => control(reference).text);
+
+        ['geography-density', 'geography-strategic'].forEach(reference => control(reference).useRippleEffect = false);
+
+        expect(texts).toEqual(['Roadmap', 'Hubs', 'Attention', 'Golden Path', 'Messages', 'Outside wells']);
+        expect(pressed(), 'the strategic wells, the route and the halo, by default').toEqual([true, false, false, true, false, true]);
+        expect(control('heat-toggle').tooltip.text, 'the attention window is stated').toMatch(/in the last 3 days/);
+
+        pane.onNodeSelect({node: {id: q('issue-404')}});
+        control('geography-density').onClick({});
+
+        expect([pane.geography, pane.scene.geography, pane.selectedId]).toEqual(['density', 'density', q('issue-404')]);
+        expect(pressed().slice(0, 2)).toEqual([false, true]);
+
+        control('geography-strategic').onClick({});
+        expect([pane.geography, pressed().slice(0, 2)]).toEqual(['strategic', [true, false]]);
+
+        pane.destroy()
+    });
+
+    test('the selected node opens its source: a canonical work item its GitHub page, a session its Memories drill through the shell; any other kind says it has none', () => {
+        const
+            session = 'neomjs/neo#session:019fe5e8-b963-7e93-8762-c8e4af16bdec',
+            pane    = createPane({envelope: teamRead({}, {scene: {
+                ...teamRead().scene,
+                nodes: [...teamRead().scene.nodes, {id: session, label: 'a session', kind: 'SESSION'}]
+            }})}),
+            open    = () => pane.getReference('selected-open'),
+            opened  = [];
+
+        pane.on('sessionOpen', data => opened.push(data));
+
+        pane.onNodeSelect({node: {id: q('pr-101')}});
+        expect(factsOf(pane), 'what the read carries, and nothing it does not').toMatch(/^open, as last ingested · authored by @tobiu · assigned to @neo-opus-vega · last activity .+ · Golden Path rank 1$/);
+        expect([open().hidden, open().text, open().url]).toEqual([false, 'Open on GitHub', 'https://github.com/neomjs/neo/pull/101']);
+
+        pane.onNodeSelect({node: {id: session}});
+        expect([open().hidden, open().text, open().url]).toEqual([false, 'Open in Memories', null]);
+
+        selectedOf(pane).onOpenClick();
+        expect(opened, 'the pane hands the session to the shell').toMatchObject([{sessionId: '019fe5e8-b963-7e93-8762-c8e4af16bdec', title: 'a session'}]);
+
+        pane.onNodeSelect({node: {id: q('concept-dock')}});
+        expect([open().hidden, pane.getReference('selected-no-source').hidden, pane.getReference('selected-no-source').text])
+            .toEqual([true, false, 'No source view for concept']);
+
+        selectedOf(pane).onOpenClick();
+        expect(opened, 'a node without a source opens nothing').toHaveLength(1);
 
         pane.destroy()
     });

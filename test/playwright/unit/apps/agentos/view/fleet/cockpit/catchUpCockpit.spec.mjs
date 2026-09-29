@@ -109,5 +109,27 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
             .resolves.toEqual({opened: true, target: 'activity-stream'});
         expect(strip.activeIndex, 'the stream tab is active again').toBe(0);
         expect(focused).toEqual([['stream-1', false, true]])
+    });
+
+    test('a session another view opens brings the Memories tab forward wherever the perspective docks it, and drills the pane into it', async () => {
+        const
+            opened  = [],
+            strip   = {activeIndex: 0},
+            pane    = {openSession: target => opened.push(target)},
+            // a perspective that docks Memories in a node of its own
+            cockpit = {
+                dockModel      : {nodes: {'stream-tabs': {items: ['stream', 'tasks']}, 'reading-tabs': {items: ['catchUp', 'memories']}}},
+                down           : config => config.dockNodeId === 'reading-tabs' ? strip : null,
+                getMemoriesPane: () => pane,
+                timeout        : () => Promise.resolve()
+            },
+            controller = Object.assign(Object.create(FleetCockpitController.prototype), {component: cockpit});
+
+        await expect(controller.openMemoriesSession({sessionId: 'session-7', title: 'a session'})).resolves.toEqual({opened: true, sessionId: 'session-7'});
+        expect(strip.activeIndex).toBe(1);
+        expect(opened).toEqual([{sessionId: 'session-7', title: 'a session'}]);
+
+        await expect(controller.openMemoriesSession({})).resolves.toEqual({opened: false, sessionId: null});
+        expect(opened, 'no session, no drill').toHaveLength(1)
     })
 });

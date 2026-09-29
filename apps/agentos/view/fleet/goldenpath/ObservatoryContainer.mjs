@@ -1,54 +1,59 @@
-import Button                  from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Container               from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import GoldenPathEnvelope      from '../../../util/GoldenPathEnvelope.mjs';
-import GraphSceneEnvelope      from '../../../util/GraphSceneEnvelope.mjs';
-import GraphSceneNodes         from '../../../store/GraphSceneNodes.mjs';
-import GraphScenePeers         from '../../../store/GraphScenePeers.mjs';
-import GraphSceneRelations     from '../../../store/GraphSceneRelations.mjs';
-import ObservatoryCanvas       from './ObservatoryCanvas.mjs';
-import ObservatoryNodeList     from './ObservatoryNodeList.mjs';
-import ObservatoryPeerList     from './ObservatoryPeerList.mjs';
-import ObservatoryRelationList from './ObservatoryRelationList.mjs';
-import ObservatorySceneLayout  from '../../../util/ObservatorySceneLayout.mjs';
-import ViewerTime              from '../../../util/ViewerTime.mjs';
-import {peerHues}              from '../../../canvas/fmPalette.mjs';
+import Container                     from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import GoldenPathEnvelope            from '../../../util/GoldenPathEnvelope.mjs';
+import GraphNodeSource               from '../../../util/GraphNodeSource.mjs';
+import GraphSceneEnvelope            from '../../../util/GraphSceneEnvelope.mjs';
+import GraphSceneNodes               from '../../../store/GraphSceneNodes.mjs';
+import GraphScenePeers               from '../../../store/GraphScenePeers.mjs';
+import GraphSceneRelations           from '../../../store/GraphSceneRelations.mjs';
+import ObservatoryCanvas             from './ObservatoryCanvas.mjs';
+import ObservatoryNodeList           from './ObservatoryNodeList.mjs';
+import ObservatoryPeerList           from './ObservatoryPeerList.mjs';
+import ObservatorySceneLayout        from '../../../util/ObservatorySceneLayout.mjs';
+import ObservatorySelectionContainer from './ObservatorySelectionContainer.mjs';
+import ObservatoryViewContainer      from './ObservatoryViewContainer.mjs';
+import ViewerTime                    from '../../../util/ViewerTime.mjs';
+import {peerHues}                    from '../../../canvas/fmPalette.mjs';
 
 /**
- * What the hover slot and the selection strip say while they have no node to name.
- * @type {Object}
+ * What the hover slot says while no node is under the pointer.
+ * @type {String}
  */
-const HINTS = {hover: 'drag orbits · wheel zooms · click selects', selection: 'No node selected'};
+const HOVER_HINT = 'drag orbits · wheel zooms · click selects';
 
 /**
  * @summary The Observatory keeper-view — the graph read in its wells, as a navigable 3D scene on the canvas
- * worker and as two lists beside it, with the Golden Path's route as an overlay the Route toggle draws or
- * leaves out. The {@link #geography} is strategic wells by default, the Brain's strategic anchors drawing the rest
- * around them, and density wells on a read that carries no anchor; mail stays out of the scene until the Mail
- * toggle brings it in, and the nodes in no
- * well sit in an outer halo the Halo toggle hides. The head carries the read's line first (capability, capture,
- * holdings, what the view hid, completeness — {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node
- * under the pointer beside it; the selection strip below names the selected node as the read has it. The pane binds the shell's `graphSceneEnvelope` leaf,
- * which the cockpit's graph read writes, derives the scene once
- * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas and the lists. The
- * Golden Path leaf only qualifies the line: its route's admission is not the graph read's to report, so a
- * withheld route is named beside the graph read's own words.
+ * worker beside a side panel that reads, top to bottom, the team, the view, the nodes and the selected node.
+ * The {@link #geography} is strategic wells by default, the Brain's strategic anchors drawing the
+ * rest around them, and density wells on a read that carries no anchor; mail stays out of the scene until the
+ * View section brings it in, and the nodes in no well sit in an outer halo it can hide. The head carries the
+ * read's line first (capability, capture, holdings, what the view hid, completeness —
+ * {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node under the pointer beside it. The pane binds the
+ * shell's `graphSceneEnvelope` leaf, which the cockpit's graph read writes, derives the scene once
+ * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas and the panel. The
+ * Golden Path leaf only qualifies the line and the route's control: its route's admission is not the graph
+ * read's to report, so a withheld route is named beside the graph read's own words.
  *
  * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, at the top of the
  * side panel, lists every peer the read attributes nodes to, each in its own hue; checking peers draws their nodes
  * in their hues, the union of them, fades the rest, and names in the node list what each node is to its peer
- * ({@link AgentOS.util.ObservatorySceneLayout#roleOf}). The Heat toggle brightens what drew attention within the
- * stated window by a named event taxonomy ({@link AgentOS.util.ObservatorySceneLayout#heatOf}), and the line says
- * how much of it is unknown.
+ * ({@link AgentOS.util.ObservatorySceneLayout#roleOf}). Attention brightens what drew attention within the stated
+ * window by a named event taxonomy ({@link AgentOS.util.ObservatorySceneLayout#heatOf}), and the line says how
+ * much of it is unknown.
+ *
+ * The selected node's section ({@link AgentOS.view.fleet.goldenpath.ObservatorySelectionContainer}) says what the scene
+ * carries about the node and opens its source ({@link AgentOS.util.GraphNodeSource}): a work item's GitHub page,
+ * or a session's Memories drill, which this pane hands to the shell as `sessionOpen`.
  *
  * The lists stay at a human scale: up to {@link #listBudget} nodes, the route's seeds first, and the selected
- * node always; the relations of the selected node under the same budget. A title says when a list holds less
- * than the read, and the relations reach the rest.
+ * node always; the relations of the selected node under the same budget, grouped by type and direction. A title
+ * says when a list holds less than the read, and the relations reach the rest.
  *
  * Selection is one origin-qualified id, never a draw index, and every path reaches the same one: a click on a
  * node, a row of the node list (the arrow keys move it), a row of the selected node's relations (which moves
  * to the node at the other end) and the shell's `graphSelectionId` leaf. A
  * click on the empty surface clears it, and a new read keeps it while the read still holds the id; a read that
- * lost the id clears the selection and the strip says why. Without a canvas worker the lists are the whole view.
+ * lost the id clears the selection and the selected node's section says why. Without a canvas worker the side
+ * panel is the whole view.
  *
  * @class AgentOS.view.fleet.goldenpath.ObservatoryContainer
  * @extends Neo.container.Base
@@ -93,15 +98,15 @@ class ObservatoryContainer extends Container {
          */
         geography_: 'strategic',
         /**
-         * Whether the nodes in no well (no edge, or no path to a hub) are drawn in an outer halo; the Halo toggle
-         * flips it, and the line counts them either way.
+         * Whether the nodes in no well (no edge, or no path to a hub) are drawn in an outer halo; the View
+         * section's Outside wells control flips it, and the line counts them either way.
          * @member {Boolean} halo_=true
          * @reactive
          */
         halo_: true,
         /**
          * Whether the heat overlay is drawn: what drew attention within the stated window brightens and grows, the
-         * cold fades and the unknown greys. The Heat toggle flips it; nothing moves.
+         * cold fades and the unknown greys. The View section's Attention control flips it; nothing moves.
          * @member {Boolean} heatOverlay_=false
          * @reactive
          */
@@ -111,10 +116,9 @@ class ObservatoryContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The head (title, the read's line, the hovered node), the strip (the selection, then the Mail, Halo, Heat
-         * and Route toggles, so the read's line keeps the head's whole width) and the body: the side panel with the
-         * team lens's peers, the node list and the selected node's relations, which the canvas joins in
-         * {@link #onConstructed} where a canvas worker exists. The strip always holds its row, so a selection never resizes the canvas.
+         * The head (title, the read's line, the hovered node) and the body: the side panel with the team lens's
+         * peers, the View section, the node list and the selected node's section, which the canvas joins in
+         * {@link #onConstructed} where a canvas worker exists. A selection never resizes the canvas.
          * @member {Object[]} items
          */
         items: [{
@@ -125,56 +129,8 @@ class ObservatoryContainer extends Container {
             vdom     : {cn: [
                 {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
                 {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
-                {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HINTS.hover}
+                {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HOVER_HINT}
             ]}
-        }, {
-            ntype : 'container',
-            cls   : ['fm-observatory-strip'],
-            flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center'},
-            items : [{
-                ntype    : 'component',
-                cls      : ['fm-observatory-selection', 'is-empty', 'is-hint'],
-                flex     : 1,
-                reference: 'observatory-selection',
-                text     : HINTS.selection
-            }, {
-                module   : Button,
-                cls      : ['fm-observatory-toggle', 'fm-observatory-mail'],
-                flex     : 'none',
-                pressed  : false,
-                reference: 'mail-toggle',
-                text     : 'Mail',
-                tooltip  : 'Draw agent messages and their relations in the graph',
-                ui       : 'ghost'
-            }, {
-                module   : Button,
-                cls      : ['fm-observatory-toggle', 'fm-observatory-halo'],
-                flex     : 'none',
-                pressed  : true,
-                reference: 'halo-toggle',
-                text     : 'Halo',
-                tooltip  : 'Draw the nodes in no well (no edge, or no path to a hub) in an outer halo',
-                ui       : 'ghost'
-            }, {
-                module   : Button,
-                cls      : ['fm-observatory-toggle', 'fm-observatory-heat'],
-                flex     : 'none',
-                pressed  : false,
-                reference: 'heat-toggle',
-                text     : 'Heat',
-                tooltip  : 'Brighten what drew attention within the stated window: open work, memories and gaps',
-                ui       : 'ghost'
-            }, {
-                module   : Button,
-                cls      : ['fm-observatory-toggle', 'fm-observatory-route'],
-                flex     : 'none',
-                pressed  : true,
-                reference: 'route-toggle',
-                text     : 'Route',
-                tooltip  : 'Draw the Golden Path route over the graph',
-                ui       : 'ghost'
-            }]
         }, {
             ntype    : 'container',
             cls      : ['fm-observatory-body'],
@@ -198,6 +154,10 @@ class ObservatoryContainer extends Container {
                     flex     : 'none',
                     reference: 'observatory-peers'
                 }, {
+                    module   : ObservatoryViewContainer,
+                    flex     : 'none',
+                    reference: 'observatory-view-section'
+                }, {
                     ntype    : 'component',
                     cls      : ['fm-observatory-side-title'],
                     flex     : 'none',
@@ -208,21 +168,15 @@ class ObservatoryContainer extends Container {
                     flex     : 1,
                     reference: 'observatory-nodes'
                 }, {
-                    ntype    : 'component',
-                    cls      : ['fm-observatory-side-title'],
-                    flex     : 'none',
-                    reference: 'observatory-relations-title',
-                    text     : 'Relations of the selected node'
-                }, {
-                    module   : ObservatoryRelationList,
+                    module   : ObservatorySelectionContainer,
                     flex     : 1,
-                    reference: 'observatory-relations'
+                    reference: 'observatory-selected'
                 }]
             }]
         }],
         /**
          * Whether mail (agent messages, their broadcast sentinels and the relations routing them) stays in the
-         * scene; the Mail toggle flips it, and the line counts what it hides.
+         * scene; the View section's Messages control flips it, and the line counts what it hides.
          * @member {Boolean} mail_=false
          * @reactive
          */
@@ -237,13 +191,13 @@ class ObservatoryContainer extends Container {
         lensPeers_: [],
         /**
          * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf. Only its
-         * currency is read: a withheld route qualifies the line.
+         * currency is read: a withheld route qualifies the line and reads unavailable in its control.
          * @member {Object|null} routeEnvelope_=null
          * @reactive
          */
         routeEnvelope_: null,
         /**
-         * Whether the route is drawn over the graph; the Route toggle flips it.
+         * Whether the route is drawn over the graph; the View section's Golden Path control flips it.
          * @member {Boolean} routeOverlay_=true
          * @reactive
          */
@@ -325,10 +279,11 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * The items exist from here on: the lists take their stores and report their choices, the canvas joins
-     * the body where a canvas worker exists — without one (a config without it; the unit harness, whose stubs
-     * resolve the worker's readiness but never define `Neo.worker.Canvas`) the engine's canvas boot throws, so
-     * the lists take the whole body — and an envelope in the config reaches the head, the strip and the lists.
+     * The items exist from here on: the lists take their stores and report their choices, the View section's
+     * controls and the selected node's Open action report theirs, the canvas joins the body where a canvas
+     * worker exists — without one (a config without it; the unit harness, whose stubs resolve the worker's
+     * readiness but never define `Neo.worker.Canvas`) the engine's canvas boot throws, so the side panel takes
+     * the whole body — and an envelope in the config reaches the head and the panel.
      */
     onConstructed() {
         super.onConstructed();
@@ -345,10 +300,13 @@ class ObservatoryContainer extends Container {
         nodes    .on('select', me.onNodeListSelect,     me);
         relations.on('select', me.onRelationListSelect, me);
         peers.selectionModel.on('selectionChange', me.onPeerSelectionChange, me);
-        me.getReference('halo-toggle') .set({handler: 'onHaloToggleClick',  handlerScope: me});
-        me.getReference('heat-toggle') .set({handler: 'onHeatToggleClick',  handlerScope: me});
-        me.getReference('mail-toggle') .set({handler: 'onMailToggleClick',  handlerScope: me});
-        me.getReference('route-toggle').set({handler: 'onRouteToggleClick', handlerScope: me});
+        me.getReference('observatory-selected').on('sessionOpen', me.onSessionOpen, me);
+        me.getReference('geography-density')  .set({handler: () => me.geography = 'density',   handlerScope: me});
+        me.getReference('geography-strategic').set({handler: () => me.geography = 'strategic', handlerScope: me});
+        me.getReference('halo-toggle')        .set({handler: 'onHaloToggleClick',  handlerScope: me});
+        me.getReference('heat-toggle')        .set({handler: 'onHeatToggleClick',  handlerScope: me});
+        me.getReference('mail-toggle')        .set({handler: 'onMailToggleClick',  handlerScope: me});
+        me.getReference('route-toggle')       .set({handler: 'onRouteToggleClick', handlerScope: me});
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
             me.getReference('observatory-body').insert(0, {
@@ -366,7 +324,7 @@ class ObservatoryContainer extends Container {
         }
 
         me.updateLine();
-        me.updateToggles();
+        me.updateView();
         me.fillPeerList();
         me.fillNodeList();
         me.syncLists();
@@ -397,19 +355,23 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * Triggered after the geography config got changed: the same read is laid out again, and the selection stays
-     * with its node. The first value is the one the envelope's layout already read.
+     * Triggered after the geography config got changed: the same read is laid out again, the selection stays
+     * with its node, and the View section says which wells are drawn. The first value is the one the envelope's
+     * layout already read.
      * @param {String} value
      * @param {String|undefined} oldValue
      * @protected
      */
     afterSetGeography(value, oldValue) {
-        oldValue !== undefined && this.applyScene(this.layOut(this.envelope), 'view')
+        if (oldValue !== undefined) {
+            this.applyScene(this.layOut(this.envelope), 'view');
+            this.updateView()
+        }
     }
 
     /**
-     * Triggered after the halo config got changed: the nodes in no well join or leave the scene, and the toggle
-     * says which.
+     * Triggered after the halo config got changed: the nodes in no well join or leave the scene, and the View
+     * section says which.
      * @param {Boolean} value
      * @param {Boolean|undefined} oldValue
      * @protected
@@ -417,13 +379,13 @@ class ObservatoryContainer extends Container {
     afterSetHalo(value, oldValue) {
         if (oldValue !== undefined) {
             this.applyScene(this.layOut(this.envelope), 'view');
-            this.updateToggles()
+            this.updateView()
         }
     }
 
     /**
-     * Triggered after the heatOverlay config got changed: the canvas draws or drops the heat, the toggle says
-     * which, and the line says what the heat could not read. Nothing moves.
+     * Triggered after the heatOverlay config got changed: the canvas draws or drops the heat, the View section
+     * says which, and the line says what the heat could not read. Nothing moves.
      * @param {Boolean} value
      * @param {Boolean|undefined} oldValue
      * @protected
@@ -436,7 +398,7 @@ class ObservatoryContainer extends Container {
             const {heat} = me.channels();
 
             me.getReference('observatory-canvas')?.set({heat});
-            me.updateToggles();
+            me.updateView();
             me.updateLine()
         }
     }
@@ -464,7 +426,7 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * Triggered after the mail config got changed: mail joins or leaves the scene, and the toggle says which.
+     * Triggered after the mail config got changed: mail joins or leaves the scene, and the View section says which.
      * @param {Boolean} value
      * @param {Boolean|undefined} oldValue
      * @protected
@@ -472,35 +434,37 @@ class ObservatoryContainer extends Container {
     afterSetMail(value, oldValue) {
         if (oldValue !== undefined) {
             this.applyScene(this.layOut(this.envelope), 'view');
-            this.updateToggles()
+            this.updateView()
         }
     }
 
     /**
-     * Triggered after the routeEnvelope config got changed: the line follows the route's currency.
+     * Triggered after the routeEnvelope config got changed: the line and the route's control follow the route's
+     * currency.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
      */
     afterSetRouteEnvelope(value, oldValue) {
-        this.updateLine()
+        this.updateLine();
+        this.updateView()
     }
 
     /**
-     * Triggered after the routeOverlay config got changed: the canvas draws or drops the route, and the toggle
-     * says which. Nothing moves.
+     * Triggered after the routeOverlay config got changed: the canvas draws or drops the route, and the View
+     * section says which. Nothing moves.
      * @param {Boolean} value
      * @param {Boolean} oldValue
      * @protected
      */
     afterSetRouteOverlay(value, oldValue) {
         this.getReference('observatory-canvas')?.set({routeOverlay: value});
-        this.updateToggles()
+        this.updateView()
     }
 
     /**
-     * Triggered after the selectedId config got changed: the canvas inks it, the lists follow and the strip
-     * names it.
+     * Triggered after the selectedId config got changed: the canvas inks it, the lists follow and the selected
+     * node's section names it.
      * @param {String|null} value
      * @param {String|null} oldValue
      * @protected
@@ -517,7 +481,7 @@ class ObservatoryContainer extends Container {
      * @summary Hands a freshly laid-out scene to the head, the canvas and the lists. A selection the scene no
      * longer holds clears with its reason: a new read that lost the id says so, a view that hides it says that.
      * @param {Object} scene A {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene} scene
-     * @param {String} cause `read` when a new read replaced the scene, `view` when a toggle or the geography did
+     * @param {String} cause `read` when a new read replaced the scene, `view` when the View section did
      * @protected
      */
     applyScene(scene, cause) {
@@ -556,7 +520,7 @@ class ObservatoryContainer extends Container {
 
     /**
      * @summary The two overlays over the current scene, by its node indices, kept in {@link #overlays}: the heat
-     * while the Heat toggle is on, and the lens with one hue per checked peer while a peer is checked; each `null`
+     * while Attention is on, and the lens with one hue per checked peer while a peer is checked; each `null`
      * otherwise.
      * @returns {{heat: Float32Array|null, lens: Object|null}}
      * @protected
@@ -571,14 +535,16 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The selected node as the read has it: its label, kind, qualified id and route rank, and its
-     * relations counted by type, where a relation the feed left untyped counts as `unspecified`. `null` while
-     * nothing is selected.
-     * @returns {String|null}
+     * @summary The selected node as the scene has it, for its section: the qualified id, a label other than the
+     * id, the kind, the state, attribution and last activity the read carries (each `null` where it does not),
+     * the rank while the current route holds the node, its relations in the read and how many of them list, and
+     * its source ({@link AgentOS.util.GraphNodeSource#sourceOf}). `null` while nothing is selected.
+     * @returns {Object|null}
+     * @protected
      */
-    describeSelection() {
+    factsOf() {
         const
-            {scene, selectedId} = this,
+            {listBudget, scene, selectedId} = this,
             index = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1;
 
         if (index < 0) {
@@ -586,18 +552,23 @@ class ObservatoryContainer extends Container {
         }
 
         const
-            node   = scene.nodes[index],
-            types  = scene.edges.flatMap((pair, edge) => pair.includes(index) ? [scene.edgeTypes[edge] ?? 'unspecified'] : []),
-            counts = [...new Set(types)].sort().map(type => `${types.filter(entry => entry === type).length} ${type}`);
+            node      = scene.nodes[index],
+            relations = scene.edges.reduce((sum, pair) => sum + (pair.includes(index) ? 1 : 0), 0);
 
-        return [
-            'Selected',
-            node.label !== node.id && node.label,
-            node.kind ?? 'kind unspecified',
-            node.id,
-            node.rank && `rank ${node.rank}`,
-            types.length ? `${types.length} relation${types.length === 1 ? '' : 's'} (${counts.join(', ')})` : 'no relations in this read'
-        ].filter(Boolean).join(' · ')
+        return {
+            assignedTo     : node.assignedTo,
+            authoredBy     : node.authoredBy,
+            id             : node.id,
+            kind           : node.kind ?? null,
+            label          : node.label && node.label !== node.id ? node.label : null,
+            lastActivityAt : node.lastActivityAt,
+            memoryOf       : node.memoryOf,
+            rank           : node.rank ?? null,
+            relations,
+            relationsListed: Math.min(relations, listBudget),
+            source         : GraphNodeSource.sourceOf(node),
+            state          : node.state
+        }
     }
 
     /**
@@ -664,8 +635,8 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The scene of a read as this view places it: its geography, and mail and the halo as the toggles
-     * have them.
+     * @summary The scene of a read as this view places it: its geography, and mail and the halo as the View
+     * section has them.
      * @param {Object|null} envelope The bound envelope
      * @returns {Object} A {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene} scene
      * @protected
@@ -678,21 +649,21 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The Halo toggle was clicked: the nodes in no well join or leave the scene.
+     * @summary Outside wells was clicked: the nodes in no well join or leave the scene.
      */
     onHaloToggleClick() {
         this.halo = !this.halo
     }
 
     /**
-     * @summary The Heat toggle was clicked: the heat overlay flips.
+     * @summary Attention was clicked: the heat overlay flips.
      */
     onHeatToggleClick() {
         this.heatOverlay = !this.heatOverlay
     }
 
     /**
-     * @summary The Mail toggle was clicked: mail joins or leaves the scene.
+     * @summary Messages was clicked: mail joins or leaves the scene.
      */
     onMailToggleClick() {
         this.mail = !this.mail
@@ -723,7 +694,7 @@ class ObservatoryContainer extends Container {
                 node.label ?? node.id,
                 node.kind,
                 node.hop === 0 ? `rank ${node.rank}` : node.hop === null ? 'no edge to the route in this read' : `${node.hop} hop${node.hop === 1 ? '' : 's'} from the route`
-            ].filter(Boolean).join(' · ') : HINTS.hover;
+            ].filter(Boolean).join(' · ') : HOVER_HINT;
             slot.cls = ['fm-observatory-hover', ...(node ? [] : ['is-hint'])];
             head.update()
         }
@@ -779,10 +750,21 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The Route toggle was clicked: the overlay flips.
+     * @summary Golden Path was clicked: the route overlay flips.
      */
     onRouteToggleClick() {
         this.routeOverlay = !this.routeOverlay
+    }
+
+    /**
+     * @summary The selected node's Open action named a session: the pane hands it to the shell as `sessionOpen`,
+     * which opens that session's Memories drill in the cockpit.
+     * @param {Object}      data
+     * @param {String}      data.sessionId
+     * @param {String|null} data.title The node's label, the drill's title
+     */
+    onSessionOpen({sessionId, title}) {
+        this.fire('sessionOpen', {sessionId, title})
     }
 
     /**
@@ -805,8 +787,10 @@ class ObservatoryContainer extends Container {
 
     /**
      * @summary Puts the node list's selection on the selected node — a node beyond the list's budget joins it
-     * — and fills the relation list with that node's relations, seen from it, up to {@link #listBudget}. A
-     * reloaded node list has lost its selection, so it is placed again.
+     * — and fills the relation list with that node's relations, seen from it, up to {@link #listBudget}: grouped
+     * by type (an untyped one last) and direction (outgoing first), each group under a header that counts the
+     * group in the whole read, and in the feed's order within a group. A reloaded node list has lost its
+     * selection, so it is placed again.
      * @protected
      */
     syncLists() {
@@ -814,8 +798,10 @@ class ObservatoryContainer extends Container {
             me                                         = this,
             {listBudget, nodeStore, scene, selectedId} = me,
             nodes                                      = me.getReference('observatory-nodes'),
-            title                                      = me.getReference('observatory-relations-title'),
             index                                      = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
+            groupOf                                    = relation => `${relation.type ?? '￿'}\u0000${relation.direction === 'out' ? 0 : 1}`,
+            counts                                     = new Map(),
+            rows                                       = [],
             relations                                  = index < 0 ? [] : scene.edges.flatMap((pair, edge) => {
                 if (!pair.includes(index)) {
                     return []
@@ -823,8 +809,19 @@ class ObservatoryContainer extends Container {
 
                 const other = scene.nodes[pair[0] === index ? pair[1] : pair[0]];
 
-                return [{direction: pair[0] === index ? 'out' : 'in', otherId: other.id, otherKind: other.kind, otherLabel: other.label, type: scene.edgeTypes[edge]}]
+                return [{direction: pair[0] === index ? 'out' : 'in', otherId: other.id, otherKind: other.kind, otherLabel: other.label, type: scene.edgeTypes[edge] ?? null}]
             });
+
+        relations.forEach(relation => counts.set(groupOf(relation), (counts.get(groupOf(relation)) ?? 0) + 1));
+
+        // the budget cuts in the feed's order; a stable sort keeps that order within each group
+        relations.slice(0, listBudget).sort((a, b) => groupOf(a) < groupOf(b) ? -1 : groupOf(a) > groupOf(b) ? 1 : 0).forEach((relation, at, listed) => {
+            if (at === 0 || groupOf(listed[at - 1]) !== groupOf(relation)) {
+                rows.push({count: counts.get(groupOf(relation)), direction: relation.direction, isHeader: true, type: relation.type})
+            }
+
+            rows.push(relation)
+        });
 
         // one row beyond the budget at most: the selection, while the listed nodes lack it
         if (me.extraId && me.extraId !== selectedId) {
@@ -838,13 +835,7 @@ class ObservatoryContainer extends Container {
         }
 
         me.relationStore.clear();
-        relations.length && me.relationStore.add(relations.slice(0, listBudget).map((relation, position) => ({...relation, position})));
-
-        if (title) {
-            title.text = relations.length > listBudget
-                ? `Relations of the selected node · ${listBudget.toLocaleString('en-US')} of ${relations.length.toLocaleString('en-US')}`
-                : 'Relations of the selected node'
-        }
+        rows.length && me.relationStore.add(rows.map((row, position) => ({...row, position})));
 
         const record = index < 0 ? null : nodeStore.get(selectedId);
 
@@ -909,40 +900,30 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The strip's toggles show their state: Mail pressed while mail is drawn, Halo while the halo is,
-     * Heat while the heat is, Route while the route is, for the eye and for assistive technology alike.
-     * @protected
-     */
-    updateToggles() {
-        const me = this;
-
-        [['mail-toggle', me.mail], ['halo-toggle', me.halo], ['heat-toggle', me.heatOverlay], ['route-toggle', me.routeOverlay]].forEach(([reference, pressed]) => {
-            const toggle = me.getReference(reference);
-
-            if (toggle) {
-                toggle.pressed               = pressed;
-                toggle.vdom['aria-pressed'] = String(pressed);
-                toggle.update()
-            }
-        })
-    }
-
-    /**
-     * @summary Writes the selection strip: the selected node, else why the selection cleared, else the hint.
+     * @summary Hands the selected node's section its facts, or, without a selection, why it last cleared.
      * @protected
      */
     updateSelection() {
-        const
-            me     = this,
-            strip  = me.getReference('observatory-selection'),
-            detail = me.describeSelection();
+        this.getReference('observatory-selected')?.set({facts: this.factsOf(), note: this.selectionNote})
+    }
 
-        if (strip) {
-            strip.text = detail ?? me.selectionNote ?? HINTS.selection;
-            strip.toggleCls('is-empty', !detail);
-            // the note names an id, whose case is part of it
-            strip.toggleCls('is-hint', !detail && !me.selectionNote)
-        }
+    /**
+     * @summary Hands the View section the pane's state: the geography, each overlay, the attention window, and
+     * why the Golden Path read withholds the route while it does.
+     * @protected
+     */
+    updateView() {
+        const me = this, route = me.routeEnvelope;
+
+        me.getReference('observatory-view-section')?.sync({
+            geography    : me.geography,
+            halo         : me.halo,
+            heat         : me.heatOverlay,
+            heatDays     : ObservatorySceneLayout.attention.windowMs / 86400000,
+            mail         : me.mail,
+            route        : me.routeOverlay,
+            routeWithheld: GoldenPathEnvelope.currency(route) === 'withheld' ? GoldenPathEnvelope.withheldReason(route) || 'no reason given' : null
+        })
     }
 }
 

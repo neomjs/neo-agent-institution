@@ -332,24 +332,34 @@ class MemoriesPane extends Container {
     }
 
     /**
-     * @summary Open one summary card's session detail: the drill-in switches the rows zone to the
-     * session's turn-level records. The drill target is part of the rendered drill KEY — the old
-     * session's rows and drain chain are invalidated IMMEDIATELY, so no stale depth can anchor an
-     * offset request into the new session.
+     * @summary Open one summary card's session detail ({@link #openSession}).
      * @param {Neo.data.Model} record The summary card's record — its `sessionId` is the pointer.
      */
     onCardOpen(record) {
+        this.openSession(record)
+    }
+
+    /**
+     * @summary Open one session's detail — a summary card's, or one the cockpit opens for another view (the
+     * Observatory's selected session): the drill-in switches the rows zone to the session's turn-level
+     * records. The drill target is part of the rendered drill KEY — the old session's rows and drain chain
+     * are invalidated IMMEDIATELY, so no stale depth can anchor an offset request into the new session.
+     * @param {Object}      target
+     * @param {String}      target.sessionId
+     * @param {String|null} [target.title] Display only
+     */
+    openSession(target) {
         const
             me        = this,
-            sessionId = typeof record?.sessionId === 'string' ? record.sessionId : null;
+            sessionId = typeof target?.sessionId === 'string' ? target.sessionId : null;
 
         if (!sessionId || me.drillSession?.sessionId === sessionId) return;
 
         me.getReference('memories-turn-grid').applyBags([]);
         me.renderedDrillSession = null;
         me.drillDrainFloor      = -1;
-        me.drillSession         = {sessionId, title: record.title ?? null};
-        me.fire('sessionDetailRequest', {sessionId, title: record.title ?? null})
+        me.drillSession         = {sessionId, title: target.title ?? null};
+        me.fire('sessionDetailRequest', {sessionId, title: target.title ?? null})
     }
 
     /**
