@@ -4,7 +4,7 @@ import TextField from '../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 
 /**
  * @summary The packaged shell's "connect to a plane" card: inline, dismissible, and never a gate — the
- * sample cockpit stays usable behind it, as the shell spec requires.
+ * cockpit stays usable behind it with honest unanswered states, as the shell spec requires.
  *
  * `AgentOS.view.ViewportController#mountPlaneSetup` creates it only for a packaged shell with no
  * plane configured. Connecting hands the plane address to `attachPlane()`; Electron main then asks
@@ -61,7 +61,7 @@ class PlaneSetupPanel extends Panel {
         items: [{
             ntype: 'component',
             cls  : ['agent-plane-setup-lede'],
-            text : 'The cockpit shows sample data until it attaches to your team\'s plane. Your GitHub or GitLab PAT is asked for in a separate window and stored encrypted on this Mac.'
+            text : 'The cockpit shows what its connected sources answer. Until then, its data panes show unanswered or unavailable states. Your GitHub or GitLab PAT is asked for in a separate window and stored encrypted on this Mac.'
         }, {
             // sized to its content: the body's column would otherwise hand the row the leftover
             // height and its hidden overflow would clip the 32 px controls at the top

@@ -284,8 +284,8 @@ class List extends BaseList {
             cn.push({
                 tag : 'span',
                 id  : `${id}__source`,
-                cls : ['fm-freshness', record.sample ? 'is-sample' : `is-source-${record.source ?? 'unknown'}`],
-                text: record.sample ? 'sample' : (SOURCE_LABELS[record.source] ?? 'unknown source')
+                cls : ['fm-freshness', `is-source-${record.source ?? 'unknown'}`],
+                text: SOURCE_LABELS[record.source] ?? 'unknown source'
             })
         }
 

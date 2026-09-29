@@ -48,7 +48,7 @@ apps/agentos/fleet/fleetWakeStreamConsumer.mjs
     84573b5a021ddbc1f9d22a4bfde258077660c27e
 
 apps/agentos/fleet/installFleetBridge.mjs
-    537226731d9a7dbe62d698b476564de8b5fcb62e
+    347122e7969422e8a46e467438114b865767e8cd
 
 apps/agentos/fleet/instanceRosterStorage.mjs
     2e3defe9390396da338044724a6efcf6a0bfe53e
@@ -78,7 +78,7 @@ apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
 
 apps/agentos/model/FleetTask.mjs
-    7f0dd6d63b786a1a0e4efa0db17abbaea0e480eb
+    f1c9d1809d85209804405542bac0767e30a38ccb
 
 apps/agentos/model/FleetTenant.mjs
     9d121e948e87e886001ce3ad59c30e7c27d825ce
@@ -225,13 +225,13 @@ apps/agentos/util/ViewerWakeTelltale.mjs
     31bff815feed1bf14ee4b9608168118f4621834a
 
 apps/agentos/view/PlaneSetupPanel.mjs
-    06beb5332dd4d4a961f239d6379a9f89c964ed72
+    ae710be8bd4072d01ae9fbb062ee66cc3c948506
 
 apps/agentos/view/Viewport.mjs
     c388ff73eaf396ec59e7fc2611f5b11c2e786eec
 
 apps/agentos/view/ViewportController.mjs
-    87a87228211436b79a973d5a63db6ba179ae3828
+    3d4ea6deff9c7d7e8db2823a29e8f6c58f7f44f1
 
 apps/agentos/view/accounts/Panel.mjs
     820b67031a35c6bce66e040692d96dcacb2eb014
@@ -255,7 +255,7 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     cf651f3d7f7974eb21e9fcd2e54cb68840d22d87
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    de279c7faeb0f3c9c18f1c8c18541ee86d8c853a
+    958c10449b0295c19d0e308362b1c78d26ce5672
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     cb46c8ea57ca18de085ebeb3c12361bf0757b4cb
@@ -381,13 +381,13 @@ apps/agentos/view/fleet/shared/StateDotComponent.mjs
     d9d5f461704e55aa8061cf1f8a93afa47a3a9271
 
 apps/agentos/view/fleet/tasks/Container.mjs
-    05995ac0d058fe1e8e38b737d9f4d6fa4b5cc9e1
+    0ca11a2f197403966e5a958a4f55fa974a9db1d3
 
 apps/agentos/view/fleet/tasks/Controller.mjs
     d853fa1cc905a9313845b0cfe7b9c32261f8adb9
 
 apps/agentos/view/fleet/tasks/List.mjs
-    d78f8a5d50d3be5072fab3200c84081a63618736
+    2907fa3afc910389ce58638a80202b9740cffede
 
 apps/agentos/view/fleet/wake/Container.mjs
     0cf5ae2f2dcd93764cba8abe43085ef24d009d53
@@ -498,7 +498,7 @@ resources/scss/src/apps/agentos/fleet/tasks/Container.scss
     9a9cdc08764ce7777674670623088fff6cc454ad
 
 resources/scss/src/apps/agentos/fleet/tasks/List.scss
-    81f7c328fefd03fea212a5f2f6bb7c0d620c09a6
+    e7845ba1290f1969104fbaea4406c75302457cbd
 
 resources/scss/src/apps/agentos/fleet/wake/Container.scss
     939ba72aa51c82919c5a39a1889c3107fe7792dc
@@ -561,7 +561,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     86ea1a29752775e70d21d86e0627a5902ca4d877
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    1eb524c97f3398eb72a0f0e31b8f421196023fc2
+    b019c2f78004e5ea721806effec60792f9a76e40
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
     4e2398dc703b1fbf169de5f908026d6a17a55cb5
@@ -627,21 +627,27 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     2dfe10b1eb8a242f6d8011b593992c7d7260ae6a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-card-light.png
-    c681cbf4fdec5d68222e13f35529aa152c2147c5
+    c93e4f43f53dd255d0196a3b6098b2d9feef93f7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-card.png
-    1711b5ea76768fee24915a09448a1a7bacd111d9
+    b4462d5ac6c336b8ac8cf2a8ba8c14183b2f93b8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-240-light.png
-    d0cef0ddeb9bffdc07b031aefbe88e5b36fac2e3
+    24a56077e1446e6d8e9c6ac9fa909f59dd751371
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-240.png
-    d88edf525028da13fea8b59c10415482134980f8
+    d9460d2e060ca74200ea0fa512823384d2e4ef22
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-720-light.png
-    dc5e6c3eea919877c697d8572766c87f22327724
+    c12b5d6b9963b1b12e4c6bdbc8be85b6b5aa541e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-720.png
-    b8a393269f576855d4691ef015c158237dcc8b33
+    9256d15dc2c0964cb9f8919877067cd94e86ca2e
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-cold-light.png
+    5ed6e858d061eafd2a287ef06ffe788935db796d
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-cold.png
+    6a07deec3d8b920dac178bd8704dda890aeb695f
 
 # end of stamp

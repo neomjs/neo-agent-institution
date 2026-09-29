@@ -20,8 +20,10 @@
     .fm-tasks-section-head {
         align-items: center;
         display    : flex;
+        flex-wrap  : wrap;
         gap        : var(--fm-space-2);
         margin-top : var(--fm-space-3);
+        row-gap    : var(--fm-space-1);
 
         &:first-child {
             margin-top: 0;
@@ -141,7 +143,7 @@
 
     /* the freshness ledger chip — the S1 vocabulary, verbatim from the AgentDetail sibling so the
        cockpit speaks ONE freshness language in every mount (values must not drift); the task list
-       adds its provenance tones on the same pill: live / sample / unavailable at the section head,
+       adds its provenance tones on the same pill: cold / live / unavailable at the section head,
        the source axis at the row */
     .fm-freshness {
         flex         : none;
@@ -160,7 +162,7 @@
 
         &.is-source-mc,
         &.is-source-kb,
-        &.is-sample {
+        &.is-cold {
             color: var(--fm-ink-dim);
         }
 
@@ -297,11 +299,6 @@
 
         .fm-task-cause {
             order: 2;
-        }
-
-        .fm-tasks-section-head {
-            flex-wrap: wrap;
-            row-gap  : var(--fm-space-1);
         }
 
         .fm-tasks-section-count {

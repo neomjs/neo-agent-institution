@@ -1,5 +1,6 @@
 import {test, expect} from '@playwright/test';
-import {landFleetActivity, landFleetRoster, landFleetSample} from '../fixtures.mjs';
+import {landFleetActivity, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
+import {sampleTasks} from '../fixture/fleetSample.mjs';
 
 /**
  * The FM cockpit's visual-regression baselines — the design gate's mechanical guard: pixel
@@ -10,10 +11,10 @@ import {landFleetActivity, landFleetRoster, landFleetSample} from '../fixtures.m
  * - the config forces `reducedMotion: 'reduce'` — every transition collapses through the
  *   motion-token layer, so settling means "the dock motion signal class is ABSENT", never a
  *   timing sleep;
- * - data is the tests' sample fleet, landed through the liveness owner's own admission
- *   (`landFleetSample`) once the cockpit mounts: the registry bridge stays unwired here, nothing
- *   is seeded, and the cold and empty states get their own arm — the fixture IS the
- *   deterministic render;
+ * - the tests' sample roster and activity land through the liveness owner's own admission
+ *   (`landFleetSample`), while task width arms land `sampleTasks` through `landFleetTasks`:
+ *   the registry bridge stays unwired here, nothing is seeded, and the cold and empty states
+ *   get their own arm;
  * - `document.fonts.ready` gates every capture (half-loaded webfonts are the classic
  *   false-diff source);
  * - the globalSetup already refused the run if the built theme CSS trails the SCSS sources.
@@ -30,7 +31,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
     /**
      * Boots the agentos shell and waits for the SETTLED fleet cockpit: shell visible, fonts
-     * loaded, at least one card rendered from the seed, every card image settled, and no dock
+     * loaded, at least one card rendered from the fixture, every card image settled, and no dock
      * motion in flight.
      * @param {Object} page
      */
@@ -418,8 +419,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
     /**
      * @summary Activates the Tasks tab (the south strip's second surface) and waits for the pane's
-     * cold spine — the committed sample shape, which now includes the queue's starved
-     * waiter (its wait as text, its own cause) and the lease line under the queued head.
+     * test-owned dense task answer — the queue's starved waiter (its wait as text, its own cause)
+     * and the lease line under the queued head.
      * @param {Object} page
      */
     const openTasksPane = async page => {
@@ -487,6 +488,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the Tasks pane at the 720 band — the queue\'s starved shape, the lease line, the counts; both skins (#113)', async ({page}) => {
         await page.setViewportSize({width: 720, height: 900});
         await bootSettledCockpit(page);
+        await landFleetTasks(page, sampleTasks);
         await openTasksPane(page);
 
         const geometry = await measureTasksPane(page);
@@ -497,6 +499,34 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await switchToLightSkin(page);
         await expect(page.locator('.fm-tasks-pane')).toHaveScreenshot('tasks-pane-720-light.png')
+    });
+
+    test('the cold Tasks pane has only unanswered sections — no task, lease, count, or source claim; both skins (#240)', async ({page}) => {
+        await page.setViewportSize({width: 720, height: 900});
+        await bootColdCockpit(page);
+        // The app's boot fallback is an unavailable answer. A null landing captures the distinct
+        // pre-answer state without putting a fixture row in the product.
+        await landFleetTasks(page, null);
+
+        const tab = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: /tasks/i});
+
+        await expect(tab).toBeVisible({timeout: 30000});
+        await tab.click();
+
+        const pane = page.locator('.fm-tasks-pane');
+
+        await expect(pane).toBeVisible({timeout: 30000});
+        await expect(pane.locator('.fm-tasks-section-head .fm-freshness.is-cold')).toHaveCount(3);
+        await expect(pane.locator('.fm-tasks-empty-row .fm-tasks-empty')).toHaveText([
+            'Tasks not answered yet.', 'Tasks not answered yet.', 'Tasks not answered yet.'
+        ]);
+        await expect(pane.locator('.fm-task-row, .fm-tasks-section-meta, .fm-tasks-section-count, .fm-freshness[class*="is-source-"]')).toHaveCount(0);
+        await page.evaluate(() => document.fonts.ready);
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect(pane).toHaveScreenshot('tasks-pane-cold.png');
+
+        await switchToLightSkin(page);
+        await expect(pane).toHaveScreenshot('tasks-pane-cold-light.png')
     });
 
     /**
@@ -556,6 +586,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // the name lead on its own line must be in force, and nothing may leave the border.
         await page.setViewportSize({width: 314, height: 900});
         await bootSettledCockpit(page);
+        await landFleetTasks(page, sampleTasks);
         await openTasksPane(page);
 
         const geometry = await measureTasksPane(page),
@@ -574,6 +605,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // the next liveness render, which is how a pixel golden would silently capture the full strip.
         await page.setViewportSize({width: 720, height: 900});
         await bootSettledCockpit(page);
+        await landFleetTasks(page, sampleTasks);
         // the pin lands BEFORE the pane opens: its rows wrap taller in the band, and the capture's
         // scroll position must be taken on that final layout, never on the wide one
         await page.addStyleTag({content: '.fm-tasks-pane { max-width: 240px; }'});
@@ -591,12 +623,13 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     });
 
     test('the Tasks pane between the bands — 301 · 400 · 649: the dense rows wrap, no fact clips, every name keeps its floor (geometry asserted, no golden)', async ({page}) => {
-        // The widths the wrap band does not cover and the desktop does not reach: the cold spine's
-        // starved sample carries the live queue's density (an instant, both flags, a yield cause),
+        // The widths the wrap band does not cover and the desktop does not reach: the fixture's
+        // starved waiter carries the live queue's density (an instant, both flags, a yield cause),
         // and a row must fold its facts onto the next line before a name can lose its width. The
         // pane is pinned through a stylesheet (the 240 arm's reason); each pin re-lays the rows live.
         await page.setViewportSize({width: 720, height: 900});
         await bootSettledCockpit(page);
+        await landFleetTasks(page, sampleTasks);
         await openTasksPane(page);
 
         const nameFloorPx = await page.evaluate(() => {
