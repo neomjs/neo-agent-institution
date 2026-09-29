@@ -132,7 +132,9 @@
   .cu-close { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fm-space-2) var(--fm-space-3); }
   .cu-close button { font: 500 12px/1 var(--fm-font-sans); color: var(--fm-ink); background: var(--fm-panel-2); border: 1px solid var(--fm-ink-dim); border-radius: var(--fm-chip-radius); padding: 7px 12px; cursor: pointer; }
   .cu-close .receipt { font: var(--fm-text-micro); color: var(--fm-ink-dim); }
-  .cu-close a { margin-left: auto; font: var(--fm-text-detail); }
+  .cu-close .feed { margin-left: auto; font: var(--fm-text-detail); color: var(--fm-signal); }
+  .cu-close .withheld { margin: 0; color: var(--fm-ink); border-left: 3px solid var(--fm-state-idle); padding: 2px var(--fm-space-3); }
+  .cu-close .withheld small { display: block; color: var(--fm-ink-dim); font: var(--fm-text-micro); margin-top: 2px; }
 
   .whole { background: var(--fm-panel); border: 1px solid var(--fm-line-soft); border-left: 3px solid var(--fm-state-unobserved); padding: var(--fm-space-3) var(--fm-space-4); display: grid; gap: var(--fm-space-1); max-width: 720px; }
   .whole .word { font: var(--fm-text-display); color: var(--fm-ink); }
@@ -190,7 +192,7 @@
             <li><b>How long was I away, and what does this cover?</b> The window, as a sentence.</li>
             <li><b>What landed?</b> The work that merged, in the team's own titles.</li>
             <li><b>What was decided or reversed?</b> Work closed without landing, accepted decision records, graduated Discussions.</li>
-            <li><b>Why does it matter?</b> Each change names the ticket it resolves, and the team's summary gives the thread through them.</li>
+            <li><b>Why does it matter?</b> Catch Up leads to the reason and does not state it: each change opens its pull request, and the ticket it resolves says why. It writes no reason of its own, and the summary is context, not the reason (in Frame 1 it misnames two fixes). Reading each ticket's own title as a record is gap 5.</li>
             <li><b>Where do I look?</b> Every change opens its pull request, which names its ticket, and a cited memory opens in the Memories pane.</li>
           </ol>
         </div>
@@ -213,7 +215,7 @@
         <tr><td>System (#308)</td><td>Is the plane healing itself?</td><td>now</td><td>carries team history</td></tr>
         <tr><td>Activity (south tab)</td><td>What is happening this minute?</td><td>live, bounded</td><td>stands in for history</td></tr>
       </table></div>
-      <p>Hand-offs, one link each: a Catch Up line opens its pull request or ticket, a cited memory opens in the Memories pane, and the live feed is a link at the end, never merged into the bands.</p>
+      <p>Hand-offs, one link each: a Catch Up line opens its pull request on GitHub, a cited memory opens in the Memories pane (<code>memories</code> in the cockpit's pane catalog), and the live feed, last in the pane, activates the Activity pane (<code>stream</code>), never merged into the bands. The two in-app hand-offs are static in this sketch and name their target.</p>
     </section>
 
     <section aria-labelledby="s4">
@@ -223,7 +225,7 @@
         <li><b>Landed comes next.</b> It is structured and checkable, and it is what most returns are for. Dependency bots fold into one line, so today 8 changes read where 20 merges happened.</li>
         <li><b>Decided comes third:</b> what was reversed, or settled without landing.</li>
         <li><b>The team's words come last.</b> The summary is context, not a record. In today's window it misnamed what two merged fixes did and named a repository that does not exist. Placed below the facts, it cannot contradict them unnoticed.</li>
-        <li><b>The close comes at the end.</b> The reader acknowledges after reading, never before, and never by just opening the pane.</li>
+        <li><b>The close comes at the end.</b> The reader acknowledges after reading, never before, and never by just opening the pane. It is offered only when every band read: a close across a failed read would start the next window past changes this one never showed (gap 6).</li>
       </ol>
     </section>
 
@@ -233,11 +235,11 @@
         <tr><th>Content</th><th>Producer today</th><th>Coverage</th><th>Gap</th></tr>
         <tr><td>The window: your last look</td><td>Brain <code>fleetCatchUpSource</code>: <code>lastSeen</code> (the explicit close) and <code>lastVisitAt</code></td><td class="unsure">process lifetime only: "Runtime anchors only. A new source instance (Fleet-service restart) starts empty by design." Every plane cut forgets every reader, so the next visit reads as a first one</td><td>gap 1: the last look survives a restart</td></tr>
         <tr><td>Landed: merged pull requests</td><td><code>explore_pull_request_history</code>, <code>resolution: all_resolved</code></td><td class="miss">one repository per call (<code>repo:owner/repo</code>). Catch Up passes none, so it reads <code>neomjs/neo</code> only, while today's 8 non-bot merges were in the Brain and the Institution. On our plane it also cannot sign in: "Could not authenticate with GitHub", 0 resolved, degraded</td><td>gaps 2 and 3</td></tr>
-        <tr><td>Landed: why each change matters</td><td>the pull request's own title, and the ticket it resolves</td><td class="unsure">titles are written as outcomes, and they carry the ticket number; nothing links a pull request to its ticket's epic, so the band groups by time, not by goal</td><td>gap 5</td></tr>
+        <tr><td>Landed: where the reason lives</td><td>the pull request, whose title carries the ticket it resolves</td><td class="unsure">a route to the reason, not the reason: the ticket says why, and Catch Up reads neither its title nor its epic, so the band groups by time, not by goal</td><td>gap 5</td></tr>
         <tr><td>Decided: closed without landing</td><td>the same read, <code>resolution: closed_unmerged</code></td><td class="unsure">the same limits as Landed; none in today's window (GitHub, org-wide)</td><td>gaps 2 and 3</td></tr>
         <tr><td>Decided: decision records, graduations</td><td>none</td><td class="miss">accepted ADRs and graduated Discussions reach Catch Up only as prose inside the summary</td><td>gap 4</td></tr>
         <tr><td>In the team's words</td><td><code>explore_memory_history</code>, partition <code>unified</code> or one <code>@peer</code></td><td class="ok">available: today 66 records from 16 identities, 60 of them cited in the summary. Fluent but loose, so it is labelled as a summary and sits last</td><td>the summary's accuracy (Brain defect-note, 2026-09-28)</td></tr>
-        <tr><td>Done reading</td><td><code>markFleetCaughtUp(windowEnd)</code></td><td class="unsure">available; advances only through the exact rendered end; process lifetime, as the window</td><td>gap 1</td></tr>
+        <tr><td>Done reading</td><td><code>markFleetCaughtUp(windowEnd)</code></td><td class="unsure">available; advances only through the exact rendered end; process lifetime, as the window. It records that end even when a band's source failed, so a close today skips what that band missed</td><td>gaps 1 and 6</td></tr>
         <tr><td>The live feed</td><td><code>fleetActivity</code></td><td class="ok">available, live and bounded</td><td>none: it is linked, never read as history</td></tr>
       </table></div>
     </section>
@@ -247,7 +249,7 @@
       <ul>
         <li><b>Returning,</b> with a last look on record: since then (Frame 1).</li>
         <li><b>Last look unknown,</b> either a first visit or the plane restarted since the last one. The source cannot tell these apart, so the pane says what it knows: "This plane doesn't know when you last looked", shows the last day, and offers the source's own look-backs (a day, three days, a week) in one control. There is no question before content (Frame 2).</li>
-        <li><b>Partial:</b> a band whose source failed says so in one line with the source's reason, and the other bands render. An unavailable source never reads as "nothing happened" (Frame 2, today's plane).</li>
+        <li><b>Partial:</b> a band whose source failed says so in one line with the source's reason, and the other bands render. An unavailable source never reads as "nothing happened", and Done reading waits until it answers (Frame 2, today's plane).</li>
         <li><b>Reading:</b> one line under the head, and no bands yet. The source settles both reads before it answers, in one envelope, so the bands arrive together (Frame 3).</li>
         <li><b>Quiet:</b> the reads ran and found nothing, and the pane says so per band (Frame 3).</li>
         <li><b>Unavailable:</b> with no history read at all, one reason stands for the pane (Frame 3).</li>
@@ -279,7 +281,7 @@
             <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-institution/pull/307"><span class="kind">feat</span>Consume the full-graph Brain revision</a><span class="when">10:03</span><span class="meta">Institution #307 · resolves #302 · Emmy</span></li>
           </ul>
           <details class="fold"><summary>12 dependency updates · neo, Brain, Institution, devindex</summary>
-            <ul><li>monaco-editor 0.56.0 → 0.57.0 · neo #19316, Institution #316, devindex #45</li><li>neo-agent-skills → 0.1.18 · neo #19315, Brain #596, devindex #46</li><li>the shared PR baseline workflow 0.1.17 → 0.1.19 · Institution #314, devindex #43</li><li>grouped updates · neo #19314, Institution #315, devindex #44, Brain #595</li></ul>
+            <ul><li>monaco-editor 0.56.0 → 0.57.0 · <a href="https://github.com/neomjs/neo/pull/19316">neo #19316</a>, <a href="https://github.com/neomjs/neo-agent-institution/pull/316">Institution #316</a>, <a href="https://github.com/neomjs/devindex/pull/45">devindex #45</a></li><li>neo-agent-skills → 0.1.18 · <a href="https://github.com/neomjs/neo/pull/19315">neo #19315</a>, <a href="https://github.com/neomjs/neo-agent-brain/pull/596">Brain #596</a>, <a href="https://github.com/neomjs/devindex/pull/46">devindex #46</a></li><li>the shared PR baseline workflow 0.1.17 → 0.1.19 · <a href="https://github.com/neomjs/neo-agent-institution/pull/314">Institution #314</a>, <a href="https://github.com/neomjs/devindex/pull/43">devindex #43</a></li><li>grouped updates · <a href="https://github.com/neomjs/neo/pull/19314">neo #19314</a>, <a href="https://github.com/neomjs/neo-agent-institution/pull/315">Institution #315</a>, <a href="https://github.com/neomjs/devindex/pull/44">devindex #44</a>, <a href="https://github.com/neomjs/neo-agent-brain/pull/595">Brain #595</a></li></ul>
           </details>
         </section>
 
@@ -298,21 +300,21 @@
           </div>
           <p class="src">A summary, not the record: it cites 60 of 66 memory records from 16 identities, generated 17:36. Where it and Landed disagree, Landed is right.</p>
           <details class="cites"><summary>The whole summary and its 60 citations</summary>
-            <ul><li>memory · 406d66d6 · session ec438462</li><li>memory · 0e10bef8 · session ec438462</li><li>session · summary dc1fa59b</li><li>…57 more, in source order; 6 census-only records are marked as such</li></ul>
+            <ul><li>memory · 406d66d6 · session ec438462</li><li>memory · 0e10bef8 · session ec438462</li><li>session · summary dc1fa59b</li><li>…57 more, in source order; 6 census-only records are marked as such</li><li>Each opens in the Memories pane; static in this sketch.</li></ul>
           </details>
         </section>
 
         <div class="cu-close">
           <button type="button">Done reading — start the next window here</button>
           <span class="receipt">Next visit starts at 17:35 UTC.</span>
-          <a href="#f1">The live feed →</a>
+          <span class="feed" title="In the app: activates the Activity pane">The live feed →</span>
         </div>
       </article>
     </div>
   </section>
 
   <section class="frame" aria-labelledby="f2">
-    <div class="frame-label"><span class="eyebrow" id="f2">Frame 2 · today's plane: last look unknown, pull requests down</span><p>What our plane can produce right now, from the same 17:36 reads. The catch-up source holds no last look, so the pane shows the last day and offers the source's own look-backs. The pull-request read failed to sign in to GitHub, so Landed and Decided state that failure instead of looking empty. Only the summary answers.</p></div>
+    <div class="frame-label"><span class="eyebrow" id="f2">Frame 2 · today's plane: last look unknown, pull requests down</span><p>What our plane can produce right now, from the same 17:36 reads. The catch-up source holds no last look, so the pane shows the last day and offers the source's own look-backs. The pull-request read failed to sign in to GitHub, so Landed and Decided state that failure instead of looking empty. Only the summary answers, so the close is withheld: this window cannot be marked read while two of its bands could not read.</p></div>
     <div class="viewport">
       <article class="cu" aria-label="Catch Up, partial">
         <div class="cu-head">
@@ -336,8 +338,8 @@
           <p class="src">A summary, not the record: it cites 60 of 66 memory records from 16 identities, generated 17:36.</p>
         </section>
         <div class="cu-close">
-          <button type="button">Done reading — start the next window here</button>
-          <a href="#f2">The live feed →</a>
+          <p class="withheld">Done reading waits for pull requests.<small>Closing now would start your next window past changes this one could not show (gap 6).</small></p>
+          <span class="feed" title="In the app: activates the Activity pane">The live feed →</span>
         </div>
       </article>
     </div>
@@ -384,15 +386,15 @@
             <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/610"><span class="kind">fix</span>Page pollDigest and resync instead of materialising the whole log</a><span class="when">17:05</span><span class="meta">Brain #610 · resolves #561 · Eos</span></li>
             <li class="item"><a class="what" href="https://github.com/neomjs/neo-agent-brain/pull/615"><span class="kind">fix</span>Container memory counts what the kernel cannot reclaim first</a><span class="when">16:56</span><span class="meta">Brain #615 · resolves #614 · Vega</span></li>
           </ul>
-          <details class="fold"><summary>6 more changes</summary><ul><li>Brain #594, Institution #313, Brain #605, #601, #602, Institution #307</li></ul></details>
+          <details class="fold"><summary>6 more changes</summary><ul><li><a href="https://github.com/neomjs/neo-agent-brain/pull/594">Brain #594</a>, <a href="https://github.com/neomjs/neo-agent-institution/pull/313">Institution #313</a>, <a href="https://github.com/neomjs/neo-agent-brain/pull/605">Brain #605</a>, <a href="https://github.com/neomjs/neo-agent-brain/pull/601">#601</a>, <a href="https://github.com/neomjs/neo-agent-brain/pull/602">#602</a>, <a href="https://github.com/neomjs/neo-agent-institution/pull/307">Institution #307</a></li></ul></details>
         </section>
-        <div class="cu-close"><button type="button">Done reading</button><a href="#f4">The live feed →</a></div>
+        <div class="cu-close"><button type="button">Done reading</button><span class="feed" title="In the app: activates the Activity pane">The live feed →</span></div>
       </article>
     </div>
   </section>
 
   <section class="frame" aria-labelledby="peer">
-    <div class="frame-label"><span class="eyebrow" id="peer">The peer's compact answer</span><p>The same objects the pane renders, as a peer reads them through the Neural Link: Frame 1's values, with every band's state, so "nothing happened" and "a source could not answer" never share a shape.</p></div>
+    <div class="frame-label"><span class="eyebrow" id="peer">The peer's compact answer</span><p>The same objects the pane renders, as a peer reads them through the Neural Link: Frame 1's values, with every band's state, so "nothing happened" and "a source could not answer" never share a shape. The close says whether it is offered, and it is not while any band's state is unavailable.</p></div>
 <pre class="peer">{
   "window" : {"from": "2026-09-27T17:35:00Z", "to": "2026-09-28T17:35:00Z", "basis": "last-look"},
   "landed" : {"state": "available", "repositories": 4,
@@ -402,7 +404,7 @@
   "decided": {"state": "available", "items": [], "notRead": ["decision-record", "discussion-graduation"]},
   "summary": {"state": "available", "notAuthority": true, "records": 66, "identities": 16, "cited": 60,
               "generatedAt": "2026-09-28T17:36:04Z", "text": "This window was characterized by …"},
-  "close"  : {"windowEnd": "2026-09-28T17:35:00Z"}
+  "close"  : {"offered": true, "windowEnd": "2026-09-28T17:35:00Z"}
 }</pre>
   </section>
 
@@ -413,7 +415,7 @@
         <li><b>Facts before the summary.</b> Landed and Decided come from records; the summary comes last and says where it defers.</li>
         <li><b>One window, said as a sentence.</b> The half-open pair from #20 stays, and the head reads it in words.</li>
         <li><b>No question before content.</b> An unknown last look shows the last day and offers the source's own look-backs in one control. No arbitrary periods are added.</li>
-        <li><b>Reading never marks.</b> The close is explicit, at the end, and advances only to the rendered window's end, as #20 landed it.</li>
+        <li><b>Reading never marks.</b> The close is explicit, at the end, and advances only to the rendered window's end, as #20 landed it. It is withheld while any band's source failed.</li>
         <li><b>Nothing is ranked.</b> Each band is newest first. Dependency bots fold by who wrote them, which is a grouping, not a synthesis.</li>
         <li><b>Technical words leave the head.</b> <i>query-time · not authority</i> becomes "A summary, not the record" on the one band it describes.</li>
         <li><b>The partition moves to the summary,</b> the only source that partitions; pull requests stay org-wide.</li>
@@ -427,7 +429,8 @@
         <li><b>Pull requests across the org:</b> the history reads one repository per call, and Catch Up passes none.</li>
         <li><b>The plane can read GitHub:</b> <code>explore_pull_request_history</code> cannot authenticate from our plane's Memory Core (degraded, 0 resolved, 17:36 UTC).</li>
         <li><b>A decisions source:</b> accepted ADRs and graduated Discussions, as records.</li>
-        <li><b>A change's goal:</b> the ticket's epic, so Landed can group by what moved instead of by time.</li>
+        <li><b>A change's reason and goal:</b> the resolved ticket's own title and its epic, read as records. Landed could then show why a change matters in the ticket's words, and group by what moved instead of by time, still writing no reason of its own.</li>
+        <li><b>A close that cannot skip a failed read:</b> <code>markFleetCaughtUp</code> refuses a window rendered while a band's source was unavailable, and the source reports whether the close is offered. Today it records the rendered end regardless, and a later close advances the last look past it.</li>
       </ol>
       <p style="margin-top:8px">Also reported, not a gap in this design: the summary's accuracy (Brain defect-note, 2026-09-28).</p>
     </div>
