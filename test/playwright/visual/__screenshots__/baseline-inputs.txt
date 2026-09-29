@@ -570,7 +570,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     86ea1a29752775e70d21d86e0627a5902ca4d877
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    522daec4f921cff93f74503dbb5586a8473569d7
+    1fde0f11c24dbf688d34f218ba51240b84efab0c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
     4e2398dc703b1fbf169de5f908026d6a17a55cb5
@@ -646,6 +646,36 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-withheld-light.png
     9d0900b99fd732adc3a8a9c7f09003b405d2a413
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-activity.png
+    64682abcfe286043893c720064f7b2e738f026f0
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agent.png
+    4c1c49d8b31074941876e4e3e29c4d70c2e678a0
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-agent-detail.png
+    589218e82b0fe9b10e8cd668f19b5c8b604e345c
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up.png
+    1d6f02d45fad60d0f60e05e195e041102e616727
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-golden-path.png
+    d07259baf6a7b0e1d3db310e599211da19db98be
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox.png
+    5d52a2c1aa01a433aad8e9955db5dd15f85f6cc4
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-memories.png
+    0256dee557eabe45614faeca20e5df657dd40316
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-perspectives.png
+    0bf7b361df357b8f1bbf127bce9c3e702f6a2431
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-tasks.png
+    8bc7a620357bae2a8422e3066fe97f72269c7033
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-wake-routes.png
+    2e399596aee79dcaaa20b77d7e582f97c2139d0d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-card-light.png
     c93e4f43f53dd255d0196a3b6098b2d9feef93f7
