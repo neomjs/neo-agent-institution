@@ -17,8 +17,8 @@ const HINT = 'No node selected';
  *
  * The Open action follows the node's source ({@link AgentOS.util.GraphNodeSource}): a work item opens its GitHub
  * page, a session its Memories drill (the section fires `sessionOpen`, the pane routes it), and any other node
- * says that its kind has no source view. The qualified id stays out of the headline, in a read-only field the
- * Copy action copies. The relations, grouped by type and direction, reach the node's neighbours.
+ * says that its kind has no source view. The qualified id stays behind the Copy action, in a read-only field the
+ * panel never shows. The relations, grouped by type and direction, reach the node's neighbours.
  *
  * The pane owns the facts and the relation store; this section only renders them.
  * @class AgentOS.view.fleet.goldenpath.ObservatorySelectionContainer
@@ -183,13 +183,16 @@ class ObservatorySelectionContainer extends Container {
 
     /**
      * @summary The Copy action: the id field's text goes to the clipboard, through the main thread's selection.
+     * The selection takes the focus into a field nobody sees, so the focus returns to the action.
+     * @param {Object} data The click; `detail` is 0 where the keyboard pressed the action
      */
-    async onCopyClick() {
-        const me = this, field = me.getReference('selected-id'), {windowId} = me;
+    async onCopyClick(data) {
+        const me = this, copy = me.getReference('selected-copy'), field = me.getReference('selected-id'), {windowId} = me;
 
         if (me.facts) {
             await Neo.main.DomAccess.selectNode({id: field.id, windowId});
-            await Neo.main.DomAccess.execCommand({command: 'copy', windowId})
+            await Neo.main.DomAccess.execCommand({command: 'copy', windowId});
+            copy.focus(copy.id, false, true, data?.detail ? 'pointer' : 'keyboard')
         }
     }
 

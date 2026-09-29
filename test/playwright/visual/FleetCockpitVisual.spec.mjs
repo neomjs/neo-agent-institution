@@ -888,7 +888,20 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText(/^open, as last ingested · authored by @neo-opus-grace · last activity .+ · Golden Path rank 2$/);
         await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveAttribute('href', 'https://github.com/neomjs/neo/issues/8');
         await rest();
-        await expect(pane).toHaveScreenshot('observatory-pane-selected-source-light.png')
+        await expect(pane).toHaveScreenshot('observatory-pane-selected-source-light.png');
+
+        // the id is behind Copy: the panel never shows it, and the action copies it
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+        const copy = pane.getByRole('button', {name: 'Copy id'});
+
+        await copy.click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('neomjs/neo#issue-8');
+        await expect(copy, 'the focus the selection took returns to the action').toBeFocused();
+
+        await page.evaluate(() => navigator.clipboard.writeText(''));
+        await copy.press('Enter');
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()), 'and so does the keyboard').toBe('neomjs/neo#issue-8');
+        await expect(copy).toBeFocused()
     });
 
     /**

@@ -44,6 +44,18 @@ test.describe('AgentOS.util.GraphNodeSource', () => {
         ].forEach(node => expect(GraphNodeSource.sourceOf(node), node.id).toBeNull())
     });
 
+    test('a kind no vocabulary declares, or a repository that is a path step, has none: nothing throws, no repository is lost', () => {
+        [
+            {id: 'neomjs/neo#undefined-7', kind: 'constructor'},  // every object inherits these keys
+            {id: 'neomjs/neo#undefined-7', kind: '__proto__'},
+            {id: 'neomjs/..#issue-7',      kind: 'ISSUE'},        // the browser resolves it to github.com/issues/7
+            {id: 'neomjs/.#issue-7',       kind: 'ISSUE'}
+        ].forEach(node => expect(GraphNodeSource.sourceOf(node), `${node.id} as ${node.kind}`).toBeNull());
+
+        expect(GraphNodeSource.sourceOf({id: 'neomjs/.github#issue-7', kind: 'ISSUE'}), 'a name with a dot is still a repository')
+            .toEqual({type: 'github', url: 'https://github.com/neomjs/.github/issues/7'})
+    });
+
     test('a session and its summary open the session the Memories drill reads', () => {
         expect(GraphNodeSource.sourceOf({id: `neomjs/neo#session:${uuid}`, kind: 'SESSION'}))
             .toEqual({type: 'session', sessionId: uuid});

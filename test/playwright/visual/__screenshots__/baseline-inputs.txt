@@ -198,7 +198,7 @@ apps/agentos/util/GoldenPathEnvelope.mjs
     b112a479ca39a63d579e8dc5f13926fe6a9aa3a0
 
 apps/agentos/util/GraphNodeSource.mjs
-    8156a04923ef4b5afbadbf2ca287d865edb89d9d
+    52a9a4164a3eb6e14a869b0618127064d23f5124
 
 apps/agentos/util/GraphSceneEnvelope.mjs
     952804a37e003becb915f60574ae12264660f275
@@ -309,7 +309,7 @@ apps/agentos/view/fleet/goldenpath/ObservatoryRelationList.mjs
     6a5bfc790236661806e83b5f66ed84b583151d61
 
 apps/agentos/view/fleet/goldenpath/ObservatorySelectionContainer.mjs
-    34df994d7a83d1acfe8bb6a07362fd1b4f8980f9
+    c34e3ed5982a81c9cd154401b384bd8b324cde12
 
 apps/agentos/view/fleet/goldenpath/ObservatoryViewContainer.mjs
     03a379c44538b8c4fb6ab13de7c0e69d2760dcc2
@@ -459,7 +459,7 @@ resources/scss/src/apps/agentos/fleet/goldenpath/Container.scss
     c5cdbc99a91efcd5bf2519591df837d580b4dd40
 
 resources/scss/src/apps/agentos/fleet/goldenpath/ObservatoryContainer.scss
-    a1b5fc13d1d858043723bee8d8da5b6b5caf4078
+    0d0c6a7da2defcf93413e8634d23d558ff941fb3
 
 resources/scss/src/apps/agentos/fleet/health/Container.scss
     6cf9d98d3805266f4e9d974197fb6502d76b14f6
@@ -579,7 +579,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     86ea1a29752775e70d21d86e0627a5902ca4d877
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    7e1585e09d5b3ba42c0b346b6430f3e6ce98b97e
+    75f30e7ea4790091e55648f339a4804043d335ed
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
     4e2398dc703b1fbf169de5f908026d6a17a55cb5
@@ -621,7 +621,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     defcf9f4b378aff2a8e5dccca2ac650411b96bfb
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-degraded-light.png
-    3cbe30ef0db7a5eabfbd751cdc61e87cbe409a49
+    41f1c1a43db6be21221bc048274aa04bd338aa94
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-heat-light.png
     75a7a87591c93d15a4cd4d3c24cb31da2b0f1c2a
@@ -642,22 +642,22 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     019e78cb528d142a38e936f8a5dc1b5699c34716
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-selected-source-light.png
-    cad1d6017cf3cc12eea8bd25e10e1d27eb89b1a6
+    3f4cb26a54d86bd123a543c668d55b249340bbd8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-selected.png
-    f11875afc2d5c113429658e44a5719533d7f78fc
+    9bf27bd954e807de1e2c2342ea20c29e6d2f60c6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-truncated-light.png
-    8f079979bbab03e7cf81d45f13b18b7775309862
+    6a6f58377d0e87c0320d0ab7e9f4cb66576ecc16
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-truncated.png
-    01037f3d54e0ee70cb7ab29fcb91e0af0ef61d4d
+    d3a656a11e24c93164816d173182db763c957bed
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-unavailable-light.png
     b3736cb4f1d1d886b5114e202e31308ad5baf2c1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-withheld-light.png
-    309dee8676adca62557b3a8216d5ecaa545c39a5
+    1fb7d87915a08da198d6f0c6022ba05eded213fc
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-activity.png
     ab4b361b29b6a8411f4476773bed77b9f306f168

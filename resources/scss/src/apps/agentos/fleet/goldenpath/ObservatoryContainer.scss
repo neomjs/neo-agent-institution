@@ -132,14 +132,14 @@
         font : var(--fm-text-micro);
     }
 
+    /* the id behind Copy: laid out for the main thread's selection (a field without a box copies nothing), out of
+       the flow and never on screen */
     .fm-observatory-selected-id {
-        background: transparent;
-        border    : none;
-        color     : var(--fm-ink-dim);
-        font      : var(--fm-text-micro);
-        margin    : 0 var(--fm-space-3) var(--fm-space-1);
-        min-width : 0;
-        padding   : 0;
+        border        : none;
+        opacity       : 0;
+        padding       : 0;
+        pointer-events: none;
+        position      : absolute;
     }
 
     /* the side panel: the team, the view, the nodes and the selected node, a fixed column beside the surface

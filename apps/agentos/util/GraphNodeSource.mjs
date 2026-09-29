@@ -1,10 +1,11 @@
 import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
- * A repository slug as GitHub spells it: `owner/name`.
+ * A repository slug as GitHub spells it: `owner/name`. A name of `.` or `..` is a path step the browser resolves
+ * away, not a repository.
  * @type {RegExp}
  */
-const ORIGIN = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+const ORIGIN = /^[A-Za-z0-9-]+\/(?!\.\.?$)[A-Za-z0-9._-]+$/;
 
 /**
  * A session id as Memory Core mints it.
@@ -65,19 +66,20 @@ class GraphNodeSource extends Base {
 
     /**
      * @summary The source of one scene node: its GitHub page, its session, or `null` where its identity vouches
-     * for neither.
+     * for neither. A kind counts only as a vocabulary's own entry, never as a key every object inherits.
      * @param {Object|null} node A scene node, `{id, kind}`
      * @returns {{type: 'github', url: String}|{type: 'session', sessionId: String}|null}
      */
     sourceOf(node) {
         const
             me     = this,
+            kind   = node?.kind,
             id     = typeof node?.id === 'string' ? node.id : '',
             hash   = id.indexOf('#'),
             origin = id.slice(0, hash),
             local  = id.slice(hash + 1),
-            github = me.github[node?.kind],
-            prefix = me.sessions[node?.kind];
+            github = Object.hasOwn(me.github, kind)   ? me.github[kind]   : null,
+            prefix = Object.hasOwn(me.sessions, kind) ? me.sessions[kind] : null;
 
         if (hash < 1 || !ORIGIN.test(origin)) {
             return null
