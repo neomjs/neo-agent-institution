@@ -11,12 +11,13 @@ const CLICK_SLOP = 4;
 /**
  * @summary The App Worker half of the observatory: an offscreen canvas handed to the canvas worker's
  * {@link AgentOS.canvas.Observatory} renderer. It draws nothing itself: it forwards the scene, the selection
- * and the route overlay its pane derives, the surface size and the pointer (moves, buttons and the wheel, so the
- * worker orbits and zooms), asks the renderer which node the pointer rests on, and reports a click that did not
- * orbit as a selection. The three are reactive configs: a new scene crosses to the worker with the other two,
- * and a new selection or overlay crosses alone, so a click never resends a whole graph. The scene crosses in
- * its wire form ({@link AgentOS.util.ObservatorySceneLayout#wire}), typed arrays by node index. A node crosses
- * as its index, and this class resolves it against the scene it holds, so no node object or id ever crosses.
+ * and the route overlay its pane derives, the heat and the team lens by the scene's node indices, the surface size
+ * and the pointer (moves, buttons and the wheel, so the worker orbits and zooms), asks the renderer which node the
+ * pointer rests on, and reports a click that did not orbit as a selection. All five are reactive configs: a new
+ * scene crosses to the worker with the other four, and any of those crosses alone, so a click or a checked peer
+ * never resends a whole graph. The scene crosses in its wire form
+ * ({@link AgentOS.util.ObservatorySceneLayout#wire}), typed arrays by node index. A node crosses as its index,
+ * and this class resolves it against the scene it holds, so no node object or id ever crosses.
  *
  * @class AgentOS.view.fleet.goldenpath.ObservatoryCanvas
  * @extends Neo.app.SharedCanvas
@@ -41,6 +42,20 @@ class ObservatoryCanvas extends SharedCanvas {
          * @member {String} rendererClassName='AgentOS.canvas.Observatory'
          */
         rendererClassName: 'AgentOS.canvas.Observatory',
+        /**
+         * The heat of the scene's nodes ({@link AgentOS.util.ObservatorySceneLayout#heatOf}), or `null` while the
+         * overlay is off.
+         * @member {Float32Array|null} heat_=null
+         * @reactive
+         */
+        heat_: null,
+        /**
+         * The team lens of the scene, `{lens, hues}` ({@link AgentOS.util.ObservatorySceneLayout#lensOf} and one
+         * hue per checked peer), or `null` while no peer is checked.
+         * @member {Object|null} lens_=null
+         * @reactive
+         */
+        lens_: null,
         /**
          * The canvas worker imports renderers relative to the engine package (`../../<path>` from
          * `src/worker/`), so a workspace app climbs out of `node_modules/neo.mjs` first.
@@ -120,6 +135,32 @@ class ObservatoryCanvas extends SharedCanvas {
      */
     afterSetScene(value, oldValue) {
         this.pushScene()
+    }
+
+    /**
+     * Triggered after the heat config got changed — the worker inks the drawn scene again, without the scene
+     * crossing to it.
+     * @param {Float32Array|null} value
+     * @param {Float32Array|null} oldValue
+     * @protected
+     */
+    afterSetHeat(value, oldValue) {
+        const me = this;
+
+        me.isCanvasReady && me.renderer && me.renderer.setHeat({heat: value, windowId: me.windowId})
+    }
+
+    /**
+     * Triggered after the lens config got changed — the worker inks the drawn scene again, without the scene
+     * crossing to it.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetLens(value, oldValue) {
+        const me = this;
+
+        me.isCanvasReady && me.renderer && me.renderer.setLens({lens: value, windowId: me.windowId})
     }
 
     /**
@@ -259,15 +300,15 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
-     * @summary Hands the scene in its wire form, the selected index and the overlay to the renderer, once the
-     * canvas is ready.
+     * @summary Hands the scene in its wire form, the selected index, the overlay and the two channels to the
+     * renderer, once the canvas is ready.
      * @protected
      */
     pushScene() {
         const me = this;
 
         if (me.isCanvasReady && me.renderer) {
-            me.renderer.setScene({routeOverlay: me.routeOverlay, scene: ObservatorySceneLayout.wire(me.scene), selected: me.indexOf(me.selectedId), windowId: me.windowId})
+            me.renderer.setScene({heat: me.heat, lens: me.lens, routeOverlay: me.routeOverlay, scene: ObservatorySceneLayout.wire(me.scene), selected: me.indexOf(me.selectedId), windowId: me.windowId})
         }
     }
 

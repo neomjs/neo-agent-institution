@@ -26,6 +26,22 @@ class ObservatorySceneLayout extends Base {
          */
         className: 'AgentOS.util.ObservatorySceneLayout',
         /**
+         * The stated window of attention: a node changed within it reads as recently changed in the team lens, and
+         * the heat of an attention event falls from full at its instant to none at the window's end. A node of a
+         * kind without a source takes `spread` of its hottest neighbour's heat.
+         * @member {Object} attention={spread: 0.5, windowMs: 259200000}
+         */
+        attention: {spread: 0.5, windowMs: 259200000},
+        /**
+         * The heat overlay's named attention events, per node kind that carries a source (the Brain's
+         * `activitySources`): whether that field records attention (`true`), a change that is not (`false`: a
+         * message is volume, not attention, and a file's mtime moves with every checkout), or attention only while
+         * the item is open (`'open'`, so a merged or closed item retires). A kind this map does not name takes
+         * `spread` of its hottest neighbour's heat ({@link #attention}).
+         * @member {Object} heatEvents
+         */
+        heatEvents: {AGENT_MEMORY: true, DIRECTORY: false, DISCUSSION: 'open', FILE: false, ISSUE: 'open', KB_GAP: true, MESSAGE: false, PULL_REQUEST: 'open', RETROSPECTIVE: true, TOOLING_GAP: true},
+        /**
          * Geometry of the communities geography in unit space; the camera orbits the origin a few units out.
          * Community centres lie on a sphere of `radius`. The largest community fills a ball of at most `spread`,
          * less when many communities share the sphere, and a smaller one shrinks with the cube root of its
@@ -192,7 +208,8 @@ class ObservatorySceneLayout extends Base {
      * @param {Boolean} [options.mail=true] Whether mail stays in the scene
      * @returns {Object} `{currency, empty, geography, nodes, edges, edgeTypes, seeds, index, communities,
      *     haloFrom, halo, hidden, wells, wellCap, overCap, completeness, snapshotId}`: `nodes[]` = `{id, kind, label, rank,
-     *     hop, cluster, x, y, z}`, the seeds first in route order, then by id; `edges[]` pairs index into `nodes`,
+     *     hop, cluster, x, y, z, authoredBy, assignedTo, memoryOf, state, lastActivityAt}`, the seeds first in route
+     *     order, then by id, the last five as the read carries them (`null` where it does not); `edges[]` pairs index into `nodes`,
      *     `edgeTypes[]` aligned; `seeds[]` indexes the seeds in route order. `communities` counts the
      *     geography's clusters; halo sectors are the clusters from `haloFrom` on (`null` without a halo), and
      *     `halo` counts their nodes. `hidden` is `{mail: {nodes, edges}, halo: {nodes, edges}}`; `wells[]` is
@@ -429,14 +446,20 @@ class ObservatorySceneLayout extends Base {
 
                 return {
                     id,
-                    kind   : node.kind  ?? null,
-                    label  : node.label ?? null,
-                    rank   : routeAt.has(id) ? routeAt.get(id) + 1 : null,
-                    hop    : hops[position] < 0 ? null : hops[position],
-                    cluster: cluster[position],
-                    x      : spot[position * 3],
-                    y      : spot[position * 3 + 1],
-                    z      : spot[position * 3 + 2]
+                    kind          : node.kind  ?? null,
+                    label         : node.label ?? null,
+                    rank          : routeAt.has(id) ? routeAt.get(id) + 1 : null,
+                    hop           : hops[position] < 0 ? null : hops[position],
+                    cluster       : cluster[position],
+                    x             : spot[position * 3],
+                    y             : spot[position * 3 + 1],
+                    z             : spot[position * 3 + 2],
+                    // the read's own attribution, state and recency ride along for the lens and the heat
+                    authoredBy    : node.authoredBy ?? null,
+                    assignedTo    : Array.isArray(node.assignedTo) ? node.assignedTo : null,
+                    memoryOf      : node.memoryOf ?? null,
+                    state         : node.state ?? null,
+                    lastActivityAt: Number.isFinite(node.lastActivityAt) ? node.lastActivityAt : null
                 }
             }),
             // a hidden node takes its relations with it
@@ -466,6 +489,137 @@ class ObservatorySceneLayout extends Base {
             completeness: scene.completeness ?? null,
             snapshotId
         }
+    }
+
+    /**
+     * @summary The heat overlay over a scene: per node, how much attention it drew within the
+     * {@link #attention} window, by the named events of {@link #heatEvents}, which also name the kinds that carry
+     * a source. An event's heat falls from 1 at its instant to 0 at the window's end. An open work item heats; a
+     * merged or closed one retires to 0. A node of a kind the events do not name takes a share of its hottest
+     * neighbour's heat. Heat is unknown (`NaN`) where the read cannot say: a read that carries no activity time at
+     * all (an older Brain), a node without its time, or a work item whose state the read omits. The heat moves no
+     * node; it is a channel beside the positions.
+     * @param {Object} scene A {@link #fromGraphScene} scene
+     * @param {Number} [now=Date.now()] Epoch ms
+     * @returns {Float32Array} Per node, 0…1, or `NaN` for unknown
+     */
+    heatOf(scene, now = Date.now()) {
+        const
+            me                 = this,
+            {nodes, edges}     = scene,
+            {spread, windowMs} = me.attention,
+            heat               = new Float32Array(nodes.length).fill(NaN),
+            fade               = at => at === null ? NaN : Math.max(0, Math.min(1, 1 - (now - at) / windowMs)),
+            derived            = [];
+
+        if (!nodes.some(node => node.lastActivityAt !== null)) {
+            return heat
+        }
+
+        nodes.forEach((node, index) => {
+            const event = me.heatEvents[node.kind];
+
+            if (event === undefined) {
+                derived.push(index)
+            } else if (event === false) {
+                heat[index] = 0
+            } else if (event === 'open') {
+                heat[index] = node.state === null ? NaN : node.state === 'OPEN' ? fade(node.lastActivityAt) : 0
+            } else if (event === true) {
+                heat[index] = fade(node.lastActivityAt)
+            }
+        });
+
+        if (derived.length) {
+            const
+                hottest = new Float32Array(nodes.length).fill(-1),
+                unknown = new Uint8Array(nodes.length),
+                sourced = new Uint8Array(nodes.length).fill(1);
+
+            derived.forEach(index => sourced[index] = 0);
+
+            // one hop from the nodes with a source, read before any derived heat lands, so the order of the rows
+            // never matters and a derived node lends nothing
+            for (const [a, b] of edges) {
+                for (const [from, to] of [[a, b], [b, a]]) {
+                    if (sourced[from]) {
+                        Number.isNaN(heat[from]) ? unknown[to] = 1 : hottest[to] = Math.max(hottest[to], heat[from])
+                    }
+                }
+            }
+
+            for (const index of derived) {
+                heat[index] = hottest[index] >= 0 ? hottest[index] * spread : unknown[index] ? NaN : 0
+            }
+        }
+
+        return heat
+    }
+
+    /**
+     * @summary The team lens over a scene: per node, the checked peer it belongs to by the read's attribution —
+     * the author or an assignee of an issue or PR, the identity of a memory. A node two checked peers share belongs
+     * to the one checked first. The lens moves no node; it is a channel beside the positions.
+     * @param {Object}   scene   A {@link #fromGraphScene} scene
+     * @param {String[]} checked The checked peers' identities, in the order their hues are listed
+     * @returns {Uint16Array|null} Per node, 1 + its peer's index in `checked`, 0 for none; `null` with no peer checked
+     */
+    lensOf(scene, checked) {
+        if (!checked?.length) {
+            return null
+        }
+
+        const rank = new Map(checked.map((id, index) => [id, index + 1])), lens = new Uint16Array(scene.nodes.length);
+
+        scene.nodes.forEach((node, index) => {
+            for (const id of [node.authoredBy, ...(node.assignedTo ?? []), node.memoryOf]) {
+                const at = rank.get(id);
+
+                if (at && (lens[index] === 0 || at < lens[index])) {
+                    lens[index] = at
+                }
+            }
+        });
+
+        return lens
+    }
+
+    /**
+     * @summary The peers a scene attributes nodes to — the authors and assignees of issues and PRs, the identities
+     * of memories — each with the count of its nodes, by identity. The registry need not know them: the lens reads
+     * the graph's own attribution.
+     * @param {Object|null} scene A {@link #fromGraphScene} scene
+     * @returns {{id: String, nodes: Number}[]}
+     */
+    peersOf(scene) {
+        const counts = new Map();
+
+        for (const node of scene?.nodes ?? []) {
+            new Set([node.authoredBy, ...(node.assignedTo ?? []), node.memoryOf].filter(Boolean)).forEach(id => counts.set(id, (counts.get(id) ?? 0) + 1))
+        }
+
+        return [...counts].map(([id, nodes]) => ({id, nodes})).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    }
+
+    /**
+     * @summary What a node is to the first checked peer it belongs to: `authored`, `assigned` or `memory`, with
+     * `changed recently` beside it when the node changed within the {@link #attention} window. Attribution is
+     * history, so an old assignment never reads as current work: nothing here says who works on it now.
+     * @param {Object}   node    A {@link #fromGraphScene} node
+     * @param {String[]} checked The checked peers' identities, in check order
+     * @param {Number}   [now=Date.now()] Epoch ms
+     * @returns {{peer: String, role: String}|null}
+     */
+    roleOf(node, checked, now = Date.now()) {
+        for (const peer of checked ?? []) {
+            const role = node.authoredBy === peer ? 'authored' : node.assignedTo?.includes(peer) ? 'assigned' : node.memoryOf === peer ? 'memory' : null;
+
+            if (role) {
+                return {peer, role: node.lastActivityAt !== null && now - node.lastActivityAt <= this.attention.windowMs ? `${role} · changed recently` : role}
+            }
+        }
+
+        return null
     }
 
     /**

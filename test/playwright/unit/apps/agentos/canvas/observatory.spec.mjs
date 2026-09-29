@@ -225,6 +225,49 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect(Observatory.ink(wireScene('current'), 99)).toEqual(Observatory.ink(wireScene('current')))
     });
 
+    test('the team lens inks each checked peer\'s nodes in its hue, a route\'s too, and fades the rest, where a route node no peer holds keeps its gold; a lens of another scene\'s nodes waits for its own', () => {
+        const
+            {dark} = PALETTES,
+            tones  = Observatory.communityTones,
+            peer   = hue => Observatory.hsl(hue, tones.saturation, tones.lightness.dark),
+            lens   = {lens: Uint16Array.from([0, 1, 2, 0, 1]), hues: Float32Array.from([120, 240])},
+            flat   = Observatory.ink(wireScene('current'), -1, true, {heat: null, lens});
+
+        expect([0, 1, 2, 3, 4].map(index => rounded(colorOf(flat.colors, index)))).toEqual([rgb(dark.route), peer(120), peer(240), rgb(dark.line), peer(120)].map(rounded));
+        expect(plain(flat.sizes), 'what no checked peer holds recedes, a seed too').toEqual([6, 6, 5, 3, 5]);
+        expect(Observatory.ink(wireScene('current'), -1, true, {heat: null, lens: {lens: new Uint16Array(3), hues: new Float32Array(1)}}), 'three entries are not this scene\'s five')
+            .toEqual(Observatory.ink(wireScene('current'), -1, true, {heat: null, lens: null}))
+    });
+
+    test('the heat brightens and grows what drew attention, a route\'s nodes too, fades the cold, greys the unknown, and moves nothing', () => {
+        const
+            {dark} = PALETTES,
+            heat   = Float32Array.from([1, 0, 1, 0.5, NaN]),
+            flat   = Observatory.ink(wireScene('current'), -1, true, {heat, lens: null}),
+            mix    = (from, to, share) => from.map((value, channel) => value + (to[channel] - value) * share);
+
+        expect([0, 1].map(index => rounded(colorOf(flat.colors, index))), 'a hot seed and a cold one, the path still drawn through both').toEqual([rgb(dark.signal), rgb(dark.line)].map(rounded));
+        expect(flat.paths.map(path => Array.from(path)), 'the route stays drawn').toEqual([[0, 1]]);
+        expect(rounded(colorOf(flat.colors, 2)), 'the hottest takes the signal').toEqual(rounded(rgb(dark.signal)));
+        expect(rounded(colorOf(flat.colors, 3)), 'half the heat lies halfway from the line').toEqual(rounded(mix(rgb(dark.line), rgb(dark.signal), 0.5)));
+        expect(rounded(colorOf(flat.colors, 4)), 'the unknown takes the dim ink, apart from the cold').toEqual(rounded(rgb(dark.inkDim)));
+        expect(plain(flat.sizes)).toEqual([15, 3.6, 7.5, 5.25, 3]);
+        expect(plain(flat.positions)).toEqual(plain(Observatory.ink(wireScene('current'), -1, true, {heat: null, lens: null}).positions))
+    });
+
+    test('the stats count the channels the drawn scene carries: the heat\'s known and unknown nodes, the lens\'s peers and nodes', () => {
+        Observatory.setScene({scene: wireScene('current'), heat: Float32Array.from([1, 0, NaN, NaN, 0.2]), lens: {lens: Uint16Array.from([1, 0, 0, 1, 0]), hues: Float32Array.from([10])}});
+
+        expect(Observatory.getStats().heat).toEqual({nodes: 3, unknown: 2});
+        expect(Observatory.getStats().lens).toEqual({peers: 1, nodes: 2});
+
+        Observatory.setHeat({heat: null});
+        Observatory.setLens({lens: null});
+
+        expect(Observatory.getStats().heat).toBeNull();
+        expect(Observatory.getStats().lens).toBeNull()
+    });
+
     test('pick answers the index under a position and locate is its inverse; the stats count the pane scene with its communities, currency, completeness, snapshot, selection and overlay', () => {
         Observatory.context = createContext();
         Observatory.updateSize({width: 400, height: 200, devicePixelRatio: 1});

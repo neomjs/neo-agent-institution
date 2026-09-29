@@ -119,9 +119,23 @@
         }
     }
 
+    /* the team lens: the engine's check list, a few rows high, each peer in its own hue */
+    .fm-observatory-peer-list {
+        max-height: 132px;
+
+        .fm-observatory-peer-swatch {
+            background   : hsl(var(--fm-peer-hue) 55% var(--fm-peer-lightness));
+            border-radius: 50%;
+            flex         : none;
+            height       : 8px;
+            width        : 8px;
+        }
+    }
+
     /* the engine list's own variables, re-valued on the FM scale: rows on the pane's ground, the selected
        row a step up with the signal at its edge, keyboard focus outlined in the signal */
     .fm-observatory-node-list,
+    .fm-observatory-peer-list,
     .fm-observatory-relation-list {
         --list-container-list-color          : var(--fm-ink);
         --list-item-background-color         : transparent;
@@ -170,6 +184,13 @@
         .fm-observatory-row-kind {
             color: var(--fm-ink-dim);
             flex : none;
+        }
+
+        /* under the team lens: what the node is to its peer, in the peer's hue */
+        .fm-observatory-row-role {
+            color: hsl(var(--fm-peer-hue) 55% var(--fm-peer-lightness));
+            flex : none;
+            font : var(--fm-text-micro);
         }
 
         .fm-observatory-row-label {

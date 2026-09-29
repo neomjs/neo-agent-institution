@@ -698,7 +698,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      * selection, and waits for the observatory's line; the scene follows one canvas-worker frame later, so a
      * short settle follows.
      * @param {Object} page
-     * @param {String} state `current|truncated|degraded|routeless|unavailable`
+     * @param {String} state `current|team|truncated|degraded|routeless|unavailable`
      * @param {RegExp|String} currency The line that envelope must produce
      * @param {String} [select] The qualified id to select
      */
@@ -776,6 +776,52 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await feedObservatory(page, 'unavailable', 'Unavailable · fleet graph scene verb not wired');
         await expect(pane).toHaveScreenshot('observatory-pane-unavailable-light.png')
+    });
+
+    test('the Observatory\'s team lens and heat — two checked peers draw their union in hues of their own and the Team list and the rows carry them; the heat brightens what drew attention and greys what it cannot read; nothing moves; both skins', async ({page}) => {
+        const
+            pane  = page.locator('.fm-observatory-pane'),
+            peer  = id => pane.locator('.fm-observatory-peer-list .neo-list-item').filter({hasText: id}),
+            heat  = pane.getByRole('button', {name: 'Heat'}),
+            lensed = / · lens · 5 nodes · 2 peers$/,
+            rest  = async () => {
+                await page.waitForTimeout(300);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(500)
+            };
+
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        await rest();
+
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete$/);
+
+        // the operator's direction: Vega's AND Grace's nodes, as one union
+        await peer('@neo-opus-vega').click();
+        await peer('@neo-opus-grace').click();
+        await expect(pane.locator('.fm-observatory-currency')).toHaveText(lensed);
+        await rest();
+        await expect(pane).toHaveScreenshot('observatory-pane-lens.png');
+
+        await peer('@neo-opus-vega').click();
+        await peer('@neo-opus-grace').click();
+        await heat.click();
+        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · complete · heat · last 3 days · 2 unknown$/);
+        await rest();
+        await expect(pane).toHaveScreenshot('observatory-pane-heat.png');
+
+        await switchToLightSkin(page);
+        await rest();
+        await expect(pane).toHaveScreenshot('observatory-pane-heat-light.png');
+
+        // the Heat tooltip shows once the pointer dwells, and would stay up if the pointer left inside its delay
+        await heat.click();
+        await rest();
+        await peer('@neo-opus-vega').click();
+        await peer('@neo-opus-grace').click();
+        await expect(pane.locator('.fm-observatory-currency')).toHaveText(lensed);
+        await rest();
+        await expect(pane).toHaveScreenshot('observatory-pane-lens-light.png')
     });
 
     /**

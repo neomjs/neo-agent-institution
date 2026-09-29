@@ -386,3 +386,127 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.destroy()
     });
 });
+
+/**
+ * @summary {@link graphRead} with the Brain's attribution, state and recency: the operator authored the first
+ * route item, an open PR Vega is assigned and changed an hour ago; Vega authored the second, open and untouched
+ * for thirty days; the operator's third is closed; Eos authored an issue whose state the read omits; the issue no
+ * seed reaches has no activity time. The operator and Eos share their own place in the palette.
+ * @param {Object} [nodes] Fields replacing a fixture node's, by short id
+ * @param {Object} [envelope] Fields replacing the fixture envelope's
+ * @returns {Object}
+ */
+function teamRead(nodes = {}, envelope = {}) {
+    const
+        now  = Date.now(),
+        hour = 3600000,
+        team = {
+            'pr-101'   : {kind: 'PULL_REQUEST', authoredBy: '@tobiu',         assignedTo: ['@neo-opus-vega'], state: 'OPEN',   lastActivityAt: now - hour},
+            'issue-202': {kind: 'ISSUE',        authoredBy: '@neo-opus-vega', assignedTo: [],                 state: 'OPEN',   lastActivityAt: now - 30 * 24 * hour},
+            'issue-303': {kind: 'ISSUE',        authoredBy: '@tobiu',         assignedTo: [],                 state: 'CLOSED', lastActivityAt: now - 2 * hour},
+            'issue-404': {kind: 'ISSUE',        authoredBy: '@neo-preview',   assignedTo: [],                                  lastActivityAt: now},
+            'issue-505': {kind: 'ISSUE',                                                                      state: 'OPEN'}
+        };
+
+    return graphRead({nodes: graphRead().scene.nodes.map(node => {
+        const id = node.id.replace('neomjs/neo#', '');
+
+        return {...node, ...team[id], ...nodes[id]}
+    })}, envelope)
+}
+
+test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team lens and the heat over the same places', () => {
+    const
+        peerList = pane => pane.getReference('observatory-peers'),
+        click    = (pane, id) => peerList(pane).selectionModel.onListClick({currentTarget: peerList(pane).getItemId(pane.peerStore.get(id))}),
+        checked  = pane => peerList(pane).selectionModel.items.map(itemId => pane.peerStore.get(peerList(pane).getItemRecordId(itemId)).id),
+        hue      = (pane, id) => pane.peerStore.get(id).hue,
+        roles    = pane => pane.nodeStore.items.filter(row => row.role).map(({id, role, roleHue}) => [id.replace('neomjs/neo#', ''), role, roleHue]);
+
+    test('the Team list holds the peers the read attributes nodes to; checked, their union draws in hues of their own, each row names what its node is to its peer, the line counts the lens', () => {
+        const pane = createPane({envelope: graphRead()}), title = () => pane.getReference('observatory-peers-title').text;
+
+        expect([pane.peerStore.getCount(), title()], 'a read without attribution says so').toEqual([0, 'Team · no peer in this read']);
+
+        pane.envelope = teamRead({}, {snapshotId: 'snap-8b21'});
+        expect(title()).toBe('Team');
+        expect(pane.peerStore.items.map(({id, nodes}) => [id, nodes])).toEqual([['@neo-opus-vega', 2], ['@neo-preview', 1], ['@tobiu', 2]]);
+        expect(hue(pane, '@neo-preview'), 'unchecked, each shows its own place, and these two share one').toBe(hue(pane, '@tobiu'));
+        expect([pane.lensPeers, pane.overlays.lens, roles(pane)]).toEqual([[], null, []]);
+        expect(lineOf(pane)).not.toMatch(/lens/);
+
+        click(pane, '@neo-opus-vega');
+        expect(pane.lensPeers).toEqual(['@neo-opus-vega']);
+        expect(roles(pane), 'an assignment untouched for thirty days is history, never current work').toEqual([
+            ['pr-101',    'assigned · changed recently', hue(pane, '@neo-opus-vega')],
+            ['issue-202', 'authored',                    hue(pane, '@neo-opus-vega')]
+        ]);
+        expect(lineOf(pane)).toMatch(/ · lens · 2 nodes · 1 peer$/);
+
+        click(pane, '@tobiu');
+        click(pane, '@neo-preview');
+        expect(pane.lensPeers, 'in check order').toEqual(['@neo-opus-vega', '@tobiu', '@neo-preview']);
+        expect(hue(pane, '@neo-preview'), 'checked together, the two take hues of their own').not.toBe(hue(pane, '@tobiu'));
+        expect(Array.from(pane.overlays.lens.hues), 'the swatches are the hues the canvas draws').toEqual(pane.lensPeers.map(id => hue(pane, id)));
+        expect(roles(pane)[0], 'a node two checked peers share is the first-checked one\'s').toEqual(['pr-101', 'assigned · changed recently', hue(pane, '@neo-opus-vega')]);
+        expect(lineOf(pane)).toMatch(/ · lens · 4 nodes · 3 peers$/);
+
+        click(pane, '@neo-opus-vega');
+        expect(pane.lensPeers, 'a second click unchecks').toEqual(['@tobiu', '@neo-preview']);
+        expect(roles(pane)[0]).toEqual(['pr-101', 'authored · changed recently', hue(pane, '@tobiu')]);
+
+        pane.destroy()
+    });
+
+    test('a new read keeps the lens: its peers are checked again without the restore reading as a choice, and a peer it no longer lists keeps its place in the check order', () => {
+        const pane = createPane({envelope: teamRead()});
+
+        click(pane, '@neo-preview');
+        click(pane, '@tobiu');
+
+        pane.envelope = teamRead({'issue-404': {authoredBy: null}}, {snapshotId: 'snap-8b21'});
+        expect(pane.lensPeers, 'Eos left the read, not the lens').toEqual(['@neo-preview', '@tobiu']);
+        expect(checked(pane)).toEqual(['@tobiu']);
+        expect(lineOf(pane)).toMatch(/ · lens · 2 nodes · 2 peers$/);
+
+        click(pane, '@neo-opus-vega');
+        expect(pane.lensPeers, 'the absent peer keeps its place').toEqual(['@neo-preview', '@tobiu', '@neo-opus-vega']);
+
+        pane.envelope = teamRead({}, {snapshotId: 'snap-9c32'});
+        expect(checked(pane)).toEqual(['@neo-preview', '@tobiu', '@neo-opus-vega']);
+        expect(pane.overlays.lens.lens[pane.scene.index[q('issue-404')]], 'Eos\'s issue is Eos\'s again').toBe(1);
+        expect(hue(pane, '@neo-preview'), 'checked first, Eos holds the place the two share').toBe(pane.overlays.lens.hues[0]);
+        expect(hue(pane, '@tobiu')).not.toBe(hue(pane, '@neo-preview'));
+
+        pane.destroy()
+    });
+
+    test('the Heat toggle draws the heat over the same places, and the line states the window and what the heat cannot read', () => {
+        const
+            pane   = createPane({envelope: teamRead()}),
+            toggle = pane.getReference('heat-toggle'),
+            places = () => pane.scene.nodes.map(({id, x, y, z}) => [id, x, y, z]),
+            before = places(),
+            state  = () => [pane.heatOverlay, toggle.pressed, toggle.vdom['aria-pressed'], pane.overlays.heat?.length ?? null];
+
+        // the ripple measures the rendered button, which the unit harness has none of
+        toggle.useRippleEffect = false;
+
+        expect(state()).toEqual([false, false, 'false', null]);
+        expect(lineOf(pane)).not.toMatch(/heat/);
+
+        toggle.onClick({});
+        expect(state()).toEqual([true, true, 'true', 7]);
+        expect(lineOf(pane), 'a state the read omits and a missing time are unknown').toMatch(/ · heat · last 3 days · 2 unknown$/);
+        expect(places()).toEqual(before);
+
+        pane.envelope = graphRead({}, {snapshotId: 'snap-8b21'});
+        expect(lineOf(pane), 'a read without activity times is unknown throughout').toMatch(/ · heat · last 3 days · 7 unknown$/);
+
+        toggle.onClick({});
+        expect(state()).toEqual([false, false, 'false', null]);
+        expect(lineOf(pane)).not.toMatch(/heat/);
+
+        pane.destroy()
+    });
+});
