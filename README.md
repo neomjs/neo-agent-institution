@@ -19,9 +19,9 @@
 Start with the [Institution guides](learn/README.md) for a tour of the cockpit, its data states, and the native vessel.
 
 <p align="center">
-  <img width="1100" src="./test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-cold.png" alt="Agent Institution cockpit showing an unanswered roster and activity stream without invented agents">
+  <img width="1100" src="./test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-default-shell.png" alt="Agent Institution cockpit with agent cards, health and lifecycle controls, and a populated activity stream">
   </br>
-  <em>The checked-in visual golden shows the cold cockpit: the transport is offline and its roster and activity sources have not answered.</em>
+  <em>Agent cards, health and lifecycle controls, and the activity stream in a populated visual scenario.</em>
 </p>
 
 ## What is the Institution?
