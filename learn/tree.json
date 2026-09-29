@@ -1,0 +1,9 @@
+{
+  "data": [
+    {"name": "Using these guides", "parentId": null, "id": "README"},
+    {"name": "Introduction", "parentId": null, "id": "Introduction"},
+    {"name": "Tour the cockpit", "parentId": null, "id": "CockpitTour"},
+    {"name": "Run the Institution", "parentId": null, "id": "RunningTheInstitution"},
+    {"name": "The native vessel", "parentId": null, "id": "TheNativeVessel"}
+  ]
+}

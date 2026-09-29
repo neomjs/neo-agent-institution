@@ -16,10 +16,12 @@
 
 > **Agent Institution — mission control for your own standing team of AIs.**
 
+Start with the [Institution guides](learn/README.md) for a tour of the cockpit, its data states, and the native vessel.
+
 <p align="center">
-  <img width="1100" src="./test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-default-shell.png" alt="Agent Institution cockpit showing agent roster cards, health state, lifecycle controls, and the activity stream">
+  <img width="1100" src="./test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-cold.png" alt="Agent Institution cockpit showing an unanswered roster and activity stream without invented agents">
   </br>
-  <em>The checked-in visual golden exercises the honest offline/static-roster state; a connected Brain supplies live fleet state.</em>
+  <em>The checked-in visual golden shows the cold cockpit: the transport is offline and its roster and activity sources have not answered.</em>
 </p>
 
 ## What is the Institution?
@@ -63,7 +65,7 @@ The current cockpit includes:
 - instance/tenant switching and reason-carrying connection state;
 - Fleet, Focus, and Review perspectives over the same cockpit state;
 - dockable and pop-out panes backed by Neo.mjs object permanence and SharedWorker topology;
-- an honest static/offline fallback when no Fleet transport is connected.
+- a cold, unanswered state when no Fleet transport has supplied a read.
 
 Lifecycle controls act through the connected Brain/Fleet service; the UI does not import or copy
 Brain implementation. The current source path remains `apps/agentos` for compatibility, but the
