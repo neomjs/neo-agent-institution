@@ -60,6 +60,17 @@
             color: var(--fm-ink);
         }
 
+        /* a long line gives way to the hovered node, and the gesture hint to the line */
+        .fm-observatory-currency {
+            min-width    : 0;
+            overflow     : hidden;
+            text-overflow: ellipsis;
+        }
+
+        &:has(.is-hint) .fm-observatory-currency {
+            flex-shrink: 0;
+        }
+
         /* the hovered node keeps its own case: it is a title, not chrome; the gesture hint that
            stands in for it while no node is under the pointer stays chrome, dim */
         .fm-observatory-hover {
@@ -71,6 +82,9 @@
             &.is-hint {
                 color         : var(--fm-ink-dim);
                 letter-spacing: inherit;
+                min-width     : 0;
+                overflow      : hidden;
+                text-overflow : ellipsis;
                 text-transform: inherit;
             }
         }

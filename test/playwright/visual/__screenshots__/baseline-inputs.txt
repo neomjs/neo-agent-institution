@@ -450,7 +450,7 @@ resources/scss/src/apps/agentos/fleet/goldenpath/Container.scss
     f42259d82dcfe9af406d05f1ed313a41d834942c
 
 resources/scss/src/apps/agentos/fleet/goldenpath/ObservatoryContainer.scss
-    883306d134e0cd54093bff9e56edba8e6f0d10e2
+    bce764919c426756a1b91d4c9cebd113acaae2ec
 
 resources/scss/src/apps/agentos/fleet/health/Container.scss
     6cf9d98d3805266f4e9d974197fb6502d76b14f6
@@ -645,7 +645,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     ae1017fbeb9dc508fc6136a1eebed662e8e4a467
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-withheld-light.png
-    15d48533f5dd1baaa7e8b0f09c65f93c0e3098cf
+    9d0900b99fd732adc3a8a9c7f09003b405d2a413
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-card-light.png
     c93e4f43f53dd255d0196a3b6098b2d9feef93f7
