@@ -1,8 +1,7 @@
 import {test, expect} from '../../fixtures.mjs';
 
 /**
- * @summary AC-1 of #244, in the browser: Home's field draws on the canvas worker, and its renderer's own statistics
- * say so. Under `no-preference` the field moves, drawing frame after frame; once the host prefers reduced motion,
+ * @summary In the browser, Home's field draws on the canvas worker, and its renderer's own statistics say so. Under `no-preference` the field moves, drawing frame after frame; once the host prefers reduced motion,
  * the next mount reads the motion vocabulary's collapsed `--motion-base` and the field holds one still frame. The
  * cockpit boots without a fleet server, so the roster never answers and the field draws no marks (AC-2's cold half).
  * The Home field driver reads the statistics in the App worker and throws with them when the field contradicts the

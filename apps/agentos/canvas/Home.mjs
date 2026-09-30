@@ -323,7 +323,7 @@ class Home extends Base {
 
     /**
      * @summary The team's marks: each lit mark reaches into the motes within its reach, glows and holds a solid
-     * core; the others are quiet rings.
+     * core; the others are hollow rings of the same size, so the eye counts every rostered agent.
      * @param {OffscreenCanvasRenderingContext2D} ctx
      * @param {Object} palette
      * @param {Object} style
@@ -376,7 +376,7 @@ class Home extends Base {
         ctx.globalAlpha              = 1;
         ctx.globalCompositeOperation = 'source-over';
         ctx.fillStyle                = palette.signal;
-        ctx.lineWidth                = 1.2;
+        ctx.lineWidth                = 1.6;
         ctx.strokeStyle              = palette.inkDim;
 
         for (let i = 0; i < total; i++) {
@@ -388,7 +388,8 @@ class Home extends Base {
                 ctx.arc(x, y, radius, 0, TAU);
                 ctx.fill()
             } else {
-                ctx.arc(x, y, radius * 0.8, 0, TAU);
+                // inset by half the stroke, so a hollow mark spans exactly a lit one
+                ctx.arc(x, y, radius - 0.8, 0, TAU);
                 ctx.stroke()
             }
         }
