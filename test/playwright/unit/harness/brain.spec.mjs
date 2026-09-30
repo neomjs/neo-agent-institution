@@ -14,6 +14,7 @@ import {
     awaitOrchestratorReady,
     awaitReadyMarker,
     buildBrainProfile,
+    buildPackagedBrainEnv,
     clearRunState,
     detectLiveBrain,
     FLEET_SERVER_ENTRY,
@@ -199,7 +200,7 @@ test.describe('harness brain lifecycle', () => {
         const resolved = await resolveBrainPaths({repoRoot: resolveAgentOsRuntimeRoot(process.env)});
 
         expect(Object.keys(resolved).sort()).toEqual([
-            'backupPath', 'chromaDataDir', 'chromaPort', 'dbPath', 'fleetAgentsRoot', 'fleetPlaneBase', 'orchestratorDataDir'
+            'backupPath', 'chromaDataDir', 'chromaPort', 'dbPath', 'fleetAgentsRoot', 'fleetDataDir', 'fleetPlaneBase', 'orchestratorDataDir'
         ]);
         expect(path.isAbsolute(resolved.dbPath)).toBe(true);
         expect(Number.isInteger(Number(resolved.chromaPort))).toBe(true);
@@ -264,7 +265,7 @@ test.describe('harness brain lifecycle', () => {
     test('buildBrainProfile binds every mutable path under the isolation root and gates every side lane off', () => {
         const profile = buildBrainProfile({chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir});
 
-        for (const leafName of ['NEO_AI_DB_PATH', 'NEO_AI_ORCHESTRATOR_DIR', 'NEO_BACKUP_PATH', 'NEO_CHROMA_DATA_DIR_TEST', 'NEO_FLEET_AGENTS_ROOT', 'NEO_REM_RUN_STATE_DIR']) {
+        for (const leafName of ['NEO_AI_DB_PATH', 'NEO_AI_ORCHESTRATOR_DIR', 'NEO_BACKUP_PATH', 'NEO_CHROMA_DATA_DIR_TEST', 'NEO_FLEET_AGENTS_ROOT', 'NEO_FLEET_DATA_DIR', 'NEO_REM_RUN_STATE_DIR']) {
             expect(profile[leafName].startsWith(workDir + path.sep)).toBe(true)
         }
 
@@ -412,6 +413,7 @@ test.describe('harness brain lifecycle', () => {
             chromaPort         : 18500,
             dbPath             : path.join(workDir, 'sqlite', 'memory-core-graph.sqlite'),
             fleetAgentsRoot    : path.join(workDir, 'fleet', 'agents'),
+            fleetDataDir       : path.join(workDir, 'fleet'),
             orchestratorDataDir: path.join(workDir, 'orchestrator')
         };
 
@@ -428,6 +430,26 @@ test.describe('harness brain lifecycle', () => {
         expect(leaky).toHaveLength(2)
     });
 
+    test('Fleet durable storage is isolated separately from the seat working-tree root', async () => {
+        const profiles = [
+            {...buildPackagedBrainEnv({dataRoot: workDir}), UNIT_TEST_MODE: ''},
+            buildBrainProfile({chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir})
+        ];
+
+        for (const env of profiles) {
+            const resolved = await resolveBrainPaths({repoRoot: resolveAgentOsRuntimeRoot(process.env), env});
+            expect(resolved.fleetDataDir).toBe(path.join(workDir, 'fleet'));
+            expect(resolved.fleetAgentsRoot).toBe(path.join(workDir, 'fleet', 'agents'));
+            expect(assertIsolatedProfile({resolved, isolationRoot: workDir, chromaPort: resolved.chromaPort})).toEqual([]);
+
+            for (const fleetDataDir of [undefined, path.join(workDir, '..', 'outside-fleet')]) {
+                expect(assertIsolatedProfile({
+                    resolved: {...resolved, fleetDataDir}, isolationRoot: workDir, chromaPort: resolved.chromaPort
+                })).toEqual([expect.stringContaining('fleetDataDir=')]);
+            }
+        }
+    });
+
     // Isolation is a filesystem-IDENTITY contract: a symlinked ancestor inside the root satisfies
     // a lexical prefix check while the data lands outside. The containment must resolve links.
     test('assertIsolatedProfile flags a symlinked ancestor escaping the root by identity', async () => {
@@ -440,6 +462,7 @@ test.describe('harness brain lifecycle', () => {
                 chromaPort         : 18500,
                 dbPath             : path.join(workDir, 'sqlite', 'memory-core-graph.sqlite'),
                 fleetAgentsRoot    : path.join(workDir, 'fleet', 'agents'),
+                fleetDataDir       : path.join(workDir, 'fleet'),
                 orchestratorDataDir: path.join(workDir, 'orchestrator')
             };
 
@@ -451,6 +474,9 @@ test.describe('harness brain lifecycle', () => {
             const violations = assertIsolatedProfile({chromaPort: 18500, isolationRoot: workDir, resolved: isolated});
 
             expect(violations.some(violation => violation.includes('dbPath'))).toBe(true);
+            await symlink(outside, path.join(workDir, 'fleet'));
+            expect(assertIsolatedProfile({chromaPort: 18500, isolationRoot: workDir, resolved: isolated})
+                .some(violation => violation.includes('fleetDataDir'))).toBe(true);
             // realpath both sides: os.tmpdir() itself sits behind a symlink on macOS (/var → /private/var).
             expect(resolveRealPath(isolated.dbPath).startsWith(resolveRealPath(outside))).toBe(true)
         } finally {

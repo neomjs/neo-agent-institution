@@ -735,6 +735,8 @@ test.describe('harness pack stage', () => {
             dataRoot = '/Users/someone/Library/Application Support/neo-harness/brain',
             env      = buildPackagedBrainEnv({dataRoot});
 
+        expect(env.NEO_FLEET_DATA_DIR).toBe(path.join(dataRoot, 'fleet'));
+
         // The ONE non-path, non-gate key: the declared authority role. It is named
         // here rather than pattern-exempted — the loop's guarantee is "every mutable PATH is
         // userData-rooted", and an exemption that admits a whole shape would let the next
