@@ -12,9 +12,9 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; // defines Neo.get — the container child-add path resolves parents through it
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
-import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import {createShellProvider} from './shellProvider.mjs';
 
 /**
  * The liveness owner follows the boot-time custody heal. A fresh boot against an armed fleet server
@@ -25,17 +25,18 @@ import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/Vie
  * re-drive onto a `true` resolution, and nothing onto anything else.
  */
 test.describe.serial('AgentOS.view.fleet.cockpit.LivenessController — following the custody heal', () => {
-    let cockpit, prevFleet, settleHeal;
+    let cockpit, prevFleet, settleHeal, shell;
 
     const createCockpit = () => {
+        shell   = createShellProvider();
         cockpit = Neo.create(FleetCockpit, {
-            // hermetic: the REAL cockpit provider class, with the store block overridden so no
-            // sample-seed fetch runs in the unit env
+            // hermetic: the REAL cockpit provider class under a Viewport-shaped parent, which
+            // hosts the roster store the liveness owner fills
             stateProvider: {
                 module: CockpitStateProvider,
+                parent: shell,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false},
                     viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
@@ -58,7 +59,8 @@ test.describe.serial('AgentOS.view.fleet.cockpit.LivenessController — followin
 
     test.afterEach(() => {
         cockpit?.destroy();
-        cockpit = null;
+        shell?.destroy();
+        cockpit = shell = null;
         // stub only the `fleet` key and restore it — never delete the AgentOS namespace
         prevFleet === undefined ? delete globalThis.AgentOS?.fleet : globalThis.AgentOS.fleet = prevFleet
     });

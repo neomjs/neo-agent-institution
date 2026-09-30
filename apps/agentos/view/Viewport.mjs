@@ -5,6 +5,7 @@ import Dashboard          from '../../../node_modules/neo.mjs/src/dashboard/Cont
 import DeploymentStateRead from '../util/DeploymentStateRead.mjs';
 import FleetCockpit       from './fleet/cockpit/Container.mjs';
 import FleetInstances     from '../store/FleetInstances.mjs';
+import FleetRoster        from '../store/FleetRoster.mjs';
 import FleetTenants       from '../store/FleetTenants.mjs';
 import GoldenPathEnvelope from '../util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope from '../util/GraphSceneEnvelope.mjs';
@@ -39,9 +40,10 @@ const railHeader = (iconCls, route, text) => ({iconCls, route, text, tooltip: {t
  * data-grid table. Renders through `neo-theme-neo-dark` / `neo-theme-neo-light`.
  *
  * The Viewport is also the composition authority between two deliberately separate projections:
- * Accounts owns `AgentDefinitions`, while FleetCockpit owns `FleetRoster`. An accepted definition
- * event is routed here so the cockpit can re-poll its Brain-side `fleetRoster()` assembler; neither
- * sibling reaches into or locally maps the other's store.
+ * Accounts owns `AgentDefinitions`, while FleetCockpit's liveness owner fills `FleetRoster`, which this
+ * provider hosts so Home reads the same roster. An accepted definition event is routed here so the
+ * cockpit can re-poll its Brain-side `fleetRoster()` assembler; neither sibling reaches into or
+ * locally maps the other's store.
  */
 class Viewport extends BaseViewport {
     static config = {
@@ -88,6 +90,13 @@ class Viewport extends BaseViewport {
                 // `false` for a packaged shell without a plane, published by the controller from the
                 // shell's plane status: Home then shows only *Connect a plane*
                 shellPlaneConfigured: null,
+                // the ROSTER surface's truths, written by the cockpit's liveness owner and declared
+                // HERE so Home reads them too: the adapter state (`'cold'` until a source answers,
+                // then `'live'` or `'stale'`), the read's own observation, and its retained degrade
+                // reason, per surface, since one shared field cannot know whose cause it holds
+                gridAdapterState  : 'cold',
+                gridConnection    : {state: null, reason: null},
+                gridDegradedReason: null,
                 // the connected instance's deployment-state picture — the System keeper-view's plane
                 // truth, written by the cockpit's read owner through setData's closest-owner walk and
                 // declared HERE so a sibling keeper-view can bind it; leaf-complete by construction
@@ -115,6 +124,9 @@ class Viewport extends BaseViewport {
                 },
                 fleetInstances: {
                     module: FleetInstances
+                },
+                fleetRoster: {
+                    module: FleetRoster
                 },
                 fleetTenants: {
                     module: FleetTenants

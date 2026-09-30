@@ -10,7 +10,9 @@ import {test, expect}     from '@playwright/test';
 import Neo                from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core          from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import AgentDefinitions   from '../../../../../apps/agentos/store/AgentDefinitions.mjs';
+import CockpitStateProvider from '../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import FleetCockpit       from '../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetRoster        from '../../../../../apps/agentos/store/FleetRoster.mjs';
 import FleetTenants       from '../../../../../apps/agentos/store/FleetTenants.mjs';
 import {deriveFleetProfileId} from '../../../../../apps/agentos/fleet/connectionProfiles.mjs';
 import PlaneSetupPanel    from '../../../../../apps/agentos/view/PlaneSetupPanel.mjs';
@@ -253,6 +255,17 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
 
         expect(stores.agentDefinitions).toEqual({module: AgentDefinitions});
         expect(stores.fleetTenants).toEqual({module: FleetTenants})
+    });
+
+    test('hosts the roster store and its surface truths at the Viewport, with no twin on the cockpit provider to shadow them (#244)', () => {
+        const
+            {data, stores} = Viewport.config.stateProvider,
+            gridKeys       = ['gridAdapterState', 'gridConnection', 'gridDegradedReason'];
+
+        expect(stores.fleetRoster).toEqual({module: FleetRoster});
+        expect(gridKeys.map(key => data[key])).toEqual(['cold', {state: null, reason: null}, null]);
+        expect(Object.hasOwn(CockpitStateProvider.config.stores, 'fleetRoster'), 'the cockpit declares no roster store').toBe(false);
+        gridKeys.forEach(key => expect(Object.hasOwn(CockpitStateProvider.config.data, key), `the cockpit declares no ${key}`).toBe(false))
     });
 
     test('authors the Accounts intent listener and FleetCockpit reference at the shared owner', () => {

@@ -13,9 +13,9 @@ import CockpitPerspectives  from '../../../../../../../../apps/agentos/util/Cock
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
-import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
 import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
+import {createShellProvider} from './shellProvider.mjs';
 
 /**
  * The perspectives drawer's two verbs, driven through the cockpit's REAL relay over a real
@@ -27,9 +27,9 @@ import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/s
 const createCockpit = () => Neo.create(FleetCockpit, {
     stateProvider: {
         module: CockpitStateProvider,
+        parent: createShellProvider(),
         stores: {
             fleetActivityEvents: {module: FleetActivityEvents},
-            fleetRoster        : {module: FleetRoster, autoLoad: false},
             viewerWakeFeed     : {module: ViewerWakeFeed}
         }
     }
@@ -41,7 +41,10 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
     let cockpit;
 
     test.afterEach(() => {
+        const shell = cockpit?.getStateProvider().parent;
+
         cockpit?.destroy();
+        shell?.destroy();
         cockpit = null
     });
 

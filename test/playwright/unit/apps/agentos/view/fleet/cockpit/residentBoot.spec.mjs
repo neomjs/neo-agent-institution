@@ -16,6 +16,7 @@ import FleetRoster         from '../../../../../../../../apps/agentos/store/Flee
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 import ViewerWakeFeed      from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import {createShellProvider} from './shellProvider.mjs';
 
 /**
  * Resident-boot lifecycle contracts for the south reading-surface tabs: the panes construct at
@@ -26,18 +27,20 @@ import ViewerWakeFeed      from '../../../../../../../../apps/agentos/store/View
  * unavailable envelope.
  */
 test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lifecycle (#17451)', () => {
-    let cockpit, prevFleet;
+    let cockpit, prevFleet, shell;
 
     test.beforeEach(() => {
         prevFleet = globalThis.AgentOS?.fleet;
+        shell     = createShellProvider();
         cockpit   = Neo.create(FleetCockpit, {
-            // hermetic: the REAL cockpit provider class (data + formulas), with the store
-            // block spelled out so the unit env hosts its own store instances
+            // hermetic: the REAL cockpit provider class (data + formulas) under a Viewport-shaped
+            // parent that hosts the roster store, with the store block spelled out so the unit env
+            // hosts its own store instances
             stateProvider: {
                 module: CockpitStateProvider,
+                parent: shell,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false},
                     viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
@@ -46,7 +49,8 @@ test.describe.serial('AgentOS.view.fleet.cockpit.Container — resident boot lif
 
     test.afterEach(() => {
         cockpit?.destroy();
-        cockpit = null;
+        shell?.destroy();
+        cockpit = shell = null;
         // stub only the `fleet` key and restore it — never delete the AgentOS namespace
         // (it is the app CLASS NAMESPACE root; deleting it unregisters every AgentOS.* class)
         prevFleet === undefined ? delete globalThis.AgentOS?.fleet : globalThis.AgentOS.fleet = prevFleet

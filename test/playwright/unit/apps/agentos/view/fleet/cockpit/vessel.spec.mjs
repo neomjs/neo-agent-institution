@@ -13,10 +13,10 @@ import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; 
 import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
-import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
 import ViewportController   from '../../../../../../../../apps/agentos/view/ViewportController.mjs';
+import {createShellProvider} from './shellProvider.mjs';
 
 /**
  * @summary Installs deterministic platform seams for the vessel window — `Neo.Main.windowOpen`
@@ -158,7 +158,7 @@ const fakeHandlers = (cockpit, {commits = true, exitResult = true} = {}) => {
  *    admission and connection and gates the next admission; the confirmed close retires them.
  */
 test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel layer over the engine\'s tear-out owner', () => {
-    let cockpit, lifecycle, vessel;
+    let cockpit, lifecycle, shell, vessel;
 
     /**
      * Reveals the auto-hidden inspector so it is a projected, visible pane — the click's precondition.
@@ -177,12 +177,13 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
     });
 
     test.beforeEach(() => {
+        shell   = createShellProvider();
         cockpit = Neo.create(FleetCockpit, {
             stateProvider: {
                 module: CockpitStateProvider,
+                parent: shell,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false},
                     viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
@@ -194,7 +195,8 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
     test.afterEach(() => {
         cockpit?.destroy();
-        cockpit = null;
+        shell?.destroy();
+        cockpit = shell = null;
         vessel?.restore();
         vessel = null;
         Neo.apps = {}
