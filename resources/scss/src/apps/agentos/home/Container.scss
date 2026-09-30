@@ -1,14 +1,38 @@
 /* AgentOS.view.home.Container — Home, anchored at the top so its block stays still while lines come
    and go. The returning team reads the team line in the display slot, the plane line when the plane is
    not connected, and one column of doors; a packaged shell without a plane reads the product line, the
-   lede and one Connect a plane action. Every color reads from the --fm-* token layer. */
+   lede and one Connect a plane action. The field fills the view behind them. Every color reads from the
+   --fm-* token layer. */
 .fm-home-view {
     padding   : 14vh 48px 48px;
     background: var(--fm-ground);
+    overflow  : hidden;
+    position  : relative;
 
-    /* a fixed column, so the left edge holds while the lines' widths change */
+    /* the canvas worker's field, the whole view behind the hero; a canvas does not stretch to its insets */
+    .fm-home-canvas {
+        display : block;
+        height  : 100%;
+        inset   : 0;
+        position: absolute;
+        width   : 100%;
+    }
+
+    /* a fixed column, so the left edge holds while the lines' widths change; positioned, so it paints
+       over the field, and isolated, so its clearing paints over the field too */
     .fm-home-inner {
-        width: min(660px, 100%);
+        isolation: isolate;
+        position : relative;
+        width    : min(660px, 100%);
+
+        /* the clearing: the ground rises under the lines and fades out into the field around them */
+        &::before {
+            background: radial-gradient(closest-side, color-mix(in srgb, var(--fm-ground) 88%, transparent), transparent);
+            content   : '';
+            inset     : -72px -120px;
+            position  : absolute;
+            z-index   : -1;
+        }
     }
 
     .fm-home-eyebrow {

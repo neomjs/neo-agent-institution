@@ -49,7 +49,7 @@ test.describe('AgentOS.view.home.Container — Home answers its two readers (#24
     test('the returning team reads the team line in the display slot, the plane line whenever the chrome\'s verdict is not ok, and the doors', () => {
         const {host, home} = createHome();
 
-        expect(read(home)).toEqual({lead: 'Team not answered yet', quiet: true, lede: false, connect: false, doors: true, plane: 'Plane not connected'});
+        expect(read(home)).toEqual({lead: 'No word from the team yet', quiet: true, lede: false, connect: false, doors: true, plane: 'Plane not connected'});
 
         home.instanceState = 'ok';
         expect(read(home).plane, 'a connected plane is quiet').toBe(null);
@@ -78,15 +78,15 @@ test.describe('AgentOS.view.home.Container — Home answers its two readers (#24
         host.destroy()
     });
 
-    test('the team line counts who is up once the read answers live, and names the read\'s state before that — never "0 up"', () => {
+    test('the team line counts who is up once the read answers live, and names the read\'s state before that — never "0 up"; the field\'s team exists only once it answers', () => {
         const line = (adapterState, states = [], degradedReason = null) => HomeView.teamLine({adapterState, degradedReason, states});
 
-        expect(line('cold', ['ok'])).toEqual({answered: false, text: 'Team not answered yet'});
-        expect(line('stale', ['ok'])).toEqual({answered: false, text: 'Team state unavailable'});
-        expect(line('live', ['ok'], 'fleet: Brain is not ready')).toEqual({answered: false, text: 'Team state unavailable'});
-        expect(line('live')).toEqual({answered: true, text: 'No agents yet'});
-        expect(line('live', ['ok'])).toEqual({answered: true, text: '1 of 1 agent up'});
-        expect(line('live', ['ok', 'idle', 'wedged', 'limited', 'starting', 'stopping', 'off']), 'the online and idle tiers are up').toEqual({answered: true, text: '4 of 7 agents up'})
+        expect(line('cold', ['ok'])).toEqual({answered: false, team: null, text: 'No word from the team yet'});
+        expect(line('stale', ['ok'])).toEqual({answered: false, team: null, text: 'Lost touch with the team'});
+        expect(line('live', ['ok'], 'fleet: Brain is not ready')).toEqual({answered: false, team: null, text: 'Lost touch with the team'});
+        expect(line('live')).toEqual({answered: true, team: {total: 0, up: 0}, text: 'No agents yet'});
+        expect(line('live', ['ok'])).toEqual({answered: true, team: {total: 1, up: 1}, text: '1 of 1 agent up'});
+        expect(line('live', ['ok', 'idle', 'wedged', 'limited', 'starting', 'stopping', 'off']), 'the online and idle tiers are up').toEqual({answered: true, team: {total: 7, up: 4}, text: '4 of 7 agents up'})
     });
 
     test('each door routes to its keeper view under the question it answers; Connect a plane asks the Viewport controller', () => {
@@ -125,10 +125,42 @@ test.describe('AgentOS.view.home.Container — Home answers its two readers (#24
         expect(read(home).lead, 'a row\'s state change recounts').toBe('3 of 3 agents up');
 
         provider.setData({gridAdapterState: 'stale'});
-        expect(read(home)).toMatchObject({lead: 'Team state unavailable', quiet: true});
+        expect(read(home)).toMatchObject({lead: 'Lost touch with the team', quiet: true});
 
         provider.setData({shellPlaneConfigured: false});
         expect(read(home)).toMatchObject({lead: PRODUCT_LINE, connect: true, doors: false, plane: null});
+
+        host.destroy()
+    });
+
+    test('the field\'s team is the team line\'s read: no marks before it answers live, and after it one per rostered agent, following the roster (AC-2)', () => {
+        const
+            {host, home} = createHome({
+                stateProvider: {
+                    module: StateProvider,
+                    data  : {gridAdapterState: 'cold', gridDegradedReason: null, instanceState: 'ok', shellPlaneConfigured: null},
+                    stores: {fleetRoster: {module: FleetRoster}}
+                }
+            }),
+            provider = host.getStateProvider(),
+            store    = provider.getStore('fleetRoster');
+
+        store.add([{agentId: 'a', state: 'ok'}, {agentId: 'b', state: 'off'}, {agentId: 'c', state: 'idle'}]);
+        expect(home.team, 'rows the read has not answered for draw no marks').toBe(null);
+
+        provider.setData({gridAdapterState: 'live'});
+        expect(home.team).toEqual({total: 3, up: 2});
+
+        store.add({agentId: 'd', state: 'ok'});
+        expect(home.team.total, 'the marks follow the roster\'s length').toBe(store.getCount());
+
+        provider.setData({gridDegradedReason: 'fleet: Brain is not ready'});
+        expect(home.team, 'a degraded read draws no marks').toBe(null);
+
+        provider.setData({gridDegradedReason: null, shellPlaneConfigured: false});
+        expect(home.team, 'a packaged shell without a plane draws no marks').toBe(null);
+
+        expect(home.getReference('canvas'), 'no canvas worker in the unit tier: no field is mounted').toBeFalsy();
 
         host.destroy()
     })
