@@ -244,3 +244,37 @@ test.describe('AgentOS.canvas.Home — the field heals after a click and holds i
         expect(() => Home.draw()).not.toThrow()
     })
 });
+
+test.describe('AgentOS.canvas.Home — the field goes quiet under the hero\'s lines (#365)', () => {
+    test.afterEach(() => {
+        clearTimeout(Home.animationId);
+        Home.clearGraph()
+    });
+
+    test('the quiet rects are erased after the field and before the haze, and the marks go on top (AC-1)', () => {
+        const
+            log     = [],
+            context = new Proxy({canvas: {height: 0, width: 0}, createRadialGradient: () => ({addColorStop() {}})}, {
+                get: (target, key) => key in target ? target[key] : () => log.push(key),
+                set: (target, key, value) => {key === 'globalCompositeOperation' && log.push(value); target[key] = value; return true}
+            });
+
+        Home.clearGraph();
+        Home.context = context;
+        Home.updateSize({width: 900, height: 600, devicePixelRatio: 1});
+        Home.setTeam({team: {total: 3, up: 1}});
+        Home.setQuiet({rects: [{x: 40, y: 80, width: 300, height: 40}, {x: 40, y: 140, width: 0, height: 20}, {x: 40, y: 180, width: 280, height: 60}]});
+
+        expect(Home.getStats().quiet, 'a hidden line has no size and is left out').toBe(2);
+
+        log.length = 0;
+        Home.draw();
+
+        const erase = log.indexOf('destination-out'), under = log.indexOf('destination-over'), mark = log.lastIndexOf('arc');
+
+        expect(erase, 'the field is erased').toBeGreaterThan(-1);
+        expect(log.slice(erase, under).filter(call => call === 'fillRect'), 'one erase per quiet rect').toHaveLength(2);
+        expect(under, 'the haze fills in beneath, after the erase').toBeGreaterThan(erase);
+        expect(mark, 'the marks go on top of the haze').toBeGreaterThan(under)
+    })
+});

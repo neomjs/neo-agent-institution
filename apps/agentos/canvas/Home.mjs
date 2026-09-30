@@ -72,11 +72,13 @@ class Home extends Base {
          * its `radius` and shifts it by up to its `parallax` with the pointer; the pointer parts the motes within
          * `reach`, clearing a core of the `part` share of it and spreading them evenly over the rest; the ring turns
          * `orbit` rad/s; a ripple runs at `speed` for `life`, lifting what its `band` crosses by up to `lift`.
-         * Parting and ripples move where a mote is drawn, never where it is, so neither leaves a hole behind.
+         * Parting and ripples move where a mote is drawn, never where it is, so neither leaves a hole behind. The
+         * field goes quiet under the rects the host names, softened over `feather`.
          * @member {Object} field
          */
         field: {
             density : 6000,
+            feather : 10,
             link    : 120,
             markLink: 140,
             moteCap : 320,
@@ -102,12 +104,12 @@ class Home extends Base {
             light: {glow: 0.35, haze: 0.06, link: 0.4,  motes: [0.24, 0.4, 0.6]}
         },
         /**
-         * Remote method access: the base's set plus the team, the motion preference and the stats.
-         * @member {Object} remote={app: ['getStats', 'setMotion', 'setTeam']}
+         * Remote method access: the base's set plus the team, the motion preference, the quiet rects and the stats.
+         * @member {Object} remote={app: ['getStats', 'setMotion', 'setQuiet', 'setTeam']}
          * @protected
          */
         remote: {
-            app: ['getStats', 'setMotion', 'setTeam']
+            app: ['getStats', 'setMotion', 'setQuiet', 'setTeam']
         },
         /**
          * @member {Boolean} singleton=true
@@ -179,6 +181,12 @@ class Home extends Base {
      */
     parting = new Float32Array(3)
     /**
+     * The rects the field stays out of, canvas-relative in CSS pixels: the hero's lines, so no mote or link sits in
+     * their letters or their leading.
+     * @member {Object[]} quiet=[]
+     */
+    quiet = []
+    /**
      * The ring the marks ride and the haze centres on, for the current size: `{cx, cy, rx, ry}`.
      * @member {Object|null} ring=null
      */
@@ -236,6 +244,7 @@ class Home extends Base {
         me.team       = null;
         me.drawn      = null;
         me.parting.fill(0);
+        me.quiet      = [];
         me.ripples.fill(-1)
     }
 
@@ -260,8 +269,9 @@ class Home extends Base {
     }
 
     /**
-     * @summary Draws one frame: the haze, the links, the motes by layer, the marks and the ripples, all at the
-     * motes' drawn places.
+     * @summary Draws one frame at the motes' drawn places: the links, the motes by layer and the ripples. Then the
+     * field goes quiet under the hero's lines, the haze fills in beneath it, and the marks go on top, so no mark is
+     * dimmed.
      */
     draw() {
         const
@@ -275,17 +285,21 @@ class Home extends Base {
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         ctx.clearRect(0, 0, size.width, size.height);
 
-        if (me.gradients.haze) {
-            ctx.globalAlpha = 1;
-            ctx.fillStyle   = me.gradients.haze;
-            ctx.fillRect(0, 0, size.width, size.height)
-        }
-
         me.placeMotes();
         me.drawLinks(ctx, palette, style);
         me.drawMotes(ctx, palette, style);
-        me.team && me.drawMarks(ctx, palette, style);
         me.drawRipples(ctx, palette);
+        me.quiet.length && me.drawQuiet(ctx);
+
+        if (me.gradients.haze) {
+            ctx.globalAlpha              = 1;
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle                = me.gradients.haze;
+            ctx.fillRect(0, 0, size.width, size.height);
+            ctx.globalCompositeOperation = 'source-over'
+        }
+
+        me.team && me.drawMarks(ctx, palette, style);
 
         ctx.globalAlpha              = 1;
         ctx.globalCompositeOperation = 'source-over';
@@ -460,6 +474,27 @@ class Home extends Base {
     }
 
     /**
+     * @summary Erases the field under the quiet rects, softened over the field's `feather`, so no mote, link or ripple
+     * sits in a line's letters or its leading.
+     * @param {OffscreenCanvasRenderingContext2D} ctx
+     */
+    drawQuiet(ctx) {
+        const {feather} = this.field;
+
+        ctx.globalAlpha              = 1;
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle                = '#000';
+        ctx.filter                   = `blur(${feather / 2}px)`;
+
+        for (const {height, width, x, y} of this.quiet) {
+            ctx.fillRect(x - feather / 2, y - feather / 2, width + feather, height + feather)
+        }
+
+        ctx.filter                   = 'none';
+        ctx.globalCompositeOperation = 'source-over'
+    }
+
+    /**
      * @summary Each live ripple as a ring that widens and fades.
      * @param {OffscreenCanvasRenderingContext2D} ctx
      * @param {Object} palette
@@ -485,7 +520,7 @@ class Home extends Base {
     /**
      * @summary Remote entry for the specs: what the field holds, how many of its motes are on screen, and how many
      * frames it drew.
-     * @returns {Object} `{frames, marks, motes, size, still, theme, visible}`; `marks` is `{total, up}` or `null`,
+     * @returns {Object} `{frames, marks, motes, quiet, size, still, theme, visible}`; `marks` is `{total, up}` or `null`,
      * and `visible` counts the motes drawn inside the surface
      */
     getStats() {
@@ -497,6 +532,7 @@ class Home extends Base {
             motes  : me.moteCount,
             size   : canvasSize && {height: canvasSize.height, width: canvasSize.width},
             still  : me.still,
+            quiet  : me.quiet.length,
             theme  : me.theme,
             visible: me.countVisible()
         }
@@ -716,6 +752,23 @@ class Home extends Base {
             next && canvasSize && me.motes && me.seed(canvasSize.width, canvasSize.height);
             me.refresh()
         }
+    }
+
+    /**
+     * @summary Remote entry: the rects the field stays out of, canvas-relative in CSS pixels. A rect without a
+     * positive size, a hidden line, is left out.
+     * @param {Object}   data
+     * @param {Object[]} [data.rects=[]] `{x, y, width, height}` each
+     * @param {String}   [data.windowId]
+     */
+    setQuiet({rects = []}) {
+        const me = this;
+
+        me.quiet = rects
+            .filter(rect => rect?.width > 0 && rect?.height > 0)
+            .map(({height, width, x, y}) => ({height, width, x, y}));
+
+        me.refresh()
     }
 
     /**
