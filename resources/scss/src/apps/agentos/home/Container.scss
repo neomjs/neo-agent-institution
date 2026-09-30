@@ -1,12 +1,14 @@
-/* AgentOS.view.home.Container — Home: the eyebrow, the display line and the lede, then either the
-   plane line and one door per keeper view (the returning team) or the one Connect a plane action (a
-   packaged shell without a plane). Every color reads from the --fm-* token layer. */
+/* AgentOS.view.home.Container — Home, anchored at the top so its block stays still while lines come
+   and go. The returning team reads the team line in the display slot, the plane line when the plane is
+   not connected, and one column of doors; a packaged shell without a plane reads the product line, the
+   lede and one Connect a plane action. Every color reads from the --fm-* token layer. */
 .fm-home-view {
-    padding   : 48px;
+    padding   : 14vh 48px 48px;
     background: var(--fm-ground);
 
+    /* a fixed column, so the left edge holds while the lines' widths change */
     .fm-home-inner {
-        max-width: 660px;
+        width: min(660px, 100%);
     }
 
     .fm-home-eyebrow {
@@ -27,25 +29,21 @@
         letter-spacing: -.02em;
         color         : var(--fm-ink);
         margin        : 14px 0 0;
+
+        /* a team line the read cannot answer yet: a state, never an error band */
+        &.is-quiet {
+            color: var(--fm-ink-dim);
+        }
     }
 
-    .fm-home-lede {
+    /* the lede and the plane line share the prose role: the plane's state is Home's second answer */
+    .fm-home-lede,
+    .fm-home-plane {
         font-family: var(--fm-font-sans);
         font-size  : 17px;   /* §04 recorded exception: prose above the ladder (the welcome lede) */
         line-height: 1.6;
         color      : var(--fm-ink-dim);
         margin     : 18px 0 0;
-    }
-
-    .fm-home-plane {
-        gap   : var(--fm-space-3);
-        margin: var(--fm-space-4) 0 0;
-        font  : var(--fm-text-detail);
-        color : var(--fm-ink-dim);
-
-        .neo-button.fm-home-plane-door {
-            margin: 0;
-        }
     }
 
     .fm-home-doors {

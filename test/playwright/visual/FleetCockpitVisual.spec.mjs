@@ -1063,29 +1063,27 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true)
     };
 
-    test('Home before any answer — the lede in the display line\'s family, and the plane line saying the plane is not connected, over one door per view', async ({page}) => {
+    test('Home before any answer — the team line says the roster has not answered, the plane line says the plane is not connected, over one column of doors', async ({page}) => {
         await bootColdCockpit(page);
 
-        const
-            home   = await openHome(page),
-            family = selector => home.locator(selector).evaluate(el => getComputedStyle(el).fontFamily);
+        const home = await openHome(page);
 
-        // the lede declared no family and inherited the theme's body face, apart from the display line above it
-        expect(await family('.fm-home-lede')).toBe(await family('.fm-home-h1'));
-
-        await expect(home.locator('.fm-home-plane-word')).toHaveText('Plane not connected');
-        await expect(home.locator('.fm-home-plane').getByRole('button', {name: 'Open System'})).toBeVisible();
+        await expect(home.locator('.fm-home-h1')).toHaveText('Team not answered yet');
+        await expect(home.locator('.fm-home-h1')).toHaveClass(/is-quiet/);
+        await expect(home.locator('.fm-home-plane')).toHaveText('Plane not connected');
         await expect(home.getByRole('button', {name: 'Connect a plane'})).toBeHidden();
         await expect(home).toHaveScreenshot('home-returning-cold.png')
     });
 
-    test('Home over a live fleet — the plane line is quiet; a packaged shell without a plane gets Connect a plane alone; both skins', async ({page}) => {
+    test('Home over a live fleet — the team line counts who is up and the plane line is quiet; a packaged shell without a plane gets the product line, the lede in its family, and Connect a plane; both skins', async ({page}) => {
         await bootSettledCockpit(page);
 
         const
             home    = await openHome(page),
-            connect = home.getByRole('button', {name: 'Connect a plane'});
+            connect = home.getByRole('button', {name: 'Connect a plane'}),
+            family  = selector => home.locator(selector).evaluate(el => getComputedStyle(el).fontFamily);
 
+        await expect(home.locator('.fm-home-h1')).toHaveText(/^\d+ of 11 agents up$/);
         await expect(home.locator('.fm-home-plane'), 'a connected plane is quiet').toBeHidden();
         await expect(home.locator('.fm-home-doors')).toBeVisible();
         await expect(home).toHaveScreenshot('home-returning.png');
@@ -1094,6 +1092,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(connect).toBeVisible();
         await expect(home.locator('.fm-home-doors')).toBeHidden();
         await expect(home.locator('.fm-home-plane')).toBeHidden();
+        // the lede declared no family and inherited the theme's body face, apart from the display line above it
+        expect(await family('.fm-home-lede')).toBe(await family('.fm-home-h1'));
         await expect(home).toHaveScreenshot('home-first-run.png');
 
         await switchToLightSkin(page);
