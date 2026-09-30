@@ -8,6 +8,7 @@ import FleetInstances     from '../store/FleetInstances.mjs';
 import FleetTenants       from '../store/FleetTenants.mjs';
 import GoldenPathEnvelope from '../util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope from '../util/GraphSceneEnvelope.mjs';
+import HomeView           from './home/Container.mjs';
 import InstanceSwitcher   from './fleet/instances/SwitcherButton.mjs';
 import ObservatoryPane    from './fleet/goldenpath/ObservatoryContainer.mjs';
 import StateProvider      from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
@@ -84,6 +85,9 @@ class Viewport extends BaseViewport {
                 // shell's own binding (the attached plane's base, `null` for this machine's organism)
                 shellCustody  : false,
                 shellPlaneBase: null,
+                // `false` for a packaged shell without a plane, published by the controller from the
+                // shell's plane status: Home then shows only *Connect a plane*
+                shellPlaneConfigured: null,
                 // the connected instance's deployment-state picture — the System keeper-view's plane
                 // truth, written by the cockpit's read owner through setData's closest-owner walk and
                 // declared HERE so a sibling keeper-view can bind it; leaf-complete by construction
@@ -174,14 +178,9 @@ class Viewport extends BaseViewport {
             activeIndex          : 1, // default to the Fleet cockpit — mission control first
 
             items: [{
-                ntype : 'component',
-                cls   : ['agent-welcome'],
-                header: railHeader('fa-solid fa-house', '/home', 'Home'),
-                html  : '<div class="agent-welcome-inner">' +
-                            '<p class="agent-welcome-eyebrow">Neo Agent OS</p>' +
-                            '<h1 class="agent-welcome-h1">Mission control for a cross-model AI engineering team.</h1>' +
-                            '<p class="agent-welcome-lede">Your fleet\'s state at a glance, its work streaming in real time, commanded from the cockpit — not a terminal. Select <b>Fleet</b> in the rail to enter mission control.</p>' +
-                        '</div>'
+                module   : HomeView,
+                header   : railHeader('fa-solid fa-house', '/home', 'Home'),
+                reference: 'home-view'
             }, {
                 module   : FleetCockpit,
                 header   : railHeader('fa-solid fa-satellite-dish', '/fleet', 'Fleet'),

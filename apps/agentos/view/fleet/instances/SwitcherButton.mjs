@@ -10,10 +10,10 @@ import {stateClass}      from '../shared/StateDotComponent.mjs';
  * reuses the session-state COLOR tokens (via `stateClass`), but the words are connection-speak:
  * an instance is "connected", never "working" — borrowed agent-session words would claim a
  * liveness semantics the transport verdict does not carry. Unknown keys degrade to the honest
- * "not connected".
+ * "not connected". Home's plane line speaks the same words.
  * @type {Object}
  */
-const INSTANCE_STATE_WORDS = {
+export const INSTANCE_STATE_WORDS = {
     limited : 'degraded',
     ok      : 'connected',
     off     : 'not connected',
