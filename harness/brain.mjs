@@ -372,6 +372,23 @@ export function resolveBrainPaths({repoRoot, env = {}, execFileFn = execFile}) {
 }
 
 /**
+ * @summary Resolves the root a diagnostic run (smoke or lifecycle witness) owns: its Brain data, its
+ * run state and, through `app.setPath('userData', …)` in main, its Electron profile. Never under the
+ * installed app's `userData`, which holds the product's plane record. Stable per user rather than per
+ * run, so `sweepStaleRunState` still finds a crashed run's children.
+ * @param {Object} options
+ * @param {Object} options.env The process env; `NEO_HARNESS_BRAIN_ROOT` wins.
+ * @param {String} options.harnessDir The harness directory; a checkout roots its runs in `.brain/smoke`.
+ * @param {Boolean} options.packaged Whether the shell runs packaged.
+ * @param {String} options.tempDir The per-user temp directory (`app.getPath('temp')`).
+ * @returns {String}
+ */
+export function resolveSmokeRoot({env, harnessDir, packaged, tempDir}) {
+    return env.NEO_HARNESS_BRAIN_ROOT ||
+        (packaged ? path.join(tempDir, 'neo-harness-smoke') : path.join(harnessDir, '.brain', 'smoke'))
+}
+
+/**
  * @summary Builds the SMOKE isolation profile: every mutable path the spawned tree consumes bound
  * under one throwaway root, every listener either gated OFF or moved to a runtime-allocated port.
  * The gates matter as much as the paths — supervised tasks reap foreign listeners on their

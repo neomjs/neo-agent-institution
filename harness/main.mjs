@@ -59,6 +59,7 @@ import {
     resolveUiFleetTransport,
     resolveBrainPaths,
     resolveProductBrainPlan,
+    resolveSmokeRoot,
     loadFleetRuntimeContracts,
     startBrainChild,
     stopBrainTree,
@@ -104,7 +105,12 @@ const
     bootReports       = new Map(),
     bootWaiters       = new Map(),
     firstPaintReports = new Map(),
-    firstPaintWaiters = new Map();
+    firstPaintWaiters = new Map(),
+    // A diagnostic run owns its whole profile: Electron's `userData` moves under the smoke root
+    // before anything reads it, so neither a stored plane record nor the smoke shot is the installed app's.
+    smokeRoot         = diagnosticMode ? resolveSmokeRoot({env: process.env, harnessDir, packaged: packagedMode, tempDir: app.getPath('temp')}) : null;
+
+smokeRoot && app.setPath('userData', path.join(smokeRoot, 'userData'));
 
 let
     brainBootPromise = Promise.resolve(null),
@@ -1048,8 +1054,7 @@ async function bootUiFleetTransport() {
  */
 async function bootSmokeBrain() {
     const
-        isolationRoot           = process.env.NEO_HARNESS_BRAIN_ROOT ||
-            (packagedMode ? path.join(app.getPath('userData'), 'smoke') : path.join(harnessDir, '.brain', 'smoke')),
+        isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
         [chromaPort, fleetPort] = await Promise.all([allocatePort(), allocatePort()]),
         profile                 = packagedMode

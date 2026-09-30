@@ -33,6 +33,7 @@ import {
     PLANE_REFUSAL_DETAIL_MAX,
     planeRefusal,
     resolveRealPath,
+    resolveSmokeRoot,
     resolveUiFleetTransport,
     startBrainChild,
     stopBrainChild,
@@ -297,6 +298,21 @@ test.describe('harness brain lifecycle', () => {
             'NEO_ORCHESTRATOR_SWARM_HEARTBEAT_ENABLED'
         ]);
         gates.forEach(([, value]) => expect(value).toBe('0'))
+    });
+
+    test('a diagnostic run roots itself in the per-user temp dir when packaged, stable across runs', () => {
+        const
+            harnessDir = '/checkout/harness',
+            tempDir    = path.join(tmpdir(), 'user-temp');
+
+        // packaged: the temp dir, never derived from userData; the same path every run, so the sweep finds a crashed run
+        expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir})).toBe(path.join(tempDir, 'neo-harness-smoke'));
+        expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir})).toBe(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir}));
+        // checkout: the gitignored `.brain/smoke` beside the harness
+        expect(resolveSmokeRoot({env: {}, harnessDir, packaged: false, tempDir})).toBe(path.join(harnessDir, '.brain', 'smoke'));
+        // an explicit root wins in both modes
+        expect(resolveSmokeRoot({env: {NEO_HARNESS_BRAIN_ROOT: '/pinned'}, harnessDir, packaged: true, tempDir})).toBe('/pinned');
+        expect(resolveSmokeRoot({env: {NEO_HARNESS_BRAIN_ROOT: '/pinned'}, harnessDir, packaged: false, tempDir})).toBe('/pinned')
     });
 
     test('a refusal beside a running plane is typed, and only it names a cause', () => {
