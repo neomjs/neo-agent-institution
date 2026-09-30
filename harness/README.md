@@ -32,6 +32,16 @@ For the current macOS build:
    previous bundle until the replacement has been verified.
 2. Choose **Neo Harness → Quit Neo Harness**, or the tray's **Quit** action. Closing the cockpit
    window only hides it; the retained process would continue running the old code.
+   Before replacing an older build, check whether it holds
+   `Contents/Resources/organism/.neo-ai-data/fleet/registry.json`. Those builds kept the Fleet
+   store inside the bundle. Preserve that entire `fleet` directory, then copy its contents to
+   `<userData>/brain/fleet/` while the app is stopped, retaining file permissions. The registry,
+   `credentials.enc`, and matching `fleet.key` must travel together; keep any tenant or signing-key
+   files with them. Never print credential/key contents or overwrite existing destination files:
+   a collision requires reconciling the two stores before proceeding. Preserve an existing
+   destination `agents/` directory. Keep the old copy until the new app lists the same seats and
+   resolves their credentials successfully. Subsequent builds keep this store under userData via
+   `NEO_FLEET_DATA_DIR`, independently of the seat working-tree root.
 3. Replace the whole app in **Applications**, then open that copy. Do not copy individual renderer
    files, dependencies or Brain files into the old bundle.
 4. Preserve the application's userData directory. On macOS it is normally
