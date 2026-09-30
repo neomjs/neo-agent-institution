@@ -414,7 +414,7 @@ apps/agentos/view/fleet/wake/Container.mjs
     660b2ec3eea1c07adadc9b8355b133ab0b130f4b
 
 apps/agentos/view/home/Canvas.mjs
-    16df967c8fcfa9215bdda1fbc111bf44902d9b2c
+    0f146fea701150d5a9eba90d60f151ac052a2aeb
 
 apps/agentos/view/home/Container.mjs
     e5a30051cf724f7f84b7371a17545c61a96dc0ca
