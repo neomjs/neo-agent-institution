@@ -196,5 +196,57 @@ test.describe('AgentOS.view.home.Canvas — the field goes quiet under the lines
 
         expect(renderer.quiet, 'an answer that lands after a newer one is dropped').toHaveLength(2);
         expect(renderer.quiet.at(-1)).toEqual([{fontSize: 20, height: 10, width: 10, x: 0, y: 0}])
+    });
+
+    test('an answer held across a graph reset or an unmount never reaches the graph that follows', async () => {
+        const answers = [];
+
+        host.getDomRect    = () => new Promise(resolve => answers.push(resolve));
+        host.mounted       = true;
+        host.isCanvasReady = true;
+
+        // the offscreen graph is cleared and its replacement is ready while the read is held
+        const acrossReset = host.measureQuiet();
+        await expect.poll(() => answers.length).toBe(1);
+        host.isCanvasReady = false;
+        host.isCanvasReady = true;
+        answers[0]([{x: 140, y: 130, width: 300, height: 40}]);
+        await acrossReset;
+
+        // an unmount clears the graph while the canvas stays ready
+        const acrossUnmount = host.measureQuiet();
+        await expect.poll(() => answers.length).toBe(2);
+        host.mounted = false;
+        answers[1]([{x: 140, y: 130, width: 300, height: 40}]);
+        await acrossUnmount;
+
+        expect(renderer.quiet, 'neither held answer reaches a renderer').toEqual([]);
+
+        host.mounted = true;
+
+        const current = host.measureQuiet();
+        await expect.poll(() => answers.length).toBe(3);
+        answers[2]([{x: 100, y: 50, width: 10, height: 10}]);
+        await current;
+
+        expect(renderer.quiet, 'the current graph\'s own measurement answers').toEqual([[{fontSize: 20, height: 10, width: 10, x: 0, y: 0}]])
+    });
+
+    test('a failed rect or font-size read publishes nothing, and the next measurement recovers', async () => {
+        host.isCanvasReady = true;
+
+        host.getDomRect = async () => {throw new Error('the window closed mid-read')};
+        await expect(host.measureQuiet(), 'the callers never await it, so it must not reject').resolves.toBeUndefined();
+
+        host.getDomRect            = async () => [{x: 140, y: 130, width: 300, height: 40}];
+        domAccess.getComputedStyle = async () => {throw new Error('the style read failed')};
+        await expect(host.measureQuiet()).resolves.toBeUndefined();
+
+        expect(renderer.quiet, 'neither failure publishes').toEqual([]);
+
+        domAccess.getComputedStyle = async () => ({'font-size': '20px'});
+        await host.measureQuiet();
+
+        expect(renderer.quiet, 'the next measurement answers as usual').toEqual([[{fontSize: 20, height: 40, width: 300, x: 40, y: 80}]])
     })
 });
