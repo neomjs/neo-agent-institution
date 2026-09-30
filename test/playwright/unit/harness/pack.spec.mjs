@@ -736,6 +736,7 @@ test.describe('harness pack stage', () => {
             env      = buildPackagedBrainEnv({dataRoot});
 
         expect(env.NEO_FLEET_DATA_DIR).toBe(path.join(dataRoot, 'fleet'));
+        expect(env.NEO_PLANE_DATA_ROOT, 'the plane itself is the data root').toBe(dataRoot);
 
         // The ONE non-path, non-gate key: the declared authority role. It is named
         // here rather than pattern-exempted — the loop's guarantee is "every mutable PATH is
@@ -745,7 +746,7 @@ test.describe('harness pack stage', () => {
 
         for (const [name, value] of Object.entries(env)) {
             if (!name.endsWith('_ENABLED') && !NON_PATH_KEYS.includes(name)) {
-                expect(value.startsWith(dataRoot + path.sep), `${name} must be userData-rooted`).toBe(true)
+                expect(value === dataRoot || value.startsWith(dataRoot + path.sep), `${name} must be userData-rooted`).toBe(true)
             }
         }
 

@@ -42,6 +42,9 @@ For the current macOS build:
    destination `agents/` directory. Keep the old copy until the new app lists the same seats and
    resolves their credentials successfully. Subsequent builds keep this store under userData via
    `NEO_FLEET_DATA_DIR`, independently of the seat working-tree root.
+   Older builds also left the plane's other state inside the bundle: seat tokens, heartbeats, and
+   in own mode the memory-core graph. Those start fresh after the replacement. From `#347` on,
+   every build keeps the whole plane under `<userData>/brain` (`NEO_PLANE_DATA_ROOT`).
 3. Replace the whole app in **Applications**, then open that copy. Do not copy individual renderer
    files, dependencies or Brain files into the old bundle.
 4. Preserve the application's userData directory. On macOS it is normally

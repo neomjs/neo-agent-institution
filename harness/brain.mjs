@@ -478,28 +478,64 @@ export function resolveRealPath(value) {
  * - mlx / ollama / lms: external model servers belong to the MACHINE, not the artifact — a
  *   packaged supervisor must never adopt or reap a stranger's local AI runtimes.
  * - neuralLinkBridge: a default-on listener is its own product decision (the ADR E-map owns it).
- * - deploymentStateBridge: its snapshot path is still cwd-relative and would write into the
- *   resources dir.
+ * - deploymentStateBridge: its snapshot path is placed with the other plane members below, so
+ *   turning the lane on is a product decision, not a path defect.
  * ON by omission (the organism the artifact CAN run): Chroma, the embed + message daemons,
  * backups (target rides `NEO_BACKUP_PATH`), and local graph maintenance.
+ *
+ * The plane itself moves to the data root (`NEO_PLANE_DATA_ROOT`), and every member the Brain's
+ * config bases declare (`PLANE_MEMBER_PATHS`) is placed beneath it. Moving the anchor is what
+ * switches the Brain's own boot check on for this profile: a member left on its build-time default,
+ * inside the bundle, fails boot instead of being deleted by the next app replacement.
  * @param {Object} options
  * @param {String} options.dataRoot Writable per-user root (Electron `userData`-derived).
  * @returns {Object} env fragment to merge over process.env
  */
 export function buildPackagedBrainEnv({dataRoot}) {
+    const
+        graphPath = path.join(dataRoot, 'sqlite', 'memory-core-graph.sqlite'),
+        logsDir   = path.join(dataRoot, 'logs');
+
     return {
-        // Mutable paths → the per-user data root. The WAL + embed/message daemon state dirs are
-        // cwd-relative by default, and cwd is the read-only(ish) organism dir when packaged.
-        NEO_AI_DB_PATH             : path.join(dataRoot, 'sqlite', 'memory-core-graph.sqlite'),
-        NEO_AI_ORCHESTRATOR_DIR    : path.join(dataRoot, 'orchestrator'),
-        NEO_BACKUP_PATH            : path.join(dataRoot, 'backups'),
-        NEO_CHROMA_DATA_DIR        : path.join(dataRoot, 'chroma', 'unified'),
-        NEO_FLEET_AGENTS_ROOT      : path.join(dataRoot, 'fleet', 'agents'),
-        NEO_FLEET_DATA_DIR         : path.join(dataRoot, 'fleet'),
-        NEO_MEMORY_EMBED_DAEMON_DIR: path.join(dataRoot, 'embed-daemon'),
-        NEO_MEMORY_WAL_DIR         : path.join(dataRoot, 'memory-wal'),
-        NEO_MESSAGE_WAL_DAEMON_DIR : path.join(dataRoot, 'message-daemon'),
-        NEO_REM_RUN_STATE_DIR      : path.join(dataRoot, 'rem-runs'),
+        NEO_PLANE_DATA_ROOT: dataRoot,
+
+        // Tier-1 plane members. The orchestrator's children follow its dir, not the canonical
+        // `orchestrator-daemon` name.
+        NEO_AI_DB_PATH                           : graphPath,
+        NEO_AI_ORCHESTRATOR_DIR                  : path.join(dataRoot, 'orchestrator'),
+        NEO_AUTH_SEAT_TOKEN_REGISTRY_PATH        : path.join(dataRoot, 'seat-tokens', 'registry.json'),
+        NEO_CHROMA_DATA_DIR                      : path.join(dataRoot, 'chroma', 'unified'),
+        NEO_DEPLOYMENT_STATE_BRIDGE_SNAPSHOT_PATH: path.join(dataRoot, 'deployment-state', 'snapshot.json'),
+        NEO_FLEET_DATA_DIR                       : path.join(dataRoot, 'fleet'),
+        NEO_FLEET_INSTANCE_ROOT                  : path.join(dataRoot, 'fleet', 'instances'),
+        NEO_HEAP_OBSERVATION_DIR                 : path.join(dataRoot, 'heap-observation'),
+        NEO_HEARTBEAT_ALIVE_PATH                 : path.join(dataRoot, 'wake-daemon', 'heartbeat.alive'),
+        NEO_HEARTBEAT_LOCK_PATH                  : path.join(dataRoot, 'heartbeat-concurrency.lock'),
+        NEO_RECOVERY_ACTUATOR_HEAL_ATTEMPTS_PATH : path.join(dataRoot, 'orchestrator', 'heal-attempts.json'),
+        NEO_RECOVERY_ACTUATOR_RUN_STATE_DIR      : path.join(dataRoot, 'orchestrator', 'recovery-runs'),
+        NEO_REM_RUN_STATE_DIR                    : path.join(dataRoot, 'rem-runs'),
+
+        // memory-core plane members: its graph is the SAME file as the orchestrator's
+        NEO_AI_DAEMON_DIR                           : path.join(dataRoot, 'wake-daemon'),
+        NEO_GOLDEN_PATH_ROUTE_ATTRIBUTION_LEDGER_DIR: path.join(dataRoot, 'orchestrator', 'route-attribution'),
+        NEO_HANDOFF_FILE_PATH                       : path.join(dataRoot, 'handoff', 'sandman_handoff.md'),
+        NEO_HOOK_PROJECTION_ROOT                    : path.join(dataRoot, 'hook-projections'),
+        NEO_LAZY_EDGES_QUEUE_PATH                   : path.join(dataRoot, 'memory-core', 'lazy-edges.jsonl'),
+        NEO_MEMORY_DB_PATH                          : graphPath,
+        NEO_MEMORY_EMBED_DAEMON_DIR                 : path.join(dataRoot, 'embed-daemon'),
+        NEO_MEMORY_LOG_PATH                         : logsDir,
+        NEO_MEMORY_WAL_DIR                          : path.join(dataRoot, 'memory-wal'),
+        NEO_MESSAGE_WAL_DAEMON_DIR                  : path.join(dataRoot, 'message-daemon'),
+        NEO_RLAIF_PATH                              : path.join(dataRoot, 'datasets', 'rlaif', 'trajectories.jsonl'),
+
+        // knowledge-base and neural-link plane members
+        NEO_KB_EMBEDDING_RESUME_STATE_DIR: path.join(dataRoot, 'kb-sync'),
+        NEO_KB_LOG_PATH                  : logsDir,
+        NEO_NL_LOG_PATH                  : logsDir,
+
+        // not plane members, placed all the same: the backup target and the Fleet seats' workspaces
+        NEO_BACKUP_PATH      : path.join(dataRoot, 'backups'),
+        NEO_FLEET_AGENTS_ROOT: path.join(dataRoot, 'fleet', 'agents'),
 
         // The orchestrator role is DECLARED, never inherited. `container-plane` names what
         // the artifact's ON-by-omission set already is — Chroma, the embed + message daemons,

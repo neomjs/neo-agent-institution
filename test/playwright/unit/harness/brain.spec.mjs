@@ -1,4 +1,5 @@
 import {expect, test}                                        from '@playwright/test';
+import {execFile}                                            from 'node:child_process';
 import {EventEmitter}                                        from 'node:events';
 import {mkdtemp, rm, symlink}                                from 'node:fs/promises';
 import {readFileSync, writeFileSync, mkdirSync, existsSync}  from 'node:fs';
@@ -448,6 +449,64 @@ test.describe('harness brain lifecycle', () => {
                 })).toEqual([expect.stringContaining('fleetDataDir=')]);
             }
         }
+    });
+
+    /**
+     * @summary Runs the Brain's own boot check, `collectPlaneMembers` + `assertPlaneMemberCoherence`,
+     * in the Brain root: Tier-1 on its own, and each MCP server's members together with the Tier-1
+     * members it inherits, the way `BaseServer#collectMemberEntries` composes them. No `.env` is
+     * loaded, so only the env handed in can place a member.
+     * @param {Object} env The complete child environment
+     * @returns {Promise<Object>} `{dataRoot, results: [{name, ok, count?, error?}]}`
+     */
+    const runPlaneMemberCheck = env => {
+        const script = [
+            "import Neo from 'neo.mjs/src/Neo.mjs';",
+            "import * as core from 'neo.mjs/src/core/_export.mjs';",
+            "import InstanceManager from 'neo.mjs/src/manager/Instance.mjs';",
+            "import AiConfig from './ai/config.template.mjs';",
+            "import Tier1Base, {PLANE_MEMBER_PATHS as TIER1_PATHS} from './ai/configBase.mjs';",
+            "import {assertPlaneMemberCoherence, collectPlaneMembers} from './ai/planeConfig.mjs';",
+            "const results = [];",
+            "const members = (memberPaths, resolvedConfig, descriptorData) => collectPlaneMembers({memberPaths, resolvedConfig, descriptorData});",
+            "const check = (name, list) => {",
+            "    try { assertPlaneMemberCoherence({dataRoot: AiConfig.plane.dataRoot, members: list}); results.push({name, ok: true, count: list.length}) }",
+            "    catch (error) { results.push({name, ok: false, error: error.message}) }",
+            "};",
+            "check('tier-1', members(TIER1_PATHS, AiConfig, Tier1Base.config.data));",
+            "for (const server of ['memory-core', 'knowledge-base', 'neural-link']) {",
+            "    const config = (await import(`./ai/mcp/server/${server}/config.template.mjs`)).default,",
+            "          base   = await import(`./ai/mcp/server/${server}/configBase.mjs`);",
+            "    check(server, [...members(base.PLANE_MEMBER_PATHS, config, base.default.config.data), ...members(TIER1_PATHS, config, Tier1Base.config.data)]);",
+            "}",
+            "process.stdout.write(JSON.stringify({dataRoot: AiConfig.plane.dataRoot, results}));"
+        ].join('\n');
+
+        return new Promise((resolve, reject) => {
+            execFile(process.execPath, ['--input-type=module', '-e', script], {cwd: resolveAgentOsRuntimeRoot(process.env), env}, (error, stdout, stderr) => {
+                error ? reject(new Error(String(stderr || error.message).slice(0, 800))) : resolve(JSON.parse(stdout))
+            })
+        })
+    };
+
+    test('the packaged profile relocates the plane and places every member the Brain declares, so the Brain\'s own boot check passes for all four config bases (#347)', async () => {
+        const
+            env     = {...process.env, ...buildPackagedBrainEnv({dataRoot: workDir}), UNIT_TEST_MODE: ''},
+            checked = await runPlaneMemberCheck(env);
+
+        expect(checked.dataRoot, 'the plane itself moved to the data root').toBe(workDir);
+        expect(checked.results.map(({name, ok, error}) => ({name, ok, error}))).toEqual(
+            ['tier-1', 'memory-core', 'knowledge-base', 'neural-link'].map(name => ({name, ok: true, error: undefined}))
+        );
+        expect(env.NEO_MEMORY_DB_PATH, 'the memory-core graph is the orchestrator\'s file, never a second one').toBe(env.NEO_AI_DB_PATH);
+
+        // the control: one member left on its build-time default fails boot, and names itself
+        delete env.NEO_MEMORY_DB_PATH;
+
+        const {results} = await runPlaneMemberCheck(env);
+
+        expect(results.find(result => result.name === 'memory-core')).toMatchObject({ok: false, error: expect.stringContaining('storagePaths.graphProd')});
+        expect(results.find(result => result.name === 'tier-1').ok, 'the other bases stay placed').toBe(true)
     });
 
     // Isolation is a filesystem-IDENTITY contract: a symlinked ancestor inside the root satisfies
