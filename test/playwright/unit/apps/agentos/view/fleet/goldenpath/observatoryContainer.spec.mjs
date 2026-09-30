@@ -601,6 +601,43 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         pane.destroy()
     });
 
+    test('an outsider Team holds only while it is checked: unchecking it or clearing the lens takes its row out, and a team member\'s check keeps the rows as they are', () => {
+        const
+            outside = {'issue-505': {authoredBy: '@Outsider'}},
+            pane    = createPane({envelope: teamRead(outside, {}, ['@neo-opus-vega', '@neo-preview', '@tobiu'])}),
+            toggle  = pane.getReference('peer-scope-toggle'),
+            clear   = pane.getReference('lens-clear'),
+            ids     = () => team(pane).peerStore.items.map(({id}) => id),
+            members = ['@neo-opus-vega', '@tobiu', '@neo-preview'],
+            retain  = () => {
+                toggle.onClick({});
+                click(pane, '@Outsider');
+                toggle.onClick({});
+                expect(ids(), 'checked, the outsider is listed in Team').toEqual(['@neo-opus-vega', '@tobiu', '@Outsider', '@neo-preview'])
+            };
+
+        // the ripple measures the rendered button, which the unit harness has none of
+        toggle.useRippleEffect = clear.useRippleEffect = false;
+
+        retain();
+        click(pane, '@Outsider');
+        expect([pane.lensPeers, ids()], 'unchecked, it leaves').toEqual([[], members]);
+
+        retain();
+        clear.onClick({});
+        expect([pane.lensPeers, ids()], 'cleared, it leaves').toEqual([[], members]);
+
+        // a member's check changes the colours, never the rows: the list keeps its records, so its focus and scroll
+        const rows = team(pane).peerStore.items.slice();
+
+        click(pane, '@tobiu');
+        click(pane, '@neo-opus-vega');
+        expect(pane.lensPeers, 'in check order').toEqual(['@tobiu', '@neo-opus-vega']);
+        expect(team(pane).peerStore.items.every((record, at) => record === rows[at]), 'the same records, no refill').toBe(true);
+
+        pane.destroy()
+    });
+
     test('a focus has a way back: the Team head\'s Clear lifts the lens, the selected node\'s Clear drops the selection, and Escape backs out one step at a time', () => {
         const
             pane     = createPane({envelope: teamRead()}),

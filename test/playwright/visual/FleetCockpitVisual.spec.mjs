@@ -932,6 +932,14 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await head.getByRole('button', {name: 'All'}).click();
         await expect(peers).toHaveCount(5);
 
+        // an outsider Team holds only while it is checked
+        await head.getByRole('button', {name: 'All'}).click();
+        await peers.filter({hasText: '@a-contributor'}).click();
+        await head.getByRole('button', {name: 'All'}).click();
+        await expect(peers).toHaveCount(6);
+        await peers.filter({hasText: '@a-contributor'}).click();
+        await expect(peers, 'unchecked, it leaves Team').toHaveCount(5);
+
         // a mouse click selects without an outline; the keys move the selection and outline the row they reach
         await node(1).click();
         await expect(label).toHaveText('Golden Path currency on the cockpit');

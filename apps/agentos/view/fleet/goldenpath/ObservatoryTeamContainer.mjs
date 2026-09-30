@@ -6,8 +6,8 @@ import ObservatoryPeerList from './ObservatoryPeerList.mjs';
 /**
  * @summary The Observatory's Team section: the team lens's peers as a list of checks under a head that counts the
  * team among them. It offers the team the read names ({@link #peerScope}), busiest first, or with All everyone the
- * read attributes nodes to; a checked peer stays listed either way, so a check is never hidden, and a read that
- * names no identity lists everyone and says so. Clear unchecks every peer.
+ * read attributes nodes to; a checked peer is listed either way, so a check is never hidden, and an outsider leaves
+ * Team with its check. A read that names no identity lists everyone and says so. Clear unchecks every peer.
  *
  * The pane owns the lens: it hands the section the scene's peers, each with its hue, and the checked identities in
  * check order through {@link #sync}, and the section reports the viewer's checks as `lensChange`.
@@ -177,12 +177,11 @@ class ObservatoryTeamContainer extends Container {
      */
     fill() {
         const
-            me                        = this,
-            {lensPeers, named, peers} = me,
-            offered                   = peer => peer.team || lensPeers.includes(peer.id),
-            listed                    = named && me.peerScope === 'team' ? peers.filter(offered) : peers,
-            count                     = value => value.toLocaleString('en-US'),
-            title                     = me.getReference('observatory-peers-title');
+            me             = this,
+            {named, peers} = me,
+            listed         = me.listed(),
+            count          = value => value.toLocaleString('en-US'),
+            title          = me.getReference('observatory-peers-title');
 
         me.peerStore.clear();
         listed.length && me.peerStore.add(listed.map(({hue, id, nodes}) => ({hue, id, nodes})));
@@ -193,6 +192,17 @@ class ObservatoryTeamContainer extends Container {
 
         me.syncChecks();
         me.syncHead()
+    }
+
+    /**
+     * @summary The peers the list offers in {@link #peerScope}: the team and whoever the lens holds, or everyone.
+     * @returns {Object[]} `{id, nodes, team, hue}`, busiest first
+     * @protected
+     */
+    listed() {
+        const {lensPeers, named, peers} = this;
+
+        return named && this.peerScope === 'team' ? peers.filter(peer => peer.team || lensPeers.includes(peer.id)) : peers
     }
 
     /**
@@ -229,8 +239,9 @@ class ObservatoryTeamContainer extends Container {
     }
 
     /**
-     * @summary Takes the pane's lens and peers. A new scene refills the list; a changed lens only recolours the
-     * listed rows and puts the checks back, so the list keeps its rows, its focus and its scroll.
+     * @summary Takes the pane's lens and peers. A new scene refills the list, and so does a lens that changes who
+     * is listed: an outsider Team holds only while it is checked. Any other lens change only recolours the listed
+     * rows and puts the checks back, so the list keeps its rows, its focus and its scroll.
      * @param {Object}   data
      * @param {String[]} data.lensPeers The checked identities, in check order
      * @param {Boolean}  data.named     Whether the read holds an identity node
@@ -242,7 +253,9 @@ class ObservatoryTeamContainer extends Container {
 
         Object.assign(me, {lensPeers, named, peers});
 
-        if (refill) {
+        const listed = me.listed(), rows = me.peerStore.items;
+
+        if (refill || listed.length !== rows.length || listed.some((peer, at) => peer.id !== rows[at].id)) {
             me.fill();
             return
         }
