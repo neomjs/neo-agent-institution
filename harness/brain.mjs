@@ -404,6 +404,9 @@ export function buildBrainProfile({isolationRoot, chromaPort, fleetPort}) {
         // lanes (scheduled backup et al) inside `isolationRoot`, and every host-edge lane below is
         // gated off precisely because this harness must not touch the machine.
         NEO_AI_ORCHESTRATOR_AUTHORITY_PROFILE: 'container-plane',
+        // `deploymentMode` defaults to `cloud`, which turns the localOnly lanes off (Chroma, the
+        // embed and message daemons); the organism this smoke owns is local by definition.
+        NEO_AI_DEPLOYMENT_MODE: 'local',
 
         // Listeners the smoke exercises → runtime-allocated ports
         NEO_CHROMA_PORT_TEST  : String(chromaPort),
@@ -543,6 +546,9 @@ export function buildPackagedBrainEnv({dataRoot}) {
         // an installed organism must not adopt the MACHINE's dev server, git checkouts, or model
         // runtimes. The role is not a claim about running in a container; it is the authority class.
         NEO_AI_ORCHESTRATOR_AUTHORITY_PROFILE: 'container-plane',
+        // `deploymentMode` defaults to `cloud`, which turns that ON-by-omission set off (the
+        // localOnly lanes: Chroma, the embed and message daemons); an own-mode organism is local.
+        NEO_AI_DEPLOYMENT_MODE: 'local',
 
         // The artifact's lane closure (reasons in the summary above)
         NEO_DEPLOYMENT_STATE_BRIDGE_ENABLED                 : '0',

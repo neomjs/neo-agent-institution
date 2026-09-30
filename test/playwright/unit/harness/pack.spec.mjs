@@ -742,7 +742,7 @@ test.describe('harness pack stage', () => {
         // here rather than pattern-exempted — the loop's guarantee is "every mutable PATH is
         // userData-rooted", and an exemption that admits a whole shape would let the next
         // unrooted path in silently.
-        const NON_PATH_KEYS = ['NEO_AI_ORCHESTRATOR_AUTHORITY_PROFILE'];
+        const NON_PATH_KEYS = ['NEO_AI_DEPLOYMENT_MODE', 'NEO_AI_ORCHESTRATOR_AUTHORITY_PROFILE'];
 
         for (const [name, value] of Object.entries(env)) {
             if (!name.endsWith('_ENABLED') && !NON_PATH_KEYS.includes(name)) {
@@ -755,6 +755,8 @@ test.describe('harness pack stage', () => {
         // `container-plane` names what the ON-by-omission set below already is; it is the authority
         // class, not a claim about running in a container.
         expect(env.NEO_AI_ORCHESTRATOR_AUTHORITY_PROFILE).toBe('container-plane');
+        // the cloud default would turn Chroma and the embed and message daemons off
+        expect(env.NEO_AI_DEPLOYMENT_MODE).toBe('local');
 
         // The lane closure is an EXACT contract: each OFF names a resource the artifact does not
         // carry (webpack, git-checkout semantics, external model servers, cwd-relative writers).

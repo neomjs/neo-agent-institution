@@ -479,7 +479,7 @@ test.describe('harness brain lifecycle', () => {
             "          base   = await import(`./ai/mcp/server/${server}/configBase.mjs`);",
             "    check(server, [...members(base.PLANE_MEMBER_PATHS, config, base.default.config.data), ...members(TIER1_PATHS, config, Tier1Base.config.data)]);",
             "}",
-            "process.stdout.write(JSON.stringify({dataRoot: AiConfig.plane.dataRoot, results}));"
+            "process.stdout.write(JSON.stringify({dataRoot: AiConfig.plane.dataRoot, deploymentMode: AiConfig.orchestrator.deploymentMode, results}));"
         ].join('\n');
 
         return new Promise((resolve, reject) => {
@@ -495,6 +495,7 @@ test.describe('harness brain lifecycle', () => {
             checked = await runPlaneMemberCheck(env);
 
         expect(checked.dataRoot, 'the plane itself moved to the data root').toBe(workDir);
+        expect(checked.deploymentMode, 'the localOnly lanes (Chroma, the embed and message daemons) run').toBe('local');
         expect(checked.results.map(({name, ok, error}) => ({name, ok, error}))).toEqual(
             ['tier-1', 'memory-core', 'knowledge-base', 'neural-link'].map(name => ({name, ok: true, error: undefined}))
         );
