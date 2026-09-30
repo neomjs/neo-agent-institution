@@ -178,9 +178,9 @@ whose key lives only in the run, so the OS keychain is never touched. The fleet 
 from that record through the product's own plan and read path, so no orchestrator starts. The
 verdict requires the boot fact `{mode: 'plane-attach', up: true}`, `planeStatus()` answering
 `configured` and `attached`, the fleet child's admission line naming the fixture plane, and the
-`listAgents` round trip. `NEO_HARNESS_SMOKE_PLANE_LEAK=1` routes the plane bearer through every
-census sink (a Brain log line, a renderer error, an IPC reply); each must record a `secretLeaks`
-entry, so that run fails by design.
+`listAgents` round trip. `NEO_HARNESS_SMOKE_PLANE_LEAK=1` feeds the plane bearer into every census
+sink where main receives it (a Brain log line, a renderer console error, an IPC reply), never into
+the renderer; each must record a `secretLeaks` entry, so that run fails by design.
 
 **Readiness is service readiness, never PID existence.** The daemon writes its PID file before
 config load and `Orchestrator.start()`, so the up-gates are: the orchestrator's own

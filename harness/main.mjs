@@ -698,34 +698,41 @@ async function invokeShellFromWindow(win, call, timeoutMs = 8000) {
         }), timeoutMs))
     ]);
 
-    if (carriesSecret(JSON.stringify(reply), mainSecrets())) {
-        smokeState.secretLeaks.add('ipc-reply');
-        return {
-            envelope : {error: 'secret-bearing reply rejected by smoke census', ok: false},
-            shellKeys: []
-        }
+    return censusIpcReply(reply)
+}
+
+/**
+ * @summary The smoke's census on an IPC reply: a reply carrying any secret main holds is recorded and
+ * replaced by a refusal.
+ * @param {Object} reply `{envelope, shellKeys}`
+ * @returns {Object}
+ */
+function censusIpcReply(reply) {
+    if (!carriesSecret(JSON.stringify(reply), mainSecrets())) {
+        return reply
     }
 
-    return reply
+    smokeState.secretLeaks.add('ipc-reply');
+
+    return {
+        envelope : {error: 'secret-bearing reply rejected by smoke census', ok: false},
+        shellKeys: []
+    }
 }
 
 /**
  * @summary The fixture-plane arm's red-first check (`NEO_HARNESS_SMOKE_PLANE_LEAK=1`): the plane's bearer
- * goes through each census sink, a Brain log line, a renderer error and an IPC reply. Each sink records a
- * `secretLeaks` entry and prints nothing, so the run fails; a run without the flag records none.
+ * enters each census sink where main receives it: a Brain log line, a renderer console error through the
+ * window's own listener, and an IPC reply. Each sink records a `secretLeaks` entry and prints nothing, so
+ * the run fails; a run without the flag records none. The bearer never reaches the renderer.
  * @param {BrowserWindow} win
- * @returns {Promise<void>}
  */
-async function probePlaneLeaks(win) {
-    const
-        line  = `plane leak probe ${storedPlaneBearer}`,
-        probe = JSON.stringify(line);
+function probePlaneLeaks(win) {
+    const line = `plane leak probe ${storedPlaneBearer}`;
 
     brainLog(line);
-    await win.webContents.executeJavaScript(`setTimeout(() => {throw new Error(${probe})})`, true);
-    await invokeShellFromWindow(win, `planeStatus().then(status => ({...status, probe: ${probe}}))`);
-    // a main-world throw reaches main as a console error, after the throw
-    await awaitLifecycleState(() => smokeState.secretLeaks.has('renderer-console'), 3000)
+    win.webContents.emit('console-message', {level: 'error', message: line});
+    censusIpcReply({envelope: {probe: line}, shellKeys: []})
 }
 
 /**
@@ -1468,7 +1475,7 @@ app.whenReady().then(async () => {
                     transport: uiTransportFact
                 };
 
-                process.env.NEO_HARNESS_SMOKE_PLANE_LEAK === '1' && await probePlaneLeaks(win1)
+                process.env.NEO_HARNESS_SMOKE_PLANE_LEAK === '1' && probePlaneLeaks(win1)
             }
         }
 
