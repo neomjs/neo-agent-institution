@@ -39,6 +39,7 @@ afterPack: ./afterPack.cjs
 npmRebuild: false
 
 mac:
+    icon: ../resources/images/logo/neo_logo_primary.svg
     target:
         - target: zip
           arch: arm64
