@@ -18,7 +18,8 @@ const HINT = 'No node selected';
  * The Open action follows the node's source ({@link AgentOS.util.GraphNodeSource}): a work item opens its GitHub
  * page, a session its Memories drill (the section fires `sessionOpen`, the pane routes it), and any other node
  * says that its kind has no source view. The qualified id stays behind the Copy action, in a read-only field the
- * panel never shows. The relations, grouped by type and direction, reach the node's neighbours.
+ * panel never shows. Clear fires `selectionClear` for the pane to drop the selection. The relations, grouped by
+ * type and direction, reach the node's neighbours.
  *
  * The pane owns the facts and the relation store; this section only renders them.
  * @class AgentOS.view.fleet.goldenpath.ObservatorySelectionContainer
@@ -107,6 +108,13 @@ class ObservatorySelectionContainer extends Container {
                 text     : 'Copy id',
                 tooltip  : 'Copy the node\'s qualified id',
                 ui       : 'ghost'
+            }, {
+                module   : Button,
+                flex     : 'none',
+                reference: 'selected-clear',
+                text     : 'Clear',
+                tooltip  : 'Clear the selection, so the scene takes its own colours again (Escape)',
+                ui       : 'ghost'
             }]
         }, {
             ntype    : 'component',
@@ -137,9 +145,17 @@ class ObservatorySelectionContainer extends Container {
 
         const me = this;
 
-        me.getReference('selected-copy').set({handler: 'onCopyClick', handlerScope: me});
-        me.getReference('selected-open').set({handler: 'onOpenClick', handlerScope: me});
+        me.getReference('selected-clear').set({handler: 'onClearClick', handlerScope: me});
+        me.getReference('selected-copy') .set({handler: 'onCopyClick',  handlerScope: me});
+        me.getReference('selected-open') .set({handler: 'onOpenClick',  handlerScope: me});
         me.render()
+    }
+
+    /**
+     * @summary The Clear action fires `selectionClear`, which the pane routes: the selection belongs to it.
+     */
+    onClearClick() {
+        this.fire('selectionClear')
     }
 
     /**

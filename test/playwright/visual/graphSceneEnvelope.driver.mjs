@@ -86,8 +86,14 @@ const
         'discussion-19151': {kind: 'DISCUSSION',                                                                  state: 'OPEN',   lastActivityAt: now - 60 * hour},
         'issue-9999'      : {kind: 'ISSUE',        authoredBy: '@neo-gpt',        assignedTo: [],                                  lastActivityAt: now}
     },
+    // the Brain's identity nodes name the team; beside them, an outside contributor's issue, whose author has none
+    named      = [
+        ...[['@neo-opus-grace', 'Grace'], ['@neo-opus-vega', 'Vega'], ['@neo-gpt', 'Euclid'], ['@neo-preview', 'Eos'], ['@tobiu', 'Operator']]
+            .map(([login, label]) => ({id: q(login), label, kind: 'AgentIdentity'})),
+        {id: q('issue-19400'), label: 'A first contribution', kind: 'ISSUE', authoredBy: '@a-contributor', assignedTo: [], state: 'OPEN', lastActivityAt: now - 5 * hour}
+    ],
     wires      = {
-        team       : {capability: {state: 'current', reason: null}, scene: {...scene, nodes: scene.nodes.map(node => ({...node, ...team[node.id.replace('neomjs/neo#', '')]}))}, snapshotId: 'snap-9c32', capturedAt},
+        team       : {capability: {state: 'current', reason: null}, scene: {...scene, nodes: [...scene.nodes.map(node => ({...node, ...team[node.id.replace('neomjs/neo#', '')]})), ...named]}, snapshotId: 'snap-9c32', capturedAt},
         current    : {capability: {state: 'current', reason: null}, scene, snapshotId: 'snap-7f3a', capturedAt},
         truncated  : {capability: {state: 'current', reason: null}, scene: {...scene, completeness: 'truncated'}, snapshotId: 'snap-8b21', capturedAt},
         degraded   : {capability: {state: 'degraded', reason: 'graph-seam-refused'}, scene, snapshotId: 'snap-7f3a', capturedAt},

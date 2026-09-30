@@ -101,7 +101,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         expect(lineOf(pane)).toBe('Unobserved');
         expect(pane.items.map(item => item.reference), 'the head and the body, no strip').toEqual(['observatory-head', 'observatory-body']);
         expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the team, the view, the nodes, then the selected node')
-            .toEqual(['observatory-peers-title', 'observatory-peers', 'observatory-view-section', 'observatory-nodes-title', 'observatory-nodes', 'observatory-selected']);
+            .toEqual(['observatory-team', 'observatory-view-section', 'observatory-nodes-title', 'observatory-nodes', 'observatory-selected']);
         expect(headOf(pane)).toEqual(['No node selected', null]);
         expect(labelClsOf(pane)).toContain('is-hint');
         expect(selectedOf(pane).getReference('selected-actions').hidden, 'no node, no action').toBe(true);
@@ -478,9 +478,10 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
  * seed reaches has no activity time. The operator and Eos share their own place in the palette.
  * @param {Object} [nodes] Fields replacing a fixture node's, by short id
  * @param {Object} [envelope] Fields replacing the fixture envelope's
+ * @param {String[]} [identities] The logins the read holds an identity node for, its team
  * @returns {Object}
  */
-function teamRead(nodes = {}, envelope = {}) {
+function teamRead(nodes = {}, envelope = {}, identities = []) {
     const
         now  = Date.now(),
         hour = 3600000,
@@ -492,29 +493,33 @@ function teamRead(nodes = {}, envelope = {}) {
             'issue-505': {kind: 'ISSUE',                                                                      state: 'OPEN'}
         };
 
-    return graphRead({nodes: graphRead().scene.nodes.map(node => {
-        const id = node.id.replace('neomjs/neo#', '');
+    return graphRead({nodes: [
+        ...graphRead().scene.nodes.map(node => {
+            const id = node.id.replace('neomjs/neo#', '');
 
-        return {...node, ...team[id], ...nodes[id]}
-    })}, envelope)
+            return {...node, ...team[id], ...nodes[id]}
+        }),
+        ...identities.map(login => ({id: q(login), label: login, kind: 'AgentIdentity'}))
+    ]}, envelope)
 }
 
 test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team lens and the heat over the same places', () => {
     const
         peerList = pane => pane.getReference('observatory-peers'),
-        click    = (pane, id) => peerList(pane).selectionModel.onListClick({currentTarget: peerList(pane).getItemId(pane.peerStore.get(id))}),
-        checked  = pane => peerList(pane).selectionModel.items.map(itemId => pane.peerStore.get(peerList(pane).getItemRecordId(itemId)).id),
-        hue      = (pane, id) => pane.peerStore.get(id).hue,
+        team     = pane => pane.getReference('observatory-team'),
+        click    = (pane, id) => peerList(pane).selectionModel.onListClick({currentTarget: peerList(pane).getItemId(team(pane).peerStore.get(id))}),
+        checked  = pane => peerList(pane).selectionModel.items.map(itemId => team(pane).peerStore.get(peerList(pane).getItemRecordId(itemId)).id),
+        hue      = (pane, id) => team(pane).peerStore.get(id).hue,
         roles    = pane => pane.nodeStore.items.filter(row => row.role).map(({id, role, roleHue}) => [id.replace('neomjs/neo#', ''), role, roleHue]);
 
     test('the Team list holds the peers the read attributes nodes to; checked, their union draws in hues of their own, each row names what its node is to its peer, the line counts the lens', () => {
         const pane = createPane({envelope: graphRead()}), title = () => pane.getReference('observatory-peers-title').text;
 
-        expect([pane.peerStore.getCount(), title()], 'a read without attribution says so').toEqual([0, 'Team · no peer in this read']);
+        expect([team(pane).peerStore.getCount(), title()], 'a read without attribution says so').toEqual([0, 'Team · no peer in this read']);
 
         pane.envelope = teamRead({}, {snapshotId: 'snap-8b21'});
-        expect(title()).toBe('Team');
-        expect(pane.peerStore.items.map(({id, nodes}) => [id, nodes])).toEqual([['@neo-opus-vega', 2], ['@neo-preview', 1], ['@tobiu', 2]]);
+        expect(title(), 'a read without identity nodes cannot name its team').toBe('Team · unknown, all listed');
+        expect(team(pane).peerStore.items.map(({id, nodes}) => [id, nodes]), 'busiest first').toEqual([['@neo-opus-vega', 2], ['@tobiu', 2], ['@neo-preview', 1]]);
         expect(hue(pane, '@neo-preview'), 'unchecked, each shows its own place, and these two share one').toBe(hue(pane, '@tobiu'));
         expect([pane.lensPeers, pane.overlays.lens, roles(pane)]).toEqual([[], null, []]);
         expect(lineOf(pane)).not.toMatch(/lens/);
@@ -561,6 +566,71 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         expect(pane.overlays.lens.lens[pane.scene.index[q('issue-404')]], 'Eos\'s issue is Eos\'s again').toBe(1);
         expect(hue(pane, '@neo-preview'), 'checked first, Eos holds the place the two share').toBe(pane.overlays.lens.hues[0]);
         expect(hue(pane, '@tobiu')).not.toBe(hue(pane, '@neo-preview'));
+
+        pane.destroy()
+    });
+
+    test('Team offers the team the read names, busiest first; All offers everyone; a checked outsider stays listed; a read without identity nodes lists everyone and says so', () => {
+        const
+            outside = {'issue-505': {authoredBy: '@Outsider'}},
+            pane    = createPane({envelope: teamRead(outside, {}, ['@neo-opus-vega', '@neo-preview', '@tobiu'])}),
+            toggle  = pane.getReference('peer-scope-toggle'),
+            title   = () => pane.getReference('observatory-peers-title').text,
+            listed  = () => team(pane).peerStore.items.map(({id, nodes}) => [id, nodes]),
+            state   = () => [title(), team(pane).peerScope, toggle.pressed, toggle.vdom['aria-pressed'], toggle.disabled];
+
+        // the ripple measures the rendered button, which the unit harness has none of
+        toggle.useRippleEffect = false;
+
+        expect(listed(), 'the team, busiest first; the outsider is not offered').toEqual([['@neo-opus-vega', 2], ['@tobiu', 2], ['@neo-preview', 1]]);
+        expect(state()).toEqual(['Team · 3 of 4', 'team', false, 'false', false]);
+
+        toggle.onClick({});
+        expect(listed(), 'everyone; an upper-case handle no longer leads by code unit').toEqual([['@neo-opus-vega', 2], ['@tobiu', 2], ['@Outsider', 1], ['@neo-preview', 1]]);
+        expect(state(), 'the title counts the team either way').toEqual(['Team · 3 of 4', 'all', true, 'true', false]);
+
+        click(pane, '@Outsider');
+        toggle.onClick({});
+        expect(listed(), 'a checked outsider stays listed, so its check is never hidden').toHaveLength(4);
+        expect([checked(pane), pane.lensPeers]).toEqual([['@Outsider'], ['@Outsider']]);
+
+        pane.envelope = teamRead(outside, {snapshotId: 'snap-8b21'});
+        expect(listed()).toHaveLength(4);
+        expect(state(), 'without identity nodes the team is unknown, and All cannot narrow it').toEqual(['Team · unknown, all listed', 'team', true, 'true', true]);
+
+        pane.destroy()
+    });
+
+    test('a focus has a way back: the Team head\'s Clear lifts the lens, the selected node\'s Clear drops the selection, and Escape backs out one step at a time', () => {
+        const
+            pane     = createPane({envelope: teamRead()}),
+            clear    = pane.getReference('lens-clear'),
+            unselect = selectedOf(pane).getReference('selected-clear'),
+            escape   = () => pane.keys.onKeyDown({key: 'Escape'});
+
+        clear.useRippleEffect = unselect.useRippleEffect = false;
+
+        expect(clear.hidden, 'no lens, nothing to clear').toBe(true);
+        click(pane, '@tobiu');
+        click(pane, '@neo-opus-vega');
+        expect(clear.hidden).toBe(false);
+
+        clear.onClick({});
+        expect([pane.lensPeers, pane.overlays.lens, checked(pane), clear.hidden]).toEqual([[], null, [], true]);
+        expect(lineOf(pane)).not.toMatch(/lens/);
+
+        pane.selectedId = q('issue-202');
+        unselect.onClick({});
+        expect([pane.selectedId, headOf(pane)]).toEqual([null, ['No node selected', null]]);
+
+        click(pane, '@tobiu');
+        pane.selectedId = q('issue-202');
+        escape();
+        expect([pane.selectedId, pane.lensPeers], 'the selection first').toEqual([null, ['@tobiu']]);
+        escape();
+        expect([pane.lensPeers, checked(pane)], 'then the lens').toEqual([[], []]);
+        escape();
+        expect([pane.selectedId, pane.lensPeers], 'with neither, nothing changes').toEqual([null, []]);
 
         pane.destroy()
     });
