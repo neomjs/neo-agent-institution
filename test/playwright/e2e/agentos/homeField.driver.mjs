@@ -57,3 +57,8 @@ const after = await canvas.readStats(), drawn = after.frames - before.frames;
 if (still ? drawn !== 0 : drawn < 5) {
     throw new Error(`homeField driver: ${still ? 'a still field drew' : 'a moving field drew only'} ${drawn} frames in 400ms`)
 }
+
+// the eyebrow, the lead and the lede show for both readers, so the field is quiet under at least those three
+if (!(after.quiet >= 3)) {
+    throw new Error(`homeField driver: the field is quiet under ${after.quiet} of the hero's lines`)
+}
