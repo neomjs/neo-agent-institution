@@ -22,8 +22,8 @@ import {probePlaneCredential, writePlaneConfig}           from './planeConfig.mj
 export const FIXTURE_PLANE_ENTRY = 'ai/mcp/server/memory-core/mcp-server.mjs';
 
 /**
- * The fixture's seat. It needs no graph node: a seat-token plane binds each request to the subject its
- * registry row names (Brain `AuthService.setupSeatToken`).
+ * The fixture's seat. A plane binds a request only to an identity its graph holds, so the fixture seeds
+ * this node before the plane boots.
  * @type {String}
  */
 export const FIXTURE_IDENTITY = '@neo-harness-smoke';
@@ -104,6 +104,40 @@ export async function resolvePlaneMemberEnv({repoRoot, planeRoot, env = {}, runS
     }
 
     return placed
+}
+
+/**
+ * @summary Seeds the fixture's `AgentIdentity` node into the plane graph the env names, through the Brain's
+ * own seeder, before the plane holds that graph.
+ * @param {Object} options
+ * @param {String} options.repoRoot The Brain runtime root.
+ * @param {Object} options.env The plane's env: its members and runtime.
+ * @param {Function} [options.runScript=runBrainScript] Injection seam for tests.
+ * @returns {Promise<{seeded: Number}>}
+ */
+export function seedFixtureIdentity({repoRoot, env, runScript = runBrainScript}) {
+    const identity = {
+        description: 'The harness smoke fixture plane\'s seat; it exists only in that plane\'s graph',
+        id         : FIXTURE_IDENTITY,
+        name       : 'Harness smoke',
+        properties : {accountType: 'agent', displayName: 'Harness smoke', githubLogin: FIXTURE_IDENTITY},
+        type       : 'AgentIdentity'
+    };
+
+    return runScript({
+        env,
+        label : 'fixture identity seeder',
+        repoRoot,
+        script: [
+            "import Neo from 'neo.mjs/src/Neo.mjs';",
+            "import * as core from 'neo.mjs/src/core/_export.mjs';",
+            "import InstanceManager from 'neo.mjs/src/manager/Instance.mjs';",
+            "import {seedAgentIdentities} from './ai/scripts/setup/seedAgentIdentities.mjs';",
+            `const seeded = await seedAgentIdentities({identities: [${JSON.stringify(identity)}], log: () => {}});`,
+            // the Memory Core's services keep the loop alive, as the seeder's own CLI knows
+            "process.stdout.write(JSON.stringify({seeded}), () => process.exit(0));"
+        ].join('\n')
+    })
 }
 
 /**
@@ -194,28 +228,26 @@ export async function startFixturePlane({repoRoot, isolationRoot, recordDir, saf
         [chromaPort, mcpPort] = await Promise.all([allocatePort(), allocatePort()]),
         registryPath          = members.NEO_AUTH_SEAT_TOKEN_REGISTRY_PATH;
 
+    const env = {
+        ...members,
+        ...runtimeEnv,
+        MCP_HTTP_PORT       : String(mcpPort),
+        NEO_AGENT_IDENTITY  : FIXTURE_IDENTITY,
+        NEO_AUTH_MODE       : 'seat-token',
+        // an allocated port no Chroma serves: the plane admits and answers without its vector store
+        NEO_CHROMA_PORT     : String(chromaPort),
+        NEO_MCP_LISTEN_HOST : '127.0.0.1',
+        NEO_PLANE_ID        : FIXTURE_PLANE_ID,
+        NEO_TRANSPORT       : 'streamable-http',
+        // a real plane's graph is a file; the unit-test switch would swap it for one in memory
+        UNIT_TEST_MODE      : ''
+    };
+
     fs.mkdirSync(path.dirname(registryPath), {recursive: true});
     seats.writeSeatTokenRegistry(registryPath, seats.buildSeatTokenRegistry({generation: 1, planeId: FIXTURE_PLANE_ID, rows: [row]}));
+    await seedFixtureIdentity({env, repoRoot});
 
-    const child = startChild({
-        entry: FIXTURE_PLANE_ENTRY,
-        env  : {
-            ...members,
-            ...runtimeEnv,
-            MCP_HTTP_PORT       : String(mcpPort),
-            NEO_AGENT_IDENTITY  : FIXTURE_IDENTITY,
-            NEO_AUTH_MODE       : 'seat-token',
-            // an allocated port no Chroma serves: the plane admits and answers without its vector store
-            NEO_CHROMA_PORT     : String(chromaPort),
-            NEO_CHROMA_PORT_TEST: String(chromaPort),
-            NEO_MCP_LISTEN_HOST : '127.0.0.1',
-            NEO_PLANE_ID        : FIXTURE_PLANE_ID,
-            NEO_TRANSPORT       : 'streamable-http',
-            UNIT_TEST_MODE      : '1'
-        },
-        onLog,
-        repoRoot
-    });
+    const child = startChild({entry: FIXTURE_PLANE_ENTRY, env, onLog, repoRoot});
 
     registerChild({child, ...child.neoHarnessIdentity, label: 'plane'});
     await awaitChildListening({child, port: mcpPort, timeoutMs});

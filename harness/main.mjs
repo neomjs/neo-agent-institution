@@ -724,8 +724,8 @@ async function probePlaneLeaks(win) {
     brainLog(line);
     await win.webContents.executeJavaScript(`setTimeout(() => {throw new Error(${probe})})`, true);
     await invokeShellFromWindow(win, `planeStatus().then(status => ({...status, probe: ${probe}}))`);
-    // the renderer error crosses IPC after the throw
-    await awaitLifecycleState(() => smokeState.secretLeaks.has('error'), 3000)
+    // a main-world throw reaches main as a console error, after the throw
+    await awaitLifecycleState(() => smokeState.secretLeaks.has('renderer-console'), 3000)
 }
 
 /**
