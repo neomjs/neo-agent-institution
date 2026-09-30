@@ -272,7 +272,8 @@ product default is the supervised organism; `NEO_HARNESS_BRAIN=0` is the explici
 checkout stays opt-in — see `brain.mjs#resolveBrainMode`). What it boots is
 `brain.mjs#buildPackagedBrainEnv` — THE packaged product profile: every mutable path (graph
 sqlite, Chroma, WAL, embed/message daemon state, backups, fleet root) under the per-user data
-root, plus the artifact's honest lane closure — each gated lane names a resource the bundle does
+root, the backups beside the plane rather than inside it (ADR 0019 §10.9), plus the artifact's
+honest lane closure — each gated lane names a resource the bundle does
 not carry (webpack, git-checkout semantics, external model servers, cwd-relative writers); the
 embed + message organism lanes run. A packaged own-mode boot FAILS CLOSED when a checkout Brain
 already holds the Chroma port (the coexistence guard — the spawned supervisor would otherwise
