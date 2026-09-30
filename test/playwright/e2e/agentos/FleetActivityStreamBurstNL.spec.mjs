@@ -303,8 +303,10 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         expect(objectCell.properties.vnode.textContent).toBe('event 499');
         await expect(rows.first().locator(':scope > *')).toHaveCount(5);
 
-        await expect(page.locator('.fm-stream-counts')).toHaveText('mailbox · 36 / 24h · 412 total');
-        await expect(page.locator('.fm-stream-retention')).toHaveText('500 retained');
+        // the sources' populations sit under the head; the head states what the feed holds
+        await expect(page.locator('.fm-stream-sources')).toHaveText('sources · mailbox · 36 / 24h · 412 total');
+        await expect(page.locator('.fm-stream-head .fm-stream-sources')).toHaveCount(0);
+        await expect(page.locator('.fm-stream-retention')).toHaveText('newest 500 · older on scroll');
         await expect(page.locator('.fm-stream-head.is-live')).toBeVisible();
         // the fixture's newest event is from 2026-08-22, so a live feed over it says it has been quiet since
         await expect(page.locator('.fm-stream-state')).toHaveText(/^● streaming · quiet since .+$/);

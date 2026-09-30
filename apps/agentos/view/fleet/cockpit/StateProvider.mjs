@@ -155,6 +155,12 @@ class StateProvider extends Provider {
              */
             streamDegradedReason: null,
             /**
+             * Whether the ACTIVITY feed's mailbox answered an older page with no rows: every row it
+             * holds is then in the store, and the stream stops asking.
+             * @member {Boolean} streamHistoryExhausted=false
+             */
+            streamHistoryExhausted: false,
+            /**
              * The per-viewer wake-push truths, stamped from the stream consumer's OWN
              * observations: `stream` carries the consumer's liveness vocabulary verbatim;
              * `catchUp` keeps failed ≠ empty ≠ fresh as three states, `state: null` being the

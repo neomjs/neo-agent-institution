@@ -76,7 +76,8 @@ class TargetBinding extends Base {
 
         store.clear();
 
-        owner.publishConnection('stream', {data: {activityCounts: [], streamAdapterState: 'cold', streamDegradedReason: null}});
+        // the old profile's exhausted mailbox is not the new one's
+        owner.publishConnection('stream', {data: {activityCounts: [], streamAdapterState: 'cold', streamDegradedReason: null, streamHistoryExhausted: false}});
         stream && (stream.adapterState = 'cold');
 
         return true
