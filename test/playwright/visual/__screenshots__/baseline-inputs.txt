@@ -18,7 +18,7 @@ apps/agentos/app.mjs
     15ee159880412eba52bd3577a9b09e0e01b55fa8
 
 apps/agentos/canvas/Home.mjs
-    c391c8f08f0bce5b0981f14961bfb7b1a2814b70
+    1f9f92eebda64bf784a6af96a62dee67f9323bb7
 
 apps/agentos/canvas/Observatory.mjs
     e6924962f5a57a6611c3b5c86f326dda0a387659
