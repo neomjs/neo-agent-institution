@@ -68,9 +68,9 @@ class Home extends Base {
          * and `moteMax` visible motes, seeded across the whole wrap domain so the current cannot thin it; motes link
          * within `link`, a lit mark reaches `markLink`; the current carries each layer at its `speed`, draws it at
          * its `radius` and shifts it by up to its `parallax` with the pointer; the pointer parts the motes within
-         * `reach`, moving each the `part` share of its way to the rim; the ring turns `orbit` rad/s; a ripple runs
-         * at `speed` for `life`, lifting what its `band` crosses by up to `lift`. Parting and ripples move where a
-         * mote is drawn, never where it is, so neither leaves a hole behind.
+         * `reach`, clearing a core of the `part` share of it and spreading them evenly over the rest; the ring turns
+         * `orbit` rad/s; a ripple runs at `speed` for `life`, lifting what its `band` crosses by up to `lift`.
+         * Parting and ripples move where a mote is drawn, never where it is, so neither leaves a hole behind.
          * @member {Object} field
          */
         field: {
@@ -81,7 +81,7 @@ class Home extends Base {
             moteMin : 60,
             orbit   : 0.035,
             parallax: [4, 9, 16],
-            part    : 0.6,
+            part    : 0.5,
             radius  : [0.9, 1.4, 2.1],
             reach   : 130,
             ripple  : {band: 26, life: 1.6, lift: 22, speed: 260},
@@ -567,7 +567,10 @@ class Home extends Base {
             me                 = this,
             {drawn, field, motes, moteCount, offsets, parting, ripples} = me,
             {reach, ripple}    = field,
-            [strength, px, py] = parting;
+            [strength, px, py] = parting,
+            core               = strength * field.part * reach,
+            // the disc maps onto the ring outside the core by area, so every mote keeps its share and none pile at the rim
+            keep               = 1 - core * core / (reach * reach);
 
         for (let i = 0, o = 0; i < moteCount; i++, o += STRIDE) {
             const layer = motes[o + 4];
@@ -576,13 +579,13 @@ class Home extends Base {
                 y = motes[o + 1] + offsets[layer * 2 + 1];
 
             if (strength > 0) {
-                const dx = x - px, dy = y - py, d = Math.sqrt(dx * dx + dy * dy);
+                const dx = x - px, dy = y - py, d2 = dx * dx + dy * dy;
 
-                if (d < reach && d > 1) {
-                    const shift = strength * field.part * (reach - d) / d;
+                if (d2 < reach * reach && d2 > 1) {
+                    const scale = Math.sqrt((core * core + d2 * keep) / d2);
 
-                    x += dx * shift;
-                    y += dy * shift
+                    x = px + dx * scale;
+                    y = py + dy * scale
                 }
             }
 
