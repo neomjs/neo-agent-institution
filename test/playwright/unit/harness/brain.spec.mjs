@@ -451,7 +451,7 @@ test.describe('harness brain lifecycle', () => {
 
     test('Fleet durable storage is isolated separately from the seat working-tree root', async () => {
         const profiles = [
-            {...buildPackagedBrainEnv({dataRoot: workDir}), UNIT_TEST_MODE: ''},
+            {...buildPackagedBrainEnv({backupRoot: path.join(workDir, 'backups'), dataRoot: workDir}), UNIT_TEST_MODE: ''},
             buildBrainProfile({chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir})
         ];
 
@@ -505,7 +505,7 @@ test.describe('harness brain lifecycle', () => {
 
     test('the packaged profile relocates the plane and places every member the Brain declares, so the Brain\'s own boot check passes for all four config bases (#347)', async () => {
         const
-            env     = {...buildPackagedBrainEnv({dataRoot: workDir}), UNIT_TEST_MODE: ''},
+            env     = {...buildPackagedBrainEnv({backupRoot: path.join(workDir, 'backups'), dataRoot: workDir}), UNIT_TEST_MODE: ''},
             checked = await runPlaneMemberCheck(env);
 
         expect(checked.dataRoot, 'the plane itself moved to the data root').toBe(workDir);
@@ -522,6 +522,16 @@ test.describe('harness brain lifecycle', () => {
 
         expect(results.find(result => result.name === 'memory-core')).toMatchObject({ok: false, error: expect.stringContaining('storagePaths.graphProd')});
         expect(results.find(result => result.name === 'tier-1').ok, 'the other bases stay placed').toBe(true)
+    });
+
+    test('the product\'s backups resolve beside its plane, never beneath it, in the Brain\'s own resolution', async () => {
+        const
+            dataRoot   = path.join(workDir, 'brain'),
+            backupRoot = path.join(workDir, 'backups'),
+            resolved   = await resolveBrainPaths({env: {...buildPackagedBrainEnv({backupRoot, dataRoot}), UNIT_TEST_MODE: ''}, repoRoot: resolveAgentOsRuntimeRoot(process.env)});
+
+        expect(resolved.backupPath).toBe(backupRoot);
+        expect(path.relative(dataRoot, resolved.backupPath).startsWith('..'), 'whatever removes the plane root must not remove the bundles that restore it (ADR 0019 §10.9)').toBe(true)
     });
 
     // Isolation is a filesystem-IDENTITY contract: a symlinked ancestor inside the root satisfies

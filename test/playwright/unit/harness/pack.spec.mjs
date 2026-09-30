@@ -731,13 +731,18 @@ test.describe('harness pack stage', () => {
         expect(shim).toContain('ELECTRON_RUN_AS_NODE=1 exec "$NEO_HARNESS_ELECTRON_BIN"')
     });
 
-    test('buildPackagedBrainEnv is THE product profile: userData-rooted paths + the exact artifact lane closure', () => {
+    test('buildPackagedBrainEnv is THE product profile: userData-rooted paths, the backups beside the plane + the exact artifact lane closure', () => {
         const
-            dataRoot = '/Users/someone/Library/Application Support/neo-harness/brain',
-            env      = buildPackagedBrainEnv({dataRoot});
+            userData   = '/Users/someone/Library/Application Support/neo-harness',
+            dataRoot   = path.join(userData, 'brain'),
+            backupRoot = path.join(userData, 'backups'),
+            env        = buildPackagedBrainEnv({backupRoot, dataRoot});
 
         expect(env.NEO_FLEET_DATA_DIR).toBe(path.join(dataRoot, 'fleet'));
         expect(env.NEO_PLANE_DATA_ROOT, 'the plane itself is the data root').toBe(dataRoot);
+        // a backup exists to survive the plane, so it is placed beside the plane root
+        expect(env.NEO_BACKUP_PATH).toBe(backupRoot);
+        expect(() => buildPackagedBrainEnv({dataRoot}), 'no default can nest the backups again').toThrow(/backupRoot/);
 
         // The ONE non-path, non-gate key: the declared authority role. It is named
         // here rather than pattern-exempted — the loop's guarantee is "every mutable PATH is
@@ -747,7 +752,8 @@ test.describe('harness pack stage', () => {
 
         for (const [name, value] of Object.entries(env)) {
             if (!name.endsWith('_ENABLED') && !NON_PATH_KEYS.includes(name)) {
-                expect(value === dataRoot || value.startsWith(dataRoot + path.sep), `${name} must be userData-rooted`).toBe(true)
+                expect(value.startsWith(userData + path.sep), `${name} must be userData-rooted`).toBe(true);
+                name === 'NEO_BACKUP_PATH' || expect(value === dataRoot || value.startsWith(dataRoot + path.sep), `${name} must be beneath the plane root`).toBe(true)
             }
         }
 

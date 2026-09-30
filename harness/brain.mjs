@@ -523,11 +523,22 @@ export function resolveRealPath(value) {
  * config bases declare (`PLANE_MEMBER_PATHS`) is placed beneath it. Moving the anchor is what
  * switches the Brain's own boot check on for this profile: a member left on its build-time default,
  * inside the bundle, fails boot instead of being deleted by the next app replacement.
+ *
+ * The backups are the one mutable path the caller places apart. A backup exists to survive the
+ * plane, so the product keeps it beside the plane, never beneath it: whatever removes the plane
+ * root would remove the bundles that restore it. There is no default, so a caller cannot fall
+ * back to the nested path silently.
  * @param {Object} options
- * @param {String} options.dataRoot Writable per-user root (Electron `userData`-derived).
+ * @param {String} options.backupRoot Where the backup lane writes its bundles.
+ * @param {String} options.dataRoot   Writable per-user root (Electron `userData`-derived).
  * @returns {Object} env fragment to merge over process.env
+ * @throws {Error} When `backupRoot` is missing.
  */
-export function buildPackagedBrainEnv({dataRoot}) {
+export function buildPackagedBrainEnv({backupRoot, dataRoot}) {
+    if (!backupRoot) {
+        throw new Error('buildPackagedBrainEnv: a backupRoot is required, since backups are placed apart from the plane (ADR 0019 §10.9)')
+    }
+
     const
         graphPath = path.join(dataRoot, 'sqlite', 'memory-core-graph.sqlite'),
         logsDir   = path.join(dataRoot, 'logs');
@@ -569,8 +580,9 @@ export function buildPackagedBrainEnv({dataRoot}) {
         NEO_KB_LOG_PATH                  : logsDir,
         NEO_NL_LOG_PATH                  : logsDir,
 
-        // not plane members, placed all the same: the backup target and the Fleet seats' workspaces
-        NEO_BACKUP_PATH      : path.join(dataRoot, 'backups'),
+        // not plane members, placed all the same: the backup target where the caller says, the Fleet
+        // seats' workspaces beneath the root
+        NEO_BACKUP_PATH      : backupRoot,
         NEO_FLEET_AGENTS_ROOT: path.join(dataRoot, 'fleet', 'agents'),
 
         // The orchestrator role is DECLARED, never inherited. `container-plane` names what
