@@ -66,7 +66,7 @@ import {
     sweepStaleRunState,
     writeRunState
 } from './brain.mjs';
-import {createMainLog}                                        from './mainLog.mjs';
+import {carriesSecret, createMainLog}                         from './mainLog.mjs';
 import {createPlaneBroker, planeEnvFragment, readPlaneConfig} from './planeConfig.mjs';
 
 const
@@ -199,7 +199,7 @@ function recordSmokeFailure(type, details) {
 
     const
         raw           = String(details?.message ?? details ?? 'unknown'),
-        containsToken = fleetBearerToken !== null && raw.includes(fleetBearerToken),
+        containsToken = carriesSecret(raw, mainSecrets()),
         message       = `${type}: ${containsToken ? '[secret-bearing detail redacted]' : raw.slice(0, 500)}`;
 
     containsToken && smokeState.secretLeaks.add(type);
@@ -689,7 +689,7 @@ async function invokeFleetFromWindow(win, request, timeoutMs = 8000) {
         }), timeoutMs))
     ]);
 
-    if (fleetBearerToken !== null && JSON.stringify(reply).includes(fleetBearerToken)) {
+    if (carriesSecret(JSON.stringify(reply), mainSecrets())) {
         smokeState.secretLeaks.add('ipc-reply');
         return {
             envelope : {error: 'secret-bearing reply rejected by smoke census', ok: false},
@@ -824,7 +824,7 @@ process.on('unhandledRejection', async error => {
 const brainState = {children: [], isolationRoot: null};
 
 function brainLog(line) {
-    if (fleetBearerToken !== null && line.includes(fleetBearerToken)) {
+    if (carriesSecret(line, mainSecrets())) {
         smokeState.secretLeaks.add('brain-log');
         console.log('HARNESS_BRAIN [secret-bearing line redacted]')
     } else {
@@ -1328,7 +1328,7 @@ app.whenReady().then(async () => {
                     JSON.stringify(probe.shellKeys) === JSON.stringify(expectedShellKeys)
                 ),
                 urlSecretFree     = BrowserWindow.getAllWindows().every(win =>
-                    fleetBearerToken === null || !win.webContents.getURL().includes(fleetBearerToken)
+                    !carriesSecret(win.webContents.getURL(), mainSecrets())
                 );
 
             fleetFromWindow = {
