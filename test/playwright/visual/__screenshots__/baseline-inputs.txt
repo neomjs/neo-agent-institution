@@ -531,7 +531,7 @@ resources/scss/src/apps/agentos/fleet/wake/Container.scss
     7c1ce12e34436cc2da14a4448c472f09cd5f4f5e
 
 resources/scss/src/apps/agentos/home/Container.scss
-    cf8cd8ea54f03a4100d97ed2cb15fe7b3505946b
+    7474f827b158dbb458ca9cf11f18c4c785b57a9f
 
 resources/scss/src/apps/agentos/system/Container.scss
     6032f0c02a929b03721e70f4b053e7e97cde48bc
@@ -624,19 +624,19 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-grid-ca
     760ec27e828e90b2c112b6f2ff9b3f92bc482c5b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
-    30c1cc2db048a5e8a454ae3440ce4b94799d6fb3
+    426c36b8567902d176c28e072b5b5389a3cffadb
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run.png
-    202aa2c9a83a3663d68ffd0597a0c4422a760585
+    bb9562c50617bb3731418c27b415c2103a842706
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning-cold.png
-    0d039206ee8b2781a7ba72e97b3adb8d38bdc2ca
+    8001662629940ac226f6e095b109072769f465ac
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning-light.png
-    3ad40a6de7c5003d109ae81e6bced3da57f875b3
+    d301560e58021be31b29f9c26013fb7a97678a01
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning.png
-    c6b96eb487a6b6199fcf701c63611477001525e8
+    a70d6b0d52834e792e99b9cbc35afb8420c98e7e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-720-light.png
     7dae9ad125da16ff9e0ae52bc0210afa00308ed8

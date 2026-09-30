@@ -26,12 +26,13 @@
     }
 
     /* the clearing hugs the letters: the ground glows behind each line's glyphs, so the field stays off
-       the words without a box edge, and never dims a team mark beside them */
+       the words without a box edge, and never dims a team mark beside them; the tight layers compound
+       at the stroke */
     .fm-home-eyebrow,
     .fm-home-h1,
     .fm-home-lede,
     .fm-home-plane {
-        text-shadow: 0 0 10px var(--fm-ground), 0 0 22px var(--fm-ground);
+        text-shadow: 0 0 2px var(--fm-ground), 0 0 4px var(--fm-ground), 0 0 10px var(--fm-ground), 0 0 22px var(--fm-ground);
     }
 
     .fm-home-eyebrow {
