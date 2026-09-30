@@ -1,5 +1,5 @@
 import {expect, test}                                        from '@playwright/test';
-import {execFile, execFileSync}                              from 'node:child_process';
+import {execFileSync}                                        from 'node:child_process';
 import {EventEmitter, once}                                  from 'node:events';
 import {mkdtemp, rm, symlink}                                from 'node:fs/promises';
 import {readFileSync, writeFileSync, mkdirSync, existsSync}  from 'node:fs';
@@ -36,6 +36,7 @@ import {
     resolveRealPath,
     resolveSmokeRoot,
     resolveUiFleetTransport,
+    runBrainScript,
     startBrainChild,
     stopBrainChild,
     stopBrainTree,
@@ -473,7 +474,7 @@ test.describe('harness brain lifecycle', () => {
      * in the Brain root: Tier-1 on its own, and each MCP server's members together with the Tier-1
      * members it inherits, the way `BaseServer#collectMemberEntries` composes them. No `.env` is
      * loaded, so only the env handed in can place a member.
-     * @param {Object} env The complete child environment
+     * @param {Object} env Merged over process.env by `runBrainScript`; an `undefined` value unsets a key.
      * @returns {Promise<Object>} `{dataRoot, results: [{name, ok, count?, error?}]}`
      */
     const runPlaneMemberCheck = env => {
@@ -499,16 +500,12 @@ test.describe('harness brain lifecycle', () => {
             "process.stdout.write(JSON.stringify({dataRoot: AiConfig.plane.dataRoot, deploymentMode: AiConfig.orchestrator.deploymentMode, results}));"
         ].join('\n');
 
-        return new Promise((resolve, reject) => {
-            execFile(process.execPath, ['--input-type=module', '-e', script], {cwd: resolveAgentOsRuntimeRoot(process.env), env}, (error, stdout, stderr) => {
-                error ? reject(new Error(String(stderr || error.message).slice(0, 800))) : resolve(JSON.parse(stdout))
-            })
-        })
+        return runBrainScript({env, label: 'plane member check', repoRoot: resolveAgentOsRuntimeRoot(process.env), script})
     };
 
     test('the packaged profile relocates the plane and places every member the Brain declares, so the Brain\'s own boot check passes for all four config bases (#347)', async () => {
         const
-            env     = {...process.env, ...buildPackagedBrainEnv({dataRoot: workDir}), UNIT_TEST_MODE: ''},
+            env     = {...buildPackagedBrainEnv({dataRoot: workDir}), UNIT_TEST_MODE: ''},
             checked = await runPlaneMemberCheck(env);
 
         expect(checked.dataRoot, 'the plane itself moved to the data root').toBe(workDir);
@@ -519,7 +516,7 @@ test.describe('harness brain lifecycle', () => {
         expect(env.NEO_MEMORY_DB_PATH, 'the memory-core graph is the orchestrator\'s file, never a second one').toBe(env.NEO_AI_DB_PATH);
 
         // the control: one member left on its build-time default fails boot, and names itself
-        delete env.NEO_MEMORY_DB_PATH;
+        env.NEO_MEMORY_DB_PATH = undefined;
 
         const {results} = await runPlaneMemberCheck(env);
 
