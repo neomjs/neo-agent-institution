@@ -106,25 +106,45 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         const
             shell      = {},
             inserted   = [],
+            published  = [],
             controller = Object.create(ViewportController.prototype);
 
         if (planeStatus) {
             Neo.ns('Neo.main.addon', true).ShellPlane = {planeStatus}
         }
 
-        controller.component    = {items: [{}, shell], insert: (index, config) => inserted.push({index, config})};
+        controller.component = {
+            items        : [{}, shell],
+            insert       : (index, config) => inserted.push({index, config}),
+            stateProvider: {setData: data => published.push(data)}
+        };
         controller.getReference = reference => reference === 'shell' ? shell : null;
         controller.windowId     = 7;
 
         await act(controller);
 
-        return inserted
+        return {inserted, published}
     }
 
     test('a packaged shell with no plane gets the card, above the shell', async () => {
-        const inserted = await mountWith(async () => ({available: true, packaged: true, configured: false}));
+        const {inserted} = await mountWith(async () => ({available: true, packaged: true, configured: false}));
 
         expect(inserted).toEqual([{index: 1, config: {module: PlaneSetupPanel, flex: 'none', reference: 'plane-setup'}}])
+    });
+
+    test('Home learns whether the shell has a plane: false and true only for a packaged shell, null otherwise (#244)', async () => {
+        const cases = [
+            [async () => ({available: true, packaged: true,  configured: false}), false],
+            [async () => ({available: true, packaged: true,  configured: true}),  true],
+            [async () => ({available: true, packaged: false, configured: false}), null],
+            [async () => ({available: false}),                                    null],
+            [async () => { throw new Error('remote gone') },                      null],
+            [null,                                                                null]
+        ];
+
+        for (const [planeStatus, configured] of cases) {
+            expect((await mountWith(planeStatus)).published, String(planeStatus)).toEqual([{shellPlaneConfigured: configured}])
+        }
     });
 
     test('a browser, an unpackaged shell, a configured shell and a failed read create nothing', async () => {
@@ -137,7 +157,7 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         ];
 
         for (const planeStatus of cases) {
-            expect(await mountWith(planeStatus), String(planeStatus)).toEqual([])
+            expect((await mountWith(planeStatus)).inserted, String(planeStatus)).toEqual([])
         }
     });
 
@@ -161,14 +181,14 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
     });
 
     test('a request mounts the card for a configured shell too: another plane, or one that refused this shell (#241)', async () => {
-        const inserted = await mountWith(
+        const {inserted} = await mountWith(
             async () => ({available: true, packaged: true, configured: true, planeBase: 'http://127.0.0.1:3102'}),
             controller => controller.showPlaneSetup()
         );
 
         expect(inserted).toEqual([{index: 1, config: {module: PlaneSetupPanel, flex: 'none', reference: 'plane-setup'}}]);
 
-        expect(await mountWith(async () => ({available: false}), controller => controller.showPlaneSetup()), 'a browser still gets none').toEqual([])
+        expect((await mountWith(async () => ({available: false}), controller => controller.showPlaneSetup())).inserted, 'a browser still gets none').toEqual([])
     });
 
     test('the shell switcher\'s attach intent opens the card (#241)', () => {

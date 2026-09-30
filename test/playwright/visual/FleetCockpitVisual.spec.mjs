@@ -1025,6 +1025,87 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         }
     });
 
+    /**
+     * The Home driver, resolved the way {@link GRAPH_SCENE_DRIVER} is.
+     * @type {String}
+     */
+    const HOME_DRIVER = '../../../../test/playwright/visual/homeState.driver.mjs';
+
+    /**
+     * @summary Opens Home from the rail and waits for its fonts. The pointer dwells until the tab's
+     * tooltip has shown, then leaves and waits out the hide: a tooltip whose target is left inside its
+     * show delay stays up.
+     * @param {Object} page
+     * @returns {Promise<Object>} The Home locator
+     */
+    const openHome = async page => {
+        const home = page.locator('.fm-home-view');
+
+        await page.getByRole('tab', {name: 'Home', exact: true}).click();
+        await expect(home).toBeVisible();
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(300);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(500);
+
+        return home
+    };
+
+    /**
+     * @summary Lands `shellPlaneConfigured` through the Home driver: `false` puts Home in front of a
+     * packaged shell without a plane, `null` back in front of the returning team.
+     * @param {Object} page
+     * @param {Boolean|null} configured
+     */
+    const landShellPlane = async (page, configured) => {
+        const result = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${HOME_DRIVER}?shellPlaneConfigured=${configured}&t=${++driverTick}`);
+
+        expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true)
+    };
+
+    test('Home before any answer — the lede in the display line\'s family, and the plane line saying the plane is not connected, over one door per view', async ({page}) => {
+        await bootColdCockpit(page);
+
+        const
+            home   = await openHome(page),
+            family = selector => home.locator(selector).evaluate(el => getComputedStyle(el).fontFamily);
+
+        // the lede declared no family and inherited the theme's body face, apart from the display line above it
+        expect(await family('.fm-home-lede')).toBe(await family('.fm-home-h1'));
+
+        await expect(home.locator('.fm-home-plane-word')).toHaveText('Plane not connected');
+        await expect(home.locator('.fm-home-plane').getByRole('button', {name: 'Open System'})).toBeVisible();
+        await expect(home.getByRole('button', {name: 'Connect a plane'})).toBeHidden();
+        await expect(home).toHaveScreenshot('home-returning-cold.png')
+    });
+
+    test('Home over a live fleet — the plane line is quiet; a packaged shell without a plane gets Connect a plane alone; both skins', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        const
+            home    = await openHome(page),
+            connect = home.getByRole('button', {name: 'Connect a plane'});
+
+        await expect(home.locator('.fm-home-plane'), 'a connected plane is quiet').toBeHidden();
+        await expect(home.locator('.fm-home-doors')).toBeVisible();
+        await expect(home).toHaveScreenshot('home-returning.png');
+
+        await landShellPlane(page, false);
+        await expect(connect).toBeVisible();
+        await expect(home.locator('.fm-home-doors')).toBeHidden();
+        await expect(home.locator('.fm-home-plane')).toBeHidden();
+        await expect(home).toHaveScreenshot('home-first-run.png');
+
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(home).toHaveScreenshot('home-first-run-light.png');
+
+        await landShellPlane(page, null);
+        await expect(connect).toBeHidden();
+        await expect(home).toHaveScreenshot('home-returning-light.png')
+    });
+
     test('the cockpit before any answer and after an empty one — cold says "not answered yet", an empty answer offers the first agent; both skins', async ({page}) => {
         // the cold boot: nothing is landed — nothing is seeded, no source has answered
         await bootColdCockpit(page);

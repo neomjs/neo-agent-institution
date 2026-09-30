@@ -83,19 +83,25 @@ class ViewportController extends Controller {
     }
 
     /**
-     * @summary Mounts the plane-setup card above the shell when the packaged shell has no plane, or on
-     * request (`force`: another plane, or one that refused this shell). A browser build never creates
-     * it, so its field styles never reorder the cascade the other surfaces render against.
+     * @summary Publishes whether a packaged shell has a plane (`shellPlaneConfigured`, which Home
+     * reads), then mounts the plane-setup card above the shell when it has none, or on request
+     * (`force`: another plane, or one that refused this shell). A browser build never creates the
+     * card, so its field styles never reorder the cascade the other surfaces render against.
      * @param {Object}  [options]
      * @param {Boolean} [options.force=false] Mount for a configured shell too.
      * @returns {Promise<void>}
      */
     async mountPlaneSetup({force = false} = {}) {
         const
-            me     = this,
-            status = await me.readPlaneStatus();
+            me       = this,
+            status   = await me.readPlaneStatus(),
+            packaged = Boolean(status?.available && status.packaged);
 
-        if (status?.available && status.packaged && (force || !status.configured) && !me.isDestroyed && !me.getReference('plane-setup')) {
+        if (me.isDestroyed) return;
+
+        me.component.stateProvider.setData({shellPlaneConfigured: packaged ? Boolean(status.configured) : null});
+
+        if (packaged && (force || !status.configured) && !me.getReference('plane-setup')) {
             const viewport = me.component;
 
             viewport.insert(viewport.items.indexOf(me.getReference('shell')), {

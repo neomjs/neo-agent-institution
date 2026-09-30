@@ -1,0 +1,63 @@
+/* AgentOS.view.home.Container — Home: the eyebrow, the display line and the lede, then either the
+   plane line and one door per keeper view (the returning team) or the one Connect a plane action (a
+   packaged shell without a plane). Every color reads from the --fm-* token layer. */
+.fm-home-view {
+    padding   : 48px;
+    background: var(--fm-ground);
+
+    .fm-home-inner {
+        max-width: 660px;
+    }
+
+    .fm-home-eyebrow {
+        font-family   : var(--fm-font-mono);
+        /* the chrome role's voice one step up, with its own wide tracking — the welcome
+           surface's eyebrow above a 26–42px display line */
+        font-size     : 12px;   /* §04 recorded exception: chrome 11 → 12px */
+        letter-spacing: .22em;
+        text-transform: uppercase;
+        color         : var(--fm-signal);
+        margin        : 0;
+    }
+
+    .fm-home-h1 {
+        font-family   : var(--fm-font-sans);
+        font-size     : clamp(26px, 3.4vw, 42px);
+        line-height   : 1.1;
+        letter-spacing: -.02em;
+        color         : var(--fm-ink);
+        margin        : 14px 0 0;
+    }
+
+    .fm-home-lede {
+        font-family: var(--fm-font-sans);
+        font-size  : 17px;   /* §04 recorded exception: prose above the ladder (the welcome lede) */
+        line-height: 1.6;
+        color      : var(--fm-ink-dim);
+        margin     : 18px 0 0;
+    }
+
+    .fm-home-plane {
+        gap   : var(--fm-space-3);
+        margin: var(--fm-space-4) 0 0;
+        font  : var(--fm-text-detail);
+        color : var(--fm-ink-dim);
+
+        .neo-button.fm-home-plane-door {
+            margin: 0;
+        }
+    }
+
+    .fm-home-doors {
+        gap   : var(--fm-space-2);
+        margin: 28px 0 0;
+
+        .neo-button.fm-home-door {
+            margin: 0;
+        }
+    }
+
+    .neo-button.fm-home-connect {
+        margin: 28px 0 0;
+    }
+}

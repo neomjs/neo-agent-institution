@@ -547,49 +547,6 @@
         border: 0;
     }
 
-    /* Home — the transient first-open welcome landing. */
-    .agent-welcome {
-        display    : grid;
-        place-items: center;
-        padding    : 48px;
-        background : var(--fm-ground);
-
-        .agent-welcome-inner {
-            max-width: 660px;
-        }
-
-        .agent-welcome-eyebrow {
-            font-family   : var(--fm-font-mono);
-            /* the chrome role's voice one step up, with its own wide tracking — the welcome
-               surface's eyebrow above a 26–42px display line */
-            font-size     : 12px;   /* §04 recorded exception: chrome 11 → 12px */
-            letter-spacing: .22em;
-            text-transform: uppercase;
-            color         : var(--fm-signal);
-            margin        : 0;
-        }
-
-        .agent-welcome-h1 {
-            font-family   : var(--fm-font-sans);
-            font-size     : clamp(26px, 3.4vw, 42px);
-            line-height   : 1.1;
-            letter-spacing: -.02em;
-            color         : var(--fm-ink);
-            margin        : 14px 0 0;
-        }
-
-        .agent-welcome-lede {
-            font-size  : 17px;   /* §04 recorded exception: prose above the ladder (the welcome lede) */
-            line-height: 1.6;
-            color      : var(--fm-ink-dim);
-            margin     : 18px 0 0;
-
-            b {
-                color: var(--fm-ink);
-            }
-        }
-    }
-
     /* Chat — the dockable work-area seam (placeholder until the live-pane lands). */
     .agent-placeholder {
         display    : grid;
