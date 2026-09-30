@@ -17,6 +17,7 @@ files:
     - contentPolicy.mjs
     - credentialPrompt.mjs
     - credentialPrompt.preload.cjs
+    - fixturePlane.mjs
     - fleetCapability.mjs
     - mainLog.mjs
     - planeConfig.mjs
