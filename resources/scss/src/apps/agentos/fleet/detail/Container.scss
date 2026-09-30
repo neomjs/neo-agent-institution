@@ -125,6 +125,12 @@
         border-radius: 6px;
     }
 
+    /* a section borrows the pane head's grammar, not its hairline: its card's border frames it */
+    .fm-detail-pane > .fm-detail-pane-head {
+        border-bottom : 0;
+        padding-bottom: 0;
+    }
+
     .fm-detail-pane-body {
         font : var(--fm-text-detail);   /* 11px readouts → detail: the inspector's mono meta voice */
         color: var(--fm-ink-dim);

@@ -227,6 +227,13 @@
         row-gap   : var(--fm-space-1);
     }
 
+    /* the SSOT head closes on a hairline, so the pane's own section labels read below it, never
+       beside the title. Zero weight: a surface borrowing the head's grammar re-values it */
+    :where(.fm-pane-head) {
+        border-bottom : 1px solid var(--fm-line-soft);
+        padding-bottom: var(--fm-space-2);
+    }
+
     .fm-pane-title {
         color         : var(--fm-ink-dim);
         font          : var(--fm-text-chrome);
