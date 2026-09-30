@@ -1,7 +1,9 @@
-import GoldenPathEnvelope from '../../../util/GoldenPathEnvelope.mjs';
-import GraphSceneEnvelope from '../../../util/GraphSceneEnvelope.mjs';
-import TargetBinding      from '../../../util/TargetBinding.mjs';
-import LivenessController from './LivenessController.mjs';
+import FleetAdmission          from '../../../util/FleetAdmission.mjs';
+import GoldenPathEnvelope      from '../../../util/GoldenPathEnvelope.mjs';
+import GraphSceneEnvelope      from '../../../util/GraphSceneEnvelope.mjs';
+import TargetBinding           from '../../../util/TargetBinding.mjs';
+import LivenessController      from './LivenessController.mjs';
+import {FLEET_COCKPIT_SOURCES} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @summary The owner of the cockpit's resident south reading surfaces: the catch-up history (its
@@ -29,6 +31,31 @@ class ReadingSurfacesController extends LivenessController {
         className: 'AgentOS.view.fleet.cockpit.ReadingSurfacesController'
     }
 
+    /**
+     * Read-fence for the activity feed's older pages.
+     * @member {Number} activityHistoryGeneration=0
+     * @protected
+     */
+    activityHistoryGeneration = 0
+    /**
+     * The generation of the older-page read in flight, or `null`. A read from before a profile switch
+     * stops counting, so it can neither block nor release the new profile's reads.
+     * @member {Number|null} activityHistoryFlight=null
+     * @protected
+     */
+    activityHistoryFlight = null
+    /**
+     * The profile the paging state belongs to. Once the store answers for another, that state resets.
+     * @member {String|null} activityHistoryProfileId=null
+     * @protected
+     */
+    activityHistoryProfileId = null
+    /**
+     * The store's count when an older page added no row; no page is asked again until it moves.
+     * @member {Number|null} activityHistoryStalledAt=null
+     * @protected
+     */
+    activityHistoryStalledAt = null
     /**
      * Read-fence + owner-held snapshot for the catch-up history surface.
      * @member {Number} catchUpReadGeneration=0
@@ -70,6 +97,86 @@ class ReadingSurfacesController extends LivenessController {
      * @protected
      */
     graphSceneProfileId = null
+
+    /**
+     * @summary Relay the Activity stream's request for older events.
+     * @returns {Promise<Object|null>}
+     */
+    onActivityHistoryRequest() {
+        return this.loadActivityHistory()
+    }
+
+    /**
+     * @summary READ-OBSERVE: the activity feed's next older page. The mailbox is the one lane that pages,
+     * so the read asks it alone (`slots: ['a2a']`) at the offset of the mailbox rows the store holds: a
+     * message lands as one row, and ids dedupe the overlap that new arrivals shift in. One page is in
+     * flight at a time. Nothing is asked once the ring is full, since the page would be the tail it
+     * evicts; once the mailbox answers no older row; or while a page that added nothing has not been
+     * followed by a change in the store. The page lands through
+     * {@link AgentOS.util.FleetAdmission#admitActivityHistory}; a failed read changes nothing.
+     *
+     * Every outcome belongs to the profile that asked. Once the store holds another profile, a late
+     * answer is dropped whole, an empty page's end-of-history included, and the old profile's stall and
+     * in-flight read no longer apply.
+     * @param {Number} [limit=50] Rows per page.
+     * @returns {Promise<Object|null>} The ingest result, or `null` when nothing was asked or landed.
+     */
+    async loadActivityHistory(limit = 50) {
+        const
+            me        = this,
+            {bridge}  = me,
+            provider  = me.component.getStateProvider(),
+            store     = me.resolveFleetActivityEventsStore(),
+            profileId = bridge?.profileId ?? null;
+
+        if (me.activityHistoryProfileId !== me.activityProfileId) {
+            me.activityHistoryProfileId = me.activityProfileId;
+            me.activityHistoryStalledAt = null;
+            me.activityHistoryFlight    = null;
+            me.activityHistoryGeneration++
+        }
+
+        if (!store || !me.activityWired || me.activityHistoryFlight !== null || provider?.getData('streamHistoryExhausted')
+            || store.count >= store.maxRecords || store.count === me.activityHistoryStalledAt
+            || typeof bridge?.fleetActivity !== 'function') {
+            return null
+        }
+
+        const
+            generation = ++me.activityHistoryGeneration,
+            offset     = store.items.filter(record => record.source === FLEET_COCKPIT_SOURCES.a2a).length;
+
+        let answer;
+
+        me.activityHistoryFlight = generation;
+
+        try {
+            answer = await me.boundedRead(
+                Promise.resolve().then(() => bridge.fleetActivity({limit, offset, slots: ['a2a']})),
+                () => { me.activityHistoryFlight === generation && (me.activityHistoryFlight = null) }
+            )
+        } catch (error) {
+            return null
+        }
+
+        if (generation !== me.activityHistoryGeneration || me.isDestroyed || answer?.capability?.state !== 'wired'
+            || !me.activityWired || me.activityProfileId !== profileId) {
+            return null
+        }
+
+        const events = (answer.events || []).filter(event => event?.source === FLEET_COCKPIT_SOURCES.a2a);
+
+        if (!events.length) {
+            provider?.setData({streamHistoryExhausted: true});
+            return null
+        }
+
+        const landed = FleetAdmission.admitActivityHistory(me, {events, profileId});
+
+        me.activityHistoryStalledAt = landed?.added === 0 ? store.count : null;
+
+        return landed
+    }
 
     /**
      * @summary Relay a CatchUpPane read intent.

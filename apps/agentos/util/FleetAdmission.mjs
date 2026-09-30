@@ -48,6 +48,32 @@ class FleetAdmission extends Base {
     }
 
     /**
+     * @summary Admits an older page of the activity feed below the live window. The events merge into
+     * the provider-owned store and never replace it, and the page must belong to the profile the store
+     * holds: a late page from before a profile switch is dropped. The feed's state and counts are the
+     * live read's, so a history page publishes neither. The stream learns the page's ids before they
+     * land, so older rows never count as new events or reach the announcer.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @param {Object} answer
+     * @param {Object[]} answer.events The producer's older page
+     * @param {String|null} [answer.profileId=null] The profile the page belongs to
+     * @returns {Object|null} The store's ingest result, or `null` when the page was dropped
+     */
+    static admitActivityHistory(owner, {events, profileId = null}) {
+        const
+            store = owner.resolveFleetActivityEventsStore(),
+            rows  = Array.isArray(events) ? events : [];
+
+        if (!store || !owner.activityWired || owner.activityProfileId !== profileId) {
+            return null
+        }
+
+        owner.getReference('activity-stream')?.acceptHistory(rows.map(event => event.eventId));
+
+        return store.ingestSnapshot(rows)
+    }
+
+    /**
      * @summary Selects usable producer facts from a partial page. Failure diagnostics are not work;
      * an unrecognized or malformed remaining row refuses the page instead of manufacturing activity.
      * Store admission still validates identity uniqueness before changing retained records.
