@@ -75,7 +75,7 @@
         "acorn": "^8.17.0",
         "astring": "^1.9.0",
         "autoprefixer": "^10.6.1",
-        "chalk": "^6.0.0",
+        "chalk": "^6.0.1",
         "commander": "^15.0.0",
         "cssnano": "^9.0.5",
         "esbuild": "^0.28.1",
