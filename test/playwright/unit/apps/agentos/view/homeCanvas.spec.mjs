@@ -154,12 +154,17 @@ test.describe('AgentOS.view.home.Canvas — the field goes quiet under the lines
         Neo.ns('Test.Unit.AgentOS.HomeCanvas', true).Renderer = renderer;
         renderer.quiet.length = 0;
 
+        domAccess                  = Neo.ns('Neo.main.DomAccess', true);
+        originalGetComputedStyle   = domAccess.getComputedStyle;
+        domAccess.getComputedStyle = async ({id}) => ({'font-size': id === 'line-a' ? '20px' : '50px'});
+
         host            = Neo.create(MotionHost, {quietIds: ['line-a', 'line-b']});
         host.canvasRect = {x: 100, y: 50}
     });
 
     test.afterEach(() => {
-        host.destroy()
+        host.destroy();
+        domAccess.getComputedStyle = originalGetComputedStyle
     });
 
     test('the lines reach the renderer relative to the canvas, and only the latest measurement answers', async () => {
@@ -174,7 +179,10 @@ test.describe('AgentOS.view.home.Canvas — the field goes quiet under the lines
         answers[0]([{x: 140, y: 130, width: 300, height: 40}, {x: 140, y: 190, width: 0, height: 0}]);
         await Promise.all([first, second]);
 
-        expect(renderer.quiet).toEqual([[{height: 40, width: 300, x: 40, y: 80}, {height: 0, width: 0, x: 40, y: 140}]]);
+        expect(renderer.quiet, 'each line with the font size its feather is measured in').toEqual([[
+            {fontSize: 20, height: 40, width: 300, x: 40, y: 80},
+            {fontSize: 50, height: 0,  width: 0,   x: 40, y: 140}
+        ]]);
 
         const third = host.measureQuiet();
         await expect.poll(() => answers.length).toBe(2);
@@ -187,6 +195,6 @@ test.describe('AgentOS.view.home.Canvas — the field goes quiet under the lines
         await Promise.all([third, fourth]);
 
         expect(renderer.quiet, 'an answer that lands after a newer one is dropped').toHaveLength(2);
-        expect(renderer.quiet.at(-1)).toEqual([{height: 10, width: 10, x: 0, y: 0}])
+        expect(renderer.quiet.at(-1)).toEqual([{fontSize: 20, height: 10, width: 10, x: 0, y: 0}])
     })
 });

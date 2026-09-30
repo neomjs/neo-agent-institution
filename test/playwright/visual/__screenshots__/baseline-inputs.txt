@@ -18,7 +18,7 @@ apps/agentos/app.mjs
     15ee159880412eba52bd3577a9b09e0e01b55fa8
 
 apps/agentos/canvas/Home.mjs
-    94b349cbbb603dc68c656052ddb690e843632bba
+    392fe0571a68fbf6ae269cf6eb648ad607f768f2
 
 apps/agentos/canvas/Observatory.mjs
     e6924962f5a57a6611c3b5c86f326dda0a387659
@@ -414,7 +414,7 @@ apps/agentos/view/fleet/wake/Container.mjs
     660b2ec3eea1c07adadc9b8355b133ab0b130f4b
 
 apps/agentos/view/home/Canvas.mjs
-    dd7f8ad66b8ef39e20558af6b056f10ca8706c30
+    b6a2721ff510b2225085a12fce6f77a4aa57e5d2
 
 apps/agentos/view/home/Container.mjs
     8d16d0b99157c62163a03cc504a04e8163444aac
@@ -624,19 +624,19 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-grid-ca
     760ec27e828e90b2c112b6f2ff9b3f92bc482c5b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
-    70b95aa6337f65ce44234f81071d83f0f42c4fb4
+    0facff4dc71f0aac3e6c09d21336642ad02279c2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run.png
-    73161fd846e709ff6fae7777972c24a48a3eb6a0
+    fdd06ca066737c8514a95a6aee531b1c5b6875ba
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning-cold.png
-    8bc53c506ccc4bc998047bcc7f15584ef3e861ef
+    551c95261a39dd34911df0d11ab417569984ba95
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning-light.png
-    fb7d135ecad4d4723e355d82e253f92b74e8975a
+    dd36d7a7ac6b5e6b1803ca34e4d3ab49e7a42868
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning.png
-    58d854efef629f80bdf417c8633a6c3f3e8a9364
+    7ab0c81788224c1364f4f319cb6dc9889f08c22b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-720-light.png
     7dae9ad125da16ff9e0ae52bc0210afa00308ed8

@@ -145,7 +145,8 @@ class Canvas extends SharedCanvas {
 
     /**
      * @summary Measures the quiet components one frame after the call, so a line the Home view just changed has its
-     * new box, and hands the renderer their rects relative to the canvas. Only the latest measurement answers.
+     * new box, and hands the renderer their rects relative to the canvas, each with the font size its feather is
+     * measured in. Only the latest measurement answers.
      * @returns {Promise<void>}
      */
     async measureQuiet() {
@@ -157,11 +158,22 @@ class Canvas extends SharedCanvas {
             return
         }
 
-        const rects = await me.getDomRect(me.quietIds), {x, y} = me.canvasRect;
+        const
+            [rects, styles] = await Promise.all([
+                me.getDomRect(me.quietIds),
+                Promise.all(me.quietIds.map(id => Neo.main.DomAccess.getComputedStyle({id, style: 'font-size', windowId: me.windowId})))
+            ]),
+            {x, y} = me.canvasRect;
 
         if (read === me.quietRead && me.isCanvasReady && !me.isDestroyed) {
             me.renderer.setQuiet({
-                rects   : (rects || []).filter(Boolean).map(rect => ({height: rect.height, width: rect.width, x: rect.x - x, y: rect.y - y})),
+                rects: (rects || []).map((rect, i) => rect && {
+                    fontSize: parseFloat(styles[i]['font-size']),
+                    height  : rect.height,
+                    width   : rect.width,
+                    x       : rect.x - x,
+                    y       : rect.y - y
+                }).filter(Boolean),
                 windowId: me.windowId
             })
         }

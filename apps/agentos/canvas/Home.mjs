@@ -73,12 +73,13 @@ class Home extends Base {
          * `reach`, clearing a core of the `part` share of it and spreading them evenly over the rest; the ring turns
          * `orbit` rad/s; a ripple runs at `speed` for `life`, lifting what its `band` crosses by up to `lift`.
          * Parting and ripples move where a mote is drawn, never where it is, so neither leaves a hole behind. The
-         * field goes quiet under the rects the host names, softened over `feather`.
+         * field goes quiet under the lines the host names, fully at each line's box and fading over `feather` em of
+         * that line's font size beyond it.
          * @member {Object} field
          */
         field: {
             density : 6000,
-            feather : 10,
+            feather : 0.4,
             link    : 120,
             markLink: 140,
             moteCap : 320,
@@ -474,8 +475,9 @@ class Home extends Base {
     }
 
     /**
-     * @summary Erases the field under the quiet rects, softened over the field's `feather`, so no mote, link or ripple
-     * sits in a line's letters or its leading.
+     * @summary Erases the field under the quiet rects, so no mote, link or ripple sits in a line's letters or its
+     * leading. Each rect grows by half its feather and blurs by a quarter of it: the erase is full at the line's box
+     * and gone one feather beyond it, so a large line breathes as much as a small one, in its own measure.
      * @param {OffscreenCanvasRenderingContext2D} ctx
      */
     drawQuiet(ctx) {
@@ -484,10 +486,12 @@ class Home extends Base {
         ctx.globalAlpha              = 1;
         ctx.globalCompositeOperation = 'destination-out';
         ctx.fillStyle                = '#000';
-        ctx.filter                   = `blur(${feather / 2}px)`;
 
-        for (const {height, width, x, y} of this.quiet) {
-            ctx.fillRect(x - feather / 2, y - feather / 2, width + feather, height + feather)
+        for (const {fontSize, height, width, x, y} of this.quiet) {
+            const soft = fontSize * feather;
+
+            ctx.filter = `blur(${soft / 4}px)`;
+            ctx.fillRect(x - soft / 2, y - soft / 2, width + soft, height + soft)
         }
 
         ctx.filter                   = 'none';
@@ -521,7 +525,8 @@ class Home extends Base {
      * @summary Remote entry for the specs: what the field holds, how many of its motes are on screen, the rects it is
      * quiet under, and how many frames it drew.
      * @returns {Object} `{frames, marks, motes, quiet, size, still, theme, visible}`; `marks` is `{total, up}` or `null`,
-     * `quiet` lists `{x, y, width, height}` canvas-relative, and `visible` counts the motes drawn inside the surface
+     * `quiet` lists `{x, y, width, height, fontSize}` canvas-relative, and `visible` counts the motes drawn inside the
+     * surface
      */
     getStats() {
         const me = this, {canvasSize, team} = me;
@@ -755,10 +760,10 @@ class Home extends Base {
     }
 
     /**
-     * @summary Remote entry: the rects the field stays out of, canvas-relative in CSS pixels. A rect without a
-     * positive size, a hidden line, is left out.
+     * @summary Remote entry: the lines the field stays out of, canvas-relative in CSS pixels, each with its font size,
+     * which measures its feather. A rect without a positive size, a hidden line, is left out.
      * @param {Object}   data
-     * @param {Object[]} [data.rects=[]] `{x, y, width, height}` each
+     * @param {Object[]} [data.rects=[]] `{x, y, width, height, fontSize}` each
      * @param {String}   [data.windowId]
      */
     setQuiet({rects = []}) {
@@ -766,7 +771,7 @@ class Home extends Base {
 
         me.quiet = rects
             .filter(rect => rect?.width > 0 && rect?.height > 0)
-            .map(({height, width, x, y}) => ({height, width, x, y}));
+            .map(({fontSize, height, width, x, y}) => ({fontSize, height, width, x, y}));
 
         me.refresh()
     }
