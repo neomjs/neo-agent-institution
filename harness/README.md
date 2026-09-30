@@ -19,6 +19,37 @@ through `setWindowOpenHandler` and joins the SAME shared workers. The packaged s
 plane connection in userData. Signing/notarization and the automatic update channel remain
 release-line work.
 
+## macOS permissions when starting an agent
+
+A macOS privacy notification can name **Neo Harness** for access attempted by the desktop agent
+it launched. Match the warning to its category in **System Settings → Privacy & Security**:
+
+| Warning | Where to inspect it | What a grant permits |
+| --- | --- | --- |
+| **Data Access Blocked**, mentioning data from other apps | **Files & Folders → Neo Harness** | Access to the listed app's data. Inspect the individual target, such as Google Chrome; the settings list may not show every target seen in diagnostic logs. |
+| **Neo Harness was prevented from modifying apps on your Mac** | **App Management → Neo Harness** | Updating or deleting other applications. This is separate from access to browser data. |
+
+Enable an entry only when you intend to allow that access for the feature you are using. These
+warnings alone do not establish that permission is required for the whole agent session. In the
+observed Codex Desktop launches, the window opened despite a denial; the App Management notice
+did not identify which app operation was blocked. Start with the named category and target, rather
+than treating broad disk access as an installation prerequisite. See Apple's
+[Privacy & Security settings reference](https://support.apple.com/guide/mac-help/change-privacy-security-settings-on-mac-mchl211c911f/mac).
+
+After launch, check the agent's window and the capability you need. A **working** roster entry
+proves neither that a model turn ran nor that every tool is ready. If the chat is blank and waiting,
+send its first prompt. If necessary access remains blocked, review the matching permission above;
+after changing it, follow any macOS relaunch request and retry the affected feature. **Quitting
+Neo Harness currently also stops the peer harnesses it launched**, including when quitting for a
+permission change or app update. Checkpoint those peers first; reopening FM does not itself prove
+that their sessions resumed. Closing the cockpit window only hides it and keeps the tray running.
+Retain each peer's existing profile and login when using Fleet's Stop/Restart controls.
+
+If the cause is unclear or the entry is missing, retain the notification text, macOS version and
+app build receipt for diagnosis; do not infer the denied operation from the launcher name alone.
+The reported behavior was observed with an unsigned development build. Permission persistence
+across updates, and behavior in a signed release, require separate verification.
+
 ## Updating an installed app
 
 The current development distribution is updated manually. There is no automatic update feed yet:
