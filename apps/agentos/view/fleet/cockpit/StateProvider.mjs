@@ -1,5 +1,4 @@
 import FleetActivityEvents from '../../../store/FleetActivityEvents.mjs';
-import FleetRoster         from '../../../store/FleetRoster.mjs';
 import Provider            from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import SpineBanner         from '../../../util/SpineBanner.mjs';
 import TelltaleDeriver     from '../../../util/ViewerWakeTelltale.mjs';
@@ -24,13 +23,13 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
  * stay controller state.
  *
  * The provider hosts three kinds of truth:
- * - **stores** — the roster and the activity feed (both start EMPTY: the fleet's answers fill
- *   them, nothing is seeded) and the bounded viewer-wake feed; panes bind instances via
- *   `bind: {store: 'stores.…'}` — the provider is the sharing scope, never a store singleton.
- * - **data** — the selection pair, the per-surface adapter states with their RETAINED degrade
- *   reasons (per-surface by design: one shared reason field cannot know whose cause it holds),
- *   the Brain daemon verdict + shell transport fact, the viewer-wake truths and the activity
- *   counts.
+ * - **stores** — the activity feed (it starts EMPTY: the fleet's answers fill it, nothing is
+ *   seeded) and the bounded viewer-wake feed; panes bind instances via `bind: {store: 'stores.…'}`
+ *   — the provider is the sharing scope, never a store singleton. The roster store and its
+ *   surface's truths live one level up, on the Viewport provider, so Home reads the same roster.
+ * - **data** — the selection pair, the activity surface's adapter state with its RETAINED degrade
+ *   reason, the Brain daemon verdict + shell transport fact, the viewer-wake truths and the
+ *   activity counts.
  * - **formulas** — `spineBanner` (the one banner verdict; the banner and the reconnect
  *   affordance bind it), `instanceState` (the chrome dot's mirror of the same verdict, written
  *   to the VIEWPORT-owned key through setData's closest-owner walk), `daemonFault` (the grid
@@ -83,25 +82,9 @@ class StateProvider extends Provider {
              * @member {String|null} daemonState=null
              */
             daemonState: null,
-            /**
-             * The grid surface's adapter state — `'cold'` until a source answers (no data is
-             * claimed, none is seeded), then `'live'` or `'stale'`; absent-item materialization
-             * binds to HERE, so a layout commit can never reset a live grid back to cold.
-             * @member {String} gridAdapterState='cold'
-             */
-            gridAdapterState: 'cold',
-            /**
-             * The roster read owner's finite observation and sanitized reason. Leaf-complete so
-             * the banner and dot react to this surface independently of the activity read.
-             * @member {Object} gridConnection={state:null,reason:null}
-             */
-            gridConnection: {state: null, reason: null},
-            /**
-             * The ROSTER surface's retained degrade reason. Per-surface, not shared: one field
-             * for two independently-answering surfaces cannot know whose cause it holds.
-             * @member {String|null} gridDegradedReason=null
-             */
-            gridDegradedReason: null,
+            /* The ROSTER surface's truths (`gridAdapterState`, `gridConnection`,
+               `gridDegradedReason`) are the Viewport provider's: a re-declaration here would shadow
+               that owner, and setData's closest-owner walk reaches it on its own. */
             /**
              * The cockpit's projected perspective list — the declared duties, then every capture,
              * and the latest verdicts — written by the cockpit's `publishPerspectives`; the
@@ -150,7 +133,8 @@ class StateProvider extends Provider {
              */
             streamConnection: {state: null, reason: null},
             /**
-             * The ACTIVITY surface's retained degrade reason — see {@link #data.gridDegradedReason}.
+             * The ACTIVITY surface's retained degrade reason. Per-surface, not shared: one field
+             * for two independently-answering surfaces cannot know whose cause it holds.
              * @member {String|null} streamDegradedReason=null
              */
             streamDegradedReason: null,
@@ -252,9 +236,6 @@ class StateProvider extends Provider {
         stores: {
             fleetActivityEvents: {
                 module: FleetActivityEvents
-            },
-            fleetRoster: {
-                module: FleetRoster
             },
             viewerWakeFeed: {
                 module: ViewerWakeFeed

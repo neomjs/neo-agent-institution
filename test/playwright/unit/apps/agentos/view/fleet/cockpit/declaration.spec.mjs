@@ -15,10 +15,10 @@ import Operations           from '../../../../../../../../node_modules/neo.mjs/s
 import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
-import FleetRoster          from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import CockpitPerspectives  from '../../../../../../../../apps/agentos/util/CockpitPerspectives.mjs';
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import {createShellProvider} from './shellProvider.mjs';
 import {shippedDockDocument} from './shippedDockDocument.mjs';
 
 const SHIPPED = shippedDockDocument();
@@ -35,15 +35,16 @@ const SHIPPED = shippedDockDocument();
  *    catalog carried, so `getReference()` answers by the record's name.
  */
 test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration lowers to the shipped document', () => {
-    let cockpit;
+    let cockpit, shell;
 
     test.beforeEach(() => {
+        shell   = createShellProvider();
         cockpit = Neo.create(FleetCockpit, {
             stateProvider: {
                 module: CockpitStateProvider,
+                parent: shell,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false},
                     viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }
@@ -52,7 +53,8 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
 
     test.afterEach(() => {
         cockpit?.destroy();
-        cockpit = null;
+        shell?.destroy();
+        cockpit = shell = null;
         Neo.apps = {}
     });
 
@@ -128,9 +130,9 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         create         = config => Neo.create(FleetCockpit, {
             stateProvider: {
                 module: CockpitStateProvider,
+                parent: shell,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false},
                     viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             },
@@ -139,11 +141,16 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         presetDocument = (cockpit, name) => cockpit.perspectiveSelection.document(name),
         applyNote      = cockpit => cockpit.getStateProvider().data.perspectives.applyNote;
 
-    let cockpit;
+    let cockpit, shell;
+
+    test.beforeEach(() => {
+        shell = createShellProvider()
+    });
 
     test.afterEach(() => {
         cockpit?.destroy();
-        cockpit = null;
+        shell?.destroy();
+        cockpit = shell = null;
         Neo.apps = {}
     });
 

@@ -13,8 +13,8 @@ import CockpitStateProvider      from '../../../../../../../../apps/agentos/view
 import DeploymentStateRead       from '../../../../../../../../apps/agentos/util/DeploymentStateRead.mjs';
 import FleetActivityEvents       from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit              from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
-import FleetRoster               from '../../../../../../../../apps/agentos/store/FleetRoster.mjs';
 import ViewerWakeFeed            from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import {createShellProvider}     from './shellProvider.mjs';
 import {installFleetBridge}      from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
 import {createFleetWireResponse} from 'neo-agent-brain/fleet-contract';
 
@@ -28,16 +28,17 @@ import {createFleetWireResponse} from 'neo-agent-brain/fleet-contract';
  * REVEALED with the cold verdict on a cold boot, and the reconnect affordance must share it.
  */
 test('the declared chrome binds the derived truths — banner revealed with the cold verdict', async () => {
-    const cockpit = Neo.create(FleetCockpit, {
-        stateProvider: {
-            module: CockpitStateProvider,
-            stores: {
-                fleetActivityEvents: {module: FleetActivityEvents},
-                fleetRoster        : {module: FleetRoster, autoLoad: false},
-                viewerWakeFeed     : {module: ViewerWakeFeed}
-            }
-        }
-    });
+    const shell   = createShellProvider(),
+          cockpit = Neo.create(FleetCockpit, {
+              stateProvider: {
+                  module: CockpitStateProvider,
+                  parent: shell,
+                  stores: {
+                      fleetActivityEvents: {module: FleetActivityEvents},
+                      viewerWakeFeed     : {module: ViewerWakeFeed}
+                  }
+              }
+          });
 
     await cockpit.refreshPromise;
 
@@ -61,21 +62,19 @@ test('the declared chrome binds the derived truths — banner revealed with the 
     expect(telltale.text).toContain('wake');
     expect(telltale.cls).toContain('fm-viewer-wake-degraded');
 
-    cockpit.destroy()
+    cockpit.destroy();
+    shell.destroy()
 });
 
 test('typed wire refusal and recovery drive the real read owner, reactive banner and parent dot', async () => {
     const previousFleet = globalThis.AgentOS?.fleet,
-          parent = Neo.create((await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default, {
-              data: {boundProfileId: null, instanceState: 'off'}
-          }),
+          parent = createShellProvider(),
           cockpit = Neo.create(FleetCockpit, {
               stateProvider: {
                   module: CockpitStateProvider,
                   parent,
                   stores: {
                       fleetActivityEvents: {module: FleetActivityEvents},
-                      fleetRoster: {module: FleetRoster, autoLoad: false},
                       viewerWakeFeed: {module: ViewerWakeFeed}
                   }
               }
@@ -118,9 +117,7 @@ test('RA-1 witness: the cockpit derivation writes the PARENT-owned instanceState
     // the review falsifier inverted: with the child shadow removed, the derived dot verdict must
     // land on the Viewport-owned key (the instance switcher binds THERE), through setData's
     // closest-owner walk
-    const parentProvider = Neo.create((await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default, {
-        data: {boundProfileId: null, instanceState: 'off'}
-    });
+    const parentProvider = createShellProvider();
 
     const cockpit = Neo.create(FleetCockpit, {
         stateProvider: {
@@ -128,7 +125,6 @@ test('RA-1 witness: the cockpit derivation writes the PARENT-owned instanceState
             parent: parentProvider,
             stores: {
                 fleetActivityEvents: {module: FleetActivityEvents},
-                fleetRoster        : {module: FleetRoster, autoLoad: false},
                 viewerWakeFeed     : {module: ViewerWakeFeed}
             }
         }
@@ -158,16 +154,17 @@ test('RA-1 witness: the cockpit derivation writes the PARENT-owned instanceState
 });
 
 test('RA-2 falsifier: the wake title moves while the visible text stays byte-identical — no channel rides another as a change proxy', async () => {
-    const cockpit = Neo.create(FleetCockpit, {
-        stateProvider: {
-            module: CockpitStateProvider,
-            stores: {
-                fleetActivityEvents: {module: FleetActivityEvents},
-                fleetRoster        : {module: FleetRoster, autoLoad: false},
-                viewerWakeFeed     : {module: ViewerWakeFeed}
-            }
-        }
-    });
+    const shell   = createShellProvider(),
+          cockpit = Neo.create(FleetCockpit, {
+              stateProvider: {
+                  module: CockpitStateProvider,
+                  parent: shell,
+                  stores: {
+                      fleetActivityEvents: {module: FleetActivityEvents},
+                      viewerWakeFeed     : {module: ViewerWakeFeed}
+                  }
+              }
+          });
 
     await cockpit.refreshPromise;
 
@@ -192,7 +189,8 @@ test('RA-2 falsifier: the wake title moves while the visible text stays byte-ide
     expect(telltale.vdom.title).toBe(telltale.chipTitle);
     expect(telltale.vdom['aria-label']).toContain('Viewer wake push');
 
-    cockpit.destroy()
+    cockpit.destroy();
+    shell.destroy()
 });
 
 // The leaf-complete witness the fakes cannot give: `setData` drills object values into leaf paths
@@ -204,16 +202,13 @@ test('RA-2 falsifier: the wake title moves while the visible text stays byte-ide
 // blocks included, and a later absent block clears back to the declared blank instead of vanishing.
 test('the deployment-state picture lands leaf-complete on the REAL parent provider — nested maintenance blocks read back, and an absent block clears', async () => {
     const
-        parent  = Neo.create((await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default, {
-            data: {deploymentState: DeploymentStateRead.blank(), systemConnection: {state: null, reason: null}}
-        }),
+        parent  = createShellProvider(),
         cockpit = Neo.create(FleetCockpit, {
             stateProvider: {
                 module: CockpitStateProvider,
                 parent,
                 stores: {
                     fleetActivityEvents: {module: FleetActivityEvents},
-                    fleetRoster        : {module: FleetRoster, autoLoad: false},
                     viewerWakeFeed     : {module: ViewerWakeFeed}
                 }
             }

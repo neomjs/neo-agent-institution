@@ -17,6 +17,9 @@ apps/agentos/VisualSystem.md
 apps/agentos/app.mjs
     15ee159880412eba52bd3577a9b09e0e01b55fa8
 
+apps/agentos/canvas/Home.mjs
+    4584f02342ead1e43fa8ad4263a0803d7c5e9ff7
+
 apps/agentos/canvas/Observatory.mjs
     e6924962f5a57a6611c3b5c86f326dda0a387659
 
@@ -237,7 +240,7 @@ apps/agentos/view/PlaneSetupPanel.mjs
     ae710be8bd4072d01ae9fbb062ee66cc3c948506
 
 apps/agentos/view/Viewport.mjs
-    81d2af2d24f3d7eeeaab82047b6a57326a4d652f
+    3c40cc3b77f244480d362fa8134a86a6d0644387
 
 apps/agentos/view/ViewportController.mjs
     002dd094d855963d15704836d37b5dc49478d210
@@ -276,7 +279,7 @@ apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     23b1b61fa78fc26e11af1507360c296855038d7e
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    20fe69341010a9ecd9631274f00539ffed826433
+    bb062f820ed18a8f9697a2b8bf9f8eb3db6f64f6
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     8ddc5b9b6815b627ab054d51cc4d8432b8dddf0c
@@ -410,8 +413,11 @@ apps/agentos/view/fleet/tasks/List.mjs
 apps/agentos/view/fleet/wake/Container.mjs
     660b2ec3eea1c07adadc9b8355b133ab0b130f4b
 
+apps/agentos/view/home/Canvas.mjs
+    0f146fea701150d5a9eba90d60f151ac052a2aeb
+
 apps/agentos/view/home/Container.mjs
-    46756913eebc7e070a8ee010ae82b5ab59d83888
+    e5a30051cf724f7f84b7371a17545c61a96dc0ca
 
 apps/agentos/view/system/Container.mjs
     e5529e309b90d7f1db7b60b157b1188cc343f61c
@@ -525,7 +531,7 @@ resources/scss/src/apps/agentos/fleet/wake/Container.scss
     7c1ce12e34436cc2da14a4448c472f09cd5f4f5e
 
 resources/scss/src/apps/agentos/home/Container.scss
-    e68066a1f3816e5824077a6e6fd9b867ed5b9704
+    7474f827b158dbb458ca9cf11f18c4c785b57a9f
 
 resources/scss/src/apps/agentos/system/Container.scss
     6032f0c02a929b03721e70f4b053e7e97cde48bc
@@ -585,7 +591,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     86ea1a29752775e70d21d86e0627a5902ca4d877
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    3b0f10e4abadafda5aeec01b1e52eea13cbebe69
+    8841e2fb995784fdd0c9fba9e45a315aa55c7d04
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
     4e2398dc703b1fbf169de5f908026d6a17a55cb5
@@ -618,19 +624,19 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-grid-ca
     760ec27e828e90b2c112b6f2ff9b3f92bc482c5b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
-    ee8ae01338859b1eb732039aa85cb857feb02b59
+    426c36b8567902d176c28e072b5b5389a3cffadb
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run.png
-    40152a167e357924e453765f0070e0e672317b9a
+    bb9562c50617bb3731418c27b415c2103a842706
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning-cold.png
-    1f54d8b498338d617a9ed84adaf2443a6b7cd852
+    8001662629940ac226f6e095b109072769f465ac
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning-light.png
-    a706a11cf0d205fd0d847ed3a3c4ecfd8de5f089
+    d301560e58021be31b29f9c26013fb7a97678a01
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning.png
-    d8fcb54709cbf7f3ec76b4948fc66cece7885180
+    a70d6b0d52834e792e99b9cbc35afb8420c98e7e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-720-light.png
     7dae9ad125da16ff9e0ae52bc0210afa00308ed8

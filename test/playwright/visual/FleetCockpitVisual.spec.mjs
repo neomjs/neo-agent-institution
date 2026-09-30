@@ -1063,46 +1063,75 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true)
     };
 
-    test('Home before any answer — the lede in the display line\'s family, and the plane line saying the plane is not connected, over one door per view', async ({page}) => {
+    /**
+     * The Home field driver, resolved the way {@link HOME_DRIVER} is.
+     * @type {String}
+     */
+    const FIELD_DRIVER = '../../../../test/playwright/e2e/agentos/homeField.driver.mjs';
+
+    /**
+     * @summary Waits until Home's field has drawn its still frame (the config's reduced motion) with the named
+     * marks in the named skin: the canvas worker draws after the DOM settles, so a capture that does not wait
+     * for it misses the field.
+     * @param {Object} page
+     * @param {String} marks `none` or the mark count
+     * @param {String} [theme='dark']
+     */
+    const settleField = async (page, marks, theme = 'dark') => {
+        const result = await page.evaluate(async path => {
+            const {error, success} = await Neo.worker.App.loadModule({path});
+
+            return {error: error?.message ?? null, success}
+        }, `${FIELD_DRIVER}?still=true&marks=${marks}&theme=${theme}&t=${++driverTick}`);
+
+        expect(result.success, `the field settled: ${result.error}`).toBe(true)
+    };
+
+    test('Home before any answer — the team line says no word has come, the plane line says the plane is not connected, over one column of doors and a field without marks', async ({page}) => {
         await bootColdCockpit(page);
 
-        const
-            home   = await openHome(page),
-            family = selector => home.locator(selector).evaluate(el => getComputedStyle(el).fontFamily);
+        const home = await openHome(page);
 
-        // the lede declared no family and inherited the theme's body face, apart from the display line above it
-        expect(await family('.fm-home-lede')).toBe(await family('.fm-home-h1'));
-
-        await expect(home.locator('.fm-home-plane-word')).toHaveText('Plane not connected');
-        await expect(home.locator('.fm-home-plane').getByRole('button', {name: 'Open System'})).toBeVisible();
+        await expect(home.locator('.fm-home-h1')).toHaveText('No word from the team yet');
+        await expect(home.locator('.fm-home-h1')).toHaveClass(/is-quiet/);
+        await expect(home.locator('.fm-home-plane')).toHaveText('Plane not connected');
         await expect(home.getByRole('button', {name: 'Connect a plane'})).toBeHidden();
+        await settleField(page, 'none');
         await expect(home).toHaveScreenshot('home-returning-cold.png')
     });
 
-    test('Home over a live fleet — the plane line is quiet; a packaged shell without a plane gets Connect a plane alone; both skins', async ({page}) => {
+    test('Home over a live fleet — the team line counts who is up and the plane line is quiet; a packaged shell without a plane gets the product line, the lede in its family, and Connect a plane; both skins', async ({page}) => {
         await bootSettledCockpit(page);
 
         const
             home    = await openHome(page),
-            connect = home.getByRole('button', {name: 'Connect a plane'});
+            connect = home.getByRole('button', {name: 'Connect a plane'}),
+            family  = selector => home.locator(selector).evaluate(el => getComputedStyle(el).fontFamily);
 
+        await expect(home.locator('.fm-home-h1')).toHaveText(/^\d+ of 11 agents up$/);
         await expect(home.locator('.fm-home-plane'), 'a connected plane is quiet').toBeHidden();
         await expect(home.locator('.fm-home-doors')).toBeVisible();
+        await settleField(page, '11');
         await expect(home).toHaveScreenshot('home-returning.png');
 
         await landShellPlane(page, false);
         await expect(connect).toBeVisible();
         await expect(home.locator('.fm-home-doors')).toBeHidden();
         await expect(home.locator('.fm-home-plane')).toBeHidden();
+        // the lede declared no family and inherited the theme's body face, apart from the display line above it
+        expect(await family('.fm-home-lede')).toBe(await family('.fm-home-h1'));
+        await settleField(page, 'none');
         await expect(home).toHaveScreenshot('home-first-run.png');
 
         await switchToLightSkin(page);
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
+        await settleField(page, 'none', 'light');
         await expect(home).toHaveScreenshot('home-first-run-light.png');
 
         await landShellPlane(page, null);
         await expect(connect).toBeHidden();
+        await settleField(page, '11', 'light');
         await expect(home).toHaveScreenshot('home-returning-light.png')
     });
 
