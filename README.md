@@ -182,6 +182,10 @@ The current development build needs whole-app replacement; it has no automatic u
 The [packaging procedure](harness/README.md#packaging-e6--the-unsigned-leg) is for maintainers and
 records the explicit Product, pinned Engine and Brain inputs.
 
+For privacy warnings during agent launch, see
+[macOS permissions](harness/README.md#macos-permissions-when-starting-an-agent), including the
+current effect of quitting FM on its launched peers.
+
 ## Read next
 
 - [The canonical Neo.mjs Introduction](https://github.com/neomjs/neo/blob/dev/learn/benefits/Introduction.md)
