@@ -64,11 +64,13 @@ class Home extends Base {
          */
         className: 'AgentOS.canvas.Home',
         /**
-         * The field's geometry, in CSS pixels and seconds: one mote per `density` px² between `moteMin` and
-         * `moteMax`; motes link within `link`, a lit mark reaches `markLink`; the current carries each layer at its
-         * `speed`, draws it at its `radius` and shifts it by up to its `parallax` with the pointer; the pointer
-         * parts motes within `reach`; the ring turns `orbit` rad/s; a ripple runs at `speed` for `life`, pushing
-         * what its `band` crosses.
+         * The field's geometry, in CSS pixels and seconds: one mote per `density` px² on screen, between `moteMin`
+         * and `moteMax` visible motes, seeded across the whole wrap domain so the current cannot thin it; motes link
+         * within `link`, a lit mark reaches `markLink`; the current carries each layer at its `speed`, draws it at
+         * its `radius` and shifts it by up to its `parallax` with the pointer; the pointer parts the motes within
+         * `reach`, moving each the `part` share of its way to the rim; the ring turns `orbit` rad/s; a ripple runs
+         * at `speed` for `life`, lifting what its `band` crosses by up to `lift`. Parting and ripples move where a
+         * mote is drawn, never where it is, so neither leaves a hole behind.
          * @member {Object} field
          */
         field: {
@@ -79,10 +81,10 @@ class Home extends Base {
             moteMin : 60,
             orbit   : 0.035,
             parallax: [4, 9, 16],
-            push    : 900,
+            part    : 0.6,
             radius  : [0.9, 1.4, 2.1],
             reach   : 130,
-            ripple  : {band: 26, life: 1.6, push: 1400, speed: 260},
+            ripple  : {band: 26, life: 1.6, lift: 22, speed: 260},
             seed    : 0x5eed,
             speed   : [5, 9, 15]
         },
@@ -111,6 +113,12 @@ class Home extends Base {
         singleton: true
     }
 
+    /**
+     * Where each mote is drawn this frame, `x, y` per mote: its place plus its layer's parallax, the pointer's parting
+     * and the ripples' lift.
+     * @member {Float32Array|null} drawn=null
+     */
+    drawn = null
     /**
      * Frames drawn since the worker loaded the renderer.
      * @member {Number} frames=0
@@ -161,6 +169,12 @@ class Home extends Base {
      * @member {Uint16Array} pairCounts
      */
     pairCounts = new Uint16Array(BUCKETS)
+    /**
+     * How strongly the pointer parts the field, easing to `1` while it is over the surface and back to `0` after it
+     * leaves, around the last place it was: `strength, x, y`.
+     * @member {Float32Array} parting
+     */
+    parting = new Float32Array(3)
     /**
      * The ring the marks ride and the haze centres on, for the current size: `{cx, cy, rx, ry}`.
      * @member {Object|null} ring=null
@@ -217,11 +231,34 @@ class Home extends Base {
         me.ring       = null;
         me.still      = true;
         me.team       = null;
+        me.drawn      = null;
+        me.parting.fill(0);
         me.ripples.fill(-1)
     }
 
     /**
-     * @summary Draws one frame: the haze, the links, the motes by layer, the marks and the ripples.
+     * @summary How many motes the last frame drew inside the surface.
+     * @returns {Number}
+     */
+    countVisible() {
+        const {canvasSize, drawn, moteCount} = this;
+
+        let count = 0;
+
+        if (drawn && canvasSize) {
+            for (let i = 0; i < moteCount; i++) {
+                const x = drawn[i * 2], y = drawn[i * 2 + 1];
+
+                x >= 0 && x <= canvasSize.width && y >= 0 && y <= canvasSize.height && count++
+            }
+        }
+
+        return count
+    }
+
+    /**
+     * @summary Draws one frame: the haze, the links, the motes by layer, the marks and the ripples, all at the
+     * motes' drawn places.
      */
     draw() {
         const
@@ -241,6 +278,7 @@ class Home extends Base {
             ctx.fillRect(0, 0, size.width, size.height)
         }
 
+        me.placeMotes();
         me.drawLinks(ctx, palette, style);
         me.drawMotes(ctx, palette, style);
         me.team && me.drawMarks(ctx, palette, style);
@@ -261,25 +299,24 @@ class Home extends Base {
     drawLinks(ctx, palette, style) {
         const
             me    = this,
-            {field, motes, moteCount, offsets, pairCounts, pairs} = me,
+            {drawn, field, motes, moteCount, pairCounts, pairs} = me,
             link2 = field.link * field.link;
 
         pairCounts.fill(0);
 
         for (let i = 0; i < moteCount; i++) {
             const
-                a  = i * STRIDE,
-                la = motes[a + 4],
-                ax = motes[a]     + offsets[la * 2],
-                ay = motes[a + 1] + offsets[la * 2 + 1];
+                la = motes[i * STRIDE + 4],
+                ax = drawn[i * 2],
+                ay = drawn[i * 2 + 1];
 
             for (let j = i + 1; j < moteCount; j++) {
-                const b = j * STRIDE, lb = motes[b + 4];
+                const lb = motes[j * STRIDE + 4];
 
                 if (Math.abs(la - lb) < 2) {
                     const
-                        dx = motes[b]     + offsets[lb * 2]     - ax,
-                        dy = motes[b + 1] + offsets[lb * 2 + 1] - ay,
+                        dx = drawn[j * 2]     - ax,
+                        dy = drawn[j * 2 + 1] - ay,
                         d2 = dx * dx + dy * dy;
 
                     if (d2 < link2) {
@@ -307,13 +344,11 @@ class Home extends Base {
 
                 for (let n = 0; n < count; n++) {
                     const
-                        a  = pairs[(bucket * PAIRS + n) * 2]     * STRIDE,
-                        b  = pairs[(bucket * PAIRS + n) * 2 + 1] * STRIDE,
-                        la = motes[a + 4],
-                        lb = motes[b + 4];
+                        a = pairs[(bucket * PAIRS + n) * 2]     * 2,
+                        b = pairs[(bucket * PAIRS + n) * 2 + 1] * 2;
 
-                    ctx.moveTo(motes[a] + offsets[la * 2], motes[a + 1] + offsets[la * 2 + 1]);
-                    ctx.lineTo(motes[b] + offsets[lb * 2], motes[b + 1] + offsets[lb * 2 + 1])
+                    ctx.moveTo(drawn[a], drawn[a + 1]);
+                    ctx.lineTo(drawn[b], drawn[b + 1])
                 }
 
                 ctx.stroke()
@@ -331,7 +366,7 @@ class Home extends Base {
     drawMarks(ctx, palette, style) {
         const
             me     = this,
-            {field, glow, markXY, motes, moteCount, offsets, time} = me,
+            {drawn, field, glow, markXY, moteCount, time} = me,
             {total, up} = me.team,
             reach2 = field.markLink * field.markLink,
             radius = Home.markRadius(total);
@@ -345,11 +380,9 @@ class Home extends Base {
 
                 for (let m = 0; m < moteCount; m++) {
                     const
-                        o     = m * STRIDE,
-                        layer = motes[o + 4],
-                        dx    = motes[o]     + offsets[layer * 2]     - x,
-                        dy    = motes[o + 1] + offsets[layer * 2 + 1] - y,
-                        d2    = dx * dx + dy * dy;
+                        dx = drawn[m * 2]     - x,
+                        dy = drawn[m * 2 + 1] - y,
+                        d2 = dx * dx + dy * dy;
 
                     if (d2 < reach2) {
                         ctx.globalAlpha = 0.5 * (1 - Math.sqrt(d2) / field.markLink);
@@ -402,10 +435,10 @@ class Home extends Base {
      * @param {Object} style
      */
     drawMotes(ctx, palette, style) {
-        const {field, motes, moteCount, offsets} = this;
+        const {drawn, field, moteCount} = this;
 
         for (let layer = 0; layer < LAYERS; layer++) {
-            const radius = field.radius[layer], ox = offsets[layer * 2], oy = offsets[layer * 2 + 1];
+            const radius = field.radius[layer];
 
             ctx.fillStyle   = layer === LAYERS - 1 ? palette.ink : palette.inkDim;
             ctx.globalAlpha = style.motes[layer];
@@ -413,7 +446,7 @@ class Home extends Base {
 
             // the motes interleave by layer at seed time: every LAYERS-th mote from `layer` is this layer's
             for (let i = layer; i < moteCount; i += LAYERS) {
-                const x = motes[i * STRIDE] + ox, y = motes[i * STRIDE + 1] + oy;
+                const x = drawn[i * 2], y = drawn[i * 2 + 1];
 
                 ctx.moveTo(x + radius, y);
                 ctx.arc(x, y, radius, 0, TAU)
@@ -447,19 +480,22 @@ class Home extends Base {
     }
 
     /**
-     * @summary Remote entry for the specs: what the field holds and how many frames it drew.
-     * @returns {Object} `{frames, marks, motes, size, still, theme}`; `marks` is `{total, up}` or `null`
+     * @summary Remote entry for the specs: what the field holds, how many of its motes are on screen, and how many
+     * frames it drew.
+     * @returns {Object} `{frames, marks, motes, size, still, theme, visible}`; `marks` is `{total, up}` or `null`,
+     * and `visible` counts the motes drawn inside the surface
      */
     getStats() {
-        const {canvasSize, team} = this;
+        const me = this, {canvasSize, team} = me;
 
         return {
-            frames: this.frames,
-            marks : team && {...team},
-            motes : this.moteCount,
-            size  : canvasSize && {height: canvasSize.height, width: canvasSize.width},
-            still : this.still,
-            theme : this.theme
+            frames : me.frames,
+            marks  : team && {...team},
+            motes  : me.moteCount,
+            size   : canvasSize && {height: canvasSize.height, width: canvasSize.width},
+            still  : me.still,
+            theme  : me.theme,
+            visible: me.countVisible()
         }
     }
 
@@ -522,6 +558,59 @@ class Home extends Base {
     }
 
     /**
+     * @summary Where each mote is drawn this frame: its place shifted by its layer's parallax, parted away from the
+     * pointer, and lifted outward by every ripple whose band crosses it. None of this moves a mote, so once the
+     * pointer has left and a ripple's life has passed, the field is drawn as if neither had been there.
+     */
+    placeMotes() {
+        const
+            me                 = this,
+            {drawn, field, motes, moteCount, offsets, parting, ripples} = me,
+            {reach, ripple}    = field,
+            [strength, px, py] = parting;
+
+        for (let i = 0, o = 0; i < moteCount; i++, o += STRIDE) {
+            const layer = motes[o + 4];
+
+            let x = motes[o]     + offsets[layer * 2],
+                y = motes[o + 1] + offsets[layer * 2 + 1];
+
+            if (strength > 0) {
+                const dx = x - px, dy = y - py, d = Math.sqrt(dx * dx + dy * dy);
+
+                if (d < reach && d > 1) {
+                    const shift = strength * field.part * (reach - d) / d;
+
+                    x += dx * shift;
+                    y += dy * shift
+                }
+            }
+
+            for (let r = 0; r < RIPPLES; r++) {
+                const age = ripples[r * 3 + 2];
+
+                if (age >= 0) {
+                    const
+                        dx   = x - ripples[r * 3],
+                        dy   = y - ripples[r * 3 + 1],
+                        d    = Math.sqrt(dx * dx + dy * dy),
+                        edge = Math.abs(d - age * ripple.speed);
+
+                    if (edge < ripple.band && d > 1) {
+                        const lift = (1 - edge / ripple.band) * (1 - age / ripple.life) * ripple.lift / d;
+
+                        x += dx * lift;
+                        y += dy * lift
+                    }
+                }
+            }
+
+            drawn[i * 2]     = x;
+            drawn[i * 2 + 1] = y
+        }
+    }
+
+    /**
      * @summary An input changed: a moving field shows it on its next frame, a still one draws it now.
      */
     refresh() {
@@ -556,19 +645,24 @@ class Home extends Base {
     }
 
     /**
-     * @summary Lays the field out at rest for a size: the mote count follows the area, the layers interleave, the
-     * seeded generator places every mote where it placed it last time at this size, and the ring sits right of the
-     * hero's column on a wide surface, below it on a narrow one.
+     * @summary Lays the field out at rest for a size. The motes fill the whole wrap domain, a link's length beyond
+     * every edge, at the density the surface shows, so the current carries as many in as out. The layers interleave,
+     * the seeded generator places every mote where it placed it last time at this size, and the ring sits right of
+     * the hero's column on a wide surface, below it on a narrow one.
      * @param {Number} width
      * @param {Number} height
      */
     seed(width, height) {
         const
-            me     = this,
+            me      = this,
             {field} = me,
-            random = mulberry32(field.seed),
-            wide   = width >= 900,
-            count  = Math.round(Math.min(field.moteMax, Math.max(field.moteMin, width * height / field.density)));
+            margin  = field.link,
+            random  = mulberry32(field.seed),
+            wide    = width >= 900,
+            domainW = width  + margin * 2,
+            domainH = height + margin * 2,
+            visible = Math.min(field.moteMax, Math.max(field.moteMin, width * height / field.density)),
+            count   = Math.round(visible * domainW * domainH / (width * height));
 
         me.ring = {
             cx: width  * (wide ? 0.72 : 0.5),
@@ -578,12 +672,13 @@ class Home extends Base {
         };
 
         if (!me.motes || me.motes.length < count * STRIDE) {
-            me.motes = new Float32Array(count * STRIDE)
+            me.motes = new Float32Array(count * STRIDE);
+            me.drawn = new Float32Array(count * 2)
         }
 
         for (let i = 0, o = 0; i < count; i++, o += STRIDE) {
-            me.motes[o]     = random() * width;
-            me.motes[o + 1] = random() * height;
+            me.motes[o]     = random() * domainW - margin;
+            me.motes[o + 1] = random() * domainH - margin;
             me.motes[o + 2] = 0;
             me.motes[o + 3] = 0;
             me.motes[o + 4] = i % LAYERS;
@@ -594,6 +689,7 @@ class Home extends Base {
         me.lastTime  = 0;
         me.time      = 0;
         me.offsets.fill(0);
+        me.parting.fill(0);
         me.ripples.fill(-1)
     }
 
@@ -645,21 +741,20 @@ class Home extends Base {
     }
 
     /**
-     * @summary Advances the field by `dt` seconds: the layers ease toward the pointer's parallax, the current
-     * steers every mote, the pointer and the ripples push the motes they reach, and a mote that leaves the
-     * surface by more than a link's length comes back on the other side, where no link shows the jump.
+     * @summary Advances the field by `dt` seconds: the layers ease toward the pointer's parallax, the pointer's
+     * parting eases in or out, the ripples age, the current steers every mote, and a mote that leaves the surface by
+     * more than a link's length comes back on the other side, where no link shows the jump.
      * @param {Number} dt
      */
     step(dt) {
         const
-            me      = this,
-            {field, motes, moteCount, mouse, offsets, ripples} = me,
+            me       = this,
+            {field, motes, moteCount, mouse, offsets, parting, ripples} = me,
             {height, width} = me.canvasSize,
-            active  = mouse.x > -1000,
-            ease    = Math.min(1, dt * 3),
-            pull    = Math.min(1, dt * 0.8),
-            reach2  = field.reach * field.reach,
-            margin  = field.link,
+            active   = mouse.x > -1000,
+            ease     = Math.min(1, dt * 3),
+            pull     = Math.min(1, dt * 0.8),
+            margin   = field.link,
             {ripple} = field;
 
         me.time += dt;
@@ -671,6 +766,13 @@ class Home extends Base {
 
             offsets[layer * 2]     += ((active ? (mouse.x / width  - 0.5) * 2 * depth : 0) - offsets[layer * 2])     * ease;
             offsets[layer * 2 + 1] += ((active ? (mouse.y / height - 0.5) * 2 * depth : 0) - offsets[layer * 2 + 1]) * ease
+        }
+
+        parting[0] += ((active ? 1 : 0) - parting[0]) * ease;
+
+        if (active) {
+            parting[1] = mouse.x;
+            parting[2] = mouse.y
         }
 
         for (let r = 0; r < RIPPLES; r++) {
@@ -691,36 +793,6 @@ class Home extends Base {
                 y  = motes[o + 1],
                 vx = motes[o + 2] + (Math.cos(angle) * speed - motes[o + 2]) * pull,
                 vy = motes[o + 3] + (Math.sin(angle) * speed - motes[o + 3]) * pull;
-
-            if (active) {
-                const dx = x + offsets[layer * 2] - mouse.x, dy = y + offsets[layer * 2 + 1] - mouse.y, d2 = dx * dx + dy * dy;
-
-                if (d2 < reach2 && d2 > 1) {
-                    const d = Math.sqrt(d2), push = (1 - d / field.reach) * field.push * dt / d;
-
-                    vx += dx * push;
-                    vy += dy * push
-                }
-            }
-
-            for (let r = 0; r < RIPPLES; r++) {
-                const age = ripples[r * 3 + 2];
-
-                if (age >= 0) {
-                    const
-                        dx   = x + offsets[layer * 2]     - ripples[r * 3],
-                        dy   = y + offsets[layer * 2 + 1] - ripples[r * 3 + 1],
-                        d    = Math.sqrt(dx * dx + dy * dy),
-                        edge = Math.abs(d - age * ripple.speed);
-
-                    if (edge < ripple.band && d > 1) {
-                        const push = (1 - edge / ripple.band) * (1 - age / ripple.life) * ripple.push * dt / d;
-
-                        vx += dx * push;
-                        vy += dy * push
-                    }
-                }
-            }
 
             x += vx * dt;
             y += vy * dt;
