@@ -47,15 +47,19 @@
         padding       : var(--fm-space-3) 0;
     }
 
-    .fm-stream-counts,
     .fm-stream-retention,
     .fm-stream-state {
         color      : var(--fm-ink-dim);
         white-space: nowrap;
     }
 
-    .fm-stream-counts.is-empty {
-        display: none;
+    // the sources' populations sit under the head, never in its count slot
+    .fm-stream-sources {
+        margin-bottom: var(--fm-space-2);
+
+        &.is-empty {
+            display: none;
+        }
     }
 
     .fm-activity-list {

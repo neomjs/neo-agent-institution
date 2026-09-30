@@ -48,8 +48,8 @@ export function describeActivityCounts(counts) {
         text: [...groups].map(([source, rows]) => {
             const values = [];
 
-            rows.last24h && values.push(`${rows.last24h.value} / 24h`);
-            rows.total   && values.push(`${rows.total.value} total`);
+            rows.last24h && values.push(`${rows.last24h.value.toLocaleString('en-US')} / 24h`);
+            rows.total   && values.push(`${rows.total.value.toLocaleString('en-US')} total`);
 
             return `${display(source)} · ${values.join(' · ')}`
         }).join('  |  '),
@@ -57,6 +57,28 @@ export function describeActivityCounts(counts) {
             .map(row => `${row.source} ${row.scope}=${row.value} captured ${row.capturedAt}`)
             .join('\n')
     }
+}
+
+/**
+ * @summary States what the feed itself holds: its newest rows, and whether older ones are reachable.
+ * A source's population is never this statement; the source line under the head carries those.
+ * @param {Object} options
+ * @param {Number} options.retained Rows the store holds.
+ * @param {Number} [options.dropped=0] Rows the store's ring evicted.
+ * @param {Boolean} [options.exhausted=false] The mailbox answered an older page with no row.
+ * @param {Boolean} [options.full=false] The ring holds its maximum, so no older page is asked.
+ * @returns {String} Empty while no row is held.
+ */
+export function describeActivityRetention({retained, dropped = 0, exhausted = false, full = false}) {
+    if (!retained) {
+        return ''
+    }
+
+    const text = exhausted && !dropped
+        ? `all ${retained.toLocaleString('en-US')} shown`
+        : `newest ${retained.toLocaleString('en-US')} · ${full ? 'older not kept' : exhausted ? 'no older events' : 'older on scroll'}`;
+
+    return dropped ? `${text} · ${dropped.toLocaleString('en-US')} dropped` : text
 }
 
 /**
@@ -129,11 +151,17 @@ class ActivityStream extends Container {
          */
         actorDirectory_: {},
         /**
-         * Producer-owned count rows. Incomplete rows remain absent from the header.
+         * Producer-owned count rows. Incomplete rows remain absent from the source line.
          * @member {Object[]} counts_=[]
          * @reactive
          */
         counts_: [],
+        /**
+         * Whether the mailbox answered an older page with no row: the stream then stops asking.
+         * @member {Boolean} historyExhausted_=false
+         * @reactive
+         */
+        historyExhausted_: false,
         /**
          * Fixed pooled-row height in both wide and narrow grammar. 32 is the density contract the
          * stream's goldens pin: one line in the wide grammar, two 13px lines in the narrow one —
@@ -184,10 +212,6 @@ class ActivityStream extends Container {
                 text     : 'Live activity'
             }, {
                 module   : Component,
-                cls      : ['fm-stream-counts', 'is-empty'],
-                reference: 'counts'
-            }, {
-                module   : Component,
                 cls      : ['fm-stream-retention'],
                 reference: 'retention'
             }, {
@@ -195,6 +219,12 @@ class ActivityStream extends Container {
                 cls      : ['fm-stream-state'],
                 reference: 'state'
             }]
+        }, {
+            // the sources' own populations, below the head: never the feed's count
+            module   : Component,
+            cls      : ['fm-pane-meta', 'fm-stream-sources', 'is-empty'],
+            flex     : 'none',
+            reference: 'counts'
         }, {
             module   : Component,
             cls      : ['fm-stream-empty'],
@@ -245,6 +275,11 @@ class ActivityStream extends Container {
 
     /** @param {Object[]} value @param {Object[]} oldValue @protected */
     afterSetCounts(value, oldValue) {
+        this.isConstructed && this.updateHeader()
+    }
+
+    /** @param {Boolean} value @param {Boolean} oldValue @protected */
+    afterSetHistoryExhausted(value, oldValue) {
         this.isConstructed && this.updateHeader()
     }
 
@@ -303,16 +338,35 @@ class ActivityStream extends Container {
     }
 
     /**
-     * @summary Clears the pending-new affordance when the operator returns to the leading edge.
+     * @summary Clears the pending-new affordance when the operator returns to the leading edge, and
+     * asks for older events once the last held row is mounted: scrolled to, or a pane taller than
+     * its rows. The owner decides whether a page is due (one in flight, the ring full, the mailbox
+     * exhausted), so asking again on every rebuild is cheap.
      * @protected
      */
     onListCreateItems() {
-        const list = this.getReference('list');
+        const
+            me    = this,
+            list  = me.getReference('list'),
+            count = me.store?.count ?? 0;
 
-        if (list?.scrollTop === 0 && this.pendingNewEventCount > 0) {
-            this.pendingNewEventCount = 0;
-            this.updateNewEventsButton()
+        if (list?.scrollTop === 0 && me.pendingNewEventCount > 0) {
+            me.pendingNewEventCount = 0;
+            me.updateNewEventsButton()
         }
+
+        if (count > 0 && !me.historyExhausted && list?.mountedRange[1] >= count && ['live', 'partial'].includes(me.adapterState)) {
+            me.fire('historyRequest')
+        }
+    }
+
+    /**
+     * @summary Records the ids an older page is about to land, so the store's next load reads them as
+     * history: they never count toward the new-events affordance and never reach the announcer.
+     * @param {String[]} eventIds
+     */
+    acceptHistory(eventIds) {
+        eventIds.forEach(eventId => this.knownEventIds.add(eventId))
     }
 
     /**
@@ -393,11 +447,16 @@ class ActivityStream extends Container {
 
         countsCell.vdom.title = countView?.title ?? null;
         countsCell.set({
-            cls : ['fm-stream-counts', ...(!countView ? ['is-empty'] : [])],
-            text: countView?.text ?? ''
+            cls : ['fm-pane-meta', 'fm-stream-sources', ...(!countView ? ['is-empty'] : [])],
+            text: countView ? `sources · ${countView.text}` : ''
         });
 
-        me.getReference('retention').text = `${retained} retained${dropped ? ` · ${dropped} dropped` : ''}`;
+        me.getReference('retention').text = describeActivityRetention({
+            dropped,
+            exhausted: me.historyExhausted,
+            full     : retained >= (me.store?.maxRecords ?? Infinity),
+            retained
+        });
 
         stateCell.vdom.title = quiet?.title ?? null;
         stateCell.text       = stateText
