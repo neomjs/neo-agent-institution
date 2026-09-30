@@ -64,8 +64,10 @@ class Home extends Base {
          */
         className: 'AgentOS.canvas.Home',
         /**
-         * The field's geometry, in CSS pixels and seconds: one mote per `density` px² on screen, between `moteMin`
-         * and `moteMax` visible motes, seeded across the whole wrap domain so the current cannot thin it; motes link
+         * The field's geometry, in CSS pixels and seconds: one mote per `density` px² on screen, targeting between
+         * `moteMin` and `moteMax` visible motes (a target, not a bound on any one frame), seeded across the whole wrap
+         * domain so the current does not thin it, and never more than `moteCap` in all, which bounds the links'
+         * pairwise work on any surface; a surface without area holds none; motes link
          * within `link`, a lit mark reaches `markLink`; the current carries each layer at its `speed`, draws it at
          * its `radius` and shifts it by up to its `parallax` with the pointer; the pointer parts the motes within
          * `reach`, clearing a core of the `part` share of it and spreading them evenly over the rest; the ring turns
@@ -77,6 +79,7 @@ class Home extends Base {
             density : 6000,
             link    : 120,
             markLink: 140,
+            moteCap : 320,
             moteMax : 200,
             moteMin : 60,
             orbit   : 0.035,
@@ -665,7 +668,8 @@ class Home extends Base {
             domainW = width  + margin * 2,
             domainH = height + margin * 2,
             visible = Math.min(field.moteMax, Math.max(field.moteMin, width * height / field.density)),
-            count   = Math.round(visible * domainW * domainH / (width * height));
+            area    = width * height,
+            count   = area > 0 ? Math.min(field.moteCap, Math.round(visible * domainW * domainH / area)) : 0;
 
         me.ring = {
             cx: width  * (wide ? 0.72 : 0.5),

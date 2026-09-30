@@ -200,14 +200,26 @@ test.describe('AgentOS.canvas.Home — the field heals after a click and holds i
         expect(Home.parting[0], 'a second after it left, almost none of the parting is drawn').toBeLessThan(0.06)
     });
 
-    test('untouched, the motes on screen stay within 10 % of the design density (AC-2)', () => {
-        const design = size.width * size.height / Home.field.density;
+    test('untouched, the motes on screen hold the design density: within 10 % at the seeded frame and at 180 s, and within 15 % at every second between (AC-2)', () => {
+        const design = size.width * size.height / Home.field.density, deviation = () => Math.abs(Home.getStats().visible - design) / design;
 
         run(null, 0);
-        expect(Math.abs(Home.getStats().visible - design) / design, 'the seeded frame').toBeLessThanOrEqual(0.1);
+        expect(deviation(), 'the seeded frame').toBeLessThanOrEqual(0.1);
 
-        run(null, 180);
-        expect(Math.abs(Home.getStats().visible - design) / design, 'after 180 s').toBeLessThanOrEqual(0.1);
+        let worst = 0;
+
+        for (let second = 1; second <= 180; second++) {
+            for (let frame = 0; frame < 60; frame++) {
+                Home.step(1 / 60)
+            }
+
+            Home.placeMotes();
+            worst = Math.max(worst, deviation())
+        }
+
+        expect(worst, 'every second of 180 s').toBeLessThanOrEqual(0.15);
+        expect(deviation(), 'after 180 s').toBeLessThanOrEqual(0.1);
+        test.info().annotations.push({type: 'worst deviation', description: `${(worst * 100).toFixed(1)} % over 180 s`});
 
         const start = performance.now();
 
@@ -216,5 +228,19 @@ test.describe('AgentOS.canvas.Home — the field heals after a click and holds i
         }
 
         test.info().annotations.push({type: 'frame time', description: `${((performance.now() - start) / 60).toFixed(3)} ms for ${Home.moteCount} motes`})
+    });
+
+    test('a resize to no area holds no motes, and a sliver stays within the cap', () => {
+        mount(size);
+
+        expect(() => Home.updateSize({width: 0, height: 850, devicePixelRatio: 1}), 'zero width').not.toThrow();
+        expect(Home.moteCount).toBe(0);
+
+        expect(() => Home.updateSize({width: 1392, height: 0, devicePixelRatio: 1}), 'zero height').not.toThrow();
+        expect(Home.moteCount).toBe(0);
+
+        Home.updateSize({width: 300, height: 1, devicePixelRatio: 1});
+        expect(Home.moteCount, 'the cap bounds the pairwise work').toBeLessThanOrEqual(Home.field.moteCap);
+        expect(() => Home.draw()).not.toThrow()
     })
 });
