@@ -9,7 +9,7 @@ import SharedCanvas from '../../../../node_modules/neo.mjs/src/app/SharedCanvas.
  *
  * Stillness is the motion vocabulary's own verdict: `--motion-base` collapses to `0ms` under
  * `prefers-reduced-motion: reduce` (`resources/scss/_motion.scss`), and the canvas reads it from its node each time
- * it mounts. The field starts still, and a read that fails or answers nothing keeps it still.
+ * it mounts. Every mount starts still, and a read that fails or answers nothing keeps it still.
  *
  * @class AgentOS.view.home.Canvas
  * @extends Neo.app.SharedCanvas
@@ -41,8 +41,8 @@ class Canvas extends SharedCanvas {
          */
         rendererImportPath: '../../apps/agentos/canvas/Home.mjs',
         /**
-         * Whether the field is still: `true` until a mounted read of the motion vocabulary says the host allows
-         * motion.
+         * Whether the field is still: `true` until the current mount's read of the motion vocabulary says the host
+         * allows motion. Every unmount returns it to `true`, so a new mount never inherits the last one's answer.
          * @member {Boolean} still_=true
          * @reactive
          */
@@ -54,6 +54,13 @@ class Canvas extends SharedCanvas {
          */
         team_: null
     }
+
+    /**
+     * Counts the motion reads, so that only the latest read of the current mount may answer.
+     * @member {Number} motionRead=0
+     * @protected
+     */
+    motionRead = 0
 
     /**
      * Triggered after the isCanvasReady config got changed: a ready canvas receives both inputs.
@@ -73,14 +80,22 @@ class Canvas extends SharedCanvas {
     }
 
     /**
-     * Triggered after the mounted config got changed: every mount reads the host's motion preference again.
+     * Triggered after the mounted config got changed: every mount reads the host's motion preference again, and
+     * every unmount returns the field to still and outdates a read still in flight.
      * @param {Boolean} value
      * @param {Boolean} oldValue
      * @protected
      */
     async afterSetMounted(value, oldValue) {
+        const me = this;
+
+        if (!value) {
+            me.motionRead++;
+            me.still = true
+        }
+
         await super.afterSetMounted(value, oldValue);
-        value && this.readMotion()
+        value && me.readMotion()
     }
 
     /**
@@ -119,12 +134,12 @@ class Canvas extends SharedCanvas {
 
     /**
      * @summary Reads `--motion-base` from the canvas's node through its own window: `0ms`, the reduced-motion
-     * collapse, keeps the field still, and so does a read that fails or answers nothing. A late answer after the
-     * canvas left is dropped.
+     * collapse, keeps the field still, and so does a read that fails or answers nothing. Only the latest read of the
+     * current mount answers: a newer read or an unmount outdates it, so a late answer never moves a later mount.
      * @returns {Promise<void>}
      */
     async readMotion() {
-        const me = this;
+        const me = this, read = ++me.motionRead;
 
         let value = '';
 
@@ -134,7 +149,7 @@ class Canvas extends SharedCanvas {
             value = styles?.['--motion-base']?.trim() ?? ''
         } catch {}
 
-        if (me.mounted && !me.isDestroyed) {
+        if (read === me.motionRead && me.mounted && !me.isDestroyed) {
             me.still = !value || parseFloat(value) === 0
         }
     }
