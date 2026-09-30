@@ -361,6 +361,15 @@ class ActivityStream extends Container {
     }
 
     /**
+     * @summary Records the ids an older page is about to land, so the store's next load reads them as
+     * history: they never count toward the new-events affordance and never reach the announcer.
+     * @param {String[]} eventIds
+     */
+    acceptHistory(eventIds) {
+        eventIds.forEach(eventId => this.knownEventIds.add(eventId))
+    }
+
+    /**
      * @summary Returns the buffered list to newest-first index zero.
      * @protected
      */

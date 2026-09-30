@@ -159,6 +159,30 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(stream.getReference('new-events').hidden).toBe(true)
     });
 
+    test('an older page lands as history: no new-events count, no announcement; a live arrival still counts', async () => {
+        const {list} = await createStream({count: 100});
+
+        list.onScrollCapture({target: {id: list.id}, scrollLeft: 0, scrollTop: 265});
+
+        const
+            spoken = stream.getReference('announcer').text,
+            older  = [event('old-1', -2, {eventId: 'a2a:MESSAGE:old-1'}), event('old-2', -1, {eventId: 'a2a:MESSAGE:old-2'})];
+
+        stream.acceptHistory(older.map(row => row.eventId));
+        store.ingestSnapshot(older);
+
+        expect(store.getAt(store.count - 1).eventId).toBe('a2a:MESSAGE:old-1');
+        expect(stream.pendingNewEventCount).toBe(0);
+        expect(stream.getReference('new-events').hidden).toBe(true);
+        expect(stream.getReference('announcer').text).toBe(spoken);
+
+        store.ingestSnapshot([event('new-1', 200, {eventId: 'a2a:MESSAGE:new-1'})]);
+
+        expect(stream.pendingNewEventCount).toBe(1);
+        expect(stream.getReference('new-events').text).toBe('1 new event ↑');
+        expect(stream.getReference('announcer').text).toContain('1 new fleet activity event')
+    });
+
     test('Store upserts by producer id, sorts deterministically, and counts local eviction', () => {
         store = Neo.create(FleetActivityEvents, {id: `fleet-activity-events-test-${++sequence}`, maxRecords: 3});
 

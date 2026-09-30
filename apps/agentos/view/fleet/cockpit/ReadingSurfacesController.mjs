@@ -38,10 +38,18 @@ class ReadingSurfacesController extends LivenessController {
      */
     activityHistoryGeneration = 0
     /**
-     * @member {Boolean} activityHistoryInFlight=false
+     * The generation of the older-page read in flight, or `null`. A read from before a profile switch
+     * stops counting, so it can neither block nor release the new profile's reads.
+     * @member {Number|null} activityHistoryFlight=null
      * @protected
      */
-    activityHistoryInFlight = false
+    activityHistoryFlight = null
+    /**
+     * The profile the paging state belongs to. Once the store answers for another, that state resets.
+     * @member {String|null} activityHistoryProfileId=null
+     * @protected
+     */
+    activityHistoryProfileId = null
     /**
      * The store's count when an older page added no row; no page is asked again until it moves.
      * @member {Number|null} activityHistoryStalledAt=null
@@ -106,6 +114,10 @@ class ReadingSurfacesController extends LivenessController {
      * evicts; once the mailbox answers no older row; or while a page that added nothing has not been
      * followed by a change in the store. The page lands through
      * {@link AgentOS.util.FleetAdmission#admitActivityHistory}; a failed read changes nothing.
+     *
+     * Every outcome belongs to the profile that asked. Once the store holds another profile, a late
+     * answer is dropped whole, an empty page's end-of-history included, and the old profile's stall and
+     * in-flight read no longer apply.
      * @param {Number} [limit=50] Rows per page.
      * @returns {Promise<Object|null>} The ingest result, or `null` when nothing was asked or landed.
      */
@@ -117,7 +129,14 @@ class ReadingSurfacesController extends LivenessController {
             store     = me.resolveFleetActivityEventsStore(),
             profileId = bridge?.profileId ?? null;
 
-        if (!store || !me.activityWired || me.activityHistoryInFlight || provider?.getData('streamHistoryExhausted')
+        if (me.activityHistoryProfileId !== me.activityProfileId) {
+            me.activityHistoryProfileId = me.activityProfileId;
+            me.activityHistoryStalledAt = null;
+            me.activityHistoryFlight    = null;
+            me.activityHistoryGeneration++
+        }
+
+        if (!store || !me.activityWired || me.activityHistoryFlight !== null || provider?.getData('streamHistoryExhausted')
             || store.count >= store.maxRecords || store.count === me.activityHistoryStalledAt
             || typeof bridge?.fleetActivity !== 'function') {
             return null
@@ -129,18 +148,19 @@ class ReadingSurfacesController extends LivenessController {
 
         let answer;
 
-        me.activityHistoryInFlight = true;
+        me.activityHistoryFlight = generation;
 
         try {
             answer = await me.boundedRead(
                 Promise.resolve().then(() => bridge.fleetActivity({limit, offset, slots: ['a2a']})),
-                () => { me.activityHistoryInFlight = false }
+                () => { me.activityHistoryFlight === generation && (me.activityHistoryFlight = null) }
             )
         } catch (error) {
             return null
         }
 
-        if (generation !== me.activityHistoryGeneration || me.isDestroyed || answer?.capability?.state !== 'wired') {
+        if (generation !== me.activityHistoryGeneration || me.isDestroyed || answer?.capability?.state !== 'wired'
+            || !me.activityWired || me.activityProfileId !== profileId) {
             return null
         }
 
