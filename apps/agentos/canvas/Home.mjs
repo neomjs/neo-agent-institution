@@ -64,10 +64,10 @@ class Home extends Base {
          */
         className: 'AgentOS.canvas.Home',
         /**
-         * The field's geometry, in CSS pixels and seconds: one mote per `density` px² on screen, targeting between
-         * `moteMin` and `moteMax` visible motes (a target, not a bound on any one frame), seeded across the whole wrap
-         * domain so the current does not thin it, and never more than `moteCap` in all, which bounds the links'
-         * pairwise work on any surface; a surface without area holds none; motes link
+         * The field's geometry, in CSS pixels and seconds: one mote per `density` px² on screen, a visible target
+         * clamped to `moteMin`..`moteMax`, seeded across the whole wrap domain so the current carries as many motes in
+         * as out; the count on screen drifts around that target rather than holding it on every frame. Never more
+         * than `moteCap` in all, which bounds the links' pairwise work, and none on a surface without area. Motes link
          * within `link`, a lit mark reaches `markLink`; the current carries each layer at its `speed`, draws it at
          * its `radius` and shifts it by up to its `parallax` with the pointer; the pointer parts the motes within
          * `reach`, clearing a core of the `part` share of it and spreading them evenly over the rest; the ring turns
