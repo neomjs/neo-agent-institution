@@ -49,6 +49,17 @@ async function landFleet(page, configs) {
 }
 
 /**
+ * @summary Serves a mailbox the mounted cockpit reads through its bridge: every `fleetActivity` read answers
+ * the events' page at its offset. The spec reads the reads with `readMailboxReads` on `fm-fleet-landing`.
+ * @param {Object} page The Playwright page.
+ * @param {Object[]} events The stream's snapshot shape, newest first.
+ * @returns {Promise<void>}
+ */
+export async function serveFleetMailbox(page, events) {
+    await landFleet(page, {mailbox: {events}})
+}
+
+/**
  * @summary Lands activity events in the mounted cockpit as a wired feed's answer.
  * @param {Object} page The Playwright page.
  * @param {Object[]} events The stream's snapshot shape.

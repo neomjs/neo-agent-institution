@@ -21,7 +21,7 @@ import * as core                                                    from '../../
 import DomApiVnodeCreator                                           from '../../../../../../../../node_modules/neo.mjs/src/vdom/util/DomApiVnodeCreator.mjs';
 import Instance                                                     from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import VdomHelper                                                   from '../../../../../../../../node_modules/neo.mjs/src/vdom/Helper.mjs';
-import ActivityStream, {describeActivityCounts, describeQuietSince} from '../../../../../../../../apps/agentos/view/fleet/activity/Container.mjs';
+import ActivityStream, {describeActivityCounts, describeActivityRetention, describeQuietSince} from '../../../../../../../../apps/agentos/view/fleet/activity/Container.mjs';
 import {formatConversationRef, getActivityObjectText, getActivityObjectTitle} from '../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs';
 import FleetActivityEvents                                          from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import ViewerTime                                                   from '../../../../../../../../apps/agentos/util/ViewerTime.mjs';
@@ -157,6 +157,30 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(list.scrollTop).toBe(0);
         expect(stream.pendingNewEventCount).toBe(0);
         expect(stream.getReference('new-events').hidden).toBe(true)
+    });
+
+    test('an older page lands as history: no new-events count, no announcement; a live arrival still counts', async () => {
+        const {list} = await createStream({count: 100});
+
+        list.onScrollCapture({target: {id: list.id}, scrollLeft: 0, scrollTop: 265});
+
+        const
+            spoken = stream.getReference('announcer').text,
+            older  = [event('old-1', -2, {eventId: 'a2a:MESSAGE:old-1'}), event('old-2', -1, {eventId: 'a2a:MESSAGE:old-2'})];
+
+        stream.acceptHistory(older.map(row => row.eventId));
+        store.ingestSnapshot(older);
+
+        expect(store.getAt(store.count - 1).eventId).toBe('a2a:MESSAGE:old-1');
+        expect(stream.pendingNewEventCount).toBe(0);
+        expect(stream.getReference('new-events').hidden).toBe(true);
+        expect(stream.getReference('announcer').text).toBe(spoken);
+
+        store.ingestSnapshot([event('new-1', 200, {eventId: 'a2a:MESSAGE:new-1'})]);
+
+        expect(stream.pendingNewEventCount).toBe(1);
+        expect(stream.getReference('new-events').text).toBe('1 new event ↑');
+        expect(stream.getReference('announcer').text).toContain('1 new fleet activity event')
     });
 
     test('Store upserts by producer id, sorts deterministically, and counts local eviction', () => {
@@ -315,15 +339,65 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         }];
         await stream.timeout(20);
 
-        expect(countCell.text).toBe('mailbox · 412 total');
-        expect(countCell.cls).not.toContain('is-empty');
-        expect(countCell.vnode.textContent).toBe('mailbox · 412 total');
+        // the sources' populations sit on their own line under the head, never in its count slot
+        expect(countCell.text).toBe('sources · mailbox · 412 total');
+        expect(countCell.cls).toEqual(['fm-pane-meta', 'fm-stream-sources']);
+        expect(countCell.parentId).toBe(stream.id);
+        expect(countCell.vnode.textContent).toBe('sources · mailbox · 412 total');
 
         stream.counts = [];
         await stream.timeout(20);
 
         expect(countCell.text).toBe('');
         expect(countCell.cls).toContain('is-empty')
+    });
+
+    test('the head states what the feed holds, never a source\'s population', () => {
+        expect(describeActivityRetention({retained: 0})).toBe('');
+        expect(describeActivityRetention({retained: 50})).toBe('newest 50 · older on scroll');
+        expect(describeActivityRetention({retained: 1000, full: true})).toBe('newest 1,000 · older not kept');
+        expect(describeActivityRetention({retained: 1000, dropped: 12, full: true})).toBe('newest 1,000 · older not kept · 12 dropped');
+        expect(describeActivityRetention({retained: 213, exhausted: true})).toBe('all 213 shown');
+        // an evicted row makes "all" false, even when the mailbox has no older one
+        expect(describeActivityRetention({retained: 213, dropped: 3, exhausted: true})).toBe('newest 213 · no older events · 3 dropped');
+        expect(describeActivityCounts([{source: 'memory-core:mailbox', scope: 'total', value: 11728, complete: true, capturedAt: '2026-09-30T12:00:00.000Z'}]).text)
+            .toBe('mailbox · 11,728 total')
+    });
+
+    test('the stream asks for older events once its last held row is mounted, and not before', async () => {
+        const asked = () => {
+            let count = 0;
+            stream.on('historyRequest', () => count++);
+            return () => count
+        };
+
+        await createStream({count: 3});
+        let calls = asked();
+
+        // a cold feed has nothing older to ask for
+        stream.onListCreateItems();
+        expect(calls()).toBe(0);
+
+        // three rows fill less than the pane, so the last one is mounted without a scroll
+        stream.adapterState = 'live';
+        stream.onListCreateItems();
+        expect(calls()).toBe(1);
+
+        stream.historyExhausted = true;
+        stream.onListCreateItems();
+        expect(calls()).toBe(1);
+
+        stream.destroy();
+        store.destroy();
+
+        await createStream({count: 500});
+        calls = asked();
+        stream.adapterState = 'live';
+
+        // 500 rows under a five-row pane: the last one is far below the mounted range
+        stream.onListCreateItems();
+        expect(calls()).toBe(0);
+        expect(stream.getReference('retention').text).toBe('newest 500 · older on scroll')
     });
 
     test('stale state keeps retained rows and names the degrade', async () => {

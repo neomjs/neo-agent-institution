@@ -189,7 +189,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    470556d6222977bf347c819a337ca68d98ecfa2e
+    00d795dfde98cf820746eab30df785f728e38796
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     9c0491163279261fdb92e1e487093322cb1a26c5
@@ -225,7 +225,7 @@ apps/agentos/util/SpineBanner.mjs
     efbf19ff84922048319fbb8c9c9802e3048cc2ae
 
 apps/agentos/util/TargetBinding.mjs
-    f5fadd1f2e45e66fbd9495c0ccab1d0fcc43fff4
+    09c041ed645afa7f10a0ce92e5a56bd512e003b1
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -252,7 +252,7 @@ apps/agentos/view/fleet/activity/ActorChipComponent.mjs
     80e172b5f0d9a4ed464309e308fb14024fd14b4a
 
 apps/agentos/view/fleet/activity/Container.mjs
-    82d8c31aa9e27aa5133f08ed9fea39b51a1c3a76
+    ae7a860083186d5a117a6ce2e41f1368d872eb3b
 
 apps/agentos/view/fleet/activity/EventChipComponent.mjs
     c36dac634fbb1cccaae121e947b5a41aae2149a7
@@ -264,7 +264,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    cf651f3d7f7974eb21e9fcd2e54cb68840d22d87
+    25819f73985da226964f9700eeee8e7bcb7d1497
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     958c10449b0295c19d0e308362b1c78d26ce5672
@@ -273,13 +273,13 @@ apps/agentos/view/fleet/cockpit/LivenessController.mjs
     cb46c8ea57ca18de085ebeb3c12361bf0757b4cb
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
-    c6551aba3dcda82f545f8a341639c5786518c419
+    3bc24c1b7d3498119de6210234cc74528fcfaa8f
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     23b1b61fa78fc26e11af1507360c296855038d7e
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    adaeb748d1160d0b813837778f49180eb490118c
+    bb062f820ed18a8f9697a2b8bf9f8eb3db6f64f6
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     8ddc5b9b6815b627ab054d51cc4d8432b8dddf0c
@@ -438,7 +438,7 @@ resources/scss/src/apps/agentos/fleet/activity/ActorChipComponent.scss
     56b5a21524fe79e827336b570c4ae981e89b3733
 
 resources/scss/src/apps/agentos/fleet/activity/Container.scss
-    f3754e32e03420961969ba942ac7860b3cd5abfa
+    bf6afeff9b0132cae17f592de3e56ac4fd8eac46
 
 resources/scss/src/apps/agentos/fleet/activity/EventChipComponent.scss
     32a9f3a84da7c788e06377188ab78644d9cf0b62
@@ -618,7 +618,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-revie
     f0813964bea12a2eb948cc26d194a09a0486c21f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
-    9e7aa5ab4e563bb0b35e50e5005010076b42283e
+    76243c74b4810955f0b09a14b4ae1ee0a921b760
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-grid-cards.png
     760ec27e828e90b2c112b6f2ff9b3f92bc482c5b

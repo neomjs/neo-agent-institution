@@ -973,9 +973,10 @@ async function bootProductBrain() {
 
     storedPlaneBearer = storedPlane?.bearer ?? null;
 
+    // the backups sit beside the plane in the per-user root, so removing the plane never removes them
     const packagedEnv = packagedMode
         ? {
-            ...buildPackagedBrainEnv({dataRoot: path.join(app.getPath('userData'), 'brain')}),
+            ...buildPackagedBrainEnv({backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot: path.join(app.getPath('userData'), 'brain')}),
             ...planeEnvFragment({env: process.env, planeConfig: storedPlane}),
             ELECTRON_RUN_AS_NODE    : '1',
             NEO_HARNESS_ELECTRON_BIN: process.execPath
@@ -1122,9 +1123,11 @@ async function bootSmokeBrain() {
         planeEnv                = smokePlaneMode
             ? await attachSmokePlane({isolationRoot, runtimeEnv})
             : {NEO_FLEET_PLANE_BASE: '', NEO_FLEET_PLANE_BEARER: ''},
+        // a smoke's bundles are disposable, so they stay inside its throwaway root; a sibling of that
+        // root would land in the shared temp parent
         profile                 = {
             ...(packagedMode
-                ? {...buildPackagedBrainEnv({dataRoot: isolationRoot}), ...runtimeEnv, NEO_CHROMA_PORT: String(chromaPort), NEO_FLEET_PORT: String(fleetPort)}
+                ? {...buildPackagedBrainEnv({backupRoot: path.join(isolationRoot, 'backups'), dataRoot: isolationRoot}), ...runtimeEnv, NEO_CHROMA_PORT: String(chromaPort), NEO_FLEET_PORT: String(fleetPort)}
                 : buildBrainProfile({chromaPort, fleetPort, isolationRoot})),
             NEO_FLEET_BEARER: fleetBearerToken,
             ...planeEnv

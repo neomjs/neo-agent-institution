@@ -8,7 +8,8 @@ import {isDescriptor} from '../../../node_modules/neo.mjs/src/core/ConfigSymbols
  * activity, or tasks envelope is handed to the cockpit owner's own admission. Roster and activity
  * follow the liveness admission used by their reads; tasks follow `Controller.admitTasks`, which
  * invalidates an older in-flight read. Every set lands — the configs compare nothing — so a spec
- * re-lands the same facts at will. Loading the module again (a fresh `t`) finds the instance.
+ * re-lands the same facts at will. Loading the module again (a fresh `t`) finds the instance. A set
+ * mailbox is served as the bridge's `fleetActivity`, so the cockpit's own reads page it.
  *
  * @see apps/agentos/view/fleet/cockpit/LivenessController.mjs (`admitRoster`, `admitActivity`)
  * @see apps/agentos/view/fleet/cockpit/Controller.mjs (`admitTasks`)
@@ -34,8 +35,19 @@ class FleetLanding extends Base {
          * One `fleetTasks` envelope to land as the owner's answer.
          * @member {Object|null} tasks_=null
          */
-        tasks_: {[isDescriptor]: true, value: null, isEqual: () => false}
+        tasks_: {[isDescriptor]: true, value: null, isEqual: () => false},
+        /**
+         * A mailbox the cockpit reads, `{events}` newest first: set, it becomes the bridge's `fleetActivity`.
+         * @member {Object|null} mailbox_=null
+         */
+        mailbox_: {[isDescriptor]: true, value: null, isEqual: () => false}
     }
+
+    /**
+     * The params of every read the mailbox answered, in order; `null` for a read that passed none.
+     * @member {Array<Object|null>} mailboxReads=[]
+     */
+    mailboxReads = []
 
     /**
      * The mounted cockpit's liveness owner.
@@ -56,6 +68,13 @@ class FleetLanding extends Base {
      */
     afterSetActivity(value) {
         value && this.landActivity(value.events)
+    }
+
+    /**
+     * @param {Object|null} value
+     */
+    afterSetMailbox(value) {
+        value && this.serveMailbox(value.events)
     }
 
     /**
@@ -98,6 +117,37 @@ class FleetLanding extends Base {
      */
     landTasks(snapshot) {
         this.owner.admitTasks(snapshot)
+    }
+
+    /**
+     * @summary Serves the events as the bridge's one verb: each read answers, wired, the page at its `offset`,
+     * so the live read (no params) gets the newest page and an older-page read the rows below. The cockpit
+     * guards every other verb, so they stay absent.
+     * @param {Object[]} events Newest first.
+     */
+    serveMailbox(events) {
+        const me = this;
+
+        me.mailboxReads = [];
+
+        (AgentOS.fleet ??= {}).registryBridge = {
+            profileId    : me.owner.bridge?.profileId ?? null,
+            fleetActivity: async params => {
+                const {limit = 50, offset = 0} = params ?? {};
+
+                me.mailboxReads.push(params ?? null);
+
+                return {capability: {state: 'wired'}, counts: [], events: events.slice(offset, offset + limit)}
+            }
+        }
+    }
+
+    /**
+     * @summary The reads the mailbox answered, for a spec to read over the Neural Link.
+     * @returns {Array<Object|null>}
+     */
+    readMailboxReads() {
+        return this.mailboxReads
     }
 }
 
