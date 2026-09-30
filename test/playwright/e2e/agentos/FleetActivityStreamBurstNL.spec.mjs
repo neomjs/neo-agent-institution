@@ -1,4 +1,4 @@
-import {test, expect, landFleetSample} from '../../fixtures.mjs';
+import {test, expect, landFleetActivity, landFleetSample, serveFleetMailbox} from '../../fixtures.mjs';
 
 const
     LIST_CLASS     = 'Neo.list.Buffered',
@@ -39,6 +39,43 @@ function createEvents(count, start=0) {
             }
         }
     })
+}
+
+/**
+ * @summary One mailbox message as the stream's event: `index` 0 is the newest, a larger one older.
+ * @param {Number} index
+ * @returns {Object}
+ */
+function createMessage(index) {
+    return {
+        eventId   : `mbx:${index}`,
+        type      : 'a2a-activity',
+        source    : 'memory-core:mailbox',
+        agentId   : '@neo-gpt-emmy',
+        confidence: 'observed',
+        occurredAt: new Date(BASE_TIME - index * 1000).toISOString(),
+        payload   : {text: `message ${index}`, to: 'AGENT:*', recipientClass: 'broadcast'}
+    }
+}
+
+/**
+ * @summary Reads every event id the store holds, newest first, a page of the Neural Link's read at a time.
+ * @param {Object} app
+ * @param {String} storeId
+ * @returns {Promise<String[]>}
+ */
+async function readHeldIds(app, storeId) {
+    const ids = [];
+
+    for (;;) {
+        const {count, items} = await app.inspectStore(storeId, 50, ids.length);
+
+        ids.push(...items.map(item => item.eventId));
+
+        if (!items.length || ids.length >= count) {
+            return ids
+        }
+    }
 }
 
 /**
@@ -416,5 +453,69 @@ test.describe('AgentOS Fleet activity — buffered history possession (Neural Li
         }
 
         expect(pageErrors, 'no uncaught page errors during the activity-history journey').toEqual([])
+    });
+
+    test('the end of the feed reads the mailbox\'s older pages below the live window until it answers none, and the live read still reconciles (#349)', async ({page, neuralLink}) => {
+        const
+            pageErrors = [],
+            mailbox    = Array.from({length: 120}, (_, index) => createMessage(index));
+
+        page.on('pageerror', error => pageErrors.push(error.message));
+
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-activity-stream')).toBeVisible({timeout: 60000});
+        await serveFleetMailbox(page, mailbox);
+        await landFleetActivity(page, mailbox.slice(0, 50));
+
+        const
+            app       = await neuralLink.connectToApp('AgentOS'),
+            listId    = await getOnlyComponentId(app, LIST_CLASS),
+            storeId   = (await app.listStores()).stores.find(candidate => candidate.model === STORE_MODEL).id,
+            list      = page.locator('.fm-activity-list'),
+            mountedTo = async () => (await getListState(app, listId)).mountedRange[1],
+            retention = page.locator('.fm-stream-retention'),
+            pageReads = async () => (await app.callMethod('fm-fleet-landing', 'readMailboxReads')).filter(read => read?.slots),
+            toTheEnd  = async () => {
+                const box = await list.boundingBox();
+
+                await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+                await page.mouse.wheel(0, 100000)
+            };
+
+        await expect(retention).toHaveText('newest 50 · older on scroll');
+        await expect.poll(mountedTo, {message: 'the pool mounts'}).toBeGreaterThan(0);
+        expect(await mountedTo(), 'the pane mounts fewer rows than it holds').toBeLessThan(50);
+        expect(await pageReads(), 'rows above the end ask for nothing').toEqual([]);
+
+        await toTheEnd();
+        await expect.poll(async () => (await readHeldIds(app, storeId)).length, {
+            message: 'the next page lands once the last held row is mounted'
+        }).toBe(100);
+
+        let ids = await readHeldIds(app, storeId);
+
+        expect(new Set(ids).size, 'no message is held twice').toBe(100);
+        expect([ids[0], ids[49], ids[50], ids[99]]).toEqual(['mbx:0', 'mbx:49', 'mbx:50', 'mbx:99']);
+        expect(await pageReads()).toEqual([{limit: 50, offset: 50, slots: ['a2a']}]);
+        await expect(retention).toHaveText('newest 100 · older on scroll');
+
+        await toTheEnd();
+        await expect.poll(async () => (await readHeldIds(app, storeId)).length).toBe(120);
+        await toTheEnd();
+        await expect(retention).toHaveText('all 120 shown');
+        expect((await pageReads()).map(read => read.offset), 'the empty page at 120 ends the reads').toEqual([50, 100, 120]);
+
+        // the live read keeps its merge while history is held: a newer message joins the top, and nothing below leaves
+        await landFleetActivity(page, [createMessage(-1), ...mailbox.slice(0, 49)]);
+        await expect.poll(async () => (await readHeldIds(app, storeId)).length).toBe(121);
+
+        ids = await readHeldIds(app, storeId);
+
+        expect([ids[0], ids.at(-1)]).toEqual(['mbx:-1', 'mbx:119']);
+        await expect(retention).toHaveText('all 121 shown');
+        await toTheEnd();
+        await expect.poll(mountedTo, {message: 'the last held row is mounted again'}).toBe(121);
+        expect((await pageReads()).length, 'an exhausted mailbox is not asked again').toBe(3);
+        expect(pageErrors).toEqual([])
     })
 });
