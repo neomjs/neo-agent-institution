@@ -244,3 +244,52 @@ test.describe('AgentOS.canvas.Home — the field heals after a click and holds i
         expect(() => Home.draw()).not.toThrow()
     })
 });
+
+test.describe('AgentOS.canvas.Home — the field goes quiet under the hero\'s lines (#365)', () => {
+    test.afterEach(() => {
+        clearTimeout(Home.animationId);
+        Home.clearGraph()
+    });
+
+    test('the quiet rects are erased after the field and before the haze, each over its own line\'s feather, and the marks go on top (AC-1)', () => {
+        const
+            log     = [],
+            erases  = [],
+            context = new Proxy({canvas: {height: 0, width: 0}, createRadialGradient: () => ({addColorStop() {}})}, {
+                get: (target, key) => key in target ? target[key] : (...args) => {
+                    log.push(key);
+                    key === 'fillRect' && target.globalCompositeOperation === 'destination-out' && erases.push([target.filter, ...args])
+                },
+                set: (target, key, value) => {key === 'globalCompositeOperation' && log.push(value); target[key] = value; return true}
+            });
+
+        Home.clearGraph();
+        Home.context = context;
+        Home.updateSize({width: 900, height: 600, devicePixelRatio: 1});
+        Home.setTeam({team: {total: 3, up: 1}});
+        Home.setQuiet({rects: [
+            {x: 40, y: 80,  width: 300, height: 40, fontSize: 20},
+            {x: 40, y: 140, width: 0,   height: 20, fontSize: 16},
+            {x: 40, y: 180, width: 280, height: 60, fontSize: 50}
+        ]});
+
+        expect(Home.getStats().quiet, 'a hidden line has no size and is left out').toEqual([
+            {fontSize: 20, height: 40, width: 300, x: 40, y: 80},
+            {fontSize: 50, height: 60, width: 280, x: 40, y: 180}
+        ]);
+
+        log.length    = 0;
+        erases.length = 0;
+        Home.draw();
+
+        const erase = log.indexOf('destination-out'), under = log.indexOf('destination-over'), mark = log.lastIndexOf('arc');
+
+        expect(erase, 'the field is erased').toBeGreaterThan(-1);
+        expect(erases, 'one erase per line, grown by half of 0.4 em of its font size and blurred by a quarter').toEqual([
+            ['blur(2px)', 36, 76, 308, 48],
+            ['blur(5px)', 30, 170, 300, 80]
+        ]);
+        expect(under, 'the haze fills in beneath, after the erase').toBeGreaterThan(erase);
+        expect(mark, 'the marks go on top of the haze').toBeGreaterThan(under)
+    })
+});

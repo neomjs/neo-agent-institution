@@ -41,6 +41,11 @@ class Canvas extends SharedCanvas {
          */
         rendererImportPath: '../../apps/agentos/canvas/Home.mjs',
         /**
+         * The ids of the components the field stays out of: the hero's lines, which the Home view names.
+         * @member {String[]} quietIds=[]
+         */
+        quietIds: [],
+        /**
          * Whether the field is still: `true` until the current mount's read of the motion vocabulary says the host
          * allows motion. Every unmount returns it to `true`, so a new mount never inherits the last one's answer.
          * @member {Boolean} still_=true
@@ -61,9 +66,17 @@ class Canvas extends SharedCanvas {
      * @protected
      */
     motionRead = 0
+    /**
+     * Counts the quiet measurements and the graph's lifetimes, so that only the latest measurement of the current
+     * graph may answer.
+     * @member {Number} quietRead=0
+     * @protected
+     */
+    quietRead = 0
 
     /**
-     * Triggered after the isCanvasReady config got changed: a ready canvas receives both inputs.
+     * Triggered after the isCanvasReady config got changed: a ready canvas receives both inputs, and a graph that
+     * ends or begins outdates a quiet measurement still in flight.
      * @param {Boolean} value
      * @param {Boolean} oldValue
      * @protected
@@ -72,6 +85,7 @@ class Canvas extends SharedCanvas {
         const me = this;
 
         super.afterSetIsCanvasReady(value, oldValue);
+        me.quietRead++;
 
         if (value && me.renderer) {
             me.renderer.setMotion({still: me.still, windowId: me.windowId});
@@ -81,7 +95,8 @@ class Canvas extends SharedCanvas {
 
     /**
      * Triggered after the mounted config got changed: every mount reads the host's motion preference again, and
-     * every unmount returns the field to still and outdates a read still in flight.
+     * every unmount returns the field to still and outdates the reads still in flight. An unmount clears the graph
+     * while the canvas stays ready, so it outdates the quiet measurement itself.
      * @param {Boolean} value
      * @param {Boolean} oldValue
      * @protected
@@ -91,6 +106,7 @@ class Canvas extends SharedCanvas {
 
         if (!value) {
             me.motionRead++;
+            me.quietRead++;
             me.still = true
         }
 
@@ -133,6 +149,49 @@ class Canvas extends SharedCanvas {
     }
 
     /**
+     * @summary Measures the quiet components one frame after the call, so a line the Home view just changed has its
+     * new box, and hands the renderer their rects relative to the canvas, each with the font size its feather is
+     * measured in. Only the latest measurement of the current graph answers. A read that fails publishes nothing, so
+     * the field keeps what it last had until the next measurement.
+     * @returns {Promise<void>}
+     */
+    async measureQuiet() {
+        const me = this, read = ++me.quietRead;
+
+        await me.timeout(30);
+
+        if (read !== me.quietRead || !me.isCanvasReady || !me.canvasRect || !me.quietIds.length || me.isDestroyed) {
+            return
+        }
+
+        let rects, styles;
+
+        try {
+            [rects, styles] = await Promise.all([
+                me.getDomRect(me.quietIds),
+                Promise.all(me.quietIds.map(id => Neo.main.DomAccess.getComputedStyle({id, style: 'font-size', windowId: me.windowId})))
+            ])
+        } catch {
+            return
+        }
+
+        const {x, y} = me.canvasRect;
+
+        if (read === me.quietRead && me.isCanvasReady && !me.isDestroyed) {
+            me.renderer.setQuiet({
+                rects: (rects || []).map((rect, i) => rect && {
+                    fontSize: parseFloat(styles[i]['font-size']),
+                    height  : rect.height,
+                    width   : rect.width,
+                    x       : rect.x - x,
+                    y       : rect.y - y
+                }).filter(Boolean),
+                windowId: me.windowId
+            })
+        }
+    }
+
+    /**
      * @summary Reads `--motion-base` from the canvas's node through its own window: `0ms`, the reduced-motion
      * collapse, keeps the field still, and so does a read that fails or answers nothing. Only the latest read of the
      * current mount answers: a newer read or an unmount outdates it, so a late answer never moves a later mount.
@@ -161,8 +220,9 @@ class Canvas extends SharedCanvas {
      * @param {Object|null} [rect] Not used: the node is measured
      * @returns {Promise<void>}
      */
-    updateSize(rect) {
-        return super.updateSize(null)
+    async updateSize(rect) {
+        await super.updateSize(null);
+        this.measureQuiet()
     }
 }
 
