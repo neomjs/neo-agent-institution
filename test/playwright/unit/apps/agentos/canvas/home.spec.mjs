@@ -265,7 +265,7 @@ test.describe('AgentOS.canvas.Home — the field goes quiet under the hero\'s li
         Home.setTeam({team: {total: 3, up: 1}});
         Home.setQuiet({rects: [{x: 40, y: 80, width: 300, height: 40}, {x: 40, y: 140, width: 0, height: 20}, {x: 40, y: 180, width: 280, height: 60}]});
 
-        expect(Home.getStats().quiet, 'a hidden line has no size and is left out').toBe(2);
+        expect(Home.getStats().quiet, 'a hidden line has no size and is left out').toEqual([{height: 40, width: 300, x: 40, y: 80}, {height: 60, width: 280, x: 40, y: 180}]);
 
         log.length = 0;
         Home.draw();

@@ -518,10 +518,10 @@ class Home extends Base {
     }
 
     /**
-     * @summary Remote entry for the specs: what the field holds, how many of its motes are on screen, and how many
-     * frames it drew.
+     * @summary Remote entry for the specs: what the field holds, how many of its motes are on screen, the rects it is
+     * quiet under, and how many frames it drew.
      * @returns {Object} `{frames, marks, motes, quiet, size, still, theme, visible}`; `marks` is `{total, up}` or `null`,
-     * and `visible` counts the motes drawn inside the surface
+     * `quiet` lists `{x, y, width, height}` canvas-relative, and `visible` counts the motes drawn inside the surface
      */
     getStats() {
         const me = this, {canvasSize, team} = me;
@@ -530,9 +530,9 @@ class Home extends Base {
             frames : me.frames,
             marks  : team && {...team},
             motes  : me.moteCount,
+            quiet  : me.quiet.map(rect => ({...rect})),
             size   : canvasSize && {height: canvasSize.height, width: canvasSize.width},
             still  : me.still,
-            quiet  : me.quiet.length,
             theme  : me.theme,
             visible: me.countVisible()
         }
