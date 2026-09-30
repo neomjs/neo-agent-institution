@@ -352,20 +352,36 @@ export function resolveBrainPaths({repoRoot, env = {}, execFileFn = execFile}) {
         "}));"
     ].join('\n');
 
+    return runBrainScript({env, execFileFn, label: 'config resolver', repoRoot, script})
+}
+
+/**
+ * @summary Runs a one-shot module script inside a Brain root, on the runtime its children use, and
+ * parses the JSON it prints. The shell imports no Brain config, so every question about the Brain's
+ * declarations is asked this way.
+ * @param {Object} options
+ * @param {String} options.repoRoot The Brain root: the script's cwd and module resolution.
+ * @param {String} options.script
+ * @param {String} options.label Names the script in its errors.
+ * @param {Object} [options.env] Env fragment merged over process.env.
+ * @param {Function} [options.execFileFn=execFile] Injection seam for tests.
+ * @returns {Promise<Object>}
+ */
+export function runBrainScript({repoRoot, script, label, env = {}, execFileFn = execFile}) {
     return new Promise((resolve, reject) => {
         execFileFn(nodeBin(), ['--input-type=module', '-e', script], {
             cwd: repoRoot,
             env: {...process.env, ...env}
         }, (error, stdout, stderr) => {
             if (error) {
-                reject(new Error(`config resolver failed: ${String(stderr || error.message).slice(0, 800)}`));
+                reject(new Error(`${label} failed: ${String(stderr || error.message).slice(0, 800)}`));
                 return
             }
 
             try {
                 resolve(JSON.parse(stdout))
             } catch (parseError) {
-                reject(new Error(`config resolver returned non-JSON: ${String(stdout).slice(0, 200)}`))
+                reject(new Error(`${label} returned non-JSON: ${String(stdout).slice(0, 200)}`))
             }
         })
     })
@@ -727,6 +743,14 @@ export async function detectLiveBrain({
     return result
 }
 
+/**
+ * A preload that drops the ownership marker from the child's `process.argv` before its entry runs. `ps`
+ * still shows the marker right after the entry, which is what the sweep verifies, and no entry's CLI ever
+ * meets an option it does not know: the Memory Core's refuses one.
+ * @type {String}
+ */
+export const OWNER_MARKER_STRIP = 'data:text/javascript,process.argv=process.argv.filter((arg,at)=>at<2||!arg.startsWith("--neo-harness-owner="))';
+
 function forwardLines(child, onLog) {
     if (!onLog) {
         return
@@ -787,7 +811,7 @@ export function startBrainChild({
         throw new TypeError('ownershipTokenFn must return a non-empty token without whitespace')
     }
 
-    const child = spawnFn(nodeBin(), [absoluteEntry, `--neo-harness-owner=${ownershipToken}`], {
+    const child = spawnFn(nodeBin(), ['--import', OWNER_MARKER_STRIP, absoluteEntry, `--neo-harness-owner=${ownershipToken}`], {
         cwd     : absoluteRepoRoot,
         detached: true,
         env     : {...process.env, ...env, PATH: `${binPaths.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ''}`},

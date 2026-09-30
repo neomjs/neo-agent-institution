@@ -66,6 +66,7 @@ import {
     sweepStaleRunState,
     writeRunState
 } from './brain.mjs';
+import {createSmokeSafeStorage, startFixturePlane}            from './fixturePlane.mjs';
 import {carriesSecret, createMainLog}                         from './mainLog.mjs';
 import {createPlaneBroker, planeEnvFragment, readPlaneConfig} from './planeConfig.mjs';
 
@@ -86,6 +87,10 @@ const
     // product IS the supervised organism; NEO_HARNESS_BRAIN=0 is the explicit opt-out) and opt-in
     // on a checkout (dev machines carry a canonical Brain; see brain.mjs#resolveBrainMode).
     brainMode             = resolveBrainMode({env: process.env, packaged: packagedMode}),
+    // The fixture-plane arm: the Brain smoke attaches to a plane of its own, through a record whose
+    // bearer only this run can decrypt, so the OS keychain is never touched.
+    smokePlaneMode        = smokeMode && brainMode && process.env.NEO_HARNESS_SMOKE_PLANE === '1',
+    planeSafeStorage      = smokePlaneMode ? createSmokeSafeStorage() : safeStorage,
     // Brain executables resolve through their own explicit runtime root in checkout mode; the
     // packaged artifact supplies one assembled organism root; a checkout with the Brain leg OFF and
     // no root boots as the UI alone — no root, no contracts, no transport (the resolver's rule).
@@ -120,17 +125,19 @@ let
     // `null` = no transport story this run (plain UI-only smoke spawns nothing by isolation
     // contract); `{phase: 'starting'}` while a boot is in flight; the normalized settle after.
     uiTransportFact = null,
-    // The plane record's bearer once the product boot has read it; the log redacts it with the others.
+    // The plane record's bearer once a boot has read it (the product's, or the smoke's fixture plane);
+    // the log redacts it with the others.
     storedPlaneBearer = null;
 
 // Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
 const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer];
 
-// A Finder launch has no terminal: every line main prints also lands in ~/Library/Logs/neo-harness/main.log,
-// with each secret main holds redacted at the file boundary. A logs path the platform refuses leaves the
-// boot running without a file, never failing it.
+// A Finder launch has no terminal: every line main prints also lands in `main.log` in the platform's logs
+// folder, with each secret main holds redacted at the file boundary. A diagnostic run logs under its own
+// root, never into the installed app's file. A logs path the platform refuses leaves the boot running
+// without a file, never failing it.
 try {
-    app.setAppLogsPath();
+    app.setAppLogsPath(smokeRoot ? path.join(smokeRoot, 'logs') : undefined);
     createMainLog({
         dir    : app.getPath('logs'),
         secrets: mainSecrets
@@ -285,7 +292,10 @@ function configureWebContents(contents) {
     });
     contents.on('preload-error', (event, preloadPath, error) => recordSmokeFailure('preload-error', error));
     contents.on('console-message', details => {
-        console.log(`HARNESS_PAGE ${details.level} ${String(details.message).slice(0, 300)}`);
+        const secret = carriesSecret(String(details.message), mainSecrets());
+
+        secret && smokeState.secretLeaks.add('renderer-console');
+        console.log(`HARNESS_PAGE ${details.level} ${secret ? '[secret-bearing message redacted]' : String(details.message).slice(0, 300)}`);
 
         if (details.level === 'error') {
             recordSmokeFailure('renderer-console', details.message)
@@ -662,22 +672,21 @@ function awaitPopupWindow(primary, timeoutMs = 10000) {
 }
 
 /**
- * @summary Invokes the one preload Fleet capability from a real BrowserWindow and applies an
- * independent main-side bearer census to the reply. Used only by the headed smoke.
+ * @summary Calls one preload capability from a real BrowserWindow and applies an independent
+ * main-side secret census to the reply. Used only by the headed smoke.
  * @param {BrowserWindow} win
- * @param {Object} request Public Fleet request.
+ * @param {String} call The capability call, e.g. `planeStatus()`.
  * @param {Number} [timeoutMs=8000]
- * @returns {Promise<Object>}
+ * @returns {Promise<Object>} `{envelope, shellKeys}`
  */
-async function invokeFleetFromWindow(win, request, timeoutMs = 8000) {
+async function invokeShellFromWindow(win, call, timeoutMs = 8000) {
     if (!win || win.isDestroyed()) {
         return {error: 'window unavailable', ok: false}
     }
 
-    const encoded = JSON.stringify(request);
-    const reply   = await Promise.race([
+    const reply = await Promise.race([
         win.webContents.executeJavaScript(
-            `Promise.resolve(globalThis.neoShell?.fleetRequest(${encoded}) ?? ` +
+            `Promise.resolve(globalThis.neoShell?.${call} ?? ` +
             `{ok:false,error:'capability unavailable'})` +
             `.then(envelope => ({envelope,shellKeys:Object.keys(globalThis.neoShell || {}).sort()}))` +
             `.catch(() => ({envelope:{ok:false,error:'capability rejected'},shellKeys:[]}))`,
@@ -698,6 +707,25 @@ async function invokeFleetFromWindow(win, request, timeoutMs = 8000) {
     }
 
     return reply
+}
+
+/**
+ * @summary The fixture-plane arm's red-first check (`NEO_HARNESS_SMOKE_PLANE_LEAK=1`): the plane's bearer
+ * goes through each census sink, a Brain log line, a renderer error and an IPC reply. Each sink records a
+ * `secretLeaks` entry and prints nothing, so the run fails; a run without the flag records none.
+ * @param {BrowserWindow} win
+ * @returns {Promise<void>}
+ */
+async function probePlaneLeaks(win) {
+    const
+        line  = `plane leak probe ${storedPlaneBearer}`,
+        probe = JSON.stringify(line);
+
+    brainLog(line);
+    await win.webContents.executeJavaScript(`setTimeout(() => {throw new Error(${probe})})`, true);
+    await invokeShellFromWindow(win, `planeStatus().then(status => ({...status, probe: ${probe}}))`);
+    // the renderer error crosses IPC after the throw
+    await awaitLifecycleState(() => smokeState.secretLeaks.has('error'), 3000)
 }
 
 /**
@@ -821,7 +849,7 @@ process.on('unhandledRejection', async error => {
     }
 });
 
-const brainState = {children: [], isolationRoot: null};
+const brainState = {children: [], isolationRoot: null, planeIngress: null};
 
 function brainLog(line) {
     if (carriesSecret(line, mainSecrets())) {
@@ -850,12 +878,34 @@ async function teardownBrain() {
 
     const report = await stopBrainTree(children);
 
+    if (brainState.planeIngress) {
+        await brainState.planeIngress.close();
+        brainState.planeIngress = null
+    }
+
     if (brainState.isolationRoot) {
         clearRunState({isolationRoot: brainState.isolationRoot});
         brainState.isolationRoot = null
     }
 
     return report
+}
+
+/**
+ * @summary Records the smoke's children so a later run's sweep can reap them after a crash. Called after
+ * each start, since a crash can come between one start and the next.
+ * @param {String} isolationRoot
+ */
+function recordSmokeRunState(isolationRoot) {
+    brainState.isolationRoot = isolationRoot;
+    writeRunState({
+        isolationRoot,
+        children: brainState.children.map(({child, entry, ownershipToken}) => ({
+            entry,
+            ownershipToken,
+            pgid: child.pid
+        }))
+    })
 }
 
 const appLifecycle = createAppLifecycle({
@@ -1049,6 +1099,10 @@ async function bootUiFleetTransport() {
  *   because a checkout smoke runs beside a canonical organism whose lanes must not double-run.
  * Both assert the isolation matrix THROUGH the config SSOT before anything spawns; readiness is
  * genuine service readiness (poll-loop marker + a real fleet wire verb), never PID existence.
+ *
+ * The fixture-plane arm (`NEO_HARNESS_SMOKE_PLANE=1`) first starts a plane of the smoke's own and
+ * boots the fleet child from the record it wrote. The product's plan then attaches instead of owning,
+ * so no orchestrator starts, exactly as a stored plane boots the installed app.
  * @summary Boots the smoke organism under the mode-correct profile, returning every observable.
  * @returns {Promise<Object>}
  */
@@ -1057,44 +1111,55 @@ async function bootSmokeBrain() {
         isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
         [chromaPort, fleetPort] = await Promise.all([allocatePort(), allocatePort()]),
-        profile                 = packagedMode
-            ? {
-                ...buildPackagedBrainEnv({dataRoot: isolationRoot}),
-                ELECTRON_RUN_AS_NODE    : '1',
-                NEO_CHROMA_PORT         : String(chromaPort),
-                NEO_FLEET_BEARER        : fleetBearerToken,
-                NEO_FLEET_PLANE_BASE    : '',
-                NEO_FLEET_PLANE_BEARER  : '',
-                NEO_FLEET_PORT          : String(fleetPort),
-                NEO_HARNESS_ELECTRON_BIN: process.execPath
-            }
-            : {...buildBrainProfile({chromaPort, fleetPort, isolationRoot}), NEO_FLEET_BEARER: fleetBearerToken},
+        runtimeEnv              = packagedMode ? {ELECTRON_RUN_AS_NODE: '1', NEO_HARNESS_ELECTRON_BIN: process.execPath} : {},
+        planeEnv                = smokePlaneMode
+            ? await attachSmokePlane({isolationRoot, runtimeEnv})
+            : {NEO_FLEET_PLANE_BASE: '', NEO_FLEET_PLANE_BEARER: ''},
+        profile                 = {
+            ...(packagedMode
+                ? {...buildPackagedBrainEnv({dataRoot: isolationRoot}), ...runtimeEnv, NEO_CHROMA_PORT: String(chromaPort), NEO_FLEET_PORT: String(fleetPort)}
+                : buildBrainProfile({chromaPort, fleetPort, isolationRoot})),
+            NEO_FLEET_BEARER: fleetBearerToken,
+            ...planeEnv
+        },
         resolved                = await resolveBrainPaths({env: profile, repoRoot: agentosRuntimeRoot}),
-        matrixViolations        = assertIsolatedProfile({chromaPort, isolationRoot, resolved});
+        matrixViolations        = assertIsolatedProfile({chromaPort, isolationRoot, resolved}),
+        // The product's plan over the resolved config. The smoke never adopts a live Brain, so it observes none.
+        plan                    = resolveProductBrainPlan({fleetServing: false, orchestratorAlive: false, planeBase: resolved.fleetPlaneBase});
 
     if (matrixViolations.length > 0) {
         return {chromaPort, fleetPort, isolationRoot, matrixViolations, sweptPgids, up: false}
     }
 
-    const
-        orchestrator = startBrainChild({entry: ORCHESTRATOR_ENTRY, env: profile, onLog: brainLog, repoRoot: agentosRuntimeRoot}),
-        fleet        = startBrainChild({entry: FLEET_SERVER_ENTRY, env: profile, onLog: brainLog, repoRoot: agentosRuntimeRoot});
+    let fleetLastLine = null,
+        planeAdmitted = false;
 
-    registerBrainChild({child: orchestrator, ...orchestrator.neoHarnessIdentity, label: 'orchestrator'});
-    registerBrainChild({child: fleet,        ...fleet.neoHarnessIdentity,        label: 'fleet'});
-    brainState.isolationRoot = isolationRoot;
-    writeRunState({
-        isolationRoot,
-        children: brainState.children.map(({child, entry, ownershipToken}) => ({
-            entry,
-            ownershipToken,
-            pgid: child.pid
-        }))
-    });
+    const
+        orchestrator = plan.startOrchestrator ? startBrainChild({entry: ORCHESTRATOR_ENTRY, env: profile, onLog: brainLog, repoRoot: agentosRuntimeRoot}) : null,
+        fleet        = startBrainChild({
+            entry   : FLEET_SERVER_ENTRY,
+            env     : profile,
+            onLog   : line => {
+                fleetLastLine = line;
+                planeAdmitted ||= line.includes(`bound to the containerized plane at ${plan.planeBase} `);
+                brainLog(line)
+            },
+            repoRoot: agentosRuntimeRoot
+        });
+
+    orchestrator && registerBrainChild({child: orchestrator, ...orchestrator.neoHarnessIdentity, label: 'orchestrator'});
+    registerBrainChild({child: fleet, ...fleet.neoHarnessIdentity, label: 'fleet'});
+    recordSmokeRunState(isolationRoot);
 
     await Promise.all([
-        awaitOrchestratorReady({child: orchestrator}),
-        awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot})
+        orchestrator && awaitOrchestratorReady({child: orchestrator}),
+        fleetReadyOrPlaneRefusal({
+            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
+            child     : fleet,
+            lastLine  : () => fleetLastLine,
+            mode      : plan.mode,
+            secrets   : mainSecrets()
+        })
     ]);
 
     return {
@@ -1102,9 +1167,57 @@ async function bootSmokeBrain() {
         fleetPort,
         isolationRoot,
         matrixViolations,
+        mode       : plan.mode,
+        planeAdmitted,
+        planeBase  : plan.planeBase,
         profileMode: packagedMode ? 'packaged-product' : 'checkout-isolated',
         sweptPgids,
         up         : true
+    }
+}
+
+/**
+ * @summary The fixture-plane arm's attach. Starts the smoke's own plane, then reads the record it wrote
+ * through the product's read path, so the fleet child attaches from the record alone. Every other plane
+ * credential is exported empty: a Finder launch carries none, and a machine export must not ride into
+ * the fixture.
+ * @param {Object} options
+ * @param {String} options.isolationRoot
+ * @param {Object} options.runtimeEnv The runtime env Brain children need.
+ * @returns {Promise<Object>} The fleet child's plane env.
+ * @throws {Error} When the record does not read back as an attachable plane.
+ */
+async function attachSmokePlane({isolationRoot, runtimeEnv}) {
+    brainState.planeIngress = await startFixturePlane({
+        isolationRoot,
+        onLog        : brainLog,
+        recordDir    : app.getPath('userData'),
+        registerChild: entry => {
+            registerBrainChild(entry);
+            recordSmokeRunState(isolationRoot)
+        },
+        repoRoot     : agentosRuntimeRoot,
+        runtimeEnv,
+        safeStorage  : planeSafeStorage,
+        startChild   : startBrainChild
+    });
+
+    const
+        storedPlane = readPlaneConfig({dir: app.getPath('userData'), safeStorage: planeSafeStorage}),
+        fragment    = planeEnvFragment({env: {}, planeConfig: storedPlane});
+
+    storedPlaneBearer = storedPlane.bearer;
+
+    if (!fragment.NEO_FLEET_PLANE_BASE) {
+        throw new Error('the fixture plane record did not read back as an attachable plane')
+    }
+
+    return {
+        NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
+        NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
+        NEO_FLEET_PLANE_BEARER_FILE          : '',
+        NEO_FLEET_WAKE_SELF_BASE             : '',
+        ...fragment
     }
 }
 
@@ -1150,7 +1263,7 @@ app.whenReady().then(async () => {
         packaged        : packagedMode,
         promptCredential: promptFleetCredential,
         relaunch        : () => setTimeout(() => { app.relaunch(); app.quit() }, 250),
-        safeStorage
+        safeStorage     : planeSafeStorage
     });
 
     ipcMain.handle('shell-plane-status', planeBroker.status);
@@ -1280,19 +1393,20 @@ app.whenReady().then(async () => {
         const boot = await brainBootPromise;
 
         let chromaListening = null,
-            fleetFromWindow = null;
+            fleetFromWindow = null,
+            plane           = null;
 
         if (boot.up) {
-            // Let the organism SETTLE before quitting: the isolated Chroma serving on the
+            // Let an owned organism SETTLE before quitting: the isolated Chroma serving on the
             // allocated port is live isolation evidence AND removes the mid-startup-child race
             // from the graceful-teardown measurement. Chroma binds `localhost` (::1 on macOS),
-            // and a cold start on a fresh persist dir takes ~a minute.
-            chromaListening = await awaitPortListening({host: 'localhost', port: boot.chromaPort, timeoutMs: 120000});
+            // and a cold start on a fresh persist dir takes ~a minute. An attached boot starts no Chroma.
+            chromaListening = boot.mode === 'plane-attach' ? null : await awaitPortListening({host: 'localhost', port: boot.chromaPort, timeoutMs: 120000});
 
             const
-                request             = {method: 'listAgents', params: {}},
-                primary             = await invokeFleetFromWindow(win1, request),
-                popup               = await invokeFleetFromWindow(win2, request),
+                fleetCall           = `fleetRequest(${JSON.stringify({method: 'listAgents', params: {}})})`,
+                primary             = await invokeShellFromWindow(win1, fleetCall),
+                popup               = await invokeShellFromWindow(win2, fleetCall),
                 firstWorkerCrossing = await awaitLifecycleState(
                     () => smokeState.fleetMethods.includes('fleetRoster'),
                     20000
@@ -1303,7 +1417,7 @@ app.whenReady().then(async () => {
 
             const
                 popupClosed           = Boolean(win2) && await awaitLifecycleState(() => win2.isDestroyed(), 3000),
-                primaryAfterPopup     = await invokeFleetFromWindow(win1, request),
+                primaryAfterPopup     = await invokeShellFromWindow(win1, fleetCall),
                 workerAfterPopupClose = await awaitLifecycleState(
                     () => smokeState.fleetMethods.filter(method => method === 'fleetRoster').length > rosterCountAtClose,
                     ROSTER_CROSSING_WINDOW_MS
@@ -1314,7 +1428,7 @@ app.whenReady().then(async () => {
 
             try {
                 await forgedWindow.loadURL('data:text/html;charset=utf-8,<title>forged Fleet sender</title>');
-                forgedSender = await invokeFleetFromWindow(forgedWindow, request)
+                forgedSender = await invokeShellFromWindow(forgedWindow, fleetCall)
             } catch {
                 forgedSender = {envelope: {error: 'off-origin window failed to load', ok: false}, shellKeys: []}
             } finally {
@@ -1342,6 +1456,19 @@ app.whenReady().then(async () => {
                 surfaceExact,
                 urlSecretFree,
                 workerAfterPopupClose
+            };
+
+            // The fixture plane's four observations are the boot fact, the cockpit's plane status, the fleet
+            // child's admission line and the `listAgents` round trip above, all through this attached boot.
+            if (smokePlaneMode) {
+                plane = {
+                    admitted : boot.planeAdmitted,
+                    base     : boot.planeBase,
+                    status   : (await invokeShellFromWindow(win1, 'planeStatus()')).envelope,
+                    transport: uiTransportFact
+                };
+
+                process.env.NEO_HARNESS_SMOKE_PLANE_LEAK === '1' && await probePlaneLeaks(win1)
             }
         }
 
@@ -1358,7 +1485,8 @@ app.whenReady().then(async () => {
             fleetFromWindow.secretFree  = fleetFromWindow.urlSecretFree && fleetFromWindow.secretLeaks.length === 0
         }
 
-        brain = {mode: true, ...boot, chromaListening, fleetFromWindow, groupsEmpty, portsReleased, stop}
+        // `mode` marks the Brain leg; the boot's own mode is on the transport fact.
+        brain = {...boot, chromaListening, fleetFromWindow, groupsEmpty, mode: true, plane, portsReleased, stop, transport: uiTransportFact}
     }
 
     const
@@ -1415,7 +1543,11 @@ app.whenReady().then(async () => {
         brainPassed = !brain.mode || (
             brain.up === true &&
             (brain.matrixViolations ?? ['unresolved']).length === 0 &&
-            brain.chromaListening === true &&
+            (smokePlaneMode
+                ? brain.plane?.transport?.mode === 'plane-attach' && brain.plane.transport.up === true &&
+                    brain.plane.status?.configured === true && brain.plane.status.attached === true &&
+                    brain.plane.admitted === true
+                : brain.chromaListening === true) &&
             brain.fleetFromWindow?.primary?.envelope?.ok === true &&
             brain.fleetFromWindow?.popup?.envelope?.ok === true &&
             brain.fleetFromWindow?.popupClosed === true &&

@@ -1,6 +1,6 @@
 import {expect, test}                                        from '@playwright/test';
-import {execFile}                                            from 'node:child_process';
-import {EventEmitter}                                        from 'node:events';
+import {execFile, execFileSync}                              from 'node:child_process';
+import {EventEmitter, once}                                  from 'node:events';
 import {mkdtemp, rm, symlink}                                from 'node:fs/promises';
 import {readFileSync, writeFileSync, mkdirSync, existsSync}  from 'node:fs';
 import net                                                   from 'node:net';
@@ -20,6 +20,7 @@ import {
     detectLiveBrain,
     FLEET_SERVER_ENTRY,
     ORCHESTRATOR_ENTRY,
+    OWNER_MARKER_STRIP,
     loadFleetRuntimeContracts,
     probeFleetServing,
     probePort,
@@ -776,10 +777,28 @@ test.describe('harness brain lifecycle', () => {
         });
         const absoluteEntry = path.join(workDir, ORCHESTRATOR_ENTRY);
 
-        expect(invocation.args).toEqual([absoluteEntry, '--neo-harness-owner=spawn-token-a']);
+        expect(invocation.args).toEqual(['--import', OWNER_MARKER_STRIP, absoluteEntry, '--neo-harness-owner=spawn-token-a']);
         expect(invocation.options.cwd).toBe(workDir);
         expect(invocation.options.detached).toBe(true);
         expect(child.neoHarnessIdentity).toEqual({entry: absoluteEntry, ownershipToken: 'spawn-token-a'})
+    });
+
+    // The Memory Core's commander refuses an unknown option, so the entry must never see the marker,
+    // while the sweep still reads it right after the entry.
+    test('a real child never sees its owner marker, and ps still shows it after the entry', async () => {
+        writeFileSync(path.join(workDir, 'entry.mjs'), 'process.stdout.write(JSON.stringify(process.argv.slice(2))); setTimeout(() => {}, 5000)');
+
+        const
+            child   = startBrainChild({entry: 'entry.mjs', ownershipTokenFn: () => 'marker-token', repoRoot: workDir}),
+            [argv]  = await once(child.stdout, 'data'),
+            command = execFileSync('ps', ['-o', 'command=', '-p', String(child.pid)], {encoding: 'utf8'});
+
+        try {
+            expect(JSON.parse(String(argv))).toEqual([]);
+            expect(command).toContain(`${path.join(workDir, 'entry.mjs')} --neo-harness-owner=marker-token`)
+        } finally {
+            await stopBrainChild(child, {graceMs: 1000})
+        }
     });
 
     test('startBrainChild rejects entries outside its checkout root', () => {

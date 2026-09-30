@@ -142,6 +142,7 @@ test.describe('harness pack stage', () => {
             'brain.mjs',
             'contentPolicy.mjs',
             'credentialPrompt.mjs',
+            'fixturePlane.mjs',
             'fleetCapability.mjs',
             'main.mjs',
             'mainLog.mjs',

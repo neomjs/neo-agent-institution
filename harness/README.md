@@ -95,6 +95,7 @@ npm start            # prepares missing dev assets, then boots the harness windo
 NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run start:brain  # + the SUPERVISED Agent OS (Arm B — see below)
 npm run smoke        # boot + popup + shared-worker + clean-runtime evidence, JSON verdict
 npm run smoke:brain  # the full verdict incl. the Brain leg (up + clean teardown + no orphan)
+npm run smoke:plane  # the Brain leg attached to a plane the smoke owns, from a stored record
 npm run witness:lifecycle # headed close→hide→tray-open identity + tray-quit teardown receipt
 ```
 
@@ -157,12 +158,29 @@ graph sqlite, Chroma persist dir, fleet instance root, backup target, REM run-st
 exercised listener to a runtime-allocated port, and gates every other lane OFF via its config
 env switch (dev server, Neural Link, embed/message daemons, mlx/ollama/lms, swarm heartbeat, the
 sync + enrichment lanes, deployment-state bridge). Both plane-binding leaves are explicitly empty
-in smoke, so machine-level exports cannot redirect its Fleet process into the canonical plane. The
+in smoke, so machine-level exports cannot redirect its Fleet process into the canonical plane. A
+smoke run also owns its Electron profile: `userData` moves to `<root>/userData` before anything
+reads it, so neither the installed app's plane record nor its screenshots are touched. A checkout
+roots in `harness/.brain/smoke/`, a packaged app in `<temp>/neo-harness-smoke` (stable per user, so
+a crashed run is still swept), and `NEO_HARNESS_BRAIN_ROOT` overrides both. The
 matrix is EXECUTABLE, not documentation:
 `resolveBrainPaths` re-resolves the leaves through `ai/config.mjs` itself under the profile env,
 and the smoke fails on any leaf escaping the isolation root — by FILESYSTEM IDENTITY (ancestor
 symlinks resolved on both sides), asserting what the tree actually consumes, not what the profile
 intended.
+
+**`smoke:plane` opens that door on purpose, and only to a plane the smoke owns.**
+`fixturePlane.mjs` starts the Brain's Memory Core in `seat-token` mode on a loopback port, with
+every plane member it claims placed under `<root>/plane`, behind a loopback `/mc` ingress. It mints
+one seat (`@neo-harness-smoke`) and attaches the way the cockpit's attach does: the plane probe
+names the seat's identity, and the record lands in the smoke's `userData`, encrypted by a stand-in
+whose key lives only in the run, so the OS keychain is never touched. The fleet child then boots
+from that record through the product's own plan and read path, so no orchestrator starts. The
+verdict requires the boot fact `{mode: 'plane-attach', up: true}`, `planeStatus()` answering
+`configured` and `attached`, the fleet child's admission line naming the fixture plane, and the
+`listAgents` round trip. `NEO_HARNESS_SMOKE_PLANE_LEAK=1` routes the plane bearer through every
+census sink (a Brain log line, a renderer error, an IPC reply); each must record a `secretLeaks`
+entry, so that run fails by design.
 
 **Readiness is service readiness, never PID existence.** The daemon writes its PID file before
 config load and `Orchestrator.start()`, so the up-gates are: the orchestrator's own
