@@ -315,7 +315,7 @@ apps/agentos/view/fleet/goldenpath/ObservatorySelectionContainer.mjs
     6175bc8e0fddd1ec81159701a55b210de849ebaa
 
 apps/agentos/view/fleet/goldenpath/ObservatoryTeamContainer.mjs
-    80701243dc834db7ba978c0869f6f4c22e668bc8
+    1d25fb14553c5c6afcfbb5d90d2165f76430e1ed
 
 apps/agentos/view/fleet/goldenpath/ObservatoryViewContainer.mjs
     03a379c44538b8c4fb6ab13de7c0e69d2760dcc2
@@ -594,7 +594,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     86ea1a29752775e70d21d86e0627a5902ca4d877
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    7eb6a254064837fd3003cd960023cf27fc0d562e
+    058937cb4d48d29419761b2e8580c2d8ea2af1bb
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
     4e2398dc703b1fbf169de5f908026d6a17a55cb5
