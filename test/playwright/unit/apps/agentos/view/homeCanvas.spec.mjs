@@ -38,8 +38,10 @@ Neo.setupClass(MotionHost);
 const
     renderer = {
         motion: [],
+        quiet : [],
         clearGraph() {},
         setMotion({still}) {this.motion.push(still)},
+        setQuiet({rects}) {this.quiet.push(rects)},
         setTeam() {},
         setTheme() {}
     },
@@ -142,5 +144,49 @@ test.describe('AgentOS.view.home.Canvas — each mount starts still, and only it
 
         expect(host.still).toBe(false);
         expect(renderer.motion).toEqual([false])
+    })
+});
+
+test.describe('AgentOS.view.home.Canvas — the field goes quiet under the lines the Home view names (#365)', () => {
+    let host;
+
+    test.beforeEach(() => {
+        Neo.ns('Test.Unit.AgentOS.HomeCanvas', true).Renderer = renderer;
+        renderer.quiet.length = 0;
+
+        host            = Neo.create(MotionHost, {quietIds: ['line-a', 'line-b']});
+        host.canvasRect = {x: 100, y: 50}
+    });
+
+    test.afterEach(() => {
+        host.destroy()
+    });
+
+    test('the lines reach the renderer relative to the canvas, and only the latest measurement answers', async () => {
+        const answers = [];
+
+        host.getDomRect    = () => new Promise(resolve => answers.push(resolve));
+        host.isCanvasReady = true;
+
+        const first = host.measureQuiet(), second = host.measureQuiet();
+
+        await expect.poll(() => answers.length, 'the outdated call never measures').toBe(1);
+        answers[0]([{x: 140, y: 130, width: 300, height: 40}, {x: 140, y: 190, width: 0, height: 0}]);
+        await Promise.all([first, second]);
+
+        expect(renderer.quiet).toEqual([[{height: 40, width: 300, x: 40, y: 80}, {height: 0, width: 0, x: 40, y: 140}]]);
+
+        const third = host.measureQuiet();
+        await expect.poll(() => answers.length).toBe(2);
+
+        const fourth = host.measureQuiet();
+        await expect.poll(() => answers.length).toBe(3);
+
+        answers[2]([{x: 100, y: 50, width: 10, height: 10}]);
+        answers[1]([{x: 900, y: 900, width: 10, height: 10}]);
+        await Promise.all([third, fourth]);
+
+        expect(renderer.quiet, 'an answer that lands after a newer one is dropped').toHaveLength(2);
+        expect(renderer.quiet.at(-1)).toEqual([{height: 10, width: 10, x: 0, y: 0}])
     })
 });

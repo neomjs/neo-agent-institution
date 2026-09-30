@@ -129,10 +129,11 @@ class Container extends BaseContainer {
             flex  : 'none',
             layout: {ntype: 'vbox', align: 'start'},
             items : [{
-                ntype: 'component',
-                tag  : 'p',
-                cls  : ['fm-home-eyebrow'],
-                text : 'Neo Agent OS'
+                ntype    : 'component',
+                tag      : 'p',
+                cls      : ['fm-home-eyebrow'],
+                reference: 'eyebrow',
+                text     : 'Neo Agent OS'
             }, {
                 ntype    : 'component',
                 tag      : 'h1',
@@ -211,7 +212,12 @@ class Container extends BaseContainer {
         super.onConstructed(...args);
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
-            me.insert(0, {module: HomeCanvas, reference: 'canvas', team: me.team})
+            me.insert(0, {
+                module   : HomeCanvas,
+                quietIds : ['eyebrow', 'lead', 'lede', 'plane-line'].map(reference => me.getReference(reference).id),
+                reference: 'canvas',
+                team     : me.team
+            })
         }
 
         me.applyState()
@@ -293,7 +299,8 @@ class Container extends BaseContainer {
 
         me.getReference('plane-line').set({hidden: firstRun || state === 'ok', text: `Plane ${word}`});
 
-        me.team = line?.team ?? null
+        me.team = line?.team ?? null;
+        me.getReference('canvas')?.measureQuiet()
     }
 
     /**
