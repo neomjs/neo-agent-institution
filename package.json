@@ -77,7 +77,7 @@
         "autoprefixer": "^10.6.1",
         "chalk": "^6.0.1",
         "commander": "^15.0.0",
-        "cssnano": "^9.0.5",
+        "cssnano": "^9.1.1",
         "esbuild": "^0.28.1",
         "fs-extra": "^11.3.6",
         "gray-matter": "^4.0.3",
