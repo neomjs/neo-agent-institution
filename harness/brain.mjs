@@ -528,13 +528,19 @@ export function resolveRealPath(value) {
  * plane, so the product keeps it beside the plane, never beneath it: whatever removes the plane
  * root would remove the bundles that restore it. There is no default, so a caller cannot fall
  * back to the nested path silently.
+ *
+ * The agents' seats are not the app's at all: their clones and harness homes stay on the Brain's
+ * per-user default (`fleet.agentsRoot`, `~/.neo-ai/agents`), outside this data root and every
+ * backup of it, so an app reset or uninstall never takes an agent's work. Only a caller that must
+ * contain them places them, as the packaged smoke does inside its throwaway root.
  * @param {Object} options
- * @param {String} options.backupRoot Where the backup lane writes its bundles.
- * @param {String} options.dataRoot   Writable per-user root (Electron `userData`-derived).
+ * @param {String} [options.agentsRoot] Where Fleet places agent seats; omit to keep the Brain default.
+ * @param {String} options.backupRoot   Where the backup lane writes its bundles.
+ * @param {String} options.dataRoot     Writable per-user root (Electron `userData`-derived).
  * @returns {Object} env fragment to merge over process.env
  * @throws {Error} When `backupRoot` is missing.
  */
-export function buildPackagedBrainEnv({backupRoot, dataRoot}) {
+export function buildPackagedBrainEnv({agentsRoot, backupRoot, dataRoot}) {
     if (!backupRoot) {
         throw new Error('buildPackagedBrainEnv: a backupRoot is required, since backups are placed apart from the plane (ADR 0019 §10.9)')
     }
@@ -580,10 +586,10 @@ export function buildPackagedBrainEnv({backupRoot, dataRoot}) {
         NEO_KB_LOG_PATH                  : logsDir,
         NEO_NL_LOG_PATH                  : logsDir,
 
-        // not plane members, placed all the same: the backup target where the caller says, the Fleet
-        // seats' workspaces beneath the root
-        NEO_BACKUP_PATH      : backupRoot,
-        NEO_FLEET_AGENTS_ROOT: path.join(dataRoot, 'fleet', 'agents'),
+        // not plane members, both placed where the caller says: the backup target always, the
+        // agents' seats only when the caller must contain them
+        NEO_BACKUP_PATH: backupRoot,
+        ...(agentsRoot ? {NEO_FLEET_AGENTS_ROOT: agentsRoot} : {}),
 
         // The orchestrator role is DECLARED, never inherited. `container-plane` names what
         // the artifact's ON-by-omission set already is — Chroma, the embed + message daemons,

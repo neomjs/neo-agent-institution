@@ -1127,7 +1127,7 @@ async function bootSmokeBrain() {
         // root would land in the shared temp parent
         profile                 = {
             ...(packagedMode
-                ? {...buildPackagedBrainEnv({backupRoot: path.join(isolationRoot, 'backups'), dataRoot: isolationRoot}), ...runtimeEnv, NEO_CHROMA_PORT: String(chromaPort), NEO_FLEET_PORT: String(fleetPort)}
+                ? {...buildPackagedBrainEnv({agentsRoot: path.join(isolationRoot, 'fleet', 'agents'), backupRoot: path.join(isolationRoot, 'backups'), dataRoot: isolationRoot}), ...runtimeEnv, NEO_CHROMA_PORT: String(chromaPort), NEO_FLEET_PORT: String(fleetPort)}
                 : buildBrainProfile({chromaPort, fleetPort, isolationRoot})),
             NEO_FLEET_BEARER: fleetBearerToken,
             ...planeEnv
