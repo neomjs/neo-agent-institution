@@ -480,7 +480,7 @@ resources/scss/src/apps/agentos/fleet/health/SwatchComponent.scss
     6250d529db45caf4e535d8279d9f5b3cc738c538
 
 resources/scss/src/apps/agentos/fleet/instances/AddAgentForm.scss
-    fd5dcbdb5b257047e82282035e914c4ad9fecbd4
+    845c31430402bb333cfcc3a5322c353a62592fc5
 
 resources/scss/src/apps/agentos/fleet/instances/ManagerContainer.scss
     536374ecba673b0de06f733ddcf731238f746494

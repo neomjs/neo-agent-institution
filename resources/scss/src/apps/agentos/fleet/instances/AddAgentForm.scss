@@ -14,10 +14,16 @@
     gap            : var(--fm-space-2);
     padding        : var(--fm-space-3);
 
-    /* the inline-label fields ride the form's own 8px gap — the stock field margin would
-       double the rhythm */
+    /* the inline-label fields ride the form's own gap — the stock field margin would double
+       the rhythm. An invalid field's reason line hangs 16.3px below its fixed-height box, and
+       the next field's inline label floats 5.4px above its own: 16px of room keeps the two
+       apart while the reason shows, and valid fields never move */
     .neo-textfield {
         margin: 0;
+
+        &.neo-invalid {
+            margin-bottom: 16px;
+        }
     }
 
     .fm-add-harness-row {
