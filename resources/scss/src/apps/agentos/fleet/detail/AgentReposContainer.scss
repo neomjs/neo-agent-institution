@@ -25,6 +25,34 @@
         gap: var(--fm-space-2);
     }
 
+    /* the card's commit action takes the add form's signal treatment at the cockpit's action
+       height, never the theme's blue slab */
+    .neo-button.fm-repos-add-button {
+        background   : color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
+        border       : 1px solid color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
+        border-radius: 6px;
+        box-shadow   : none;
+        color        : var(--fm-signal);
+        font-weight  : 600;
+        height       : 32px;
+
+        &:hover {
+            background  : color-mix(in srgb, var(--fm-signal) 24%, var(--fm-panel-2));
+            border-color: var(--fm-signal);
+        }
+
+        &[disabled] {
+            cursor : default;
+            opacity: .6;
+        }
+
+        .neo-button-text {
+            color      : inherit;
+            font       : var(--fm-text-body);
+            font-weight: inherit;
+        }
+    }
+
     .fm-repos-status {
         font      : var(--fm-text-detail);
         min-height: 14px;

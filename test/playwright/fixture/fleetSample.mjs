@@ -64,13 +64,22 @@ export const sampleRoster = [
 
 /**
  * Three sample agent definitions, shaped like the registry's public readback: one per harness kind
- * the Accounts view must name — a Claude app, a Codex app, a single-type product (Kimi Code). No
- * credential field exists on the public shape.
+ * the Accounts view must name — a Claude app, a Codex app, a single-type product (Kimi Code) — and
+ * one per repository shape: a working repository with two others, a working repository alone, and
+ * none. No credential field exists on the public shape.
  * @type {Object[]}
  */
 export const sampleDefinitions = [
-    {id: 'neo-opus-ada',    githubUsername: 'neo-opus-ada',    displayName: 'Ada',    harnessType: 'claude-desktop', launchOwner: 'fleet',    mcpServers: null, mcpTarget: null},
-    {id: 'neo-gpt-sophie',  githubUsername: 'neo-gpt-sophie',  displayName: 'Sophie', harnessType: 'codex-desktop',  launchOwner: 'fleet',    mcpServers: null, mcpTarget: null},
+    {id: 'neo-opus-ada',    githubUsername: 'neo-opus-ada',    displayName: 'Ada',    harnessType: 'claude-desktop', launchOwner: 'fleet',    mcpServers: null, mcpTarget: null, metadata: {
+        repo : {repoSlug: 'neomjs/neo', cloneUrl: 'https://github.com/neomjs/neo.git'},
+        repos: [
+            {repoSlug: 'neomjs/neo-agent-brain',       cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git'},
+            {repoSlug: 'neomjs/neo-agent-institution', cloneUrl: 'https://github.com/neomjs/neo-agent-institution.git'}
+        ]
+    }},
+    {id: 'neo-gpt-sophie',  githubUsername: 'neo-gpt-sophie',  displayName: 'Sophie', harnessType: 'codex-desktop',  launchOwner: 'fleet',    mcpServers: null, mcpTarget: null, metadata: {
+        repo: {repoSlug: 'neomjs/neo', cloneUrl: 'https://github.com/neomjs/neo.git'}
+    }},
     {id: 'neo-kimi-phoebe', githubUsername: 'neo-kimi-phoebe', displayName: 'Phoebe', harnessType: 'kimi-code',      launchOwner: 'external', mcpServers: null, mcpTarget: null}
 ];
 

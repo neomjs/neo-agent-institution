@@ -2,6 +2,10 @@
    affordances, not a selection, so they take no hover or selected fill. The slug is monospace and
    elides, and its full clone URL rides the title. */
 .fm-repository-list.neo-list {
+    --list-item-background-color       : transparent;
+    --list-item-background-color-active: transparent;
+    --list-item-background-color-hover : transparent;
+
     background: transparent;
 
     .neo-list-item {

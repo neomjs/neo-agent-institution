@@ -63,7 +63,7 @@ apps/agentos/index.html
     9ab6324cf458c8002667cd12b4ba1dd928ee33b6
 
 apps/agentos/model/AgentDefinition.mjs
-    947c7c065d728a7dc86f22006425a368618435ee
+    f4316471c60e017a56b274c1bf35fe405e951bfb
 
 apps/agentos/model/CatchUpEntry.mjs
     29fd958061be44385f2c1fcd6548a40d619b0533
@@ -97,6 +97,9 @@ apps/agentos/model/GraphSceneRelation.mjs
 
 apps/agentos/model/MailboxMessage.mjs
     2e999ccc7fd23d46519363cdf8f42814204e7857
+
+apps/agentos/model/SeatRepository.mjs
+    bedc1f12367af4afb601c0061e2a25fd8ff56920
 
 apps/agentos/model/SessionSummary.mjs
     edaf3c4a61750535f3902f4db2c86e1b91e6a538
@@ -161,6 +164,9 @@ apps/agentos/store/GraphScenePeers.mjs
 apps/agentos/store/GraphSceneRelations.mjs
     42208ebf1cabda3ffd28462bb2d0c8a10d42cd49
 
+apps/agentos/store/SeatRepositories.mjs
+    3bb2013ec2e8d4c58cf28b490d7a7dd1702bb4d3
+
 apps/agentos/store/ViewerWakeFeed.mjs
     2416a3352de08dc4fa72d503913c6450a6f8dab6
 
@@ -180,7 +186,7 @@ apps/agentos/util/CockpitPerspectives.mjs
     f892864ca8a1ec0d92fb7e3fa45fa8f68c5c770f
 
 apps/agentos/util/ConfigIntentRoundTrip.mjs
-    6572081f112989fcf71a55d1c528f1e44ee749a8
+    1d7187c1dddf2f5842e025c6554f9081bf9b74f9
 
 apps/agentos/util/DeploymentStateRead.mjs
     d2699ce646972d0252ce188b3012ca469a87be54
@@ -255,7 +261,7 @@ apps/agentos/view/accounts/List.mjs
     ec8f3ed16cb692813a9ae5d7068d6542e8954b61
 
 apps/agentos/view/accounts/Panel.mjs
-    d9deb1df7146273bc0692dcbd38e24c72599a76d
+    6b62d2da58287a849365d1a6ce7138fd654f644e
 
 apps/agentos/view/fleet/activity/ActorChipComponent.mjs
     80e172b5f0d9a4ed464309e308fb14024fd14b4a
@@ -299,8 +305,14 @@ apps/agentos/view/fleet/cockpit/ViewerWakeTelltaleComponent.mjs
 apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
     49ec354f495fbef466aa811d1a99c4b0b370be78
 
+apps/agentos/view/fleet/detail/AgentReposContainer.mjs
+    cbe9eeb796d9c8a238ccd2f51313b1fbdc02db5b
+
 apps/agentos/view/fleet/detail/Container.mjs
     62528194cbb4154236581018f25e8f5eb87734a9
+
+apps/agentos/view/fleet/detail/RepositoryList.mjs
+    e0b21d333884e03c5c0bab0d84d0a73a65e1e855
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
     859204e6ce743942b33096f2ae4a4f10ba06f8bb
@@ -447,7 +459,7 @@ resources/scss/src/apps/agentos/accounts/List.scss
     94fa05801c3e3642c6586cb2c9072418bfa8081c
 
 resources/scss/src/apps/agentos/accounts/Panel.scss
-    7f4296bdfb099d037bdc5fe07462dfbf3be86753
+    cb6f1b1562ada80f740949e584b38ca08ba0ecb4
 
 resources/scss/src/apps/agentos/fleet/activity/ActorChipComponent.scss
     56b5a21524fe79e827336b570c4ae981e89b3733
@@ -476,8 +488,14 @@ resources/scss/src/apps/agentos/fleet/cockpit/ViewerWakeTelltaleComponent.scss
 resources/scss/src/apps/agentos/fleet/detail/AgentConfigComponent.scss
     6bbd8128445d97299289944e027775382904e0a8
 
+resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
+    b32ec46798ac58bb458c61c428000db96f982ea9
+
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
     ba67b51e2a93c23b1d6b1e22a9fe508350088898
+
+resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
+    af42732537eee47355260a8dddde70d7900a764e
 
 resources/scss/src/apps/agentos/fleet/goldenpath/Container.scss
     c5cdbc99a91efcd5bf2519591df837d580b4dd40
@@ -606,13 +624,13 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    fb3aa98651d2fbfa8e0e1ca68c2c4443b9e1265a
+    f10946724cf686286640b118eed0a89d141ab57a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
-    a132e9858c4945f7630ce78fbdb6d8115952fe1e
+    cff9a05a77b628ce83927dbf728dafc12c09be28
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1280x800.png
-    d8f909cb7890c1b0023e208b9ffd9a63fab2f323
+    adf7702dc6348c414a63c1e83a9acd1bc1e9d0de
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-1000x640.png
     5cbf73d84fc120a1c12dd93a6fa32703c278b923
@@ -621,7 +639,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-addi
     97ba7103e6812710d6029a01ba2bec6d6960d854
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
-    21d440ed64c42cf05378486ea8c7022814af41fb
+    b10120de0aea789b76269d9f2b27f88cab22f9b5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/activity-stream-chips.png
     7f9563d60cfbeb6040b75b8a9f4b7882a237ac22
