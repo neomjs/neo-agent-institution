@@ -1,4 +1,5 @@
 import {expect, test}                     from '@playwright/test';
+import {EventEmitter}                     from 'node:events';
 import {existsSync, mkdtempSync, readFileSync} from 'node:fs';
 import {tmpdir}                           from 'node:os';
 import path                               from 'node:path';
@@ -98,7 +99,7 @@ test.describe('harness/mainLog — the shell\'s own log', () => {
                 warn : (...args) => printed.push(['warn', ...args])
             };
 
-        createMainLog({dir, now: NOW}).install(target);
+        createMainLog({dir, now: NOW}).install(target, []);
 
         target.log('HARNESS_BRAIN_PLAN');
         target.warn('HARNESS_BRAIN_STOP_FAILED', new Error('boom'));
@@ -111,5 +112,29 @@ test.describe('harness/mainLog — the shell\'s own log', () => {
         expect(text).toContain('HARNESS_BRAIN_PLAN');
         expect(text).toContain('HARNESS_BRAIN_STOP_FAILED Error: boom');
         expect(text).toContain('HARNESS_BRAIN exit 1')
+    });
+
+    test('a terminal that went away (EPIPE) never throws: the file names it once and keeps every line', () => {
+        const
+            dir    = tempDir(),
+            epipe  = Object.assign(new Error('write EPIPE'), {code: 'EPIPE'}),
+            stderr = new EventEmitter(),
+            stdout = new EventEmitter(),
+            target = {error: () => {}, log: () => {}, warn: () => {}};
+
+        createMainLog({dir, now: NOW}).install(target, [stdout, stderr]);
+
+        // an EventEmitter throws an 'error' nobody listens for: the uncaught exception Electron shows as a dialog
+        expect(() => {
+            stderr.emit('error', epipe);
+            target.error('HARNESS_BRAIN exit 1');
+            stderr.emit('error', epipe);
+            stdout.emit('error', epipe)
+        }).not.toThrow();
+
+        expect(readFileSync(path.join(dir, MAIN_LOG_FILE), 'utf8')).toBe(
+            '2026-09-25T20:50:00.000Z HARNESS_TERMINAL_CLOSED EPIPE\n' +
+            '2026-09-25T20:50:00.000Z HARNESS_BRAIN exit 1\n'
+        )
     })
 });

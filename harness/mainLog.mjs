@@ -103,9 +103,22 @@ export function createMainLog({dir, secrets = () => [], maxBytes = 1024 * 1024, 
 
     /**
      * @summary Tees the target's `log`, `warn` and `error` into the file; the originals still print.
+     * A terminal whose reader went away (EPIPE) fails every print; unheard, each failure is an uncaught
+     * exception, which Electron shows as a modal dialog. The terminal half drops quietly instead, and
+     * the file names why once.
      * @param {Object} [target=console]
+     * @param {EventEmitter[]} [terminal=[process.stdout, process.stderr]] The streams the originals print to.
      */
-    function install(target = console) {
+    function install(target = console, terminal = [process.stdout, process.stderr]) {
+        let terminalClosed = false;
+
+        for (const stream of terminal) {
+            stream.on('error', error => {
+                terminalClosed || write(`HARNESS_TERMINAL_CLOSED ${error.code ?? error.message}`);
+                terminalClosed = true
+            })
+        }
+
         for (const level of ['log', 'warn', 'error']) {
             const original = target[level].bind(target);
 
