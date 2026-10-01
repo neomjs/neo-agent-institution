@@ -63,6 +63,18 @@ export const sampleRoster = [
 ];
 
 /**
+ * Three sample agent definitions, shaped like the registry's public readback: one per harness kind
+ * the Accounts view must name — a Claude app, a Codex app, a single-type product (Kimi Code). No
+ * credential field exists on the public shape.
+ * @type {Object[]}
+ */
+export const sampleDefinitions = [
+    {id: 'neo-opus-ada',    githubUsername: 'neo-opus-ada',    displayName: 'Ada',    harnessType: 'claude-desktop', launchOwner: 'fleet',    mcpServers: null, mcpTarget: null},
+    {id: 'neo-gpt-sophie',  githubUsername: 'neo-gpt-sophie',  displayName: 'Sophie', harnessType: 'codex-desktop',  launchOwner: 'fleet',    mcpServers: null, mcpTarget: null},
+    {id: 'neo-kimi-phoebe', githubUsername: 'neo-kimi-phoebe', displayName: 'Phoebe', harnessType: 'kimi-code',      launchOwner: 'external', mcpServers: null, mcpTarget: null}
+];
+
+/**
  * Six sample activity events, oldest first (the stream renders newest first). Payload texts carry
  * the WHAT only: the row renders WHO in the actor cell and TO in the recipient cell.
  * @type {Object[]}

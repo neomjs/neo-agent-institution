@@ -80,8 +80,9 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
     test('no bridge → gated, nothing attempted; a bridge without defineAgent is equally gated', async () => {
         const gated = await AddAgentFlow.submitDefineAgent({bridgeResolver: () => null, payload: cleanPayload()});
 
-        expect(gated.state).toBe('gated');
-        expect(gated.reason).toContain('fails closed');
+        expect(gated).toEqual({state: 'gated', reason: AddAgentFlow.FLEET_OFFLINE_REASON});
+        // the operator's words: what to do, no bridge or App Worker vocabulary (#245)
+        expect(gated.reason).toBe('The fleet is not running. Start it, then add the agent.');
 
         const wrongShape = await AddAgentFlow.submitDefineAgent({bridgeResolver: () => ({}), payload: cleanPayload()});
         expect(wrongShape.state).toBe('gated')
@@ -161,7 +162,7 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(failing).toEqual({
             state     : 'readback-confirmed',
             definition: cleanReadback(),
-            reason    : 'Agent added, but its working repo is not set: set neomjs/neo before starting it.'
+            reason    : 'Agent added, but its working repository is not set: set neomjs/neo before starting it.'
         });
 
         let contacted = false;
@@ -203,11 +204,57 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
     test('bridge absent at construction renders gated with the submit affordance disabled-with-reason', () => {
         const form = Neo.create(AddAgentForm, {appName: 'AgentOSAddAgentFlowTest'});
 
-        expect(form.flowStatus.state).toBe('gated');
+        expect(form.flowStatus).toEqual({state: 'gated', reason: AddAgentFlow.FLEET_OFFLINE_REASON});
         expect(form.getReference('submit-button').disabled).toBe(true);
 
         const statusCls = form.getReference('flow-status').cls;
         expect(statusCls).toContain('is-gated');
+
+        form.destroy()
+    });
+
+    test('the form names its forge once and its token field "Personal access token" (#245)', () => {
+        const
+            form   = Neo.create(AddAgentForm, {appName: 'AgentOSAddAgentFlowTest'}),
+            labels = form.items
+                .filter(item => item.labelText || item.cls?.includes('fm-add-section'))
+                .map(item => item.labelText ?? item.text);
+
+        expect(labels).toEqual(['GitHub account', 'Username', 'Personal access token', 'Working repository', 'Harness']);
+        expect(JSON.stringify(labels)).not.toMatch(/GitHub (username|PAT)/);
+
+        form.destroy()
+    });
+
+    test('the harness choice is one chip per product, with App / Command line only where a product ships both (#245)', () => {
+        const
+            form     = Neo.create(AddAgentForm, {appName: 'AgentOSAddAgentFlowTest'}),
+            products = form.getReference('product-row').items,
+            runsAs   = form.getReference('runs-as-row'),
+            chip     = (row, key, value) => row.items.find(item => item[key] === value),
+            selected = row => row.items.filter(item => item.cls.includes('is-selected')).map(item => item.text);
+
+        // one chip per product in the Brain's catalog, never one per harness type
+        expect(products.map(item => item.text)).toEqual(['Codex', 'Claude', 'OpenCode', 'Kimi Code', 'Antigravity', 'Native']);
+
+        // the first product's first type is seated: Codex on the command line
+        expect(form.harnessType).toBe('codex');
+        expect(selected(form.getReference('product-row'))).toEqual(['Codex']);
+        expect(runsAs.hidden).toBe(false);
+        expect(selected(runsAs)).toEqual(['Command line']);
+
+        form.onRunsAsChipClick({component: chip(runsAs, 'runsAs', 'app')});
+        expect(form.harnessType).toBe('codex-desktop');
+
+        // a product switch keeps the run mode where the product has it: Codex app → Claude app
+        form.onProductChipClick({component: chip(form.getReference('product-row'), 'product', 'claude')});
+        expect(form.harnessType).toBe('claude-desktop');
+        expect(selected(runsAs)).toEqual(['App']);
+
+        // a single-type product hides the run-mode row
+        form.onProductChipClick({component: chip(form.getReference('product-row'), 'product', 'kimi-code')});
+        expect(form.harnessType).toBe('kimi-code');
+        expect(runsAs.hidden).toBe(true);
 
         form.destroy()
     });
@@ -260,7 +307,8 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         });
 
         expect(form.items.some(item => item.name === 'credential')).toBe(false);
-        expect(form.flowStatus.reason).toContain('native shell');
+        // the setup journey carries no credential-ownership prose: an idle form says nothing (#245)
+        expect(form.flowStatus).toEqual({state: 'idle', reason: ''});
 
         const usernameField = await form.getField('githubUsername');
 

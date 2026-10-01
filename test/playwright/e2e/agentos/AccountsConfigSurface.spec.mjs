@@ -1,6 +1,6 @@
 import {test, expect, loadAgentOsModule, loadNeuralLinkModules}  from '../../fixtures.mjs';
 import {authenticatedFleetOptions, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
-import {listHarnessTypes}                                        from 'neo-agent-brain/fleet-contract';
+import {listHarnessProducts}                                     from 'neo-agent-brain/fleet-contract';
 import fs                                                        from 'fs';
 import os                                                        from 'os';
 import path                                                      from 'path';
@@ -17,9 +17,9 @@ const [
 
 /**
  * @summary Verifies the agent-scoped Accounts configuration surface mounts end-to-end: the
- * selector strip derives from the roster store, the configuration card renders the scoped agent's
- * registry-derived configuration (harness chips, MCP-server rows, tri-state operational rows),
- * and the add-form's harness radios carry the shared registry's entries. The save + operable-cold
+ * definitions list derives from the roster store, the configuration card renders the scoped agent's
+ * registry-derived configuration (product chips, MCP-server rows, tri-state operational rows),
+ * and the shared add-agent form offers one chip per catalog product. The save + operable-cold
  * add journeys use the production App-Worker bridge, a real Brain registry/server, the Viewport's
  * accepted-definition composition handoff, and Neural Link inspection of the deliberately separate
  * AgentDefinitions + FleetRoster stores; this is behavioral evidence rather than a screenshot generator.
@@ -73,16 +73,19 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
 
             await appHandle.callMethod(accounts.properties.id, 'loadAgentDefinitions');
 
-            // The provider store cold-hydrates from the REAL Brain registry; the bridge-pending seed
-            // is gone before an existing agent can be edited.
-            await expect(page.locator('.agent-selector-button').filter({hasText: agentId})).toHaveCount(1);
+            // The provider store cold-hydrates from the REAL Brain registry, and the list renders it.
+            const
+                accountsView = page.locator('.agent-panel-accounts'),
+                listItems    = accountsView.locator('.fm-accounts-list .neo-list-item');
+
+            await expect(listItems.filter({hasText: agentId})).toHaveCount(1);
 
             await expect(page.locator('.fm-agent-config-card')).toBeVisible();
-            // the harness chips only: the launch-owner and memory-target choices are chips too
-            const harnessChips = page.locator('.fm-config-harness .fm-chip');
+            // the product chips only: the run-mode, launch-owner and memory-target choices are chips too
+            const productChips = page.locator('.fm-config-harness .fm-chip');
 
-            await expect(harnessChips).toHaveCount(listHarnessTypes().length);
-            await expect(harnessChips.and(page.locator('.is-selected'))).toHaveCount(1);
+            await expect(productChips).toHaveCount(listHarnessProducts().length);
+            await expect(productChips.and(page.locator('.is-selected'))).toHaveCount(1);
 
             const memoryCore = page.locator('.fm-config-toggle').filter({hasText: 'Memory Core'});
             await expect(memoryCore).toHaveClass(/is-enabled/);
@@ -99,19 +102,27 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             // Body applies only the canonical redacted response. The accepted-definition owner
             // intent then makes FleetCockpit re-poll its separate Brain assembler.
             const
-                usernameField   = page.getByRole('textbox', {name: 'GitHub username', exact: true}),
-                credentialField = page.getByRole('textbox', {name: 'GitHub PAT', exact: true}),
-                harnessField    = page.locator('.agent-harness-picker .neo-radiofield').filter({hasText: 'Antigravity'});
+                addAction       = accountsView.locator('.fm-accounts-add'),
+                form            = accountsView.locator('.fm-add-agent-form'),
+                usernameField   = form.getByRole('textbox', {name: 'Username', exact: true}),
+                credentialField = form.getByRole('textbox', {name: 'Personal access token', exact: true}),
+                productChip     = form.locator('.fm-add-harness-row .fm-chip').filter({hasText: 'Antigravity'}),
+                submit          = form.locator('.fm-add-submit');
 
+            await addAction.click();
+            await expect(form).toBeVisible();
             await usernameField.fill(createdAgentId);
             await credentialField.fill(createdSecret);
-            await harnessField.locator('label').click();
-            await expect(harnessField.locator('input[type="radio"]')).toBeChecked();
-            await page.getByRole('button', {name: 'Add agent', exact: true}).click();
+            await productChip.click();
+            await expect(productChip).toHaveClass(/is-selected/);
+            await submit.click();
 
-            await expect(page.locator('.agent-bridge-status.is-live')).toContainText('Agent added');
+            // the form stays up with its outcome line; the new agent is listed, one click from its card
+            await expect(form.locator('.fm-add-status.is-readback-confirmed')).toContainText('Agent added');
             await expect(credentialField).toHaveValue('');
-            await expect(page.locator('.agent-selector-button').filter({hasText: createdAgentId})).toHaveCount(1);
+            await expect(listItems.filter({hasText: createdAgentId})).toHaveCount(1);
+            await listItems.filter({hasText: createdAgentId}).click();
+            await expect(page.locator('.fm-agent-config-card')).toContainText(createdAgentId);
 
             const createdDefinition = FleetRegistryService.getDefinition(createdAgentId);
 
@@ -132,9 +143,10 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             // A registry-domain rejection travels as a controlled outcome: reason visible, no
             // second Body mutation/owner refresh, and the retry PAT is still cleared.
             await page.getByRole('tab', {name: 'Accounts', exact: true}).click();
+            await addAction.click();
             await credentialField.fill(duplicateSecret);
-            await page.getByRole('button', {name: 'Add agent', exact: true}).click();
-            await expect(page.locator('.agent-bridge-status.is-error')).toContainText('already exists');
+            await submit.click();
+            await expect(form.locator('.fm-add-status.is-rejected')).toContainText('already exists');
             await expect(credentialField).toHaveValue('');
             expect(FleetRegistryService.listAgents().filter(agent => agent.id === createdAgentId)).toHaveLength(1);
 
@@ -170,7 +182,8 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             expect(card.properties.record).toMatchObject({
                 agentId  : createdAgentId,
                 engineTag: null,
-                family   : null
+                // the Brain derives the display family from the declared harness (neo-agent-brain#656)
+                family   : 'gemini'
             });
 
             // A fresh page/store hydration must re-read the canonical sparse result, not the
@@ -190,11 +203,13 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             const [accountsReloaded] = await appReloaded.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id']);
 
             await appReloaded.callMethod(accountsReloaded.properties.id, 'loadAgentDefinitions');
-            await expect(page.locator('.agent-selector-button').filter({hasText: agentId})).toHaveCount(1);
-            await expect(page.locator('.agent-selector-button').filter({hasText: createdAgentId})).toHaveCount(1);
+            await expect(listItems.filter({hasText: agentId})).toHaveCount(1);
+            await expect(listItems.filter({hasText: createdAgentId})).toHaveCount(1);
             await expect(page.locator('.fm-config-toggle').filter({hasText: 'Memory Core'})).toHaveClass(/is-disabled/);
 
-            expect(await page.locator('.agent-harness-picker .neo-radiofield').count()).toBe(listHarnessTypes().length)
+            // the shared form offers one chip per catalog product, never one per harness type
+            await addAction.click();
+            await expect(form.locator('.fm-add-harness-row:not(.fm-add-runs-as-row) .fm-chip')).toHaveCount(listHarnessProducts().length)
         } finally {
             server && await new Promise(resolve => server.close(resolve));
             FleetRegistryService.dataDir = priorDataDir;

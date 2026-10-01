@@ -18,8 +18,8 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * in any outcome object — outcomes carry public definition fields and operator-facing reasons
  * exclusively.
  *
- * @see apps/agentos/view/fleet/instances/AddAgentForm.mjs — the rendering consumer
- * @see apps/agentos/view/accounts/Panel.mjs — the keeper-view ancestor this logic is lifted from
+ * @see apps/agentos/view/fleet/instances/AddAgentForm.mjs — the rendering consumer, mounted by the
+ *     cockpit rail and the Accounts view
  */
 
 /**
@@ -43,13 +43,20 @@ const SECRET_KEYS = ['authorization', 'credential', 'password', 'pat', 'token'];
 const DEFAULT_REPO_SLUG = 'neomjs/neo';
 
 /**
+ * The `gated` reason: no Fleet Registry bridge answers, so nothing can be added yet.
+ * @member {String} FLEET_OFFLINE_REASON
+ */
+const FLEET_OFFLINE_REASON = 'The fleet is not running. Start it, then add the agent.';
+
+/**
  * Static validation and bridge-round-trip utilities for defining an AgentOS resident.
  * @class AgentOS.util.AddAgentFlow
  * @extends Neo.core.Base
  */
 class AddAgentFlow extends Base {
-    static ADD_AGENT_STATES  = ADD_AGENT_STATES
-    static DEFAULT_REPO_SLUG = DEFAULT_REPO_SLUG
+    static ADD_AGENT_STATES     = ADD_AGENT_STATES
+    static DEFAULT_REPO_SLUG    = DEFAULT_REPO_SLUG
+    static FLEET_OFFLINE_REASON = FLEET_OFFLINE_REASON
 
     static config = {
         /**
@@ -79,8 +86,8 @@ class AddAgentFlow extends Base {
             return {
                 valid : false,
                 reason: credentialRequired
-                    ? 'GitHub username, harness type, and PAT are required.'
-                    : 'GitHub username and harness type are required.'
+                    ? 'Username, harness and personal access token are required.'
+                    : 'Username and harness are required.'
             }
         }
 
@@ -209,14 +216,11 @@ class AddAgentFlow extends Base {
         }
 
         if (!repo) {
-            return {state: 'rejected', reason: 'The working repo reads owner/repo, e.g. neomjs/neo.'}
+            return {state: 'rejected', reason: 'The working repository reads owner/repo, e.g. neomjs/neo.'}
         }
 
         if (!bridge?.defineAgent) {
-            return {
-                state : 'gated',
-                reason: 'Fleet Registry bridge unavailable — agent setup fails closed. Start the fleet server from the neo-agent-brain checkout.'
-            }
+            return {state: 'gated', reason: FLEET_OFFLINE_REASON}
         }
 
         let outcome;
@@ -226,7 +230,7 @@ class AddAgentFlow extends Base {
         } catch (error) {
             // transport failure: the reason stays generic — an error message assembled elsewhere is
             // not a surface we allow to carry credential bytes into the DOM
-            return {state: 'rejected', reason: 'Could not reach the Fleet Registry. Nothing was stored in browser state.'}
+            return {state: 'rejected', reason: 'Could not reach the fleet. Nothing was saved.'}
         }
 
         if (outcome?.status === 'rejected') {
@@ -253,7 +257,7 @@ class AddAgentFlow extends Base {
      * @returns {Promise<{definition: Object, reason: String}>}
      */
     static async assignRepo(bridge, definition, repo, credential) {
-        const unset = {definition, reason: `Agent added, but its working repo is not set: set ${repo.repoSlug} before starting it.`};
+        const unset = {definition, reason: `Agent added, but its working repository is not set: set ${repo.repoSlug} before starting it.`};
 
         if (!bridge?.setRepo) {
             return unset

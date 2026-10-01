@@ -1,0 +1,41 @@
+/* The Accounts definitions list: one quiet row per agent, the name over its harness line, on no
+   stock surface — the theme's item grey never reaches a row, in any state. Selection pairs the
+   signal tint with the name's weight, so it never reads by colour alone. */
+.fm-accounts-list.neo-list {
+    --list-item-background-color       : transparent;
+    --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+    --list-item-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+
+    background: transparent;
+    gap       : 2px;
+
+    .neo-list-item {
+        border-radius : 6px;
+        color         : var(--fm-ink-dim);
+        cursor        : pointer;
+        display       : flex;
+        flex-direction: column;
+        gap           : 2px;
+        padding       : var(--fm-space-1) var(--fm-space-2);
+
+        .fm-accounts-name {
+            color   : var(--fm-ink);
+            font    : var(--fm-text-body);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space  : nowrap;
+        }
+
+        .fm-accounts-harness {
+            font: var(--fm-text-detail);
+        }
+
+        &.neo-selected {
+            background: color-mix(in srgb, var(--fm-signal) 16%, transparent);
+
+            .fm-accounts-name {
+                font-weight: 600;
+            }
+        }
+    }
+}

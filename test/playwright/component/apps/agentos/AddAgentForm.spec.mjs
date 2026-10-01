@@ -56,7 +56,7 @@ test.describe('AgentOS.view.fleet.AddAgentForm — mounted credential boundary (
         const submit = form.locator('.fm-add-submit');
         await expect(submit).toBeVisible();
         await expect(submit).toBeDisabled();
-        await expect(form.locator('.fm-add-status')).toContainText('fails closed');
+        await expect(form.locator('.fm-add-status')).toContainText('The fleet is not running. Start it, then add the agent.');
 
         // type the sentinel into the PAT field — the ONE place credential bytes may exist
         const patInput = form.locator('input[type="password"]');

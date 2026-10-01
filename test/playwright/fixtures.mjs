@@ -5,7 +5,7 @@ export {
     test
 } from '../../node_modules/neo.mjs/test/playwright/fixtures.mjs';
 
-import {sampleActivity, sampleRoster} from './fixture/fleetSample.mjs';
+import {sampleActivity, sampleDefinitions, sampleRoster} from './fixture/fleetSample.mjs';
 
 /**
  * @summary What an arm that closes a window on purpose names with `workerErrors.expect`: the components
@@ -31,7 +31,8 @@ let fleetLandingTick = 0;
  * @summary Sets the landing's configs inside the App worker: the module loads under a fresh URL each
  * time (its instance survives, the load finds it), then `Neo.worker.App.setConfigs` carries the payload.
  * @param {Object} page The Playwright page.
- * @param {Object} configs `{roster: {rows}}`, `{activity: {events}}`, and/or `{tasks: {snapshot}}`.
+ * @param {Object} configs `{roster: {rows}}`, `{activity: {events}}`, `{tasks: {snapshot}}`, `{mailbox: {events}}`
+ *     and/or `{definitions: {rows}}`.
  * @returns {Promise<void>}
  */
 async function landFleet(page, configs) {
@@ -78,6 +79,17 @@ export async function landFleetActivity(page, events) {
  */
 export async function landFleetRoster(page, rows) {
     await landFleet(page, {roster: {rows}})
+}
+
+/**
+ * @summary Lands agent definitions as the registry's answer: they replace the Viewport provider's
+ * `agentDefinitions` Store, the Accounts view's source.
+ * @param {Object} page The Playwright page.
+ * @param {Object[]} [rows=sampleDefinitions] Public definitions (`test/playwright/fixture/fleetSample.mjs`).
+ * @returns {Promise<void>}
+ */
+export async function landAgentDefinitions(page, rows=sampleDefinitions) {
+    await landFleet(page, {definitions: {rows}})
 }
 
 /**

@@ -9,7 +9,8 @@ import {isDescriptor} from '../../../node_modules/neo.mjs/src/core/ConfigSymbols
  * follow the liveness admission used by their reads; tasks follow `Controller.admitTasks`, which
  * invalidates an older in-flight read. Every set lands — the configs compare nothing — so a spec
  * re-lands the same facts at will. Loading the module again (a fresh `t`) finds the instance. A set
- * mailbox is served as the bridge's `fleetActivity`, so the cockpit's own reads page it.
+ * mailbox is served as the bridge's `fleetActivity`, so the cockpit's own reads page it. Landed
+ * definitions replace the Viewport provider's `agentDefinitions` Store, the Accounts view's source.
  *
  * @see apps/agentos/view/fleet/cockpit/LivenessController.mjs (`admitRoster`, `admitActivity`)
  * @see apps/agentos/view/fleet/cockpit/Controller.mjs (`admitTasks`)
@@ -40,7 +41,12 @@ class FleetLanding extends Base {
          * A mailbox the cockpit reads, `{events}` newest first: set, it becomes the bridge's `fleetActivity`.
          * @member {Object|null} mailbox_=null
          */
-        mailbox_: {[isDescriptor]: true, value: null, isEqual: () => false}
+        mailbox_: {[isDescriptor]: true, value: null, isEqual: () => false},
+        /**
+         * Agent definitions to land, `{rows}` shaped like the registry's public definitions.
+         * @member {Object|null} definitions_=null
+         */
+        definitions_: {[isDescriptor]: true, value: null, isEqual: () => false}
     }
 
     /**
@@ -73,6 +79,13 @@ class FleetLanding extends Base {
     /**
      * @param {Object|null} value
      */
+    afterSetDefinitions(value) {
+        value && this.landDefinitions(value.rows)
+    }
+
+    /**
+     * @param {Object|null} value
+     */
     afterSetMailbox(value) {
         value && this.serveMailbox(value.events)
     }
@@ -99,6 +112,21 @@ class FleetLanding extends Base {
         const {owner} = this;
 
         owner.admitActivity({events, profileId: owner.bridge?.profileId ?? null})
+    }
+
+    /**
+     * @summary The definitions, as the registry's answer: they replace the provider's
+     * `agentDefinitions` Store, which the Accounts list and card read.
+     * @param {Object[]} rows
+     */
+    landDefinitions(rows) {
+        const store = Neo.manager.Component.findFirst('className', 'AgentOS.view.Viewport')?.getStateProvider()?.getStore('agentDefinitions');
+
+        if (!store) {
+            throw new Error('FleetLanding: no Viewport with an agentDefinitions store is mounted')
+        }
+
+        store.data = rows
     }
 
     /**
