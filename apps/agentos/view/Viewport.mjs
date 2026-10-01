@@ -41,9 +41,9 @@ const railHeader = (iconCls, route, text) => ({iconCls, route, text, tooltip: {t
  *
  * The Viewport is also the composition authority between two deliberately separate projections:
  * Accounts owns `AgentDefinitions`, while FleetCockpit's liveness owner fills `FleetRoster`, which this
- * provider hosts so Home reads the same roster. An accepted definition event is routed here so the
- * cockpit can re-poll its Brain-side `fleetRoster()` assembler; neither sibling reaches into or
- * locally maps the other's store.
+ * provider hosts so Home and Accounts' Repositories card read the same roster. An accepted definition
+ * event is routed here so the cockpit can re-poll its Brain-side `fleetRoster()` assembler; neither
+ * sibling writes or locally maps the other's store.
  */
 class Viewport extends BaseViewport {
     static config = {

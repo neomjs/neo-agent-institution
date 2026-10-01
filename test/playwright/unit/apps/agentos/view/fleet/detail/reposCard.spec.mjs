@@ -16,40 +16,49 @@ import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
  * record in a real Store, the card's own rows Store, and the `configIntent` it fires. The card lists
  * what the registry declares (the working repository first, then the others) and turns an add or a
  * Remove into the seat's whole new list. It never changes the record: only the owner's round-trip
- * does.
+ * does. Each other repository also shows the last start's outcome from a real roster Store.
  */
 test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the definition, one list per change', () => {
-    let AgentDefinition, AgentReposCard, Store;
+    let AgentDefinition, AgentReposCard, FleetRoster, Store;
 
     test.beforeAll(async () => {
         AgentDefinition = (await import('../../../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
         AgentReposCard  = (await import('../../../../../../../../apps/agentos/view/fleet/detail/AgentReposContainer.mjs')).default;
+        FleetRoster     = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default;
         Store           = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
     });
 
     const
         working = {repoSlug: 'neomjs/neo', cloneUrl: 'https://github.com/neomjs/neo.git'},
         brain   = {repoSlug: 'neomjs/neo-agent-brain', cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git'},
-        skills  = {repoSlug: 'neomjs/neo-agent-skills', cloneUrl: 'git@github.com:neomjs/neo-agent-skills.git'};
+        skills  = {repoSlug: 'neomjs/neo-agent-skills', cloneUrl: 'git@github.com:neomjs/neo-agent-skills.git'},
+        reason  = 'git clone exited 128: remote: Repository not found.';
 
     /**
      * @summary One seat in a real definitions Store, the card scoped to it, and its fired intents.
      * @param {Object} metadata The definition's `metadata`.
+     * @param {Neo.data.Store|null} [rosterStore=null] The fleet roster the card reads outcomes from.
      * @returns {Object}
      */
-    const mount = metadata => {
+    const mount = (metadata, rosterStore=null) => {
         const
-            store   = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            store    = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
                 {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop', metadata}
             ]}),
-            record  = store.get('ada'),
-            card    = Neo.create(AgentReposCard, {record}),
-            intents = [],
-            rows    = () => card.getReference('repo-list').store.items.map(row => ({repoSlug: row.repoSlug, working: row.working}));
+            record   = store.get('ada'),
+            card     = Neo.create(AgentReposCard, {record, rosterStore}),
+            intents  = [],
+            rowStore = () => card.getReference('repo-list').store,
+            rows     = () => rowStore().items.map(row => ({repoSlug: row.repoSlug, working: row.working})),
+            outcomes = () => rowStore().items.map(({repoSlug}) => {
+                const {reason, state} = rowStore().get(repoSlug);
+
+                return {repoSlug, state, reason}
+            });
 
         card.on('configIntent', data => intents.push(data));
 
-        return {card, intents, record, rows, store}
+        return {card, intents, outcomes, record, rows, store}
     };
 
     test('the rows are the working repository first, then the others, as the definition declares them', () => {
@@ -152,6 +161,88 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         expect(card.getReference('add-button').disabled).toBe(false);
 
         card.destroy();
+        store.destroy()
+    });
+
+    test('each other repository shows the last start\'s outcome from the seat\'s roster record; one added since shows none', () => {
+        const
+            createApp = {repoSlug: 'neomjs/create-app', cloneUrl: 'https://github.com/neomjs/create-app.git'},
+            roster    = Neo.create(FleetRoster);
+
+        roster.add({agentId: 'ada', repoOutcomes: [
+            {repoSlug: brain.repoSlug,  state: 'prepared'},
+            {repoSlug: skills.repoSlug, state: 'failed', reason}
+        ]});
+
+        const {card, intents, outcomes, store} = mount({repo: working, repos: [brain, skills, createApp]}, roster);
+
+        expect(outcomes()).toEqual([
+            {repoSlug: 'neomjs/neo',              state: null,       reason: null},
+            {repoSlug: 'neomjs/neo-agent-brain',  state: 'prepared', reason: null},
+            {repoSlug: 'neomjs/neo-agent-skills', state: 'failed',   reason},
+            // added after the last start: no outcome until the next one
+            {repoSlug: 'neomjs/create-app',       state: null,       reason: null}
+        ]);
+        // an outcome is a fact of the last start, and the heading says so
+        expect(card.getReference('repos-heading').text).toBe('Repositories · declared · last start');
+
+        const vdom = JSON.stringify(card.getReference('repo-list').vdom);
+
+        expect(vdom.match(/fm-repo-outcome/g)).toHaveLength(2);
+        expect(vdom).toContain('"text":"Prepared"');
+        expect(vdom).toContain('"text":"Failed"');
+        expect(vdom.match(/fm-repo-reason/g)).toHaveLength(1);
+        expect(vdom).toContain(reason);
+
+        // the outcome is display only: a new list carries the registry's entries and nothing else
+        card.getReference('field-repo').value = 'neomjs/neo-agent-institution';
+        card.onAddClick();
+
+        expect(intents[0].repos.map(Object.keys)).toEqual([['cloneUrl', 'repoSlug'], ['cloneUrl', 'repoSlug'], ['cloneUrl', 'repoSlug'], ['repoSlug']]);
+
+        card.destroy();
+        roster.destroy();
+        store.destroy()
+    });
+
+    test('a roster read refreshes the outcomes in place, another seat\'s read leaves the card alone, and a roster that arrives later fills it', () => {
+        const roster = Neo.create(FleetRoster);
+
+        roster.add([{agentId: 'ada'}, {agentId: 'vega'}]);
+
+        // no roster yet, as before the app's first roster read
+        const {card, outcomes, store} = mount({repo: working, repos: [brain]});
+
+        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: null, reason: null});
+
+        // the roster arrives; this seat has no start yet
+        card.rosterStore = roster;
+        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: null, reason: null});
+        expect(card.getReference('repos-heading').text).toBe('Repositories · declared');
+
+        // a roster read after a failed start: the card follows the record without being asked
+        roster.get('ada').set({repoOutcomes: [{repoSlug: brain.repoSlug, state: 'failed', reason}]});
+        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: 'failed', reason});
+
+        let refreshes = 0;
+        const refresh = card.refresh.bind(card);
+
+        card.refresh = () => {refreshes++; refresh()};
+
+        roster.get('vega').set({repoOutcomes: [{repoSlug: brain.repoSlug, state: 'prepared'}]});
+        expect(refreshes).toBe(0);
+
+        // the next start replaces the outcome
+        roster.get('ada').set({repoOutcomes: [{repoSlug: brain.repoSlug, state: 'prepared'}]});
+        expect(refreshes).toBe(1);
+        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: 'prepared', reason: null});
+
+        // a retired card leaves the roster's listeners behind it
+        card.destroy();
+        roster.get('ada').set({repoOutcomes: null});
+        expect(refreshes).toBe(1);
+
+        roster.destroy();
         store.destroy()
     });
 });

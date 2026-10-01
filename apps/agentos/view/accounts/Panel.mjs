@@ -23,7 +23,8 @@ import DashboardPanel        from '../../../../node_modules/neo.mjs/src/dashboar
  * definition reaches the shared `AgentDefinitions` roster, never a credential byte (mirrors
  * `AgentOS.model.AgentDefinition`'s credential-free shape). This view re-fires the event; the
  * Viewport composition root owns the separate Fleet-cockpit refresh, so Accounts never maps or
- * reaches into a sibling `FleetAgent` surface.
+ * writes a sibling `FleetAgent` surface. It reads one roster fact: the Repositories card shows the
+ * last start's per-repository outcome from the provider's `fleetRoster` Store, as Home reads it.
  */
 class Accounts extends DashboardPanel {
     static config = {
@@ -50,6 +51,13 @@ class Accounts extends DashboardPanel {
          */
         agentDefinitionsStore_: null,
         /**
+         * The provider-hosted fleet roster, handed to the Repositories card read-only for the last
+         * start's per-repository outcome. The cockpit's liveness owner fills it.
+         * @member {Neo.data.Store|null} fleetRosterStore_=null
+         * @reactive
+         */
+        fleetRosterStore_: null,
+        /**
          * The provider-hosted public tenant roster. The card consumes this exact Store instance;
          * tenant credentials never enter it.
          * @member {Neo.data.Store|null} fleetTenantsStore_=null
@@ -61,6 +69,7 @@ class Accounts extends DashboardPanel {
          */
         bind: {
             agentDefinitionsStore: 'stores.agentDefinitions',
+            fleetRosterStore     : 'stores.fleetRoster',
             fleetTenantsStore    : 'stores.fleetTenants'
         },
         /**
@@ -194,13 +203,15 @@ class Accounts extends DashboardPanel {
         super.onConstructed(...args);
 
         const
-            me   = this,
-            card = me.getReference('agent-config-card');
+            me    = this,
+            card  = me.getReference('agent-config-card'),
+            repos = me.getReference('agent-repos-card');
 
         card?.on({configIntent: me.onAgentConfigIntent, scope: me});
         if (card) card.tenantStore = me.fleetTenantsStore;
 
-        me.getReference('agent-repos-card')?.on({configIntent: me.onAgentReposIntent, scope: me});
+        repos?.on({configIntent: me.onAgentReposIntent, scope: me});
+        if (repos) repos.rosterStore = me.fleetRosterStore;
 
         me.getReference('add-agent-form')?.on({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
         me.getReference('agent-list')?.on({select: me.onAgentListSelect, scope: me});
@@ -242,6 +253,19 @@ class Accounts extends DashboardPanel {
 
         me.syncSelection();
         value && void me.loadAgentDefinitions?.()
+    }
+
+    /**
+     * Triggered after the fleet roster binding changes. The Repositories card listens to the exact
+     * Store instance for each roster read; Accounts neither loads nor writes it.
+     * @param {Neo.data.Store|null} value
+     * @param {Neo.data.Store|null} oldValue
+     * @protected
+     */
+    afterSetFleetRosterStore(value, oldValue) {
+        const card = this.getReference('agent-repos-card');
+
+        if (card) card.rosterStore = value
     }
 
     /**

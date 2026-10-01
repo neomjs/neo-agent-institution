@@ -17,6 +17,10 @@ import SeatRepositories from '../../../store/SeatRepositories.mjs';
  * `setRepos` round-trip, and the registry's readback re-renders the card. The Brain validates the
  * list, so a refusal's reason is the Brain's own and shows on the status line, while the rows keep
  * what the registry holds.
+ *
+ * Each of the other repositories also shows the last start's outcome, prepared or failed with the
+ * Fleet's redacted reason. That outcome is runtime truth, so it comes from the seat's roster record
+ * ({@link #rosterStore}), never from the definition.
  */
 class AgentReposCard extends Container {
     static config = {
@@ -46,6 +50,15 @@ class AgentReposCard extends Container {
          */
         record_: null,
         /**
+         * The provider-hosted fleet roster (`stores.fleetRoster`), read for one fact: the last
+         * start's per-repository outcome on the seat's {@link AgentOS.model.FleetAgent} record. The
+         * card listens to the Store directly, as the configuration card does to the tenant roster,
+         * and never writes it.
+         * @member {Neo.data.Store|null} rosterStore_=null
+         * @reactive
+         */
+        rosterStore_: null,
+        /**
          * Ephemeral save feedback for the shown record: `{agentId, state, reason}`. Component state,
          * never definition data.
          * @member {Object|null} saveStatus_=null
@@ -58,10 +71,11 @@ class AgentReposCard extends Container {
          * @member {Object[]} items
          */
         items: [{
-            ntype: 'component',
-            cls  : ['fm-repos-heading'],
-            flex : 'none',
-            text : 'Repositories · declared'
+            ntype    : 'component',
+            cls      : ['fm-repos-heading'],
+            flex     : 'none',
+            reference: 'repos-heading',
+            text     : 'Repositories · declared'
         }, {
             module   : RepositoryList,
             flex     : 'none',
@@ -144,12 +158,49 @@ class AgentReposCard extends Container {
     }
 
     /**
+     * Triggered after the rosterStore config got changed. Listener maps are recreated for symmetric
+     * `on`/`un`, because Neo event registration consumes its input object.
+     * @param {Neo.data.Store|null} value
+     * @param {Neo.data.Store|null} oldValue
+     * @protected
+     */
+    afterSetRosterStore(value, oldValue) {
+        oldValue?.un?.(this.getRosterStoreListeners());
+        value?.on?.(this.getRosterStoreListeners());
+        this.isConstructed && this.refresh()
+    }
+
+    /**
      * @summary The seat's other repositories as the registry holds them: `{repoSlug, cloneUrl}`
      * each, the exact entries a new list must carry forward.
      * @returns {Object[]}
      */
     getOtherRepos() {
         return (this.record?.['metadata.repos'] ?? []).map(({cloneUrl, repoSlug}) => ({cloneUrl, repoSlug}))
+    }
+
+    /**
+     * @summary The last start's outcome per repository slug, from the seat's roster record. A
+     * repository added since that start has no entry, so it shows none until the next start.
+     * @returns {Map<String, {reason: String|null, state: String}>}
+     */
+    getRepoOutcomes() {
+        const outcomes = this.record && this.rosterStore?.get(this.record.id)?.repoOutcomes;
+
+        return new Map((Array.isArray(outcomes) ? outcomes : []).map(({reason=null, repoSlug, state}) => [repoSlug, {reason, state}]))
+    }
+
+    /**
+     * @returns {Object} The complete roster Store listener set.
+     * @protected
+     */
+    getRosterStoreListeners() {
+        return {
+            load        : this.onRosterChange,
+            mutate      : this.onRosterChange,
+            recordChange: this.onRosterChange,
+            scope       : this
+        }
     }
 
     /**
@@ -178,6 +229,15 @@ class AgentReposCard extends Container {
     }
 
     /**
+     * @summary A roster read: re-derive the rows, unless the change is another seat's record.
+     * @param {Object} [data] The Store event's data; `recordChange` names its record.
+     * @protected
+     */
+    onRosterChange({record}={}) {
+        (!record || record.agentId === this.record?.id) && this.refresh()
+    }
+
+    /**
      * @summary A row's Remove: the seat's other repositories without that one, as one new list.
      * @param {Object} data
      * @param {String} data.repoSlug
@@ -191,18 +251,25 @@ class AgentReposCard extends Container {
     }
 
     /**
-     * @summary Re-derive the rows from the CURRENT record data, the working repository first. Public
-     * on purpose: a readback changes the record's fields without changing its identity, so the owning
-     * view calls `refresh()` when the roster changes.
+     * @summary Re-derive the rows from the CURRENT record data, the working repository first, each
+     * other repository with its last start outcome. Public on purpose: a readback changes the
+     * record's fields without changing its identity, so the owning view calls `refresh()` when the
+     * roster changes.
      */
     refresh() {
         const
             me          = this,
+            outcomes    = me.getRepoOutcomes(),
             workingRepo = me.record?.['metadata.repo'],
             rows        = [
                 ...(workingRepo ? [{...workingRepo, working: true}] : []),
-                ...me.getOtherRepos()
+                ...me.getOtherRepos().map(repo => ({...repo, ...outcomes.get(repo.repoSlug)}))
             ];
+
+        // an outcome is a fact of the last start, not a live observation: the heading names it
+        me.getReference('repos-heading').text = rows.some(row => row.state)
+            ? 'Repositories · declared · last start'
+            : 'Repositories · declared';
 
         me.getReference('repo-list').store.data = rows;
         me.getReference('repos-empty').hidden   = !me.record || rows.length > 0;
@@ -254,6 +321,15 @@ class AgentReposCard extends Container {
         me.saveStatus = {agentId, state, reason};
 
         return true
+    }
+
+    /**
+     * @summary Detach the roster listeners before the card retires; the provider owns the Store.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        this.rosterStore?.un?.(this.getRosterStoreListeners());
+        super.destroy(...args)
     }
 }
 

@@ -48,6 +48,8 @@ class RosterRow extends Base {
             harnessType        : row.harnessType ?? null,
             repoSlug           : row.repoStatus?.repoSlug ?? null,
             repoPath           : row.repoStatus?.repoPath ?? null,
+            // the last start's outcome per other repository, from the Fleet's launch record
+            repoOutcomes       : row.repoOutcomes ?? null,
             launchable         : row.launchable ?? null,
             openLaneCount      : row.openLaneCount ?? null,
             lastActivityAt     : row.lastActivityAt ?? null,

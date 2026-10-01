@@ -1,6 +1,7 @@
-/* The Repositories card's rows: the slug, then the working tag or a quiet Remove. The rows are
-   affordances, not a selection, so they take no hover or selected fill. The slug is monospace and
-   elides, and its full clone URL rides the title. */
+/* The Repositories card's rows: the slug, the last start's outcome, then the working tag or a quiet
+   Remove. The rows are affordances, not a selection, so they take no hover or selected fill. The
+   slug is monospace and elides, and its full clone URL rides the title. A failed start's reason
+   wraps onto its own line, since a git error can carry a long URL. */
 .fm-repository-list.neo-list {
     --list-item-background-color       : transparent;
     --list-item-background-color-active: transparent;
@@ -12,6 +13,7 @@
         align-items: center;
         border     : 0;
         display    : flex;
+        flex-wrap  : wrap;
         gap        : var(--fm-space-2);
         padding    : var(--fm-space-1) 0;
     }
@@ -29,6 +31,26 @@
     .fm-repo-working {
         color: var(--fm-ink-dim);
         font : var(--fm-text-detail);
+    }
+
+    .fm-repo-outcome {
+        font: var(--fm-text-detail);
+
+        &.is-prepared {
+            color: var(--fm-state-ok);
+        }
+
+        &.is-failed {
+            color      : var(--fm-kind-alert);
+            font-weight: 600;
+        }
+    }
+
+    .fm-repo-reason {
+        color        : var(--fm-kind-alert);
+        flex-basis   : 100%;
+        font         : var(--fm-text-detail);
+        overflow-wrap: anywhere;
     }
 
     .fm-repo-remove {

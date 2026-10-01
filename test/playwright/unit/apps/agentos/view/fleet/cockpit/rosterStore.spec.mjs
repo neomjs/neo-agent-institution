@@ -306,6 +306,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             participationStatus: null,
             // the presence axis rides the same passthrough contract as wake/throttle below
             presence: null,
+            // no start has reported its other repositories' outcome
+            repoOutcomes: null,
             repoPath: null,
             repoSlug: null,
             sources : liveSources(),
@@ -342,6 +344,16 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         const bare = FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', repoStatus: null, sources: liveSources()});
 
         expect(bare).toMatchObject({harnessType: null, repoPath: null, repoSlug: null})
+    });
+
+    test('mapRosterRow passes the last start\'s per-repository outcome through whole — null on a row without one', () => {
+        const repoOutcomes = [
+            {repoSlug: 'neomjs/neo-agent-brain',  state: 'prepared'},
+            {repoSlug: 'neomjs/neo-agent-skills', state: 'failed', reason: 'git clone exited 128: remote: Repository not found.'}
+        ];
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', repoOutcomes, sources: liveSources()}).repoOutcomes).toEqual(repoOutcomes);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).repoOutcomes).toBeNull()
     });
 
     test('mapRosterRow passes the S2 axes through WHOLE — the view never re-derives a produced fact', () => {
@@ -454,6 +466,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             openLaneCount      : null,
             participationStatus: null,
             presence           : null,
+            repoOutcomes       : null,
             repoPath           : null,
             repoSlug           : null,
             sources            : liveSources(),
