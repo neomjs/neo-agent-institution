@@ -304,6 +304,21 @@ function configureWebContents(contents) {
 }
 
 /**
+ * @summary On macOS the cockpit's top bar is the window's title bar: the traffic lights sit inset in
+ * it, and the window-controls overlay tells the bar where its free area starts
+ * (`env(titlebar-area-x)` in `Viewport.scss`; a browser reports none, so the cockpit is unchanged
+ * there). Other platforms keep the native frame: their overlay paints window controls in fixed
+ * colours that a theme switch could not follow.
+ * @type {Object}
+ */
+const MACOS_TITLE_BAR = Object.freeze({
+    titleBarOverlay     : true,
+    titleBarStyle       : 'hiddenInset',
+    // the lights' 14px frame centred in the 50px `.agent-top-toolbar`
+    trafficLightPosition: Object.freeze({x: 16, y: 18})
+});
+
+/**
  * Creates a visible harness window. Hidden windows do not mount because Neo's main-thread delta
  * application rides requestAnimationFrame; background throttling is disabled for the same reason.
  * @summary Creates a primary harness BrowserWindow with the explicit secure renderer posture.
@@ -314,6 +329,7 @@ function createHarnessWindow(url) {
     const win = new BrowserWindow({
         height        : 900,
         width         : 1400,
+        ...(process.platform === 'darwin' ? MACOS_TITLE_BAR : {}),
         webPreferences: getSecureWebPreferences()
     });
 
