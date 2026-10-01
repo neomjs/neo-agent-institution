@@ -442,7 +442,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                     bounds   = panel.getBoundingClientRect(),
                     // the layout boxes this view owns; the engine's own clipping boxes (a button's
                     // ripple, a hidden field trigger) are deliberate and stay out of the census
-                    boxes    = ['.fm-accounts-master', '.fm-accounts-list', '.fm-accounts-detail', '.fm-agent-config-card', '.fm-add-agent-form']
+                    boxes    = ['.fm-accounts-master', '.fm-accounts-list', '.fm-accounts-detail', '.fm-agent-config-card', '.fm-agent-repos-card', '.fm-add-agent-form']
                         .map(selector => panel.querySelector(selector)),
                     controls = [...panel.querySelectorAll('.neo-button, .fm-chip, input, .neo-list-item')]
                         .filter(node => node.getClientRects().length);

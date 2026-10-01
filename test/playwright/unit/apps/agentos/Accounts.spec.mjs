@@ -185,7 +185,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
             },
             form       = Neo.create(AddAgentForm, {
                 appName       : 'AgentOSAccountsTest',
-                bridgeResolver: () => ({defineAgent: async () => canonical, setRepo: async () => canonical})
+                bridgeResolver: () => ({defineAgent: async () => canonical, setRepo: async () => ({status: 'accepted', agent: canonical})})
             }),
             // Proxy-backed, not a plain object: `storage[key] = value` is a REAL persistent write in
             // Chromium and reaches no method, so a method-only recorder watches it happen in silence.
@@ -419,6 +419,47 @@ test.describe('AgentOS.view.accounts.Panel — master-detail (multiple agents)',
 
         stub.onAgentListSelect({records: [store.get('a')]});
         expect(card.saveStatus).toEqual({agentId: 'a', state: 'pending', reason: 'Saving A…'});
+
+        store.destroy()
+    });
+
+    test('the Repositories card is scoped with the configuration card, hides with it, and keeps its own save status', () => {
+        const store = makeAgentStore([
+            {id: 'a', githubUsername: 'a', harnessType: 'codex'},
+            {id: 'b', githubUsername: 'b', harnessType: 'antigravity'}
+        ]);
+        const stub  = makeAccounts(store);
+        const card  = stub.refs['agent-config-card'];
+        const repos = {
+            hidden      : false,
+            record      : undefined,
+            refreshCount: 0,
+            refresh() { this.refreshCount++ },
+            setSaveStatus(agentId, state, reason) {
+                if (this.record?.id === agentId) this.saveStatus = {agentId, state, reason}
+            }
+        };
+
+        stub.refs['agent-repos-card'] = repos;
+        stub.agentReposSaveStatuses   = new Map();
+        stub.setAgentReposSaveStatus  = Accounts.prototype.setAgentReposSaveStatus;
+
+        stub.onAgentListSelect({records: [store.get('b')]});
+        expect(repos.record.id).toBe('b');
+        expect(card.record.id).toBe('b');
+
+        // a refused repository list paints the Repositories card only, and comes back with its agent
+        stub.setAgentReposSaveStatus('b', 'rejected', 'a repository is listed twice.');
+        expect(repos.saveStatus).toEqual({agentId: 'b', state: 'rejected', reason: 'a repository is listed twice.'});
+        expect(card.saveStatus?.state).not.toBe('rejected');
+
+        stub.onAgentListSelect({records: [store.get('a')]});
+        stub.onAgentListSelect({records: [store.get('b')]});
+        expect(repos.saveStatus).toEqual({agentId: 'b', state: 'rejected', reason: 'a repository is listed twice.'});
+
+        stub.onAddAgentClick();
+        expect(repos.hidden).toBe(true);
+        expect(card.hidden).toBe(true);
 
         store.destroy()
     });

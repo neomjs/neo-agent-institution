@@ -249,7 +249,8 @@ class AddAgentFlow extends Base {
     /**
      * @summary Set a newly defined seat's working repo through the bridge. The define stands either
      * way; a repo that could not be set comes back as the reason, so the operator sets it before the
-     * seat's first Start.
+     * seat's first Start. The Fleet answers like `configureAgent`, so a refusal carries the Fleet's
+     * own reason.
      * @param {Object} bridge
      * @param {Object} definition The confirmed public definition.
      * @param {{cloneUrl: String, repoSlug: String}} repo
@@ -257,23 +258,32 @@ class AddAgentFlow extends Base {
      * @returns {Promise<{definition: Object, reason: String}>}
      */
     static async assignRepo(bridge, definition, repo, credential) {
-        const unset = {definition, reason: `Agent added, but its working repository is not set: set ${repo.repoSlug} before starting it.`};
+        const unset = (reason = `set ${repo.repoSlug} before starting it.`) => ({
+            definition,
+            reason: `Agent added, but its working repository is not set: ${reason}`
+        });
 
         if (!bridge?.setRepo) {
-            return unset
+            return unset()
         }
 
-        let withRepo;
+        let outcome;
 
         try {
-            withRepo = await bridge.setRepo({id: definition.id, ...repo})
+            outcome = await bridge.setRepo({id: definition.id, ...repo})
         } catch {
-            return unset
+            return unset()
         }
+
+        if (outcome?.status === 'rejected') {
+            return unset(outcome.reason || undefined)
+        }
+
+        const withRepo = outcome?.status === 'accepted' ? outcome.agent : null;
 
         return withRepo && AddAgentFlow.validateReadback(withRepo, credential).valid
             ? {definition: withRepo, reason: ''}
-            : unset
+            : unset()
     }
 }
 

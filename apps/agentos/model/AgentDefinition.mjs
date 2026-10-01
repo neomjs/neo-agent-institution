@@ -9,7 +9,8 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  * public harness-catalog key), the per-agent sparse MCP-server overrides (`mcpServers` — null
  * means every current catalog default applies; resolve via the public MCP catalog, never persist
  * the fully resolved matrix), the narrow MCP target (`mcpTarget` — null = resident services;
- * a tenant is only `{kind:'tenant', tenantId}`), and the operational toggles (honest
+ * a tenant is only `{kind:'tenant', tenantId}`), the declared repositories (`metadata.repo` is the
+ * working one, `metadata.repos` the others; read as `record['metadata.repos']`), and the operational toggles (honest
  * readback: null = state not read back yet, never an
  * optimistic guess). This model deliberately contains no credential field: PAT bytes remain
  * Brain-side in FleetRegistryService and may only surface here as redacted state.
@@ -59,6 +60,21 @@ class AgentDefinition extends Model {
             name        : 'mcpTarget',
             type        : 'Object',
             defaultValue: null
+        }, {
+            // the repositories the registry declares for the seat: `repo` is the working one
+            // ({repoSlug, cloneUrl}), `repos` the others. Nested fields, not a `mapping`: a mapping
+            // only reads initial values, and the configure readback must refresh both.
+            name  : 'metadata',
+            type  : 'Object',
+            fields: [{
+                name        : 'repo',
+                type        : 'Object',
+                defaultValue: null
+            }, {
+                name        : 'repos',
+                type        : 'Array',
+                defaultValue: null
+            }]
         }, {
             // operational toggles: tri-state honesty (true / false / null = not read back yet) —
             // Object-typed so null survives hydration; never an optimistic default

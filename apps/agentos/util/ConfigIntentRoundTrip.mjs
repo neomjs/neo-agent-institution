@@ -1,7 +1,7 @@
 import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
- * @summary The one `configIntent` → `configureAgent` (or launch-owner) bridge round-trip, shared by every surface
+ * @summary The one `configIntent` → `configureAgent` (or launch-owner, or `setRepos`) bridge round-trip, shared by every surface
  * that mounts the per-agent configuration card (the Accounts keeper-view and the AgentDetail
  * configuration tab): the registry validates + persists, and the RESPONSE — the canonical public
  * readback — is the only thing that mutates the local record. Fail-closed: without a bridge
@@ -88,7 +88,7 @@ class ConfigIntentRoundTrip extends Base {
      * @summary Run one configuration round-trip and render its truth through the caller's sink.
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam) — the DI discipline shared with `addAgentFlow`.
-     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}` or `{id, launchOwner: 'fleet'}` (+ event envelope noise, stripped here).
+     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}`, `{id, launchOwner: 'fleet'}` or `{id, repos}` (+ event envelope noise, stripped here).
      * @param {Object|null}   [config.owner]          The calling view — an opaque identity token for cross-owner supersede honesty. Omitting it degrades stale drops to silent.
      * @param {Function}      config.setSaveStatus    `(agentId, state, reason)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch).
      * @param {Neo.data.Store|null} config.store      The shared definitions store — record resolution, the arbitration keys, and the write-generation bump all derive from it.
@@ -105,16 +105,22 @@ class ConfigIntentRoundTrip extends Base {
             agentId    = intent.id,
             bridge     = bridgeResolver ? bridgeResolver() : globalThis.AgentOS?.fleet?.registryBridge,
             launch     = Object.hasOwn(intent, 'launchOwner'),
-            method     = launch ? LAUNCH_OWNER_VERBS[intent.launchOwner] : 'configureAgent',
+            repos      = Object.hasOwn(intent, 'repos'),
+            method     = launch ? LAUNCH_OWNER_VERBS[intent.launchOwner] : repos ? 'setRepos' : 'configureAgent',
             wireIntent = {id: agentId};
 
         if (!agentId || (launch && !Object.hasOwn(LAUNCH_OWNER_VERBS, intent.launchOwner))) {
             return
         }
 
-        if (Object.hasOwn(intent, 'harnessType')) wireIntent.harnessType = intent.harnessType;
-        if (Object.hasOwn(intent, 'mcpServers'))  wireIntent.mcpServers  = intent.mcpServers;
-        if (Object.hasOwn(intent, 'mcpTarget')) wireIntent.mcpTarget = intent.mcpTarget;
+        // a repository set takes its own verb, and only the set travels with it
+        if (repos) {
+            wireIntent.repos = intent.repos
+        } else {
+            if (Object.hasOwn(intent, 'harnessType')) wireIntent.harnessType = intent.harnessType;
+            if (Object.hasOwn(intent, 'mcpServers'))  wireIntent.mcpServers  = intent.mcpServers;
+            if (Object.hasOwn(intent, 'mcpTarget'))   wireIntent.mcpTarget   = intent.mcpTarget
+        }
 
         // supersede-correct ACROSS owners: the arbitration key is the shared record instance, so a
         // newer intent from either surface outranks an older in-flight response from the other. A
