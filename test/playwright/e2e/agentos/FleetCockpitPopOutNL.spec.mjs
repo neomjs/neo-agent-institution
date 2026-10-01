@@ -65,15 +65,20 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
 
         await expect(detailRoot).toBeVisible({timeout: 30000});
 
-        // the SHELL owns the affordance; it renders in the PANE's chrome (the shellTools slot),
-        // so the verb travels with the pane into a vessel — the bar carries only the
-        // exception-only recall twin while the pane is away
-        const toggle = page.locator('.fm-detail-window-toggle');
+        // docked, the dock header owns the ONE pop-out verb; the SHELL's pane-side verb is the
+        // way home and renders only while the pane is away in a vessel — so the detail strip
+        // carries no toggle here, and the bar carries only the exception-only recall twin later
+        const toggle       = page.locator('.fm-detail-window-toggle'),
+              // the detail's dock header: the engine's actions are contextual — focusing the tab
+              // reveals them (the engine's own e2e pattern), and the pop-out carries the
+              // workspace's pop-out glyph
+              header       = page.locator('.neo-tab-header-toolbar')
+                  .filter({has: page.locator('.neo-tab-header-button', {hasText: 'Agent detail'})}).first(),
+              popOutAction = header.locator('.neo-button:has([class*="fa-window-restore"])');
 
-        // the verb is an icon action on the detail strip's tab seam; its name lives in the
-        // accessible label, not in visible text
-        await expect(toggle).toBeVisible();
-        await expect(toggle).toHaveAttribute('aria-label', 'Pop out detail');
+        await expect(toggle).toHaveCount(0);
+        await header.locator('.neo-tab-header-button', {hasText: 'Agent detail'}).first().click();
+        await expect(popOutAction).toBeVisible();
 
         const cockpits = await app.findInstances({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
               holderId = (Array.isArray(cockpits) ? cockpits[0] : cockpits)?.id,
@@ -104,10 +109,12 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
 
         const homeIndexBefore = docDocked.nodes['secondary-rail'].items.indexOf('detail');
 
-        // 2) detach: ONE shell-toggle click enters the engine's admission and opens the REAL vessel window
+        // 2) detach: ONE native click on the dock header's own pop-out action enters the engine's
+        // admission and opens the REAL vessel window — the detail's dock node is the innermost tab
+        // container holding the pane
         const popupPromise = page.waitForEvent('popup', {timeout: 30000});
 
-        await toggle.click();
+        await popOutAction.click();
 
         const popup = await popupPromise;
 
