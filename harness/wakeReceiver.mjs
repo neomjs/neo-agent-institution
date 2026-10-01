@@ -17,7 +17,9 @@ import path from 'node:path';
  * - else none (origin `none`).
  *
  * Anything short of both coordinates passes neither, and the Fleet's seats report `unarmed` with the
- * Brain's own reason. A LaunchAgent that exists but cannot be read is a named refusal, never a guess.
+ * Brain's own reason. A LaunchAgent that exists but cannot be read is a named refusal, never a guess. It
+ * is read as a property list, strictly: a construct a plist reader would skip can never name the
+ * receiver, and a document that is not a whole property list refuses.
  */
 
 /**
@@ -27,27 +29,96 @@ import path from 'node:path';
 export const WAKE_RECEIVER_LAUNCH_AGENT = 'com.neomjs.agent-os-wake.plist';
 
 const
-    LOCAL_HOSTS       = ['127.0.0.1', 'localhost', '[::1]'],
-    PROGRAM_ARGUMENTS = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/,
-    XML_STRING        = /<string>([^<]*)<\/string>/g,
+    LOCAL_HOSTS  = ['127.0.0.1', 'localhost', '[::1]'],
+    // One token per comment, processing instruction, declaration, tag or text run. Anything else (a stray
+    // `<`, a CDATA section) matches no token, so the tokens no longer add up to the document.
+    PLIST_TOKEN  = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Za-z][^>]*>|<\/?[A-Za-z][^<>]*>|[^<]+/g,
     // the escapes Apple's property-list writer emits
-    XML_ENTITIES      = {amp: '&', apos: '\'', gt: '>', lt: '<', quot: '"'};
+    XML_ENTITIES = {amp: '&', apos: '\'', gt: '>', lt: '<', quot: '"'};
 
 /**
- * @summary The `ProgramArguments` strings of an XML property list, or `null` when the array is absent or
- * holds anything but strings.
+ * @summary Reads an XML property list into plain values, strictly. The XML declaration and the plist
+ * DOCTYPE may open it; otherwise nothing stands outside its one `<plist>` root, and no comment or
+ * processing instruction stands anywhere, so nothing a plist reader would skip can carry a key. Truncation,
+ * duplicate keys, unknown entities and stray text refuse. Strings come back as strings; every other leaf
+ * comes back typed, so it can never pass for one.
  * @param {String} xml
- * @returns {String[]|null}
+ * @returns {Object} The root dictionary.
+ * @throws {Error} Naming why the document is not such a property list.
  * @private
  */
-function programArguments(xml) {
-    const body = PROGRAM_ARGUMENTS.exec(xml)?.[1];
+function parsePlist(xml) {
+    const tokens = xml.match(PLIST_TOKEN) ?? [];
 
-    if (body === undefined || body.replace(XML_STRING, '').trim()) {
-        return null
+    if (tokens.join('') !== xml) {
+        throw new Error('it is not well-formed XML')
     }
 
-    return [...body.matchAll(XML_STRING)].map(([, text]) => text.replace(/&(amp|apos|gt|lt|quot);/g, (entity, name) => XML_ENTITIES[name]))
+    let at = 0;
+
+    const
+        fail  = reason => { throw new Error(reason) },
+        // Whitespace between elements carries nothing; any other text there is not a property list.
+        peek  = () => { while (at < tokens.length && !tokens[at].trim()) at++; return tokens[at] },
+        tag   = () => { const token = peek() ?? fail('the document ends early'); at++; return token.startsWith('<') ? token : fail('text stands outside an element') },
+        close = name => tag() === `</${name}>` || fail(`<${name}> is not closed`),
+        text  = name => {
+            const raw = tokens[at]?.startsWith('<') === false ? tokens[at++] : '';
+
+            close(name);
+            /&(?!(?:amp|apos|gt|lt|quot);)/.test(raw) && fail('it uses an entity a property list does not');
+            return raw.replace(/&(amp|apos|gt|lt|quot);/g, (entity, entityName) => XML_ENTITIES[entityName])
+        },
+        value = () => {
+            const token = tag();
+
+            if (token === '<dict>') {
+                const dict = {};
+
+                while (peek() !== '</dict>') {
+                    tag() === '<key>' || fail('a dictionary entry has no key');
+
+                    const key = text('key');
+
+                    Object.hasOwn(dict, key) && fail(`the key ${key} appears twice`);
+                    dict[key] = value()
+                }
+
+                at++;
+                return dict
+            }
+
+            if (token === '<array>') {
+                const array = [];
+
+                while (peek() !== '</array>') array.push(value());
+
+                at++;
+                return array
+            }
+
+            const [, name, empty] = /^<([a-z]+)(\/?)>$/.exec(token) ?? [];
+
+            if (name === 'true' || name === 'false') return empty ? name === 'true' : fail(`<${name}> must be empty`);
+            if (name === 'string') return empty ? '' : text(name);
+            if (['data', 'date', 'integer', 'real'].includes(name)) return {[name]: empty ? '' : text(name)};
+            if ((name === 'dict' || name === 'array') && empty) return name === 'dict' ? {} : [];
+
+            return fail(`${token.slice(0, 40)} is not a property-list value`)
+        };
+
+    // The writer's prolog: the declaration, then the DOCTYPE, then the root.
+    if (/^<\?xml\s[^>]*\?>$/.test(peek() ?? '')) at++;
+    if (/^<!DOCTYPE\s+plist\b[^>]*>$/.test(peek() ?? '')) at++;
+
+    /^<plist(?:\s+version="1\.0")?\s*>$/.test(tag()) || fail('it has no <plist> root');
+
+    const root = value();
+
+    close('plist');
+    peek() === undefined || fail('content follows the </plist> root');
+
+    return root && typeof root === 'object' && !Array.isArray(root) ? root : fail('its root is not a dictionary')
 }
 
 /**
@@ -90,8 +161,17 @@ export function readReceiverLaunchAgent({plistPath, fsModule = fs}) {
         throw new Error(`${plistPath} is a binary property list; \`plutil -convert xml1\` restores the XML the runbook installs`)
     }
 
+    let plist;
+
+    try {
+        plist = parsePlist(xml)
+    } catch (error) {
+        throw new Error(`${plistPath} is not a whole property list: ${error.message}`)
+    }
+
     const
-        args     = programArguments(xml) ?? [],
+        declared = plist.ProgramArguments,
+        args     = Array.isArray(declared) && declared.every(arg => typeof arg === 'string') ? declared : [],
         after    = flag => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined,
         manifest = after('--manifest'),
         port     = Number(after('--port'));
@@ -136,10 +216,17 @@ export function settleWakeReceiver({env, planeBase, plistPath, fsModule = fs}) {
 }
 
 /**
- * @summary The Fleet child's environment fragment: both coordinates of a settled receiver, nothing otherwise.
- * @param {Object|null} receiver A {@link settleWakeReceiver} result, `null` when none was settled.
+ * @summary The Fleet child's environment fragment. A settled receiver passes both coordinates. A packaged
+ * launch that settled none clears both: the child inherits the launch environment beneath this fragment,
+ * and half a declaration there would otherwise reach the Fleet while the log says none. `null` (an
+ * unpackaged launch) leaves the inherited environment alone.
+ * @param {Object|null} receiver A {@link settleWakeReceiver} result, or `null` for an unpackaged launch.
  * @returns {Object}
  */
 export function wakeReceiverEnv(receiver) {
-    return receiver?.manifest && receiver.base ? {NEO_WAKE_RECEIVER_BASE: receiver.base, NEO_WAKE_RECEIVER_MANIFEST: receiver.manifest} : {}
+    if (!receiver) return {};
+
+    return receiver.manifest && receiver.base
+        ? {NEO_WAKE_RECEIVER_BASE: receiver.base, NEO_WAKE_RECEIVER_MANIFEST: receiver.manifest}
+        : {NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: ''}
 }

@@ -1,7 +1,9 @@
 import {expect, test}                   from '@playwright/test';
+import {EventEmitter}                   from 'node:events';
 import fs, {mkdtempSync, writeFileSync} from 'node:fs';
 import {tmpdir}                         from 'node:os';
 import path                             from 'node:path';
+import {startBrainChild}                from '../../../../harness/brain.mjs';
 import {
     readReceiverLaunchAgent,
     settleWakeReceiver,
@@ -9,9 +11,17 @@ import {
 } from '../../../../harness/wakeReceiver.mjs';
 
 const
-    MANIFEST    = '/Users/operator/Library/Application Support/Neo/AgentOS/wake/routes.json',
-    LOCAL_PLANE = 'http://127.0.0.1:3102',
-    NO_ENV      = {};
+    MANIFEST         = '/Users/operator/Library/Application Support/Neo/AgentOS/wake/routes.json',
+    LOCAL_PLANE      = 'http://127.0.0.1:3102',
+    NO_ENV           = {},
+    SETTLED          = Object.freeze({origin: 'launch-agent', manifest: MANIFEST, base: 'http://host.docker.internal:3199', reason: null}),
+    DECLINED         = Object.freeze({origin: 'launch-agent', manifest: null, base: null, reason: 'declined'}),
+    PSEUDO_ARGUMENTS = '<key>ProgramArguments</key><array><string>--manifest</string><string>/tmp/pseudo/routes.json</string><string>--port</string><string>4299</string></array>';
+
+/** @summary The parts of a spawned child that `startBrainChild` touches after the spawn. */
+function fakeChild() {
+    return Object.assign(new EventEmitter(), {pid: 4242, stderr: new EventEmitter(), stdout: new EventEmitter()})
+}
 
 /**
  * @summary The receiver's LaunchAgent as the local-agent-os runbook installs it (`plutil` writes tabs), with
@@ -111,7 +121,15 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
         ['no --port',                    launchAgentXml(['node', 'receiver.mjs', '--manifest', MANIFEST]),               /declares no absolute --manifest and valid --port/],
         ['a relative --manifest',        launchAgentXml(['node', '--manifest', 'wake/routes.json', '--port', '3199']),   /declares no absolute --manifest and valid --port/],
         ['a port that is not a port',    launchAgentXml(['node', '--manifest', MANIFEST, '--port', '31x9']),             /declares no absolute --manifest and valid --port/],
-        ['an argument that is no string', launchAgentXml(['node', '<integer>3199</integer>', '--manifest', MANIFEST, '--port', '3199']), /declares no absolute --manifest and valid --port/]
+        ['an argument that is no string', launchAgentXml(['node', '<integer>3199</integer>', '--manifest', MANIFEST, '--port', '3199']), /declares no absolute --manifest and valid --port/],
+        // What a plist reader skips must never name the receiver: each of these carries a pseudo array that
+        // a pattern match would read, ahead of the real one.
+        ['a processing instruction holding a pseudo array', launchAgentXml().replace('<dict>', `<dict>\n\t<?neo ${PSEUDO_ARGUMENTS} ?>`), /is not a whole property list/],
+        ['a comment holding a pseudo array',                launchAgentXml().replace('<dict>', `<dict>\n\t<!-- ${PSEUDO_ARGUMENTS} -->`), /is not a whole property list/],
+        ['a document cut off after its array',              launchAgentXml().split('\t</array>')[0] + '\t</array>\n',  /is not a whole property list: the document ends early/],
+        ['content after its root',                          `${launchAgentXml()}<plist version="1.0"><dict/></plist>\n`, /is not a whole property list: content follows/],
+        ['the key twice',                                   launchAgentXml().replace('\t<key>Label</key>', `\t${PSEUDO_ARGUMENTS}\n\t<key>Label</key>`), /is not a whole property list: the key ProgramArguments appears twice/],
+        ['an entity no property list uses',                 launchAgentXml(['node', '--manifest', '/Users/operator/R&#38;D/routes.json', '--port', '3199']), /is not a whole property list: it uses an entity/]
     ];
 
     for (const [label, content, reason] of MALFORMED) {
@@ -133,12 +151,42 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
             .toEqual({manifest, port: 3199});
     });
 
-    test('the Fleet child carries both coordinates of a settled receiver, and neither otherwise', () => {
-        expect(wakeReceiverEnv({origin: 'launch-agent', manifest: MANIFEST, base: 'http://host.docker.internal:3199', reason: null}))
-            .toEqual({NEO_WAKE_RECEIVER_BASE: 'http://host.docker.internal:3199', NEO_WAKE_RECEIVER_MANIFEST: MANIFEST});
+    test('a settled receiver passes both coordinates, a declined one clears both, and an unpackaged launch adds none', () => {
+        expect(wakeReceiverEnv(SETTLED)).toEqual({NEO_WAKE_RECEIVER_BASE: 'http://host.docker.internal:3199', NEO_WAKE_RECEIVER_MANIFEST: MANIFEST});
 
-        expect(wakeReceiverEnv({origin: 'launch-agent', manifest: null, base: null, reason: 'x'})).toEqual({});
-        expect(wakeReceiverEnv({origin: 'environment', manifest: MANIFEST, base: '', reason: null})).toEqual({});
+        for (const declined of [DECLINED, {origin: 'environment', manifest: MANIFEST, base: '', reason: null}]) {
+            expect(wakeReceiverEnv(declined)).toEqual({NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: ''});
+        }
+
         expect(wakeReceiverEnv(null)).toEqual({});
+    });
+
+    test('at the child boundary, an inherited half never reaches the Fleet, while an unpackaged launch still inherits', () => {
+        const childEnv = receiver => {
+            let options;
+
+            startBrainChild({
+                entry   : 'fleet.mjs',
+                env     : wakeReceiverEnv(receiver),
+                repoRoot: mkdtempSync(path.join(tmpdir(), 'wake-receiver-child-')),
+                spawnFn : (command, args, spawnOptions) => { options = spawnOptions; return fakeChild() }
+            });
+
+            return options.env
+        };
+
+        for (const half of ['NEO_WAKE_RECEIVER_MANIFEST', 'NEO_WAKE_RECEIVER_BASE']) {
+            const saved = process.env[half];
+
+            process.env[half] = 'stale-half-declaration';
+
+            try {
+                expect(childEnv(DECLINED)).toMatchObject({NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: ''});
+                expect(childEnv(SETTLED)).toMatchObject({NEO_WAKE_RECEIVER_BASE: SETTLED.base, NEO_WAKE_RECEIVER_MANIFEST: MANIFEST});
+                expect(childEnv(null)[half]).toBe('stale-half-declaration');
+            } finally {
+                saved === undefined ? delete process.env[half] : process.env[half] = saved;
+            }
+        }
     });
 });
