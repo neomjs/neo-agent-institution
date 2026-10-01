@@ -22,6 +22,7 @@ files:
     - mainLog.mjs
     - planeConfig.mjs
     - preload.cjs
+    - seatRootRecord.mjs
     - package.json
     - assets/tray/**
 

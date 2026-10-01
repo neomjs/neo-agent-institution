@@ -69,6 +69,7 @@ import {
 import {createSmokeSafeStorage, startFixturePlane}            from './fixturePlane.mjs';
 import {carriesSecret, createMainLog}                         from './mainLog.mjs';
 import {createPlaneBroker, planeEnvFragment, readPlaneConfig} from './planeConfig.mjs';
+import {settleSeatRoot, writeSeatRootRecord}                  from './seatRootRecord.mjs';
 
 const
     harnessDir           = path.dirname(fileURLToPath(import.meta.url)),
@@ -973,10 +974,24 @@ async function bootProductBrain() {
 
     storedPlaneBearer = storedPlane?.bearer ?? null;
 
+    // Where the seats live is the installation's record, never this launch's environment
+    // (seatRootRecord.mjs); a fresh installation records the root the Brain resolves below.
+    const
+        dataRoot = path.join(app.getPath('userData'), 'brain'),
+        seatRoot = packagedMode ? settleSeatRoot({
+            dir       : app.getPath('userData'),
+            envRoot   : process.env.NEO_FLEET_AGENTS_ROOT,
+            legacyRoot: path.join(dataRoot, 'fleet', 'agents')
+        }) : null;
+
+    if (seatRoot?.ignoredEnvRoot) {
+        console.warn(`HARNESS_SEAT_ROOT_ENV_IGNORED ${JSON.stringify({environment: seatRoot.ignoredEnvRoot, recorded: seatRoot.record.root})}`)
+    }
+
     // the backups sit beside the plane in the per-user root, so removing the plane never removes them
     const packagedEnv = packagedMode
         ? {
-            ...buildPackagedBrainEnv({backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot: path.join(app.getPath('userData'), 'brain')}),
+            ...buildPackagedBrainEnv({agentsRoot: seatRoot.record?.root, backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
             ...planeEnvFragment({env: process.env, planeConfig: storedPlane}),
             ELECTRON_RUN_AS_NODE    : '1',
             NEO_HARNESS_ELECTRON_BIN: process.execPath
@@ -985,7 +1000,15 @@ async function bootProductBrain() {
 
     const
         fleetPort = Number(process.env.NEO_FLEET_PORT) || 8083,
-        paths     = await resolveBrainPaths({env: packagedEnv, repoRoot: agentosRuntimeRoot}),
+        paths     = await resolveBrainPaths({env: packagedEnv, repoRoot: agentosRuntimeRoot});
+
+    if (packagedMode) {
+        const seatRecord = seatRoot.record ?? writeSeatRootRecord({dir: app.getPath('userData'), root: paths.fleetAgentsRoot, origin: 'default'});
+
+        console.log(`HARNESS_SEAT_ROOT ${JSON.stringify({origin: seatRecord.origin, root: seatRecord.root})}`)
+    }
+
+    const
         live      = await detectLiveBrain({
             productRoot,
             bearerToken        : fleetBearerToken,
