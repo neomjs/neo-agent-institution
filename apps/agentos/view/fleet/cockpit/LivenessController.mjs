@@ -563,6 +563,12 @@ class LivenessController extends ComponentController {
             githubUsername     : row.githubUsername ?? null,
             engineTag          : row.engineTag ?? null,
             family             : row.family ?? null,
+            // the launch-side facts the card's clone-path line reads: the harness key as the
+            // registry holds it, and the working repository the Fleet derived before any launch.
+            // `repoStatus` is null on a row the repo producer did not cover — honest null, no line
+            harnessType        : row.harnessType ?? null,
+            repoSlug           : row.repoStatus?.repoSlug ?? null,
+            repoPath           : row.repoStatus?.repoPath ?? null,
             launchable         : row.launchable ?? null,
             openLaneCount      : row.openLaneCount ?? null,
             lastActivityAt     : row.lastActivityAt ?? null,
