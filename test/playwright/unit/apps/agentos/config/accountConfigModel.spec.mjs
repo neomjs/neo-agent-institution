@@ -68,13 +68,13 @@ test.describe('FM account configuration model', () => {
         expect(harnessTypes.resolveHarnessType(entry.type).label).not.toBe('CORRUPTED')
     });
 
-    test('the MCP catalog: the Neo core set defaults ON, workflow servers default OFF', () => {
+    test('the MCP catalog: the Neo core set and GitHub workflow default ON, GitLab workflow defaults OFF', () => {
         const matrix = mcpServers.defaultMcpMatrix();
 
         expect(matrix['memory-core']).toBe(true);
         expect(matrix['knowledge-base']).toBe(true);
         expect(matrix['neural-link']).toBe(true);
-        expect(matrix['github-workflow']).toBe(false);
+        expect(matrix['github-workflow']).toBe(true);
         expect(matrix['gitlab-workflow']).toBe(false);
 
         // core flags agree with the defaults story
@@ -87,12 +87,12 @@ test.describe('FM account configuration model', () => {
         expect(mcpServers.resolveMcpMatrix(null)).toEqual(mcpServers.defaultMcpMatrix());
 
         const resolved = mcpServers.resolveMcpMatrix({
-            'github-workflow': true,   // opt-in
+            'gitlab-workflow': true,   // opt-in
             'neural-link'    : false,  // explicit opt-out of a core default
             'made-up-server' : true    // stale/unknown key — must NOT surface
         });
 
-        expect(resolved['github-workflow']).toBe(true);
+        expect(resolved['gitlab-workflow']).toBe(true);
         expect(resolved['neural-link']).toBe(false);
         expect(resolved['memory-core']).toBe(true); // untouched default
         expect(resolved).not.toHaveProperty('made-up-server');
@@ -104,21 +104,21 @@ test.describe('FM account configuration model', () => {
     test('sparse normalization rejects malformed intent, removes defaults, and follows catalog evolution', () => {
         expect(mcpServers.normalizeMcpOverrides({
             'memory-core'    : true,
-            'github-workflow': true
-        })).toEqual({'github-workflow': true});
+            'gitlab-workflow': true
+        })).toEqual({'gitlab-workflow': true});
         expect(mcpServers.normalizeMcpOverrides(mcpServers.defaultMcpMatrix())).toBeNull();
 
         expect(() => mcpServers.normalizeMcpOverrides({'made-up-server': true})).toThrow(/Unknown MCP server/);
         expect(() => mcpServers.normalizeMcpOverrides({'memory-core': 1})).toThrow(/must be boolean/);
         expect(() => mcpServers.normalizeMcpOverrides([])).toThrow(/object or null/);
 
-        const evolvedCatalog = mcpServers.listMcpServers().map(entry => entry.key === 'github-workflow'
+        const evolvedCatalog = mcpServers.listMcpServers().map(entry => entry.key === 'gitlab-workflow'
             ? {...entry, defaultEnabled: true}
             : entry);
 
         // No override follows the NEW default; the old explicit opt-in is now redundant.
-        expect(mcpServers.resolveMcpMatrix(null, evolvedCatalog)['github-workflow']).toBe(true);
-        expect(mcpServers.normalizeMcpOverrides({'github-workflow': true}, evolvedCatalog)).toBeNull()
+        expect(mcpServers.resolveMcpMatrix(null, evolvedCatalog)['gitlab-workflow']).toBe(true);
+        expect(mcpServers.normalizeMcpOverrides({'gitlab-workflow': true}, evolvedCatalog)).toBeNull()
     });
 
     test('the AgentDefinition record contract: matrix passthrough, tri-state toggles, credential-free', () => {

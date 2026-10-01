@@ -125,7 +125,7 @@ test.describe('fleet transport — full-chain integration (real server + real re
         const intent = {
             id         : 'integration-alice',
             harnessType: 'claude-code',
-            mcpServers : {'memory-core': true, 'github-workflow': true}
+            mcpServers : {'memory-core': true, 'neural-link': false}
         };
         const outcome = await registryBridge.configureAgent(intent);
 
@@ -133,7 +133,7 @@ test.describe('fleet transport — full-chain integration (real server + real re
         expect(outcome.agent).toMatchObject({
             id         : 'integration-alice',
             harnessType: 'claude-code',
-            mcpServers : {'github-workflow': true}
+            mcpServers : {'neural-link': false}
         });
         expect(outcome.agent.credential).toBeUndefined();
         expect(outcome.agent.metadata.launch).toBeUndefined();
@@ -141,7 +141,7 @@ test.describe('fleet transport — full-chain integration (real server + real re
 
         const [readback] = await registryBridge.listAgents();
         expect(readback.harnessType).toBe('claude-code');
-        expect(readback.mcpServers).toEqual({'github-workflow': true})
+        expect(readback.mcpServers).toEqual({'neural-link': false})
     });
 
     test('configureAgent returns a safe rejection over the real wire and preserves persisted state', async () => {
