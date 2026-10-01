@@ -7,19 +7,23 @@ const [
     {generateLocalBearerToken},
     {default: RequestContextService},
     {default: FleetManager},
+    {default: FleetRegistryService},
     {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES}
 ] = await Promise.all([
     loadAgentOsModule('ai/mcp/server/shared/helpers/localBearer.mjs'),
     loadAgentOsModule('ai/mcp/server/shared/services/RequestContextService.mjs'),
     loadAgentOsModule('ai/services/fleet/FleetManager.mjs'),
+    loadAgentOsModule('ai/services/fleet/FleetRegistryService.mjs'),
     import('neo-agent-brain/fleet-contract')
 ]);
 
 const E2E_MANAGED_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'institution-fleet-e2e-'));
 
 // The Brain service deliberately has no cwd fallback. Cross-repository tests inject their
-// disposable target root through the same composition seam as a real launcher.
-FleetManager.managedRoot = E2E_MANAGED_ROOT;
+// disposable target root through the same composition seam as a real launcher, and the registry
+// records each new seat's home under that same root, or the start refuses a "moved" seat.
+FleetManager.managedRoot        = E2E_MANAGED_ROOT;
+FleetRegistryService.agentsRoot = E2E_MANAGED_ROOT;
 process.once('exit', () => fs.rmSync(E2E_MANAGED_ROOT, {force: true, recursive: true}));
 
 /**
