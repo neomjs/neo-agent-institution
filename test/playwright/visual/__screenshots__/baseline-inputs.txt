@@ -171,7 +171,7 @@ apps/agentos/store/ViewerWakeFeed.mjs
     2416a3352de08dc4fa72d503913c6450a6f8dab6
 
 apps/agentos/util/AddAgentFlow.mjs
-    e7cdb7b4eae21dcc71e49f0cf79f334757d5bc12
+    4bc9e479b894a8fe686536dc508633065604d2d9
 
 apps/agentos/util/AgentFreshness.mjs
     6e46a29e3d686fc10340783b676e3712fc03100e
@@ -306,7 +306,7 @@ apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
     49ec354f495fbef466aa811d1a99c4b0b370be78
 
 apps/agentos/view/fleet/detail/AgentReposContainer.mjs
-    cbe9eeb796d9c8a238ccd2f51313b1fbdc02db5b
+    f2a242212840067fecbccc5aa381bff6d163c5b0
 
 apps/agentos/view/fleet/detail/Container.mjs
     62528194cbb4154236581018f25e8f5eb87734a9
