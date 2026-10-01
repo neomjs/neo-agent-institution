@@ -457,9 +457,32 @@ test.describe('AgentOS.util.ObservatorySceneLayout — the team lens and the hea
         scene = () => ObservatorySceneLayout.fromGraphScene(teamRead(NOW), {geography: 'communities', mail: true}),
         at    = (built, id) => built.index[`neomjs/neo#${id}`];
 
-    test('the peers are the read\'s own attribution, each counted once per node, by identity', () => {
-        expect(ObservatorySceneLayout.peersOf(scene())).toEqual([{id: '@ada', nodes: 2}, {id: '@emmy', nodes: 1}, {id: '@vega', nodes: 4}]);
+    test('the peers are the read\'s own attribution, each counted once per node, busiest first and by identity on a tie', () => {
+        expect(ObservatorySceneLayout.peersOf(scene())).toEqual([{id: '@vega', nodes: 4, team: false}, {id: '@ada', nodes: 2, team: false}, {id: '@emmy', nodes: 1, team: false}]);
         expect(ObservatorySceneLayout.peersOf(ObservatorySceneLayout.fromGraphScene(graphRead())), 'a read without attribution names no peer').toEqual([])
+    });
+
+    test('the team is who the read holds an identity node for, in any origin and whatever the view hides; a peer without one is outside it', () => {
+        const
+            read  = teamRead(NOW),
+            // Ada's and Vega's identity nodes, Vega's in two origins; Emmy has none, as an outside contributor has none
+            nodes = [...read.scene.nodes,
+                {id: 'neomjs/neo#@ada',              label: 'Ada',  kind: 'AgentIdentity'},
+                {id: 'neomjs/neo#@vega',             label: 'Vega', kind: 'AgentIdentity'},
+                {id: 'neomjs/neo-agent-brain#@vega', label: 'Vega', kind: 'AgentIdentity'}
+            ],
+            named = options => ObservatorySceneLayout.fromGraphScene({...read, scene: {...read.scene, nodes}}, options);
+
+        expect(ObservatorySceneLayout.peersOf(named({geography: 'communities', mail: true}))).toEqual([
+            {id: '@vega', nodes: 4, team: true}, {id: '@ada', nodes: 2, team: true}, {id: '@emmy', nodes: 1, team: false}
+        ]);
+
+        // no identity node has an edge here, so a hidden halo takes them all out of the scene, and none out of the team
+        const hidden = named({geography: 'density', halo: false, mail: false});
+
+        expect(hidden.nodes.some(node => node.kind === 'AgentIdentity')).toBe(false);
+        expect(hidden.identities).toEqual(['@ada', '@vega']);
+        expect(ObservatorySceneLayout.fromGraphScene(null).identities, 'no read, no team').toEqual([])
     });
 
     test('the lens is the union of the checked peers, a shared node taking the first-checked one; nothing checked is no lens', () => {

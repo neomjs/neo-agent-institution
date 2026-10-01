@@ -439,7 +439,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             vega   = peers.filter({hasText: '@neo-opus-vega'}),
             heat   = pane.getByRole('button', {name: 'Attention'});
 
-        await expect(peers).toHaveText([/@neo-opus-vega.*2 nodes/, /@neo-preview.*1 node/, /@tobiu.*2 nodes/]);
+        await expect(peers, 'busiest first').toHaveText([/@neo-opus-vega.*2 nodes/, /@tobiu.*2 nodes/, /@neo-preview.*1 node/]);
         expect((await stats()).lens, 'nothing checked, no lens').toBeNull();
 
         await vega.click();

@@ -904,6 +904,70 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(copy).toBeFocused()
     });
 
+    test('the Observatory offers the team busiest first and every focus has a way back — the head reads in two rows, a click outlines nothing the keys would, Clear and Escape leave a selection and then the lens', async ({page}) => {
+        const
+            pane      = page.locator('.fm-observatory-pane'),
+            peers     = pane.locator('.fm-observatory-peer-list .neo-list-item'),
+            node      = at => pane.locator('.fm-observatory-node-list .neo-list-item').nth(at),
+            head      = pane.locator('.fm-observatory-peers-head'),
+            label     = pane.locator('.fm-observatory-selected-label'),
+            currency  = pane.locator('.fm-observatory-currency'),
+            top       = async selector => Math.round((await pane.locator(selector).boundingBox()).y),
+            outlineOf = locator => locator.evaluate(el => getComputedStyle(el).outlineStyle);
+
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete$/);
+
+        // the title and the gesture hint share the first row; the read's line has the second to itself, whole
+        expect(await top('.fm-observatory-hover')).toBe(await top('.fm-observatory-title'));
+        expect(await top('.fm-observatory-currency')).toBeGreaterThan(await top('.fm-observatory-title'));
+        expect(await currency.evaluate(el => el.scrollWidth <= el.clientWidth), 'no hover truncates the line').toBe(true);
+
+        // the team busiest first; the outside contributor only under All, the ties by identity
+        await expect(head.locator('.fm-observatory-side-title')).toHaveText('Team · 5 of 6');
+        await expect(peers).toHaveText([/^@neo-opus-grace3 nodes$/, /^@neo-opus-vega3 nodes$/, /^@neo-gpt2 nodes$/, /^@tobiu2 nodes$/, /^@neo-preview1 node$/]);
+        await head.getByRole('button', {name: 'All'}).click();
+        await expect(peers).toHaveText([/^@neo-opus-grace/, /^@neo-opus-vega/, /^@neo-gpt/, /^@tobiu/, /^@a-contributor1 node$/, /^@neo-preview/]);
+        await head.getByRole('button', {name: 'All'}).click();
+        await expect(peers).toHaveCount(5);
+
+        // an outsider Team holds only while it is checked
+        await head.getByRole('button', {name: 'All'}).click();
+        await peers.filter({hasText: '@a-contributor'}).click();
+        await head.getByRole('button', {name: 'All'}).click();
+        await expect(peers).toHaveCount(6);
+        await peers.filter({hasText: '@a-contributor'}).click();
+        await expect(peers, 'unchecked, it leaves Team').toHaveCount(5);
+
+        // a mouse click selects without an outline; the keys move the selection and outline the row they reach
+        await node(1).click();
+        await expect(label).toHaveText('Golden Path currency on the cockpit');
+        expect(await outlineOf(node(1))).toBe('none');
+        await page.keyboard.press('ArrowDown');
+        await expect(label).toHaveText('REM digests the backlog before the next cut');
+        expect(await outlineOf(node(2))).toBe('solid');
+
+        // Escape backs out one step at a time: the selection first, then the lens
+        await peers.first().click();
+        await node(1).click();
+        await expect(currency).toHaveText(/ · lens · /);
+        await page.keyboard.press('Escape');
+        await expect(label).toHaveText('No node selected');
+        await expect(currency, 'the lens outlives the selection').toHaveText(/ · lens · /);
+        await page.keyboard.press('Escape');
+        await expect(currency).not.toHaveText(/lens/);
+
+        // and each has its own Clear
+        await peers.first().click();
+        await head.getByRole('button', {name: 'Clear'}).click();
+        await expect(currency).not.toHaveText(/lens/);
+        await expect(head.getByRole('button', {name: 'Clear'}), 'no lens, nothing to clear').toBeHidden();
+        await node(1).click();
+        await pane.locator('.fm-observatory-selected-actions').getByRole('button', {name: 'Clear'}).click();
+        await expect(label).toHaveText('No node selected')
+    });
+
     /**
      * @summary Creates the packaged shell's plane-setup card in the viewport above the shell, the way
      * `ViewportController#mountPlaneSetup` inserts it on an unconfigured packaged boot. The harness

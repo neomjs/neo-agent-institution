@@ -1,10 +1,11 @@
 import BaseList from '../../../../../node_modules/neo.mjs/src/list/Base.mjs';
 
 /**
- * @summary The team lens's peers as a list of checks: every identity the read attributes nodes to is a row with
- * its hue, its identity and how many of the read's nodes carry it. The rows are the engine's multi-select list:
+ * @summary The team lens's peers as a list of checks: each peer the Team section offers (the team, or everyone
+ * the read attributes nodes to) is a row with its hue, its identity and how many of the read's nodes carry it,
+ * busiest first. The rows are the engine's multi-select list:
  * a click checks a peer and a second click unchecks it, and the checked rows are the lens. The owning
- * {@link AgentOS.view.fleet.goldenpath.ObservatoryContainer} seats the store, reads the selection and restores it
+ * {@link AgentOS.view.fleet.goldenpath.ObservatoryTeamContainer} seats the store, reads the selection and restores it
  * on a new read; this list renders.
  *
  * @class AgentOS.view.fleet.goldenpath.ObservatoryPeerList

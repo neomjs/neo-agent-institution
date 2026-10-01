@@ -64,6 +64,12 @@ class ObservatorySceneLayout extends Base {
          */
         haloGeometry: {around: 8, bands: 3, depth: 0.4, radius: 1.9},
         /**
+         * The node kinds that are the Brain's registered identities, the team: a node of one names its identity by
+         * its local id (`<origin>#@login`), the form the read's attribution uses. An outside contributor has none.
+         * @member {String[]} identityKinds=['AgentIdentity']
+         */
+        identityKinds: ['AgentIdentity'],
+        /**
          * The node kinds that are mail: agent messages and their broadcast sentinels. Dropping the mail
          * relations alone does not free the geography, because a message stays attached to the concepts it
          * names through `TAGGED_CONCEPT`.
@@ -201,7 +207,8 @@ class ObservatorySceneLayout extends Base {
      * outer shell cut into sector clusters, `false` out of the scene, `null` as the communities geography always
      * has, in one community of their own (the density geography treats `null` as `true`). Neither filter hides a
      * route seed: a seed in no well keeps its place on the shell, so the route never skips an item. `hidden`
-     * counts what left the scene, so the line above it can say so.
+     * counts what left the scene, so the line above it can say so. `identities` names the read's
+     * {@link #identityKinds} nodes before either filter, so a view never changes who is on the team.
      *
      * The route's seeds come first in route order and carry their position as `rank`; a node's `hop` is its
      * distance to the nearest seed, `null` for a node no seed reaches. An edge with an absent endpoint is
@@ -214,7 +221,7 @@ class ObservatorySceneLayout extends Base {
      * @param {Boolean|null} [options.halo=null] Where the nodes in no well go (see above)
      * @param {Boolean} [options.mail=true] Whether mail stays in the scene
      * @returns {Object} `{currency, empty, geography, nodes, edges, edgeTypes, seeds, index, communities,
-     *     haloFrom, halo, hidden, wells, wellCap, overCap, completeness, snapshotId}`: `nodes[]` = `{id, kind, label, rank,
+     *     haloFrom, halo, hidden, wells, wellCap, overCap, identities, completeness, snapshotId}`: `nodes[]` = `{id, kind, label, rank,
      *     hop, cluster, x, y, z, authoredBy, assignedTo, memoryOf, state, lastActivityAt}`, the seeds first in route
      *     order, then by id, the last five as the read carries them (`null` where it does not); `edges[]` pairs index into `nodes`,
      *     `edgeTypes[]` aligned; `seeds[]` indexes the seeds in route order. `communities` counts the
@@ -222,23 +229,25 @@ class ObservatorySceneLayout extends Base {
      *     `halo` counts their nodes. `hidden` is `{mail: {nodes, edges}, halo: {nodes, edges}}`; `wells[]` is
      *     `{id, label, size}` per well, largest first; `wellCap` is the strategic walk's cap, `null` otherwise, and
      *     `overCap` counts the nodes in no well that an anchor reached, the ones only a full well could have taken,
-     *     so the rest of the halo is what no well reached.
+     *     so the rest of the halo is what no well reached. `identities[]` holds the identity nodes' local ids, sorted.
      */
     fromGraphScene(envelope, {geography = 'communities', halo = null, mail = true} = {}) {
         const
-            me         = this,
-            currency   = envelope?.capability?.state ?? 'unobserved',
-            scene      = envelope?.scene ?? null,
-            snapshotId = envelope?.snapshotId ?? null,
-            byId       = new Map(),
-            hidden     = {mail: {nodes: 0, edges: 0}, halo: {nodes: 0, edges: 0}},
-            mailIds    = new Set(),
-            mailKinds  = new Set(me.mailKinds),
-            mailTypes  = new Set(me.mailTypes),
-            routeAt    = new Map();
+            me            = this,
+            currency      = envelope?.capability?.state ?? 'unobserved',
+            scene         = envelope?.scene ?? null,
+            snapshotId    = envelope?.snapshotId ?? null,
+            byId          = new Map(),
+            hidden        = {mail: {nodes: 0, edges: 0}, halo: {nodes: 0, edges: 0}},
+            identities    = new Set(),
+            identityKinds = new Set(me.identityKinds),
+            mailIds       = new Set(),
+            mailKinds     = new Set(me.mailKinds),
+            mailTypes     = new Set(me.mailTypes),
+            routeAt       = new Map();
 
         if (currency === 'unavailable' || !Array.isArray(scene?.nodes)) {
-            return {currency, empty: true, geography, nodes: [], edges: [], edgeTypes: [], seeds: [], index: {}, communities: 0, haloFrom: null, halo: 0, hidden, wells: [], wellCap: null, overCap: 0, completeness: scene?.completeness ?? null, snapshotId}
+            return {currency, empty: true, geography, nodes: [], edges: [], edgeTypes: [], seeds: [], index: {}, communities: 0, haloFrom: null, halo: 0, hidden, wells: [], wellCap: null, overCap: 0, identities: [], completeness: scene?.completeness ?? null, snapshotId}
         }
 
         // the seeds are known before either filter runs: a view filter hides dust, never the route
@@ -248,6 +257,7 @@ class ObservatorySceneLayout extends Base {
 
         for (const node of scene.nodes) {
             if (typeof node?.id === 'string' && !byId.has(node.id) && !mailIds.has(node.id)) {
+                identityKinds.has(node.kind) && identities.add(node.id.slice(node.id.indexOf('#') + 1));
                 !mail && mailKinds.has(node.kind) && !routeAt.has(node.id) ? mailIds.add(node.id) : byId.set(node.id, node)
             }
         }
@@ -493,6 +503,7 @@ class ObservatorySceneLayout extends Base {
             wells,
             wellCap,
             overCap,
+            identities  : [...identities].sort(compare),
             completeness: scene.completeness ?? null,
             snapshotId
         }
@@ -597,19 +608,22 @@ class ObservatorySceneLayout extends Base {
 
     /**
      * @summary The peers a scene attributes nodes to — the authors and assignees of issues and PRs, the identities
-     * of memories — each with the count of its nodes, by identity. The registry need not know them: the lens reads
-     * the graph's own attribution.
+     * of memories — each with the count of its nodes and whether it is on the team (the read holds its identity,
+     * {@link #fromGraphScene}'s `identities`), busiest first and by identity on a tie. The registry need not know
+     * them: the lens reads the graph's own attribution.
      * @param {Object|null} scene A {@link #fromGraphScene} scene
-     * @returns {{id: String, nodes: Number}[]}
+     * @returns {{id: String, nodes: Number, team: Boolean}[]}
      */
     peersOf(scene) {
-        const counts = new Map();
+        const counts = new Map(), team = new Set(scene?.identities);
 
         for (const node of scene?.nodes ?? []) {
             new Set([node.authoredBy, ...(node.assignedTo ?? []), node.memoryOf].filter(Boolean)).forEach(id => counts.set(id, (counts.get(id) ?? 0) + 1))
         }
 
-        return [...counts].map(([id, nodes]) => ({id, nodes})).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+        return [...counts]
+            .map(([id, nodes]) => ({id, nodes, team: team.has(id)}))
+            .sort((a, b) => b.nodes - a.nodes || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     }
 
     /**

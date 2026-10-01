@@ -3,13 +3,12 @@ import GoldenPathEnvelope            from '../../../util/GoldenPathEnvelope.mjs'
 import GraphNodeSource               from '../../../util/GraphNodeSource.mjs';
 import GraphSceneEnvelope            from '../../../util/GraphSceneEnvelope.mjs';
 import GraphSceneNodes               from '../../../store/GraphSceneNodes.mjs';
-import GraphScenePeers               from '../../../store/GraphScenePeers.mjs';
 import GraphSceneRelations           from '../../../store/GraphSceneRelations.mjs';
 import ObservatoryCanvas             from './ObservatoryCanvas.mjs';
 import ObservatoryNodeList           from './ObservatoryNodeList.mjs';
-import ObservatoryPeerList           from './ObservatoryPeerList.mjs';
 import ObservatorySceneLayout        from '../../../util/ObservatorySceneLayout.mjs';
 import ObservatorySelectionContainer from './ObservatorySelectionContainer.mjs';
+import ObservatoryTeamContainer      from './ObservatoryTeamContainer.mjs';
 import ObservatoryViewContainer      from './ObservatoryViewContainer.mjs';
 import ViewerTime                    from '../../../util/ViewerTime.mjs';
 import {peerHues}                    from '../../../canvas/fmPalette.mjs';
@@ -34,11 +33,15 @@ const HOVER_HINT = 'drag orbits · wheel zooms · click selects';
  * read's to report, so a withheld route is named beside the graph read's own words.
  *
  * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, at the top of the
- * side panel, lists every peer the read attributes nodes to, each in its own hue; checking peers draws their nodes
- * in their hues, the union of them, fades the rest, and names in the node list what each node is to its peer
+ * side panel ({@link AgentOS.view.fleet.goldenpath.ObservatoryTeamContainer}), offers the team the read names,
+ * busiest first, each peer in its own hue; checking peers draws their nodes in their hues, the union of them,
+ * fades the rest, and names in the node list what each node is to its peer
  * ({@link AgentOS.util.ObservatorySceneLayout#roleOf}). Attention brightens what drew attention within the stated
  * window by a named event taxonomy ({@link AgentOS.util.ObservatorySceneLayout#heatOf}), and the line says how
  * much of it is unknown.
+ *
+ * A focus always has a way back: the Team head's Clear lifts the lens, the selected node's Clear drops the
+ * selection, and Escape anywhere in the pane backs out one step, the selection first, then the lens.
  *
  * The selected node's section ({@link AgentOS.view.fleet.goldenpath.ObservatorySelectionContainer}) says what the scene
  * carries about the node and opens its source ({@link AgentOS.util.GraphNodeSource}): a work item's GitHub page,
@@ -112,6 +115,11 @@ class ObservatoryContainer extends Container {
          */
         heatOverlay_: false,
         /**
+         * Escape backs out of a focus: a key bubbles here from the lists and the controls.
+         * @member {Object} keys={Escape: 'onEscape'}
+         */
+        keys: {Escape: 'onEscape'},
+        /**
          * @member {Object} layout={ntype: 'vbox', align: 'stretch'}
          */
         layout: {ntype: 'vbox', align: 'stretch'},
@@ -144,15 +152,9 @@ class ObservatoryContainer extends Container {
                 layout   : {ntype: 'vbox', align: 'stretch'},
                 reference: 'observatory-side',
                 items    : [{
-                    ntype    : 'component',
-                    cls      : ['fm-observatory-side-title'],
+                    module   : ObservatoryTeamContainer,
                     flex     : 'none',
-                    reference: 'observatory-peers-title',
-                    text     : 'Team'
-                }, {
-                    module   : ObservatoryPeerList,
-                    flex     : 'none',
-                    reference: 'observatory-peers'
+                    reference: 'observatory-team'
                 }, {
                     module   : ObservatoryViewContainer,
                     flex     : 'none',
@@ -234,16 +236,6 @@ class ObservatoryContainer extends Container {
      */
     overlays = {heat: null, lens: null}
     /**
-     * The peers of the current scene's team lens, one record each, by identity.
-     * @member {AgentOS.store.GraphScenePeers|null} peerStore=null
-     */
-    peerStore = null
-    /**
-     * True while a new read's peer list gets its checks back, so the restore is not read as the viewer's choice.
-     * @member {Boolean} restoringPeers=false
-     */
-    restoringPeers = false
-    /**
      * Each node's relations in the current read, by layout index.
      * @member {Uint32Array|null} relationCounts=null
      */
@@ -272,16 +264,15 @@ class ObservatoryContainer extends Container {
         const me = this;
 
         me.nodeStore     = Neo.create(GraphSceneNodes);
-        me.peerStore     = Neo.create(GraphScenePeers);
         me.relationStore = Neo.create(GraphSceneRelations);
 
         super.construct(config)
     }
 
     /**
-     * The items exist from here on: the lists take their stores and report their choices, the View section's
-     * controls and the selected node's Open action report theirs, the canvas joins the body where a canvas
-     * worker exists — without one (a config without it; the unit harness, whose stubs resolve the worker's
+     * The items exist from here on: the lists take their stores and report their choices, the Team section its
+     * checks, the View section's controls and the selected node's actions theirs, the canvas joins the body where a
+     * canvas worker exists — without one (a config without it; the unit harness, whose stubs resolve the worker's
      * readiness but never define `Neo.worker.Canvas`) the engine's canvas boot throws, so the side panel takes
      * the whole body — and an envelope in the config reaches the head and the panel.
      */
@@ -291,16 +282,14 @@ class ObservatoryContainer extends Container {
         const
             me        = this,
             nodes     = me.getReference('observatory-nodes'),
-            peers     = me.getReference('observatory-peers'),
             relations = me.getReference('observatory-relations');
 
         nodes.store     = me.nodeStore;
-        peers.store     = me.peerStore;
         relations.store = me.relationStore;
         nodes    .on('select', me.onNodeListSelect,     me);
         relations.on('select', me.onRelationListSelect, me);
-        peers.selectionModel.on('selectionChange', me.onPeerSelectionChange, me);
-        me.getReference('observatory-selected').on('sessionOpen', me.onSessionOpen, me);
+        me.getReference('observatory-team').on('lensChange', ({lensPeers}) => me.lensPeers = lensPeers);
+        me.getReference('observatory-selected').on({selectionClear: me.onSelectionClear, sessionOpen: me.onSessionOpen, scope: me});
         me.getReference('geography-density')  .set({handler: () => me.geography = 'density',   handlerScope: me});
         me.getReference('geography-strategic').set({handler: () => me.geography = 'strategic', handlerScope: me});
         me.getReference('halo-toggle')        .set({handler: 'onHaloToggleClick',  handlerScope: me});
@@ -325,7 +314,7 @@ class ObservatoryContainer extends Container {
 
         me.updateLine();
         me.updateView();
-        me.fillPeerList();
+        me.syncTeam(true);
         me.fillNodeList();
         me.syncLists();
         me.updateSelection()
@@ -336,11 +325,10 @@ class ObservatoryContainer extends Container {
      * @param {...*} args
      */
     destroy(...args) {
-        const {nodeStore, peerStore, relationStore} = this;
+        const {nodeStore, relationStore} = this;
 
         super.destroy(...args);
         nodeStore?.destroy();
-        peerStore?.destroy();
         relationStore?.destroy()
     }
 
@@ -417,10 +405,9 @@ class ObservatoryContainer extends Container {
             const {lens} = me.channels();
 
             me.getReference('observatory-canvas')?.set({lens});
-            me.peerStore.items.forEach(record => record.set({hue: me.hueOf(record.id)}));
+            me.syncTeam(false);
             me.fillNodeList();
             me.syncLists();
-            me.syncPeers();
             me.updateLine()
         }
     }
@@ -501,7 +488,7 @@ class ObservatoryContainer extends Container {
 
         // the overlays are indexed by the new scene's nodes, so they cross with it in one batch
         me.getReference('observatory-canvas')?.set({scene, selectedId: me.selectedId, ...me.overlays});
-        me.fillPeerList();
+        me.syncTeam(true);
         me.fillNodeList();
         me.syncLists();
         me.updateSelection()
@@ -603,25 +590,6 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Fills the team lens's peers from the current scene, by identity, each with its hue and node
-     * count, and checks again the ones the lens holds, so a new read keeps the viewer's choice. The title says
-     * when the read attributes no node, so an empty list is never read as a lens without peers to offer.
-     * @protected
-     */
-    fillPeerList() {
-        const me = this, peers = ObservatorySceneLayout.peersOf(me.scene), title = me.getReference('observatory-peers-title');
-
-        me.peerStore.clear();
-        peers.length && me.peerStore.add(peers.map(({id, nodes}) => ({hue: me.hueOf(id), id, nodes})));
-
-        if (title) {
-            title.text = peers.length ? 'Team' : 'Team · no peer in this read'
-        }
-
-        me.syncPeers()
-    }
-
-    /**
      * @summary The hue a peer is drawn in: while checked, its place among the lens's hues, where a peer checked
      * before it may hold its own; otherwise its own place in the palette.
      * @param {String} identity
@@ -646,6 +614,20 @@ class ObservatoryContainer extends Container {
 
         // the bound value is the provider's tracking proxy; the layout reads the plain projection
         return ObservatorySceneLayout.fromGraphScene(GraphSceneEnvelope.plain(envelope), {geography, halo, mail})
+    }
+
+    /**
+     * @summary Escape in the pane backs out one step: a selection drops first, then the lens lifts, and with
+     * neither nothing changes.
+     */
+    onEscape() {
+        const me = this;
+
+        if (me.selectedId) {
+            me.onSelectionClear()
+        } else if (me.lensPeers.length) {
+            me.lensPeers = []
+        }
     }
 
     /**
@@ -720,25 +702,6 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The viewer checked or unchecked a peer, and the lens keeps its check order: an unchecked peer
-     * leaves it, a checked one joins its end, and a checked peer this read does not list keeps its place. A new
-     * read restoring its checks is no choice.
-     * @param {Object}   data
-     * @param {String[]} data.selection The checked rows' ids
-     */
-    onPeerSelectionChange({selection}) {
-        const me = this, list = me.getReference('observatory-peers');
-
-        if (!me.restoringPeers && list) {
-            const
-                checked = new Set(selection.map(itemId => me.peerStore.get(list.getItemRecordId(itemId))?.id).filter(Boolean)),
-                kept    = me.lensPeers.filter(id => checked.has(id) || !me.peerStore.get(id));
-
-            me.lensPeers = [...kept, ...[...checked].filter(id => !kept.includes(id))]
-        }
-    }
-
-    /**
      * @summary A relation row was chosen: the selection moves to the node at its other end.
      * @param {Object} data
      * @param {Object[]} data.records
@@ -754,6 +717,14 @@ class ObservatoryContainer extends Container {
      */
     onRouteToggleClick() {
         this.routeOverlay = !this.routeOverlay
+    }
+
+    /**
+     * @summary The selected node's Clear, or Escape: the selection drops, and the scene takes its own colours
+     * again.
+     */
+    onSelectionClear() {
+        this.selectedId && this.onNodeSelect({node: null})
     }
 
     /**
@@ -846,25 +817,20 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Puts the peer list's checks on the peers the lens holds that the list shows, without reading the
-     * restore as the viewer's choice.
+     * @summary Hands the Team section the scene's peers, each in the hue it is drawn in, and the lens: a new
+     * scene refills the list, a changed lens only recolours it and puts its checks back.
+     * @param {Boolean} refill `true` for a new scene
      * @protected
      */
-    syncPeers() {
-        const me = this, model = me.getReference('observatory-peers')?.selectionModel;
+    syncTeam(refill) {
+        const me = this;
 
-        if (model) {
-            const records = me.lensPeers.map(id => me.peerStore.get(id)).filter(Boolean);
-
-            me.restoringPeers = true;
-
-            try {
-                model.deselectAll(true);
-                records.length && model.select(records)
-            } finally {
-                me.restoringPeers = false
-            }
-        }
+        me.getReference('observatory-team')?.sync({
+            lensPeers: me.lensPeers,
+            named    : me.scene.identities.length > 0,
+            peers    : ObservatorySceneLayout.peersOf(me.scene).map(peer => ({...peer, hue: me.hueOf(peer.id)})),
+            refill
+        })
     }
 
     /**

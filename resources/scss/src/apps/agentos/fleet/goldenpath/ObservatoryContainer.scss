@@ -8,12 +8,24 @@
     background: var(--fm-panel);
     min-height: 0;
 
-    /* the View section's rows and the selected node's actions: the shell's ghost verb at the chrome scale
-       (Viewport.scss `.fm-pane-actions`), whose pressed state carries the choice; they lead their row, so the head's
-       trailing-slot margin does not apply */
+    /* the Team head, the View section's rows and the selected node's actions: the shell's ghost verb at the chrome
+       scale (Viewport.scss `.fm-pane-actions`), whose pressed state carries the choice; they lead their row, so the
+       head's trailing-slot margin does not apply */
+    .fm-observatory-peers-head,
     .fm-observatory-view-row,
     .fm-observatory-selected-actions {
         margin-left: 0;
+    }
+
+    /* the Team head: the section's title, then the lens's Clear and the scope's All; the head draws the panel's
+       first line, so the title inside it keeps none of its own */
+    .fm-observatory-peers-head {
+        padding-right: var(--fm-space-3);
+
+        .fm-observatory-side-title {
+            border-top: none;
+            min-width : 0;
+        }
     }
 
     .fm-observatory-view-row {
@@ -25,50 +37,53 @@
         font : var(--fm-text-micro);
     }
 
+    /* two rows: the title with the hovered node beside it, then the read's line on its own, so no hover
+       pushes the line out */
     .fm-observatory-head {
-        display        : flex;
-        align-items    : baseline;
-        border-bottom  : thin solid var(--fm-line-soft);
-        gap            : var(--fm-space-3);
-        min-width      : 0;
-        padding        : var(--fm-space-2) var(--fm-space-3);
-        font           : var(--fm-text-chrome);
-        letter-spacing : var(--fm-text-chrome-tracking);
-        text-transform : uppercase;
-        color          : var(--fm-ink-dim);
-        white-space    : nowrap;
-        overflow       : hidden;
-        text-overflow  : ellipsis;
+        display              : grid;
+        align-items          : baseline;
+        border-bottom        : thin solid var(--fm-line-soft);
+        column-gap           : var(--fm-space-3);
+        grid-template-areas  : "title hover" "line line";
+        grid-template-columns: auto minmax(0, 1fr);
+        min-width            : 0;
+        padding              : var(--fm-space-2) var(--fm-space-3);
+        row-gap              : var(--fm-space-1);
+        font                 : var(--fm-text-chrome);
+        letter-spacing       : var(--fm-text-chrome-tracking);
+        text-transform       : uppercase;
+        color                : var(--fm-ink-dim);
+        white-space          : nowrap;
 
         .fm-observatory-title {
-            color: var(--fm-ink);
+            color    : var(--fm-ink);
+            grid-area: title;
         }
 
-        /* a long line gives way to the hovered node, and the gesture hint to the line */
-        .fm-observatory-currency {
+        .fm-observatory-currency,
+        .fm-observatory-hover {
+            max-width    : 100%;
             min-width    : 0;
             overflow     : hidden;
             text-overflow: ellipsis;
         }
 
-        &:has(.is-hint) .fm-observatory-currency {
-            flex-shrink: 0;
+        .fm-observatory-currency {
+            grid-area: line;
         }
 
         /* the hovered node keeps its own case: it is a title, not chrome; the gesture hint that
            stands in for it while no node is under the pointer stays chrome, dim */
         .fm-observatory-hover {
             color         : var(--fm-signal);
+            grid-area     : hover;
+            justify-self  : end;
             letter-spacing: normal;
-            margin-left   : auto;
             text-transform: none;
 
             &.is-hint {
                 color         : var(--fm-ink-dim);
                 letter-spacing: inherit;
-                min-width     : 0;
-                overflow      : hidden;
-                text-overflow : ellipsis;
                 text-transform: inherit;
             }
         }
@@ -178,7 +193,7 @@
     }
 
     /* the engine list's own variables, re-valued on the FM scale: rows on the pane's ground, the selected
-       row a step up with the signal at its edge, keyboard focus outlined in the signal */
+       row a step up with the signal at its edge, keyboard focus alone outlined in the signal */
     .fm-observatory-node-list,
     .fm-observatory-peer-list,
     .fm-observatory-relation-list {
@@ -188,12 +203,18 @@
         --list-item-background-color-hover   : var(--fm-panel-2);
         --list-item-background-color-selected: var(--fm-panel-2);
         --list-item-color-selected           : var(--fm-ink);
-        --list-item-focus-outline            : thin solid var(--fm-signal);
+        --list-item-focus-outline            : none;
         --list-item-focus-outline-offset     : -1px;
         --list-scrollbar-color-scheme        : inherit;
 
         min-height: 0;
         overflow-y: auto;
+
+        /* the navigator marks and focuses the row a click lands on as well as the one the keys reach; only the
+           keys' focus is visible, so only it is outlined */
+        .neo-list-item:focus-visible {
+            --list-item-focus-outline: thin solid var(--fm-signal);
+        }
 
         .neo-list-item[aria-selected="true"] {
             box-shadow: inset 2px 0 0 var(--fm-signal);
