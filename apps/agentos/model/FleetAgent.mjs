@@ -103,6 +103,23 @@ class FleetAgent extends Model {
             name        : 'launchable',
             defaultValue: null
         }, {
+            // the seat's harness family key as the registry holds it (`claude-desktop`,
+            // `codex-desktop`, `claude-code`, …), passed through from the roster DTO; tri-state —
+            // null = the row carried none — so a card never infers a harness from a display fact
+            name        : 'harnessType',
+            defaultValue: null
+        }, {
+            // the seat's working repository as the Fleet derived it before any launch
+            // (`repoStatus.repoSlug` / `repoStatus.repoPath` on the roster DTO). The path is what a
+            // Claude Desktop seat's operator must open in the Code tab, since that Desktop cannot be
+            // launched into a folder. Tri-state: null = no repository configured or no repo status
+            // on the row — the card renders no line then, never a placeholder
+            name        : 'repoSlug',
+            defaultValue: null
+        }, {
+            name        : 'repoPath',
+            defaultValue: null
+        }, {
             // open assigned lanes for the resident (measured density evidence: 7–17 per active
             // agent — one lane line cannot carry that truth, the count badge can). Owned by the
             // roster DTO end-to-end (assembler stamp → mapRosterRow → this record → the badge);

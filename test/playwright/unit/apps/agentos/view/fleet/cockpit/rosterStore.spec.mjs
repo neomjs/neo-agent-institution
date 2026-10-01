@@ -296,6 +296,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             // the mailbox identity authority: absent on this row → honest null (unverifiable), never
             // silently substituted with the registry key, which is a different id space entirely
             githubUsername: null,
+            // the launch-side facts: a row without a harness key or a repo status → honest null, and
+            // the card renders no clone-path line for it
+            harnessType   : null,
             lastActivityAt: null,
             launchable    : null,
             openLaneCount : null,   // roster-DTO-owned tri-state: un-stamped → honest null (no badge)
@@ -303,6 +306,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             participationStatus: null,
             // the presence axis rides the same passthrough contract as wake/throttle below
             presence: null,
+            repoPath: null,
+            repoSlug: null,
             sources : liveSources(),
             state   : 'ok',
             // the S2 telltale axes: absent on this row → honest null, never a synthesized 'unknown'.
@@ -314,6 +319,29 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         // laneLine is OMITTED, never nulled — a roster merge must not wipe what the activity producer writes
         expect(Object.hasOwn(mapped, 'laneLine')).toBe(false)
+    });
+
+    test('mapRosterRow carries the harness key and the working repository the Fleet derived — the clone-path line\'s facts', () => {
+        const mapped = FleetCockpitController.prototype.mapRosterRow({
+            id         : 'neo-opus-ada',
+            harnessType: 'claude-desktop',
+            lifecycle  : {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
+            // the repo producer's row as `inspectFleetRepos` shapes it: the path exists before any launch
+            repoStatus : {configured: true, repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-opus-ada/neomjs/neo', exists: true, isCheckout: true, state: 'ready', provisioningAction: null},
+            sources    : liveSources()
+        });
+
+        expect(mapped).toMatchObject({
+            agentId    : 'neo-opus-ada',
+            harnessType: 'claude-desktop',
+            repoSlug   : 'neomjs/neo',
+            repoPath   : '/Users/Shared/agents/neo-opus-ada/neomjs/neo'
+        });
+
+        // a row the repo producer did not cover: null facts, never a guessed path or slug
+        const bare = FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', repoStatus: null, sources: liveSources()});
+
+        expect(bare).toMatchObject({harnessType: null, repoPath: null, repoSlug: null})
     });
 
     test('mapRosterRow passes the S2 axes through WHOLE — the view never re-derives a produced fact', () => {
@@ -420,11 +448,14 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             // the mailbox identity authority rides the reconcile like every other DTO fact —
             // absent on this row → honest null (unverifiable), never the registry key substituted
             githubUsername     : null,
+            harnessType        : null,
             lastActivityAt     : null,
             launchable         : null,
             openLaneCount      : null,
             participationStatus: null,
             presence           : null,
+            repoPath           : null,
+            repoSlug           : null,
             sources            : liveSources(),
             state              : 'ok',
             throttle           : null,

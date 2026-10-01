@@ -6,7 +6,7 @@ engine
     ab01a11b954b11387fe9a300700e069ad7a21fc98b4429ad29372f1a3320328b
 
 apps/agentos/CARD-CONTRACT.md
-    6327390cd35078148bcb3409bd417d17bff7252e
+    7cbbc4717c641ab36089a0c7ded20095a91c44fa
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    0aafd50e4b270d73ed6c1d397e8921b738f4ece4
+    d6b9ea71076802706ffa4e22cb6e7159aa02fe78
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -218,6 +218,9 @@ apps/agentos/util/NameSlot.mjs
 apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
 
+apps/agentos/util/RosterRow.mjs
+    bff1c961101facdc4ba48e22fdfcfe6459403b48
+
 apps/agentos/util/SourceHealth.mjs
     f92b9d452aa9754f764a2e530fac73da98e83b84
 
@@ -270,7 +273,7 @@ apps/agentos/view/fleet/cockpit/Controller.mjs
     958c10449b0295c19d0e308362b1c78d26ce5672
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    cb46c8ea57ca18de085ebeb3c12361bf0757b4cb
+    82a2570c3976b574c557f592281830b8449f1125
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     3bc24c1b7d3498119de6210234cc74528fcfaa8f
@@ -393,7 +396,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    071a084eb04d6c52a61bd18251036034be12adb8
+    880c38cf42c0ab4b8e0350986e53afa55ef95724
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     64238dd4bac922bbfd33878431f3b9a21f9d8dfb
@@ -513,7 +516,7 @@ resources/scss/src/apps/agentos/fleet/roster/Container.scss
     6d2873b22214c71368ae1e7352e1023eede8cc08
 
 resources/scss/src/apps/agentos/fleet/roster/card/Container.scss
-    fb28e8d2ecb001acffde97295e87a2b0695acdac
+    68f47604631a2ba45629d117483a98937bf9e5ad
 
 resources/scss/src/apps/agentos/fleet/shared/FamilyRailComponent.scss
     a44934170253161f3d0067031116e88e141223b3
