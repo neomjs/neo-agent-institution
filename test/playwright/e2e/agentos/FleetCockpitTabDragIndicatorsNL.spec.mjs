@@ -5,10 +5,13 @@ import {test, expect} from '../../fixtures.mjs';
  * cockpit pane must be answered by the engine's drop-indicator menu, and releasing on an indicator
  * must commit exactly one dock operation through the cockpit's reducer.
  *
- * The engine composes that tier (preview renderer, indicator menu, gesture controller) through the
- * workspace's window Participation on first use; a workspace that never creates one drags a header
- * into a layout that never answers — the operator's 2026-10-01 observation in the installed shell,
- * reproduced headless in the served cockpit (zero indicators, DragCoordinator `claimTrace: []`).
+ * That tier (preview renderer, indicator menu, gesture controller) is consumer-composed: the cockpit
+ * composes the engine's in-window `DragAffordances` controller over a declared dock host that keeps
+ * the two overlays beside the projected shell. A workspace that composes nothing drags a header into
+ * a layout that never answers — the operator's 2026-10-01 observation in the installed shell,
+ * reproduced headless in the served cockpit (zero indicators). The cross-window coordinator plays no
+ * part in an in-window drag: a Participation alone was measured inert for it, because the
+ * coordinator never targets the gesture's own window.
  *
  * Indicator DOM is the engine's: `neo-dashboard-dock-drop-indicator` chips inside the
  * `neo-dashboard-dock-drop-indicators` menu (`src/dashboard/dock/interaction/DropIndicators.mjs`);
@@ -69,8 +72,8 @@ test.describe('AgentOS Fleet cockpit — tab-header drag shows drop indicators a
         await page.mouse.move(hBox.x + hBox.width / 2 + 14, hBox.y + hBox.height / 2 + 6, {steps: 4});
         await page.mouse.move(sBox.x + sBox.width / 2, sBox.y + sBox.height / 2, {steps: 20});
 
-        // AC-1: the menu answers the held header — chips exist, one of them is the active candidate,
-        // and the coordinator has claimed a target zone for the gesture
+        // AC-1: the menu answers the held header — chips exist and one of them is the active
+        // candidate the composed in-window controller resolved for the pointer
         await expect(menu, 'the indicator menu shows for a held header').not.toHaveClass(/neo-dashboard-dock-drop-indicators-hidden/, {timeout: 2000});
         await expect.poll(() => chips.count(), {message: 'the menu renders at least one indicator chip', timeout: 2000}).toBeGreaterThan(0);
         await expect(active, 'the chip under the pointer is the active candidate').toHaveCount(1, {timeout: 2000});
