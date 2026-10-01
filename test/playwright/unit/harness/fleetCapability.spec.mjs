@@ -324,9 +324,9 @@ test.describe('harness Fleet capability', () => {
     });
 
     /**
-     * Brain #728's contract, which no pin carries yet: `setPlaneCredential` is a wire verb and a
-     * credential-bearing one, and its request has the shape `createFleetWireRequest` builds. Injected
-     * through the factory's own seams, so this arm runs on any pin.
+     * The Brain contract that adds `setPlaneCredential`, which no pin carries yet: it is a wire verb
+     * and a credential-bearing one, and its request has the shape `createFleetWireRequest` builds.
+     * Injected through the factory's own seams, so this arm runs on any pin.
      */
     const planeCredentialContract = {
         wireMethods      : [...new Set([...FLEET_WIRE_METHODS, 'setPlaneCredential'])],
