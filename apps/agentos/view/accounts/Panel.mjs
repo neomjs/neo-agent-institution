@@ -1,4 +1,5 @@
 import AgentConfigCard       from '../fleet/detail/AgentConfigComponent.mjs';
+import AgentReposCard        from '../fleet/detail/AgentReposComponent.mjs';
 import AddAgentForm          from '../fleet/instances/AddAgentForm.mjs';
 import AddAgentFlow          from '../../util/AddAgentFlow.mjs';
 import ConfigIntentRoundTrip from '../../util/ConfigIntentRoundTrip.mjs';
@@ -140,6 +141,10 @@ class Accounts extends DashboardPanel {
                 flex     : 'none',
                 reference: 'agent-config-card'
             }, {
+                module   : AgentReposCard,
+                flex     : 'none',
+                reference: 'agent-repos-card'
+            }, {
                 module   : AddAgentForm,
                 flex     : 'none',
                 reference: 'add-agent-form'
@@ -172,9 +177,17 @@ class Accounts extends DashboardPanel {
     agentConfigSaveStatuses = new Map()
 
     /**
-     * @summary Wire the three children's events: the card's `configIntent` (this view owns the
-     * bridge round-trip, see {@link #onAgentConfigIntent}), the form's `agentDefinitionAccepted`
-     * and the list's `select`.
+     * Ephemeral save status per agent for the Repositories card, kept apart from the configuration
+     * card's: a refused repository list must not paint the configuration card's status line.
+     * @member {Map<String,Object>} agentReposSaveStatuses
+     * @private
+     */
+    agentReposSaveStatuses = new Map()
+
+    /**
+     * @summary Wire the children's events: each card's `configIntent` (this view owns the bridge
+     * round-trip, see {@link #onAgentConfigIntent} and {@link #onAgentReposIntent}), the form's
+     * `agentDefinitionAccepted` and the list's `select`.
      * @param {...*} args
      */
     onConstructed(...args) {
@@ -186,6 +199,8 @@ class Accounts extends DashboardPanel {
 
         card?.on({configIntent: me.onAgentConfigIntent, scope: me});
         if (card) card.tenantStore = me.fleetTenantsStore;
+
+        me.getReference('agent-repos-card')?.on({configIntent: me.onAgentReposIntent, scope: me});
 
         me.getReference('add-agent-form')?.on({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
         me.getReference('agent-list')?.on({select: me.onAgentListSelect, scope: me});
@@ -252,19 +267,23 @@ class Accounts extends DashboardPanel {
      */
     afterSetSelectedAgentId(value, oldValue) {
         let me     = this,
-            card   = me.getReference('agent-config-card'),
             list   = me.getReference('agent-list'),
             record = value ? (me.agentDefinitionsStore?.get(value) ?? null) : null;
 
-        if (card) {
-            card.record = record;
-            // a recordChange mutates fields WITHOUT changing record identity, and the reactive
-            // config setter suppresses same-identity assignments — refresh() closes that gap
-            card.refresh();
+        [
+            [me.getReference('agent-config-card'), me.agentConfigSaveStatuses],
+            [me.getReference('agent-repos-card'),  me.agentReposSaveStatuses]
+        ].forEach(([card, statuses]) => {
+            if (card) {
+                card.record = record;
+                // a recordChange mutates fields WITHOUT changing record identity, and the reactive
+                // config setter suppresses same-identity assignments — refresh() closes that gap
+                card.refresh();
 
-            const status = me.agentConfigSaveStatuses.get(value) ?? {state: 'idle', reason: ''};
-            value && card.setSaveStatus(value, status.state, status.reason)
-        }
+                const status = statuses.get(value) ?? {state: 'idle', reason: ''};
+                value && card.setSaveStatus(value, status.state, status.reason)
+            }
+        });
 
         if (list?.selectionModel) {
             if (record) {
@@ -347,6 +366,25 @@ class Accounts extends DashboardPanel {
     }
 
     /**
+     * @summary The Repositories card's `configIntent` (`{id, repos}`) → the `setRepos` round-trip,
+     * through the same runner as {@link #onAgentConfigIntent}. The card itself is the owner token:
+     * the runner stays silent when a request is superseded by its own owner, which assumes one
+     * status sink per owner, and the two cards are two sinks.
+     * @param {Object} intent `{id, repos}`.
+     * @returns {Promise<void>}
+     */
+    async onAgentReposIntent(intent={}) {
+        const me = this;
+
+        return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            intent,
+            owner        : me.getReference('agent-repos-card'),
+            setSaveStatus: me.setAgentReposSaveStatus.bind(me),
+            store        : me.agentDefinitionsStore
+        })
+    }
+
+    /**
      * @summary Store one agent's ephemeral save state and project it only when that agent is still
      * visible. The state survives selection changes without entering the durable roster model.
      * @param {String} agentId
@@ -356,6 +394,17 @@ class Accounts extends DashboardPanel {
     setAgentConfigSaveStatus(agentId, state, reason='') {
         this.agentConfigSaveStatuses.set(agentId, {state, reason});
         this.getReference('agent-config-card')?.setSaveStatus(agentId, state, reason)
+    }
+
+    /**
+     * @summary The Repositories card's twin of {@link #setAgentConfigSaveStatus}.
+     * @param {String} agentId
+     * @param {'idle'|'pending'|'accepted'|'rejected'|'superseded'} state
+     * @param {String} [reason='']
+     */
+    setAgentReposSaveStatus(agentId, state, reason='') {
+        this.agentReposSaveStatuses.set(agentId, {state, reason});
+        this.getReference('agent-repos-card')?.setSaveStatus(agentId, state, reason)
     }
 
     /**
@@ -470,11 +519,13 @@ class Accounts extends DashboardPanel {
             me       = this,
             showForm = me.adding || !me.selectedAgentId,
             card     = me.getReference('agent-config-card'),
+            repos    = me.getReference('agent-repos-card'),
             form     = me.getReference('add-agent-form'),
             empty    = me.getReference('accounts-empty'),
             add      = me.getReference('add-agent-button');
 
         if (card)  card.hidden  = showForm;
+        if (repos) repos.hidden = showForm;
         if (form)  form.hidden  = !showForm;
         if (empty) empty.hidden = (me.agentDefinitionsStore?.count ?? 0) > 0;
         if (add)   add.pressed  = showForm
@@ -516,6 +567,7 @@ class Accounts extends DashboardPanel {
 
         me.agentDefinitionsStore?.un({...listeners});
         me.getReference('agent-config-card')?.un({configIntent: me.onAgentConfigIntent, scope: me});
+        me.getReference('agent-repos-card')?.un({configIntent: me.onAgentReposIntent, scope: me});
         me.getReference('add-agent-form')?.un({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
         me.getReference('agent-list')?.un({select: me.onAgentListSelect, scope: me});
         super.destroy(...args)
