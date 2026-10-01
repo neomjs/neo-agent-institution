@@ -72,6 +72,11 @@
         min-height  : 15px;
         padding-top : 6px;
 
+        /* an idle form says nothing, so its rule and its gap go too */
+        &:empty {
+            display: none;
+        }
+
         &.is-validating,
         &.is-submitting {
             font-style : italic;

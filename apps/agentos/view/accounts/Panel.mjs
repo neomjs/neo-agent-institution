@@ -115,7 +115,7 @@ class Accounts extends DashboardPanel {
                 handler  : 'up.onAddAgentClick',
                 iconCls  : 'fa fa-plus',
                 reference: 'add-agent-button',
-                text     : 'Add agent'
+                text     : 'New agent'   // opens the form; the form's own "Add agent" commits
             }, {
                 ntype    : 'component',
                 cls      : ['fm-accounts-empty'],

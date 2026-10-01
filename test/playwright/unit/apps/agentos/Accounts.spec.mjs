@@ -439,7 +439,7 @@ test.describe('AgentOS.view.accounts.Panel — master-detail (multiple agents)',
         store.destroy()
     });
 
-    test('Add agent shows the form with no row selected, and a roster change leaves it up', () => {
+    test('New agent shows the form with no row selected, and a roster change leaves it up', () => {
         const store = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]);
         const stub  = makeAccounts(store);
 

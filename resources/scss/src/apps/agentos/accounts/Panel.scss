@@ -1,7 +1,7 @@
 /* The Accounts keeper-view: master-detail. The definitions column (the add action over the list,
    then the empty state) sits beside the detail (the selected definition's card, or the add-agent
    form); each column scrolls on its own, so no control is clipped and nothing scrolls sideways at
-   1000×640 (#245). The config card's skin lives with the fleet module (AgentConfigComponent.scss),
+   1000×640. The config card's skin lives with the fleet module (AgentConfigComponent.scss),
    the form's with AddAgentForm.scss, the list rows' with accounts/List.scss. */
 .agent-panel-accounts.neo-panel {
     min-width : 360px;
@@ -20,8 +20,10 @@
         overflow-y: auto;
         padding   : var(--fm-space-3);
 
-        /* the form keeps a readable measure: no field spans the whole detail (the operator's
-           2026-09-28 ruling on full-width username and repository fields) */
+        /* the card and the form take turns in this slot, so they share one readable measure: no
+           field spans the whole detail (the operator's 2026-09-28 ruling on full-width username
+           and repository fields) */
+        .fm-agent-config-card,
         .fm-add-agent-form {
             max-width: 28rem;
         }
