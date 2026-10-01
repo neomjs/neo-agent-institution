@@ -6,7 +6,7 @@ engine
     ab01a11b954b11387fe9a300700e069ad7a21fc98b4429ad29372f1a3320328b
 
 apps/agentos/CARD-CONTRACT.md
-    6327390cd35078148bcb3409bd417d17bff7252e
+    7cbbc4717c641ab36089a0c7ded20095a91c44fa
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    0aafd50e4b270d73ed6c1d397e8921b738f4ece4
+    d6b9ea71076802706ffa4e22cb6e7159aa02fe78
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -221,6 +221,9 @@ apps/agentos/util/NameSlot.mjs
 apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
 
+apps/agentos/util/RosterRow.mjs
+    bff1c961101facdc4ba48e22fdfcfe6459403b48
+
 apps/agentos/util/SourceHealth.mjs
     f92b9d452aa9754f764a2e530fac73da98e83b84
 
@@ -276,7 +279,7 @@ apps/agentos/view/fleet/cockpit/Controller.mjs
     958c10449b0295c19d0e308362b1c78d26ce5672
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    cb46c8ea57ca18de085ebeb3c12361bf0757b4cb
+    82a2570c3976b574c557f592281830b8449f1125
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     3bc24c1b7d3498119de6210234cc74528fcfaa8f
@@ -399,7 +402,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    071a084eb04d6c52a61bd18251036034be12adb8
+    880c38cf42c0ab4b8e0350986e53afa55ef95724
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     64238dd4bac922bbfd33878431f3b9a21f9d8dfb
@@ -522,7 +525,7 @@ resources/scss/src/apps/agentos/fleet/roster/Container.scss
     6d2873b22214c71368ae1e7352e1023eede8cc08
 
 resources/scss/src/apps/agentos/fleet/roster/card/Container.scss
-    fb28e8d2ecb001acffde97295e87a2b0695acdac
+    68f47604631a2ba45629d117483a98937bf9e5ad
 
 resources/scss/src/apps/agentos/fleet/shared/FamilyRailComponent.scss
     a44934170253161f3d0067031116e88e141223b3
@@ -567,40 +570,40 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs
     d03f69917b645ab4c1d90ead971bcd5ee9e51b8d
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-319-chromium-darwin.png
-    6c7b33fa7aeb4c52619900e8ff8a9d4cf2164340
+    eb3d526db80697f28b54ec221ee866c2ee5f2f08
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-320-chromium-darwin.png
-    0241532e1647baeaa54bb99eb580129a2e1dedc7
+    a6582a697f692d3bed175a8b65cfc5d0a0ed6a6a
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-328-chromium-darwin.png
-    b0071d74cc0a5fa44dfe911afcb79df4002d1d7b
+    5fc2b5c2ef86229a10d2bef472ed00cad7d64183
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-narrow-294-chromium-darwin.png
-    00282bdcbfbf32a2b2c3db39847dc89cf0589061
+    8e6008548e3ddbf28a0c20a7739fb331a617114e
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-regular-360-chromium-darwin.png
-    000e9b64b674b218129aaf30c94d17466e14ead5
+    8f1770b84991691dc433fc536ac4a9b2e5b35ae2
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-roomy-720-chromium-darwin.png
-    5a5a2f5fe6edf9ea8374b1ec5ed500c4dba130d9
+    95a75eec737240a577bd06f4dae67aa9687afd3a
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-319-chromium-darwin.png
-    d0e6c36e1af5630a75c0c18569e259abebb3ccb8
+    176031e34ec233cb1d51ed145a30937034151215
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-320-chromium-darwin.png
-    a8141893f796029980db422d8a9e3d13753a5f17
+    e7cc9c333d72d6c1b34d0071b01d60d863f11be5
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-328-chromium-darwin.png
-    c04007b3b54826d2fe6f685e8f7f338319152bfe
+    c8aa366f7902300047a53be3bf06ac0d8af2d7ec
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-narrow-294-chromium-darwin.png
-    9023b36df582d14a5f4c37301403a6c179478ff2
+    c566d26bf94b0d2655d397b640e83ca295ae9e3b
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-regular-360-chromium-darwin.png
-    7832d56b531f09310c02dac58c7dc7f0be1d2c64
+    6f82f21ec972f6e1a9780b03b7165e7eaf6e90e1
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-roomy-720-chromium-darwin.png
-    86ea1a29752775e70d21d86e0627a5902ca4d877
+    e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
     fb3aa98651d2fbfa8e0e1ca68c2c4443b9e1265a

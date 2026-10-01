@@ -87,6 +87,32 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('the clone-path line: a Claude Desktop seat leads with the Code-tab verb, another harness shows the bare path, no path means no line', () => {
+        const
+            repoPath = '/Users/Shared/agents/neo-opus-ada/neomjs/neo',
+            card     = createCard({agentId: 'ada', displayName: 'Ada', harnessType: 'claude-desktop', repoPath, repoSlug: 'neomjs/neo', state: 'ok'}),
+            line     = card.getReference('card-repo'),
+            texts    = () => line.vdom.cn.map(node => node.text);
+
+        // a Claude Desktop seat cannot be launched into its folder: the verb leads, the path follows, the
+        // title carries the whole path — every fragment an inert text node, never html
+        expect(line.hidden).toBe(false);
+        expect(texts()).toEqual(['Open in the Code tab', repoPath]);
+        expect(line.vdom.title).toBe(repoPath);
+        expect(line.vdom.cn.every(node => node.html === undefined)).toBe(true);
+
+        // another harness family opens its own folder (Codex gets --open-project): the path alone
+        applySet(card, {harnessType: 'codex-desktop'});
+        expect(texts()).toEqual([repoPath]);
+
+        // no reported path → no line and no placeholder, whatever the harness
+        applySet(card, {repoPath: null});
+        expect(line.hidden).toBe(true);
+        expect(line.vdom.cn).toEqual([]);
+
+        card.destroy()
+    });
+
     test('the presence band renders ONLY an observed band and clears to hidden — absence of signal, never a verdict', () => {
         const card = createCard({
             agentId : 'clio',

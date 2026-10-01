@@ -381,6 +381,25 @@
         min-height: 30px;
     }
 
+    /* the clone path: one quiet mono line under the lane, elided from the end (the title carries the
+       whole path); the Code-tab verb reads in the full ink ahead of the receding path */
+    .fm-card-repo {
+        font         : var(--fm-text-body);
+        font-family  : var(--fm-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+        color        : var(--fm-ink-dim);
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+
+        .fm-repo-verb {
+            color: var(--fm-ink);
+
+            &::after {
+                content: ' · ';
+            }
+        }
+    }
+
     .fm-card-lane {
         flex                     : 1;
         min-width                : 0;
