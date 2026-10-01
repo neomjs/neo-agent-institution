@@ -289,7 +289,8 @@ class AgentDetail extends Container {
         Object.assign(this.vdom, {role: 'region', 'aria-label': 'Agent detail'});
 
         // shell-supplied window verbs ride the tab header bar's ACTION seam: one icon at the
-        // trailing edge of the tab strip, outside the content flow —
+        // trailing edge of the tab strip, outside the content flow — the shell shows it only
+        // while the pane is away in a vessel (docked, the dock header owns pop-out);
         // the old identity-header placement floated the verb OVER the identity block at rail
         // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);

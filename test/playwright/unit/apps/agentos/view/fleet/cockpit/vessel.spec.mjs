@@ -482,15 +482,15 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         const detailToggle = cockpit.getAgentDetailPane().getReference('detail-window-toggle'),
               recall       = cockpit.getReference('detail-recall-chrome');
 
-        // docked
+        // docked: the dock header owns pop-out — the pane-side verb renders nothing
         cockpit.syncControlBar();
-        expect(detailToggle.disabled).toBe(false);
-        expect(detailToggle.vdom.title).toBe('Pop out detail');
+        expect(detailToggle.hidden).toBe(true);
         expect(recall.hidden).toBe(true);
 
-        // in flight: the toggle refuses to race, the recall verb shows disabled
+        // in flight: the pane-side verb shows but refuses to race, the recall verb shows disabled
         lifecycle.admissions.set('detail', {itemId: 'detail'});
         cockpit.syncControlBar();
+        expect(detailToggle.hidden).toBe(false);
         expect(detailToggle.disabled).toBe(true);
         expect(detailToggle.vdom['aria-label']).toBe('Detail leaving');
         expect(recall.hidden).toBe(false);
@@ -500,6 +500,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         // owned: both verbs offer the way home
         lifecycle.owners.set('detail', {itemId: 'detail', windowName: 'w'});
         cockpit.syncControlBar();
+        expect(detailToggle.hidden).toBe(false);
         expect(detailToggle.disabled).toBe(false);
         expect(detailToggle.vdom.title).toBe('Return detail');
         expect(recall.hidden).toBe(false);

@@ -108,10 +108,16 @@ test.describe('matrix row 4 — AgentDetail permanence with live FleetRoster con
         expect(drilled?.properties?.record?.agentId, 'the inspector drilled into the exact resident').toBe(firstAgentId);
 
         const detailId     = drilled.id,
-              toggle       = page.locator('.fm-detail-window-toggle'),
-              popupPromise = page.waitForEvent('popup', {timeout: 30000});
+              popupPromise = page.waitForEvent('popup', {timeout: 30000}),
+              // the dock header's own pop-out action (the pane-side verb is the way home and
+              // renders only while the pane is away) — native clicks, like every other hop here:
+              // focusing the tab reveals the engine's contextual actions
+              header       = page.locator('.neo-tab-header-toolbar')
+                  .filter({has: page.locator('.neo-tab-header-button', {hasText: 'Agent detail'})}).first(),
+              popOutAction = header.locator('.neo-button:has([class*="fa-window-restore"])');
 
-        await toggle.click();
+        await header.locator('.neo-tab-header-button', {hasText: 'Agent detail'}).first().click();
+        await popOutAction.click();
 
         const popup = await popupPromise;
 
@@ -144,7 +150,8 @@ test.describe('matrix row 4 — AgentDetail permanence with live FleetRoster con
         // ── tooth 3: reattach — same instances home, vessel terminally closed, grid stable ──
         const popupClosed = popup.waitForEvent('close', {timeout: 30000});
 
-        await toggle.click();
+        // the pane-side verb is the way home: it travels with the pane and shows only in the vessel
+        await popup.locator('.fm-detail-window-toggle').click();
         await popupClosed;
 
         expect(popup.isClosed(), 'the vessel terminally closed on reattach').toBe(true);
