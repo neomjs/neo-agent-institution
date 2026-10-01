@@ -1,5 +1,5 @@
 import AgentConfigCard       from '../fleet/detail/AgentConfigComponent.mjs';
-import AgentReposCard        from '../fleet/detail/AgentReposComponent.mjs';
+import AgentReposCard        from '../fleet/detail/AgentReposContainer.mjs';
 import AddAgentForm          from '../fleet/instances/AddAgentForm.mjs';
 import AddAgentFlow          from '../../util/AddAgentFlow.mjs';
 import ConfigIntentRoundTrip from '../../util/ConfigIntentRoundTrip.mjs';

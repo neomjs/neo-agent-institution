@@ -1,0 +1,52 @@
+/* The per-agent Repositories card: the configuration card's shell and status vocabulary (see
+   AgentConfigComponent.scss), with the rows' skin in RepositoryList.scss. Every color is a token
+   read, and each state pairs its hue with a non-color carrier (weight, style or text). */
+.fm-agent-repos-card {
+    background   : var(--fm-panel);
+    border       : 1px solid var(--fm-line);
+    border-radius: 8px;
+    color        : var(--fm-ink);
+    gap          : var(--fm-space-2);
+    padding      : var(--fm-space-3);
+
+    .fm-repos-heading {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+    }
+
+    .fm-repos-empty {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-detail);
+    }
+
+    .fm-repos-add {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-repos-status {
+        font      : var(--fm-text-detail);
+        min-height: 14px;
+
+        &.is-idle {
+            visibility: hidden;
+        }
+
+        &.is-pending,
+        &.is-superseded {
+            color     : var(--fm-ink-dim);
+            font-style: italic;
+        }
+
+        &.is-accepted {
+            color      : var(--fm-state-ok);
+            font-weight: 600;
+        }
+
+        &.is-rejected {
+            color      : var(--fm-kind-alert);
+            font-weight: 600;
+        }
+    }
+}

@@ -362,3 +362,72 @@ test.describe('configIntentRoundTrip — cross-owner supersession authority (#15
         store.destroy()
     })
 });
+
+/**
+ * @summary A repository-set intent rides the same runner on its own verb: only `{id, repos}` reaches
+ * `setRepos`, an accepted readback lands the declared repositories on the record through the model's
+ * nested `metadata` fields, and a refusal shows the Brain's reason while the record keeps what the
+ * registry holds.
+ */
+test.describe('configIntentRoundTrip — the repository set takes setRepos', () => {
+    let AgentDefinition, Store;
+
+    test.beforeAll(async () => {
+        AgentDefinition = (await import('../../../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
+        Store           = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
+    });
+
+    const
+        working = {repoSlug: 'neomjs/neo', cloneUrl: 'https://github.com/neomjs/neo.git'},
+        brain   = {repoSlug: 'neomjs/neo-agent-brain', cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git'},
+        seat    = {id: 'ada', githubUsername: 'ada', harnessType: 'codex', metadata: {repo: working, avatarUrl: 'https://cdn/a.png'}};
+
+    test('only {id, repos} reaches setRepos, and the accepted readback refreshes the nested metadata fields', async () => {
+        const
+            store    = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [seat]}),
+            calls    = [],
+            statuses = [],
+            bridge   = {
+                configureAgent: intent => { calls.push(['configureAgent', intent]) },
+                setRepos      : intent => {
+                    calls.push(['setRepos', intent]);
+                    return {status: 'accepted', agent: {...seat, metadata: {...seat.metadata, repos: [brain]}}}
+                }
+            };
+
+        expect(store.get('ada')['metadata.repo']).toEqual(working);
+        expect(store.get('ada')['metadata.repos']).toBeNull();
+
+        await ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            bridgeResolver: () => bridge,
+            intent        : {id: 'ada', repos: [{repoSlug: brain.repoSlug}], harnessType: 'noise', source: 'card-1'},
+            setSaveStatus : (...args) => statuses.push(args),
+            store
+        });
+
+        expect(calls).toEqual([['setRepos', {id: 'ada', repos: [{repoSlug: brain.repoSlug}]}]]);
+        expect(store.get('ada')['metadata.repos']).toEqual([brain]);
+        expect(store.get('ada')['metadata.repo']).toEqual(working);
+        expect(statuses.map(entry => entry[1])).toEqual(['pending', 'accepted']);
+
+        store.destroy()
+    });
+
+    test('a refused list shows the Brain\'s reason and leaves the record as the registry holds it', async () => {
+        const
+            store    = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{...seat, metadata: {repo: working, repos: [brain]}}]}),
+            statuses = [];
+
+        await ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            bridgeResolver: () => ({setRepos: () => ({status: 'rejected', reason: 'a repository is listed twice.'})}),
+            intent        : {id: 'ada', repos: [brain, brain]},
+            setSaveStatus : (...args) => statuses.push(args),
+            store
+        });
+
+        expect(statuses.at(-1)).toEqual(['ada', 'rejected', 'a repository is listed twice.']);
+        expect(store.get('ada')['metadata.repos']).toEqual([brain]);
+
+        store.destroy()
+    })
+});

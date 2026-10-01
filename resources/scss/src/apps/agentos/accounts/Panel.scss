@@ -20,10 +20,11 @@
         overflow-y: auto;
         padding   : var(--fm-space-3);
 
-        /* the card and the form take turns in this slot, so they share one readable measure: no
-           field spans the whole detail (the operator's 2026-09-28 ruling on full-width username
+        /* the two cards and the form take turns in this slot, so they share one readable measure:
+           no field spans the whole detail (the operator's 2026-09-28 ruling on full-width username
            and repository fields) */
         .fm-agent-config-card,
+        .fm-agent-repos-card,
         .fm-add-agent-form {
             max-width: 28rem;
         }

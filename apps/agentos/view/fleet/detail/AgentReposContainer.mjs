@@ -5,7 +5,7 @@ import RepositoryList   from './RepositoryList.mjs';
 import SeatRepositories from '../../../store/SeatRepositories.mjs';
 
 /**
- * @class AgentOS.view.fleet.detail.AgentReposComponent
+ * @class AgentOS.view.fleet.detail.AgentReposContainer
  * @extends Neo.container.Base
  *
  * @summary The per-agent Repositories card: the repositories a seat gets clones of, read from its
@@ -21,10 +21,10 @@ import SeatRepositories from '../../../store/SeatRepositories.mjs';
 class AgentReposCard extends Container {
     static config = {
         /**
-         * @member {String} className='AgentOS.view.fleet.detail.AgentReposComponent'
+         * @member {String} className='AgentOS.view.fleet.detail.AgentReposContainer'
          * @protected
          */
-        className: 'AgentOS.view.fleet.detail.AgentReposComponent',
+        className: 'AgentOS.view.fleet.detail.AgentReposContainer',
         /**
          * @member {String} ntype='fm-agent-repos-card'
          * @protected
@@ -54,7 +54,7 @@ class AgentReposCard extends Container {
         saveStatus_: null,
         /**
          * Heading · rows · the empty line · the add row · status line. Every row keeps its natural
-         * height (`flex: 'none'`). Skin in `AgentReposComponent.scss`.
+         * height (`flex: 'none'`). Skin in `AgentReposContainer.scss`.
          * @member {Object[]} items
          */
         items: [{
