@@ -264,7 +264,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    25819f73985da226964f9700eeee8e7bcb7d1497
+    cc931c323a15e7014be3b5a72dd04e74c441f108
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     958c10449b0295c19d0e308362b1c78d26ce5672
@@ -282,7 +282,7 @@ apps/agentos/view/fleet/cockpit/StateProvider.mjs
     bb062f820ed18a8f9697a2b8bf9f8eb3db6f64f6
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
-    8ddc5b9b6815b627ab054d51cc4d8432b8dddf0c
+    31e6144a5192b7cccb8da66f7bbcf2c7b7cd44ea
 
 apps/agentos/view/fleet/cockpit/ViewerWakeTelltaleComponent.mjs
     388ce961936990404da0448e1462b6405b98e7e6
@@ -453,7 +453,7 @@ resources/scss/src/apps/agentos/fleet/catchup/Container.scss
     a2bb58e723c846f130e6a1c3d942440cca6f4d0b
 
 resources/scss/src/apps/agentos/fleet/cockpit/Container.scss
-    75cd883aaffa95eca1687d378ab3d9b68563781c
+    c3c59e026afb14292b99bbae47db1addcf35c1cf
 
 resources/scss/src/apps/agentos/fleet/cockpit/SpineBannerComponent.scss
     015c95a763f5a3a4642bf0bab0b21af71d8562a5
@@ -714,7 +714,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-perspect
     7c4af72c9580fd590c0ee943d150409bf65a29ef
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-tasks.png
-    18accb4d764dfbf73e8d0980854ac97258e059f1
+    abd4147f21256a5a84efd43b9343a9deb2202fb5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-wake-routes.png
     2c81a3a7dd68ea89f4f275180a5736f185c52917

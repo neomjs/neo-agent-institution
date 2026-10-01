@@ -1,4 +1,5 @@
 import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import DragAffordances   from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/DragAffordances.mjs';
 import WorkspaceDocument from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs';
 
@@ -11,10 +12,15 @@ import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard
  * The engine owns the vessel lifecycle: admission, the one detach commit, adoption into the
  * connected window, the return on vessel death, and the pane handles in between
  * ({@link Neo.dashboard.dock.window.TearOut} composed by the Workspace, ownership recorded by the
- * Group's native lifecycle). Three responsibilities remain here, nothing else:
+ * Group's native lifecycle). Four responsibilities remain here, nothing else:
  * - **The platform seams** the engine asks the host for: {@link #openTearOutVessel} (the
  *   widget-childapp vessel window), {@link #closeTearOutVessel}, and the generic pane
  *   capability {@link #resolveLivePane} (the projected pane for an item).
+ * - **The in-window drag feedback** — {@link #dragAffordances}, the engine's
+ *   {@link Neo.dashboard.dock.interaction.DragAffordances} composed over the subclass-declared
+ *   dock host and its two overlays (the preview renderer and the drop-indicator menu), and routed
+ *   the projected zones' cross-zone drag seams ({@link #getDockProjectionOptions}), so a held tab
+ *   header is answered by zones and its release commits through the cockpit's own reducer.
  * - **The click pop-out** — one pathway for every pane: {@link #popOutPane} enters the engine's
  *   header-action admission ({@link Neo.dashboard.dock.Workspace#handleDockPopOutAction}) and
  *   {@link #returnPane} closes the vessel, because vessel death IS the return path.
@@ -37,6 +43,60 @@ class VesselContainer extends Workspace {
          * @protected
          */
         className: 'AgentOS.view.fleet.cockpit.VesselContainer'
+    }
+
+    /**
+     * The in-window drag feedback owner the engine hands every docking workspace: the
+     * once-per-gesture geometry, indicator-first candidate selection, the preview, and the
+     * release-truth drop commit through this workspace's own reducer. Composed over the
+     * subclass-declared host slots (`dock-host`, `dock-preview`, `drop-indicators`) and retired
+     * with the cockpit; the overlays it borrows belong to the host.
+     * @member {Neo.dashboard.dock.interaction.DragAffordances|null} dragAffordances=null
+     * @protected
+     */
+    dragAffordances = null
+
+    /**
+     * @summary Routes the projected zones' cross-zone drag seams to the composed gesture
+     * controller, beside the inherited tear-out options.
+     * @returns {Object}
+     */
+    getDockProjectionOptions() {
+        let me = this;
+
+        return {
+            ...super.getDockProjectionOptions(),
+            onDockCrossZoneDragCancel: data => me.dragAffordances.onDragCancel(data),
+            onDockCrossZoneDragMove  : data => me.dragAffordances.onDragMove(data),
+            onDockCrossZoneDrop      : data => me.dragAffordances.onDrop(data)
+        }
+    }
+
+    /**
+     * @summary Composes the gesture controller once the declared dock host and its overlays exist.
+     * @param {...*} args
+     */
+    onConstructed(...args) {
+        super.onConstructed(...args);
+
+        let me = this;
+
+        me.dragAffordances = Neo.create(DragAffordances, {
+            host      : me.getDockHost(),
+            indicators: me.getReference('drop-indicators'),
+            owner     : me,
+            preview   : me.getReference('dock-preview')
+        })
+    }
+
+    /**
+     * @summary Retires the gesture controller before the inherited vessel and workspace teardown.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        this.dragAffordances?.destroy();
+        this.dragAffordances = null;
+        super.destroy(...args)
     }
 
     /**

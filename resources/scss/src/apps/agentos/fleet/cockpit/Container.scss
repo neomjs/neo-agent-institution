@@ -16,6 +16,13 @@
     container-name: fm-cockpit;
     container-type: inline-size;
 
+    /* The dock host under the control bar. The engine's drag feedback — the preview renderer and
+       the drop-indicator menu — are its persistent children and position against it; this rule
+       is the whole contract the cockpit owes them (the engine owns their inset/position/z-index). */
+    .fm-cockpit-dock-host {
+        position: relative;
+    }
+
     /* §04 proportion record (#17211 finding 2). The engine exposes the strip's extent as
        `--dock-edge-rail-size`; this is the cockpit's deliberate proportion decision.
 
