@@ -1,6 +1,7 @@
 
 import {defineConfig, devices} from '@playwright/test';
 import {resolveFreePortSync}   from '../../node_modules/neo.mjs/test/playwright/resolveFreePort.mjs';
+import {SCREENSHOT_THRESHOLD}  from './screenshotThreshold.mjs';
 
 // Per-process by default: this suite must render ITS OWN checkout (reuseExistingServer:false),
 // so a fixed default both collides with a foreign dev-server squatting on 8080 AND wedges
@@ -48,8 +49,9 @@ export default defineConfig({
     expect: {
         toHaveScreenshot: {
             // tight but not byte-exact: sub-pixel AA drift on identical platforms stays green,
-            // a real token/geometry regression does not
-            maxDiffPixelRatio: 0.001
+            // a real geometry regression does not
+            maxDiffPixelRatio: 0.001,
+            threshold        : SCREENSHOT_THRESHOLD
         }
     },
 

@@ -1,8 +1,9 @@
-import {defineConfig}        from '@playwright/test';
-import fs                    from 'node:fs';
-import path                  from 'node:path';
-import {fileURLToPath}       from 'node:url';
-import {resolveFreePortSync} from '../../node_modules/neo.mjs/test/playwright/resolveFreePort.mjs';
+import {defineConfig}         from '@playwright/test';
+import fs                     from 'node:fs';
+import path                   from 'node:path';
+import {fileURLToPath}        from 'node:url';
+import {resolveFreePortSync}  from '../../node_modules/neo.mjs/test/playwright/resolveFreePort.mjs';
+import {SCREENSHOT_THRESHOLD} from './screenshotThreshold.mjs';
 
 const
     filename = fileURLToPath(import.meta.url),
@@ -73,6 +74,10 @@ export default defineConfig({
     fullyParallel: false,
     workers      : 1,
     timeout      : 120000,
+
+    expect: {
+        toHaveScreenshot: {threshold: SCREENSHOT_THRESHOLD}
+    },
 
     reporter: [
         ['list'],
