@@ -75,6 +75,13 @@ export function projectPublicCredentialIntent(method, params) {
         return tenantUrl ? {tenantUrl} : null
     }
 
+    // the seat names itself; the plane and the identity to prove are the Fleet's own
+    if (method === 'setPlaneCredential' && isRecord(params)) {
+        const id = typeof params.id === 'string' ? params.id.trim() : '';
+
+        return id ? {id} : null
+    }
+
     return null
 }
 

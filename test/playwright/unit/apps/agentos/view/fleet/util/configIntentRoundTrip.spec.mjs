@@ -431,3 +431,70 @@ test.describe('configIntentRoundTrip — the repository set takes setRepos', () 
         store.destroy()
     })
 });
+
+/**
+ * @summary The card's plane-credential intent: the shell prompts for the credential, the request names
+ * only the seat, and the outcome is the Brain's own. No definition changes, so no record is written.
+ */
+test.describe('configIntentRoundTrip — a seat\'s plane credential', () => {
+    let AgentDefinition, Store;
+
+    test.beforeAll(async () => {
+        AgentDefinition = (await import('../../../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
+        Store           = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
+    });
+
+    /** Runs one plane-credential intent against a shell-ingress bridge whose verb answers `answer`. */
+    async function run({answer, bridge} = {}) {
+        const
+            store    = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]}),
+            before   = JSON.stringify(store.get('ada').toJSON()),
+            calls    = [],
+            statuses = [],
+            shell    = {credentialIngress: 'shell', setPlaneCredential: async params => { calls.push(params); return answer() }};
+
+        await ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            bridgeResolver: () => bridge === undefined ? shell : bridge,
+            intent        : {id: 'ada', planeCredential: true, source: 'card-envelope-noise'},
+            owner         : {},
+            setSaveStatus : (agentId, state, reason) => statuses.push([agentId, state, reason]),
+            store
+        });
+
+        const unchanged = JSON.stringify(store.get('ada').toJSON()) === before;
+
+        store.destroy();
+
+        return {calls, statuses, unchanged}
+    }
+
+    test('the request names only the seat, and a stored credential says so without touching the record', async () => {
+        const {calls, statuses, unchanged} = await run({answer: () => ({status: 'stored', endpoint: 'http://127.0.0.1:3102', agentId: 'ada'})});
+
+        expect(calls).toEqual([{id: 'ada'}]);
+        expect(statuses).toEqual([
+            ['ada', 'pending', 'Waiting for the plane credential…'],
+            ['ada', 'accepted', 'Plane credential stored.']
+        ]);
+        expect(unchanged).toBe(true)
+    });
+
+    test('the Brain\'s refusal is shown with its own reason, and a failed request with a generic one', async () => {
+        const
+            refused = await run({answer: () => ({status: 'rejected', reason: 'the credential resolves to another identity'})}),
+            thrown  = await run({answer: () => { throw new Error('fleet: shell credential ingress canceled for \'setPlaneCredential\'') }});
+
+        expect(refused.statuses.at(-1)).toEqual(['ada', 'rejected', 'the credential resolves to another identity']);
+        expect(thrown.statuses.at(-1)).toEqual(['ada', 'rejected', 'The plane credential was not stored.']);
+        expect(refused.unchanged && thrown.unchanged).toBe(true)
+    });
+
+    test('a bridge without the verb, and credentials that are not the shell\'s to take, send nothing and say why', async () => {
+        const
+            absent = await run({bridge: {credentialIngress: 'shell', configureAgent: async () => ({})}}),
+            worker = await run({bridge: {credentialIngress: 'worker', setPlaneCredential: async () => { throw new Error('must stay dark') }}});
+
+        expect(absent.statuses).toEqual([['ada', 'rejected', 'This Fleet does not take plane credentials yet. Nothing was changed.']]);
+        expect(worker.statuses).toEqual([['ada', 'rejected', 'Set the plane credential from the installed Fleet Manager. Nothing was changed.']])
+    });
+});

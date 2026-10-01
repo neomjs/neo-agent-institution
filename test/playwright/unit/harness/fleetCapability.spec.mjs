@@ -310,6 +310,19 @@ test.describe('harness Fleet capability', () => {
         })).toEqual({tenantUrl: 'https://tenant.example.com/agentos/'})
     });
 
+    test('a seat\'s plane credential projects to the seat id alone: no credential, plane or identity rides in from the renderer', () => {
+        expect(projectPublicCredentialIntent('setPlaneCredential', {
+            id        : ' neo-gpt-sophie ',
+            credential: 'renderer_smuggled_pat',
+            planeBase : 'https://elsewhere.example.com',
+            identity  : '@forged'
+        })).toEqual({id: 'neo-gpt-sophie'});
+
+        for (const params of [{id: '  '}, {id: 42}, {}, null, ['neo-gpt-sophie'], 'neo-gpt-sophie']) {
+            expect(projectPublicCredentialIntent('setPlaneCredential', params)).toBeNull()
+        }
+    });
+
     test('rejects a canceled credential before Brain readiness and network access', async () => {
         const
             calls      = {brain: 0, fetch: 0},
