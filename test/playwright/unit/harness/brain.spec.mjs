@@ -4,7 +4,7 @@ import {EventEmitter, once}                                  from 'node:events';
 import {mkdtemp, rm, symlink}                                from 'node:fs/promises';
 import {readFileSync, writeFileSync, mkdirSync, existsSync}  from 'node:fs';
 import net                                                   from 'node:net';
-import {tmpdir}                                              from 'node:os';
+import {homedir, tmpdir}                                     from 'node:os';
 import path                                                  from 'node:path';
 import {fileURLToPath}                                       from 'node:url';
 import {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} from 'neo-agent-brain/fleet-contract';
@@ -449,9 +449,20 @@ test.describe('harness brain lifecycle', () => {
         expect(leaky).toHaveLength(2)
     });
 
+    test('the installed profile leaves the agents\' seats on the Brain\'s per-user default, outside its data root and backups', async () => {
+        const
+            env      = buildPackagedBrainEnv({backupRoot: path.join(workDir, 'backups'), dataRoot: path.join(workDir, 'brain')}),
+            // an operator's own NEO_FLEET_AGENTS_ROOT would win; unset here, so the Brain's leaf default answers
+            resolved = await resolveBrainPaths({env: {...env, NEO_FLEET_AGENTS_ROOT: undefined, UNIT_TEST_MODE: ''}, repoRoot: resolveAgentOsRuntimeRoot(process.env)});
+
+        expect(Object.hasOwn(env, 'NEO_FLEET_AGENTS_ROOT')).toBe(false);
+        expect(resolved.fleetAgentsRoot).toBe(path.join(homedir(), '.neo-ai', 'agents'))
+    });
+
     test('Fleet durable storage is isolated separately from the seat working-tree root', async () => {
         const profiles = [
-            {...buildPackagedBrainEnv({backupRoot: path.join(workDir, 'backups'), dataRoot: workDir}), UNIT_TEST_MODE: ''},
+            // the packaged smoke contains its seats the way main.mjs builds it
+            {...buildPackagedBrainEnv({agentsRoot: path.join(workDir, 'fleet', 'agents'), backupRoot: path.join(workDir, 'backups'), dataRoot: workDir}), UNIT_TEST_MODE: ''},
             buildBrainProfile({chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir})
         ];
 
