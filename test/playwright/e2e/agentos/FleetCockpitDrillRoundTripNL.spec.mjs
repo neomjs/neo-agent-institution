@@ -121,10 +121,16 @@ test.describe('AgentOS fleet cockpit — the drill round-trip journey (card → 
         expect(await readStreamTicks()).toBe(30);
 
         // ── join 2: pop-out — same instance, real window, the stream keeps ticking ───────────
-        const toggle       = page.locator('.fm-detail-window-toggle'),
-              popupPromise = page.waitForEvent('popup', {timeout: 30000});
+        const popupPromise = page.waitForEvent('popup', {timeout: 30000}),
+              // the dock header's own pop-out action (the pane-side verb is the way home and
+              // renders only while the pane is away): focusing the tab reveals the engine's
+              // contextual actions
+              header       = page.locator('.neo-tab-header-toolbar')
+                  .filter({has: page.locator('.neo-tab-header-button', {hasText: 'Agent detail'})}).first(),
+              popOutAction = header.locator('.neo-button:has([class*="fa-window-restore"])');
 
-        await toggle.click();
+        await header.locator('.neo-tab-header-button', {hasText: 'Agent detail'}).first().click();
+        await popOutAction.click();
 
         const popup = await popupPromise;
 
@@ -270,7 +276,8 @@ test.describe('AgentOS fleet cockpit — the drill round-trip journey (card → 
         // consistent, ticks never reset ──────────────────────────────────────────────────────
         const popupClosed = popup.waitForEvent('close', {timeout: 30000});
 
-        await toggle.click();
+        // the pane-side verb is the way home: it travels with the pane and shows only in the vessel
+        await popup.locator('.fm-detail-window-toggle').click();
 
         // the old render target RETIRES — observed, not inferred: an orphan vessel would make
         // every home-side assertion below pass while the journey silently leaked a window

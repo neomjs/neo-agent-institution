@@ -178,11 +178,13 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * @summary SHELL-owned pop-out affordance config for the Memories pane. Lives in the PANE's
-     * chrome per the navigation model (pane verbs are pane-scoped, the bar seats instance-wide
-     * tenants only); ownership, handler and label sync stay here — the pane merely places it
-     * through its layout-blind `shellTools` slot, so a vesseled pane carries its own return verb
-     * with it.
+     * @summary SHELL-owned return verb for the Memories pane while it is away in a vessel. Lives in
+     * the PANE's chrome per the navigation model (pane verbs are pane-scoped, the bar seats
+     * instance-wide tenants only); ownership, handler and state sync stay here — the pane merely
+     * places it through its layout-blind `shellTools` slot, so a vesseled pane carries its own way
+     * home. Docked, it renders nothing: the dock header owns "Pop out into a window"
+     * ({@link Neo.dashboard.dock.Workspace#enableDockPopOutAction}), and a second pop-out in the
+     * pane's chrome would duplicate it.
      * @returns {Object}
      */
     buildMemoriesWindowToggle() {
@@ -190,15 +192,19 @@ class VesselContainer extends Workspace {
             module   : Button,
             cls      : ['fm-memories-window-toggle'],
             handler  : this.onMemoriesWindowToggle.bind(this),
-            iconCls  : 'fa-solid fa-arrow-up-right-from-square',
+            hidden   : true,
+            hideMode : 'removeDom',
+            iconCls  : 'fa-solid fa-arrow-down-left',
             reference: 'memories-window-toggle',
-            text     : 'Pop out memories'
+            text     : 'Return memories'
         }
     }
 
     /**
-     * @summary SHELL-owned pop-out affordance config for the inspector; {@link #syncVesselChrome}
-     * keeps title + aria naming the action it will take.
+     * @summary SHELL-owned return verb for the inspector while it is away in a vessel;
+     * {@link #syncVesselChrome} shows it only then and keeps title + aria naming the action it
+     * will take. Docked, it renders nothing: the dock header owns "Pop out into a window"
+     * ({@link Neo.dashboard.dock.Workspace#enableDockPopOutAction}).
      *
      * Icon-only by design (operator direction): the pane places this through its
      * layout-blind `shellTools` slot onto the tab header bar's ACTION seam — one icon at the
@@ -213,9 +219,11 @@ class VesselContainer extends Workspace {
             cls       : ['fm-detail-window-toggle'],
             contextual: false,
             handler   : this.onDetailWindowToggle.bind(this),
-            iconCls   : 'fa-solid fa-arrow-up-right-from-square',
+            hidden    : true,
+            hideMode  : 'removeDom',
+            iconCls   : 'fa-solid fa-arrow-down-left',
             reference : 'detail-window-toggle',
-            vdom      : {title: 'Pop out detail', 'aria-label': 'Pop out detail'}
+            vdom      : {title: 'Return detail', 'aria-label': 'Return detail'}
         }
     }
 
@@ -620,10 +628,12 @@ class VesselContainer extends Workspace {
             detailOwned    = me.isVesselOwned('detail'),
             detailPending  = me.isVesselPending('detail'),
             detailToggle   = me.getAgentDetailPane()?.getReference('detail-window-toggle'),
-            detailLabel    = detailOwned ? 'Return detail' : detailPending ? 'Detail leaving' : 'Pop out detail';
+            detailLabel    = detailPending ? 'Detail leaving' : 'Return detail';
 
         if (detailToggle) {
-            detailToggle.set({disabled: detailPending});
+            // the pane-side verb exists for the away phases only — docked, the dock header owns
+            // "Pop out into a window" and this one renders nothing (removeDom)
+            detailToggle.set({disabled: detailPending, hidden: !(detailOwned || detailPending)});
             // icon-only action: the state-named label rides title + aria, byte-equal —
             // attribute strings, inert by construction
             detailToggle.vdom.title         = detailLabel;
@@ -644,9 +654,11 @@ class VesselContainer extends Workspace {
             memoriesPending = me.isVesselPending('memories'),
             memoriesToggle  = me.getMemoriesPane()?.getReference('memories-window-toggle');
 
+        // same rule as the inspector's verb: away phases only, never beside the dock header's pop-out
         memoriesToggle?.set({
             disabled: memoriesPending,
-            text    : memoriesOwned ? 'Return memories' : 'Pop out memories'
+            hidden  : !(memoriesOwned || memoriesPending),
+            text    : 'Return memories'
         });
 
         me.getReference('memories-recall-chrome')?.set({

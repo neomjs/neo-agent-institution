@@ -66,7 +66,7 @@
         "watch-themes": "node ./node_modules/neo.mjs/buildScripts/helpers/watchThemes.mjs"
     },
     "dependencies": {
-        "neo-agent-brain": "github:neomjs/neo-agent-brain#9204d8b8652745243fc78e86dc3186125cb59135",
+        "neo-agent-brain": "github:neomjs/neo-agent-brain#741f9f318155543a6714ca8169d32621947ecc87",
         "neo.mjs": "github:neomjs/neo#e7d550e5dc25e678c74ebfe404ed3d2ece20c3c4"
     },
     "devDependencies": {
@@ -77,7 +77,7 @@
         "autoprefixer": "^10.6.1",
         "chalk": "^6.0.1",
         "commander": "^15.0.0",
-        "cssnano": "^9.0.5",
+        "cssnano": "^9.1.1",
         "esbuild": "^0.28.1",
         "fs-extra": "^11.3.6",
         "gray-matter": "^4.0.3",
@@ -89,7 +89,7 @@
         "marked": "^18.0.14",
         "mermaid": "^12.0.0",
         "monaco-editor": "0.57.0",
-        "neo-agent-skills": "^0.1.14",
+        "neo-agent-skills": "^0.1.24",
         "parse5": "^8.0.1",
         "postcss": "^8.5.16",
         "sass": "^1.105.0",

@@ -891,7 +891,8 @@ class FleetCockpit extends VesselContainer {
             case 'detail':
                 // the stores resolved imperatively keep the view provider-agnostic; the selected
                 // resident is OWNER-held so a pane created from true absence never drops the
-                // selection; the pop-out verb is SHELL-owned config through the `shellTools` slot
+                // selection; the return verb (away phases only) is SHELL-owned config through the
+                // `shellTools` slot — docked, the dock header owns pop-out
                 seeds = {
                     agentDefinitions: me.resolveProviderStore('agentDefinitions'),
                     fleetTenants    : me.resolveProviderStore('fleetTenants'),
