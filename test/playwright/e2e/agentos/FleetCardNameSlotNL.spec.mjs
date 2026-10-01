@@ -29,6 +29,7 @@ test.describe('AgentOS Fleet card — name slot on live roster data (Neural Link
 
         FleetRegistryService.dataDir = tmpDir;
         FleetRegistryService.defineAgent({
+            credential    : 'github_pat_NAME_SLOT_WITNESS_1234abcd',
             githubUsername: agentId,
             harnessType   : 'codex'
         });
