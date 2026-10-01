@@ -147,10 +147,14 @@ test.describe('harness pack stage', () => {
             'main.mjs',
             'mainLog.mjs',
             'planeConfig.mjs',
-            'seatRootRecord.mjs'
+            'seatRootRecord.mjs',
+            'wakeReceiver.mjs'
         ]);
         expect(() => assertPackagedMainModulesDeclared({builderConfig, modules})).not.toThrow();
-        expect(mainSource).toContain('loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot})')
+        expect(mainSource).toContain('loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot})');
+        // the settled wake receiver is logged with its origin, and reaches the Fleet child, its only consumer
+        expect(mainSource).toContain('console.log(`HARNESS_WAKE_RECEIVER ${JSON.stringify(wakeReceiver)}`)');
+        expect(mainSource).toContain('env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken')
     });
 
     test('source-relative traversal rejects nested and normalized harness-root escapes', async () => {

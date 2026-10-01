@@ -70,6 +70,11 @@ import {createSmokeSafeStorage, startFixturePlane}            from './fixturePla
 import {carriesSecret, createMainLog}                         from './mainLog.mjs';
 import {createPlaneBroker, planeEnvFragment, readPlaneConfig} from './planeConfig.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                  from './seatRootRecord.mjs';
+import {
+    WAKE_RECEIVER_LAUNCH_AGENT,
+    settleWakeReceiver,
+    wakeReceiverEnv
+} from './wakeReceiver.mjs';
 
 const
     harnessDir           = path.dirname(fileURLToPath(import.meta.url)),
@@ -1008,6 +1013,18 @@ async function bootProductBrain() {
         console.log(`HARNESS_SEAT_ROOT ${JSON.stringify({origin: seatRecord.origin, root: seatRecord.root})}`)
     }
 
+    // The host receiver the Fleet publishes its seats' wake routes to, settled against the plane the paths
+    // resolved. Only the Fleet consumes it, so it joins the Fleet child's env alone (wakeReceiver.mjs).
+    const wakeReceiver = packagedMode ? settleWakeReceiver({
+        env      : process.env,
+        planeBase: paths.fleetPlaneBase,
+        plistPath: path.join(app.getPath('home'), 'Library', 'LaunchAgents', WAKE_RECEIVER_LAUNCH_AGENT)
+    }) : null;
+
+    if (wakeReceiver) {
+        console.log(`HARNESS_WAKE_RECEIVER ${JSON.stringify(wakeReceiver)}`)
+    }
+
     const
         live      = await detectLiveBrain({
             productRoot,
@@ -1056,7 +1073,7 @@ async function bootProductBrain() {
 
         const fleet = startBrainChild({
             entry   : FLEET_SERVER_ENTRY,
-            env     : {...packagedEnv, NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
+            env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
             onLog   : line => {fleetLastLine = line; brainLog(line)},
             repoRoot: agentosRuntimeRoot
         });
