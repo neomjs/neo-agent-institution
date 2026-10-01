@@ -282,16 +282,18 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
               detail  = Array.isArray(details) ? details[0] : details;
         expect(detail?.id, 'the absent-item resolver returns one live AgentDetail component').toBeTruthy();
 
-        // After the second commit in a row (Focus by click, Review through the seam) the host holds
-        // ONE shell at its shell index — no staged shell survives the projection — and that shell is
-        // visible; every item the committed document shows resolves to exactly one live pane, mounted
-        // and in the DOM, and no item is ever duplicated by a successor — an item a tab or a collapsed
-        // rail keeps back may not exist yet (the rail tools are lazy until their first reveal).
-        const host = await app.getComponent(holderId, ['dockShellIndex', 'items.length', 'items.1.id']);
+        // After the second commit in a row (Focus by click, Review through the seam) the dock host
+        // holds ONE shell at its shell index beside its two persistent drag overlays — no staged
+        // shell survives the projection — and that shell is visible; every item the committed
+        // document shows resolves to exactly one live pane, mounted and in the DOM, and no item is
+        // ever duplicated by a successor — an item a tab or a collapsed rail keeps back may not
+        // exist yet (the rail tools are lazy until their first reveal).
+        const host = await app.getComponent(holderId, ['dockShellIndex', 'items.length', 'items.1.items.length', 'items.1.items.0.id']);
 
-        expect(host.dockShellIndex).toBe(1);
-        expect(host['items.length'], 'the control bar and one shell, nothing staged left behind').toBe(2);
-        await expect(page.locator(`#${host['items.1.id']}`), 'the shell at shellIndex is visible').toBeVisible();
+        expect(host.dockShellIndex, 'the shell is the dock host\'s first child').toBe(0);
+        expect(host['items.length'], 'the control bar and the dock host, nothing staged left behind at the root').toBe(2);
+        expect(host['items.1.items.length'], 'the host holds one shell and its two persistent overlays, no staged shell').toBe(3);
+        await expect(page.locator(`#${host['items.1.items.0.id']}`), 'the shell at shellIndex is visible').toBeVisible();
 
         const edgeNodes = Object.entries(docReview.nodes[docReview.root].zones).filter(([zone]) => zone !== 'center').map(([, zone]) => zone.nodeId),
               tabsOf    = itemId => Object.keys(docReview.nodes).find(nodeId => docReview.nodes[nodeId].items?.includes(itemId));

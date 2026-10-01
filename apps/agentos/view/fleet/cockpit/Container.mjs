@@ -1,6 +1,9 @@
 import ActivityStream         from '../activity/Container.mjs';
 import AgentDetail            from '../detail/Container.mjs';
 import Button                 from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container              from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import DockDropIndicators     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/DropIndicators.mjs';
+import DockPreview            from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/Preview.mjs';
 // NAMED registration import: the engine's dock LayoutAdapter emits `ntype: 'tab-container'` for tab zones
 // without importing the class (engine gap) — the dock consumer owns the registration, visibly, until it does.
 import TabContainer           from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
@@ -368,17 +371,29 @@ class FleetCockpit extends VesselContainer {
                 iconCls: 'fa-solid fa-play',
                 text   : 'Start fleet'
             }]
+        }, {
+            // The dock host under the control bar: the projected shell mounts at its first slot,
+            // and the engine's drag feedback — the preview renderer and the drop-indicator menu —
+            // are its persistent siblings, so they survive every re-projection. `neo-dashboard`
+            // makes the host a dock token carrier like every projected zone.
+            module   : Container,
+            cls      : ['fm-cockpit-dock-host', 'neo-dashboard'],
+            flex     : 1,
+            layout   : {ntype: 'fit'},
+            reference: 'dock-host',
+            items    : [{
+                module   : DockPreview,
+                reference: 'dock-preview'
+            }, {
+                module   : DockDropIndicators,
+                reference: 'drop-indicators'
+            }]
         }],
         /**
-         * The persistent control bar sits at index 0; the inherited projected shell follows it.
-         * @member {Number} dockShellIndex=1
+         * The projected shell mounts into the declared dock host, never into the root vbox.
+         * @member {String} dockHostReference='dock-host'
          */
-        dockShellIndex: 1,
-        /**
-         * The inherited shell shares the root vbox with the persistent control bar.
-         * @member {Object} dockProjectionConfig={flex:1}
-         */
-        dockProjectionConfig: {flex: 1},
+        dockHostReference: 'dock-host',
         /**
          * Fleet is the first zero-grant consumer of the engine-owned tear-out lifecycle.
          * @member {Boolean} enableDockTearOutLifecycle=true
@@ -388,18 +403,7 @@ class FleetCockpit extends VesselContainer {
          * Preserve the shipped widget-vessel URL contract while the engine remains product-neutral.
          * @member {String} tearOutHostParam='cockpitId'
          */
-        tearOutHostParam: 'cockpitId',
-        /**
-         * The projected dock shell sits after the control bar (`items[0]`); every committed
-         * document re-projects it in place there.
-         * @member {Number} dockShellIndex=1
-         */
-        dockShellIndex: 1,
-        /**
-         * The shell fills the column under the control bar.
-         * @member {Object} dockProjectionConfig={flex:1}
-         */
-        dockProjectionConfig: {flex: 1}
+        tearOutHostParam: 'cockpitId'
     }
 
     /**
@@ -494,10 +498,10 @@ class FleetCockpit extends VesselContainer {
      * engine has seeded {@link #dockModel} by now — the active declared perspective lowered over
      * `panes`, or a supplied document, which wins over the declaration and stays active. The
      * cockpit is the app's main view, so its shell projects eagerly (the resident panes exist at
-     * boot, before the bridge answers) into the slot `dockShellIndex` names after the control bar;
-     * the engine's mount-time pass finds it there and leaves it. The duties are declared
-     * perspectives the engine selects, never records; the drawer's binding source (the projected
-     * list) is written once the library exists.
+     * boot, before the bridge answers) into the declared dock host's first slot, ahead of the
+     * host's persistent overlays; the engine's mount-time pass finds it there and leaves it. The
+     * duties are declared perspectives the engine selects, never records; the drawer's binding
+     * source (the projected list) is written once the library exists.
      * @protected
      */
     onAfterConstructed() {
@@ -505,7 +509,7 @@ class FleetCockpit extends VesselContainer {
 
         let me = this;
 
-        me.add(me.projectDockModel());
+        me.getDockHost().insert(me.dockShellIndex, me.projectDockModel());
         me.perspectiveStore = Neo.create(PerspectiveLibrary, {collection: CockpitPerspectives.emptyCollection()});
         me.publishPerspectives()
     }

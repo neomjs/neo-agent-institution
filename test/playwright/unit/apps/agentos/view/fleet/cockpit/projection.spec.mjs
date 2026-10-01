@@ -294,19 +294,22 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         await host.refreshPromise
     });
 
-    test('refresh reconciles shell index 1, preserves flex, and decorates a genuinely absent pane', async () => {
+    test('refresh reconciles the dock host\'s first slot, adds no flex override, and decorates a genuinely absent pane', async () => {
         const
             document = shippedDockDocument(),
             original = Reconciler.reconcileProjection,
             preset   = {reference: 'fleet-preset-overview', set(values) { Object.assign(this, values) }},
             error    = {set(values) { Object.assign(this, values) }},
+            // the declared dock host (the shell's slot plus the two persistent drag overlays), as
+            // much container as the refresh reads: mounted, live, with an item list and a window
+            dockHost = {id: 'fleet-test-dock-host', items: [], mounted: true, isDestroyed: false, windowId: null},
             host     = makeHost({
                 id              : 'fleet-test-host',
-                items           : [{items: [preset]}],
+                items           : [{items: [preset]}, dockHost],
                 perspectiveStore: {collection: {activeLayoutId: 'overview'}},
                 presetError     : null,
                 getReference(reference) {
-                    return reference === 'fleet-preset-error' ? error : null
+                    return reference === 'fleet-preset-error' ? error : reference === 'dock-host' ? dockHost : null
                 }
             });
 
@@ -319,9 +322,11 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         try {
             await FleetCockpit.prototype.refreshDockWorkspace.call(host, null, document);
 
-            expect(options.host).toBe(host);
-            expect(options.shellIndex).toBe(1);
-            expect(options.nextConfig.flex).toBe(1);
+            // the projection mounts into the declared host (`dockHostReference`), at slot 0 (the
+            // engine default), and the fit-layout host needs no flex on the shell (no projection config)
+            expect(options.host).toBe(dockHost);
+            expect(options.shellIndex).toBe(0);
+            expect(options.nextConfig.flex).toBeUndefined();
 
             const absent = options.resolveItem('fleet');
 
