@@ -3,6 +3,7 @@ import BrainHealthRead     from '../../../util/BrainHealthRead.mjs';
 import DeploymentStateRead from '../../../util/DeploymentStateRead.mjs';
 import FleetAdmission      from '../../../util/FleetAdmission.mjs';
 import LivenessCadence     from '../../../util/LivenessCadence.mjs';
+import RosterRow           from '../../../util/RosterRow.mjs';
 import SourceHealth        from '../../../util/SourceHealth.mjs';
 import TargetBinding       from '../../../util/TargetBinding.mjs';
 
@@ -540,45 +541,13 @@ class LivenessController extends ComponentController {
     }
 
     /**
-     * @summary Map one assembler DTO row onto the FleetAgent record contract — identity facts and
-     * launch-derived truths flow through tri-state (null = unclassified, never guessed), the
-     * runtime lifecycle maps onto the session-state vocabulary only when the runtime source is
-     * usable, and fields the roster producer does not own (`laneLine`) are OMITTED so a merge
-     * never wipes what another producer wrote.
+     * @summary Map one assembler DTO row onto the FleetAgent record contract — the mapping lives in
+     * {@link AgentOS.util.RosterRow}; this seam stays for the reconcile path and its witnesses.
      * @param {Object} row One cockpit DTO row.
      * @returns {Object} FleetAgent record field values.
      */
     mapRosterRow(row) {
-        const sessionHealth = SourceHealth.mapFleetSessionHealth(row.lifecycle, row.sources);
-
-        return {
-            agentId    : row.id,
-            authMode   : row.authMode ?? null,
-            avatarUrl  : row.avatarUrl ?? null,
-            displayName: row.displayName ?? null,
-            // the resident's MAILBOX identity authority, preserved from the DTO — the registry id
-            // is a Fleet key (`vega`), a mailbox subject is an AgentIdentity node id
-            // (`@neo-opus-vega`); comparing the wrong kind would never match, or match the wrong
-            // resident. `null` = no identity authority: an honest "cannot verify"
-            githubUsername     : row.githubUsername ?? null,
-            engineTag          : row.engineTag ?? null,
-            family             : row.family ?? null,
-            // the launch-side facts the card's clone-path line reads: the harness key as the
-            // registry holds it, and the working repository the Fleet derived before any launch.
-            // `repoStatus` is null on a row the repo producer did not cover — honest null, no line
-            harnessType        : row.harnessType ?? null,
-            repoSlug           : row.repoStatus?.repoSlug ?? null,
-            repoPath           : row.repoStatus?.repoPath ?? null,
-            launchable         : row.launchable ?? null,
-            openLaneCount      : row.openLaneCount ?? null,
-            lastActivityAt     : row.lastActivityAt ?? null,
-            participationStatus: row.participationStatus ?? null,
-            sources            : sessionHealth.sources,
-            state              : sessionHealth.state,
-            presence           : row.presence ?? null,
-            throttle           : row.throttle ?? null,
-            wake               : row.wake ?? null
-        }
+        return RosterRow.mapRosterRow(row)
     }
 
     /**
