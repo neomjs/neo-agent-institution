@@ -57,7 +57,8 @@ const declaredDockConfigs = (cls, stopAt) => {
  * for the declaration the engine's post-commit publication reads (`PerspectiveState.read`:
  * `perspectives`, `panes`, `zones`, `activePerspective`, the selection owner, the provider):
  * a bare prototype declares nothing, so every switch here is the snapshot path and nothing is
- * published.
+ * published. Nor does the spy owner sit in a window: the refresh's participation sync reads
+ * `windowId`, and with none it retires rather than composing a cross-window participation.
  */
 const spyHostIdentity = {
     id                  : 'fleet-cockpit-spy-host',
@@ -68,6 +69,7 @@ const spyHostIdentity = {
     perspectiveSelection: null,
     perspectives        : null,
     stateProvider       : null,
+    windowId            : null,
     zones               : null
 };
 
