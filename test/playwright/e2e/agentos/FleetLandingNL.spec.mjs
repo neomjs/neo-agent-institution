@@ -3,18 +3,21 @@ import {sampleActivity, sampleRoster}                    from '../../fixture/fle
 
 /**
  * The tests' fleet landing (`test/playwright/fixture/FleetLanding.mjs`) read back through the
- * cockpit's own provider: the sample lands as eleven cards in the roster's order and six events,
- * both surfaces `live`; a spec's own rows land through the same seam, and landing again reconciles
- * instead of replacing — the contract every spec that needs cards or events relies on.
+ * providers that own each surface: the roster and its grid truths live on the Viewport's provider,
+ * the activity stream on the cockpit's. The sample lands as eleven cards in the roster's order and
+ * six events, both surfaces `live`; a spec's own rows land through the same seam, and landing again
+ * reconciles instead of replacing — the contract every spec that needs cards or events relies on.
  */
 test.describe('Fleet cockpit — the tests\' fleet landing (NL)', () => {
-    const readProvider = async app => {
+    const readProvider = async (app, className) => {
         const
-            [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
-            state     = await app.getComponent(cockpit.properties.id, ['stateProvider']);
+            [owner] = await app.queryComponent({className}, ['id']),
+            state   = await app.getComponent(owner.properties.id, ['stateProvider']);
 
         return state.stateProvider
     };
+    const readViewport = app => readProvider(app, 'AgentOS.view.Viewport');
+    const readCockpit  = app => readProvider(app, 'AgentOS.view.fleet.cockpit.Container');
 
     test('landing the sample renders eleven cards and six events as live surfaces', async ({page, neuralLink}) => {
         await page.setViewportSize({width: 1600, height: 1100});
@@ -28,13 +31,13 @@ test.describe('Fleet cockpit — the tests\' fleet landing (NL)', () => {
         await expect(page.locator('.fm-fleet-cards .fm-agent-card')).toHaveCount(sampleRoster.length);
         await expect(page.locator('.fm-fleet-cards .fm-agent-card .fm-card-name').first()).toHaveText(sampleRoster[0].displayName);
 
-        const {data, stores} = await readProvider(app);
+        const [viewport, cockpit] = await Promise.all([readViewport(app), readCockpit(app)]);
 
-        expect(data.gridAdapterState).toBe('live');
-        expect(data.streamAdapterState).toBe('live');
-        expect(data.gridDegradedReason).toBeNull();
-        expect(stores.fleetRoster.count).toBe(sampleRoster.length);
-        expect(stores.fleetActivityEvents.count).toBe(sampleActivity.length)
+        expect(viewport.data.gridAdapterState).toBe('live');
+        expect(cockpit.data.streamAdapterState).toBe('live');
+        expect(viewport.data.gridDegradedReason).toBeNull();
+        expect(viewport.stores.fleetRoster.count).toBe(sampleRoster.length);
+        expect(cockpit.stores.fleetActivityEvents.count).toBe(sampleActivity.length)
     });
 
     test('a spec\'s own rows land through the same seam, and landing again reconciles', async ({page, neuralLink}) => {
@@ -61,7 +64,7 @@ test.describe('Fleet cockpit — the tests\' fleet landing (NL)', () => {
         await landFleetRoster(page, ['land-b', 'land-d'].map(row));
         await expect(page.locator('.fm-fleet-cards .fm-agent-card')).toHaveCount(2);
 
-        const {data, stores} = await readProvider(app);
+        const {data, stores} = await readViewport(app);
 
         expect(data.gridAdapterState).toBe('live');
         expect(stores.fleetRoster.count).toBe(2)

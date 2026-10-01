@@ -136,7 +136,7 @@ test.describe('AgentOS S5 add-agent journey (Neural Link)', () => {
             const submit = page.locator('.fm-add-submit');
             await expect(submit).toBeEnabled();
 
-            await page.locator('.fm-add-agent-form input[type="text"]').fill(TEST_AGENT_ID);
+            await page.locator('.fm-add-agent-form input[name="githubUsername"]').fill(TEST_AGENT_ID);
             await page.locator('.fm-add-agent-form input[type="password"]').fill(TEST_CREDENTIAL);
             await submit.click();
 
