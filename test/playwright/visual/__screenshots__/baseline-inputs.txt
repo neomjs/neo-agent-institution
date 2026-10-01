@@ -603,7 +603,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     86ea1a29752775e70d21d86e0627a5902ca4d877
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    e94d2442b3622d40e0c8bdc1d31a0009c92108b7
+    fb3aa98651d2fbfa8e0e1ca68c2c4443b9e1265a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     b6dcdf715604bfa8d9e6c582b3b1814410965d3a

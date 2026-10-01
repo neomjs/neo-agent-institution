@@ -81,7 +81,7 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         const gated = await AddAgentFlow.submitDefineAgent({bridgeResolver: () => null, payload: cleanPayload()});
 
         expect(gated).toEqual({state: 'gated', reason: AddAgentFlow.FLEET_OFFLINE_REASON});
-        // the operator's words: what to do, no bridge or App Worker vocabulary (#245)
+        // the operator's words: what to do, no bridge or App Worker vocabulary
         expect(gated.reason).toBe('The fleet is not running. Start it, then add the agent.');
 
         const wrongShape = await AddAgentFlow.submitDefineAgent({bridgeResolver: () => ({}), payload: cleanPayload()});
@@ -307,7 +307,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         });
 
         expect(form.items.some(item => item.name === 'credential')).toBe(false);
-        // the setup journey carries no credential-ownership prose: an idle form says nothing (#245)
+        // the setup journey carries no credential-ownership prose: an idle form says nothing
         expect(form.flowStatus).toEqual({state: 'idle', reason: ''});
 
         const usernameField = await form.getField('githubUsername');

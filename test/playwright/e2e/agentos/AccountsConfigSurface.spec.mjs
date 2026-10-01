@@ -182,7 +182,7 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             expect(card.properties.record).toMatchObject({
                 agentId  : createdAgentId,
                 engineTag: null,
-                // the Brain derives the display family from the declared harness (neo-agent-brain#656)
+                // the Brain derives the display family from the declared harness
                 family   : 'gemini'
             });
 

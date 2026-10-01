@@ -428,7 +428,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.agent-panel-accounts')).toHaveScreenshot('accounts-config-surface.png')
     });
 
-    // #245 AC-3: at both common window sizes no Accounts control is clipped and nothing scrolls
+    // At both common window sizes no Accounts control is clipped and nothing scrolls
     // sideways — the master-detail columns, the card with its product chips, and the add-agent form.
     for (const [width, height] of [[1000, 640], [1280, 800]]) {
         test(`the Accounts surface at ${width}×${height} — no clipped control, no sideways scroll (viewport capture, geometry asserted)`, async ({page}) => {

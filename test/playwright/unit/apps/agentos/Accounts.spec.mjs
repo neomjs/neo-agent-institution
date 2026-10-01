@@ -47,7 +47,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
         expect(source).not.toMatch(/PasswordField|TextField|Radio|FormContainer/);
         expect(source).not.toMatch(/onSubmitAgentClick|submitToFleetRegistryBridge|clearCredentialField/);
         expect(source).not.toMatch(/Use sample|Connect harness|connectionBridge/);
-        // and the setup journey carries no App Worker or credential-ownership prose (#245 AC-6)
+        // and the setup journey carries no App Worker or credential-ownership prose
         expect(source).not.toMatch(/never enters App Worker state|not retained in the app worker|dev-server mode/)
     });
 
