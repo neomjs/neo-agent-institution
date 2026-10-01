@@ -185,7 +185,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
             },
             form       = Neo.create(AddAgentForm, {
                 appName       : 'AgentOSAccountsTest',
-                bridgeResolver: () => ({defineAgent: async () => canonical, setRepo: async () => canonical})
+                bridgeResolver: () => ({defineAgent: async () => canonical, setRepo: async () => ({status: 'accepted', agent: canonical})})
             }),
             // Proxy-backed, not a plain object: `storage[key] = value` is a REAL persistent write in
             // Chromium and reaches no method, so a method-only recorder watches it happen in silence.

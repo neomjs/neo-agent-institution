@@ -216,4 +216,82 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             fs.rmSync(tmpDir, {recursive: true, force: true})
         }
     });
+
+    test('the Repositories card adds and removes repositories over the real Fleet wire, and a refused list shows the Fleet\'s reason', async ({page, neuralLink}) => {
+        const
+            priorDataDir = FleetRegistryService.dataDir,
+            tmpDir       = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-repos-e2e-')),
+            agentId      = 'repos-proof-agent',
+            extra        = 'neomjs/neo-agent-brain';
+
+        FleetRegistryService.dataDir = tmpDir;
+        FleetRegistryService.defineAgent({
+            id            : agentId,
+            githubUsername: agentId,
+            harnessType   : 'codex',
+            credential    : 'ghp_e2e_repos_must_stay_brain_side'
+        });
+        FleetRegistryService.updateAgent(agentId, {metadata: {repo: {repoSlug: 'neomjs/neo', cloneUrl: 'https://github.com/neomjs/neo.git'}}});
+
+        let server;
+
+        try {
+            const options = authenticatedFleetOptions();
+
+            server = await startFleetBridgeServer(options);
+            const fleetUrl = `http://127.0.0.1:${server.address().port}/fleet`;
+
+            await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl})}`);
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+            await wireAuthenticatedFleetBridge({app: await neuralLink.connectToApp('AgentOS'), fleetUrl, bearerToken: options.bearerToken});
+
+            await page.locator('.agent-shell').getByText('Accounts', {exact: true}).click();
+            await expect(page.locator('.agent-panel-accounts')).toBeVisible({timeout: 30000});
+
+            const
+                app        = await neuralLink.connectToApp('AgentOS'),
+                [accounts] = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id']);
+
+            await app.callMethod(accounts.properties.id, 'loadAgentDefinitions');
+
+            const
+                card   = page.locator('.fm-agent-repos-card'),
+                rows   = card.locator('.fm-repository-list .neo-list-item'),
+                field  = card.getByRole('textbox', {name: 'Add a repository', exact: true}),
+                add    = card.locator('.fm-repos-add-button'),
+                status = card.locator('.fm-repos-status');
+
+            // the working repository, as the registry declares it
+            await expect(rows).toHaveCount(1);
+            await expect(rows.first()).toContainText('neomjs/neo');
+            await expect(rows.first()).toContainText('Working');
+
+            // an add crosses the wire as one setRepos with the whole list, and the readback renders it
+            await field.fill(extra);
+            await add.dispatchEvent('click');
+            await expect(status).toHaveClass(/is-accepted/);
+            await expect(rows).toHaveCount(2);
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([{repoSlug: extra, cloneUrl: `https://github.com/${extra}.git`}]);
+
+            // a refused list shows the Fleet's own reason, keeps the typed slug, and the rows keep
+            // what the registry holds
+            await field.fill(extra);
+            await add.dispatchEvent('click');
+            await expect(status).toHaveClass(/is-rejected/);
+            await expect(status).toHaveText('a repository is listed twice.');
+            await expect(field).toHaveValue(extra);
+            await expect(rows).toHaveCount(2);
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toHaveLength(1);
+
+            // a Remove sends the list without it
+            await rows.filter({hasText: extra}).locator('.fm-repo-remove').dispatchEvent('click');
+            await expect(status).toHaveClass(/is-accepted/);
+            await expect(rows).toHaveCount(1);
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([])
+        } finally {
+            server && await new Promise(resolve => server.close(resolve));
+            FleetRegistryService.dataDir = priorDataDir;
+            fs.rmSync(tmpDir, {recursive: true, force: true})
+        }
+    });
 });

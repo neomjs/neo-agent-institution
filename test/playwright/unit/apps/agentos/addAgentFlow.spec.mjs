@@ -146,13 +146,28 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
             set      = await AddAgentFlow.submitDefineAgent({
                 bridgeResolver: () => ({
                     defineAgent: async () => cleanReadback(),
-                    setRepo    : async payload => { calls.push(payload); return withRepo }
+                    setRepo    : async payload => { calls.push(payload); return {status: 'accepted', agent: withRepo} }
                 }),
                 payload: {...cleanPayload(), repoSlug: 'neomjs/neo-agent-brain'}
             });
 
         expect(calls).toEqual([{id: 'resident-7', cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git', repoSlug: 'neomjs/neo-agent-brain'}]);
         expect(set).toEqual({state: 'readback-confirmed', definition: withRepo, reason: ''});
+
+        // a repository the Fleet refuses is named with the Fleet's own reason
+        const refused = await AddAgentFlow.submitDefineAgent({
+            bridgeResolver: () => ({
+                defineAgent: async () => cleanReadback(),
+                setRepo    : async () => ({status: 'rejected', reason: "the owner 'harness' is reserved for the seat's harness homes."})
+            }),
+            payload: {...cleanPayload(), repoSlug: 'harness/neo'}
+        });
+
+        expect(refused).toEqual({
+            state     : 'readback-confirmed',
+            definition: cleanReadback(),
+            reason    : "Agent added, but its working repository is not set: the owner 'harness' is reserved for the seat's harness homes."
+        });
 
         const failing = await AddAgentFlow.submitDefineAgent({
             bridgeResolver: () => ({defineAgent: async () => cleanReadback(), setRepo: async () => { throw new Error('down') }}),

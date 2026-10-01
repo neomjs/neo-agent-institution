@@ -135,17 +135,21 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         store.destroy()
     });
 
-    test('a seat without a working repository says so, and a readback refreshes the rows in place', () => {
+    test('a seat without a working repository says so and offers no add, and a readback refreshes the rows in place', () => {
         const {card, record, rows, store} = mount({});
 
         expect(rows()).toEqual([]);
         expect(card.getReference('repos-empty').hidden).toBe(false);
+        // the Fleet refuses other repositories until the seat has a working one
+        expect(card.getReference('add-button').disabled).toBe(true);
+        expect(card.getReference('field-repo').disabled).toBe(true);
 
         record.set({metadata: {repo: working, repos: [brain]}});
         card.refresh();
 
         expect(rows().map(row => row.repoSlug)).toEqual(['neomjs/neo', 'neomjs/neo-agent-brain']);
         expect(card.getReference('repos-empty').hidden).toBe(true);
+        expect(card.getReference('add-button').disabled).toBe(false);
 
         card.destroy();
         store.destroy()

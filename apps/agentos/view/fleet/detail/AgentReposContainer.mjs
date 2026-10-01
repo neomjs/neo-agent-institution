@@ -211,23 +211,24 @@ class AgentReposCard extends Container {
 
     /**
      * @summary Paint the status line for the shown record, and disable the add row while a change
-     * is in flight.
+     * is in flight, or while the seat has no working repository: the Fleet refuses other
+     * repositories until it has one, and the empty line says so.
      * @protected
      */
     renderSaveStatus() {
         const
-            me      = this,
-            status  = me.saveStatus?.agentId === me.record?.id ? me.saveStatus : null,
-            state   = status?.state ?? 'idle',
-            pending = state === 'pending';
+            me       = this,
+            status   = me.saveStatus?.agentId === me.record?.id ? me.saveStatus : null,
+            state    = status?.state ?? 'idle',
+            disabled = state === 'pending' || !me.record?.['metadata.repo'];
 
         me.getReference('repos-status').set({
             cls : ['fm-repos-status', `is-${state}`],
             text: status?.reason ?? ''
         });
 
-        me.getReference('field-repo').disabled = pending || !me.record;
-        me.getReference('add-button').disabled = pending || !me.record
+        me.getReference('field-repo').disabled = disabled;
+        me.getReference('add-button').disabled = disabled
     }
 
     /**
