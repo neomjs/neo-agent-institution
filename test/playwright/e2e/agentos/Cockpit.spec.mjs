@@ -35,9 +35,11 @@ test.describe('AgentOS harness shell — left-rail keeper-view nav', () => {
         await expect(page.locator('.agent-panel-settings')).toHaveCount(0);
         await expect(page.locator('.agent-shell').getByText('Control', {exact: true})).toHaveCount(0);
 
-        // Accounts keeper-view reachable via the rail → the agent-identity form renders
+        // Accounts keeper-view reachable via the rail → with no definitions yet it opens on the
+        // shared add-agent form and says so
         await page.locator('.agent-shell').getByText('Accounts', {exact: true}).click();
-        await expect(page.locator('.agent-definition-form')).toBeVisible({timeout: 30000})
+        await expect(page.locator('.agent-panel-accounts .fm-add-agent-form')).toBeVisible({timeout: 30000});
+        await expect(page.locator('.agent-panel-accounts .fm-accounts-empty')).toContainText('No agents yet')
     });
 
     test('the sample fleet renders calm — zero per-card source alarms (#17210)', async ({page}) => {

@@ -1,5 +1,5 @@
-import Component                              from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
-import {listHarnessTypes, resolveHarnessType} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
+import Component     from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import HarnessChoice from '../../../util/HarnessChoice.mjs';
 import {
     listMcpServers,
     normalizeMcpOverrides,
@@ -25,7 +25,8 @@ const LAUNCH_OWNERS = Object.freeze({
  *
  * @summary The per-agent configuration card — renders ONE selected agent's configuration from its
  * {@link AgentOS.model.AgentDefinition} record, entirely derived from the registries
- * (Brain's public Fleet contract): the harness (registry label, fail-closed
+ * (Brain's public Fleet contract): the harness (offered as the add-agent form offers it — a
+ * product, then App or Command line where the product ships both, via `HarnessChoice`; fail-closed
  * "Unknown harness" for unregistered types), the MCP-server matrix (catalog order, effective
  * enable-state via `resolveMcpMatrix` — null matrix = catalog defaults), and the operational
  * toggles with tri-state honesty (On / Off / "Not read back yet" — never an optimistic guess).
@@ -167,8 +168,9 @@ class AgentConfigCard extends Component {
      * @summary Resolve a click on an interactive row into a `configIntent` event — the card never
      * mutates anything itself (the owning view drives the bridge round-trip and writes the record
      * from the RESPONSE). Rows encode their intent in DOM ids: `<cardId>__srv__<key>` toggles one
-     * MCP server; `<cardId>__harness__<type>` picks a harness; `<cardId>__launch__<owner>` hands the
-     * seat's launches to this fleet or back to its own harness.
+     * MCP server; `<cardId>__product__<product>` picks a product and `<cardId>__harness__<type>` a
+     * run mode (see {@link #createHarnessChoices}); `<cardId>__launch__<owner>` hands the seat's
+     * launches to this fleet or back to its own harness.
      * @param {Object} data DOM click event data.
      * @protected
      */
@@ -191,6 +193,11 @@ class AgentConfigCard extends Component {
             me.fire('configIntent', {id: record.id, mcpServers: normalizeMcpOverrides(matrix)})
         } else if (kind === 'harness' && key !== record.harnessType) {
             me.fire('configIntent', {id: record.id, harnessType: key})
+        } else if (kind === 'product') {
+            // a product keeps the current run mode where it has one (Claude App → Codex lands on Codex's app)
+            const harnessType = HarnessChoice.typeFor(key, HarnessChoice.choiceOf(record.harnessType)?.runsAs);
+
+            harnessType && harnessType !== record.harnessType && me.fire('configIntent', {id: record.id, harnessType})
         } else if (kind === 'launch' && key === 'fleet' && record.launchOwner === 'external') {
             me.fire('configIntent', {id: record.id, launchOwner: key})
         } else if (kind === 'target') {
@@ -260,7 +267,6 @@ class AgentConfigCard extends Component {
 
         const
             me            = this,
-            harness       = resolveHarnessType(record.harnessType),
             matrix        = resolveMcpMatrix(record.mcpServers),
             targetChoices = me.createTargetChoices(record),
             saveStatus    = me.saveStatus?.agentId === record.id
@@ -277,16 +283,9 @@ class AgentConfigCard extends Component {
             cls: ['fm-config-row'],
             cn : [
                 {cls: ['fm-config-label'], text: 'Harness'},
-                {cls: ['fm-config-value'], text: harness?.label ?? 'Unknown harness'}
+                {cls: ['fm-config-value'], text: HarnessChoice.describe(record.harnessType) ?? 'Unknown harness'}
             ]
-        }, {
-            cls: ['fm-config-chips', 'fm-config-harness'],
-            cn : listHarnessTypes().map(entry => ({
-                id  : `${me.id}__harness__${entry.type}`,
-                cls : ['fm-chip', entry.type === record.harnessType ? 'is-selected' : 'is-selectable'],
-                text: entry.label
-            }))
-        }, {
+        }, ...me.createHarnessChoices(record), {
             cls: ['fm-config-section'],
             cn : [
                 {tag: 'strong', cls: ['fm-config-heading'], text: 'Launched by · declared'},
@@ -351,6 +350,42 @@ class AgentConfigCard extends Component {
                 text,
                 title
             }))
+    }
+
+    /**
+     * @summary The harness choice rows: one chip per product (`<cardId>__product__<product>`), then
+     * App / Command line when the record's product ships both (`<cardId>__harness__<type>`). The two
+     * id kinds stay distinct: a product chip and its run-mode chip would otherwise name the same type.
+     * @param {Object} record
+     * @returns {Object[]} vdom nodes, one or two rows
+     */
+    createHarnessChoices(record) {
+        const
+            me       = this,
+            choice   = HarnessChoice.choiceOf(record.harnessType),
+            products = HarnessChoice.products(),
+            current  = products.find(item => item.product === choice?.product),
+            rows     = [{
+                cls: ['fm-config-chips', 'fm-config-harness'],
+                cn : products.map(entry => ({
+                    id  : `${me.id}__product__${entry.product}`,
+                    cls : ['fm-chip', entry.product === choice?.product ? 'is-selected' : 'is-selectable'],
+                    text: entry.label
+                }))
+            }];
+
+        if (current?.runsAs.length) {
+            rows.push({
+                cls: ['fm-config-chips', 'fm-config-runs-as'],
+                cn : current.runsAs.map(entry => ({
+                    id  : `${me.id}__harness__${entry.type}`,
+                    cls : ['fm-chip', entry.type === record.harnessType ? 'is-selected' : 'is-selectable'],
+                    text: entry.label
+                }))
+            })
+        }
+
+        return rows
     }
 
     /**

@@ -1,30 +1,34 @@
-import Button             from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import FormContainer      from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
-import PasswordField      from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
-import TextField          from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
-import {listHarnessTypes} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
-import AddAgentFlow       from '../../../util/AddAgentFlow.mjs';
+import Button        from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import FormContainer from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
+import PasswordField from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
+import TextField     from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import AddAgentFlow  from '../../../util/AddAgentFlow.mjs';
+import HarnessChoice from '../../../util/HarnessChoice.mjs';
 
 /**
  * @class AgentOS.view.fleet.instances.AddAgentForm
  * @extends Neo.form.Container
  *
- * @summary The S5 add-agent surface (design SSOT Lane D1): username + harness type, plus a PAT only
- * for direct-browser ingress → the Fleet Registry bridge, rendered to the cockpit token layer (`--fm-*`) under the
- * honest-lifecycle contract — `idle → validating → submitting → readback-confirmed | gated |
- * rejected`, with the registry's canonical readback as the ONLY success truth.
+ * @summary The one add-agent form (design SSOT Lane D1). It serves the cockpit's rail and the
+ * Accounts view. It collects the GitHub account (username, plus a personal access token for
+ * direct-browser ingress), the working repository, and the harness, and submits through the Fleet
+ * Registry bridge. It renders the flow states from `AddAgentFlow`: `idle → validating → submitting →
+ * readback-confirmed | gated | rejected`. The registry's canonical readback is the only success
+ * truth.
  *
- * Mount-independent by design: the form ends at the `agentDefinitionAccepted` event carrying the
- * validated public definition — the mounting owner (dock zone or detail tab, the S5 fork) wires
- * the roster write. It holds no store and no credential state:
+ * **The harness choice is a product first.** One chip per product (`HarnessChoice.products()`, read
+ * from the Brain's catalog). *App* and *Command line* appear only for a product that ships both. The
+ * stored value stays the catalog's harness type (`harnessType`), which the Fleet launches.
  *
- * Credential boundary (the fleet credential matrix): a direct-browser PAT lives in the password
- * field only as long as a submission needs it — never in browser persistent state, never in the URL,
- * never logged or echoed — and the field clears on EVERY settle, terminal state regardless. A bridge
- * marked `credentialIngress: 'shell'` removes that field before mount and sends public intent only;
- * the native shell owns credential entry. Bridge absent → the submit control is
- * **disabled-with-reason** (CARD-CONTRACT controls rule: never hidden), state `gated`, and no fake
- * affordance pretends a round-trip is possible.
+ * **Mount-independent by design.** The form ends at the `agentDefinitionAccepted` event carrying the
+ * validated public definition; the mounting owner writes the roster. It holds no store and no
+ * credential state.
+ *
+ * **Credential boundary (the fleet credential matrix).** A direct-browser token lives in the password
+ * field only as long as a submission needs it, and the field clears on every settle. A bridge marked
+ * `credentialIngress: 'shell'` removes that field before mount and sends public intent only; the
+ * native shell owns credential entry. Without a bridge the submit control is disabled with its
+ * reason (CARD-CONTRACT controls rule: never hidden), state `gated`.
  */
 class AddAgentForm extends FormContainer {
     static config = {
@@ -58,14 +62,15 @@ class AddAgentForm extends FormContainer {
         bridgeResolver: null,
         /**
          * The flow's rendered lifecycle state — `{state, reason}` with state in the
-         * {@link module:apps/agentos/view/fleet/addAgentFlow~ADD_AGENT_STATES flow vocabulary}.
+         * {@link AgentOS.util.AddAgentFlow#ADD_AGENT_STATES flow vocabulary}.
          * Reactive: every transition re-renders the status line + control affordances.
          * @member {Object} flowStatus_={state:'idle',reason:''}
          * @reactive
          */
         flowStatus_: {state: 'idle', reason: ''},
         /**
-         * The selected harness type — chip-driven (registry product language), not a form field.
+         * The selected harness type, the catalog's launched unit. The product and run-mode chips
+         * both derive their selection from it, so there is one selection state.
          * @member {String|null} harnessType_=null
          * @reactive
          */
@@ -76,9 +81,9 @@ class AddAgentForm extends FormContainer {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The form anatomy — the shell's pane head · username · PAT · harness chip row
-         * (registry-derived) · the action slot (submit) · status line. Geometry + skin in
-         * `AddAgentForm.scss`, colors token-only.
+         * The form anatomy: pane head · the GitHub account (username, token) · working repository
+         * · harness (product chips, then App / Command line when the product has both) · the action
+         * slot · status line. Geometry + skin in `AddAgentForm.scss`, colors token-only.
          * @member {Object[]} items
          */
         // every row is flex:'none': the vbox default (grow 1) would distribute a stretched host's
@@ -91,51 +96,75 @@ class AddAgentForm extends FormContainer {
             layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             items : [{ntype: 'component', cls: ['fm-pane-title'], text: 'Add an agent'}]
         }, {
+            ntype: 'component',
+            cls  : ['fm-add-section'],
+            flex : 'none',
+            text : 'GitHub account'
+        }, {
             module         : TextField,
             clearable      : true,
             flex           : 'none',
             labelPosition  : 'inline',
-            labelText      : 'GitHub username',
+            labelText      : 'Username',
             name           : 'githubUsername',
             placeholderText: 'neo-kimi-phoebe',
             reference      : 'field-username',
+            required       : true
+        }, {
+            module         : PasswordField,
+            clearable      : true,
+            flex           : 'none',
+            labelPosition  : 'inline',
+            labelText      : 'Personal access token',
+            name           : 'credential',
+            placeholderText: 'github_pat_…',
+            reference      : 'field-credential',
             required       : true
         }, {
             // the repo the seat's first Start clones and runs in
             module         : TextField,
             flex           : 'none',
             labelPosition  : 'inline',
-            labelText      : 'Working repo',
+            labelText      : 'Working repository',
             name           : 'repoSlug',
             placeholderText: 'owner/repo',
             reference      : 'field-repo',
             required       : true,
             value          : AddAgentFlow.DEFAULT_REPO_SLUG
         }, {
-            module         : PasswordField,
-            clearable      : true,
-            flex           : 'none',
-            labelPosition  : 'inline',
-            labelText      : 'GitHub PAT',
-            name           : 'credential',
-            placeholderText: 'stored Brain-side only',
-            reference      : 'field-credential',
-            required       : true
+            ntype: 'component',
+            cls  : ['fm-add-section'],
+            flex : 'none',
+            text : 'Harness'
         }, {
-            // one registration in the public harness catalog = one more chip here — the row derives
-            // from the registry, labels are the registry's product language (config-card twin)
+            // one chip per product in the Brain's catalog: a new product is one more chip here
             ntype    : 'container',
             cls      : ['fm-add-harness-row'],
             flex     : 'none',
             layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
-            reference: 'harness-row',
+            reference: 'product-row',
 
-            items: listHarnessTypes().map(entry => ({
-                module     : Button,
-                cls        : ['fm-chip'],
-                text       : entry.label,
-                handler    : 'up.onHarnessChipClick',
-                harnessType: entry.type
+            items: HarnessChoice.products().map(entry => ({
+                module : Button,
+                cls    : ['fm-chip'],
+                text   : entry.label,
+                handler: 'up.onProductChipClick',
+                product: entry.product
+            }))
+        }, {
+            // App / Command line — shown only while the selected product ships both
+            ntype    : 'container',
+            cls      : ['fm-add-harness-row', 'fm-add-runs-as-row'],
+            flex     : 'none',
+            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+            reference: 'runs-as-row',
+
+            items: Object.entries(HarnessChoice.RUNS_AS_LABELS).map(([runsAs, text]) => ({
+                module : Button,
+                cls    : ['fm-chip'],
+                text,
+                handler: 'up.onRunsAsChipClick',
+                runsAs
             }))
         }, {
             ntype : 'container',
@@ -160,8 +189,9 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
-     * @summary Probe the bridge seam once composed: an absent bridge renders the `gated` state
-     * up-front — the operator learns the affordance is closed before typing a credential into it.
+     * @summary Seat the first product's harness, drop the token field for shell ingress, and probe
+     * the bridge seam: an absent bridge renders the `gated` state up-front, so the operator learns
+     * the affordance is closed before typing a token into it.
      * @param {...*} args
      */
     onConstructed(...args) {
@@ -170,26 +200,17 @@ class AddAgentForm extends FormContainer {
         const
             me          = this,
             bridge      = AddAgentFlow.resolveRegistryBridge(me.bridgeResolver),
-            shellOwned  = AddAgentFlow.isShellCredentialIngress(bridge),
             secretField = me.getReference('field-credential');
 
-        me.harnessType ??= listHarnessTypes()[0]?.type ?? null;
+        me.harnessType ??= HarnessChoice.products()[0]?.defaultType ?? null;
         me.syncHarnessChips();
 
-        if (shellOwned) {
-            secretField && me.remove(secretField);
+        if (AddAgentFlow.isShellCredentialIngress(bridge)) {
+            secretField && me.remove(secretField)
         }
 
         if (!bridge?.defineAgent) {
-            me.flowStatus = {
-                state : 'gated',
-                reason: 'Fleet Registry bridge unavailable — agent setup fails closed. Start the fleet server from the neo-agent-brain checkout.'
-            }
-        } else if (shellOwned) {
-            me.flowStatus = {
-                state : 'idle',
-                reason: 'Credential entry is owned by the native shell and never enters App Worker state.'
-            }
+            me.flowStatus = {state: 'gated', reason: AddAgentFlow.FLEET_OFFLINE_REASON}
         }
     }
 
@@ -221,7 +242,7 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
-     * Triggered after the harnessType config got changed — re-mark the chip row.
+     * Triggered after the harnessType config got changed — re-mark both chip rows.
      * @param {String|null} value
      * @param {String|null} oldValue
      * @protected
@@ -232,44 +253,69 @@ class AddAgentForm extends FormContainer {
 
     /**
      * @summary Default operator-facing line per flow state, used when an outcome carries no reason.
+     * An idle form says nothing: the fields name what they need.
      * @param {String} state
      * @returns {String}
      */
     statusLineFor(state) {
-        const shellOwned = AddAgentFlow.isShellCredentialIngress(AddAgentFlow.resolveRegistryBridge(this.bridgeResolver));
-
         return {
-            'idle'              : shellOwned
-                ? 'Credential entry is owned by the native shell and never enters App Worker state.'
-                : 'PAT is submitted to the Brain-side registry and never stored in browser state.',
-            'validating'        : 'Checking the definition…',
-            'submitting'        : 'Submitting through the Fleet Registry bridge…',
-            'readback-confirmed': 'Agent added — roster renders the registry\'s canonical readback.'
+            validating          : 'Checking the definition…',
+            submitting          : 'Adding the agent…',
+            'readback-confirmed': 'Agent added.'
         }[state] ?? ''
     }
 
     /**
-     * @summary Mark the selected harness chip (`is-selected`) across the registry-derived row.
+     * @summary Mark the selected product chip, and show the App / Command line row with its
+     * selected run mode only while the product ships both.
      */
     syncHarnessChips() {
-        const me = this;
+        const
+            me      = this,
+            choice  = HarnessChoice.choiceOf(me.harnessType),
+            product = HarnessChoice.products().find(item => item.product === choice?.product),
+            runsAs  = me.getReference('runs-as-row');
 
-        me.getReference('harness-row')?.items.forEach(chip => {
-            chip[chip.harnessType === me.harnessType ? 'addCls' : 'removeCls']('is-selected')
-        })
+        me.getReference('product-row')?.items.forEach(chip => {
+            chip[chip.product === choice?.product ? 'addCls' : 'removeCls']('is-selected')
+        });
+
+        if (runsAs) {
+            runsAs.hidden = !product?.runsAs.length;
+
+            runsAs.items.forEach(chip => {
+                chip[chip.runsAs === choice?.runsAs ? 'addCls' : 'removeCls']('is-selected')
+            })
+        }
     }
 
     /**
-     * @summary One chip click = the harness selection (config-card interaction twin).
+     * @summary A product chip selects that product, keeping the current run mode when it has one.
      * @param {Object} data
      */
-    onHarnessChipClick(data) {
-        this.harnessType = data.component.harnessType
+    onProductChipClick(data) {
+        const me = this;
+
+        me.harnessType = HarnessChoice.typeFor(data.component.product, HarnessChoice.choiceOf(me.harnessType)?.runsAs) ?? me.harnessType
+    }
+
+    /**
+     * @summary An App / Command line chip selects the current product's type with that run mode.
+     * @param {Object} data
+     */
+    onRunsAsChipClick(data) {
+        const
+            me     = this,
+            choice = HarnessChoice.choiceOf(me.harnessType);
+
+        if (choice) {
+            me.harnessType = HarnessChoice.typeFor(choice.product, data.component.runsAs) ?? me.harnessType
+        }
     }
 
     /**
      * @summary Drive one full flow round-trip: validate → submit → render the terminal outcome —
-     * and clear the PAT field on EVERY settle path — the credential outlives no attempt.
+     * and clear the token field on EVERY settle path — the credential outlives no attempt.
      * An accepted readback fires `agentDefinitionAccepted` for the mounting owner's roster write.
      * @returns {Promise<void>}
      */

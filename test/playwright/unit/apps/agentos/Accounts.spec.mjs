@@ -14,6 +14,7 @@ import Neo             from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core       from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import Instance        from '../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import Accounts        from '../../../../../apps/agentos/view/accounts/Panel.mjs';
+import AddAgentForm    from '../../../../../apps/agentos/view/fleet/instances/AddAgentForm.mjs';
 
 import ConfigIntentRoundTrip from '../../../../../apps/agentos/util/ConfigIntentRoundTrip.mjs';
 
@@ -23,125 +24,84 @@ const
     repoRoot   = path.resolve(__dirname, '../../../../..'),
     viewPath   = path.join(repoRoot, 'apps/agentos/view/accounts/Panel.mjs');
 
-test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
-    test('accepted creation applies the canonical Brain response, emits the owner intent, and clears the PAT', async () => {
+let AgentDefinition, Store;
+
+test.beforeAll(async () => {
+    AgentDefinition = (await import('../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
+    Store           = (await import('../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
+});
+
+const makeAgentStore = data => Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data});
+
+test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', () => {
+    test('the view mounts the shared AddAgentForm and keeps no form of its own', () => {
         const
-            canonical = {
-                id            : 'resident-42',
-                githubUsername: 'canonical-login',
-                harnessType   : 'antigravity',
-                updatedAt     : '2026-07-14T00:00:00.000Z'
-            },
-            calls     = [],
-            form      = {
-                getSubmitValues: async () => ({
-                    credential    : 'ghp_should_not_escape',
-                    githubUsername: '  submitted-login  ',
-                    harnessType   : 'codex'
-                }),
-                validate: async () => true
-            },
-            stub      = {
-                assignRepoThroughBridge    : async (definition, repo) => {
-                    calls.push(['repo', definition.id, repo]);
-                    return {definition, reason: ''}
-                },
-                clearCredentialField       : async () => calls.push(['clear']),
-                fire                       : (name, data) => calls.push(['fire', name, data]),
-                getReference               : reference => reference === 'agent-form' ? form : null,
-                submitToFleetRegistryBridge: async payload => {
-                    calls.push(['submit', payload]);
-                    return canonical
-                },
-                updateBridgeStatus         : (state, message) => calls.push(['status', state, message]),
-                upsertPublicAgentDefinition: (definition, credential) => calls.push(['upsert', definition, credential])
-            };
+            source = fs.readFileSync(viewPath, 'utf8'),
+            // modules serialize as their class names, so the item tree reads as what it mounts
+            items  = JSON.stringify(Accounts.config.items, (key, value) => typeof value === 'function' ? value.prototype?.className : value);
 
-        await Accounts.prototype.onSubmitAgentClick.call(stub);
+        expect(items).toContain('"module":"AgentOS.view.fleet.instances.AddAgentForm"');
+        expect(items).toContain('"module":"AgentOS.view.accounts.List"');
 
-        expect(calls[0]).toEqual(['submit', {
-            credential    : 'ghp_should_not_escape',
-            githubUsername: 'submitted-login',
-            harnessType   : 'codex',
-            launchOwner   : 'fleet'
-        }]);
-        // the seat's working repo is set right after the define: the default when the form names none
-        expect(calls[1]).toEqual(['repo', 'resident-42', {cloneUrl: 'https://github.com/neomjs/neo.git', repoSlug: 'neomjs/neo'}]);
-        expect(calls[2]).toEqual(['upsert', canonical, 'ghp_should_not_escape']);
-        expect(calls[3]).toEqual(['fire', 'agentDefinitionAccepted', {agent: canonical}]);
-        expect(calls[4]).toEqual(['status', 'is-live', 'Agent added. PAT was not retained in the app worker.']);
-        expect(calls[5]).toEqual(['clear'])
+        // the retired duplicate: its fields, its submit path, its sample and connect actions
+        expect(source).not.toMatch(/PasswordField|TextField|Radio|FormContainer/);
+        expect(source).not.toMatch(/onSubmitAgentClick|submitToFleetRegistryBridge|clearCredentialField/);
+        expect(source).not.toMatch(/Use sample|Connect harness|connectionBridge/);
+        // and the setup journey carries no App Worker or credential-ownership prose
+        expect(source).not.toMatch(/never enters App Worker state|not retained in the app worker|dev-server mode/)
     });
 
-    test('shell creation sends public intent only and never hands a PAT to the App-Worker bridge', async () => {
+    test('an accepted definition lands in the roster and re-fires for the Viewport; the form keeps its outcome line', () => {
         const
-            credential = 'ghp_must_not_cross_shell_boundary',
-            canonical  = {
-                id            : 'resident-shell',
-                githubUsername: 'canonical-login',
-                harnessType   : 'opencode'
-            },
-            calls      = [],
-            form       = {
-                getSubmitValues: async () => ({
-                    credential,
-                    githubUsername: '  submitted-login  ',
-                    harnessType   : 'opencode'
-                }),
-                validate: async () => true
-            },
-            previousOS = globalThis.AgentOS,
-            stub       = {
-                assignRepoThroughBridge    : Accounts.prototype.assignRepoThroughBridge,
-                clearCredentialField       : async () => calls.push(['clear']),
-                fire                       : (name, data) => calls.push(['fire', name, data]),
-                getReference               : reference => reference === 'agent-form' ? form : null,
-                submitToFleetRegistryBridge: Accounts.prototype.submitToFleetRegistryBridge,
-                updateBridgeStatus         : (state, message) => calls.push(['status', state, message]),
-                upsertPublicAgentDefinition: (definition, submittedCredential) => {
-                    calls.push(['upsert', definition, submittedCredential])
-                }
+            store = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]),
+            fired = [],
+            agent = {id: 'canonical-id', githubUsername: 'canonical-login', harnessType: 'claude-desktop', updatedAt: '2026-10-01T00:00:00.000Z'},
+            stub  = {
+                adding                     : false,
+                agentDefinitionsStore      : store,
+                fire                       : (name, data) => fired.push([name, data]),
+                onAddAgentAccepted         : Accounts.prototype.onAddAgentAccepted,
+                upsertPublicAgentDefinition: Accounts.prototype.upsertPublicAgentDefinition
             };
 
-        globalThis.AgentOS = {
-            ...previousOS,
-            fleet: {
-                ...previousOS?.fleet,
-                registryBridge: {
-                    credentialIngress: 'shell',
-                    defineAgent      : async payload => {
-                        calls.push(['submit', payload]);
-                        return canonical
-                    },
-                    setRepo          : async payload => {
-                        calls.push(['repo', payload]);
-                        return canonical
-                    }
-                }
-            }
-        };
+        stub.onAddAgentAccepted({agent});
 
-        try {
-            await Accounts.prototype.onSubmitAgentClick.call(stub)
-        } finally {
-            globalThis.AgentOS = previousOS
-        }
+        expect(store.get('canonical-id')?.githubUsername).toBe('canonical-login');
+        expect(store.get('canonical-id')?.harnessType).toBe('claude-desktop');
+        expect(store.get('canonical-id')?.credential).toBeUndefined();
+        // the detail stays on the form, whose status line carries the outcome (a confirmed add can
+        // still say "its working repository is not set")
+        expect(stub.adding).toBe(true);
+        expect(fired).toEqual([['agentDefinitionAccepted', {agent}]]);
 
-        expect(calls[0]).toEqual(['submit', {
-            githubUsername: 'submitted-login',
-            harnessType   : 'opencode',
-            launchOwner   : 'fleet'
-        }]);
-        expect(JSON.stringify(calls[0])).not.toContain(credential);
-        // the wire's setRepo gives the seat its working repo, so its first Start clones it
-        expect(calls[1]).toEqual(['repo', {id: 'resident-shell', cloneUrl: 'https://github.com/neomjs/neo.git', repoSlug: 'neomjs/neo'}]);
-        expect(calls[2]).toEqual(['upsert', canonical, undefined]);
-        expect(calls[3]).toEqual(['fire', 'agentDefinitionAccepted', {agent: canonical}]);
-        expect(calls[4]).toEqual(['status', 'is-live', 'Agent added. Credential entry stayed in the native shell.']);
-        expect(calls[5]).toEqual(['clear'])
+        store.destroy()
     });
 
-    test('shell mode removes the Accounts PAT field before mount', () => {
+    test('a definition the readback guard refuses is neither written nor re-fired', () => {
+        const
+            store = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]),
+            fired = [],
+            stub  = {
+                adding                     : false,
+                agentDefinitionsStore      : store,
+                fire                       : (name, data) => fired.push([name, data]),
+                onAddAgentAccepted         : Accounts.prototype.onAddAgentAccepted,
+                upsertPublicAgentDefinition: Accounts.prototype.upsertPublicAgentDefinition
+            };
+
+        stub.onAddAgentAccepted({agent: {id: 'echo', githubUsername: 'echo', harnessType: 'codex', credential: 'ghp_must_not_land'}});
+        stub.onAddAgentAccepted({agent: {id: 'no-harness', githubUsername: 'no-harness'}});
+        stub.onAddAgentAccepted({});
+
+        expect(store.count).toBe(1);
+        expect(store.get('echo')).toBeNull();
+        expect(store.get('no-harness')).toBeNull();
+        expect(fired).toEqual([]);
+
+        store.destroy()
+    });
+
+    test('shell mode mounts the shared form without its token field', () => {
         const
             previousOS = globalThis.AgentOS,
             bridge     = {credentialIngress: 'shell', defineAgent: async () => ({})};
@@ -152,49 +112,16 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
 
         try {
             view = Neo.create(Accounts, {appName: 'AgentOSAccountsTest'});
-            expect(view.getReference('agent-form').items.some(item => item.name === 'credential')).toBe(false)
+            expect(view.getReference('add-agent-form').items.some(item => item.name === 'credential')).toBe(false)
         } finally {
             view?.destroy();
             globalThis.AgentOS = previousOS
         }
     });
 
-    test('controlled registry rejection renders its reason without a Body mutation and still clears the PAT', async () => {
-        const
-            calls = [],
-            form  = {
-                getSubmitValues: async () => ({
-                    credential    : 'ghp_retry',
-                    githubUsername: 'duplicate',
-                    harnessType   : 'codex'
-                }),
-                validate: async () => true
-            },
-            stub  = {
-                clearCredentialField       : async () => calls.push(['clear']),
-                fire                       : () => calls.push(['unexpected-fire']),
-                getReference               : reference => reference === 'agent-form' ? form : null,
-                submitToFleetRegistryBridge: async () => ({
-                    status: 'rejected',
-                    reason: "id 'duplicate' already exists; use a scoped update operation."
-                }),
-                updateBridgeStatus         : (state, message) => calls.push(['status', state, message]),
-                upsertPublicAgentDefinition: () => calls.push(['unexpected-upsert'])
-            };
-
-        await Accounts.prototype.onSubmitAgentClick.call(stub);
-
-        expect(calls).toEqual([
-            ['status', 'is-error', "id 'duplicate' already exists; use a scoped update operation."],
-            ['clear']
-        ])
-    });
-
-    test('view source fails closed without browser persistence or credential logging', () => {
+    test('view source stays free of browser persistence and credential logging', () => {
         const source = fs.readFileSync(viewPath, 'utf8');
 
-        expect(source).toContain('Fleet Registry bridge unavailable');
-        expect(source).toContain('clearCredentialField');
         expect(source).not.toMatch(/localStorage|sessionStorage|indexedDB/);
         expect(source).not.toMatch(/console\.(log|warn|error)/)
     });
@@ -219,11 +146,11 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
      * Three things here are load-bearing, and the first draft of this test got all three wrong —
      * @neo-gpt falsified each against the real head:
      *
-     * 1. It drives the REAL `submitToFleetRegistryBridge` / `upsertPublicAgentDefinition` through an
-     *    injected bridge and a real store. Stubbing those seams deletes the path the credential
-     *    actually crosses: a helper extracted INSIDE the real submit method persisted the PAT while
-     *    all 23 specs stayed green. A witness that replaces the subject of its own claim proves
-     *    nothing about it.
+     * 1. It drives the REAL add path: `AddAgentForm#onSubmitClick` → `AddAgentFlow.submitDefineAgent`
+     *    through an injected bridge, then the view's `onAddAgentAccepted` / `upsertPublicAgentDefinition`
+     *    into a real store. Stubbing those seams deletes the path the credential actually crosses: a
+     *    helper extracted INSIDE the real submit method persisted the PAT while all 23 specs stayed
+     *    green. A witness that replaces the subject of its own claim proves nothing about it.
      * 2. The recorder is a Proxy, not a plain object. `storage[key] = value` is a real persistent
      *    write in Chromium and calls no method, so a method-only recorder watches it in silence.
      * 3. Teardown deletes an ABSENT global rather than restoring `undefined` (the hosted runner has
@@ -235,9 +162,7 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
      */
     test('no credential byte reaches browser storage OR the console on an accepted add — real seams, behavioural', async () => {
         const
-            AgentDefinition = (await import('../../../../../apps/agentos/model/AgentDefinition.mjs')).default,
-            Store           = (await import('../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default,
-            canonical       = {
+            canonical  = {
                 id            : 'resident-42',
                 githubUsername: 'canonical-login',
                 harnessType   : 'antigravity'
@@ -245,26 +170,23 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
             pat        = 'ghp_should_not_escape',
             writes     = [],
             logged     = [],
-            statuses   = [],
-            store      = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: []}),
-            form       = {
-                getSubmitValues: async () => ({credential: pat, githubUsername: 'submitted-login', harnessType: 'codex'}),
-                validate       : async () => true
-            },
-            stub       = {
-                agentDefinitionsStore: store,
-                clearCredentialField : async () => {},
-                fire                 : () => {},
-                getReference         : reference => reference === 'agent-form' ? form : null,
-                updateBridgeStatus   : (state, message) => statuses.push([state, message]),
-                // the REAL credential-bearing seams. Stubbing `submitToFleetRegistryBridge` would
-                // delete the very path the credential crosses, and a helper extracted INSIDE it would
-                // leak while every assertion here stayed green — the claim would be about a boundary
-                // the test had removed.
-                assignRepoThroughBridge    : Accounts.prototype.assignRepoThroughBridge,
-                submitToFleetRegistryBridge: Accounts.prototype.submitToFleetRegistryBridge,
+            fired      = [],
+            store      = makeAgentStore([]),
+            // the view's REAL roster seams; the form below runs the REAL submit and flow. Stubbing
+            // either would delete the very path the credential crosses, and a helper extracted
+            // INSIDE it would leak while every assertion here stayed green — the claim would be
+            // about a boundary the test had removed.
+            view       = {
+                adding                     : true,
+                agentDefinitionsStore      : store,
+                fire                       : (name, data) => fired.push([name, data]),
+                onAddAgentAccepted         : Accounts.prototype.onAddAgentAccepted,
                 upsertPublicAgentDefinition: Accounts.prototype.upsertPublicAgentDefinition
             },
+            form       = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAccountsTest',
+                bridgeResolver: () => ({defineAgent: async () => canonical, setRepo: async () => canonical})
+            }),
             // Proxy-backed, not a plain object: `storage[key] = value` is a REAL persistent write in
             // Chromium and reaches no method, so a method-only recorder watches it happen in silence.
             // The trap covers the mutation surface; reads stay inert.
@@ -287,13 +209,15 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
             }),
             kinds      = ['localStorage', 'sessionStorage'],
             levels     = ['debug', 'error', 'info', 'log', 'warn'],
-            realOS     = globalThis.AgentOS,
             // LIFO teardown. Each entry is pushed BEFORE its mutation, so a throw part-way through
             // install still unwinds everything already installed.
             undo       = [];
 
-        // the injected bridge the REAL submit seam reads off globalThis
-        globalThis.AgentOS = {...realOS, fleet: {registryBridge: {defineAgent: async () => canonical, setRepo: async () => canonical}}};
+        form.on('agentDefinitionAccepted', data => view.onAddAgentAccepted(data));
+        (await form.getField('githubUsername')).value = 'submitted-login';
+        (await form.getField('credential')).value     = pat;
+
+        let flowState;
 
         try {
             kinds.forEach(kind => {
@@ -312,15 +236,17 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
                 console[level] = (...args) => logged.push([level, ...args])
             });
 
-            await Accounts.prototype.onSubmitAgentClick.call(stub)
+            await form.onSubmitClick();
+            flowState = form.flowStatus.state
         } finally {
             undo.reverse().forEach(fn => fn());
-            globalThis.AgentOS = realOS
+            form.destroy()
         }
 
         // the positive control: the REAL seams ran to an accepted add, so empty sets mean something
-        expect(statuses, 'the accepted-add path must have run through the REAL seams — otherwise both leak checks are vacuous')
-            .toEqual([['is-live', 'Agent added. PAT was not retained in the app worker.']]);
+        expect(flowState, 'the accepted-add path must have run through the REAL seams — otherwise both leak checks are vacuous')
+            .toBe('readback-confirmed');
+        expect(fired).toEqual([['agentDefinitionAccepted', {agent: canonical}]]);
         expect(store.get('resident-42')?.githubUsername, 'the real store must hold the canonical record').toBe('canonical-login');
         expect(store.get('resident-42')?.credential, 'and no credential byte in it').toBeUndefined();
 
@@ -331,149 +257,82 @@ test.describe('AgentOS.view.accounts.Panel credential boundary', () => {
         store.destroy()
     });
 
-    test('identity setup writes only the redacted projection to the shared roster', () => {
+    test('identity setup writes only the registry\'s public definition to the shared roster', () => {
         const source = fs.readFileSync(viewPath, 'utf8');
 
-        // upsert goes through the provider-bound roster store with the canonical Brain response,
-        // never a request-derived projection or a module-global singleton import.
+        // upsert goes through the provider-bound roster store with the form's readback, behind the
+        // flow's own guard — never a request-derived projection or a module-global singleton import.
         expect(source).toContain("agentDefinitionsStore: 'stores.agentDefinitions'");
         expect(source).toContain("fleetTenantsStore    : 'stores.fleetTenants'");
         expect(source).toContain('store.add(definition)');
-        expect(source).toContain('this.upsertPublicAgentDefinition(definition, payload.credential)');
-        expect(source).not.toContain('createPublicAgentDefinition');
+        expect(source).toContain('AddAgentFlow.validateReadback(definition)');
         expect(source).not.toContain("from '../store/AgentDefinitions.mjs'");
         expect(source).not.toMatch(/store\.add\(\s*values/)
-    });
-
-    test('visible setup actions use product language instead of bridge/protocol labels', () => {
-        const source = fs.readFileSync(viewPath, 'utf8');
-
-        expect(source).toContain("text   : 'Add agent'");
-        expect(source).toContain("text   : 'Use sample'");
-        expect(source).toContain("text   : 'Connect harness'");
-        expect(source).toContain('Agent setup is unavailable in dev-server mode. Add agent fails closed');
-        expect(source).toContain('Harness connection unavailable in dev-server mode. Connect fails closed');
-
-        expect(source).not.toContain("text   : 'Submit to Bridge'");
-        expect(source).not.toContain("text   : 'Connect Harness (NL-MCP)'");
-        expect(source).not.toContain('Fleet Registry bridge unavailable in dev-server mode. Submit fails closed');
-        expect(source).not.toContain('Definition submitted through the Fleet Registry bridge');
-        expect(source).not.toContain('External harness connected through the Neural Link bridge')
     })
 });
 
-test.describe('AgentOS.view.accounts.Panel NL-MCP connect entry (#13548)', () => {
-    let savedAgentOS;
-
-    test.beforeEach(() => { savedAgentOS = globalThis.AgentOS });
-    test.afterEach(()  => { globalThis.AgentOS = savedAgentOS });
-
-    test('connectExternalHarnessBridge fails closed when no Neural Link connection bridge is injected', async () => {
-        globalThis.AgentOS = undefined; // dev-server / un-shelled app — no Brain-side bridge
-
-        await expect(Accounts.prototype.connectExternalHarnessBridge({action: 'start'}))
-            .rejects.toThrow('Neural Link connection bridge unavailable')
-    });
-
-    test('connectExternalHarnessBridge forwards exactly the connect request — carries no credential', async () => {
-        let received;
-        globalThis.AgentOS = {neuralLink: {connectionBridge: {
-            manageConnection: async req => { received = req; return {message: 'External harness started'} }
-        }}};
-
-        const result = await Accounts.prototype.connectExternalHarnessBridge({action: 'start'});
-
-        expect(received).toEqual({action: 'start'}); // exactly the NL-MCP request shape...
-        expect(received.credential).toBeUndefined();  // ...with no credential crossing the boundary
-        expect(result.message).toBe('External harness started')
-    });
-
-    test('onConnectExternalHarnessClick reports is-live on a successful connect', async () => {
-        const calls = [];
-        const stub  = {
-            connectExternalHarnessBridge: async request => {
-                expect(request).toEqual({action: 'start'});
-                return {message: 'External harness started'}
-            },
-            updateBridgeStatus: (stateCls, message) => calls.push({stateCls, message})
-        };
-
-        await Accounts.prototype.onConnectExternalHarnessClick.call(stub);
-
-        expect(calls).toHaveLength(1);
-        expect(calls[0].stateCls).toBe('is-live');
-        expect(calls[0].message).toContain('External harness started')
-    });
-
-    test('onConnectExternalHarnessClick fails closed to is-error when the bridge is unavailable', async () => {
-        const calls = [];
-        const stub  = {
-            connectExternalHarnessBridge: async () => { throw new Error('Neural Link connection bridge unavailable') },
-            updateBridgeStatus          : (stateCls, message) => calls.push({stateCls, message})
-        };
-
-        await Accounts.prototype.onConnectExternalHarnessClick.call(stub);
-
-        expect(calls).toHaveLength(1);
-        expect(calls[0].stateCls).toBe('is-error');     // never throws out of the handler...
-        expect(calls[0].message).toMatch(/fails closed/i) // ...reports the fail-closed state instead
-    });
-
-    test('the connect path stays credential-free and fails closed in source', () => {
-        const source = fs.readFileSync(viewPath, 'utf8');
-
-        expect(source).toContain('connectExternalHarnessBridge');
-        expect(source).toContain('neuralLink?.connectionBridge');
-        expect(source).toContain('Neural Link connection bridge unavailable');
-        // the connect handler/bridge invoke manage_connection with {action} only — never a credential
-        expect(source).toMatch(/connectExternalHarnessBridge\(\{action: 'start'\}\)/)
-    })
-});
-
-test.describe('AgentOS.view.accounts.Panel — agent-scoped configuration (multiple agents)', () => {
-    let AgentDefinition, Store;
-
-    test.beforeAll(async () => {
-        AgentDefinition = (await import('../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
-        Store           = (await import('../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
-    });
-
+test.describe('AgentOS.view.accounts.Panel — master-detail (multiple agents)', () => {
     // prototype-call rig with a REAL store attached through the REAL listener path (store
-    // mutations fire `load` themselves); selector + card are capture stubs. selectedAgentId is
-    // wired as an accessor so assignments run the real afterSet, mirroring the reactive config.
-    const makeScopedAccounts = store => {
+    // mutations fire their own events); list, card, form, empty state and add action are capture
+    // stubs. `adding` and `selectedAgentId` are accessors that run the real afterSet hooks and, like
+    // the reactive configs they mirror, skip an unchanged value.
+    const makeAccounts = store => {
         const
-            selector = {
-                items: [],
-                add(items) { this.items.push(...[].concat(items)) },
-                removeAll() { this.items = [] }
-            },
-            card     = {
+            card  = {
+                hidden      : false,
                 record      : undefined,
                 refreshCount: 0,
                 refresh() { this.refreshCount++ },
                 setSaveStatus(agentId, state, reason) {
                     if (this.record?.id === agentId) this.saveStatus = {agentId, state, reason}
                 }
+            },
+            list  = {
+                selected      : null,
+                getItemId     : id => `item-${id}`,
+                selectionModel: {
+                    deselectAll() { list.selected = null },
+                    isSelected(itemId) { return list.selected === itemId },
+                    select(record) { list.selected = `item-${record.id}` }
+                }
+            },
+            refs  = {
+                'accounts-empty'   : {hidden: false},
+                'add-agent-button' : {pressed: false},
+                'add-agent-form'   : {hidden: true},
+                'agent-config-card': card,
+                'agent-list'       : list
             };
 
         const stub = {
-            id                     : `accounts-scoped-stub-${Math.abs(store.id.length)}-${store.id}`,
+            // Observable keys a listener by its scope's id: an id-less scope never hears the store
+            id                     : `accounts-master-detail-stub-${store.id}`,
             agentDefinitionsStore  : store,
             agentConfigSaveStatuses: new Map(),
-            card,
-            selector,
+            refs,
+            afterSetAdding         : Accounts.prototype.afterSetAdding,
             afterSetSelectedAgentId: Accounts.prototype.afterSetSelectedAgentId,
-            getReference           : reference => reference === 'agent-selector' ? selector
-                                               : reference === 'agent-config-card' ? card : null,
-            onAgentRosterChange: Accounts.prototype.onAgentRosterChange,
-            onSelectAgentClick : Accounts.prototype.onSelectAgentClick,
-            syncAgentSelector  : Accounts.prototype.syncAgentSelector,
+            getReference           : reference => refs[reference] ?? null,
+            onAddAgentClick        : Accounts.prototype.onAddAgentClick,
+            onAgentListSelect      : Accounts.prototype.onAgentListSelect,
+            onAgentRosterChange    : Accounts.prototype.onAgentRosterChange,
+            syncDetail             : Accounts.prototype.syncDetail,
+            syncSelection          : Accounts.prototype.syncSelection,
+            set(values) { Object.entries(values).forEach(([key, value]) => { this[key] = value }) },
 
+            _adding: false,
+            get adding() { return this._adding },
+            set adding(value) {
+                const oldValue = this._adding;
+                if (value === oldValue) return;
+                this._adding = value;
+                this.afterSetAdding(value, oldValue)
+            },
             _selectedAgentId: null,
             get selectedAgentId() { return this._selectedAgentId },
             set selectedAgentId(value) {
                 const oldValue = this._selectedAgentId;
+                if (value === oldValue) return;
                 this._selectedAgentId = value;
                 this.afterSetSelectedAgentId(value, oldValue)
             }
@@ -484,53 +343,63 @@ test.describe('AgentOS.view.accounts.Panel — agent-scoped configuration (multi
         return stub
     };
 
-    const makeAgentStore = data => Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data});
+    // what the detail shows: the card or the form; whether the empty state and the add action read as on
+    const detailOf = stub => ({
+        card   : !stub.refs['agent-config-card'].hidden,
+        form   : !stub.refs['add-agent-form'].hidden,
+        empty  : !stub.refs['accounts-empty'].hidden,
+        pressed: stub.refs['add-agent-button'].pressed
+    });
 
-    test('the selector strip derives one button per agent from the store; the first agent is scoped by default', () => {
+    test('the list binds the shared store; the first agent is scoped by default', () => {
+        expect(fs.readFileSync(viewPath, 'utf8')).toContain("bind     : {store: 'stores.agentDefinitions'}");
+
         const store = makeAgentStore([
             {id: 'neo-gpt',  githubUsername: 'neo-gpt',  harnessType: 'codex'},
             {id: 'neo-vega', githubUsername: 'neo-vega', harnessType: 'claude-desktop', displayName: 'Vega'}
         ]);
-        const stub = makeScopedAccounts(store);
+        const stub = makeAccounts(store);
 
-        expect(stub.selector.items.map(item => item.agentId)).toEqual(['neo-gpt', 'neo-vega']);
-        // product language: the display name when present, the username otherwise
-        expect(stub.selector.items.map(item => item.text)).toEqual(['neo-gpt', 'Vega']);
         expect(stub.selectedAgentId).toBe('neo-gpt');
-        expect(stub.card.record?.id).toBe('neo-gpt');
+        expect(stub.refs['agent-config-card'].record?.id).toBe('neo-gpt');
+        expect(stub.refs['agent-list'].selected).toBe('item-neo-gpt');
+        expect(detailOf(stub)).toEqual({card: true, form: false, empty: false, pressed: false});
 
         store.destroy()
     });
 
-    test('a definition ADDED to the store joins the selector strip — the Viewport upsert path fires `mutate`, not `load` (#15440)', () => {
+    test('a definition ADDED to the store keeps the scope and refreshes the card — the Viewport upsert path fires `mutate`, not `load` (#15440)', () => {
         const store = makeAgentStore([
             {id: 'neo-gpt', githubUsername: 'neo-gpt', harnessType: 'codex'}
         ]);
-        const stub = makeScopedAccounts(store);
-
-        expect(stub.selector.items.map(item => item.agentId)).toEqual(['neo-gpt']);
+        const stub     = makeAccounts(store);
+        const refreshs = stub.refs['agent-config-card'].refreshCount;
 
         // the accepted-definition composition boundary: Viewport lands the canonical readback via
         // `store.add()` — a membership change, which fires `mutate` (`load` never fires for it)
         store.add({id: 'neo-phoebe', githubUsername: 'neo-phoebe', harnessType: 'codex'});
 
-        expect(stub.selector.items.map(item => item.agentId)).toEqual(['neo-gpt', 'neo-phoebe']);
+        expect(stub.selectedAgentId).toBe('neo-gpt');
+        expect(stub.refs['agent-config-card'].refreshCount).toBeGreaterThan(refreshs);
 
         store.destroy()
     });
 
-    test('selecting an agent scopes the configuration card to ITS record', () => {
+    test('picking a row scopes the card to ITS record and leaves the add form', () => {
         const store = makeAgentStore([
             {id: 'a', githubUsername: 'a', harnessType: 'codex'},
             {id: 'b', githubUsername: 'b', harnessType: 'antigravity', mcpServers: {'github-workflow': true}}
         ]);
-        const stub = makeScopedAccounts(store);
+        const stub = makeAccounts(store);
 
-        stub.onSelectAgentClick({component: {agentId: 'b'}});
+        stub.onAddAgentClick();
+        stub.onAgentListSelect({records: [store.get('b')]});
 
         expect(stub.selectedAgentId).toBe('b');
-        expect(stub.card.record?.id).toBe('b');
-        expect(stub.card.record?.mcpServers).toEqual({'github-workflow': true});
+        expect(stub.adding).toBe(false);
+        expect(stub.refs['agent-config-card'].record?.id).toBe('b');
+        expect(stub.refs['agent-config-card'].record?.mcpServers).toEqual({'github-workflow': true});
+        expect(detailOf(stub)).toEqual({card: true, form: false, empty: false, pressed: false});
 
         store.destroy()
     });
@@ -540,83 +409,88 @@ test.describe('AgentOS.view.accounts.Panel — agent-scoped configuration (multi
             {id: 'a', githubUsername: 'a', harnessType: 'codex'},
             {id: 'b', githubUsername: 'b', harnessType: 'antigravity'}
         ]);
-        const stub = makeScopedAccounts(store);
+        const stub = makeAccounts(store);
+        const card = stub.refs['agent-config-card'];
 
         stub.agentConfigSaveStatuses.set('a', {state: 'pending', reason: 'Saving A…'});
-        stub.onSelectAgentClick({component: {agentId: 'b'}});
-        expect(stub.card.record.id).toBe('b');
-        expect(stub.card.saveStatus?.agentId).not.toBe('a');
+        stub.onAgentListSelect({records: [store.get('b')]});
+        expect(card.record.id).toBe('b');
+        expect(card.saveStatus?.agentId).not.toBe('a');
 
-        stub.onSelectAgentClick({component: {agentId: 'a'}});
-        expect(stub.card.saveStatus).toEqual({agentId: 'a', state: 'pending', reason: 'Saving A…'});
+        stub.onAgentListSelect({records: [store.get('a')]});
+        expect(card.saveStatus).toEqual({agentId: 'a', state: 'pending', reason: 'Saving A…'});
 
         store.destroy()
     });
 
-    test('roster changes flow through the REAL store listener: adds appear, removing the scoped agent falls back to the first', () => {
+    test('roster changes flow through the REAL store listener: removing the scoped agent falls back to the first', () => {
         const store = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]);
-        const stub  = makeScopedAccounts(store);
+        const stub  = makeAccounts(store);
 
-        // an add fires the store's own load event → the selector re-derives
         store.add({id: 'b', githubUsername: 'b', harnessType: 'codex'});
-        expect(stub.selector.items.map(item => item.agentId)).toEqual(['a', 'b']);
-
-        stub.onSelectAgentClick({component: {agentId: 'b'}});
+        stub.onAgentListSelect({records: [store.get('b')]});
         store.remove('b');
 
         // the scoped agent vanished — fail toward the first resident, never a dangling scope
-        expect(stub.selector.items.map(item => item.agentId)).toEqual(['a']);
         expect(stub.selectedAgentId).toBe('a');
-        expect(stub.card.record?.id).toBe('a');
+        expect(stub.refs['agent-config-card'].record?.id).toBe('a');
+        expect(stub.refs['agent-list'].selected).toBe('item-a');
 
         store.destroy()
     });
 
-    test('canonical add readback becomes a real model record; malformed or echoing responses fail before mutation', () => {
+    test('New agent shows the form with no row selected, and a roster change leaves it up', () => {
         const store = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]);
-        const stub  = makeScopedAccounts(store);
+        const stub  = makeAccounts(store);
 
-        stub.upsertPublicAgentDefinition = Accounts.prototype.upsertPublicAgentDefinition;
-        stub.upsertPublicAgentDefinition({
-            id            : 'canonical-id',
-            githubUsername: 'canonical-login',
-            harnessType   : 'antigravity',
-            updatedAt     : '2026-07-14T00:00:00.000Z'
-        }, 'ghp_must_not_escape');
+        stub.onAddAgentClick();
 
-        expect(stub.selectedAgentId).toBe('canonical-id');
-        expect(stub.card.record?.githubUsername).toBe('canonical-login');
-        expect(stub.card.record?.harnessType).toBe('antigravity');
-        expect(stub.card.record?.updatedAt).toBe('2026-07-14T00:00:00.000Z');
-        expect(stub.card.record?.credential).toBeUndefined();
-        expect(stub.card.record?.pat).toBeUndefined();
+        expect(stub.selectedAgentId).toBeNull();
+        expect(stub.refs['agent-list'].selected).toBeNull();
+        expect(detailOf(stub)).toEqual({card: false, form: true, empty: false, pressed: true});
 
-        const count = store.count;
+        // a roster refresh mid-add (a peer's definition landing) must not yank the operator out of the form
+        store.add({id: 'b', githubUsername: 'b', harnessType: 'codex'});
 
-        expect(() => stub.upsertPublicAgentDefinition({
-            id            : 'echoing-id',
-            githubUsername: 'echoing-login',
-            harnessType   : 'codex',
-            credential    : 'ghp_must_not_escape'
-        }, 'ghp_must_not_escape')).toThrow('invalid public agent definition');
-        expect(() => stub.upsertPublicAgentDefinition({
-            id            : 'missing-harness',
-            githubUsername: 'missing-harness'
-        }, 'ghp_other')).toThrow('invalid public agent definition');
-        expect(store.count).toBe(count);
-        expect(store.get('echoing-id')).toBeNull();
-        expect(store.get('missing-harness')).toBeNull();
+        expect(stub.selectedAgentId).toBeNull();
+        expect(detailOf(stub)).toEqual({card: false, form: true, empty: false, pressed: true});
 
         store.destroy()
     });
 
-    test('the harness radios derive from the registry — one registration reaches the form', () => {
-        const source = fs.readFileSync(viewPath, 'utf8');
+    test('the first add from an empty roster keeps the form, and its outcome line, up', () => {
+        const store = makeAgentStore([]);
+        const stub  = makeAccounts(store);
 
-        expect(source).toContain('listHarnessTypes().map');
-        // no hand-rolled harness radio literals survive
-        expect(source).not.toMatch(/valueLabel\s*:\s*'(Codex|Claude|Antigravity|Native)'/)
+        stub.fire                        = () => {};
+        stub.onAddAgentAccepted          = Accounts.prototype.onAddAgentAccepted;
+        stub.upsertPublicAgentDefinition = Accounts.prototype.upsertPublicAgentDefinition;
+
+        stub.onAddAgentAccepted({agent: {id: 'first', githubUsername: 'first', harnessType: 'codex'}});
+
+        // the store listener ran (the agent is listed) without taking the scope away from the form
+        expect(store.get('first')).not.toBeNull();
+        expect(stub.selectedAgentId).toBeNull();
+        expect(detailOf(stub)).toEqual({card: false, form: true, empty: false, pressed: true});
+
+        store.destroy()
     });
+
+    test('an empty roster opens on the form and says so; a hydrated first definition takes the scope', () => {
+        const store = makeAgentStore([]);
+        const stub  = makeAccounts(store);
+
+        expect(stub.selectedAgentId).toBeNull();
+        expect(detailOf(stub)).toEqual({card: false, form: true, empty: true, pressed: true});
+
+        store.add({id: 'a', githubUsername: 'a', harnessType: 'codex'});
+
+        expect(stub.selectedAgentId).toBe('a');
+        expect(detailOf(stub)).toEqual({card: true, form: false, empty: false, pressed: false});
+
+        store.destroy()
+    });
+
 });
 
 // The cycle-2 review's falsifier, covered with REAL objects: a recordChange mutates fields
@@ -686,16 +560,20 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         card.onCardClick({path: [{id: `${card.id}__srv__memory-core`}]});
         card.onCardClick({path: [{id: `${card.id}__harness__claude-code`}]});
         card.onCardClick({path: [{id: `${card.id}__harness__codex`}]});      // same harness → no intent
+        card.onCardClick({path: [{id: `${card.id}__product__codex`}]});      // same product → no intent
+        card.onCardClick({path: [{id: `${card.id}__product__claude`}]});     // a product keeps the run mode: Codex CLI → Claude Code
+        card.onCardClick({path: [{id: `${card.id}__product__unknown`}]});    // no such product → no intent
         card.onCardClick({path: [{id: 'unrelated-node'}]});                  // off-card → no intent
 
-        expect(intents.length).toBe(2);
+        expect(intents.length).toBe(3);
         expect(intents[0]).toMatchObject({id: 'ada', mcpServers: {'memory-core': false}});
         expect(intents[1]).toMatchObject({id: 'ada', harnessType: 'claude-code'});
+        expect(intents[2]).toMatchObject({id: 'ada', harnessType: 'claude-code'});
         expect(intents[0].source).toBe(card.id); // event envelope exists; Accounts strips it before wire
 
         card.setSaveStatus('ada', 'pending', 'Saving configuration…');
         card.onCardClick({path: [{id: `${card.id}__srv__memory-core`}]});
-        expect(intents).toHaveLength(2);
+        expect(intents).toHaveLength(3);
         expect(cardText(card)).toContain('Saving configuration');
 
         // Returning the sole override to its live default emits null, never a resolved matrix.
@@ -703,7 +581,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         record.set({mcpServers: {'memory-core': false}});
         card.refresh();
         card.onCardClick({path: [{id: `${card.id}__srv__memory-core`}]});
-        expect(intents[2]).toMatchObject({id: 'ada', mcpServers: null});
+        expect(intents[3]).toMatchObject({id: 'ada', mcpServers: null});
 
         // the record itself is untouched — the owning view writes only from the bridge RESPONSE
         expect(record.mcpServers).toEqual({'memory-core': false});
@@ -1042,14 +920,14 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         store.destroy()
     });
 
-    test('cold hydration replaces the placeholder from canonical listAgents; failure preserves last state', async () => {
+    test('cold hydration replaces the store from canonical listAgents; failure preserves last state', async () => {
         const store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
-            {id: 'bridge-pending', githubUsername: 'bridge-pending', harnessType: 'codex'}
+            {id: 'stale', githubUsername: 'stale', harnessType: 'codex'}
         ]});
         const stub = {
             agentDefinitionsStore         : store,
             agentDefinitionsLoadGeneration: 0,
-            syncAgentSelector             : () => {},
+            syncSelection                 : () => {},
             loadAgentDefinitions          : Accounts.prototype.loadAgentDefinitions
         };
 
@@ -1057,7 +935,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             id: 'canonical', githubUsername: 'canonical', harnessType: 'claude-code', mcpServers: {'memory-core': false}
         }]}}};
         await expect(stub.loadAgentDefinitions()).resolves.toBe(true);
-        expect(store.get('bridge-pending')).toBeNull();
+        expect(store.get('stale')).toBeNull();
         expect(store.get('canonical').mcpServers).toEqual({'memory-core': false});
 
         globalThis.AgentOS.fleet.registryBridge.listAgents = async () => { throw new Error('offline') };
@@ -1155,7 +1033,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         const stub = {
             agentDefinitionsStore         : store,
             agentDefinitionsLoadGeneration: 0,
-            syncAgentSelector             : () => {},
+            syncSelection                 : () => {},
             loadAgentDefinitions          : Accounts.prototype.loadAgentDefinitions
         };
 

@@ -1,34 +1,28 @@
 import AgentConfigCard       from '../fleet/detail/AgentConfigComponent.mjs';
+import AddAgentForm          from '../fleet/instances/AddAgentForm.mjs';
 import AddAgentFlow          from '../../util/AddAgentFlow.mjs';
 import ConfigIntentRoundTrip from '../../util/ConfigIntentRoundTrip.mjs';
+import List                  from './List.mjs';
 import Button                from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import DashboardPanel        from '../../../../node_modules/neo.mjs/src/dashboard/Panel.mjs';
-import FormContainer         from '../../../../node_modules/neo.mjs/src/form/Container.mjs';
-import {listHarnessTypes}    from '../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
-import PasswordField         from '../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
-import Radio                 from '../../../../node_modules/neo.mjs/src/form/field/Radio.mjs';
-import TextField             from '../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
-import Toolbar               from '../../../../node_modules/neo.mjs/src/toolbar/Base.mjs';
 
 /**
  * @class AgentOS.view.accounts.Panel
  * @extends Neo.dashboard.Panel
  *
- * @summary The **Accounts keeper-view** — set up the cross-family fleet's agent identities (GitHub
- * identity + harness type + provider credential). Extracted from the retired settings panel per the
- * cockpit keeper-view decomposition: this view owns identity *setup*; the cockpit owns the live
- * roster + lifecycle. It also surfaces a **basic NL-MCP connect entry** (the external-harness
- * `manage_connection` start path) through the same fail-closed injected-bridge discipline.
+ * @summary The **Accounts keeper-view**: set up the fleet's agent identities. A master-detail
+ * layout: the definitions list (`AgentOS.view.accounts.List`, bound to the shared `agentDefinitions`
+ * Store) beside the selected definition's configuration card, or the one add-agent form
+ * (`AgentOS.view.fleet.instances.AddAgentForm`, the same component the cockpit rail mounts) while
+ * the operator adds an agent. With no definitions yet, the view opens on the form and says so. This
+ * view owns identity *setup*; the cockpit owns the live roster and lifecycle.
  *
- * Capability-security boundary (the load-bearing reason this is its own surface): direct-browser
- * mode collects a credential only long enough to submit it to the Brain-side Fleet Registry bridge;
- * shell mode renders no credential field and submits only public intent. If that bridge is absent,
- * submission fails closed, the PAT field is cleared, and **nothing is stored in the browser / App
- * Worker** — only the Brain's canonical redacted response reaches the shared
- * `AgentDefinitions` roster, never a credential byte (mirrors
- * `AgentOS.model.AgentDefinition`'s deliberately credential-free shape). An accepted definition
- * emits `agentDefinitionAccepted`; the Viewport composition root owns the separate Fleet-cockpit
- * refresh, so Accounts never maps or reaches into a sibling `FleetAgent` surface.
+ * Capability-security boundary: the form submits through the Brain-side Fleet Registry bridge and
+ * ends at `agentDefinitionAccepted` with the registry's validated public definition. Only that
+ * definition reaches the shared `AgentDefinitions` roster, never a credential byte (mirrors
+ * `AgentOS.model.AgentDefinition`'s credential-free shape). This view re-fires the event; the
+ * Viewport composition root owns the separate Fleet-cockpit refresh, so Accounts never maps or
+ * reaches into a sibling `FleetAgent` surface.
  */
 class Accounts extends DashboardPanel {
     static config = {
@@ -37,6 +31,13 @@ class Accounts extends DashboardPanel {
          * @protected
          */
         className: 'AgentOS.view.accounts.Panel',
+        /**
+         * True while the operator adds an agent: the detail shows the form instead of a card. A
+         * roster change or an accepted add never moves the operator out of it; picking a row does.
+         * @member {Boolean} adding_=false
+         * @reactive
+         */
+        adding_: false,
         /**
          * The shared roster store, bound from the Viewport provider's `stores.agentDefinitions`
          * (see the `bind` config) — declarative and resolved once at construct. Pop-outs swap the
@@ -68,7 +69,7 @@ class Accounts extends DashboardPanel {
         cls: ['agent-panel-accounts'],
         /**
          * The durable id of the agent whose configuration renders in the card — the fleet is
-         * MULTIPLE agents; this view is scoped to one at a time via the selector strip.
+         * MULTIPLE agents; this view is scoped to one at a time via the definitions list.
          * @member {String|null} selectedAgentId_=null
          * @reactive
          */
@@ -86,109 +87,62 @@ class Accounts extends DashboardPanel {
             text: 'Accounts'
         }],
         /**
-         * @member {Object} layout={ntype:'vbox',align:'stretch'}
-         * @reactive
+         * The panel's body: the master column beside the detail. (With headers, the panel's own
+         * `layout` stacks header and body; the body takes this config.)
+         * @member {Object} containerConfig={layout:{ntype:'hbox',align:'stretch'}}
          */
-        layout: {ntype: 'vbox', align: 'stretch'},
+        containerConfig: {layout: {ntype: 'hbox', align: 'stretch'}},
         /**
          * @member {Function|String|null} popupUrl='apps/agentos/childapps/widget/index.html'
          */
         popupUrl: 'apps/agentos/childapps/widget/index.html',
         /**
+         * Master: the add action, the empty state, the definitions list. Detail: the selected
+         * definition's card, or the add-agent form.
          * @member {Object[]} items
          */
         items: [{
-            // the fleet is MULTIPLE agents: pick one here, configure IT below — the selector strip
-            // is rebuilt from the bound roster store (see syncAgentSelector)
-            module   : Toolbar,
-            cls      : ['agent-selector'],
-            flex     : 'none',
-            reference: 'agent-selector',
-            items    : []
-        }, {
-            module   : AgentConfigCard,
-            flex     : 'none',
-            reference: 'agent-config-card'
-        }, {
-            module   : FormContainer,
-            cls      : ['agent-definition-form'],
+            ntype    : 'container',
+            cls      : ['fm-accounts-master'],
             flex     : 'none',
             layout   : {ntype: 'vbox', align: 'stretch'},
-            reference: 'agent-form',
+            reference: 'accounts-master',
 
             items: [{
-                ntype: 'component',
-                cls  : ['agent-form-copy'],
-                vdom : {cn: [{tag: 'strong', text: 'Add an agent'}]}
-            }, {
-                module         : TextField,
-                clearable      : true,
-                labelText      : 'GitHub username',
-                labelWidth     : 136,
-                name           : 'githubUsername',
-                placeholderText: 'neo-gpt',
-                required       : true
-            }, {
-                // the repo the seat's first Start clones and runs in
-                module         : TextField,
-                labelText      : 'Working repo',
-                labelWidth     : 136,
-                name           : 'repoSlug',
-                placeholderText: 'owner/repo',
-                required       : true,
-                value          : AddAgentFlow.DEFAULT_REPO_SLUG
-            }, {
-                module         : PasswordField,
-                clearable      : true,
-                labelText      : 'GitHub PAT',
-                labelWidth     : 136,
-                name           : 'credential',
-                placeholderText: 'stored Brain-side only',
-                required       : true
-            }, {
-                module: Toolbar,
-                cls   : ['agent-harness-picker'],
-                flex  : 'none',
-                // one registration in the public harness catalog = one more radio here — the form
-                // derives from the registry, labels are the registry's product language
-                items : listHarnessTypes().map((entry, index) => ({
-                    module        : Radio,
-                    checked       : index === 0,
-                    hideValueLabel: false,
-                    labelText     : index === 0 ? 'Harness' : '',
-                    labelWidth    : 136,
-                    name          : 'harnessType',
-                    value         : entry.type,
-                    valueLabel    : entry.label
-                }))
-            }, {
-                module: Toolbar,
-                cls   : ['agent-form-actions'],
-                flex  : 'none',
-                items : [{
-                    module : Button,
-                    cls    : ['agent-button', 'agent-submit-button'],
-                    handler: 'up.onSubmitAgentClick',
-                    iconCls: 'fa fa-lock',
-                    text   : 'Add agent'
-                }, {
-                    module : Button,
-                    cls    : ['agent-button'],
-                    handler: 'up.onLoadSampleClick',
-                    iconCls: 'fa fa-pen-to-square',
-                    text   : 'Use sample'
-                }, {
-                    module : Button,
-                    cls    : ['agent-button', 'agent-connect-button'],
-                    handler: 'up.onConnectExternalHarnessClick',
-                    iconCls: 'fa fa-plug',
-                    text   : 'Connect harness'
-                }]
+                module   : Button,
+                cls      : ['fm-accounts-add'],
+                flex     : 'none',
+                handler  : 'up.onAddAgentClick',
+                iconCls  : 'fa fa-plus',
+                reference: 'add-agent-button',
+                text     : 'New agent'   // opens the form; the form's own "Add agent" commits
             }, {
                 ntype    : 'component',
-                cls      : ['agent-bridge-status', 'is-waiting'],
-                reference: 'bridge-status',
-                vdom     : {cn: [{text: 'Agent setup is unavailable in dev-server mode. Add agent fails closed; no PAT is stored in browser state.'}]}
+                cls      : ['fm-accounts-empty'],
+                flex     : 'none',
+                reference: 'accounts-empty',
+                text     : 'No agents yet. Add the first one with the form.'
+            }, {
+                module   : List,
+                bind     : {store: 'stores.agentDefinitions'},
+                flex     : 1,
+                reference: 'agent-list'
+            }]
+        }, {
+            ntype    : 'container',
+            cls      : ['fm-accounts-detail'],
+            flex     : 1,
+            layout   : {ntype: 'vbox', align: 'stretch'},
+            reference: 'accounts-detail',
+
+            items: [{
+                module   : AgentConfigCard,
+                flex     : 'none',
+                reference: 'agent-config-card'
+            }, {
+                module   : AddAgentForm,
+                flex     : 'none',
+                reference: 'add-agent-form'
             }]
         }]
     }
@@ -218,31 +172,35 @@ class Accounts extends DashboardPanel {
     agentConfigSaveStatuses = new Map()
 
     /**
-     * @summary Wire the configuration card's intent event — the card renders and fires; this view
-     * owns the bridge round-trip (see {@link #onAgentConfigIntent}).
+     * @summary Wire the three children's events: the card's `configIntent` (this view owns the
+     * bridge round-trip, see {@link #onAgentConfigIntent}), the form's `agentDefinitionAccepted`
+     * and the list's `select`.
      * @param {...*} args
      */
     onConstructed(...args) {
         super.onConstructed(...args);
 
         const
-            me         = this,
-            bridge     = AddAgentFlow.resolveRegistryBridge(),
-            form       = me.getReference('agent-form'),
-            credential = form?.items.find(item => item.name === 'credential');
-
-        const card = me.getReference('agent-config-card');
+            me   = this,
+            card = me.getReference('agent-config-card');
 
         card?.on({configIntent: me.onAgentConfigIntent, scope: me});
         if (card) card.tenantStore = me.fleetTenantsStore;
 
-        if (AddAgentFlow.isShellCredentialIngress(bridge)) {
-            credential && form.remove(credential);
-            me.updateBridgeStatus(
-                'is-live',
-                'Credential entry is owned by the native shell and never enters App Worker state.'
-            )
-        }
+        me.getReference('add-agent-form')?.on({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
+        me.getReference('agent-list')?.on({select: me.onAgentListSelect, scope: me});
+
+        me.syncDetail()
+    }
+
+    /**
+     * Triggered after the adding config got changed.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetAdding(value, oldValue) {
+        oldValue !== undefined && this.syncDetail()
     }
 
     /**
@@ -258,7 +216,7 @@ class Accounts extends DashboardPanel {
             listeners = {
                 load        : me.onAgentRosterChange,
                 // membership changes fire `mutate`, not `load` — the Viewport's accepted-definition
-                // upsert lands via `store.add()`, and the selector strip must show the new resident
+                // upsert lands via `store.add()`, and the list and card must show the new resident
                 mutate      : me.onAgentRosterChange,
                 recordChange: me.onAgentRosterChange,
                 scope       : me
@@ -267,7 +225,7 @@ class Accounts extends DashboardPanel {
         value   ?.on({...listeners});
         oldValue?.un({...listeners});
 
-        me.syncAgentSelector();
+        me.syncSelection();
         value && void me.loadAgentDefinitions?.()
     }
 
@@ -287,17 +245,19 @@ class Accounts extends DashboardPanel {
 
     /**
      * Triggered after the selectedAgentId config got changed — scope the configuration card to the
-     * selected agent's record and reflect the selection on the selector strip.
+     * selected agent's record and reflect the selection in the definitions list.
      * @param {String|null} value
      * @param {String|null} oldValue
      * @protected
      */
     afterSetSelectedAgentId(value, oldValue) {
-        let me   = this,
-            card = me.getReference('agent-config-card');
+        let me     = this,
+            card   = me.getReference('agent-config-card'),
+            list   = me.getReference('agent-list'),
+            record = value ? (me.agentDefinitionsStore?.get(value) ?? null) : null;
 
         if (card) {
-            card.record = value ? (me.agentDefinitionsStore?.get(value) ?? null) : null;
+            card.record = record;
             // a recordChange mutates fields WITHOUT changing record identity, and the reactive
             // config setter suppresses same-identity assignments — refresh() closes that gap
             card.refresh();
@@ -306,18 +266,64 @@ class Accounts extends DashboardPanel {
             value && card.setSaveStatus(value, status.state, status.reason)
         }
 
-        me.getReference('agent-selector')?.items?.forEach(item => {
-            item.pressed = item.agentId === value
-        })
+        if (list?.selectionModel) {
+            if (record) {
+                list.selectionModel.isSelected(list.getItemId(record.id)) || list.selectionModel.select(record)
+            } else {
+                list.selectionModel.deselectAll()
+            }
+        }
+
+        oldValue !== undefined && me.syncDetail()
     }
 
     /**
-     * @summary Any roster change (seed load, add, remove, field readback) re-derives the selector
-     * strip and refreshes the scoped card.
+     * @summary The add action: the detail switches to the form, and no row stays selected.
+     */
+    onAddAgentClick() {
+        this.set({adding: true, selectedAgentId: null})
+    }
+
+    /**
+     * @summary The form's accepted definition: land it in the shared roster and re-fire
+     * `agentDefinitionAccepted` so the Viewport refreshes the cockpit's roster. The detail stays on
+     * the form: its status line carries the outcome, and an accepted add can still need the
+     * operator ("its working repository is not set"). The new agent is one click away in the list.
+     * The form's flow has already validated the readback; the check here keeps the roster write
+     * fail-closed on its own.
+     * @param {Object} data
+     * @param {Object} data.agent The registry's public definition.
+     */
+    onAddAgentAccepted({agent}={}) {
+        const me = this;
+
+        // before the roster write: the first agent of an empty roster would otherwise take the
+        // scope through the store listener and swap the form, with its outcome line, for a card
+        me.adding = true;
+
+        if (me.upsertPublicAgentDefinition(agent)) {
+            me.fire('agentDefinitionAccepted', {agent})
+        }
+    }
+
+    /**
+     * @summary A list row picked: scope the card to it and leave the add form.
+     * @param {Object} data
+     * @param {Object[]} data.records
+     */
+    onAgentListSelect({records}={}) {
+        const id = records?.[0]?.id;
+
+        id && this.set({adding: false, selectedAgentId: id})
+    }
+
+    /**
+     * @summary Any roster change (seed load, add, remove, field readback) re-derives the selection
+     * and refreshes the scoped card.
      * @protected
      */
     onAgentRosterChange() {
-        this.syncAgentSelector()
+        this.syncSelection()
     }
 
     /**
@@ -391,7 +397,7 @@ class Accounts extends DashboardPanel {
             }
 
             store.data = agents;
-            me.syncAgentSelector();
+            me.syncSelection();
 
             return true
         } catch (error) {
@@ -454,54 +460,49 @@ class Accounts extends DashboardPanel {
     }
 
     /**
-     * @summary Selector click → scope the view to that agent.
-     * @param {Object} data Button click event data.
+     * @summary Show the card or the form in the detail, the empty state under an empty list, and
+     * the add action as pressed while the form is up. The form shows while adding, and whenever no
+     * definition is selected.
+     * @protected
      */
-    onSelectAgentClick(data) {
-        this.selectedAgentId = data.component.agentId
+    syncDetail() {
+        const
+            me       = this,
+            showForm = me.adding || !me.selectedAgentId,
+            card     = me.getReference('agent-config-card'),
+            form     = me.getReference('add-agent-form'),
+            empty    = me.getReference('accounts-empty'),
+            add      = me.getReference('add-agent-button');
+
+        if (card)  card.hidden  = showForm;
+        if (form)  form.hidden  = !showForm;
+        if (empty) empty.hidden = (me.agentDefinitionsStore?.count ?? 0) > 0;
+        if (add)   add.pressed  = showForm
     }
 
     /**
-     * @summary Rebuild the selector strip from the bound roster store: one button per agent
-     * (product language: the display name, falling back to the GitHub username) plus the selection
-     * default — the first agent when nothing valid is selected. The card refreshes through
-     * {@link #afterSetSelectedAgentId}.
+     * @summary Keep the selection valid against the roster: a vanished agent is deselected, and
+     * outside the add form the first definition is selected when none is. The same selection with
+     * new record data refreshes the card.
      * @protected
      */
-    syncAgentSelector() {
-        let me       = this,
-            selector = me.getReference('agent-selector'),
-            store    = me.agentDefinitionsStore,
-            records  = store?.items || [];
+    syncSelection() {
+        let me    = this,
+            store = me.agentDefinitionsStore,
+            valid = me.selectedAgentId && store?.get(me.selectedAgentId);
 
-        if (!selector) {
-            return
-        }
-
-        // container children materialize through the API — a bare `items = [...]` assignment on a
-        // LIVE container does not re-render (the stub-only shape the cycle-2 e2e falsified)
-        selector.removeAll();
-        selector.add(records.map(record => ({
-            module : Button,
-            agentId: record.id,
-            cls    : ['agent-selector-button'],
-            pressed: record.id === me.selectedAgentId,
-            text   : record.displayName || record.githubUsername || record.id,
-            handler: 'up.onSelectAgentClick'
-        })));
-
-        const validSelection = me.selectedAgentId && store?.get(me.selectedAgentId);
-
-        if (!validSelection) {
-            me.selectedAgentId = records[0]?.id ?? null
+        if (!valid) {
+            me.selectedAgentId = me.adding ? null : (store?.getAt(0)?.id ?? null)
         } else {
             // same selection, possibly new record data (readback) — refresh the card
             me.afterSetSelectedAgentId(me.selectedAgentId, me.selectedAgentId)
         }
+
+        me.syncDetail()
     }
 
     /**
-     * @summary Detach the roster listeners; the provider owns the store's own teardown.
+     * @summary Detach the roster and child listeners; the provider owns the store's own teardown.
      * @param {...*} args
      */
     destroy(...args) {
@@ -515,213 +516,32 @@ class Accounts extends DashboardPanel {
 
         me.agentDefinitionsStore?.un({...listeners});
         me.getReference('agent-config-card')?.un({configIntent: me.onAgentConfigIntent, scope: me});
+        me.getReference('add-agent-form')?.un({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
+        me.getReference('agent-list')?.un({select: me.onAgentListSelect, scope: me});
         super.destroy(...args)
     }
 
     /**
-     * @summary Load a sample public identity without inserting credential bytes.
-     * @returns {Promise<void>}
+     * @summary Write the registry's public definition into the Viewport-owned `AgentDefinitions`
+     * store: an existing record updates in place, a new one is added. A definition the flow's
+     * readback guard refuses is not written. This is the configuration projection only — the
+     * separate FleetAgent roster refreshes through the Viewport-owned `agentDefinitionAccepted`
+     * composition seam.
+     * @param {Object} definition The public definition from the add-agent form.
+     * @returns {Boolean} True when the store holds the definition.
      */
-    async onLoadSampleClick() {
-        const
-            bridge = AddAgentFlow.resolveRegistryBridge(),
-            form   = this.getReference('agent-form');
+    upsertPublicAgentDefinition(definition) {
+        const store = this.agentDefinitionsStore;
 
-        await form.setValues(AddAgentFlow.createDefineAgentIntent({
-            credential    : '',
-            githubUsername: 'neo-gpt',
-            harnessType   : 'codex'
-        }, bridge));
-
-        this.updateBridgeStatus(
-            'is-waiting',
-            AddAgentFlow.isShellCredentialIngress(bridge)
-                ? 'Sample loaded. The native shell will supply the credential when you add the agent.'
-                : 'Sample loaded. Enter a PAT to add the agent; the value clears after the attempt.'
-        )
-    }
-
-    /**
-     * @summary Validate the form, attempt the Brain-side bridge submit, and apply only the canonical
-     * redacted response to the provider-owned AgentDefinitions store. A controlled registry-domain
-     * rejection renders its reason without mutating Body state; an unexpected or malformed response
-     * stays sanitized. After an accepted readback, `agentDefinitionAccepted` tells the Viewport
-     * composition root to refresh the separately-owned Fleet roster from its Brain assembler.
-     * The PAT field clears after every attempted bridge submit.
-     * @returns {Promise<void>}
-     */
-    async onSubmitAgentClick() {
-        const
-            bridge     = AddAgentFlow.resolveRegistryBridge(),
-            shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
-            form       = this.getReference('agent-form'),
-            valid      = await form.validate(),
-            values     = await form.getSubmitValues(),
-            payload    = AddAgentFlow.createDefineAgentIntent(values, bridge),
-            repo       = AddAgentFlow.repoOf(values.repoSlug),
-            validation = AddAgentFlow.validateDefinePayload(payload, {credentialRequired: !shellOwned});
-
-        if (!valid || !validation.valid) {
-            this.updateBridgeStatus('is-error', `Agent setup incomplete. ${validation.reason}`);
-            return
-        }
-
-        if (!repo) {
-            this.updateBridgeStatus('is-error', 'Agent setup incomplete. The working repo reads owner/repo, e.g. neomjs/neo.');
-            return
-        }
-
-        try {
-            const outcome = await this.submitToFleetRegistryBridge(payload);
-
-            if (outcome?.status === 'rejected') {
-                this.updateBridgeStatus('is-error', outcome.reason || 'Agent definition was rejected. Nothing was changed.');
-                return
-            }
-
-            const {definition, reason} = await this.assignRepoThroughBridge(outcome, repo, payload.credential);
-
-            this.upsertPublicAgentDefinition(definition, payload.credential);
-            this.fire('agentDefinitionAccepted', {agent: definition});
-            this.updateBridgeStatus(
-                reason ? 'is-error' : 'is-live',
-                reason || (shellOwned
-                    ? 'Agent added. Credential entry stayed in the native shell.'
-                    : 'Agent added. PAT was not retained in the app worker.')
-            )
-        } catch (error) {
-            this.updateBridgeStatus(
-                'is-error',
-                shellOwned
-                    ? 'Could not add agent. No credential entered App Worker state.'
-                    : 'Could not add agent. Nothing was stored in browser state; PAT field was cleared.'
-            )
-        } finally {
-            await this.clearCredentialField()
-        }
-    }
-
-    /**
-     * @summary Attempt the basic NL-MCP external-harness connect through an injected Neural Link
-     * connection bridge, or fail closed. Mirrors {@link onSubmitAgentClick}'s bridge discipline: the
-     * connect carries no credential, and when no bridge is injected (the dev-server app has none) the
-     * view reports the failure without inventing any browser-side connection state.
-     * @returns {Promise<void>}
-     */
-    async onConnectExternalHarnessClick() {
-        try {
-            const result = await this.connectExternalHarnessBridge({action: 'start'});
-            this.updateBridgeStatus('is-live', result?.message || 'External harness connected.')
-        } catch (error) {
-            this.updateBridgeStatus('is-error', 'Harness connection unavailable in dev-server mode. Connect fails closed; no connection state was stored in the app worker.')
-        }
-    }
-
-    /**
-     * @summary Remove credential bytes from the password field after every bridge attempt.
-     * @returns {Promise<void>}
-     */
-    async clearCredentialField() {
-        const field = await this.getReference('agent-form').getField('credential');
-        field?.reset('')
-    }
-
-    /**
-     * @summary Forward the definition to an injected Fleet Registry bridge, or fail closed.
-     * Submit via an injected bridge when a future Agent OS shell exposes one. The current dev-server
-     * app has no Brain-side bridge object, so the view fails closed instead of inventing browser
-     * persistence.
-     * @param {Object} payload
-     * @returns {Promise<Object>} Canonical public agent definition on acceptance, or a controlled
-     *     `{status:'rejected', reason}` domain outcome.
-     */
-    async submitToFleetRegistryBridge(payload) {
-        const bridge = AddAgentFlow.resolveRegistryBridge();
-
-        if (!bridge?.defineAgent) {
-            throw new Error('Fleet Registry bridge unavailable')
-        }
-
-        return bridge.defineAgent(AddAgentFlow.createDefineAgentIntent(payload, bridge))
-    }
-
-    /**
-     * @summary Set a newly defined seat's working repo through the injected Fleet Registry bridge, the
-     * twin of {@link submitToFleetRegistryBridge}: its first Start then clones that repo and runs there.
-     * @param {Object} definition The confirmed public definition.
-     * @param {{cloneUrl: String, repoSlug: String}} repo
-     * @param {String} [credential] Ephemeral — used solely for the readback's echo check.
-     * @returns {Promise<{definition: Object, reason: String}>}
-     */
-    async assignRepoThroughBridge(definition, repo, credential) {
-        return AddAgentFlow.assignRepo(AddAgentFlow.resolveRegistryBridge(), definition, repo, credential)
-    }
-
-    /**
-     * @summary Forward a basic NL-MCP connect request to an injected Neural Link connection bridge,
-     * or fail closed. Mirrors {@link submitToFleetRegistryBridge}: an injected bridge is used when a
-     * future Agent OS shell exposes one; the current dev-server app has none, so the view fails closed
-     * instead of inventing a connection. Carries no credential — the App-Worker → Brain capability
-     * boundary is preserved.
-     * @param {Object} request The NL-MCP connection request, e.g. `{action:'start'}`.
-     * @returns {Promise<*>}
-     */
-    async connectExternalHarnessBridge(request) {
-        const bridge = globalThis.AgentOS?.neuralLink?.connectionBridge;
-
-        if (!bridge?.manageConnection) {
-            throw new Error('Neural Link connection bridge unavailable')
-        }
-
-        return bridge.manageConnection(request)
-    }
-
-    /**
-     * @summary Validate and write the Brain's canonical redacted response into the Viewport-owned
-     * `AgentDefinitions` store. Required public identity fields and the exact submitted credential
-     * are checked before mutation; a malformed or echoing response fails closed. Existing records
-     * update in place, while a new definition becomes the selected Accounts resident. This is the
-     * configuration projection only — the separate FleetAgent roster refreshes through the
-     * Viewport-owned `agentDefinitionAccepted` composition seam.
-     * @param {Object} definition Canonical public definition returned by the Brain bridge.
-     * @param {String} submittedCredential Ephemeral PAT used only to reject an accidental echo.
-     */
-    upsertPublicAgentDefinition(definition, submittedCredential) {
-        const
-            store             = this.agentDefinitionsStore,
-            hasTopLevelSecret = definition && ['authorization', 'credential', 'password', 'pat', 'token']
-                .some(key => Object.hasOwn(definition, key));
-
-        let serializedDefinition;
-
-        try {
-            serializedDefinition = JSON.stringify(definition)
-        } catch (error) {/* invalid response */}
-
-        if (!store || !definition?.id || !definition.githubUsername || !definition.harnessType ||
-            !serializedDefinition || hasTopLevelSecret ||
-            (submittedCredential && serializedDefinition.includes(submittedCredential))) {
-            throw new Error('Fleet Registry returned an invalid public agent definition')
+        if (!store || !AddAgentFlow.validateReadback(definition).valid) {
+            return false
         }
 
         const record = store.get(definition.id);
 
         record ? record.set(definition) : store.add(definition);
 
-        // a just-added agent becomes the scoped one — the operator configures it next
-        this.selectedAgentId = definition.id
-    }
-
-    /**
-     * @summary Update the bridge-state message without persisting any submitted values.
-     * @param {String} stateCls
-     * @param {String} message
-     */
-    updateBridgeStatus(stateCls, message) {
-        const status = this.getReference('bridge-status');
-        status.cls             = ['agent-bridge-status', stateCls];
-        status.vdom.cn[0].text = message;
-        status.update()
+        return true
     }
 }
 

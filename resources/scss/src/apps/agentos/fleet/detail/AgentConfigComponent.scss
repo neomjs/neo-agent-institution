@@ -52,11 +52,13 @@
         }
     }
 
+    /* label, then its value right beside it (#245): a value at the card's far edge read as
+       belonging to nothing on a wide Accounts detail. A fixed label column aligns the values. */
     .fm-config-row {
-        display         : flex;
-        font            : var(--fm-text-body);
-        gap             : var(--fm-space-3);
-        justify-content : space-between;
+        display              : grid;
+        font                 : var(--fm-text-body);
+        gap                  : var(--fm-space-3);
+        grid-template-columns: 10rem 1fr;
 
         .fm-config-label {
             color: var(--fm-ink-dim);

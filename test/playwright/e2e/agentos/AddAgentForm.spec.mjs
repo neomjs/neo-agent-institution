@@ -31,7 +31,8 @@ test.describe('AgentOS Add agent form — a reason line takes its own room (#374
 
             return {
                 gap   : parseFloat(getComputedStyle(form).rowGap),
-                fields: Object.fromEntries(['githubUsername', 'repoSlug', 'credential'].map(name => {
+                // in form order: the GitHub account (username, token), then the working repository
+                fields: Object.fromEntries(['githubUsername', 'credential', 'repoSlug'].map(name => {
                     const field = form.querySelector(`input[name="${name}"]`).closest('.neo-textfield'),
                           error = field.querySelector('.neo-textfield-error');
 
@@ -42,8 +43,8 @@ test.describe('AgentOS Add agent form — a reason line takes its own room (#374
 
         const valid = await read(), {githubUsername, repoSlug, credential} = valid.fields;
 
-        expect(repoSlug.field.top - githubUsername.field.bottom, 'valid fields ride the form\'s gap alone').toBeCloseTo(valid.gap, 0);
-        expect(credential.field.top - repoSlug.field.bottom).toBeCloseTo(valid.gap, 0);
+        expect(credential.field.top - githubUsername.field.bottom, 'valid fields ride the form\'s gap alone').toBeCloseTo(valid.gap, 0);
+        expect(repoSlug.field.top - credential.field.bottom).toBeCloseTo(valid.gap, 0);
 
         await page.locator('.fm-add-agent-form input[name="githubUsername"]').first().focus();
         await page.keyboard.press('Tab');
@@ -52,7 +53,7 @@ test.describe('AgentOS Add agent form — a reason line takes its own room (#374
         const blank = await read(), after = blank.fields;
 
         expect(after.githubUsername.error, 'the blank username says why').not.toBeNull();
-        expect(after.githubUsername.error.bottom, 'its reason ends above the next field\'s floating label').toBeLessThanOrEqual(after.repoSlug.label.top);
-        expect(after.credential.field.top - after.repoSlug.field.bottom, 'the valid fields below keep the gap').toBeCloseTo(blank.gap, 0)
+        expect(after.githubUsername.error.bottom, 'its reason ends above the next field\'s floating label').toBeLessThanOrEqual(after.credential.label.top);
+        expect(after.repoSlug.field.top - after.credential.field.bottom, 'the valid fields below keep the gap').toBeCloseTo(blank.gap, 0)
     })
 });

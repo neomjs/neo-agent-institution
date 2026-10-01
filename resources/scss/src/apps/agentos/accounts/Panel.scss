@@ -1,54 +1,73 @@
+/* The Accounts keeper-view: master-detail. The definitions column (the add action over the list,
+   then the empty state) sits beside the detail (the selected definition's card, or the add-agent
+   form); each column scrolls on its own, so no control is clipped and nothing scrolls sideways at
+   1000×640. The config card's skin lives with the fleet module (AgentConfigComponent.scss),
+   the form's with AddAgentForm.scss, the list rows' with accounts/List.scss. */
 .agent-panel-accounts.neo-panel {
     min-width : 360px;
 
-    .agent-selector {
-        flex-wrap : wrap;
-        gap    : 6px;
-        padding: 10px 12px 0;
+    .fm-accounts-master {
+        border-right: 1px solid var(--fm-line);
+        gap         : var(--fm-space-2);
+        overflow-y  : auto;
+        padding     : var(--fm-space-3);
+        width       : 240px;   /* fits a GitHub handle and the harness line beside a 640px detail */
+    }
 
-        /* Button hierarchy (ledger, re-scoped leaf): the selector strip joins the SSOT's quiet,
-           panel-toned base — never the default theme's same-weight blue slab. Mirrors the
-           chrome's agent-button pair (Viewport.scss) and the cockpit bar's D1 pair. */
-        .neo-button.agent-selector-button {
-            border       : 1px solid var(--fm-line);
-            border-radius: 6px;
-            background   : var(--fm-panel-2);
-            box-shadow   : none;
-            color        : var(--fm-ink-dim);
-            font-weight  : 500;
-            transition   : background var(--motion-fast) var(--ease-out-soft), border-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft);
+    .fm-accounts-detail {
+        gap       : var(--fm-space-3);
+        min-width : 0;
+        overflow-y: auto;
+        padding   : var(--fm-space-3);
 
-            /* the label takes the body role at its reader: the engine sizes .neo-button-text from
-               --button-text-font-size, so a size on the button never reached the text */
-            .neo-button-text {
-                font       : var(--fm-text-body);
-                font-weight: inherit;   /* the 500 above is the button's, the shorthand must not reset it */
-            }
-
-            &:hover {
-                border-color: var(--fm-ink-dim);
-                background: var(--fm-panel);
-                color     : var(--fm-ink);
-            }
-
-            &.neo-pressed {
-                border-color: var(--fm-ink-dim);
-                background: var(--fm-panel);
-                color     : var(--fm-ink);
-                font-weight  : 600;
-            }
-
-            .neo-button-glyph,
-            .neo-button-text {
-                color: inherit;
-            }
+        /* the card and the form take turns in this slot, so they share one readable measure: no
+           field spans the whole detail (the operator's 2026-09-28 ruling on full-width username
+           and repository fields) */
+        .fm-agent-config-card,
+        .fm-add-agent-form {
+            max-width: 28rem;
         }
     }
 
-    /* the config card's skin lives with the fleet module: fleet/AgentConfigCard.scss */
+    .fm-accounts-empty {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-detail);
+    }
 
-    .agent-definition-form {
-        gap    : 10px;
-        padding: 12px;
+    /* Button hierarchy (ledger, re-scoped leaf): the add action joins the SSOT's quiet,
+       panel-toned base — never the default theme's same-weight blue slab — and reads as
+       pressed while the form is up. Mirrors the chrome's agent-button pair (Viewport.scss). */
+    .neo-button.fm-accounts-add {
+        border       : 1px solid var(--fm-line);
+        border-radius: 6px;
+        background   : var(--fm-panel-2);
+        box-shadow   : none;
+        color        : var(--fm-ink-dim);
+        font-weight  : 500;
+        height       : 32px;   /* the cockpit bar's action height, not the stock slab */
+        transition   : background var(--motion-fast) var(--ease-out-soft), border-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft);
+
+        /* the label takes the body role at its reader: the engine sizes .neo-button-text from
+           --button-text-font-size, so a size on the button never reached the text */
+        .neo-button-text {
+            font       : var(--fm-text-body);
+            font-weight: inherit;   /* the 500 above is the button's, the shorthand must not reset it */
+        }
+
+        &:hover,
+        &.neo-pressed {
+            border-color: var(--fm-ink-dim);
+            background  : var(--fm-panel);
+            color       : var(--fm-ink);
+        }
+
+        &.neo-pressed {
+            font-weight: 600;   /* the non-color carrier for "the form is up" */
+        }
+
+        .neo-button-glyph,
+        .neo-button-text {
+            color: inherit;
+        }
     }
 }

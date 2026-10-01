@@ -26,6 +26,16 @@
         }
     }
 
+    /* the group labels — "GitHub account" names the forge once, "Harness" heads the choice — at the
+       chrome eyebrow the config card's section headings use */
+    .fm-add-section {
+        color          : var(--fm-ink-dim);
+        font           : var(--fm-text-chrome);
+        letter-spacing : var(--fm-text-chrome-tracking);
+        margin-top     : var(--fm-space-1);
+        text-transform : uppercase;
+    }
+
     .fm-add-harness-row {
         gap: 6px;
     }
@@ -61,6 +71,11 @@
         font        : var(--fm-text-detail);
         min-height  : 15px;
         padding-top : 6px;
+
+        /* an idle form says nothing, so its rule and its gap go too */
+        &:empty {
+            display: none;
+        }
 
         &.is-validating,
         &.is-submitting {

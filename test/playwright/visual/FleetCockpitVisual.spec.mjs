@@ -1,5 +1,5 @@
 import {test, expect} from '@playwright/test';
-import {landFleetActivity, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
+import {landAgentDefinitions, landFleetActivity, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
 import {sampleTasks} from '../fixture/fleetSample.mjs';
 
 /**
@@ -400,22 +400,78 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page).toHaveScreenshot('cockpit-review-1280.png')
     });
 
-    test('the Accounts surface — the inherited design-gate golden, under harness refresh semantics', async ({page}) => {
-        await bootSettledCockpit(page);
-
+    /**
+     * Opens Accounts over the tests' sample definitions, landed as the registry's answer, and waits
+     * out the rail tab's tooltip: it opens over this surface, so dwell until it has shown, leave, and
+     * wait out its hide.
+     * @param {Object} page
+     */
+    const openAccounts = async page => {
+        await landAgentDefinitions(page);
         await page.locator('.agent-shell').getByText('Accounts', {exact: true}).click();
         await expect(page.locator('.agent-panel-accounts')).toBeVisible({timeout: 30000});
+        await expect(page.locator('.fm-accounts-list .neo-list-item')).toHaveCount(3);
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(300);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(500)
+    };
+
+    test('the Accounts surface — the inherited design-gate golden, under harness refresh semantics', async ({page}) => {
+        await bootSettledCockpit(page);
+        await openAccounts(page);
+
         // The card's class is fm-agent-config-card (introduced by the define-agent config-card
         // re-skin); the older reference-only `.agent-config-card` selector went stale with it.
         await expect(page.locator('.fm-agent-config-card')).toBeVisible();
-        await page.evaluate(() => document.fonts.ready);
-        // the rail tab's tooltip opens over this surface: dwell until it has shown, leave, and wait out its hide
-        await page.waitForTimeout(300);
-        await page.mouse.move(0, 0);
-        await page.waitForTimeout(500);
 
         await expect(page.locator('.agent-panel-accounts')).toHaveScreenshot('accounts-config-surface.png')
     });
+
+    // At both common window sizes no Accounts control is clipped and nothing scrolls
+    // sideways — the master-detail columns, the card with its product chips, and the add-agent form.
+    for (const [width, height] of [[1000, 640], [1280, 800]]) {
+        test(`the Accounts surface at ${width}×${height} — no clipped control, no sideways scroll (viewport capture, geometry asserted)`, async ({page}) => {
+            await page.setViewportSize({width, height});
+            await bootSettledCockpit(page);
+            await openAccounts(page);
+
+            const measure = () => page.evaluate(() => {
+                const
+                    panel    = document.querySelector('.agent-panel-accounts'),
+                    bounds   = panel.getBoundingClientRect(),
+                    // the layout boxes this view owns; the engine's own clipping boxes (a button's
+                    // ripple, a hidden field trigger) are deliberate and stay out of the census
+                    boxes    = ['.fm-accounts-master', '.fm-accounts-list', '.fm-accounts-detail', '.fm-agent-config-card', '.fm-add-agent-form']
+                        .map(selector => panel.querySelector(selector)),
+                    controls = [...panel.querySelectorAll('.neo-button, .fm-chip, input, .neo-list-item')]
+                        .filter(node => node.getClientRects().length);
+
+                return {
+                    // holding more width than it shows: scrolled sideways, or cut off by an engine
+                    // container's `overflow: hidden` — either hides content from the operator
+                    overflowing: [document.documentElement, panel, ...boxes]
+                        .filter(node => node?.getClientRects().length && node.scrollWidth > node.clientWidth + 1)
+                        .map(node => node.className.split(' ')[0] || node.tagName),
+                    clipped    : controls.filter(node => {
+                        const rect = node.getBoundingClientRect();
+                        return rect.left < bounds.left - 1 || rect.right > bounds.right + 1
+                    }).map(node => node.textContent.trim() || node.className)
+                }
+            });
+
+            expect(await measure()).toEqual({overflowing: [], clipped: []});
+            await expect(page).toHaveScreenshot(`accounts-${width}x${height}.png`);
+
+            // the add form, in the same frame
+            await page.locator('.fm-accounts-add').click();
+            await expect(page.locator('.agent-panel-accounts .fm-add-agent-form')).toBeVisible();
+            await page.mouse.move(0, 0);
+
+            expect(await measure()).toEqual({overflowing: [], clipped: []});
+            await expect(page).toHaveScreenshot(`accounts-adding-${width}x${height}.png`)
+        })
+    }
 
     /**
      * @summary Activates the Tasks tab (the south strip's second surface) and waits for the pane's
