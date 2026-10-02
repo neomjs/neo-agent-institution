@@ -265,13 +265,18 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
     test('the vessel composition: the inspector opens at its designed 480×640; every other pane opens at the engine\'s measured rect', async () => {
         const composition = {x: 160, y: 120, width: 480, height: 640},
-              measured    = await cockpit.measureDockPaneRect(tabContainerFor('stream'));
+              measured    = {x: 20, y: 30, width: 960, height: 720},
+              descriptor  = {itemId: 'detail', proxyRect: measured, sortZone: null},
+              {calls, handlers} = fakeHandlers(cockpit);
 
-        expect(await cockpit.measureDockPaneRect(tabContainerFor('detail'))).toEqual(composition);
-        // the engine measures the pane (the harness answers the DOM read with its fixed rect) — the
-        // composition never leaks onto a pane that has none
-        expect(measured).not.toEqual(composition);
-        expect(measured?.width, 'a measured rect, not a composition').toBeGreaterThan(0)
+        cockpit.tearOutHandlers = handlers;
+
+        expect(await cockpit.admitDockPopOut(descriptor)).toBe(true);
+        expect(calls[0][1]).toEqual({...descriptor, proxyRect: composition});
+        expect(descriptor.proxyRect, 'the caller keeps its measured descriptor').toBe(measured);
+
+        expect(await cockpit.admitDockPopOut({itemId: 'stream', proxyRect: measured, sortZone: null})).toBe(true);
+        expect(calls[1][1].proxyRect, 'a pane without a composition keeps the engine measurement').toBe(measured)
     });
 
     test('ownership reads over the Group: owned, pending (admission · connection · in-flight vessel · held handle), or docked', () => {
@@ -448,6 +453,22 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         // no longer docked: refused before any admission
         expect(await cockpit.popOutPane('detail')).toEqual({detached: false, errors: ['detail is not a docked item']});
         expect(calls, 'no second admission').toHaveLength(2)
+    });
+
+    test('popOutPane: an inactive header action refuses without admission or mutation', async () => {
+        await revealDetail();
+
+        const before = cockpit.dockModel,
+              {calls, handlers} = fakeHandlers(cockpit);
+
+        cockpit.tearOutHandlers       = handlers;
+        cockpit.enableDockPopOutAction = false;
+
+        const result = await cockpit.popOutPane('detail');
+
+        expect(result).toEqual({detached: false, errors: ['Pop-out is not active on this workspace']});
+        expect(calls).toEqual([]);
+        expect(cockpit.dockModel).toBe(before)
     });
 
     test('popOutPane: a refused admission commits nothing, names the refusal and leaves a warning — never a dead button', async () => {

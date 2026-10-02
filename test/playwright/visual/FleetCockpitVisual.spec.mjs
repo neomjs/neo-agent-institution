@@ -470,7 +470,15 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await page.mouse.move(0, 0);
 
             expect(await measure()).toEqual({overflowing: [], clipped: []});
-            await expect(page).toHaveScreenshot(`accounts-adding-${width}x${height}.png`)
+            await expect(page).toHaveScreenshot(`accounts-adding-${width}x${height}.png`);
+
+            // a GitLab account adds its instance field to the same form, and still nothing clips
+            await page.locator('.agent-panel-accounts .fm-add-forge-row .fm-chip', {hasText: 'GitLab'}).click();
+            await expect(page.locator('.agent-panel-accounts .fm-add-agent-form input[name="forgeHost"]')).toBeVisible();
+            await page.mouse.move(0, 0);
+
+            expect(await measure()).toEqual({overflowing: [], clipped: []});
+            await expect(page).toHaveScreenshot(`accounts-adding-gitlab-${width}x${height}.png`)
         })
     }
 

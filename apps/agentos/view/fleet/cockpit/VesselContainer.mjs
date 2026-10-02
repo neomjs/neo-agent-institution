@@ -22,7 +22,7 @@ import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard
  *   the projected zones' cross-zone drag seams ({@link #getDockProjectionOptions}), so a held tab
  *   header is answered by zones and its release commits through the cockpit's own reducer.
  * - **The click pop-out** — one pathway for every pane: {@link #popOutPane} enters the engine's
- *   header-action admission ({@link Neo.dashboard.dock.Workspace#handleDockPopOutAction}) and
+ *   header-action dispatch ({@link Neo.dashboard.dock.Workspace#onDockHeaderAction}) and
  *   {@link #returnPane} closes the vessel, because vessel death IS the return path.
  * - **The phase-blind pane accessors + vessel chrome** (`getMemoriesPane` and friends,
  *   {@link #syncVesselChrome}, the window-toggle builders): one resolution order — the owner's
@@ -112,16 +112,16 @@ class VesselContainer extends Workspace {
     })
 
     /**
-     * The geometry the engine hands the vessel for a click pop-out: the measured pane rect, or
-     * the pane's designed composition when it has one ({@link #vesselCompositions}).
-     * @param {Neo.tab.Container|null} tabContainer
-     * @returns {Promise<Object|null>}
+     * @summary Admit a click pop-out with the pane's designed composition when one exists;
+     * otherwise preserve the engine's measured geometry and the caller's descriptor.
+     * @param {Object} data The engine's admission descriptor, including itemId and proxyRect.
+     * @returns {Promise<Boolean>}
      * @protected
      */
-    async measureDockPaneRect(tabContainer) {
-        const composition = VesselContainer.vesselCompositions[this.getActiveDockItemId(tabContainer)];
+    async admitDockPopOut(data) {
+        const composition = VesselContainer.vesselCompositions[data.itemId];
 
-        return composition ? {...composition} : super.measureDockPaneRect(tabContainer)
+        return super.admitDockPopOut(composition ? {...data, proxyRect: {...composition}} : data)
     }
 
     /**
@@ -480,7 +480,8 @@ class VesselContainer extends Workspace {
             return {detached: false, errors: [`${itemId} is not the visible pane of its zone`]}
         }
 
-        let result = await me.handleDockPopOutAction({dockNodeId: tabsId, tabContainer});
+        let result = await me.onDockHeaderAction({action: 'pop-out', dockNodeId: tabsId, tabContainer}) ??
+            {errors: ['Pop-out is not active on this workspace']};
 
         if (result.errors.length) {
             me.warnVesselAdmissionFailure('refused', {itemId, errors: result.errors})
