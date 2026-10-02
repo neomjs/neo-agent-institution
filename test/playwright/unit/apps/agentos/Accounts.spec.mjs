@@ -742,7 +742,11 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
 
         card.on('configIntent', intent => intents.push(intent));
 
-        expect(cardText(card)).toContain('Local services');
+        const find = (node, id) => node?.id === id ? node : (node?.cn || []).reduce((hit, child) => hit || find(child, id), null);
+
+        // the Fleet's own target, named like the launcher chip above it
+        expect(find(card.vdom, `${card.id}__target__local`)?.text).toBe('This fleet');
+        expect(cardText(card)).not.toContain('Local services');
         expect(cardText(card)).toContain('https://tenant-a.example.com/agentos');
         expect(cardText(card)).toContain('https://tenant-b.example.com/agentos · Unavailable');
         expect(cardText(card)).not.toContain('must-never-enter-the-model');
@@ -768,6 +772,36 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
 
         card.destroy();
         tenants.destroy();
+        store.destroy()
+    });
+
+    test('a seat on this Fleet is offered its own plane credential; a tenant seat and a harness that cannot reach the plane are not', () => {
+        const
+            store   = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+                {id: 'ada',     githubUsername: 'ada',     harnessType: 'codex'},
+                {id: 'tenant',  githubUsername: 'tenant',  harnessType: 'codex', mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}},
+                {id: 'gravity', githubUsername: 'gravity', harnessType: 'antigravity'}
+            ]}),
+            card    = Neo.create(AgentConfigCard, {record: store.get('ada')}),
+            intents = [],
+            click   = () => card.onCardClick({path: [{id: `${card.id}__credential__plane`}]});
+
+        card.on('configIntent', intent => intents.push(intent));
+
+        expect(cardText(card)).toContain('Plane credential · Set');
+        click();
+        expect(intents).toHaveLength(1);
+        expect(intents[0]).toMatchObject({id: 'ada', planeCredential: true});
+
+        for (const id of ['tenant', 'gravity']) {
+            card.record = store.get(id);
+
+            expect(cardText(card), id).not.toContain('Plane credential');
+            click();
+            expect(intents, id).toHaveLength(1)
+        }
+
+        card.destroy();
         store.destroy()
     });
 

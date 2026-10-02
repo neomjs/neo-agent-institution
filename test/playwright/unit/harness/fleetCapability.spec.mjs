@@ -310,6 +310,97 @@ test.describe('harness Fleet capability', () => {
         })).toEqual({tenantUrl: 'https://tenant.example.com/agentos/'})
     });
 
+    test('a seat\'s plane credential projects to the seat id alone: no credential, plane or identity rides in from the renderer', () => {
+        expect(projectPublicCredentialIntent('setPlaneCredential', {
+            id        : ' neo-gpt-sophie ',
+            credential: 'renderer_smuggled_pat',
+            planeBase : 'https://elsewhere.example.com',
+            identity  : '@forged'
+        })).toEqual({id: 'neo-gpt-sophie'});
+
+        for (const params of [{id: '  '}, {id: 42}, {}, null, ['neo-gpt-sophie'], 'neo-gpt-sophie']) {
+            expect(projectPublicCredentialIntent('setPlaneCredential', params)).toBeNull()
+        }
+    });
+
+    /**
+     * The Brain contract that adds `setPlaneCredential`, which no pin carries yet: it is a wire verb
+     * and a credential-bearing one, and its request has the shape `createFleetWireRequest` builds.
+     * Injected through the factory's own seams, so this arm runs on any pin.
+     */
+    const planeCredentialContract = {
+        wireMethods      : [...new Set([...FLEET_WIRE_METHODS, 'setPlaneCredential'])],
+        credentialMethods: [...new Set([...FLEET_CREDENTIAL_METHODS, 'setPlaneCredential'])],
+        createWireRequest: (method, params, protocol) => method === 'setPlaneCredential'
+            ? {method, params, protocol: createFleetWireOffer()}
+            : createFleetWireRequest(method, params, protocol)
+    };
+
+    test('on a contract that carries it, a seat\'s plane credential prompts with {id} alone and only main\'s credential reaches the Brain', async () => {
+        const
+            event          = {sender: 'trusted'},
+            mainCredential = 'seat_plane_pat_main_owned',
+            calls          = {credential: [], fetch: []},
+            capability     = createCapability({
+                ...planeCredentialContract,
+                bearerToken,
+                credentialProvider: async input => { calls.credential.push(input); return mainCredential },
+                fetchImpl         : async (url, init) => {
+                    calls.fetch.push({init, url});
+                    return {
+                        json: async () => createFleetWireResponse(
+                            FLEET_WIRE_RESPONSE_STATES.ok,
+                            {result: {status: 'stored', endpoint: 'http://127.0.0.1:3102', agentId: 'neo-gpt-sophie'}}
+                        )
+                    }
+                },
+                getBrain       : async () => ({fleetPort: 8083, up: true}),
+                isTrustedSender: candidate => candidate === event
+            }),
+            result = await capability.request(event, {
+                method: 'setPlaneCredential',
+                params: {
+                    id        : ' neo-gpt-sophie ',
+                    credential: 'renderer_smuggled_pat',
+                    planeBase : 'https://elsewhere.example.com',
+                    identity  : '@forged'
+                }
+            });
+
+        expect(result).toMatchObject({
+            ok    : true,
+            result: {status: 'stored', agentId: 'neo-gpt-sophie'},
+            state : FLEET_WIRE_RESPONSE_STATES.ok
+        });
+        expect(calls.credential).toEqual([{event, intent: {id: 'neo-gpt-sophie'}, method: 'setPlaneCredential'}]);
+        expect(calls.fetch).toHaveLength(1);
+        expect(JSON.parse(calls.fetch[0].init.body)).toEqual({
+            method  : 'setPlaneCredential',
+            params  : {credential: mainCredential, id: 'neo-gpt-sophie'},
+            protocol: createFleetWireOffer()
+        });
+    });
+
+    test('on a contract without the verb (pin 8), a plane-credential request prompts nothing and touches no network', async () => {
+        const
+            calls      = {brain: 0, credential: 0, fetch: 0},
+            capability = createCapability({
+                wireMethods       : FLEET_WIRE_METHODS.filter(method => method !== 'setPlaneCredential'),
+                credentialMethods : FLEET_CREDENTIAL_METHODS.filter(method => method !== 'setPlaneCredential'),
+                bearerToken,
+                credentialProvider: async () => { calls.credential++; return 'never-asked' },
+                fetchImpl         : async () => { calls.fetch++; throw new Error('network must stay dark') },
+                getBrain          : async () => { calls.brain++; return {fleetPort: 8083, up: true} },
+                isTrustedSender   : () => true
+            });
+
+        await expect(capability.request({}, {method: 'setPlaneCredential', params: {id: 'neo-gpt-sophie'}})).resolves.toMatchObject({
+            ok   : false,
+            state: FLEET_WIRE_RESPONSE_STATES.refused
+        });
+        expect(calls).toEqual({brain: 0, credential: 0, fetch: 0})
+    });
+
     test('rejects a canceled credential before Brain readiness and network access', async () => {
         const
             calls      = {brain: 0, fetch: 0},

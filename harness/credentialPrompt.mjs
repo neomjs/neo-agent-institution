@@ -57,9 +57,21 @@ export const CREDENTIAL_LABEL = 'GitHub or GitLab PAT';
  * @type {Object}
  */
 const SUBMIT_TEXT = {
-    connectTenant : 'Admit',
-    defineAgent   : 'Add agent',
-    'plane-attach': 'Connect'
+    connectTenant     : 'Admit',
+    defineAgent       : 'Add agent',
+    'plane-attach'    : 'Connect',
+    setPlaneCredential: 'Set'
+};
+
+/**
+ * The line under the heading, keyed like {@link SUBMIT_TEXT}. A seat's plane credential is the one
+ * request where the obvious paste is wrong: the seat's checkout PAT writes its repositories, and the
+ * plane only needs to know who the seat is.
+ * @type {Object}
+ */
+const HINT_TEXT = {
+    default           : 'Use the one your team\'s plane signs in with. Only this app\'s main process receives it.',
+    setPlaneCredential: 'Use a PAT of this seat\'s own account with no repository access, never its checkout PAT: the plane only needs to know who the seat is. Only this app\'s main process receives it.'
 };
 
 /**
@@ -82,9 +94,10 @@ export function acceptSubmittedCredential(value) {
  * @param {Object} options
  * @param {String} options.label What the field asks for, e.g. {@link CREDENTIAL_LABEL}.
  * @param {String} options.submit The submit button's text.
+ * @param {String} [options.hint] The line under the heading; defaults to the plane's own sign-in.
  * @returns {String}
  */
-export function renderCredentialPromptDocument({label, submit}) {
+export function renderCredentialPromptDocument({label, submit, hint = HINT_TEXT.default}) {
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
@@ -107,7 +120,7 @@ footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
 </style></head><body>
 <form>
 <h1>Enter your ${label}</h1>
-<p>Use the one your team's plane signs in with. Only this app's main process receives it.</p>
+<p>${hint}</p>
 <label for="credential">${label}</label>
 <div class="field"><input id="credential" type="password" autocomplete="off" spellcheck="false" maxlength="${MAX_CREDENTIAL_LENGTH}" placeholder="Paste with ⌘V, or type" autofocus><button type="button" data-action="paste">Paste</button></div>
 <footer><button type="button" data-action="cancel">Cancel</button><button type="submit" class="primary" disabled>${submit}</button></footer>
@@ -126,7 +139,11 @@ footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
 export function createCredentialPrompt({BrowserWindow, Menu, preloadPath}) {
     return function promptCredential({event, method}) {
         const
-            text   = {label: CREDENTIAL_LABEL, submit: SUBMIT_TEXT[method] || SUBMIT_TEXT['plane-attach']},
+            text   = {
+                label : CREDENTIAL_LABEL,
+                submit: SUBMIT_TEXT[method] || SUBMIT_TEXT['plane-attach'],
+                hint  : HINT_TEXT[method] || HINT_TEXT.default
+            },
             parent = BrowserWindow.fromWebContents(event.sender),
             win    = new BrowserWindow({
                 backgroundColor: '#151922',

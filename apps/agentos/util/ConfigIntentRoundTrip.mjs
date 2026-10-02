@@ -88,7 +88,7 @@ class ConfigIntentRoundTrip extends Base {
      * @summary Run one configuration round-trip and render its truth through the caller's sink.
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam) — the DI discipline shared with `addAgentFlow`.
-     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}`, `{id, launchOwner: 'fleet'}` or `{id, repos}` (+ event envelope noise, stripped here).
+     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}`, `{id, launchOwner: 'fleet'}`, `{id, repos}` or `{id, planeCredential: true}` ({@link runPlaneCredentialIntent}) (+ event envelope noise, stripped here).
      * @param {Object|null}   [config.owner]          The calling view — an opaque identity token for cross-owner supersede honesty. Omitting it degrades stale drops to silent.
      * @param {Function}      config.setSaveStatus    `(agentId, state, reason)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch).
      * @param {Neo.data.Store|null} config.store      The shared definitions store — record resolution, the arbitration keys, and the write-generation bump all derive from it.
@@ -101,6 +101,10 @@ class ConfigIntentRoundTrip extends Base {
         setSaveStatus,
         store = null
     }) {
+        if (intent.planeCredential === true) {
+            return ConfigIntentRoundTrip.runPlaneCredentialIntent({bridgeResolver, agentId: intent.id, setSaveStatus})
+        }
+
         const
             agentId    = intent.id,
             bridge     = bridgeResolver ? bridgeResolver() : globalThis.AgentOS?.fleet?.registryBridge,
@@ -228,6 +232,49 @@ class ConfigIntentRoundTrip extends Base {
 
             // sanitized: a transport error's message is not a surface we let reach the DOM
             setSaveStatus(agentId, 'rejected', 'Could not save the configuration. Nothing was changed.')
+        }
+    }
+
+    /**
+     * @summary Ask the Fleet to store the seat's own plane credential, the card's one intent that is
+     * not a configuration. The shell's main process prompts for the credential, so the request names
+     * only the seat, and no definition changes: nothing is written to the record. The status is the
+     * Brain's own outcome. A bridge without the verb, or one whose credentials are not the shell's
+     * to take, sends nothing and says so.
+     * @param {Object}        config
+     * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
+     * @param {String}        config.agentId
+     * @param {Function}      config.setSaveStatus `(agentId, state, reason)`, the caller's status sink.
+     * @returns {Promise<void>}
+     */
+    static async runPlaneCredentialIntent({bridgeResolver = null, agentId, setSaveStatus}) {
+        const bridge = bridgeResolver ? bridgeResolver() : globalThis.AgentOS?.fleet?.registryBridge;
+
+        if (!agentId) {
+            return
+        }
+
+        if (typeof bridge?.setPlaneCredential !== 'function') {
+            setSaveStatus(agentId, 'rejected', 'This Fleet does not take plane credentials yet. Nothing was changed.');
+            return
+        }
+
+        if (bridge.credentialIngress !== 'shell') {
+            setSaveStatus(agentId, 'rejected', 'Set the plane credential from the installed Fleet Manager. Nothing was changed.');
+            return
+        }
+
+        setSaveStatus(agentId, 'pending', 'Waiting for the plane credential…');
+
+        try {
+            const outcome = await bridge.setPlaneCredential({id: agentId});
+
+            outcome?.status === 'stored'
+                ? setSaveStatus(agentId, 'accepted', 'Plane credential stored.')
+                : setSaveStatus(agentId, 'rejected', outcome?.reason || 'The plane credential was not stored.')
+        } catch {
+            // a canceled prompt lands here too; a transport error's message never reaches the DOM
+            setSaveStatus(agentId, 'rejected', 'The plane credential was not stored.')
         }
     }
 }

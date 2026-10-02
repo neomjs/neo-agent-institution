@@ -170,7 +170,8 @@ class AgentConfigCard extends Component {
      * from the RESPONSE). Rows encode their intent in DOM ids: `<cardId>__srv__<key>` toggles one
      * MCP server; `<cardId>__product__<product>` picks a product and `<cardId>__harness__<type>` a
      * run mode (see {@link #createHarnessChoices}); `<cardId>__launch__<owner>` hands the seat's
-     * launches to this fleet or back to its own harness.
+     * launches to this fleet or back to its own harness; `<cardId>__credential__plane` asks for the
+     * seat's own plane credential (see {@link #createTargetChoices}).
      * @param {Object} data DOM click event data.
      * @protected
      */
@@ -200,6 +201,8 @@ class AgentConfigCard extends Component {
             harnessType && harnessType !== record.harnessType && me.fire('configIntent', {id: record.id, harnessType})
         } else if (kind === 'launch' && key === 'fleet' && record.launchOwner === 'external') {
             me.fire('configIntent', {id: record.id, launchOwner: key})
+        } else if (kind === 'credential' && key === 'plane' && me.createPlaneCredentialRow(record).length) {
+            me.fire('configIntent', {id: record.id, planeCredential: true})
         } else if (kind === 'target') {
             if (key === 'local') {
                 record.mcpTarget?.kind === 'tenant' &&
@@ -298,7 +301,8 @@ class AgentConfigCard extends Component {
                 {
                     cls: ['fm-config-chips', 'fm-config-targets'],
                     cn : targetChoices
-                }
+                },
+                ...me.createPlaneCredentialRow(record)
             ]
         }, {
             cls: ['fm-config-section'],
@@ -389,8 +393,32 @@ class AgentConfigCard extends Component {
     }
 
     /**
-     * @summary Build product-language choices for local services versus one public connected tenant.
-     * A persisted target remains visible when missing/disconnected but is inert; unsupported harness
+     * @summary The seat's plane-credential action: on a Fleet that serves a plane, "This fleet" is that
+     * plane, and a seat reaches it with a credential of its own. Offered while the seat targets this
+     * Fleet and its harness can reach a remote Memory Core; a tenant seat uses its tenant's bearer.
+     * The card never learns whether a credential is stored: the credential never leaves the Brain.
+     * @param {Object} record
+     * @returns {Object[]} vdom nodes: none, or one chips row
+     */
+    createPlaneCredentialRow(record) {
+        if (record.mcpTarget?.kind === 'tenant' || !supportsTenantMcpTarget(record.harnessType)) {
+            return []
+        }
+
+        return [{
+            cls: ['fm-config-chips', 'fm-config-plane-credential'],
+            cn : [{
+                id   : `${this.id}__credential__plane`,
+                cls  : ['fm-chip', 'is-selectable'],
+                text : 'Plane credential · Set',
+                title: 'The seat signs in to this Fleet\'s plane as itself: a PAT of its own account with no repository access, never its checkout PAT.'
+            }]
+        }]
+    }
+
+    /**
+     * @summary Build product-language choices for this Fleet versus one public connected tenant. A
+     * persisted target remains visible when missing/disconnected but is inert; unsupported harness
      * families see remote choices as unavailable. No credential or transport-header vocabulary
      * reaches the DOM.
      * @param {Object} record
@@ -407,7 +435,7 @@ class AgentConfigCard extends Component {
             choices          = [{
                 id  : `${me.id}__target__local`,
                 cls : ['fm-chip', 'fm-target-choice', selectedTenantId ? 'is-selectable' : 'is-selected'],
-                text: 'Local services'
+                text: 'This fleet'
             }];
 
         for (const tenant of records) {
