@@ -148,6 +148,7 @@ test.describe('harness pack stage', () => {
             'mainLog.mjs',
             'planeConfig.mjs',
             'seatRootRecord.mjs',
+            'setupBroker.mjs',
             'wakeReceiver.mjs'
         ]);
         expect(() => assertPackagedMainModulesDeclared({builderConfig, modules})).not.toThrow();

@@ -1,0 +1,385 @@
+import {expect, test}            from '@playwright/test';
+import {existsSync, mkdtempSync, readFileSync, statSync, writeFileSync} from 'node:fs';
+import {tmpdir}                  from 'node:os';
+import path                      from 'node:path';
+import {
+    EFFECT_UNWIRED_REASON,
+    SETUP_CHANNELS,
+    SETUP_MODULE_PATHS,
+    createSetupBroker,
+    resolveSetupRoots
+} from '../../../../harness/setupBroker.mjs';
+
+const tempDir = () => mkdtempSync(path.join(tmpdir(), 'setup-broker-'));
+
+/**
+ * The Brain modules the broker reaches, as fakes with the exported names it calls — the recipe's
+ * step table, a record module over an in-memory record, a host-effect module that records consents,
+ * the presets table, a probe, and the CLI's observers.
+ */
+function fakeModules({evaluations = []} = {}) {
+    const
+        calls   = [],
+        persisted = [],
+        STEPS   = [
+            {id: 'placement', kind: 'observation'},
+            {id: 'preset', kind: 'question'},
+            {id: 'plane-credential', kind: 'question', answer: 'file'},
+            {id: 'advanced', kind: 'question', optional: true},
+            {id: 'write-env', kind: 'effect', effectId: 'write-env'}
+        ];
+
+    return {
+        calls,
+        persisted,
+        modules: {
+            recipe: {
+                RECIPE_VERSION: 1,
+                RECIPE_STEPS  : STEPS,
+                STEP_KINDS    : {question: 'question', effect: 'effect', observation: 'observation'},
+                evaluateRecipe: async options => {
+                    calls.push(['evaluateRecipe', {target: options.target, consents: options.record.consents.map(row => row.stepId)}]);
+
+                    return evaluations.shift() ?? {recipeVersion: 1, target: options.target, binding: 'bound', bindingReason: null, steps: [{id: 'placement', status: 'ok'}], terminal: null}
+                }
+            },
+            record: {
+                RETIRE_REASONS   : {versionChanged: 'version-changed', targetChanged: 'target-changed'},
+                createSetupRecord: ({runId, target, recipeVersion}) => ({runId, target, recipeVersion, consents: [], receipts: []}),
+                setupRecordPath  : (root, runId) => path.join(root, `${runId}.json`),
+                readSetupRecord  : async filePath => { try { return {record: JSON.parse(readFileSync(filePath, 'utf8')), problem: null} } catch { return {record: null, problem: 'unreadable'} } },
+                resumeTarget     : (record, invocation) => ({...record.target, ...Object.fromEntries(Object.entries(invocation).filter(([, value]) => value != null))}),
+                describeBinding  : (record, {recipeVersion, target}) => record.recipeVersion !== recipeVersion ? 'version-mismatch' : JSON.stringify(record.target) !== JSON.stringify(target) ? 'target-mismatch' : 'bound',
+                // the real module re-binds the record to the new target and retires the old proof into history
+                retireCurrentProof: (record, {reason, target}) => ({...record, target, consents: [], receipts: [], retired: reason})
+            },
+            hostEffects: {
+                createHost             : () => ({run: async () => ({stdout: '', stderr: ''}), fsModule: null, now: Date.now}),
+                persistSetupRecord     : async (recordPath, record) => { persisted.push({recordPath, record}); const {writeFileSync} = await import('node:fs'); writeFileSync(recordPath, JSON.stringify(record)) },
+                admitCredentialReference: async ({answer}) => {
+                    try { statSync(answer); return {ok: true, path: answer} } catch { return {ok: false, reason: 'the answer is not the path of an existing file'} }
+                },
+                recordConsent          : async ({stepId, answer, record, recordPath}) => {
+                    const next = {...record, consents: [...record.consents, {stepId, answer, consentedAt: '2026-10-02T10:00:00.000Z'}]};
+                    const {writeFileSync} = await import('node:fs');
+                    writeFileSync(recordPath, JSON.stringify(next));
+                    return {record: next}
+                }
+            },
+            presets: {presets: [{id: 'hosted'}, {id: 'local-small'}]},
+            probe  : {
+                createDefaultReaders: ({run}) => ({run}),
+                probePlacement      : async ({target}) => ({target, host: {totalBytes: 1}, runningPlane: null})
+            },
+            cli: {
+                hostLayout         : ({stateRoot}) => ({envFile: path.join(stateRoot, 'config', 'local-agent-os.env'), secretsDir: path.join(stateRoot, 'secrets')}),
+                productionObservers: ({layout}) => ({layout})
+            }
+        }
+    }
+}
+
+const trusted = {sender: 'trusted'};
+
+function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), loadModules} = {}) {
+    return {
+        setupRoot,
+        stateRoot,
+        broker: createSetupBroker({
+            isTrustedSender : event => event === trusted,
+            loadModules     : loadModules === undefined ? (modules ? async () => modules : null) : loadModules,
+            packaged,
+            promptCredential: prompt,
+            setupRoot,
+            stateRoot,
+            now             : () => 1_700_000_000_000
+        })
+    }
+}
+
+test.describe('harness/setupBroker — the main-process handlers behind the setup card', () => {
+    test('the channel table and the module table are the preload\'s six keys and the CLI\'s modules', () => {
+        expect(Object.keys(SETUP_CHANNELS).sort()).toEqual(['answer', 'credential', 'effect', 'evaluate', 'presets', 'probe']);
+        expect(Object.values(SETUP_CHANNELS).every(channel => channel.startsWith('shell-setup-'))).toBe(true);
+        expect(SETUP_MODULE_PATHS).toEqual({
+            cli        : 'ai/scripts/setup/firstRun.mjs',
+            hostEffects: 'ai/services/fleet/hostEffects.mjs',
+            presets    : 'ai/services/fleet/placementPresets.mjs',
+            probe      : 'ai/services/fleet/probePlacement.mjs',
+            recipe     : 'ai/services/fleet/firstRunRecipe.mjs',
+            record     : 'ai/services/fleet/setupRunRecord.mjs'
+        })
+    });
+
+    test('the roots follow the CLI\'s environment names, with the host state root\'s defaults', () => {
+        expect(resolveSetupRoots({env: {}, homeDir: '/Users/op'})).toEqual({setupRoot: '/Users/op/.neo-ai/setup', stateRoot: '/Users/op/.neo-ai'});
+        expect(resolveSetupRoots({env: {NEO_HOST_STATE_ROOT: '/srv/state', NEO_HOST_SETUP_RECORD_ROOT: '/srv/records'}, homeDir: '/Users/op'})).toEqual({setupRoot: '/srv/records', stateRoot: '/srv/state'})
+    });
+
+    test('every handler refuses an untrusted sender by throwing, a browser boot and a boot without a Brain root by name', async () => {
+        const {modules} = fakeModules();
+
+        for (const name of Object.keys(SETUP_CHANNELS)) {
+            await expect(createBroker({modules}).broker[name]({sender: 'other'}, {})).rejects.toThrow(`${SETUP_CHANNELS[name]}: untrusted sender`);
+            expect((await createBroker({modules, packaged: false}).broker[name](trusted, {})).reason).toMatch(/^not-packaged/);
+            expect((await createBroker({loadModules: null}).broker[name](trusted, {})).reason).toMatch(/^no-brain-root/)
+        }
+    });
+
+    test('evaluate creates the run\'s record once, evaluates over the CLI\'s observers for the state root, and answers the CLI\'s --json shape', async () => {
+        const
+            {calls, modules, persisted} = fakeModules(),
+            {broker, setupRoot, stateRoot} = createBroker({modules});
+
+        const first = await broker.evaluate(trusted, {target: null});
+
+        expect(first.ok).toBe(true);
+        expect(first.evaluation).toMatchObject({binding: 'bound', recipeVersion: 1, steps: [{id: 'placement', status: 'ok'}]});
+        expect(first.evaluation.runId).toMatch(/^[0-9a-f-]{36}$/);
+        expect(first.evaluation.recordPath).toBe(path.join(setupRoot, `${first.evaluation.runId}.json`));
+        expect(persisted.length, 'the record is persisted at creation').toBe(1);
+        expect(calls[0][1].target).toEqual({});
+
+        const second = await broker.evaluate(trusted, {target: {planeId: 'outside-plane'}});
+
+        expect(second.evaluation.runId, 'one run per boot').toBe(first.evaluation.runId);
+        expect(calls[1][1].target, 'a named target field joins the record\'s bound target').toEqual({planeId: 'outside-plane'});
+        expect(modules.cli.hostLayout({stateRoot}).envFile).toBe(path.join(stateRoot, 'config', 'local-agent-os.env'))
+    });
+
+    test('a later boot resumes the newest record under the setup root instead of starting another run', async () => {
+        const
+            {modules}          = fakeModules(),
+            {broker, setupRoot} = createBroker({modules}),
+            first              = await broker.evaluate(trusted, {}),
+            again              = createBroker({modules, setupRoot}).broker;
+
+        expect((await again.evaluate(trusted, {})).evaluation.runId).toBe(first.evaluation.runId)
+    });
+
+    test('answer records a preset consent and re-evaluates; a non-question, an empty answer, an unknown preset and a pasted credential value are refused and never recorded', async () => {
+        const
+            {calls, modules}   = fakeModules(),
+            {broker, setupRoot} = createBroker({modules});
+
+        await broker.evaluate(trusted, {});
+
+        const consented = await broker.answer(trusted, {stepId: 'preset', answer: 'hosted'});
+
+        expect(consented.ok).toBe(true);
+        expect(calls.at(-1), 'the re-evaluation sees the consent').toEqual(['evaluateRecipe', {target: {}, consents: ['preset']}]);
+
+        expect(await broker.answer(trusted, {stepId: 'placement', answer: 'x'})).toEqual({ok: false, reason: '\'placement\' is not a question of this recipe', stepId: 'placement'});
+        expect(await broker.answer(trusted, {stepId: 'preset', answer: ''})).toEqual({ok: false, reason: 'an answer is a non-empty string', stepId: 'preset'});
+        expect(await broker.answer(trusted, {stepId: 'preset', answer: 'nope'})).toEqual({ok: false, reason: '\'nope\' is not a preset', stepId: 'preset'});
+
+        // the credential route is main's window only: a pasted value AND a renderer-supplied path
+        // of a real readable file are refused before any admission, and nothing is written
+        const readable = path.join(setupRoot, 'outside-input');
+
+        writeFileSync(readable, 'ghp_pastedTokenNeverReal');
+
+        for (const answer of ['ghp_pastedTokenNeverReal', readable]) {
+            expect(await broker.answer(trusted, {stepId: 'plane-credential', answer})).toEqual({ok: false, reason: '\'plane-credential\' is a credential question: it is answered in main\'s window, never with a path from the renderer', stepId: 'plane-credential'})
+        }
+
+        const record = JSON.parse(readFileSync(path.join(setupRoot, `${consented.evaluation.runId}.json`), 'utf8'));
+
+        expect(record.consents.map(row => row.stepId), 'only the preset reached the record').toEqual(['preset']);
+        expect(JSON.stringify(record)).not.toContain('ghp_');
+        expect(JSON.stringify(record)).not.toContain('outside-input')
+    });
+
+    test('the run owner serializes its record operations: two answers landing together both reach the record, a cold evaluate and an answer resolve one run, and a rejected operation leaves the chain usable', async () => {
+        const
+            {calls, modules}   = fakeModules(),
+            {broker, setupRoot} = createBroker({modules});
+
+        // a slow persistence: the first consent's write is still in flight when the second answer lands
+        const
+            original = modules.hostEffects.recordConsent,
+            gate     = [];
+
+        modules.hostEffects.recordConsent = async options => {
+            await new Promise(resolve => gate.push(resolve));
+
+            return original(options)
+        };
+
+        // cold: the evaluate and the answer start together — one run, both operations on it
+        const [first, second] = await (async () => {
+            const pending = [broker.evaluate(trusted, {}), broker.answer(trusted, {stepId: 'preset', answer: 'hosted'}), broker.answer(trusted, {stepId: 'advanced', answer: 'unfolded'})];
+
+            // release the consents in arrival order once both are queued
+            await new Promise(resolve => setTimeout(resolve, 10));
+            while (gate.length) gate.shift()();
+            await new Promise(resolve => setTimeout(resolve, 10));
+            while (gate.length) gate.shift()();
+
+            return Promise.all(pending)
+        })();
+
+        expect(first.ok && second.ok).toBe(true);
+
+        const record = JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8'));
+
+        expect(record.consents.map(row => `${row.stepId}=${row.answer}`), 'both consents survive').toEqual(['preset=hosted', 'advanced=unfolded']);
+        expect(new Set(calls.filter(([name]) => name === 'evaluateRecipe').map(([, {consents}]) => consents.length)).size, 'each evaluation saw its own prefix of the consents').toBeGreaterThan(1);
+
+        // a rejected operation surfaces to its caller and the next one still runs
+        modules.hostEffects.recordConsent = async () => { throw new Error('disk full') };
+
+        expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).reason).toBe('the consent was not recorded: disk full');
+
+        modules.hostEffects.recordConsent = original;
+
+        expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok).toBe(true)
+    });
+
+    test('credential: main\'s window supplies the value, the broker keeps it as an owner-only file under the setup root and records the PATH; cancel refuses by name; a non-credential step is refused', async () => {
+        const
+            prompts            = [],
+            {modules}          = fakeModules(),
+            {broker, setupRoot} = createBroker({modules, prompt: async ({method}) => { prompts.push(method); return prompts.length === 1 ? null : 'ghp_fixtureValueNeverReal' }});
+
+        await broker.evaluate(trusted, {});
+
+        expect(await broker.credential(trusted, {stepId: 'preset'})).toEqual({ok: false, reason: '\'preset\' is not a credential question of this recipe', stepId: 'preset'});
+        expect(await broker.credential(trusted, {stepId: 'plane-credential'})).toEqual({ok: false, reason: 'canceled', stepId: 'plane-credential'});
+
+        const kept = await broker.credential(trusted, {stepId: 'plane-credential'});
+
+        expect(prompts).toEqual(['setup-credential', 'setup-credential']);
+        expect(kept.ok).toBe(true);
+        expect(kept.path).toBe(path.join(setupRoot, 'credentials', 'plane-credential'));
+        expect(statSync(kept.path).mode & 0o777, 'owner-only').toBe(0o600);
+        expect(readFileSync(kept.path, 'utf8')).toBe('ghp_fixtureValueNeverReal');
+        expect(JSON.stringify(kept.evaluation), 'the reply carries the path, never the value').not.toContain('ghp_');
+
+        const record = JSON.parse(readFileSync(path.join(setupRoot, `${kept.evaluation.runId}.json`), 'utf8'));
+
+        expect(record.consents).toEqual([{stepId: 'plane-credential', answer: kept.path, consentedAt: '2026-10-02T10:00:00.000Z'}])
+    });
+
+    test('two credential windows answered together: the second value is not written until the first consent is accepted, and each consent refers to its own value', async () => {
+        const
+            values             = ['ghp_firstValueNeverReal', 'ghp_secondValueNeverReal'],
+            seenAtConsent      = [],
+            gate               = [],
+            {modules}          = fakeModules(),
+            original           = modules.hostEffects.recordConsent,
+            {broker, setupRoot} = createBroker({modules, prompt: async () => values.shift()}),
+            filePath           = path.join(setupRoot, 'credentials', 'plane-credential');
+
+        // the consent's persistence pauses until the test releases it, and records what the
+        // referenced file holds at that moment
+        modules.hostEffects.recordConsent = async options => {
+            seenAtConsent.push(readFileSync(options.answer, 'utf8'));
+            await new Promise(resolve => gate.push(resolve));
+
+            return original(options)
+        };
+
+        await broker.evaluate(trusted, {});
+
+        const
+            first  = broker.credential(trusted, {stepId: 'plane-credential'}),
+            second = broker.credential(trusted, {stepId: 'plane-credential'});
+
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        expect(readFileSync(filePath, 'utf8'), 'the second window\'s value waits behind the first consent').toBe('ghp_firstValueNeverReal');
+        expect(gate.length, 'one consent in flight').toBe(1);
+
+        gate.shift()();
+        await first;
+        await new Promise(resolve => setTimeout(resolve, 20));
+        gate.shift()();
+        await second;
+
+        expect(seenAtConsent, 'each consent was accepted over its own value').toEqual(values.length === 0 ? ['ghp_firstValueNeverReal', 'ghp_secondValueNeverReal'] : seenAtConsent);
+        expect(readFileSync(filePath, 'utf8')).toBe('ghp_secondValueNeverReal');
+
+        modules.hostEffects.recordConsent = original
+    });
+
+    test('a credential answered for one run never lands in another: a window opened for target A is refused once a second window re-targets the run to B; the same target stays A', async () => {
+        const
+            gate      = [],
+            {modules} = fakeModules(),
+            {broker, setupRoot} = createBroker({modules, prompt: () => new Promise(resolve => gate.push(resolve))}),
+            targetA   = {planeId: 'plane-a', dataRoot: '/srv/a', endpoint: 'http://127.0.0.1:3102'},
+            targetB   = {planeId: 'plane-b', dataRoot: '/srv/b', endpoint: 'http://127.0.0.1:3102'};
+
+        const first = await broker.evaluate(trusted, {target: targetA});
+
+        expect(first.evaluation.target).toEqual(targetA);
+
+        // the window opens for A and is held; a second trusted window re-targets the run to B
+        const held = broker.credential(trusted, {stepId: 'plane-credential'});
+
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(gate.length, 'the window is open').toBe(1);
+
+        const retargeted = await broker.evaluate(trusted, {target: targetB});
+
+        expect(retargeted.evaluation.target).toEqual(targetB);
+
+        // the held window answers: refused, nothing written, nothing recorded
+        gate.shift()('ghp_answeredForA');
+
+        expect(await held).toEqual({ok: false, reason: 'the run was re-targeted while the window was open: nothing kept', stepId: 'plane-credential'});
+        expect(existsSync(path.join(setupRoot, 'credentials', 'plane-credential')), 'no file for the refused value').toBe(false);
+
+        const record = JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8'));
+
+        expect(record.target).toEqual(targetB);
+        expect(record.consents).toEqual([]);
+
+        // the same-target control: a window opened for B, an evaluate for B meanwhile, the answer lands
+        const heldSame = broker.credential(trusted, {stepId: 'plane-credential'});
+
+        await new Promise(resolve => setTimeout(resolve, 10));
+        await broker.evaluate(trusted, {target: targetB});
+        gate.shift()('ghp_answeredForB');
+
+        const kept = await heldSame;
+
+        expect(kept.ok).toBe(true);
+        expect(JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8')).consents.map(row => row.stepId)).toEqual(['plane-credential']);
+        expect(readFileSync(kept.path, 'utf8')).toBe('ghp_answeredForB')
+    });
+
+    test('effect refuses by name until the Brain exports the CLI\'s orchestration — never a second implementation here', async () => {
+        const {modules} = fakeModules();
+
+        expect(await createBroker({modules}).broker.effect(trusted, {effectId: 'write-env'})).toEqual({ok: false, reason: EFFECT_UNWIRED_REASON, effectId: 'write-env'})
+    });
+
+    test('probe and presets answer the Brain modules\' own tables', async () => {
+        const
+            {modules} = fakeModules(),
+            {broker}  = createBroker({modules});
+
+        expect(await broker.presets(trusted)).toEqual({ok: true, presets: [{id: 'hosted'}, {id: 'local-small'}]});
+        expect(await broker.probe(trusted)).toEqual({ok: true, probe: {target: {kind: 'local'}, host: {totalBytes: 1}, runningPlane: null}})
+    });
+
+    test('a record from another recipe version retires its proof the way the CLI does, and the evaluation says so', async () => {
+        const
+            {modules}          = fakeModules(),
+            {broker, setupRoot} = createBroker({modules});
+
+        const first = await broker.evaluate(trusted, {});
+
+        modules.recipe.RECIPE_VERSION = 2;
+
+        const again = createBroker({modules, setupRoot}).broker;
+
+        await again.evaluate(trusted, {});
+
+        const record = JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8'));
+
+        expect(record.retired).toBe('version-changed')
+    })
+});

@@ -78,6 +78,7 @@ import {
     readPlaneConfig
 } from './planeConfig.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                  from './seatRootRecord.mjs';
+import {SETUP_CHANNELS, createSetupBroker, loadSetupModules, resolveSetupRoots} from './setupBroker.mjs';
 import {
     WAKE_RECEIVER_LAUNCH_AGENT,
     settleWakeReceiver,
@@ -1353,6 +1354,22 @@ app.whenReady().then(async () => {
     ipcMain.handle('shell-plane-status', planeBroker.status);
     ipcMain.handle('shell-plane-attach', planeBroker.attach);
     ipcMain.handle('shell-plane-verify', planeBroker.verify);
+
+    // The first-run setup broker: the setup card's Create door projects the recipe's live evaluation,
+    // main runs the host effects through the Brain's host-effect module (one module, the CLI's), and
+    // a credential enters main's window and leaves as a kept file's path. A boot without a Brain root
+    // keeps every channel registered and answers each with the named reason.
+    const setupBroker = createSetupBroker({
+        isTrustedSender : isTrustedIpcSender,
+        loadModules     : agentosRuntimeRoot ? () => loadSetupModules({runtimeRoot: agentosRuntimeRoot}) : null,
+        packaged        : packagedMode,
+        promptCredential: promptFleetCredential,
+        ...resolveSetupRoots({env: process.env})
+    });
+
+    for (const [name, channel] of Object.entries(SETUP_CHANNELS)) {
+        ipcMain.handle(channel, setupBroker[name])
+    }
 
     const win1 = createHarnessWindow(APP_URL);
 

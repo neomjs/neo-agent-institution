@@ -37,5 +37,35 @@ test.describe('Neo.main.addon.ShellPlane — the cockpit\'s reach into the shell
         expect(await planeStatus()).toEqual({attached: false, available: true, configured: false, packaged: true, planeBase: null});
         expect(await attachPlane({planeBase: 'http://127.0.0.1:3102', windowId: 7})).toEqual({ok: true, reason: null, relaunching: true});
         expect(requests, 'the window id stays in the App worker\'s envelope').toEqual([{planeBase: 'http://127.0.0.1:3102'}])
+    });
+
+    test('the six setup remotes forward their named request shapes, and answer the one no-shell refusal in a browser', async () => {
+        const {setupAnswer, setupCredential, setupEffect, setupEvaluate, setupPresets, setupProbe} = ShellPlane.prototype;
+
+        for (const call of [setupAnswer({stepId: 'preset', answer: 'hosted'}), setupCredential({stepId: 'plane-credential'}), setupEffect({effectId: 'write-env'}), setupEvaluate(), setupPresets(), setupProbe()]) {
+            expect(await call).toEqual({ok: false, reason: 'no-shell'})
+        }
+
+        const calls = [];
+
+        globalThis.neoShell = Object.fromEntries(['setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe'].map(name => [name, async request => { calls.push([name, request]); return {ok: true, name} }]));
+
+        expect(await setupAnswer({stepId: 'preset', answer: 'hosted', windowId: 7})).toEqual({ok: true, name: 'setupAnswer'});
+        await setupCredential({stepId: 'plane-credential', windowId: 7});
+        await setupEffect({effectId: 'write-env', windowId: 7});
+        await setupEvaluate({target: {planeId: 'p'}, windowId: 7});
+        await setupEvaluate({windowId: 7});
+        await setupPresets({windowId: 7});
+        await setupProbe({windowId: 7});
+
+        expect(calls, 'only the named fields cross; the window id stays in the App worker\'s envelope').toEqual([
+            ['setupAnswer',     {answer: 'hosted', stepId: 'preset'}],
+            ['setupCredential', {stepId: 'plane-credential'}],
+            ['setupEffect',     {effectId: 'write-env'}],
+            ['setupEvaluate',   {target: {planeId: 'p'}}],
+            ['setupEvaluate',   {target: null}],
+            ['setupPresets',    {}],
+            ['setupProbe',      {}]
+        ])
     })
 });

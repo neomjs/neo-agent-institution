@@ -1,6 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {landAgentDefinitions, landFleetActivity, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
 import {sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
+import {sampleShellInitScript} from '../fixture/setupRecipeSample.mjs';
 
 /**
  * The FM cockpit's visual-regression baselines — the design gate's mechanical guard: pixel
@@ -166,7 +167,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the lane claim reads on its card, while a wired empty lane says so', async ({page}) => {
         await bootSettledCockpit(page);
 
-        const laneLine = 'Keeping the fixture lane visible',
+        const laneLine = 'control-plane state synchronization for source-alpha continuation',
               laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString();
 
         await landFleetRoster(page, sampleRoster.map((row, index) => index < 2 ? {
@@ -183,7 +184,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             has: page.getByRole('img', {name: row.displayName, exact: true})
         });
 
-        await expect(card(sampleRoster[0]).locator('.fm-card-lane')).toHaveText(`${laneLine} · claimed 12m ago`);
+        await expect(card(sampleRoster[0]).locator('.fm-card-lane')).toContainText('source-alpha continuation · claimed 12m ago');
         await expect(card(sampleRoster[1]).locator('.fm-card-lane')).toHaveText('no lane claimed');
         await expect(card(sampleRoster[0])).toHaveScreenshot('fleet-card-lane-claim.png');
         await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-lane-empty.png')
@@ -495,7 +496,15 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await page.mouse.move(0, 0);
 
             expect(await measure()).toEqual({overflowing: [], clipped: []});
-            await expect(page).toHaveScreenshot(`accounts-adding-${width}x${height}.png`)
+            await expect(page).toHaveScreenshot(`accounts-adding-${width}x${height}.png`);
+
+            // a GitLab account adds its instance field to the same form, and still nothing clips
+            await page.locator('.agent-panel-accounts .fm-add-forge-row .fm-chip', {hasText: 'GitLab'}).click();
+            await expect(page.locator('.agent-panel-accounts .fm-add-agent-form input[name="forgeHost"]')).toBeVisible();
+            await page.mouse.move(0, 0);
+
+            expect(await measure()).toEqual({overflowing: [], clipped: []});
+            await expect(page).toHaveScreenshot(`accounts-adding-gitlab-${width}x${height}.png`)
         })
     }
 
@@ -1059,10 +1068,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      */
     const mountPlaneSetupCard = async page => {
         const result = await page.evaluate(() => Neo.worker.App.createNeoInstance({
-            importPath : '../../../../apps/agentos/view/PlaneSetupPanel.mjs',
-            className  : 'AgentOS.view.PlaneSetupPanel',
+            importPath : '../../../../apps/agentos/view/setup/Panel.mjs',
+            className  : 'AgentOS.view.setup.Panel',
             parentId   : document.querySelector('.agent-os-viewport').id,
             parentIndex: 1,
+            activeDoor : 'connect',
             flex       : 'none',
             reference  : 'plane-setup'
         }));
@@ -1134,6 +1144,48 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
         await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card-light.png')
+    });
+
+    test('the setup card\'s Create door — the cold recipe projected on the fixture host: both budgets, three preset cards with their verdicts, eleven rows in two channels, the chrome\'s progress line; both skins', async ({page}) => {
+        // the vessel's seam, installed before the app boots: a packaged, unconfigured shell whose
+        // setup channels answer the recipe's cold --json, so the cockpit runs its real mount path
+        await page.addInitScript(sampleShellInitScript());
+        await bootSettledCockpit(page);
+
+        const card = page.locator('.agent-plane-setup');
+
+        await expect(card).toBeVisible({timeout: 15000});
+        await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(11);
+        await expect(card.locator('.fm-setup-preset')).toHaveCount(3);
+        await expect(page.locator('.agent-setup-progress')).toHaveText('2 of 11 observed ok · next: preset');
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(300);
+
+        const paint = await page.evaluate(() => {
+            const
+                cs     = el => getComputedStyle(el),
+                rows   = [...document.querySelectorAll('.fm-setup-steps .neo-list-item')],
+                glyphs = rows.map(row => cs(row.querySelector('.fm-setup-step-glyph')).color),
+                words  = rows.map(row => row.querySelector('.fm-setup-step-status').textContent);
+
+            return {glyphs, words, unknownColor: cs(rows[8].querySelector('.fm-setup-step-glyph')).color, dimInk: cs(document.querySelector('.fm-setup-q-key')).color}
+        });
+
+        // what shows, not what the element claims: every question row holds its content whole
+        // (the engine's column would otherwise shrink a row behind its hidden overflow)
+        expect(await page.evaluate(() => [...document.querySelectorAll('.fm-setup-q, .fm-setup-preset')].every(el => el.clientHeight >= el.scrollHeight)), 'no question row or preset card is clipped').toBe(true);
+
+        // law-1: every status survives hue removal — the word carries it beside the glyph
+        expect(paint.words).toEqual(['ok', 'pending', 'pending', 'pending', 'ok', 'pending', 'pending', 'pending', 'unknown', 'unknown', 'unknown']);
+        // an unknown row is an indicator: the dim ink, never the faint one
+        expect(paint.unknownColor).toBe(paint.dimInk);
+
+        await expect(card).toHaveScreenshot('setup-card-create.png');
+
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(card).toHaveScreenshot('setup-card-create-light.png')
     });
 
     test('the keeper nav is an icon rail — each tab keeps its label as its accessible name and speaks it as a tooltip to its right, clear of the rail', async ({page}) => {
