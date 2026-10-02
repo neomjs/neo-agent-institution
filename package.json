@@ -66,8 +66,8 @@
         "watch-themes": "node ./node_modules/neo.mjs/buildScripts/helpers/watchThemes.mjs"
     },
     "dependencies": {
-        "neo-agent-brain": "github:neomjs/neo-agent-brain#cbd11cb62be316ec9f195b6dff0732e0cfe8ba40",
-        "neo.mjs": "github:neomjs/neo#08ff2a55e6f851f1f2002f5dd72686ecc6cce779"
+        "neo-agent-brain": "github:neomjs/neo-agent-brain#f9ccc2e260932e150c86ce1fc301d649b70aed8f",
+        "neo.mjs": "github:neomjs/neo#93769448934166a8c98b4d99eccda4c3d347caeb"
     },
     "devDependencies": {
         "@fortawesome/fontawesome-free": "^7.3.0",

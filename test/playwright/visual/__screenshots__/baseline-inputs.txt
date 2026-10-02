@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    3f304a10d7c9ceb3003281286a4dbfac122ff6d4b40c105c757ad71398c43f8b
+    a49cee0547c8c34d0e0c9ef3b2d669f0da0b697893333989595f1b77aa17a84b
 
 apps/agentos/CARD-CONTRACT.md
     7cbbc4717c641ab36089a0c7ded20095a91c44fa
@@ -362,9 +362,6 @@ apps/agentos/view/fleet/instances/MenuList.mjs
 apps/agentos/view/fleet/instances/SwitcherButton.mjs
     97e71ba7326fecd3d757a23b1197b996f9d5d1be
 
-apps/agentos/view/fleet/mailbox/Body.mjs
-    6570af2da93723c2b56861f9dc3ee44745163f5b
-
 apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     04ea267aa98a0de4ec26c5c1f027e2b97d5d4da3
 
@@ -372,7 +369,7 @@ apps/agentos/view/fleet/mailbox/Container.mjs
     ef2948a70973e41f442b85d2cbcc0019a77b85be
 
 apps/agentos/view/fleet/mailbox/Grid.mjs
-    ff3bf64c961243252ebe66d4b36a701dc3946c51
+    743299c1151e0d3721ea90355ac392a116c66b01
 
 apps/agentos/view/fleet/mailbox/OperatorContainer.mjs
     52039f01912c8a053118f1120d25210c8f67789a

@@ -23,7 +23,6 @@ const
     FAMILIES = [
         ['src/app/SharedCanvas.mjs',    'Canvas'],
         ['src/grid/Container.mjs',      'Grid'],
-        ['src/grid/Body.mjs',           'Body'],
         ['src/tab/Container.mjs',       'Container'],
         ['src/form/Container.mjs',      'Form'],
         ['src/container/Viewport.mjs',  'Viewport'],

@@ -68,6 +68,7 @@ async function wireRealFleetSources() {
  * @summary Start the authenticated Fleet bridge on the REAL dispatch path (no custom `dispatch`), so
  * `fleetRoster` / `fleetActivity` resolve through `FleetControlBridge`. Pass a fixed `port` + `bearerToken`
  * on restart to re-listen at the SAME endpoint the browser bridge already targets.
+ * Closing ends existing HTTP connections too: an open event stream must not postpone transport death.
  * @param {Object} [opts]
  * @param {Number} [opts.port=0] 0 = ephemeral (first boot); the captured port on restart.
  * @param {String} [opts.bearerToken] Reused across restart so the already-installed bridge authenticates.
@@ -83,7 +84,10 @@ async function startLivenessFleetServer({port = 0, bearerToken} = {}) {
         bearerToken: options.bearerToken,
         port       : boundPort,
         endpoint   : `http://127.0.0.1:${boundPort}/fleet`,
-        close      : () => new Promise(resolve => server.close(resolve))
+        close      : () => new Promise(resolve => {
+            server.close(resolve);
+            server.closeAllConnections()
+        })
     }
 }
 

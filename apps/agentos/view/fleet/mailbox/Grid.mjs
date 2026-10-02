@@ -1,5 +1,4 @@
 import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Container.mjs';
-import MailboxBody   from './Body.mjs';
 import RowComponent  from './RowComponent.mjs';
 
 /**
@@ -12,10 +11,9 @@ import RowComponent  from './RowComponent.mjs';
  * the buffering — `bufferRowRange` bounds and recycles mounted rows; it fetches nothing), fed from
  * the injected {@link AgentOS.store.AgentMailbox} store. No paging chrome exists on this surface
  * (operator direction 2026-08-28): the corpus scrolls, and its honest end is the only end. Data
- * acquisition is the owning pane's: the body announces `scrollEdge` when the mounted window
- * reaches the loaded end ({@link AgentOS.view.fleet.mailbox.Body}, the engine's seam in waiting),
- * this grid relays it, and the pane requests the next window under its own gate. Nothing here
- * walks the corpus on its own.
+ * acquisition is the owning pane's: the engine's body fires `scrollEdge` when the visible window
+ * reaches the loaded end, this grid relays it, and the pane requests the next window under its own
+ * gate. Nothing here walks the corpus on its own.
  *
  * **ONE data path.** Every mutation of this surface — wholesale projection, window append, thread
  * toggle — flows through {@link #applyBags}: plain row bags get their thread facts stamped
@@ -77,12 +75,7 @@ class Grid extends GridContainer {
          * installed. The thread toggle stays the row's own native button.
          * @member {Object} viewConfig={selectionModel: null}
          */
-        viewConfig: {selectionModel: null},
-        /**
-         * The body that announces the scroll edge; the engine's body plus one event.
-         * @member {Object} body={module: MailboxBody}
-         */
-        body: {module: MailboxBody}
+        viewConfig: {selectionModel: null}
     }
 
     /**
