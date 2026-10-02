@@ -26,9 +26,10 @@ const staticSources = () => ({
  * @param {String} [facts.state='ok']
  * @param {String} [facts.participationStatus='active']
  * @param {String|null} [facts.laneLine=null]
+ * @param {Object[]|null} [facts.repoOutcomes=null] The last start's per-repository outcome.
  * @returns {Object} One `AgentOS.model.FleetAgent` row.
  */
-const agent = (agentId, displayName, engineTag, family, {state = 'ok', participationStatus = 'active', laneLine = null} = {}) => ({
+const agent = (agentId, displayName, engineTag, family, {state = 'ok', participationStatus = 'active', laneLine = null, repoOutcomes = null} = {}) => ({
     agentId,
     githubUsername: agentId,
     displayName,
@@ -39,6 +40,7 @@ const agent = (agentId, displayName, engineTag, family, {state = 'ok', participa
     laneLine,
     participationStatus,
     openLaneCount : null,
+    repoOutcomes,
     sources       : staticSources()
 });
 
@@ -49,7 +51,11 @@ const benchedKimi = 'Operator-benched 2026-08-17: flatrate cancelled after the p
  * @type {Object[]}
  */
 export const sampleRoster = [
-    agent('neo-opus-ada',    'Ada',            'opus-5',      'claude'),
+    // Ada's last start: one of her other repositories prepared, one failed (Accounts shows both)
+    agent('neo-opus-ada',    'Ada',            'opus-5',      'claude', {repoOutcomes: [
+        {repoSlug: 'neomjs/neo-agent-brain',       state: 'prepared'},
+        {repoSlug: 'neomjs/neo-agent-institution', state: 'failed', reason: 'git clone exited 128: remote: Repository not found.'}
+    ]}),
     agent('neo-opus-grace',  'Grace',          'opus-5',      'claude'),
     agent('neo-opus-vega',   'Vega',           null,          'claude'),
     agent('neo-fable',       'Mnemosyne',      'fable-5',     'claude'),
