@@ -25,7 +25,7 @@ import Instance       from '../../../../../../../../node_modules/neo.mjs/src/man
  * freshness contract renders deterministically.
  */
 test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () => {
-    let AgentDetail, AgentDefinition, FleetAgent, FleetTenants, Store;
+    let AgentDetail, AgentDetailController, AgentDefinition, FleetAgent, FleetTenants, Store;
 
     const
         stores          = [],
@@ -66,13 +66,27 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     const chip = (detail, key) => detail.down({reference: `pane-${key}-freshness`});
     const body = (detail, key) => detail.down({reference: `pane-${key}-body`});
+    /**
+     * @summary Hold a transport response or scheduler wait until the test releases it.
+     * @returns {{promise: Promise, resolve: Function, reject: Function}}
+     */
+    const deferred = () => {
+        let resolve, reject;
+        const promise = new Promise((res, rej) => {
+            resolve = res;
+            reject  = rej
+        });
+
+        return {promise, resolve, reject}
+    };
 
     test.beforeAll(async () => {
-        AgentDetail     = (await import('../../../../../../../../apps/agentos/view/fleet/detail/Container.mjs')).default;
-        AgentDefinition = (await import('../../../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
-        FleetAgent      = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
-        FleetTenants    = (await import('../../../../../../../../apps/agentos/store/FleetTenants.mjs')).default;
-        Store           = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
+        AgentDetail           = (await import('../../../../../../../../apps/agentos/view/fleet/detail/Container.mjs')).default;
+        AgentDetailController = (await import('../../../../../../../../apps/agentos/view/fleet/detail/Controller.mjs')).default;
+        AgentDefinition       = (await import('../../../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
+        FleetAgent            = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
+        FleetTenants          = (await import('../../../../../../../../apps/agentos/store/FleetTenants.mjs')).default;
+        Store                 = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
     });
 
     test.afterAll(() => {
@@ -520,33 +534,43 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
-    test('a config intent from the tab runs the shared round-trip: readback lands on the record, status renders (#15242)', async () => {
+    test('the detail controller handles the tab intent: only its accepted readback changes the shared record (#15242)', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
         ]});
         stores.push(definitions);
 
-        const detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions});
+        const
+            detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+            card   = detail.getReference('config-pane'),
+            result = deferred(),
+            intents = [];
 
         // AgentOS is the APP NAMESPACE — deleting it would unregister every AgentOS.* class for
         // the tests that follow in this worker. Stub the `fleet` key only, and restore it.
         const priorFleet = globalThis.AgentOS?.fleet;
 
         globalThis.AgentOS ??= {};
-        globalThis.AgentOS.fleet = {registryBridge: {configureAgent: async intent => {
+        globalThis.AgentOS.fleet = {registryBridge: {configureAgent: intent => {
+            intents.push(intent);
             // the runner curates the wire intent: no event envelope may cross
             expect(Object.keys(intent).sort()).toEqual(['harnessType', 'id']);
-            return {status: 'accepted', agent: {id: 'ada', harnessType: intent.harnessType, mcpServers: null}}
+            return result.promise
         }}};
 
-        await detail.onConfigIntent({id: 'ada', harnessType: 'claude-code', source: 'evt-noise'});
+        card.fire('configIntent', {id: 'ada', harnessType: 'claude-code', source: 'evt-noise'});
+        expect(JSON.stringify(card.vdom.cn)).toContain('Saving configuration');
+        result.resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'claude-code', mcpServers: null}});
+        await expect.poll(() => card.saveStatus.state).toBe('accepted');
 
         // only the RESPONSE mutated the record; the tab's card re-rendered through its own sink
         expect(definitions.get('ada').harnessType).toBe('claude-code');
-        expect(JSON.stringify(detail.getReference('config-pane').vdom.cn)).toContain('Configuration saved.');
+        expect(JSON.stringify(card.vdom.cn)).toContain('Configuration saved.');
 
-        globalThis.AgentOS.fleet = priorFleet;
-        detail.destroy()
+        detail.destroy();
+        card.fire('configIntent', {id: 'ada', harnessType: 'codex'});
+        expect(intents).toHaveLength(1);
+        globalThis.AgentOS.fleet = priorFleet
     });
 
     test('an external definition write (another owner\'s readback) refreshes the seated tab in place (#15242)', () => {
@@ -627,14 +651,14 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         // ref at on() time, so only a pre-construct prototype patch makes the registered ref the spy
         const
             calls             = {mutation: 0, recordChange: 0},
-            originalMutation  = AgentDetail.prototype.onDefinitionsStoreMutation,
-            originalRecChange = AgentDetail.prototype.onDefinitionRecordChange;
+            originalMutation  = AgentDetailController.prototype.onDefinitionsStoreMutation,
+            originalRecChange = AgentDetailController.prototype.onDefinitionRecordChange;
 
-        AgentDetail.prototype.onDefinitionsStoreMutation = function(...args) {
+        AgentDetailController.prototype.onDefinitionsStoreMutation = function(...args) {
             calls.mutation++;
             return originalMutation.apply(this, args)
         };
-        AgentDetail.prototype.onDefinitionRecordChange = function(...args) {
+        AgentDetailController.prototype.onDefinitionRecordChange = function(...args) {
             calls.recordChange++;
             return originalRecChange.apply(this, args)
         };
@@ -659,8 +683,218 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             expect(calls.mutation).toBe(alive.mutation);
             expect(calls.recordChange).toBe(alive.recordChange)
         } finally {
-            AgentDetail.prototype.onDefinitionsStoreMutation = originalMutation;
-            AgentDetail.prototype.onDefinitionRecordChange   = originalRecChange
+            AgentDetailController.prototype.onDefinitionsStoreMutation = originalMutation;
+            AgentDetailController.prototype.onDefinitionRecordChange   = originalRecChange
+        }
+    });
+
+    test('a late accepted readback updates its original Store but cannot repaint a rebound inspector', async () => {
+        const
+            definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+                {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
+            ]}),
+            replacement = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+                {id: 'ada', githubUsername: 'ada', harnessType: 'claude-code'}
+            ]}),
+            result = deferred();
+
+        stores.push(definitions, replacement);
+
+        const
+            detail     = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+            controller = detail.getController(),
+            card       = detail.getReference('config-pane'),
+            statuses   = [],
+            setStatus  = card.setSaveStatus,
+            priorFleet = globalThis.AgentOS?.fleet;
+
+        card.setSaveStatus = function(...args) {
+            statuses.push(args);
+            return setStatus.apply(this, args)
+        };
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {configureAgent: () => result.promise}};
+
+        const request = controller.onConfigIntent({id: 'ada', harnessType: 'native-neo'});
+
+        expect(statuses.map(([, state]) => state)).toEqual(['pending']);
+
+        // The response belongs to the old shared Store; this inspector now renders the replacement.
+        detail.agentDefinitions = replacement;
+        expect(card.record).toBe(replacement.get('ada'));
+        const originalRefresh = card.refresh;
+        let refreshes = 0;
+        card.refresh = function(...args) {
+            refreshes++;
+            return originalRefresh.apply(this, args)
+        };
+        result.resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo'}});
+        await request;
+
+        expect(definitions.get('ada').harnessType).toBe('native-neo');
+        expect(replacement.get('ada').harnessType).toBe('claude-code');
+        expect(statuses.map(([, state]) => state)).toEqual(['pending']);
+        expect(refreshes, 'the old Store listener is detached').toBe(0);
+        replacement.get('ada').set({statusText: 'current Store'});
+        expect(refreshes, 'the replacement Store listener remains live').toBeGreaterThan(0);
+
+        globalThis.AgentOS.fleet = priorFleet;
+        detail.destroy()
+    });
+
+    test('two real inspectors preserve cross-owner supersession on the shared definition', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const first = createDetail({agentId: 'ada'}, {agentDefinitions: definitions});
+        const second = createDetail({agentId: 'ada'}, {agentDefinitions: definitions});
+        const waits = [], priorFleet = globalThis.AgentOS?.fleet;
+        globalThis.AgentOS.fleet = {registryBridge: {configureAgent: () => {
+            const wait = deferred();
+            waits.push(wait);
+            return wait.promise
+        }}};
+
+        try {
+            const older = first.getController().onConfigIntent({id: 'ada', harnessType: 'claude-code'});
+            const newer = second.getController().onConfigIntent({id: 'ada', harnessType: 'native-neo'});
+            waits[1].resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo'}});
+            await newer;
+            waits[0].resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'claude-code'}});
+            await older;
+
+            expect(definitions.get('ada').harnessType).toBe('native-neo');
+            expect(first.getReference('config-pane').saveStatus.state).toBe('superseded');
+            expect(second.getReference('config-pane').saveStatus.state).toBe('accepted')
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet;
+            first.destroy();
+            second.destroy()
+        }
+    });
+
+    for (const accepted of [true, false]) {
+        test(`a late ${accepted ? 'accepted' : 'rejected'} intent cannot repaint the destroyed owner`, async () => {
+            const
+                definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+                    {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
+                ]}),
+                result = deferred();
+
+            stores.push(definitions);
+
+            const
+                detail     = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                controller = detail.getController(),
+                card       = detail.getReference('config-pane'),
+                statuses   = [],
+                setStatus  = card.setSaveStatus,
+                priorFleet = globalThis.AgentOS?.fleet;
+
+            card.setSaveStatus = function(...args) {
+                statuses.push(args);
+                return setStatus.apply(this, args)
+            };
+            globalThis.AgentOS ??= {};
+            globalThis.AgentOS.fleet = {registryBridge: {configureAgent: () => result.promise}};
+
+            const request = controller.onConfigIntent({id: 'ada', harnessType: 'native-neo'});
+
+            detail.destroy();
+            result.resolve(accepted
+                ? {status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo'}}
+                : {status: 'rejected', reason: 'late rejection'});
+            await request;
+
+            expect(statuses.map(([, state]) => state)).toEqual(['pending']);
+            expect(definitions.get('ada').harnessType).toBe(accepted ? 'native-neo' : 'codex');
+            globalThis.AgentOS.fleet = priorFleet
+        });
+    }
+
+    test('the controller ages the pane on schedule, keeps scheduling with no record, and stops after destroy', async () => {
+        const
+            scheduled = [],
+            ticks = [],
+            originalTimeout = Object.getOwnPropertyDescriptor(AgentDetailController.prototype, 'timeout'),
+            originalStart = AgentDetailController.prototype.startFreshnessAging,
+            originalNow = Date.now;
+        let clock = NOW;
+
+        Date.now = () => clock;
+        AgentDetailController.prototype.timeout = function(ms) {
+            const wait = deferred();
+            scheduled.push({...wait, ms});
+            return wait.promise
+        };
+        AgentDetailController.prototype.startFreshnessAging = function(...args) {
+            const tick = originalStart.apply(this, args);
+            ticks.push(tick);
+            return tick
+        };
+
+        let detail;
+
+        try {
+            detail = createDetail({agentId: 'vega', state: 'ok'}, {
+                now: null,
+                paneLedgers: {lane: {observedAt: new Date(NOW - 10_000).toISOString(), freshnessTtl: 30_000}}
+            });
+
+            const controller = detail.getController();
+            let refreshes = 0;
+            const applyFreshness = detail.applyPaneFreshness;
+
+            detail.applyPaneFreshness = function(...args) {
+                refreshes++;
+                return applyFreshness.apply(this, args)
+            };
+
+            expect(scheduled.map(({ms}) => ms)).toEqual([30_000]);
+            expect(chip(detail, 'lane').cls).toContain('is-fresh');
+            clock = NOW + 5 * 60_000;
+            // No record/config mutation drives this render: only the production scheduler tick.
+            const beforeAge = refreshes;
+            scheduled[0].resolve();
+            await ticks[0];
+
+            expect(refreshes).toBe(beforeAge + 1);
+            expect(chip(detail, 'lane').cls).toContain('is-lost');
+            expect(scheduled.map(({ms}) => ms)).toEqual([30_000, 30_000]);
+
+            detail.now = NOW;
+            clock += 5 * 60_000;
+            scheduled[1].resolve();
+            await ticks[1];
+            expect(chip(detail, 'lane').cls).toContain('is-fresh');
+
+            detail.record = null;
+            const beforeEmptyTick = refreshes;
+            scheduled[2].resolve();
+            await ticks[2];
+
+            expect(refreshes).toBe(beforeEmptyTick);
+            expect(scheduled.map(({ms}) => ms)).toEqual([30_000, 30_000, 30_000, 30_000]);
+
+            detail.destroy();
+            const afterDestroy = refreshes;
+            scheduled[3].resolve();
+            await ticks[3];
+
+            expect(refreshes).toBe(afterDestroy);
+            expect(controller.isDestroyed).toBe(true);
+            expect(scheduled).toHaveLength(4)
+        } finally {
+            detail?.isDestroyed || detail?.destroy();
+            Date.now = originalNow;
+            AgentDetailController.prototype.startFreshnessAging = originalStart;
+            if (originalTimeout) {
+                Object.defineProperty(AgentDetailController.prototype, 'timeout', originalTimeout)
+            } else {
+                delete AgentDetailController.prototype.timeout
+            }
         }
     });
 
