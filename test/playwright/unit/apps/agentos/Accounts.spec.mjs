@@ -23,7 +23,8 @@ const
     __filename = fileURLToPath(import.meta.url),
     __dirname  = path.dirname(__filename),
     repoRoot   = path.resolve(__dirname, '../../../../..'),
-    viewPath   = path.join(repoRoot, 'apps/agentos/view/accounts/Panel.mjs');
+    viewPath   = path.join(repoRoot, 'apps/agentos/view/accounts/Panel.mjs'),
+    controllerPath = path.join(repoRoot, 'apps/agentos/view/accounts/Controller.mjs');
 
 let AgentDefinition, Store;
 
@@ -33,6 +34,24 @@ test.beforeAll(async () => {
 });
 
 const makeAgentStore = data => Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data});
+
+/**
+ * @summary Create the real Accounts child tree and controller for lifecycle and event tests.
+ * @param {Object} config Neo component configuration, including isolated provider Store instances.
+ * @returns {Promise<AgentOS.view.accounts.Panel>}
+ */
+const createAccounts = async config => {
+    const stores = Object.fromEntries([
+        ['agentDefinitions', config.agentDefinitionsStore],
+        ['fleetTenants', config.fleetTenantsStore],
+        ['fleetRoster', config.fleetRosterStore]
+    ].filter(([, store]) => store));
+    const view = Neo.create(Accounts, {
+        appName: 'AgentOSAccountsTest', ...config, stateProvider: {stores}
+    });
+
+    return view
+};
 
 test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', () => {
     test('the view mounts the shared AddAgentForm and keeps no form of its own', () => {
@@ -52,57 +71,63 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
         expect(source).not.toMatch(/never enters App Worker state|not retained in the app worker|dev-server mode/)
     });
 
-    test('an accepted definition lands in the roster and re-fires for the Viewport; the form keeps its outcome line', () => {
+    test('an accepted definition lands in the roster and re-fires for the Viewport; the form keeps its outcome line', async () => {
         const
             store = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]),
-            fired = [],
-            agent = {id: 'canonical-id', githubUsername: 'canonical-login', harnessType: 'claude-desktop', updatedAt: '2026-10-01T00:00:00.000Z'},
-            stub  = {
-                adding                     : false,
-                agentDefinitionsStore      : store,
-                fire                       : (name, data) => fired.push([name, data]),
-                onAddAgentAccepted         : Accounts.prototype.onAddAgentAccepted,
-                upsertPublicAgentDefinition: Accounts.prototype.upsertPublicAgentDefinition
-            };
+            agent = {id: 'canonical-id', githubUsername: 'canonical-login', harnessType: 'claude-desktop', updatedAt: '2026-10-01T00:00:00.000Z'};
 
-        stub.onAddAgentAccepted({agent});
+        let view;
 
-        expect(store.get('canonical-id')?.githubUsername).toBe('canonical-login');
-        expect(store.get('canonical-id')?.harnessType).toBe('claude-desktop');
-        expect(store.get('canonical-id')?.credential).toBeUndefined();
-        // the detail stays on the form, whose status line carries the outcome (a confirmed add can
-        // still say "its working repository is not set")
-        expect(stub.adding).toBe(true);
-        expect(fired).toEqual([['agentDefinitionAccepted', {agent}]]);
+        try {
+            view = await createAccounts({agentDefinitionsStore: store});
+            const fired = [];
+            view.on('agentDefinitionAccepted', data => fired.push(data));
 
-        store.destroy()
+            view.getReference('add-agent-form').fire('agentDefinitionAccepted', {agent});
+
+            expect(store.get('canonical-id')?.githubUsername).toBe('canonical-login');
+            expect(store.get('canonical-id')?.harnessType).toBe('claude-desktop');
+            expect(store.get('canonical-id')?.credential).toBeUndefined();
+            // the detail stays on the form, whose status line carries the outcome (a confirmed add can
+            // still say "its working repository is not set")
+            expect(view.adding).toBe(true);
+            expect(fired).toEqual([{agent, source: view.id}]);
+        } finally {
+            view?.destroy();
+            store.destroy()
+        }
     });
 
-    test('a definition the readback guard refuses is neither written nor re-fired', () => {
+    test('a definition the readback guard refuses is neither written nor re-fired', async () => {
         const
             store = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]),
-            fired = [],
-            stub  = {
-                adding                     : false,
-                agentDefinitionsStore      : store,
-                fire                       : (name, data) => fired.push([name, data]),
-                onAddAgentAccepted         : Accounts.prototype.onAddAgentAccepted,
-                upsertPublicAgentDefinition: Accounts.prototype.upsertPublicAgentDefinition
-            };
+            invalid = [
+                {agent: {id: 'echo', githubUsername: 'echo', harnessType: 'codex', credential: 'ghp_must_not_land'}},
+                {agent: {id: 'no-harness', githubUsername: 'no-harness'}},
+                {}
+            ];
 
-        stub.onAddAgentAccepted({agent: {id: 'echo', githubUsername: 'echo', harnessType: 'codex', credential: 'ghp_must_not_land'}});
-        stub.onAddAgentAccepted({agent: {id: 'no-harness', githubUsername: 'no-harness'}});
-        stub.onAddAgentAccepted({});
+        let view;
 
-        expect(store.count).toBe(1);
-        expect(store.get('echo')).toBeNull();
-        expect(store.get('no-harness')).toBeNull();
-        expect(fired).toEqual([]);
+        try {
+            view = await createAccounts({agentDefinitionsStore: store});
+            const fired = [];
+            view.on('agentDefinitionAccepted', data => fired.push(data));
+            const form = view.getReference('add-agent-form');
 
-        store.destroy()
+            invalid.forEach(data => form.fire('agentDefinitionAccepted', data));
+
+            expect(store.count).toBe(1);
+            expect(store.get('echo')).toBeNull();
+            expect(store.get('no-harness')).toBeNull();
+            expect(fired).toEqual([]);
+        } finally {
+            view?.destroy();
+            store.destroy()
+        }
     });
 
-    test('shell mode mounts the shared form without its token field', () => {
+    test('shell mode mounts the shared form without its token field', async () => {
         const
             previousOS = globalThis.AgentOS,
             bridge     = {credentialIngress: 'shell', defineAgent: async () => ({})};
@@ -113,6 +138,8 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
 
         try {
             view = Neo.create(Accounts, {appName: 'AgentOSAccountsTest'});
+            await view.initVnode();
+            view.mounted = true;
             expect(view.getReference('add-agent-form').items.some(item => item.name === 'credential')).toBe(false)
         } finally {
             view?.destroy();
@@ -162,6 +189,8 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
      * both empty sets are vacuous.
      */
     test('no credential byte reaches browser storage OR the console on an accepted add — real seams, behavioural', async () => {
+        let view;
+
         const
             canonical  = {
                 id            : 'resident-42',
@@ -173,17 +202,6 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
             logged     = [],
             fired      = [],
             store      = makeAgentStore([]),
-            // the view's REAL roster seams; the form below runs the REAL submit and flow. Stubbing
-            // either would delete the very path the credential crosses, and a helper extracted
-            // INSIDE it would leak while every assertion here stayed green — the claim would be
-            // about a boundary the test had removed.
-            view       = {
-                adding                     : true,
-                agentDefinitionsStore      : store,
-                fire                       : (name, data) => fired.push([name, data]),
-                onAddAgentAccepted         : Accounts.prototype.onAddAgentAccepted,
-                upsertPublicAgentDefinition: Accounts.prototype.upsertPublicAgentDefinition
-            },
             form       = Neo.create(AddAgentForm, {
                 appName       : 'AgentOSAccountsTest',
                 bridgeResolver: () => ({defineAgent: async () => canonical, setRepo: async () => ({status: 'accepted', agent: canonical})})
@@ -214,7 +232,9 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
             // install still unwinds everything already installed.
             undo       = [];
 
-        form.on('agentDefinitionAccepted', data => view.onAddAgentAccepted(data));
+        view = await createAccounts({agentDefinitionsStore: store});
+        view.on('agentDefinitionAccepted', data => fired.push(['agentDefinitionAccepted', data]));
+        form.on('agentDefinitionAccepted', data => view.getController().onAddAgentAccepted(data));
         (await form.getField('githubUsername')).value = 'submitted-login';
         (await form.getField('credential')).value     = pat;
 
@@ -247,7 +267,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
         // the positive control: the REAL seams ran to an accepted add, so empty sets mean something
         expect(flowState, 'the accepted-add path must have run through the REAL seams — otherwise both leak checks are vacuous')
             .toBe('readback-confirmed');
-        expect(fired).toEqual([['agentDefinitionAccepted', {agent: canonical}]]);
+        expect(fired).toEqual([['agentDefinitionAccepted', {agent: canonical, source: view.id}]]);
         expect(store.get('resident-42')?.githubUsername, 'the real store must hold the canonical record').toBe('canonical-login');
         expect(store.get('resident-42')?.credential, 'and no credential byte in it').toBeUndefined();
 
@@ -255,21 +275,24 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
         expect(logged, 'no credential byte may reach the console, from ANY module on this path').toEqual([]);
         expect(JSON.stringify([writes, logged])).not.toContain(pat);
 
+        view.destroy();
         store.destroy()
     });
 
     test('identity setup writes only the registry\'s public definition to the shared roster', () => {
-        const source = fs.readFileSync(viewPath, 'utf8');
+        const
+            source = fs.readFileSync(viewPath, 'utf8'),
+            controllerSource = fs.readFileSync(controllerPath, 'utf8');
 
         // upsert goes through the provider-bound roster store with the form's readback, behind the
         // flow's own guard — never a request-derived projection or a module-global singleton import.
         expect(source).toContain("agentDefinitionsStore: 'stores.agentDefinitions'");
         expect(source).toContain("fleetRosterStore     : 'stores.fleetRoster'");
         expect(source).toContain("fleetTenantsStore    : 'stores.fleetTenants'");
-        expect(source).toContain('store.add(definition)');
-        expect(source).toContain('AddAgentFlow.validateReadback(definition)');
-        expect(source).not.toContain("from '../store/AgentDefinitions.mjs'");
-        expect(source).not.toMatch(/store\.add\(\s*values/)
+        expect(controllerSource).toContain('store.add(definition)');
+        expect(controllerSource).toContain('AddAgentFlow.validateReadback(definition)');
+        expect(controllerSource).not.toContain("from '../store/AgentDefinitions.mjs'");
+        expect(controllerSource).not.toMatch(/store\.add\(\s*values/)
     })
 });
 
@@ -507,22 +530,26 @@ test.describe('AgentOS.view.accounts.Panel — master-detail (multiple agents)',
         store.destroy()
     });
 
-    test('the first add from an empty roster keeps the form, and its outcome line, up', () => {
+    test('the first add from an empty roster keeps the form, and its outcome line, up', async () => {
         const store = makeAgentStore([]);
-        const stub  = makeAccounts(store);
+        let view;
 
-        stub.fire                        = () => {};
-        stub.onAddAgentAccepted          = Accounts.prototype.onAddAgentAccepted;
-        stub.upsertPublicAgentDefinition = Accounts.prototype.upsertPublicAgentDefinition;
+        try {
+            view = await createAccounts({agentDefinitionsStore: store});
+            view.getReference('add-agent-form').fire('agentDefinitionAccepted', {
+                agent: {id: 'first', githubUsername: 'first', harnessType: 'codex'}
+            });
 
-        stub.onAddAgentAccepted({agent: {id: 'first', githubUsername: 'first', harnessType: 'codex'}});
-
-        // the store listener ran (the agent is listed) without taking the scope away from the form
-        expect(store.get('first')).not.toBeNull();
-        expect(stub.selectedAgentId).toBeNull();
-        expect(detailOf(stub)).toEqual({card: false, form: true, empty: false, pressed: true});
-
-        store.destroy()
+            // the store listener ran (the agent is listed) without taking the scope away from the form
+            expect(store.get('first')).not.toBeNull();
+            expect(view.selectedAgentId).toBeNull();
+            expect(detailOf({refs: Object.fromEntries([
+                'agent-config-card', 'agent-repos-card', 'add-agent-form', 'accounts-empty', 'add-agent-button'
+            ].map(ref => [ref, view.getReference(ref)]))})).toEqual({card: false, form: true, empty: false, pressed: true});
+        } finally {
+            view?.destroy();
+            store.destroy()
+        }
     });
 
     test('an empty roster opens on the form and says so; a hydrated first definition takes the scope', () => {
@@ -949,41 +976,59 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         const store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
         ]});
+        const priorAgentOS = globalThis.AgentOS;
+        let view;
 
-        const saveStatuses = [],
-              card         = {setSaveStatus: (...args) => saveStatuses.push(args)},
-              stub         = {
-            agentDefinitionsStore   : store,
-            agentConfigSaveStatuses : new Map(),
-            onAgentConfigIntent     : Accounts.prototype.onAgentConfigIntent,
-            setAgentConfigSaveStatus: Accounts.prototype.setAgentConfigSaveStatus,
-            getReference            : ref => ref === 'agent-config-card' ? card : null
-        };
+        try {
+            // Stores are present before the bridge, so construction-time reads fail closed.
+            view = await createAccounts({agentDefinitionsStore: store});
+            const
+                controller   = view.getController(),
+                card         = view.getReference('agent-config-card'),
+                saveStatuses = [],
+                setSaveStatus = card.setSaveStatus.bind(card);
 
-        // no bridge → fail closed, nothing mutates
-        delete globalThis.AgentOS;
-        await stub.onAgentConfigIntent({id: 'ada', harnessType: 'claude-code'});
-        expect(store.get('ada').harnessType).toBe('codex');
+            card.setSaveStatus = (...args) => {
+                saveStatuses.push(args);
+                setSaveStatus(...args)
+            };
 
-        // bridge answers → the RESPONSE (not the request) lands on the record
-        let received;
-        globalThis.AgentOS = {fleet: {registryBridge: {configureAgent: async intent => {
-            received = intent;
-            return {status: 'accepted', agent: {
-                id: 'ada', harnessType: 'native-neo', mcpServers: {'neural-link': false}
-            }}
-        }}}};
+            // no bridge → fail closed, nothing mutates
+            delete globalThis.AgentOS;
+            await controller.onAgentConfigIntent({id: 'ada', harnessType: 'claude-code'});
+            expect(store.get('ada').harnessType).toBe('codex');
 
-        await stub.onAgentConfigIntent({id: 'ada', harnessType: 'claude-code'});
+            // The real card event is wired to the controller; the canonical RESPONSE lands on the Store.
+            let received;
+            globalThis.AgentOS = {fleet: {registryBridge: {
+                configureAgent: async intent => {
+                    received = intent;
+                    return {status: 'accepted', agent: {
+                        id: 'ada', harnessType: 'native-neo', mcpServers: {'neural-link': false}
+                    }}
+                },
+                setRepos: async () => ({status: 'rejected', reason: 'Repository was refused.'})
+            }}};
 
-        const record = store.get('ada');
-        expect(received).toEqual({id: 'ada', harnessType: 'claude-code'});
-        expect(record.harnessType).toBe('native-neo'); // response, not request
-        expect(record.mcpServers).toEqual({'neural-link': false});
-        expect(saveStatuses.map(entry => entry[1])).toEqual(['pending', 'rejected', 'pending', 'accepted']);
+            card.fire('configIntent', {id: 'ada', harnessType: 'claude-code'});
+            await new Promise(resolve => setTimeout(resolve, 0));
 
-        delete globalThis.AgentOS;
-        store.destroy()
+            const record = store.get('ada');
+            expect(received).toEqual({id: 'ada', harnessType: 'claude-code'});
+            expect(record.harnessType).toBe('native-neo'); // response, not request
+            expect(record.mcpServers).toEqual({'neural-link': false});
+            const states = saveStatuses.map(entry => entry[1]);
+            expect(states.filter((state, index) => state !== states[index - 1]))
+                .toEqual(['pending', 'rejected', 'pending', 'accepted']);
+
+            await controller.onAgentReposIntent({id: 'ada', repos: []});
+            expect(view.agentConfigSaveStatuses.get('ada')).toMatchObject({state: 'accepted', reason: 'Configuration saved.'});
+            expect(view.agentReposSaveStatuses.get('ada')).toMatchObject({state: 'rejected', reason: 'Repository was refused.'});
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            store.destroy()
+        }
     });
 
     test('a stale out-of-order save response cannot regress the newer canonical readback', async () => {
@@ -992,89 +1037,94 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
                 {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
             ]}),
             deferred = [],
-            card     = {setSaveStatus: () => {}},
-            stub     = {
-                agentDefinitionsStore         : store,
-                agentDefinitionsLoadGeneration: 0,
-                agentConfigSaveStatuses       : new Map(),
-                onAgentConfigIntent           : Accounts.prototype.onAgentConfigIntent,
-                setAgentConfigSaveStatus      : Accounts.prototype.setAgentConfigSaveStatus,
-                getReference                  : () => card
-            };
+            priorAgentOS = globalThis.AgentOS;
+        let view;
 
-        globalThis.AgentOS = {fleet: {registryBridge: {configureAgent: intent => new Promise(resolve => {
-            deferred.push({intent, resolve})
-        })}}};
+        try {
+            view = await createAccounts({agentDefinitionsStore: store});
+            const controller = view.getController();
+            globalThis.AgentOS = {fleet: {registryBridge: {configureAgent: intent => new Promise(resolve => {
+                deferred.push({intent, resolve})
+            })}}};
 
-        const older = stub.onAgentConfigIntent({id: 'ada', harnessType: 'claude-code'});
-        // Simulate a non-card caller bypassing the pending UI latch: the generation guard is the
-        // final defense when two transport responses still overlap.
-        stub.agentConfigSaveStatuses.set('ada', {state: 'idle', reason: ''});
-        const newer = stub.onAgentConfigIntent({id: 'ada', harnessType: 'native-neo'});
+            const older = controller.onAgentConfigIntent({id: 'ada', harnessType: 'claude-code'});
+            // Simulate a non-card caller bypassing the pending UI latch: the generation guard is the
+            // final defense when two transport responses still overlap.
+            view.agentConfigSaveStatuses.set('ada', {state: 'idle', reason: ''});
+            const newer = controller.onAgentConfigIntent({id: 'ada', harnessType: 'native-neo'});
 
-        deferred[1].resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo', mcpServers: null}});
-        await newer;
-        deferred[0].resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'claude-code', mcpServers: null}});
-        await older;
+            deferred[1].resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo', mcpServers: null}});
+            await newer;
+            deferred[0].resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'claude-code', mcpServers: null}});
+            await older;
 
-        expect(deferred.map(entry => entry.intent.harnessType)).toEqual(['claude-code', 'native-neo']);
-        expect(store.get('ada').harnessType).toBe('native-neo');
-        expect(stub.agentConfigSaveStatuses.get('ada').state).toBe('accepted');
-
-        delete globalThis.AgentOS;
-        store.destroy()
+            expect(deferred.map(entry => entry.intent.harnessType)).toEqual(['claude-code', 'native-neo']);
+            expect(store.get('ada').harnessType).toBe('native-neo');
+            expect(view.agentConfigSaveStatuses.get('ada').state).toBe('accepted');
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            store.destroy()
+        }
     });
 
     test('a rejected domain outcome renders its reason and leaves the real record untouched', async () => {
         const store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
         ]});
-        const saveStatuses = [];
-        const stub         = {
-            agentDefinitionsStore         : store,
-            agentDefinitionsLoadGeneration: 0,
-            agentConfigSaveStatuses       : new Map(),
-            onAgentConfigIntent           : Accounts.prototype.onAgentConfigIntent,
-            setAgentConfigSaveStatus      : Accounts.prototype.setAgentConfigSaveStatus,
-            getReference                  : () => ({setSaveStatus: (...args) => saveStatuses.push(args)})
-        };
-        globalThis.AgentOS = {fleet: {registryBridge: {configureAgent: async () => ({
-            status: 'rejected', reason: "Unknown MCP server 'bogus'."
-        })}}};
+        const priorAgentOS = globalThis.AgentOS;
+        let view;
 
-        await stub.onAgentConfigIntent({id: 'ada', mcpServers: {bogus: true}});
+        try {
+            view = await createAccounts({agentDefinitionsStore: store});
+            const
+                card          = view.getReference('agent-config-card'),
+                saveStatuses  = [],
+                setSaveStatus = card.setSaveStatus.bind(card);
 
-        expect(store.get('ada').harnessType).toBe('codex');
-        expect(saveStatuses.at(-1)).toEqual(['ada', 'rejected', "Unknown MCP server 'bogus'."]);
+            card.setSaveStatus = (...args) => {
+                saveStatuses.push(args);
+                setSaveStatus(...args)
+            };
+            globalThis.AgentOS = {fleet: {registryBridge: {configureAgent: async () => ({
+                status: 'rejected', reason: "Unknown MCP server 'bogus'."
+            })}}};
 
-        delete globalThis.AgentOS;
-        store.destroy()
+            await view.getController().onAgentConfigIntent({id: 'ada', mcpServers: {bogus: true}});
+
+            expect(store.get('ada').harnessType).toBe('codex');
+            expect(saveStatuses.at(-1)).toEqual(['ada', 'rejected', "Unknown MCP server 'bogus'."]);
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            store.destroy()
+        }
     });
 
     test('cold hydration replaces the store from canonical listAgents; failure preserves last state', async () => {
         const store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'stale', githubUsername: 'stale', harnessType: 'codex'}
         ]});
-        const stub = {
-            agentDefinitionsStore         : store,
-            agentDefinitionsLoadGeneration: 0,
-            syncSelection                 : () => {},
-            loadAgentDefinitions          : Accounts.prototype.loadAgentDefinitions
-        };
+        const priorAgentOS = globalThis.AgentOS;
+        let view;
 
-        globalThis.AgentOS = {fleet: {registryBridge: {listAgents: async () => [{
-            id: 'canonical', githubUsername: 'canonical', harnessType: 'claude-code', mcpServers: {'memory-core': false}
-        }]}}};
-        await expect(stub.loadAgentDefinitions()).resolves.toBe(true);
-        expect(store.get('stale')).toBeNull();
-        expect(store.get('canonical').mcpServers).toEqual({'memory-core': false});
+        try {
+            view = await createAccounts({agentDefinitionsStore: store});
+            globalThis.AgentOS = {fleet: {registryBridge: {listAgents: async () => [{
+                id: 'canonical', githubUsername: 'canonical', harnessType: 'claude-code', mcpServers: {'memory-core': false}
+            }]}}};
+            await expect(view.getController().loadAgentDefinitions()).resolves.toBe(true);
+            expect(store.get('stale')).toBeNull();
+            expect(store.get('canonical').mcpServers).toEqual({'memory-core': false});
 
-        globalThis.AgentOS.fleet.registryBridge.listAgents = async () => { throw new Error('offline') };
-        await expect(stub.loadAgentDefinitions()).resolves.toBe(false);
-        expect(store.get('canonical').harnessType).toBe('claude-code');
-
-        delete globalThis.AgentOS;
-        store.destroy()
+            globalThis.AgentOS.fleet.registryBridge.listAgents = async () => { throw new Error('offline') };
+            await expect(view.getController().loadAgentDefinitions()).resolves.toBe(false);
+            expect(store.get('canonical').harnessType).toBe('claude-code');
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            store.destroy()
+        }
     });
 
     test('tenant hydration curates public fields and preserves last-known rows on malformed or failed reads', async () => {
@@ -1082,43 +1132,45 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             tenants = Neo.create(FleetTenants, {data: [{
                 id: 'placeholder', endpoint: 'https://placeholder.example.com', status: 'connected'
             }]}),
-            stub    = {
-                fleetTenantsStore         : tenants,
-                fleetTenantsLoadGeneration: 0,
-                loadFleetTenants          : Accounts.prototype.loadFleetTenants
-            };
+            priorAgentOS = globalThis.AgentOS;
+        let view;
 
-        globalThis.AgentOS = {fleet: {registryBridge: {listTenants: async () => [{
-            id             : 'tenant-a',
-            endpoint       : 'https://tenant.example.com/agentos',
-            status         : 'connected',
-            deploymentClass: 'cloud-tenant',
-            connectedAt    : '2026-07-27T00:00:00.000Z',
-            credential     : 'must-not-cross',
-            headers        : {Authorization: 'Bearer secret'}
-        }]}}};
+        try {
+            view = await createAccounts({fleetTenantsStore: tenants});
+            globalThis.AgentOS = {fleet: {registryBridge: {listTenants: async () => [{
+                id             : 'tenant-a',
+                endpoint       : 'https://tenant.example.com/agentos',
+                status         : 'connected',
+                deploymentClass: 'cloud-tenant',
+                connectedAt    : '2026-07-27T00:00:00.000Z',
+                credential     : 'must-not-cross',
+                headers        : {Authorization: 'Bearer secret'}
+            }]}}};
 
-        await expect(stub.loadFleetTenants()).resolves.toBe(true);
-        expect(tenants.get('placeholder')).toBeNull();
-        expect(tenants.get('tenant-a').toJSON()).toEqual({
-            id             : 'tenant-a',
-            endpoint       : 'https://tenant.example.com/agentos',
-            status         : 'connected',
-            deploymentClass: 'cloud-tenant',
-            connectedAt    : '2026-07-27T00:00:00.000Z'
-        });
-        expect(JSON.stringify(tenants.get('tenant-a'))).not.toContain('must-not-cross');
-        expect(JSON.stringify(tenants.get('tenant-a'))).not.toContain('Authorization');
+            await expect(view.getController().loadFleetTenants()).resolves.toBe(true);
+            expect(tenants.get('placeholder')).toBeNull();
+            expect(tenants.get('tenant-a').toJSON()).toEqual({
+                id             : 'tenant-a',
+                endpoint       : 'https://tenant.example.com/agentos',
+                status         : 'connected',
+                deploymentClass: 'cloud-tenant',
+                connectedAt    : '2026-07-27T00:00:00.000Z'
+            });
+            expect(JSON.stringify(tenants.get('tenant-a'))).not.toContain('must-not-cross');
+            expect(JSON.stringify(tenants.get('tenant-a'))).not.toContain('Authorization');
 
-        globalThis.AgentOS.fleet.registryBridge.listTenants = async () => [{id: 'broken'}];
-        await expect(stub.loadFleetTenants()).resolves.toBe(false);
-        expect(tenants.get('tenant-a').status).toBe('connected');
+            globalThis.AgentOS.fleet.registryBridge.listTenants = async () => [{id: 'broken'}];
+            await expect(view.getController().loadFleetTenants()).resolves.toBe(false);
+            expect(tenants.get('tenant-a').status).toBe('connected');
 
-        globalThis.AgentOS.fleet.registryBridge.listTenants = async () => { throw new Error('offline') };
-        await expect(stub.loadFleetTenants()).resolves.toBe(false);
-        expect(tenants.get('tenant-a').endpoint).toBe('https://tenant.example.com/agentos');
-
-        tenants.destroy()
+            globalThis.AgentOS.fleet.registryBridge.listTenants = async () => { throw new Error('offline') };
+            await expect(view.getController().loadFleetTenants()).resolves.toBe(false);
+            expect(tenants.get('tenant-a').endpoint).toBe('https://tenant.example.com/agentos');
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            tenants.destroy()
+        }
     });
 
     test('only the newest tenant-list response may replace the provider Store', async () => {
@@ -1127,78 +1179,213 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
                 id: 'kept', endpoint: 'https://kept.example.com', status: 'connected'
             }]}),
             deferred = [],
-            stub     = {
-                fleetTenantsStore         : tenants,
-                fleetTenantsLoadGeneration: 0,
-                loadFleetTenants          : Accounts.prototype.loadFleetTenants
+            priorAgentOS = globalThis.AgentOS;
+        let view;
+
+        try {
+            view = await createAccounts({fleetTenantsStore: tenants});
+            globalThis.AgentOS = {fleet: {registryBridge: {listTenants: () => new Promise(resolve => {
+                deferred.push(resolve)
+            })}}};
+
+            const older = view.getController().loadFleetTenants();
+            const newer = view.getController().loadFleetTenants();
+
+            deferred[1]([{
+                id: 'newer', endpoint: 'https://newer.example.com', status: 'connected'
+            }]);
+            await expect(newer).resolves.toBe(true);
+
+            deferred[0]([{
+                id: 'older', endpoint: 'https://older.example.com', status: 'connected'
+            }]);
+            await expect(older).resolves.toBe(false);
+
+            expect(tenants.get('newer')).not.toBeNull();
+            expect(tenants.get('older')).toBeNull();
+            expect(tenants.get('kept')).toBeNull();
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            tenants.destroy()
+        }
+    });
+
+    test('a replaced definitions or tenant Store rejects the old in-flight read', async () => {
+        const
+            definitions = makeAgentStore([{id: 'kept-definition', githubUsername: 'kept', harnessType: 'codex'}]),
+            nextDefinitions = makeAgentStore([{id: 'replacement-definition', githubUsername: 'replacement', harnessType: 'codex'}]),
+            tenants = Neo.create(FleetTenants, {data: [{id: 'kept-tenant', endpoint: 'https://kept.example.com', status: 'connected'}]}),
+            nextTenants = Neo.create(FleetTenants, {data: [{id: 'replacement-tenant', endpoint: 'https://replacement.example.com', status: 'connected'}]}),
+            pending = [],
+            priorAgentOS = globalThis.AgentOS;
+        let view;
+
+        try {
+            view = await createAccounts({agentDefinitionsStore: definitions, fleetTenantsStore: tenants});
+            globalThis.AgentOS = {fleet: {registryBridge: {
+                listAgents: () => new Promise(resolve => pending.push({kind: 'definitions', resolve})),
+                listTenants: () => new Promise(resolve => pending.push({kind: 'tenants', resolve}))
+            }}};
+
+            const oldDefinitionsRead = view.getController().loadAgentDefinitions();
+            const oldTenantsRead = view.getController().loadFleetTenants();
+            await Promise.resolve();
+
+            // Let the binding hooks observe the new provider Stores without launching extra reads.
+            delete globalThis.AgentOS;
+            view.agentDefinitionsStore = nextDefinitions;
+            view.fleetTenantsStore = nextTenants;
+
+            pending.find(entry => entry.kind === 'definitions').resolve([
+                {id: 'stale-definition', githubUsername: 'stale', harnessType: 'codex'}
+            ]);
+            pending.find(entry => entry.kind === 'tenants').resolve([
+                {id: 'stale-tenant', endpoint: 'https://stale.example.com', status: 'connected'}
+            ]);
+
+            await expect(oldDefinitionsRead).resolves.toBe(false);
+            await expect(oldTenantsRead).resolves.toBe(false);
+            expect(definitions.get('kept-definition')).not.toBeNull();
+            expect(nextDefinitions.get('replacement-definition')).not.toBeNull();
+            expect(tenants.get('kept-tenant')).not.toBeNull();
+            expect(nextTenants.get('replacement-tenant')).not.toBeNull();
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            definitions.destroy();
+            nextDefinitions.destroy();
+            tenants.destroy();
+            nextTenants.destroy()
+        }
+    });
+
+    test('a replacement Store retires pending statuses for matching agent ids', async () => {
+        const
+            store = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
+            replacement = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
+            priorAgentOS = globalThis.AgentOS;
+        let view, resolveConfig, resolveRepos;
+
+        try {
+            view = await createAccounts({agentDefinitionsStore: store});
+            globalThis.AgentOS = {fleet: {registryBridge: {
+                configureAgent: () => new Promise(resolve => resolveConfig = resolve),
+                setRepos: () => new Promise(resolve => resolveRepos = resolve)
+            }}};
+
+            const controller = view.getController();
+            const config = controller.onAgentConfigIntent({id: 'ada', harnessType: 'native-neo'});
+            const repos = controller.onAgentReposIntent({id: 'ada', repos: []});
+            expect(view.agentConfigSaveStatuses.get('ada').state).toBe('pending');
+            expect(view.agentReposSaveStatuses.get('ada').state).toBe('pending');
+
+            view.agentDefinitionsStore = replacement;
+            expect(view.getReference('agent-config-card').saveStatus.state).toBe('idle');
+            expect(view.agentConfigSaveStatuses.size).toBe(0);
+            expect(view.agentReposSaveStatuses.size).toBe(0);
+
+            resolveConfig({status: 'rejected', reason: 'old config'});
+            resolveRepos({status: 'rejected', reason: 'old repos'});
+            await Promise.all([config, repos]);
+            expect(view.agentConfigSaveStatuses.size).toBe(0);
+            expect(view.agentReposSaveStatuses.size).toBe(0);
+            expect(replacement.get('ada').harnessType).toBe('codex');
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            store.destroy();
+            replacement.destroy()
+        }
+    });
+
+    test('destroyed owner discards pending reads and never paints a late save status', async () => {
+        const
+            definitions = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
+            tenants = Neo.create(FleetTenants, {data: [{id: 'kept-tenant', endpoint: 'https://kept.example.com', status: 'connected'}]}),
+            priorAgentOS = globalThis.AgentOS;
+        let view, resolveAgents, resolveTenants, resolveConfig;
+
+        try {
+            view = await createAccounts({agentDefinitionsStore: definitions, fleetTenantsStore: tenants});
+            globalThis.AgentOS = {fleet: {registryBridge: {
+                listAgents: () => new Promise(resolve => resolveAgents = resolve),
+                listTenants: () => new Promise(resolve => resolveTenants = resolve),
+                configureAgent: () => new Promise(resolve => resolveConfig = resolve)
+            }}};
+
+            const controller = view.getController();
+            const configStatuses = [];
+            const card = view.getReference('agent-config-card');
+            const setSaveStatus = card.setSaveStatus.bind(card);
+            card.setSaveStatus = (...args) => {
+                configStatuses.push(args);
+                setSaveStatus(...args)
             };
 
-        globalThis.AgentOS = {fleet: {registryBridge: {listTenants: () => new Promise(resolve => {
-            deferred.push(resolve)
-        })}}};
+            const definitionsRead = controller.loadAgentDefinitions();
+            const tenantsRead = controller.loadFleetTenants();
+            const configSave = controller.onAgentConfigIntent({id: 'ada', harnessType: 'native-neo'});
+            expect(configStatuses.map(entry => entry[1])).toEqual(['pending']);
 
-        const older = stub.loadFleetTenants();
-        const newer = stub.loadFleetTenants();
+            view.destroy();
+            resolveAgents([{id: 'late-definition', githubUsername: 'late', harnessType: 'codex'}]);
+            resolveTenants([{id: 'late-tenant', endpoint: 'https://late.example.com', status: 'connected'}]);
+            resolveConfig({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo', mcpServers: null}});
 
-        deferred[1]([{
-            id: 'newer', endpoint: 'https://newer.example.com', status: 'connected'
-        }]);
-        await expect(newer).resolves.toBe(true);
+            await expect(definitionsRead).resolves.toBe(false);
+            await expect(tenantsRead).resolves.toBe(false);
+            await configSave;
 
-        deferred[0]([{
-            id: 'older', endpoint: 'https://older.example.com', status: 'connected'
-        }]);
-        await expect(older).resolves.toBe(false);
-
-        expect(tenants.get('newer')).not.toBeNull();
-        expect(tenants.get('older')).toBeNull();
-        expect(tenants.get('kept')).toBeNull();
-
-        tenants.destroy()
+            expect(definitions.get('late-definition')).toBeNull();
+            expect(tenants.get('late-tenant')).toBeNull();
+            // ConfigIntentRoundTrip keeps canonical admission against the original provider Store;
+            // the destroyed component and its status line receive no late paint.
+            expect(definitions.get('ada').harnessType).toBe('native-neo');
+            expect(configStatuses.map(entry => entry[1])).toEqual(['pending']);
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            definitions.destroy();
+            tenants.destroy()
+        }
     });
 
     test('an accepted readback from ANOTHER owner invalidates an older in-flight boot list (#15440)', async () => {
         const store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
         ]});
-        const stub = {
-            agentDefinitionsStore         : store,
-            agentDefinitionsLoadGeneration: 0,
-            syncSelection                 : () => {},
-            loadAgentDefinitions          : Accounts.prototype.loadAgentDefinitions
-        };
+        const priorAgentOS = globalThis.AgentOS;
+        let view, resolveList;
 
-        let resolveList;
+        try {
+            view = await createAccounts({agentDefinitionsStore: store});
+            globalThis.AgentOS = {fleet: {registryBridge: {
+                listAgents    : () => new Promise(resolve => resolveList = resolve),
+                configureAgent: async () => ({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo', mcpServers: null}})
+            }}};
 
-        const priorFleet = globalThis.AgentOS?.fleet;
+            // The boot list goes in flight…
+            const load = view.getController().loadAgentDefinitions();
 
-        globalThis.AgentOS ??= {};
-        globalThis.AgentOS.fleet = {registryBridge: {
-            listAgents    : () => new Promise(resolve => resolveList = resolve),
-            configureAgent: async () => ({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo', mcpServers: null}})
-        }};
+            // …and the detail owner lands an accepted configure readback meanwhile.
+            await ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+                intent       : {id: 'ada', harnessType: 'native-neo'},
+                owner        : {},
+                setSaveStatus: () => {},
+                store
+            });
 
-        // Accounts' boot list goes in flight…
-        const load = stub.loadAgentDefinitions();
+            expect(store.get('ada').harnessType).toBe('native-neo');
 
-        // …and the DETAIL owner (a different surface — Accounts' own onAcceptedReadback hook
-        // never runs) lands an accepted configure readback meanwhile
-        await ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-            intent       : {id: 'ada', harnessType: 'native-neo'},
-            owner        : {},
-            setSaveStatus: () => {},
-            store
-        });
-
-        expect(store.get('ada').harnessType).toBe('native-neo');
-
-        // the OLDER list snapshot answers with pre-write truth — the shared write generation
-        // moved while it flew, so the whole snapshot is discarded and nothing regresses
-        resolveList([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]);
-        await expect(load).resolves.toBe(false);
-        expect(store.get('ada').harnessType).toBe('native-neo');
-
-        globalThis.AgentOS.fleet = priorFleet;
-        store.destroy()
+            // The older list snapshot carries pre-write truth and must be discarded.
+            resolveList([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]);
+            await expect(load).resolves.toBe(false);
+            expect(store.get('ada').harnessType).toBe('native-neo');
+        } finally {
+            globalThis.AgentOS = priorAgentOS;
+            view?.destroy();
+            store.destroy()
+        }
     });
 });
