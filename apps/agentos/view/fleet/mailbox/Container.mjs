@@ -136,10 +136,13 @@ class MailboxPane extends Container {
          * @member {Object[]} items
          */
         items: [{
-            ntype : 'container',
-            cls   : ['fm-pane-head'],
-            flex  : 'none',
-            layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+            // the head is also the host's slot: a host adds its own affordance here by reference
+            // (the operator host adds compose), after the title and the freshness chip
+            ntype    : 'container',
+            cls      : ['fm-pane-head'],
+            flex     : 'none',
+            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+            reference: 'mailbox-head',
 
             items: [{
                 ntype    : 'component',

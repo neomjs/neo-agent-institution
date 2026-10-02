@@ -76,6 +76,8 @@ test.describe('AgentOS operator mailbox mounted delivery journey (#15377)', () =
             const mailboxTab = page.getByRole('tab', {name: 'Mailbox', exact: true});
             await expect(mailboxTab).toHaveCount(1);
             await mailboxTab.click();
+            // compose is a reveal behind the inbox head's chip (the design page's placement)
+            await page.locator('.fm-compose-affordance').first().click();
             const mailboxPane = page.locator('.fm-operator-mailbox');
             await expect(mailboxPane).toBeVisible({timeout: 10000});
             await expect(mailboxPane).toContainText('No active messages for @e2e-operator');
