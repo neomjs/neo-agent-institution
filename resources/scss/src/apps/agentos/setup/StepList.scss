@@ -1,0 +1,90 @@
+/* The recipe's step rows: [glyph] [status word] [step] [reason …] [action]. Two channels for every
+   status — the glyph and the word — never hue alone; `unknown` is an indicator, so it keeps the dim
+   ink and never the faint one. A row without an action keeps an invisible chip so the column keeps
+   its rhythm (the exception-only rule). */
+.fm-setup-steps.neo-list {
+    margin    : var(--fm-space-3) var(--fm-space-3) 0;
+    padding   : 0;
+    border-top: 1px solid var(--fm-line-soft);
+    background: transparent;
+    list-style: none;
+
+    .neo-list-item {
+        display              : grid;
+        grid-template-columns: 14px 118px 112px 1fr auto;
+        gap                  : 0 var(--fm-space-2);
+        align-items          : baseline;
+        padding              : 5px 0;
+        border-bottom        : 1px solid var(--fm-line-soft);
+        background           : transparent;
+        color                : var(--fm-ink-dim);
+        cursor               : default;
+        /* the reason is the operator's decision material: the row grows to as many lines as it
+           needs (the engine's list rows are nowrap by default) */
+        white-space          : normal;
+
+        &:hover {
+            background: transparent;
+        }
+    }
+
+    .fm-setup-step-glyph {
+        font      : var(--fm-text-detail);
+        text-align: center;
+    }
+
+    .fm-setup-step-status {
+        font: var(--fm-text-micro);
+    }
+
+    .fm-setup-step-id {
+        font : var(--fm-text-detail);
+        color: var(--fm-ink);
+    }
+
+    .fm-setup-step-reason {
+        font         : var(--fm-text-detail);
+        overflow-wrap: anywhere;
+    }
+
+    .fm-setup-step-action {
+        font         : var(--fm-text-micro);
+        border       : 1px solid var(--fm-line);
+        border-radius: 4px;
+        padding      : 1px 7px;
+        background   : var(--fm-panel-2);
+        color        : var(--fm-ink-dim);
+        white-space  : nowrap;
+        cursor       : pointer;
+
+        &.is-none {
+            visibility: hidden;
+        }
+    }
+
+    .neo-list-item.is-ok .fm-setup-step-glyph {
+        color: var(--fm-signal);
+    }
+
+    .neo-list-item.is-failed {
+        .fm-setup-step-glyph,
+        .fm-setup-step-status {
+            color: var(--fm-state-wedged);
+        }
+
+        .fm-setup-step-reason {
+            color: var(--fm-ink);
+        }
+    }
+
+    .neo-list-item.is-reconcile-required {
+        .fm-setup-step-glyph,
+        .fm-setup-step-status {
+            color: var(--fm-state-limited);
+        }
+
+        .fm-setup-step-reason {
+            color: var(--fm-ink);
+        }
+    }
+}

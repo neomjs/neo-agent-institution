@@ -15,7 +15,7 @@ import FleetCockpit       from '../../../../../apps/agentos/view/fleet/cockpit/C
 import FleetRoster        from '../../../../../apps/agentos/store/FleetRoster.mjs';
 import FleetTenants       from '../../../../../apps/agentos/store/FleetTenants.mjs';
 import {deriveFleetProfileId} from '../../../../../apps/agentos/fleet/connectionProfiles.mjs';
-import PlaneSetupPanel    from '../../../../../apps/agentos/view/PlaneSetupPanel.mjs';
+import SetupPanel         from '../../../../../apps/agentos/view/setup/Panel.mjs';
 import Viewport           from '../../../../../apps/agentos/view/Viewport.mjs';
 import ViewportController from '../../../../../apps/agentos/view/ViewportController.mjs';
 
@@ -128,10 +128,31 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         return {inserted, published}
     }
 
-    test('a packaged shell with no plane gets the card, above the shell', async () => {
+    /**
+     * The card's inserted config, with the door the shell's status chose: the listeners are the
+     * controller's own handlers by name.
+     */
+    const cardConfig = activeDoor => ({
+        module   : SetupPanel,
+        activeDoor,
+        flex     : 'none',
+        listeners: {firstPersistence: 'onSetupFirstPersistence', openMemories: 'onSetupOpenMemories'},
+        reference: 'plane-setup'
+    });
+
+    test('a packaged shell with no plane gets the card, above the shell, on the Create door', async () => {
         const {inserted} = await mountWith(async () => ({available: true, packaged: true, configured: false}));
 
-        expect(inserted).toEqual([{index: 1, config: {module: PlaneSetupPanel, flex: 'none', reference: 'plane-setup'}}])
+        expect(inserted).toEqual([{index: 1, config: cardConfig('create')}])
+    });
+
+    test('a plane already running on this machine opens the Connect door first (one plane per host)', async () => {
+        const {inserted} = await mountWith(async () => ({available: true, packaged: true, configured: false}), async controller => {
+            Neo.main.addon.ShellPlane.setupProbe = async () => ({ok: true, probe: {runningPlane: {project: 'neo-local-agent-os'}}});
+            await controller.mountPlaneSetup()
+        });
+
+        expect(inserted).toEqual([{index: 1, config: cardConfig('connect')}])
     });
 
     test('Home learns whether the shell has a plane: false and true only for a packaged shell, null otherwise (#244)', async () => {
@@ -179,16 +200,22 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         controller.mountPlaneSetup = async options => { mounts.push(options) };
 
         await controller.showPlaneSetup();
-        expect(mounts, 'no card yet: it mounts on request, configured plane or not').toEqual([{force: true}])
+        expect(mounts, 'no card yet: it mounts on request, configured plane or not').toEqual([{door: null, force: true}]);
+
+        // a request can name the door: a shown card switches, a mounted one opens on it
+        card.hidden = true;
+        controller.getReference = reference => reference === 'plane-setup' ? card : null;
+        await controller.showPlaneSetup({door: 'connect'});
+        expect(card, 'the named door opens on the shown card').toMatchObject({activeDoor: 'connect', hidden: false})
     });
 
-    test('a request mounts the card for a configured shell too: another plane, or one that refused this shell (#241)', async () => {
+    test('a request mounts the card for a configured shell too, on the Connect door: another plane, or one that refused this shell (#241)', async () => {
         const {inserted} = await mountWith(
             async () => ({available: true, packaged: true, configured: true, planeBase: 'http://127.0.0.1:3102'}),
             controller => controller.showPlaneSetup()
         );
 
-        expect(inserted).toEqual([{index: 1, config: {module: PlaneSetupPanel, flex: 'none', reference: 'plane-setup'}}]);
+        expect(inserted).toEqual([{index: 1, config: cardConfig('connect')}]);
 
         expect((await mountWith(async () => ({available: false}), controller => controller.showPlaneSetup())).inserted, 'a browser still gets none').toEqual([])
     });
