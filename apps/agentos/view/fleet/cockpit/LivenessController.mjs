@@ -1,11 +1,12 @@
-import ComponentController from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
-import BrainHealthRead     from '../../../util/BrainHealthRead.mjs';
-import DeploymentStateRead from '../../../util/DeploymentStateRead.mjs';
-import FleetAdmission      from '../../../util/FleetAdmission.mjs';
-import LivenessCadence     from '../../../util/LivenessCadence.mjs';
-import RosterRow           from '../../../util/RosterRow.mjs';
-import SourceHealth        from '../../../util/SourceHealth.mjs';
-import TargetBinding       from '../../../util/TargetBinding.mjs';
+import ComponentController  from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import BrainHealthRead      from '../../../util/BrainHealthRead.mjs';
+import DeploymentStateRead  from '../../../util/DeploymentStateRead.mjs';
+import FleetAdmission       from '../../../util/FleetAdmission.mjs';
+import LivenessCadence      from '../../../util/LivenessCadence.mjs';
+import PlaneCredentialCheck from '../../../util/PlaneCredentialCheck.mjs';
+import RosterRow            from '../../../util/RosterRow.mjs';
+import SourceHealth         from '../../../util/SourceHealth.mjs';
+import TargetBinding        from '../../../util/TargetBinding.mjs';
 
 const
     /**
@@ -95,6 +96,14 @@ class LivenessController extends ComponentController {
      * @protected
      */
     gridReadInFlight = 0
+    /**
+     * The open episode's token, from a failed roster read until one answers: the shell is asked about
+     * the plane credential once per episode, and only the asking episode's answer is published
+     * ({@link AgentOS.util.PlaneCredentialCheck}).
+     * @member {Symbol|null} planeCheckEpisode=null
+     * @protected
+     */
+    planeCheckEpisode = null
     /**
      * The last mapped LIVE roster rows — the vessel-return reconcile source.
      * @member {Object[]|null} lastLiveRows=null
@@ -374,7 +383,8 @@ class LivenessController extends ComponentController {
             me.admitRoster({capabilities, profileId, rows: mapped})
         } catch (error) {
             if (generation === me.gridReadGeneration && !me.isDestroyed) {
-                me.degradeWiredSurface('grid', error, grid)
+                me.degradeWiredSurface('grid', error, grid);
+                PlaneCredentialCheck.ask(me, error?.fleetConnectionState)
             }
         }
     }
@@ -399,7 +409,8 @@ class LivenessController extends ComponentController {
      * @protected
      */
     admitRoster(answer) {
-        FleetAdmission.admitRoster(this, answer)
+        FleetAdmission.admitRoster(this, answer);
+        PlaneCredentialCheck.settle(this)
     }
 
     /**

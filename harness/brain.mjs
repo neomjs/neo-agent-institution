@@ -257,6 +257,20 @@ export function planeProbeCause(answer, storedIdentity) {
 }
 
 /**
+ * @summary The cause a plane probe's answer names while the shell runs, or `null` when the stored PAT
+ * is not what failed. Only the credential's own answers count: a plane that does not answer, or answers
+ * as no plane, is a transport fact mid-session, and Reconnect is the action that fits it.
+ * @param {Object|null} answer `{verdict, identity}` from `probePlaneCredential`, or `null` when it threw.
+ * @param {String|null} storedIdentity The identity the stored plane record was saved with.
+ * @returns {String|null} `plane-credential-refused`, `plane-identity-changed`, or `null`.
+ */
+export function runtimePlaneCause(answer, storedIdentity) {
+    const cause = planeProbeCause(answer, storedIdentity);
+
+    return cause === 'plane-credential-refused' || cause === 'plane-identity-changed' ? cause : null
+}
+
+/**
  * How long a failed boot waits for the plane probe as a whole. The probe bounds each request at 8 s, so a
  * plane that never answers its first request still reads as unreachable; one that answers too slowly
  * across its hops stays `plane-refused`.

@@ -39,6 +39,7 @@ import {
     resolveSmokeRoot,
     resolveUiFleetTransport,
     runBrainScript,
+    runtimePlaneCause,
     startBrainChild,
     stopBrainChild,
     stopBrainTree,
@@ -396,6 +397,16 @@ test.describe('harness brain lifecycle', () => {
         expect(planeProbeCause({verdict: 'accepted', identity: '@ada'}, '@ada'), 'the plane admits the stored account').toBe('plane-refused');
         expect(planeProbeCause({verdict: 'no-identity', identity: null}, '@ada')).toBe('plane-refused');
         expect(planeProbeCause(null, '@ada'), 'a probe that threw tells nothing apart').toBe('plane-refused')
+    });
+
+    test('while the shell runs, only the credential\'s own answers name a cause', () => {
+        expect(runtimePlaneCause({verdict: 'rejected', identity: null}, '@ada')).toBe('plane-credential-refused');
+        expect(runtimePlaneCause({verdict: 'accepted', identity: '@grace'}, '@ada')).toBe('plane-identity-changed');
+        expect(runtimePlaneCause({verdict: 'accepted', identity: '@ada'}, '@ada'), 'the PAT still holds').toBe(null);
+        expect(runtimePlaneCause({verdict: 'unreachable', identity: null}, '@ada'), 'a plane restarting mid-session').toBe(null);
+        expect(runtimePlaneCause({verdict: 'not-a-plane', identity: null}, '@ada')).toBe(null);
+        expect(runtimePlaneCause({verdict: 'no-identity', identity: null}, '@ada')).toBe(null);
+        expect(runtimePlaneCause(null, '@ada'), 'a probe that threw').toBe(null)
     });
 
     test('typePlaneRefusal asks the plane once with the stored record and names it by address, never by credential', async () => {

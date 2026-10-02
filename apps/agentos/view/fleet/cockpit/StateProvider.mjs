@@ -13,6 +13,7 @@ import ViewerWakeFeed      from '../../../store/ViewerWakeFeed.mjs';
 const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
     daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason, cause: data.daemonCause},
     grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason, connection: data.gridConnection},
+    plane    : {cause: data.planeCause},
     stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection},
     transport: data.shellTransport
 });
@@ -97,6 +98,14 @@ class StateProvider extends Provider {
              * @member {Object} perspectives={applyNote:null,captureNote:null,items:[]}
              */
             perspectives: {applyNote: null, captureNote: null, items: []},
+            /**
+             * The shell's answer, while the shell runs, on whether the plane still admits the PAT it
+             * launched with (`plane-credential-refused`, `plane-identity-changed`), or `null`. Asked
+             * once per failed roster-read episode and cleared by a read that answers
+             * ({@link AgentOS.util.PlaneCredentialCheck}); the banner speaks it with Connect.
+             * @member {String|null} planeCause=null
+             */
+            planeCause: null,
             /**
              * The presence-capability envelope riding every admitted roster snapshot — the grid's
              * chip names a degraded producer and clears on recovery; `null` claims nothing.
