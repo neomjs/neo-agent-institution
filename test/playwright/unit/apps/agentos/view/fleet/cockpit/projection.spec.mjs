@@ -183,7 +183,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         FleetGrid           = (await import('../../../../../../../../apps/agentos/view/fleet/roster/Container.mjs')).default
     });
 
-    test('#17681 consumes the engine host without shadowing its holder or tear-out lifecycle', () => {
+    test('consumes the engine routing while the vessel layer owns admission geometry', () => {
         // the container-declares factoring: the declared cockpit sits on its vessel layer, which sits on the
         // engine host — one chain, no sideways copies
         const vesselLayer = Object.getPrototypeOf(FleetCockpit.prototype);
@@ -192,11 +192,10 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         expect(Object.getPrototypeOf(vesselLayer) === Workspace.prototype).toBe(true);
 
         for (const method of [
-            'admitDockPopOut',
             'applyDockZoneOperation',
             'applyTearOutOperation',
             'getDockZoneDocument',
-            'handleDockPopOutAction',
+            'onDockHeaderAction',
             'onDockCrossZoneDrop',
             'onDockZoneDocumentChange',
             'projectDockModel',
@@ -208,6 +207,9 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             expect(Object.hasOwn(FleetCockpit.prototype, method), `${method} is inherited`).toBe(false);
             expect(Object.hasOwn(vesselLayer, method), `${method} is not shadowed by the vessel layer`).toBe(false)
         }
+
+        expect(Object.hasOwn(vesselLayer, 'admitDockPopOut'), 'the host owns its admission geometry').toBe(true);
+        expect(Object.hasOwn(vesselLayer, 'measureDockPaneRect'), 'measurement stays with the engine plugin').toBe(false)
     });
 
     test('the reducer is pure and fail-closed: a commit advances a NEW document, the held one never mutates', () => {
