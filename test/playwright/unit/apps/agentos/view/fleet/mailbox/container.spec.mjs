@@ -418,8 +418,8 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
             }),
             grid = pane.getReference('mailbox-rows');
 
-        // the construction-time snapshot carries hasMore and the pane requests NOTHING: before
-        // #416 this fired [50] here, and a boot walked the whole inbox page by page
+        // the construction-time snapshot carries hasMore and the pane requests NOTHING: the drain
+        // this replaces fired [50] here, and a boot walked the whole inbox page by page
         expect(fired).toEqual([]);
         expect(pane.store.getCount()).toBe(50);
 

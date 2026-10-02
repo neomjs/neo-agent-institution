@@ -72,7 +72,7 @@ async function startDeepInboxFleet() {
 }
 
 /**
- * #416: the cockpit's mailbox pane used to walk the operator's whole inbox as soon as its first
+ * The cockpit's mailbox pane used to walk the operator's whole inbox as soon as its first
  * window landed (one Memory Core page per second, 173 pages on the team plane), and every other
  * read on the plane starved behind it. This journey witnesses the replacement in the real
  * browser from the grid's `scrollEdge` down: a boot reads ONE window and nothing more on its own,

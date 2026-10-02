@@ -13,8 +13,8 @@ import GridBody from '../../../../../node_modules/neo.mjs/src/grid/Body.mjs';
  * announcement into a window request under its own gate (`page.hasMore`, one request in flight);
  * this body decides nothing about data.
  *
- * Interim by design: neomjs/neo#19356 lands the same event on the engine's body, and the pin that
- * carries it retires this class; the grid's relay and the pane's handler stay as they are.
+ * Interim by design: the engine's own body is to publish the same event, and the pin that carries
+ * it retires this class; the grid's relay and the pane's handler stay as they are.
  *
  * @class AgentOS.view.fleet.mailbox.Body
  * @extends Neo.grid.Body

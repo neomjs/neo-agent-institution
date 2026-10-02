@@ -13,9 +13,9 @@ import RowComponent  from './RowComponent.mjs';
  * the injected {@link AgentOS.store.AgentMailbox} store. No paging chrome exists on this surface
  * (operator direction 2026-08-28): the corpus scrolls, and its honest end is the only end. Data
  * acquisition is the owning pane's: the body announces `scrollEdge` when the mounted window
- * reaches the loaded end ({@link AgentOS.view.fleet.mailbox.Body}, the engine's seam in waiting,
- * neomjs/neo#19356), this grid relays it, and the pane requests the next window under its own
- * gate. Nothing here walks the corpus on its own.
+ * reaches the loaded end ({@link AgentOS.view.fleet.mailbox.Body}, the engine's seam in waiting),
+ * this grid relays it, and the pane requests the next window under its own gate. Nothing here
+ * walks the corpus on its own.
  *
  * **ONE data path.** Every mutation of this surface — wholesale projection, window append, thread
  * toggle — flows through {@link #applyBags}: plain row bags get their thread facts stamped

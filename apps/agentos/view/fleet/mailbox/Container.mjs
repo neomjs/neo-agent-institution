@@ -391,9 +391,9 @@ class MailboxPane extends Container {
         }
 
         // Nothing is requested from here. A landed window is projected and that is all; the next
-        // window is the operator's to reach ({@link #onScrollEdge}). Before #416 this pass requested
-        // the next window itself while `page.hasMore` held, and a boot walked the whole inbox
-        // through the Memory Core, 173 pages in three minutes, starving every other read on it.
+        // window is the operator's to reach ({@link #onScrollEdge}). This pass used to request the
+        // next window itself while `page.hasMore` held, and a boot walked the whole inbox through
+        // the Memory Core, 173 pages in three minutes, starving every other read on it.
     }
 
     /**
