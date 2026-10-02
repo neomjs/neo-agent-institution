@@ -38,12 +38,13 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
      * @summary One seat in a real definitions Store, the card scoped to it, and its fired intents.
      * @param {Object} metadata The definition's `metadata`.
      * @param {Neo.data.Store|null} [rosterStore=null] The fleet roster the card reads outcomes from.
+     * @param {Object} [definition={}] Other public definition fields, e.g. a GitLab seat's `forge`.
      * @returns {Object}
      */
-    const mount = (metadata, rosterStore=null) => {
+    const mount = (metadata, rosterStore=null, definition={}) => {
         const
             store    = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
-                {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop', metadata}
+                {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop', metadata, ...definition}
             ]}),
             record   = store.get('ada'),
             card     = Neo.create(AgentReposCard, {record, rosterStore}),
@@ -93,6 +94,28 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
 
         expect(intents).toHaveLength(1);
         expect(record['metadata.repos']).toEqual([skills]);
+
+        card.destroy();
+        store.destroy()
+    });
+
+    test("a GitLab seat's change carries every stored entry whole, its forge included, and its field asks for a group path (#448)", () => {
+        const
+            gitlab = (repoSlug) => ({repoSlug, cloneUrl: `https://gitlab.example.com/${repoSlug}.git`, forge: 'gitlab'}),
+            docs   = gitlab('group/sub/docs'),
+            cli    = gitlab('group/cli'),
+            {card, intents, store} = mount({repo: gitlab('group/work'), repos: [docs, cli]}, null, {forge: 'gitlab'});
+
+        expect(card.getReference('field-repo').placeholderText).toBe('group/project');
+
+        // a change re-sends the other entries: without its forge, the Fleet would read each as GitHub
+        card.onRemoveRepository({repoSlug: cli.repoSlug});
+        card.getReference('field-repo').value = 'Group/Sub/Tools';
+        card.onAddClick();
+
+        expect(intents).toHaveLength(2);
+        expect(intents[0]).toMatchObject({id: 'ada', repos: [docs]});
+        expect(intents[1]).toMatchObject({id: 'ada', repos: [docs, cli, {repoSlug: 'group/sub/tools'}]});
 
         card.destroy();
         store.destroy()

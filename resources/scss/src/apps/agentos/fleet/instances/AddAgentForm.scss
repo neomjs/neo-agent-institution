@@ -2,7 +2,7 @@
    line; its head and its submit slot are the shell's pane contract (Viewport.scss). Colors
    token-only; every flow state pairs its hue with a non-color carrier (text IS the reason line,
    weight/style mark emphasis) so no state reads by color alone. */
-/* §04 rhythm record (#17265): off-rhythm survivors — harness-row gap 6, status pad-top 6 —
+/* §04 rhythm record (#17265): off-rhythm survivors — chip-row gap 6, status pad-top 6 —
    recorded, deferred to #17268. */
 .fm-add-agent-form {
     background     : var(--fm-panel);
@@ -26,7 +26,7 @@
         }
     }
 
-    /* the group labels — "GitHub account" names the forge once, "Harness" heads the choice — at the
+    /* the group labels — "Account" heads the forge chips, "Harness" the product chips — at the
        chrome eyebrow the config card's section headings use */
     .fm-add-section {
         color          : var(--fm-ink-dim);
@@ -36,6 +36,7 @@
         text-transform : uppercase;
     }
 
+    .fm-add-forge-row,
     .fm-add-harness-row {
         gap: 6px;
     }

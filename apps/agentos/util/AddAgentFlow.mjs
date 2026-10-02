@@ -37,10 +37,20 @@ const ADD_AGENT_STATES = ['idle', 'validating', 'submitting', 'readback-confirme
 const SECRET_KEYS = ['authorization', 'credential', 'password', 'pat', 'token'];
 
 /**
- * The repository a new seat works in unless the operator names another.
+ * The repository a new GitHub seat works in unless the operator names another.
  * @member {String} DEFAULT_REPO_SLUG
  */
 const DEFAULT_REPO_SLUG = 'neomjs/neo';
+
+/**
+ * The slug shape per forge: GitHub reads exactly `owner/repo`, GitLab `group/…/project`. Slugs are
+ * lowercased first, and the Fleet judges the rest.
+ * @member {Object} REPO_SLUG_SHAPES
+ */
+const REPO_SLUG_SHAPES = Object.freeze({
+    github: /^[a-z0-9-]+\/[a-z0-9._-]+$/,
+    gitlab: /^[a-z0-9._-]+(\/[a-z0-9._-]+)+$/
+});
 
 /**
  * The `gated` reason: no Fleet Registry bridge answers, so nothing can be added yet.
@@ -72,6 +82,8 @@ class AddAgentFlow extends Base {
      * @param {Object} payload
      * @param {String} [payload.credential]   The PAT in direct-browser mode (write-only — validated for
      *     presence, never inspected further).
+     * @param {String} [payload.forge]        `gitlab` for a GitLab seat, which then needs its instance.
+     * @param {String} [payload.forgeHost]    The GitLab instance's origin; the Fleet judges its shape.
      * @param {String} payload.githubUsername
      * @param {String} payload.harnessType
      * @param {Object}  [options]
@@ -79,16 +91,15 @@ class AddAgentFlow extends Base {
      * @returns {{valid: Boolean, reason: String}} Operator-facing reason when invalid.
      */
     static validateDefinePayload(
-        {credential, githubUsername, harnessType}={},
+        {credential, forge, forgeHost, githubUsername, harnessType}={},
         {credentialRequired=true}={}
     ) {
-        if (!githubUsername?.trim() || !harnessType || (credentialRequired && !credential)) {
-            return {
-                valid : false,
-                reason: credentialRequired
-                    ? 'Username, harness and personal access token are required.'
-                    : 'Username and harness are required.'
-            }
+        const gitlab = forge === 'gitlab';
+
+        if (!githubUsername?.trim() || (gitlab && !forgeHost?.trim()) || !harnessType || (credentialRequired && !credential)) {
+            const needs = ['Username', ...(gitlab ? ['GitLab instance'] : []), 'harness', ...(credentialRequired ? ['personal access token'] : [])];
+
+            return {valid: false, reason: `${needs.slice(0, -1).join(', ')} and ${needs.at(-1)} are required.`}
         }
 
         return {valid: true, reason: ''}
@@ -122,19 +133,21 @@ class AddAgentFlow extends Base {
     }
 
     /**
-     * @summary A seat's working repository from the form's `owner/repo`: the slug and the GitHub clone
-     * URL a provisioned Start clones, so the harness runs in the seat's own checkout. A blank entry
-     * means the default; anything that is not exactly `owner/repo` is `null`. The slug is lowercased:
-     * GitHub ignores case, and the Fleet names the checkout path in lowercase only.
+     * @summary A seat's working repository from the form's slug, so a provisioned Start runs the
+     * harness in the seat's own checkout. Only the slug crosses: the Fleet composes the clone URL on the
+     * seat's own forge. A blank entry means the default on GitHub, while a GitLab seat names its own;
+     * a slug outside its forge's shape is `null`. The slug is lowercased, since the Fleet names the
+     * checkout path in lowercase only.
      * @param {String} [repoSlug]
-     * @returns {{cloneUrl: String, repoSlug: String}|null}
+     * @param {String} [forge='github']
+     * @returns {{repoSlug: String}|null}
      */
-    static repoOf(repoSlug) {
-        const slug = String(repoSlug ?? '').trim().toLowerCase() || DEFAULT_REPO_SLUG;
+    static repoOf(repoSlug, forge='github') {
+        const
+            gitlab = forge === 'gitlab',
+            slug   = String(repoSlug ?? '').trim().toLowerCase() || (gitlab ? '' : DEFAULT_REPO_SLUG);
 
-        return /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(slug)
-            ? {cloneUrl: `https://github.com/${slug}.git`, repoSlug: slug}
-            : null
+        return REPO_SLUG_SHAPES[gitlab ? 'gitlab' : 'github'].test(slug) ? {repoSlug: slug} : null
     }
 
     /**
@@ -167,7 +180,8 @@ class AddAgentFlow extends Base {
      * Shell mode carries public intent only; direct-browser mode preserves the credential-bearing
      * request. Explicit projection prevents unrelated form or caller fields from crossing either mode.
      * A seat added here is born fleet-launched: this cockpit is its only launcher, so its first Start
-     * can come from here. Every other registration stays `external` until the operator adopts it.
+     * can come from here. Every other registration stays `external` until the operator adopts it. A
+     * GitLab seat adds its forge and instance; a GitHub intent carries neither, as the Fleet requires.
      * @param {Object}      payload
      * @param {Object|null} bridge
      * @returns {Object}
@@ -176,7 +190,8 @@ class AddAgentFlow extends Base {
         const intent = {
             githubUsername: payload.githubUsername?.trim(),
             harnessType   : payload.harnessType,
-            launchOwner   : 'fleet'
+            launchOwner   : 'fleet',
+            ...(payload.forge === 'gitlab' ? {forge: 'gitlab', forgeHost: payload.forgeHost?.trim()} : {})
         };
 
         if (!AddAgentFlow.isShellCredentialIngress(bridge)) {
@@ -200,7 +215,7 @@ class AddAgentFlow extends Base {
      *
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
-     * @param {Object}        config.payload          `{credential, githubUsername, harnessType, repoSlug}`.
+     * @param {Object}        config.payload          `{credential, forge, forgeHost, githubUsername, harnessType, repoSlug}`.
      * @returns {Promise<Object>} One terminal outcome — this function never throws.
      */
     static async submitDefineAgent({bridgeResolver=null, payload}) {
@@ -208,7 +223,7 @@ class AddAgentFlow extends Base {
             bridge     = AddAgentFlow.resolveRegistryBridge(bridgeResolver),
             shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
             request    = AddAgentFlow.createDefineAgentIntent(payload, bridge),
-            repo       = AddAgentFlow.repoOf(payload?.repoSlug),
+            repo       = AddAgentFlow.repoOf(payload?.repoSlug, request.forge),
             validation = AddAgentFlow.validateDefinePayload(request, {credentialRequired: !shellOwned});
 
         if (!validation.valid) {
@@ -216,7 +231,9 @@ class AddAgentFlow extends Base {
         }
 
         if (!repo) {
-            return {state: 'rejected', reason: 'The working repository reads owner/repo, e.g. neomjs/neo.'}
+            return {state: 'rejected', reason: request.forge === 'gitlab'
+                ? 'The working repository reads group/project, e.g. group/sub/project.'
+                : 'The working repository reads owner/repo, e.g. neomjs/neo.'}
         }
 
         if (!bridge?.defineAgent) {
@@ -253,7 +270,7 @@ class AddAgentFlow extends Base {
      * own reason.
      * @param {Object} bridge
      * @param {Object} definition The confirmed public definition.
-     * @param {{cloneUrl: String, repoSlug: String}} repo
+     * @param {{repoSlug: String}} repo
      * @param {String} [credential] Ephemeral — used solely for the readback's echo check.
      * @returns {Promise<{definition: Object, reason: String}>}
      */

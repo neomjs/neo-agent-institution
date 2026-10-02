@@ -325,4 +325,84 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             fs.rmSync(tmpDir, {recursive: true, force: true})
         }
     });
+
+    test('a GitLab seat added through the form lands on its own instance, and its repositories keep their forge on every change (#448)', async ({page, neuralLink}) => {
+        const
+            priorDataDir = FleetRegistryService.dataDir,
+            tmpDir       = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-gitlab-e2e-')),
+            agentId      = 'gitlab-proof-agent',
+            instance     = 'https://gitlab.example.test',
+            secret       = 'glpat-e2e_form_must_stay_brain_side',
+            onInstance   = repoSlug => ({repoSlug, cloneUrl: `${instance}/${repoSlug}.git`, forge: 'gitlab'});
+
+        FleetRegistryService.dataDir = tmpDir;
+
+        let server;
+
+        try {
+            const options = authenticatedFleetOptions();
+
+            server = await startFleetBridgeServer(options);
+            const fleetUrl = `http://127.0.0.1:${server.address().port}/fleet`;
+
+            await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl})}`);
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+            await wireAuthenticatedFleetBridge({app: await neuralLink.connectToApp('AgentOS'), fleetUrl, bearerToken: options.bearerToken});
+
+            await page.locator('.agent-shell').getByText('Accounts', {exact: true}).click();
+            await expect(page.locator('.agent-panel-accounts')).toBeVisible({timeout: 30000});
+
+            const
+                app          = await neuralLink.connectToApp('AgentOS'),
+                [accounts]   = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id']),
+                accountsView = page.locator('.agent-panel-accounts'),
+                form         = accountsView.locator('.fm-add-agent-form'),
+                listItems    = accountsView.locator('.fm-accounts-list .neo-list-item');
+
+            await app.callMethod(accounts.properties.id, 'loadAgentDefinitions');
+
+            // the add form: the GitLab chip shows the instance; the repository is the seat's own group path
+            await accountsView.locator('.fm-accounts-add').click();
+            await form.locator('.fm-add-forge-row .fm-chip').filter({hasText: 'GitLab'}).click();
+            await form.getByRole('textbox', {name: 'GitLab instance', exact: true}).fill(instance);
+            await form.getByRole('textbox', {name: 'Username', exact: true}).fill(agentId);
+            await form.getByRole('textbox', {name: 'Personal access token', exact: true}).fill(secret);
+            await form.getByRole('textbox', {name: 'Working repository', exact: true}).fill('group/sub/project');
+            await form.locator('.fm-add-submit').click();
+
+            // no reason line: the Fleet composed the working repository on the seat's own instance
+            await expect(form.locator('.fm-add-status.is-readback-confirmed')).toHaveText('Agent added.');
+
+            const defined = FleetRegistryService.getDefinition(agentId);
+
+            expect(defined).toMatchObject({forge: 'gitlab', forgeHost: instance, metadata: {repo: onInstance('group/sub/project')}});
+            expect(JSON.stringify(defined)).not.toContain(secret);
+
+            // the Repositories card: an add and a remove re-send the other entries with their forge
+            await listItems.filter({hasText: agentId}).click();
+
+            const
+                card  = page.locator('.fm-agent-repos-card'),
+                rows  = card.locator('.fm-repository-list .neo-list-item'),
+                field = card.getByRole('textbox', {name: 'Add a repository', exact: true}),
+                add   = card.locator('.fm-repos-add-button');
+
+            // each change waits on the readback's rows: the status line stays `is-accepted` between them
+            for (const [repoSlug, count] of [['group/tools', 2], ['group/sub/docs', 3]]) {
+                await field.fill(repoSlug);
+                await add.dispatchEvent('click');
+                await expect(rows).toHaveCount(count)
+            }
+
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([onInstance('group/tools'), onInstance('group/sub/docs')]);
+
+            await rows.filter({hasText: 'group/tools'}).locator('.fm-repo-remove').dispatchEvent('click');
+            await expect(rows).toHaveCount(2);
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([onInstance('group/sub/docs')])
+        } finally {
+            server && await new Promise(resolve => server.close(resolve));
+            FleetRegistryService.dataDir = priorDataDir;
+            fs.rmSync(tmpDir, {recursive: true, force: true})
+        }
+    });
 });

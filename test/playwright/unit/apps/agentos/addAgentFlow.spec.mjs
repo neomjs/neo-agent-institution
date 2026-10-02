@@ -128,11 +128,9 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
     });
 
     test('a confirmed seat gets its working repo through the wire\'s setRepo; one that cannot be set is named, a malformed one never reaches the bridge', async () => {
-        expect(AddAgentFlow.repoOf()).toEqual({cloneUrl: 'https://github.com/neomjs/neo.git', repoSlug: 'neomjs/neo'});
-        expect(AddAgentFlow.repoOf('  neomjs/neo-agent-brain ')).toEqual({
-            cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git',
-            repoSlug: 'neomjs/neo-agent-brain'
-        });
+        // only the slug crosses: the Fleet composes the clone URL on the seat's forge
+        expect(AddAgentFlow.repoOf()).toEqual({repoSlug: 'neomjs/neo'});
+        expect(AddAgentFlow.repoOf('  neomjs/neo-agent-brain ')).toEqual({repoSlug: 'neomjs/neo-agent-brain'});
         // the Fleet names the checkout path in lowercase only, so a typed case never reaches its verb
         expect(AddAgentFlow.repoOf('NeoMJS/Neo').repoSlug).toBe('neomjs/neo');
 
@@ -151,7 +149,7 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
                 payload: {...cleanPayload(), repoSlug: 'neomjs/neo-agent-brain'}
             });
 
-        expect(calls).toEqual([{id: 'resident-7', cloneUrl: 'https://github.com/neomjs/neo-agent-brain.git', repoSlug: 'neomjs/neo-agent-brain'}]);
+        expect(calls).toEqual([{id: 'resident-7', repoSlug: 'neomjs/neo-agent-brain'}]);
         expect(set).toEqual({state: 'readback-confirmed', definition: withRepo, reason: ''});
 
         // a repository the Fleet refuses is named with the Fleet's own reason
@@ -213,6 +211,49 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(JSON.stringify(received)).not.toContain(CREDENTIAL);
         expect(confirmed.state).toBe('readback-confirmed')
     });
+
+    test('a GitLab seat names its forge and instance, and its repository crosses as a slug that may name nested groups (#448)', async () => {
+        const gitlab = {...cleanPayload(), forge: 'gitlab', forgeHost: ' https://gitlab.example.com '};
+
+        expect(AddAgentFlow.createDefineAgentIntent(gitlab, {})).toEqual({
+            ...cleanPayload(), forge: 'gitlab', forgeHost: 'https://gitlab.example.com', launchOwner: 'fleet'
+        });
+        expect(AddAgentFlow.validateDefinePayload({...gitlab, forgeHost: ' '})).toEqual({
+            valid : false,
+            reason: 'Username, GitLab instance, harness and personal access token are required.'
+        });
+
+        // a GitLab seat names its own repository: the GitHub default is not one of its own
+        expect(AddAgentFlow.repoOf('Group/Sub/Project', 'gitlab')).toEqual({repoSlug: 'group/sub/project'});
+        expect(AddAgentFlow.repoOf('', 'gitlab')).toBeNull();
+        expect(AddAgentFlow.repoOf('project', 'gitlab')).toBeNull();
+        expect(AddAgentFlow.repoOf('group/sub/project')).toBeNull();
+
+        const
+            defined = [],
+            set     = [],
+            outcome = await AddAgentFlow.submitDefineAgent({
+                bridgeResolver: () => ({
+                    defineAgent: async payload => { defined.push(payload); return {...cleanReadback(), forge: 'gitlab', forgeHost: 'https://gitlab.example.com'} },
+                    setRepo    : async payload => { set.push(payload); return {status: 'accepted', agent: {...cleanReadback(), forge: 'gitlab'}} }
+                }),
+                payload: {...gitlab, repoSlug: 'group/sub/project'}
+            });
+
+        expect(defined).toEqual([{...cleanPayload(), forge: 'gitlab', forgeHost: 'https://gitlab.example.com', launchOwner: 'fleet'}]);
+        expect(set).toEqual([{id: 'resident-7', repoSlug: 'group/sub/project'}]);
+        expect(outcome.state).toBe('readback-confirmed');
+
+        let contacted = false;
+
+        const blank = await AddAgentFlow.submitDefineAgent({
+            bridgeResolver: () => ({defineAgent: async () => { contacted = true; return cleanReadback() }}),
+            payload       : {...gitlab, repoSlug: ''}
+        });
+
+        expect(blank).toEqual({state: 'rejected', reason: 'The working repository reads group/project, e.g. group/sub/project.'});
+        expect(contacted).toBe(false)
+    });
 });
 
 test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the credential-settle rule (#15242)', () => {
@@ -228,15 +269,19 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         form.destroy()
     });
 
-    test('the form names its forge once and its token field "Personal access token" (#245)', () => {
+    test('the form names its forge once, by its chip, and its token field "Personal access token" (#245, #448)', () => {
         const
             form   = Neo.create(AddAgentForm, {appName: 'AgentOSAddAgentFlowTest'}),
             labels = form.items
                 .filter(item => item.labelText || item.cls?.includes('fm-add-section'))
-                .map(item => item.labelText ?? item.text);
+                .map(item => item.labelText ?? item.text),
+            forges = form.getReference('forge-row').items;
 
-        expect(labels).toEqual(['GitHub account', 'Username', 'Personal access token', 'Working repository', 'Harness']);
+        expect(labels).toEqual(['Account', 'GitLab instance', 'Username', 'Personal access token', 'Working repository', 'Harness']);
         expect(JSON.stringify(labels)).not.toMatch(/GitHub (username|PAT)/);
+        expect(forges.map(item => item.text)).toEqual(['GitHub', 'GitLab']);
+        expect(forges.filter(item => item.cls.includes('is-selected')).map(item => item.text)).toEqual(['GitHub']);
+        expect(form.getReference('field-forge-host').hidden).toBe(true);
 
         form.destroy()
     });
@@ -303,6 +348,46 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet'}]);
         // the settle rule: no terminal state leaves credential bytes in the field
         expect(credentialField.value ?? '').toBe('');
+
+        form.destroy()
+    });
+
+    test('the GitLab chip shows the instance, and the token, repository and submit follow the forge (#448)', async () => {
+        const
+            calls = [],
+            form  = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({defineAgent: async payload => { calls.push(payload); return cleanReadback() }})
+            }),
+            chip  = forge => form.getReference('forge-row').items.find(item => item.forge === forge),
+            host  = form.getReference('field-forge-host'),
+            repo  = form.getReference('field-repo');
+
+        form.onForgeChipClick({component: chip('gitlab')});
+
+        expect(chip('gitlab').cls).toContain('is-selected');
+        expect(host.hidden).toBe(false);
+        expect(form.getReference('field-credential').placeholderText).toBe('glpat-…');
+        expect(repo.placeholderText).toBe('group/project');
+        // the GitHub default leaves; a GitLab seat names its own repository
+        expect(repo.value ?? '').toBe('');
+
+        (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+        (await form.getField('credential')).value     = CREDENTIAL;
+        host.value                                    = 'https://gitlab.example.com';
+        repo.value                                    = 'group/sub/project';
+        form.harnessType                              = 'opencode';
+
+        await form.onSubmitClick();
+
+        expect(calls).toEqual([{...cleanPayload(), forge: 'gitlab', forgeHost: 'https://gitlab.example.com', launchOwner: 'fleet'}]);
+
+        // back on GitHub, the instance hides, and an emptied repository field gets the default back
+        repo.value = '';
+        form.onForgeChipClick({component: chip('github')});
+
+        expect(host.hidden).toBe(true);
+        expect(repo.value).toBe(AddAgentFlow.DEFAULT_REPO_SLUG);
 
         form.destroy()
     });
