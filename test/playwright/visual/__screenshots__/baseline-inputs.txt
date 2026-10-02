@@ -453,7 +453,7 @@ resources/scss/src/apps/agentos/PlaneSetupPanel.scss
     96091935f0ce13bbc522d79de8d8fc92850c26e4
 
 resources/scss/src/apps/agentos/Viewport.scss
-    075b205d805441fac6277e0b35280c2043d20e59
+    882e828c672087054c8f8f080de9d5b38bcf2cb4
 
 resources/scss/src/apps/agentos/accounts/List.scss
     94fa05801c3e3642c6586cb2c9072418bfa8081c

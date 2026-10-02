@@ -303,7 +303,16 @@
            every FM pane */
         background: var(--fm-rail);
         min-height: 50px;
-        padding   : 0 var(--fm-frame-gutter) 0 9px;   /* §04 recorded exception: see the mark's line below */
+        /* §04 recorded exception: see the mark's line below. In the native shell this band is the
+           window's title bar: the window-controls overlay starts its free area after the traffic
+           lights (`env(titlebar-area-x)`), and the band drags the window. A browser reports no
+           overlay, so it keeps the 9px, and the drag region means nothing there. */
+        padding   : 0 var(--fm-frame-gutter) 0 max(9px, env(titlebar-area-x, 9px));
+        -webkit-app-region: drag;
+
+        .neo-button {
+            -webkit-app-region: no-drag;
+        }
 
         /* The band's control scale — the identity row, not a touch surface: the engine's button
            reads these four at the element (button/Base.scss: height, min-width, padding,
@@ -315,7 +324,7 @@
         --button-border-radius: 6px;
 
         @media (max-width: 560px) {
-            padding: 0 var(--fm-space-3) 0 9px;
+            padding: 0 var(--fm-space-3) 0 max(9px, env(titlebar-area-x, 9px));
         }
     }
 
