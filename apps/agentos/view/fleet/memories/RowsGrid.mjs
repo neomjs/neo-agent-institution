@@ -16,8 +16,9 @@ import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Containe
  * the mailbox surface — the architecture here is the fix, not a style).
  *
  * The component-column pool is the buffering (`bufferRowRange` bounds and recycles mounted
- * rows; it fetches nothing) — data acquisition stays the owning pane's drain contract until the
- * engine lands its scroll-edge seam.
+ * rows; it fetches nothing). Data acquisition is the owning pane's: the engine's body fires
+ * `scrollEdge` when the visible window reaches the loaded end, this grid relays it as its own
+ * event, and the pane requests the next window under its own gate.
  *
  * @class AgentOS.view.fleet.memories.RowsGrid
  * @extends Neo.grid.Container
@@ -49,6 +50,25 @@ class RowsGrid extends GridContainer {
      * @member {String[]} derivedFields=[]
      */
     derivedFields = []
+
+    /**
+     * @summary Relay the engine body's `scrollEdge` as the grid's own event: the owning pane
+     * listens on its register, never on the body.
+     * @param {...*} args
+     */
+    onConstructed(...args) {
+        super.onConstructed(...args);
+        this.body.on('scrollEdge', this.onBodyScrollEdge, this)
+    }
+
+    /**
+     * @summary The body's `scrollEdge`, payload unchanged.
+     * @param {Object} data `{count, endIndex, startIndex}`
+     * @protected
+     */
+    onBodyScrollEdge(data) {
+        this.fire('scrollEdge', data)
+    }
 
     /**
      * @summary THE one mutation entry: stamp derived display facts into the plain bags, then hand
