@@ -22,7 +22,7 @@ import DomApiVnodeCreator                                           from '../../
 import Instance                                                     from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import VdomHelper                                                   from '../../../../../../../../node_modules/neo.mjs/src/vdom/Helper.mjs';
 import ActivityStream, {describeActivityCounts, describeActivityRetention, describeQuietSince} from '../../../../../../../../apps/agentos/view/fleet/activity/Container.mjs';
-import {formatConversationRef, getActivityObjectText, getActivityObjectTitle} from '../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs';
+import {formatConversationRef, getActivityObjectText, getActivityObjectTitle, getPullRequestStatus} from '../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs';
 import FleetActivityEvents                                          from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import ViewerTime                                                   from '../../../../../../../../apps/agentos/util/ViewerTime.mjs';
 
@@ -269,6 +269,64 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(getActivityObjectTitle({type: 'pr-activity', payload: {number: 410, repoSlug: 'neo-agent-brain'}})).toBe('neomjs/neo-agent-brain#410');
         expect(getActivityObjectTitle({type: 'work-stall', payload: {subject: {number: 9, repoSlug: 'devindex'}}})).toBe('neomjs/devindex#9');
         expect(getActivityObjectTitle({type: 'a2a-activity', payload: {subject: 'hello'}})).toBeNull()
+    });
+
+    test('a PR row names its state and review verdict, and nothing it cannot read', () => {
+        const pr = payload => ({type: 'pr-activity', payload: {number: 739, repoSlug: 'neo-agent-brain', title: 'forge host', ...payload}});
+
+        // merged and closed name themselves, whatever the review said; an open draft is a draft first
+        expect(getPullRequestStatus(pr({state: 'MERGED', reviewDecision: 'APPROVED'}))).toBe('merged');
+        expect(getPullRequestStatus(pr({state: 'CLOSED'}))).toBe('closed');
+        expect(getPullRequestStatus(pr({state: 'OPEN', isDraft: true, reviewDecision: 'APPROVED'}))).toBe('draft');
+        // an open PR names GitHub's decision...
+        expect(getPullRequestStatus(pr({state: 'OPEN', isDraft: false, reviewDecision: 'APPROVED'}))).toBe('approved');
+        expect(getPullRequestStatus(pr({state: 'OPEN', reviewDecision: 'CHANGES_REQUESTED'}))).toBe('changes requested');
+        expect(getPullRequestStatus(pr({state: 'OPEN', reviewDecision: 'REVIEW_REQUIRED'}))).toBe('review required');
+        // ...and where the repository computes none, the Brain's reading of the latest reviews
+        expect(getPullRequestStatus(pr({state: 'OPEN', reviewDecision: null, humanGateState: {approved: true, changedRequested: false}}))).toBe('approved');
+        expect(getPullRequestStatus(pr({state: 'OPEN', reviewDecision: null, humanGateState: {approved: false, changedRequested: true}}))).toBe('changes requested');
+        expect(getPullRequestStatus(pr({state: 'OPEN', reviewDecision: 'REVIEW_REQUIRED', humanGateState: {approved: true}}))).toBe('review required');
+        // nothing is guessed: no verdict, an unknown or lowercase enum, an inherited key, no payload, another kind
+        expect(getPullRequestStatus(pr({state: 'OPEN'}))).toBeNull();
+        expect(getPullRequestStatus(pr({state: 'OPEN', humanGateState: {approved: false, changedRequested: false}}))).toBeNull();
+        expect(getPullRequestStatus(pr({state: 'merged'}))).toBeNull();
+        expect(getPullRequestStatus(pr({state: 'OPEN', reviewDecision: 'DISMISSED'}))).toBeNull();
+        expect(getPullRequestStatus(pr({state: 'OPEN', reviewDecision: 'toString'}))).toBeNull();
+        expect(getPullRequestStatus(pr({state: '__proto__'}))).toBeNull();
+        expect(getPullRequestStatus({type: 'pr-activity'})).toBeNull();
+        expect(getPullRequestStatus({type: 'issue-activity', payload: {number: 7, state: 'CLOSED'}})).toBeNull();
+        // the object text carries it after the ref and title, and only when it resolves
+        expect(getActivityObjectText(pr({state: 'OPEN', reviewDecision: 'APPROVED'}))).toBe('brain#739 · forge host · approved');
+        expect(getActivityObjectText(pr({state: 'MERGED'}))).toBe('brain#739 · forge host · merged');
+        expect(getActivityObjectText(pr({state: 'OPEN'}))).toBe('brain#739 · forge host')
+    });
+
+    test('a row whose PR is approved and then merged re-labels in place', async () => {
+        const pr = (minute, payload) => event('pr-739', minute, {
+            eventId: 'github-pr:neo-agent-brain#739',
+            type   : 'pr-activity',
+            agentId: 'neo-opus-grace',
+            payload: {number: 739, repoSlug: 'neo-agent-brain', title: 'forge host', ...payload}
+        });
+
+        store = Neo.create(FleetActivityEvents, {data: [pr(10, {state: 'OPEN', reviewDecision: 'APPROVED'})], id: `fleet-activity-events-test-${++sequence}`});
+        stream = Neo.create(ActivityStream, {appName, id: `fleet-activity-stream-test-${sequence}`, store});
+        await stream.initVnode();
+
+        const
+            row    = stream.getReference('list').items[0],
+            object = row.getReference('object');
+
+        expect(object.text).toBe('brain#739 · forge host · approved');
+        expect(row.vdom['aria-label']).toContain('brain#739 · forge host · approved');
+
+        store.ingestSnapshot([pr(12, {state: 'MERGED', reviewDecision: 'APPROVED'})]);
+        await row.promiseUpdate();
+
+        expect(row.record.eventId).toBe('github-pr:neo-agent-brain#739');
+        expect(object.text).toBe('brain#739 · forge host · merged');
+        expect(object.vnode.textContent).toBe('brain#739 · forge host · merged');
+        expect(row.vdom['aria-label']).toContain('brain#739 · forge host · merged')
     });
 
     test('a foreign-origin row carries the short ref in its object cell and the full slug in that cell\'s title', async () => {
