@@ -5,8 +5,8 @@ import GraphSceneEnvelope from './GraphSceneEnvelope.mjs';
  * @module apps/agentos/util/TargetBinding
  * @summary The rule the cockpit's retained truth obeys: rows a store holds belong to the profile
  * whose answer produced them. `DeploymentStateRead` stamps its picture with the answering
- * `profileId`; this helper brings the roster, the activity feed and the graph scene under the same
- * rule, lifted beside the liveness owner (which holds the size bar). A read through a bridge bound to
+ * `profileId`; this helper brings the roster, the activity feed, the graph scene and the operator's
+ * own mailbox under the same rule, lifted beside the liveness owner (which holds the size bar). A read through a bridge bound to
  * ANOTHER profile first retires the previous profile's truth — both stores empty, both surfaces read
  * `cold`, the graph leaf returns to unobserved, the roster-derived consumers re-snapshot —
  * so the new profile's first live answer is a first admission, and its failure shows its own cold
@@ -102,6 +102,33 @@ class TargetBinding extends Base {
         owner.graphSceneProfileId = null;
 
         owner.component.getStateProvider()?.setData({graphSceneEnvelope: GraphSceneEnvelope.blank()});
+
+        return true
+    }
+
+    /**
+     * @summary Retire the operator's own mailbox when the bridge in hand belongs to another profile than
+     * the identity and window the owner holds. They leave together: the window was read as that
+     * identity, and one operator handle can name two instances, so the pane's subject check cannot
+     * tell them apart. The pane reads `unobserved` until the new profile's identity binds and reads
+     * its own first window; the last send's outcome goes with them.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
+     * @param {Object} options
+     * @param {String|null} options.profileId The profile the bridge in hand is bound to.
+     * @returns {Boolean} whether a retirement happened
+     */
+    static retireOperatorMailbox(owner, {profileId}) {
+        if ((!owner.operatorRecord && !owner.operatorSnapshot) || owner.operatorProfileId === profileId) {
+            return false
+        }
+
+        owner.operatorIdentityPosture = null;
+        owner.operatorProfileId       = null;
+        owner.operatorRecord          = null;
+        owner.operatorSnapshot        = null;
+        owner.operatorInboxReadGeneration++;
+
+        owner.component.getOperatorMailboxPane()?.set({composeOutcome: null, identityPosture: null, record: null, snapshot: null});
 
         return true
     }

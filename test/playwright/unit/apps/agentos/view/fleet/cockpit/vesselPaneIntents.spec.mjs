@@ -291,6 +291,7 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
         try {
             const me = controllerHost({getOperatorMailboxPane: () => currentPane}, {
                 operatorInboxReadGeneration: 0,
+                operatorProfileId          : null,
                 operatorRecord             : {agentIdentityNodeId: '@tobiu'},
                 operatorSnapshot           : null
             });

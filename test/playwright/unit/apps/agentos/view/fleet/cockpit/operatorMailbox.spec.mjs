@@ -58,6 +58,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         const pane    = {snapshot: priorSnapshot},
               cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
                   component                  : {getOperatorMailboxPane: () => pane},
+                  operatorProfileId          : null,
                   operatorRecord             : subject ? {agentIdentityNodeId: subject} : null,
                   operatorSnapshot           : priorSnapshot,
                   operatorInboxReadGeneration: generation,
@@ -349,7 +350,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
             component: {getOperatorMailboxPane: () => ({set() {}})}, isDestroyed: false, operatorRecord: null
         });
 
-        await expect(cockpit.loadOperatorIdentity()).resolves.toBeUndefined();
+        await expect(cockpit.loadOperatorIdentity()).resolves.toBe(false);
 
         expect(cockpit.operatorRecord, 'a throw is absence, never a fallback identity').toBe(null)
     });
@@ -372,5 +373,133 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         await cockpit.loadOperatorIdentity();
 
         expect(cockpit.operatorRecord).toEqual({agentIdentityNodeId: '@neo-opus-grace', githubUsername: 'neo-opus-grace'})
+    });
+
+    test.describe('target binding — the operator\'s mailbox belongs to the profile that answered (#436)', () => {
+        const
+            mail     = {rows: ['a:mail']},
+            operator = {agentIdentityNodeId: '@op', githubUsername: 'op'},
+            retired  = {composeOutcome: null, identityPosture: null, record: null, snapshot: null},
+            flush    = () => new Promise(resolve => setTimeout(resolve, 0)),
+            // the identity and window profile A answered, held the way a real controller holds them
+            heldByA  = (fields = {}) => {
+                const pane = {sets: [], set(cfg) { this.sets.push(cfg) }};
+
+                return {pane, cockpit: Object.assign(Object.create(FleetCockpitController.prototype), {
+                    component                  : {getOperatorMailboxPane: () => pane},
+                    isDestroyed                : false,
+                    operatorIdentityPosture    : null,
+                    operatorInboxReadGeneration: 3,
+                    operatorProfileId          : 'a',
+                    operatorRecord             : {...operator},
+                    operatorSnapshot           : mail,
+                    resolveFleetRosterStore    : () => null,
+                    ...fields
+                })}
+            };
+
+        test('a switch to an unreachable profile retires the old identity and window — nothing of A stays under B', async () => {
+            const {pane, cockpit} = heldByA();
+
+            setBridge({profileId: 'b', resolveViewerIdentity: async () => { throw new Error('plane unreachable') }});
+
+            await expect(cockpit.loadOperatorIdentity()).resolves.toBe(false);
+
+            expect(pane.sets).toEqual([retired]);
+            expect(cockpit.operatorRecord).toBe(null);
+            expect(cockpit.operatorSnapshot).toBe(null);
+            expect(cockpit.operatorProfileId).toBe(null);
+            expect(cockpit.operatorInboxReadGeneration, 'the retire fences any read A still has in flight').toBe(4)
+        });
+
+        test('a page asked through B\'s bridge is never read as A\'s viewer', async () => {
+            const
+                asked             = [],
+                {pane, cockpit}   = heldByA();
+
+            setBridge({profileId: 'b', fleetMailboxMirror: async params => { asked.push(params); return {rows: ['b:mail']} }});
+
+            await cockpit.loadOperatorInbox({offset: 20});
+
+            expect(asked).toEqual([]);
+            expect(pane.sets).toEqual([retired]);
+            expect(cockpit.operatorSnapshot).toBe(null)
+        });
+
+        test('an answer that started under A does not land once B is the bridge in hand', async () => {
+            let release;
+
+            const {pane, cockpit} = heldByA({operatorProfileId: null, operatorRecord: null, operatorSnapshot: null});
+
+            setBridge({profileId: 'a', resolveViewerIdentity: () => new Promise(resolve => { release = resolve })});
+
+            const identity = cockpit.loadOperatorIdentity();
+
+            setBridge({profileId: 'b'});
+            release({ok: true, agentIdentityNodeId: '@op'});
+
+            await expect(identity).resolves.toBe(false);
+            expect(cockpit.operatorRecord).toBe(null);
+            expect(pane.sets).toEqual([]);
+
+            // a window A was still reading: B's retire fences it
+            const held = heldByA();
+
+            setBridge({profileId: 'a', fleetMailboxMirror: () => new Promise(resolve => { release = resolve })});
+
+            const read = held.cockpit.loadOperatorInbox({offset: 0});
+
+            setBridge({profileId: 'b', resolveViewerIdentity: async () => ({ok: false})});
+            await held.cockpit.loadOperatorIdentity();
+            release({rows: ['a:late']});
+            await read;
+
+            expect(held.cockpit.operatorSnapshot).toBe(null);
+            expect(held.pane.snapshot).toBe(undefined)
+        });
+
+        // the inherited re-drive is the liveness layer's own; stubbed here so the override is what runs
+        const reconnectable = cockpit => Object.assign(cockpit, Object.fromEntries([
+            'ensureViewerWakeStream', 'loadActivity', 'loadBrainHealth', 'loadDeploymentState',
+            'loadGoldenPath', 'loadGraphScene', 'loadRoster', 'loadTasks'
+        ].map(name => [name, () => {}])), {component: {
+            ...cockpit.component, getCatchUpPane: () => null, getMemoriesPane: () => null, getWakeRoutesPane: () => null
+        }});
+
+        test('Reconnect after a switch binds B\'s identity, which reads its own first window — no second read', async () => {
+            const
+                {pane, cockpit} = heldByA(),
+                reads           = [];
+
+            reconnectable(cockpit).loadOperatorInbox = params => { reads.push(params) };
+
+            setBridge({profileId: 'b', resolveViewerIdentity: async () => ({ok: true, agentIdentityNodeId: '@op'})});
+
+            cockpit.reconnectFleet();
+            await flush();
+
+            // the same handle on both instances still re-binds: the retire nulled it, so the pane's
+            // record goes null → set and the pane asks for its first window itself
+            expect(pane.sets).toEqual([retired, {record: operator, identityPosture: null}]);
+            expect(cockpit.operatorProfileId).toBe('b');
+            expect(reads).toEqual([])
+        });
+
+        test('Reconnect on the same profile retires nothing and re-reads the first window', async () => {
+            const
+                {pane, cockpit} = heldByA(),
+                reads           = [];
+
+            reconnectable(cockpit).loadOperatorInbox = params => { reads.push(params) };
+
+            setBridge({profileId: 'a', resolveViewerIdentity: async () => ({ok: true, agentIdentityNodeId: '@op'})});
+
+            cockpit.reconnectFleet();
+            await flush();
+
+            expect(pane.sets).toEqual([{record: operator, identityPosture: null}]);
+            expect(cockpit.operatorSnapshot).toBe(mail);
+            expect(reads).toEqual([{offset: 0}])
+        });
     });
 });

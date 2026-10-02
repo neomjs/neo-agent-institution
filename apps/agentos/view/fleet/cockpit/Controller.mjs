@@ -3,6 +3,7 @@ import CockpitPerspectives         from '../../../util/CockpitPerspectives.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
+import TargetBinding               from '../../../util/TargetBinding.mjs';
 
 /**
  * @summary The cockpit's intent + command layer — the surface-fired intent relays, the per-pane
@@ -87,6 +88,13 @@ class Controller extends ReadingSurfacesController {
      * @protected
      */
     operatorSnapshot = null
+    /**
+     * The profile whose bridge answered the operator identity; the identity and its window belong to
+     * it ({@link AgentOS.util.TargetBinding#retireOperatorMailbox}).
+     * @member {String|null} operatorProfileId=null
+     * @protected
+     */
+    operatorProfileId = null
     /**
      * The resolved operator identity record (`{agentIdentityNodeId, githubUsername}`) — the
      * bootstrap leg of "the client SAYS self, the admission stamp proves it".
@@ -758,15 +766,22 @@ class Controller extends ReadingSurfacesController {
      * spoof-adjacent). Fail-closed: an unwired source / unbound context leaves the record null
      * and the pane honestly unobserved. A bridge throw (no bearer injected) ends HERE the same way:
      * the boot call is fire-and-forget, so a rejection would be an unhandled App Worker error.
+     * A bridge bound to another profile first retires what the previous one answered, and an answer
+     * lands only while the profile that asked is still the bridge in hand.
+     * @returns {Promise<Boolean>} whether the answer bound another identity than the one held — the
+     * pane then reads its own first window ({@link AgentOS.view.fleet.mailbox.OperatorContainer#afterSetRecord})
      * @protected
      */
     async loadOperatorIdentity() {
         const
-            me       = this,
-            {bridge} = me;
+            me        = this,
+            {bridge}  = me,
+            profileId = bridge?.profileId ?? null;
+
+        TargetBinding.retireOperatorMailbox(me, {profileId});
 
         if (typeof bridge?.resolveViewerIdentity !== 'function') {
-            return
+            return false
         }
 
         let outcome;
@@ -774,22 +789,29 @@ class Controller extends ReadingSurfacesController {
         try {
             outcome = await bridge.resolveViewerIdentity()
         } catch (error) {
-            return
+            return false
         }
 
-        if (outcome?.ok && outcome.agentIdentityNodeId && !me.isDestroyed) {
-            const nodeId = outcome.agentIdentityNodeId;
+        if (outcome?.ok && outcome.agentIdentityNodeId && !me.isDestroyed && (me.bridge?.profileId ?? null) === profileId) {
+            const
+                nodeId = outcome.agentIdentityNodeId,
+                held   = me.operatorRecord;
 
             // the reused MailboxPane proves possession from `record.githubUsername` (canonicalized
             // against the mirror admission's subject); the node id IS that @-form authority — carry
             // both: the username for the possession match, the node id as the explicit read subject
-            me.operatorRecord = {agentIdentityNodeId: nodeId, githubUsername: nodeId.replace(/^@/, '')};
+            me.operatorRecord    = {agentIdentityNodeId: nodeId, githubUsername: nodeId.replace(/^@/, '')};
+            me.operatorProfileId = profileId;
 
             me.operatorIdentityPosture = me.deriveOperatorIdentityPosture(nodeId);
 
             // both orderings (identity-first or pane-first) land exactly one first read
-            me.component.getOperatorMailboxPane()?.set({record: me.operatorRecord, identityPosture: me.operatorIdentityPosture})
+            me.component.getOperatorMailboxPane()?.set({record: me.operatorRecord, identityPosture: me.operatorIdentityPosture});
+
+            return !Neo.isEqual(held, me.operatorRecord)
         }
+
+        return false
     }
 
     /**
@@ -819,15 +841,20 @@ class Controller extends ReadingSurfacesController {
      * (no pane / no bound subject / no verb → the pane's `unobserved` state stands); a throwing
      * bridge KEEPS the last-known snapshot — the pane never renders "no mail" for a read that did
      * not happen. Fence bumped before the gate: a refused intent still invalidates older
-     * in-flight reads.
+     * in-flight reads. A bridge bound to another profile first retires the held identity and window,
+     * so no page is read as the previous instance's viewer.
      * @param {Object} [params]
      * @param {Number} [params.offset=0]
      * @protected
      */
     async loadOperatorInbox({offset = 0} = {}) {
         const
-            me         = this,
-            {bridge}   = me,
+            me       = this,
+            {bridge} = me;
+
+        TargetBinding.retireOperatorMailbox(me, {profileId: bridge?.profileId ?? null});
+
+        const
             pane       = me.component.getOperatorMailboxPane(),
             subject    = me.operatorRecord?.agentIdentityNodeId,
             generation = ++me.operatorInboxReadGeneration;
@@ -859,6 +886,20 @@ class Controller extends ReadingSurfacesController {
 
     /* ── the liveness owner + reconnect + viewer-wake stream ── */
 
+    /**
+     * @summary The inherited re-drive, plus the operator's own mailbox, whose reads live on this layer.
+     * A switch retires the previous profile's identity and window inside {@link #loadOperatorIdentity};
+     * an identity that binds anew reads its own first window, and an unchanged one reads it here.
+     */
+    reconnectFleet() {
+        const me = this;
+
+        super.reconnectFleet();
+
+        me.loadOperatorIdentity().then(bound => {
+            !bound && !me.isDestroyed && me.operatorRecord && me.loadOperatorInbox({offset: 0})
+        })
+    }
 }
 
 export default Neo.setupClass(Controller);
