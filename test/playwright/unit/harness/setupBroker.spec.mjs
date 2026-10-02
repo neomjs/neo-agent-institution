@@ -1,5 +1,5 @@
 import {expect, test}            from '@playwright/test';
-import {mkdtempSync, readFileSync, statSync} from 'node:fs';
+import {mkdtempSync, readFileSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir}                  from 'node:os';
 import path                      from 'node:path';
 import {
@@ -25,6 +25,7 @@ function fakeModules({evaluations = []} = {}) {
             {id: 'placement', kind: 'observation'},
             {id: 'preset', kind: 'question'},
             {id: 'plane-credential', kind: 'question', answer: 'file'},
+            {id: 'advanced', kind: 'question', optional: true},
             {id: 'write-env', kind: 'effect', effectId: 'write-env'}
         ];
 
@@ -170,12 +171,68 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         expect(await broker.answer(trusted, {stepId: 'placement', answer: 'x'})).toEqual({ok: false, reason: '\'placement\' is not a question of this recipe', stepId: 'placement'});
         expect(await broker.answer(trusted, {stepId: 'preset', answer: ''})).toEqual({ok: false, reason: 'an answer is a non-empty string', stepId: 'preset'});
         expect(await broker.answer(trusted, {stepId: 'preset', answer: 'nope'})).toEqual({ok: false, reason: '\'nope\' is not a preset', stepId: 'preset'});
-        expect(await broker.answer(trusted, {stepId: 'plane-credential', answer: 'ghp_pastedTokenNeverReal'})).toEqual({ok: false, reason: 'the answer is not the path of an existing file', stepId: 'plane-credential'});
+
+        // the credential route is main's window only: a pasted value AND a renderer-supplied path
+        // of a real readable file are refused before any admission, and nothing is written
+        const readable = path.join(setupRoot, 'outside-input');
+
+        writeFileSync(readable, 'ghp_pastedTokenNeverReal');
+
+        for (const answer of ['ghp_pastedTokenNeverReal', readable]) {
+            expect(await broker.answer(trusted, {stepId: 'plane-credential', answer})).toEqual({ok: false, reason: '\'plane-credential\' is a credential question: it is answered in main\'s window, never with a path from the renderer', stepId: 'plane-credential'})
+        }
 
         const record = JSON.parse(readFileSync(path.join(setupRoot, `${consented.evaluation.runId}.json`), 'utf8'));
 
         expect(record.consents.map(row => row.stepId), 'only the preset reached the record').toEqual(['preset']);
-        expect(JSON.stringify(record)).not.toContain('ghp_')
+        expect(JSON.stringify(record)).not.toContain('ghp_');
+        expect(JSON.stringify(record)).not.toContain('outside-input')
+    });
+
+    test('the run owner serializes its record operations: two answers landing together both reach the record, a cold evaluate and an answer resolve one run, and a rejected operation leaves the chain usable', async () => {
+        const
+            {calls, modules}   = fakeModules(),
+            {broker, setupRoot} = createBroker({modules});
+
+        // a slow persistence: the first consent's write is still in flight when the second answer lands
+        const
+            original = modules.hostEffects.recordConsent,
+            gate     = [];
+
+        modules.hostEffects.recordConsent = async options => {
+            await new Promise(resolve => gate.push(resolve));
+
+            return original(options)
+        };
+
+        // cold: the evaluate and the answer start together — one run, both operations on it
+        const [first, second] = await (async () => {
+            const pending = [broker.evaluate(trusted, {}), broker.answer(trusted, {stepId: 'preset', answer: 'hosted'}), broker.answer(trusted, {stepId: 'advanced', answer: 'unfolded'})];
+
+            // release the consents in arrival order once both are queued
+            await new Promise(resolve => setTimeout(resolve, 10));
+            while (gate.length) gate.shift()();
+            await new Promise(resolve => setTimeout(resolve, 10));
+            while (gate.length) gate.shift()();
+
+            return Promise.all(pending)
+        })();
+
+        expect(first.ok && second.ok).toBe(true);
+
+        const record = JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8'));
+
+        expect(record.consents.map(row => `${row.stepId}=${row.answer}`), 'both consents survive').toEqual(['preset=hosted', 'advanced=unfolded']);
+        expect(new Set(calls.filter(([name]) => name === 'evaluateRecipe').map(([, {consents}]) => consents.length)).size, 'each evaluation saw its own prefix of the consents').toBeGreaterThan(1);
+
+        // a rejected operation surfaces to its caller and the next one still runs
+        modules.hostEffects.recordConsent = async () => { throw new Error('disk full') };
+
+        expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).reason).toBe('the consent was not recorded: disk full');
+
+        modules.hostEffects.recordConsent = original;
+
+        expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok).toBe(true)
     });
 
     test('credential: main\'s window supplies the value, the broker keeps it as an owner-only file under the setup root and records the PATH; cancel refuses by name; a non-credential step is refused', async () => {

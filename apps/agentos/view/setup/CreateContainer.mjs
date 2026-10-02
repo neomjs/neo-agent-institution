@@ -295,16 +295,41 @@ class CreateContainer extends Container {
     }
 
     /**
+     * @summary Takes the next observation ticket: every call that can answer an evaluation takes
+     * one before it leaves, and a reply is admitted only while no later ticket has been admitted —
+     * a slow refresh that lands after a newer consent's reply is superseded, never projected.
+     * @returns {Number}
+     * @protected
+     */
+    takeTicket() {
+        this.ticketSeq = (this.ticketSeq ?? 0) + 1;
+
+        return this.ticketSeq
+    }
+
+    /**
+     * @summary Whether a reply with this ticket is still current.
+     * @param {Number} ticket
+     * @returns {Boolean}
+     * @protected
+     */
+    isCurrent(ticket) {
+        return ticket >= (this.admittedTicket ?? 0)
+    }
+
+    /**
      * @summary Asks main for the evaluation, the probe and the presets in one go, then projects
-     * them. Without a shell the door switches to the served path.
+     * them. Without a shell the door switches to the served path. A newer reply admitted while
+     * this read was in flight wins: the read's answer is dropped.
      * @returns {Promise<void>}
      */
     async refresh() {
         const
             me                            = this,
+            ticket                        = me.takeTicket(),
             [evaluation, probe, presets]  = await Promise.all([me.callShell('setupEvaluate'), me.callShell('setupProbe'), me.callShell('setupPresets')]);
 
-        if (me.isDestroyed) return;
+        if (me.isDestroyed || !me.isCurrent(ticket)) return;
 
         if (evaluation.reason === 'no-shell') {
             me.shellAvailable = false;
@@ -317,24 +342,64 @@ class CreateContainer extends Container {
             shellAvailable: true
         });
 
-        me.admitReply(evaluation, 'The recipe could not be evaluated')
+        me.admitReply(evaluation, 'The recipe could not be evaluated', {observation: true, ticket})
     }
 
     /**
-     * @summary Projects a main reply: a fresh evaluation replaces the rows; a refusal lands on the
-     * status line in the shell's words and changes nothing else (never a gate).
-     * @param {Object} reply `{ok, evaluation}` or `{ok: false, reason}`
-     * @param {String} failureLead The status line's lead on a refusal
+     * @summary One evaluation read (a re-check, a re-read, a retry) under its own ticket.
+     * @param {String} failureLead
+     * @returns {Promise<void>}
      * @protected
      */
-    admitReply(reply, failureLead) {
+    async reevaluate(failureLead) {
+        const
+            me     = this,
+            ticket = me.takeTicket(),
+            reply  = await me.callShell('setupEvaluate');
+
+        me.isDestroyed || me.admitReply(reply, failureLead, {observation: true, ticket})
+    }
+
+    /**
+     * @summary Projects a main reply. A fresh evaluation replaces the rows. A failed OBSERVATION
+     * (an evaluation read that did not answer) turns every row `unknown` with the reason — a
+     * previously green row is no longer a current observation and never stays green. A refused
+     * ACTION (a preset the shell refused, a credential not kept) lands on the status line in the
+     * shell's words and changes no row: the last observation still stands. A reply from a ticket
+     * older than the last admitted one is dropped.
+     * @param {Object} reply `{ok, evaluation}` or `{ok: false, reason}`
+     * @param {String} failureLead The status line's lead on a refusal
+     * @param {Object} [options]
+     * @param {Boolean} [options.observation=false] The reply answers an evaluation read
+     * @param {Number} [options.ticket] The reply's observation ticket
+     * @protected
+     */
+    admitReply(reply, failureLead, {observation = false, ticket = null} = {}) {
         const me = this;
+
+        if (ticket !== null) {
+            if (!me.isCurrent(ticket)) return;
+
+            me.admittedTicket = ticket
+        }
 
         if (reply?.ok && reply.evaluation) {
             me.evaluation = reply.evaluation;
-            me.getReference('status-line').text = ''
-        } else {
-            me.getReference('status-line').text = `${failureLead}: ${reply?.reason ?? 'no answer'}`
+            me.getReference('status-line').text = '';
+            return
+        }
+
+        const reason = `${failureLead}: ${reply?.reason ?? 'no answer'}`;
+
+        me.getReference('status-line').text = reason;
+
+        if (observation && me.evaluation) {
+            // the held observation is not current any more: every row says so, in the read's words
+            me.evaluation = {
+                ...me.evaluation,
+                steps   : me.evaluation.steps.map(step => ({...step, status: 'unknown', reason})),
+                terminal: null
+            }
         }
     }
 
@@ -591,7 +656,7 @@ class CreateContainer extends Container {
             case 're-check':
             case 're-read':
             case 'retry':
-                return me.admitReply(await me.callShell('setupEvaluate'), 'The recipe could not be re-evaluated');
+                return me.reevaluate('The recipe could not be re-evaluated');
             case 'which plane?':
                 me.getReference('status-line').text = record.served
                     ? `the served plane is '${record.served.planeId ?? 'unnamed'}' at ${record.served.dataRoot ?? 'an unknown data root'}; the target is '${me.evaluation?.target?.planeId ?? 'unnamed'}'`
@@ -613,8 +678,9 @@ class CreateContainer extends Container {
      */
     async runEffect(effectId) {
         const
-            me    = this,
-            reply = await me.callShell('setupEffect', {effectId});
+            me     = this,
+            ticket = me.takeTicket(),
+            reply  = await me.callShell('setupEffect', {effectId});
 
         if (me.isDestroyed) return;
 
@@ -624,7 +690,7 @@ class CreateContainer extends Container {
             return
         }
 
-        me.admitReply(reply, `${effectId} could not run`)
+        me.admitReply(reply, `${effectId} could not run`, {ticket})
     }
 
     /**
@@ -639,7 +705,11 @@ class CreateContainer extends Container {
 
         if (!presetId) return;
 
-        me.admitReply(await me.callShell('setupAnswer', {answer: presetId, stepId: 'preset'}), `The preset '${presetId}' was refused`)
+        const
+            ticket = me.takeTicket(),
+            reply  = await me.callShell('setupAnswer', {answer: presetId, stepId: 'preset'});
+
+        me.isDestroyed || me.admitReply(reply, `The preset '${presetId}' was refused`, {ticket})
     }
 
     /**
@@ -657,12 +727,14 @@ class CreateContainer extends Container {
         button.disabled = true;
         me.getReference('status-line').text = 'Enter the credential in the window that opens.';
 
-        const reply = await me.callShell('setupCredential', {stepId: id});
+        const
+            ticket = me.takeTicket(),
+            reply  = await me.callShell('setupCredential', {stepId: id});
 
         if (me.isDestroyed) return;
 
         button.disabled = false;
-        me.admitReply(reply, reply?.reason === 'canceled' ? 'Canceled. Nothing was stored' : 'The credential was not kept')
+        me.admitReply(reply, reply?.reason === 'canceled' ? 'Canceled. Nothing was stored' : 'The credential was not kept', {ticket})
     }
 
     /**

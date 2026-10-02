@@ -142,6 +142,25 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
         refuse = (reason, extra = {}) => ({ok: false, reason, ...extra}),
         run    = {record: null, recordPath: null, target: null};
 
+    // the run owner's record operations are SERIALIZED: one chain, every read-modify-write of the
+    // record (resolve, consent, retire, evaluate) runs after the previous one settled, so two answers
+    // landing together never capture the same record and lose a consent. A rejected operation
+    // surfaces to its caller and leaves the chain usable for the next one.
+    let chain = Promise.resolve();
+
+    /**
+     * @summary Runs one record operation after every earlier one, rejections included.
+     * @param {Function} operation `() => Promise<*>`
+     * @returns {Promise<*>}
+     */
+    function serialize(operation) {
+        const next = chain.then(operation, operation);
+
+        chain = next.catch(() => {});
+
+        return next
+    }
+
     /**
      * @summary Refuses an untrusted sender, a browser boot, and a boot without a Brain root — in
      * that order, each by name.
@@ -243,7 +262,7 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             if (!admitted.modules) return admitted;
 
             try {
-                return {ok: true, evaluation: await evaluateNow(admitted.modules, request?.target ?? null)}
+                return {ok: true, evaluation: await serialize(() => evaluateNow(admitted.modules, request?.target ?? null))}
             } catch (error) {
                 return refuse(`the recipe could not be evaluated: ${error.message}`)
             }
@@ -282,9 +301,10 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
         },
 
         /**
-         * @summary Records one consent: a preset id for the preset question, a file PATH for a
-         * credential question (admitted as a reference before the record sees it; a pasted value is
-         * refused and never recorded). The reply is the re-evaluated run.
+         * @summary Records one consent for a choice question (the preset; the advanced fold). A
+         * credential question is refused here by name: its only ingress is main's window through
+         * `credential()`, so no renderer-supplied path is ever admitted. The reply is the
+         * re-evaluated run.
          * @param {Electron.IpcMainInvokeEvent} event
          * @param {{stepId: String, answer: String}} request
          * @returns {Promise<Object>}
@@ -303,6 +323,10 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                 return refuse(`'${stepId}' is not a question of this recipe`, {stepId})
             }
 
+            if (step.answer === 'file') {
+                return refuse(`'${stepId}' is a credential question: it is answered in main's window, never with a path from the renderer`, {stepId})
+            }
+
             if (typeof answer !== 'string' || !answer) {
                 return refuse('an answer is a non-empty string', {stepId})
             }
@@ -312,23 +336,13 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             }
 
             try {
-                const {host, record, recordPath} = await resolveRun(admitted.modules, null);
+                return await serialize(async () => {
+                    const {host, record, recordPath} = await resolveRun(admitted.modules, null);
 
-                let consented = answer;
+                    run.record = (await hostEffects.recordConsent({stepId, answer, record, recordPath, host})).record;
 
-                if (step.answer === 'file') {
-                    const reference = await hostEffects.admitCredentialReference({answer, fsModule});
-
-                    if (!reference.ok) {
-                        return refuse(reference.reason, {stepId})
-                    }
-
-                    consented = reference.path
-                }
-
-                run.record = (await hostEffects.recordConsent({stepId, answer: consented, record, recordPath, host})).record;
-
-                return {ok: true, evaluation: await evaluateNow(admitted.modules, null)}
+                    return {ok: true, evaluation: await evaluateNow(admitted.modules, null)}
+                })
             } catch (error) {
                 return refuse(`the consent was not recorded: ${error.message}`, {stepId})
             }
@@ -388,17 +402,19 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                 await fsModule.writeFile(filePath, value, {mode: 0o600});
                 await fsModule.chmod(filePath, 0o600);
 
-                const
-                    {host, record, recordPath} = await resolveRun(admitted.modules, null),
-                    reference                  = await hostEffects.admitCredentialReference({answer: filePath, fsModule});
+                return await serialize(async () => {
+                    const
+                        {host, record, recordPath} = await resolveRun(admitted.modules, null),
+                        reference                  = await hostEffects.admitCredentialReference({answer: filePath, fsModule});
 
-                if (!reference.ok) {
-                    return refuse(reference.reason, {stepId})
-                }
+                    if (!reference.ok) {
+                        return refuse(reference.reason, {stepId})
+                    }
 
-                run.record = (await hostEffects.recordConsent({stepId, answer: reference.path, record, recordPath, host})).record;
+                    run.record = (await hostEffects.recordConsent({stepId, answer: reference.path, record, recordPath, host})).record;
 
-                return {ok: true, evaluation: await evaluateNow(admitted.modules, null), path: reference.path}
+                    return {ok: true, evaluation: await evaluateNow(admitted.modules, null), path: reference.path}
+                })
             } catch (error) {
                 return refuse(`the credential was not kept: ${error.message}`, {stepId})
             }

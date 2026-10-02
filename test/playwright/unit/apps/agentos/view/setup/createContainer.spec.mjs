@@ -314,6 +314,76 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         host.destroy()
     });
 
+    test('a failed observation after a green one: every row turns unknown with the read\'s reason and the progress drops; an action refusal keeps the last observation', async () => {
+        let evaluateFails = false;
+
+        stubShell({
+            setupEvaluate: () => evaluateFails ? {ok: false, reason: 'the recipe modules did not load: ENOENT'} : {ok: true, evaluation: coldEvaluation()},
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS},
+            setupAnswer  : {ok: false, reason: 'refused by the fixture', stepId: 'preset'}
+        });
+
+        const {host, door, progress} = createDoor();
+
+        await settle();
+        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+
+        // an ACTION refusal: the status line speaks, the observation stands
+        await door.onPresetClick({component: {presetId: 'hosted'}});
+        expect(door.getReference('status-line').text).toBe('The preset \'hosted\' was refused: refused by the fixture');
+        expect(door.store.get('placement').status).toBe('ok');
+        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+
+        // an OBSERVATION failure: no row stays green from the previous read
+        evaluateFails = true;
+        await door.onStepClick({record: door.store.get('placement')});   // re-read
+
+        expect(door.getReference('status-line').text).toBe('The recipe could not be re-evaluated: the recipe modules did not load: ENOENT');
+        expect(door.store.items.every(step => step.status === 'unknown')).toBe(true);
+        expect(door.store.get('placement').reason).toBe('The recipe could not be re-evaluated: the recipe modules did not load: ENOENT');
+        expect(progress()).toEqual({ok: 0, total: 11, next: 'placement', blocking: null});
+        expect(door.getReference('quiet-line').hidden).toBe(true);
+
+        host.destroy()
+    });
+
+    test('a slow refresh never overwrites a newer consent\'s reply: the older observation is dropped', async () => {
+        const
+            releases = [],
+            answered = coldEvaluation();
+
+        answered.steps[1] = row('preset', 'question', 'ok', 'consented', {answer: 'hosted', consentedAt: '2026-10-02T10:22:00.000Z'});
+
+        let evaluations = 0;
+
+        stubShell({
+            // the first evaluation (the mount's refresh) answers at once; the second (a re-read)
+            // waits until the test releases it, after a preset consent has been admitted
+            setupEvaluate: () => ++evaluations === 1 ? {ok: true, evaluation: coldEvaluation()} : new Promise(resolve => releases.push(() => resolve({ok: true, evaluation: coldEvaluation()}))),
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS},
+            setupAnswer  : {ok: true, evaluation: answered}
+        });
+
+        const {host, door, progress} = createDoor();
+
+        await settle();
+
+        const slowRead = door.onStepClick({record: door.store.get('placement')});   // re-read, held
+
+        await door.onPresetClick({component: {presetId: 'hosted'}});
+        expect(door.store.get('preset').answer, 'the consent is admitted while the read is in flight').toBe('hosted');
+
+        releases.shift()();
+        await slowRead;
+
+        expect(door.store.get('preset').answer, 'the older read does not win').toBe('hosted');
+        expect(progress()).toEqual({ok: 3, total: 11, next: 'plane-credential', blocking: null});
+
+        host.destroy()
+    });
+
     test('the store\'s progress and the preset verdict helper read the rows alone', () => {
         const store = Neo.create(SetupSteps, {});
 
