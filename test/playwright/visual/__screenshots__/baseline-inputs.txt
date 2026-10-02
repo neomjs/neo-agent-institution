@@ -198,7 +198,7 @@ apps/agentos/util/FleetAdmission.mjs
     5d11901094202fb43245963d71a34ef3b1b37876
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
-    9c0491163279261fdb92e1e487093322cb1a26c5
+    328c3ab3a9d6ae06b692698932df2166a359748f
 
 apps/agentos/util/FleetStartPlan.mjs
     8133ea5500f9f193b515e5ab70ce1a172fa31921
