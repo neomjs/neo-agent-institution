@@ -113,6 +113,9 @@ class FleetAdmission extends Base {
 
         owner.lastLiveRows    = rows;
         owner.rosterProfileId = profileId;
+        // the detail panes that read the roster row (the repository pane) observe at this admission:
+        // stamped BEFORE the reconcile, so a re-seat it causes carries the clock in the same write
+        owner.rosterObservedAt = Date.now();
 
         if (owner.rosterWired) {
             owner.reconcileRoster(store, rows)
@@ -133,6 +136,12 @@ class FleetAdmission extends Base {
             presenceCapability: capabilities?.presence ?? null
         }});
         grid && (grid.adapterState = 'live');
+
+        // an admission that re-seated the selection already carried the clock with the record;
+        // an unchanged record gets the clock alone, so its repository pane re-ages in place
+        const pane = cockpit.getAgentDetailPane?.();
+
+        pane && pane.rosterObservedAt !== owner.rosterObservedAt && pane.set({rosterObservedAt: owner.rosterObservedAt});
 
         TargetBinding.refreshRosterConsumers(owner);
 

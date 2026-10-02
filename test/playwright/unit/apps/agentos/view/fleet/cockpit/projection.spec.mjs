@@ -412,11 +412,15 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         expect(stream.actorDirectory, 'an instance-bound seed joins the declared config').toEqual({});
 
         // agent-detail renders the real drill-in view from OWNER-held fallback state (the
-        // selected record), so returning from true absence never drops the selection
+        // selected record and the roster admission instant), so returning from true absence never
+        // drops the selection, and the pane ages its roster-read panes from the real observation
+        host.getController().rosterObservedAt = 1_700_000_000_000;
+
         const detail = resolve('detail', {reference: 'agent-detail', title: 'Agent detail'});
 
         expect(detail.module).toBe(AgentDetail);
         expect(detail.record).toBe(host.detailRecord);   // owner-held selection survives re-projection
+        expect(detail.rosterObservedAt, 'the owner\'s roster clock seeds the projected pane').toBe(1_700_000_000_000);
         expect(detail.agentDefinitions).toBe(definitions);
         expect(detail.fleetTenants).toBe(tenants);
         expect(detail.cls).toContain('dock-flip-item-detail');

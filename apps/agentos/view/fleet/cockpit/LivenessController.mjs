@@ -51,6 +51,13 @@ class LivenessController extends ComponentController {
     }
 
     /**
+     * The reader's clock (epoch ms) at the last roster admission — the observation instant of every
+     * detail pane that reads the roster row (the repository pane today).
+     * @member {Number|null} rosterObservedAt=null
+     * @protected
+     */
+    rosterObservedAt = null
+    /**
      * Monotonic read-fence for the Brain-health pulls — only the newest generation may write.
      * @member {Number} brainHealthReadGeneration=0
      * @protected

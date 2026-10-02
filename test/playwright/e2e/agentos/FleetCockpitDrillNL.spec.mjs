@@ -1,4 +1,5 @@
-import {expect, landFleetSample, test} from '../../fixtures.mjs';
+import {expect, landFleetRoster, landFleetSample, test} from '../../fixtures.mjs';
+import {sampleRoster}                                   from '../../fixture/fleetSample.mjs';
 
 /**
  * @summary The FM cockpit card→detail drill, proven LIVE through nested content inside the semantic
@@ -79,6 +80,36 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         // Engine truth: the mounted inspector holds the EXACT activated resident — equality, not
         // set-membership. Delegated item selection routed through owner-held state to the durable id.
         const [d] = await app.queryComponent({className: 'AgentOS.view.fleet.detail.Container'}, ['record']);
-        expect(d?.properties?.record?.agentId, 'the inspector drilled into the exact activated resident').toBe(expectedAgentId)
+        expect(d?.properties?.record?.agentId, 'the inspector drilled into the exact activated resident').toBe(expectedAgentId);
+
+        // The four Status panes state their sources. The sample roster carries no repository
+        // fact, so the repository pill says that in words, the same fact as the header's repository
+        // axis; each pane without a producer on this plane keeps the honest unobserved label with
+        // the producer it waits for on its title — a gap named, never a bug disguised.
+        const pill = key => detail.locator(`.fm-detail-pane-${key} .fm-freshness`);
+
+        await expect(pill('repo')).toHaveText('not wired — the roster row carried no repository fact', {timeout: 15000});
+        await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-slug')).toHaveText('no repository declared');
+
+        for (const [key, producer] of [['thought-stream', /policy-aware read/], ['lane', /lane stamp/], ['prs', /open-work projection/]]) {
+            await expect(pill(key), key).toHaveText('not observed — source not wired');
+            await expect(pill(key), key).toHaveAttribute('title', producer)
+        }
+
+        // A roster answer that carries the resident's repository fact lands on the open inspector
+        // through the roster's own reconcile: the pill dates from that admission and the pane shows
+        // the row's slug and clone path — one producer for the header row, the card and the pane.
+        await landFleetRoster(page, sampleRoster.map(row => row.agentId === expectedAgentId ? {
+            ...row,
+            repoSlug: 'neomjs/neo',
+            repoPath: '/seats/neo/clone',
+            sources : {...row.sources, repoStatus: {source: 'fleet:fleetStatus', state: 'wired', confidence: 'observed', reason: null}}
+        } : row));
+
+        await expect(pill('repo')).toHaveText(/^updated \d+s ago$/, {timeout: 15000});
+        await expect(pill('repo')).toHaveClass(/\bis-fresh\b/);
+        await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-slug')).toHaveText('neomjs/neo');
+        await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-path')).toHaveText('/seats/neo/clone');
+        await expect(detail.locator('.fm-detail-ledger'), 'the header row reads the same fact').toContainText(/repository\s*wired · observed/)
     })
 });

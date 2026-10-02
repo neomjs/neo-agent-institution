@@ -523,7 +523,13 @@ class FleetCockpit extends VesselContainer {
      * @protected
      */
     afterSetDetailRecord(value, oldValue) {
-        oldValue !== undefined && this.getAgentDetailPane()?.set({record: value ?? null});
+        // the record and the roster observation it was read under travel as ONE write: a re-seat
+        // inside an admission carries the admission's clock, so the pane never renders a new
+        // record against the previous roster's instant
+        oldValue !== undefined && this.getAgentDetailPane()?.set({
+            record          : value ?? null,
+            rosterObservedAt: this.getController()?.rosterObservedAt ?? null
+        });
         this.pushVesselTitles()
     }
 
@@ -897,6 +903,9 @@ class FleetCockpit extends VesselContainer {
                     agentDefinitions: me.resolveProviderStore('agentDefinitions'),
                     fleetTenants    : me.resolveProviderStore('fleetTenants'),
                     record          : me.detailRecord,
+                    // the roster admission instant the owner holds: a pane projected after the
+                    // roster landed ages its roster-read panes from the real observation
+                    rosterObservedAt: controller.rosterObservedAt,
                     shellTools      : [me.buildDetailWindowToggle()]
                 };
                 break;
