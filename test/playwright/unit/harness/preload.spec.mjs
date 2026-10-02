@@ -210,6 +210,47 @@ test.describe('Electron harness preload capability', () => {
         expect(firstPaintReporter.cleared).toBe(true)
     })
 
+    for (const rosterLabel of ['', 'not answered yet']) {
+        test(`waits for the cold empty-answer transition (${rosterLabel ? 'pending label' : 'cleared label'})`, async () => {
+            const
+                clock              = {now: 0},
+                dom                = cockpitDom({cards: [], emptyCta: true, rosterState: 'cold', rosterLabel}),
+                {intervals, sends} = await loadPreload({clock, dom}),
+                reporter           = getFirstPaintReporter(intervals);
+
+            reporter.fn();
+            clock.now = 10000;
+            reporter.fn();
+            expect(sends.filter(([channel]) => channel === 'shell-first-paint-report')).toEqual([]);
+            expect(reporter.cleared).toBe(false);
+
+            dom.selectors['.fm-fleet-cockpit .fm-fleet-head'] = adapterHead('live', '', '.fm-fleet-stale');
+            reporter.fn();
+
+            expect(sends.filter(([channel]) => channel === 'shell-first-paint-report')).toHaveLength(1);
+            expect(sends.find(([channel]) => channel === 'shell-first-paint-report')[1]).toMatchObject({
+                emptyCta: true, rosterState: 'live', rosterLabel: '', timedOut: false
+            });
+            expect(reporter.cleared).toBe(true)
+        })
+    }
+
+    test('a cold empty-answer transition that never settles produces a failed timeout receipt', async () => {
+        const
+            clock              = {now: 0},
+            dom                = cockpitDom({cards: [], emptyCta: true, rosterState: 'cold', rosterLabel: ''}),
+            {intervals, sends} = await loadPreload({clock, dom}),
+            reporter           = getFirstPaintReporter(intervals);
+
+        clock.now = 60001;
+        reporter.fn();
+
+        expect(sends.find(([channel]) => channel === 'shell-first-paint-report')[1]).toMatchObject({
+            rosterState: 'cold', rosterLabel: '', rendererFirstPaintMs: null, timedOut: true
+        });
+        expect(reporter.cleared).toBe(true)
+    })
+
     test('times out honestly when demo controls or missing cards prevent the product receipt', async () => {
         const
             clock              = {now: 0},

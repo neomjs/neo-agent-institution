@@ -177,9 +177,10 @@ const firstPaintTimer = setInterval(function reportFirstPaint() {
         // reported only once it has stayed cold past the settle window — the plain smoke, which
         // spawns no plane, paints cold and says so; a plane that answers inside the window lands as
         // the answer it is.
-        rosterAnswered = snapshot.cardCount > 0 || snapshot.emptyCta,
+        // An empty answer and its header class can arrive in separate DOM updates.
+        rosterAnswered = snapshot.cardCount > 0 || (snapshot.emptyCta && snapshot.rosterState !== 'cold'),
         ready    = snapshot.cockpitVisible &&
-            (rosterAnswered || (snapshot.rosterState === 'cold' && elapsed >= COLD_SETTLE_MS)) &&
+            (rosterAnswered || (snapshot.rosterState === 'cold' && !snapshot.emptyCta && elapsed >= COLD_SETTLE_MS)) &&
             snapshot.rosterState !== null && snapshot.rosterState !== 'unknown' &&
             snapshot.streamState !== null && snapshot.streamState !== 'unknown' &&
             snapshot.tourControlCount === 0,
