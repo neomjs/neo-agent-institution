@@ -360,7 +360,7 @@ apps/agentos/view/fleet/instances/SwitcherButton.mjs
     97e71ba7326fecd3d757a23b1197b996f9d5d1be
 
 apps/agentos/view/fleet/mailbox/Body.mjs
-    a6d865419c21b64f424005087fd25596dad826d7
+    664c5c98fca5321c7b85812bc9666d18404dd91b
 
 apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     04ea267aa98a0de4ec26c5c1f027e2b97d5d4da3
