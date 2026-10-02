@@ -1,7 +1,7 @@
 import Component     from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import HarnessChoice from '../../../util/HarnessChoice.mjs';
 import {
-    listMcpServers,
+    mcpCatalogFor,
     normalizeMcpOverrides,
     resolveMcpMatrix,
     supportsTenantMcpTarget
@@ -28,7 +28,7 @@ const LAUNCH_OWNERS = Object.freeze({
  * (Brain's public Fleet contract): the harness (offered as the add-agent form offers it — a
  * product, then App or Command line where the product ships both, via `HarnessChoice`; fail-closed
  * "Unknown harness" for unregistered types), the MCP-server matrix (catalog order, effective
- * enable-state via `resolveMcpMatrix` — null matrix = catalog defaults), and the operational
+ * enable-state via `resolveMcpMatrix` — null matrix = the bound forge's catalog defaults), and the operational
  * toggles with tri-state honesty (On / Off / "Not read back yet" — never an optimistic guess).
  * Every label is operator product language; transport vocabulary never renders.
  *
@@ -188,10 +188,12 @@ class AgentConfigCard extends Component {
         const [, kind, key] = node.id.replace(`${me.id}__`, '__').split('__');
 
         if (kind === 'srv') {
-            const matrix = resolveMcpMatrix(record.mcpServers);
+            const
+                catalog = mcpCatalogFor(record.forge),
+                matrix  = resolveMcpMatrix(record.mcpServers, catalog);
             matrix[key] = !matrix[key];
 
-            me.fire('configIntent', {id: record.id, mcpServers: normalizeMcpOverrides(matrix)})
+            me.fire('configIntent', {id: record.id, mcpServers: normalizeMcpOverrides(matrix, catalog)})
         } else if (kind === 'harness' && key !== record.harnessType) {
             me.fire('configIntent', {id: record.id, harnessType: key})
         } else if (kind === 'product') {
@@ -270,7 +272,8 @@ class AgentConfigCard extends Component {
 
         const
             me            = this,
-            matrix        = resolveMcpMatrix(record.mcpServers),
+            catalog       = mcpCatalogFor(record.forge),
+            matrix        = resolveMcpMatrix(record.mcpServers, catalog),
             targetChoices = me.createTargetChoices(record),
             saveStatus    = me.saveStatus?.agentId === record.id
                 ? me.saveStatus
@@ -308,7 +311,7 @@ class AgentConfigCard extends Component {
             cls: ['fm-config-section'],
             cn : [
                 {tag: 'strong', cls: ['fm-config-heading'], text: 'Servers · declared'},
-                ...listMcpServers().map(server => ({
+                ...catalog.map(server => ({
                     id : `${me.id}__srv__${server.key}`,
                     cls: ['fm-config-row', 'fm-config-toggle', 'is-declared', matrix[server.key] ? 'is-enabled' : 'is-disabled'],
                     cn : [

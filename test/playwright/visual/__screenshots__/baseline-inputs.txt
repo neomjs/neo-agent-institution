@@ -63,7 +63,7 @@ apps/agentos/index.html
     9ab6324cf458c8002667cd12b4ba1dd928ee33b6
 
 apps/agentos/model/AgentDefinition.mjs
-    f4316471c60e017a56b274c1bf35fe405e951bfb
+    1d0320e61114cb7f75b63c646bc9186d13a77d9c
 
 apps/agentos/model/CatchUpEntry.mjs
     29fd958061be44385f2c1fcd6548a40d619b0533
@@ -306,7 +306,7 @@ apps/agentos/view/fleet/cockpit/ViewerWakeTelltaleComponent.mjs
     388ce961936990404da0448e1462b6405b98e7e6
 
 apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
-    4e83392a4dce073a7a80f08f8ccd43a236a07c90
+    ebd37a49aeaa1a7df12d352278eda640f0c06435
 
 apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     9b166bd6afc7287cea036adde0cc1ce9e44bdcc4
