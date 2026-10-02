@@ -67,7 +67,7 @@ test.describe('AgentOS OperatorMailbox — the operator mailbox surface (#15377)
 
     test('fires the single inbox read intent at construction — the cockpit holds the read seam', () => {
         // The paging chrome retired with the buffered grid (operator direction 2026-08-28): the
-        // pane no longer fires `pageRequest`. The read trigger is THIS surface's own — one
+        // pane fires `pageRequest` only from its scroll edge. The read trigger is THIS surface's own — one
         // construction-time fire per bound identity, offset always 0, the event name and payload
         // kept stable for the cockpit's existing wiring.
         let relayed = null;

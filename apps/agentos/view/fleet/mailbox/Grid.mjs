@@ -1,4 +1,5 @@
 import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Container.mjs';
+import MailboxBody   from './Body.mjs';
 import RowComponent  from './RowComponent.mjs';
 
 /**
@@ -10,9 +11,11 @@ import RowComponent  from './RowComponent.mjs';
  * {@link AgentOS.view.fleet.mailbox.RowComponent} per rendered row (the component-column pool is
  * the buffering — `bufferRowRange` bounds and recycles mounted rows; it fetches nothing), fed from
  * the injected {@link AgentOS.store.AgentMailbox} store. No paging chrome exists on this surface
- * (operator direction 2026-08-28): the corpus scrolls, and its honest end is the only end — data
- * acquisition stays the owning controller's scroll-edge contract until the engine lands its
- * scroll-edge seam.
+ * (operator direction 2026-08-28): the corpus scrolls, and its honest end is the only end. Data
+ * acquisition is the owning pane's: the body announces `scrollEdge` when the mounted window
+ * reaches the loaded end ({@link AgentOS.view.fleet.mailbox.Body}, the engine's seam in waiting,
+ * neomjs/neo#19356), this grid relays it, and the pane requests the next window under its own
+ * gate. Nothing here walks the corpus on its own.
  *
  * **ONE data path.** Every mutation of this surface — wholesale projection, window append, thread
  * toggle — flows through {@link #applyBags}: plain row bags get their thread facts stamped
@@ -74,7 +77,12 @@ class Grid extends GridContainer {
          * installed. The thread toggle stays the row's own native button.
          * @member {Object} viewConfig={selectionModel: null}
          */
-        viewConfig: {selectionModel: null}
+        viewConfig: {selectionModel: null},
+        /**
+         * The body that announces the scroll edge; the engine's body plus one event.
+         * @member {Object} body={module: MailboxBody}
+         */
+        body: {module: MailboxBody}
     }
 
     /**
@@ -113,7 +121,19 @@ class Grid extends GridContainer {
             click   : me.onThreadToggleClick,
             delegate: '.fm-mail-thread-toggle',
             scope   : me
-        })
+        });
+
+        // the body's announcement becomes the grid's: the pane listens here, never on the body
+        me.body.on('scrollEdge', me.onBodyScrollEdge, me)
+    }
+
+    /**
+     * @summary Relay the body's `scrollEdge` as the grid's own event, payload unchanged.
+     * @param {Object} data `{startIndex, endIndex, count}`
+     * @protected
+     */
+    onBodyScrollEdge(data) {
+        this.fire('scrollEdge', data)
     }
 
     /**
