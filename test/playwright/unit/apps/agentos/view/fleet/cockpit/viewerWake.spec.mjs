@@ -17,6 +17,7 @@ import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import ViewerWakeFeed from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import LivenessCadence from '../../../../../../../../apps/agentos/util/LivenessCadence.mjs';
 
 /**
  * The viewer-wake wiring: `ensureViewerWakeStream` keeps the per-viewer wake stream bound to the
@@ -27,7 +28,7 @@ import ViewerWakeFeed from '../../../../../../../../apps/agentos/store/ViewerWak
  * stamp). The consumer itself is pinned by `fleetWakeStreamConsumer.spec.mjs`; here it is a spy.
  */
 test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () => {
-    let CockpitStateProvider, FleetCockpitController;
+    let CockpitStateProvider, ComponentContainer, FleetCockpitController;
 
     // scope the mock to the `fleet` subkey ONLY — `globalThis.AgentOS` is the app's Neo namespace
     // root; replacing it wipes class registrations for later spec files (cross-file bleed).
@@ -103,8 +104,15 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
     };
 
     test.beforeAll(async () => {
-        CockpitStateProvider   = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs')).default;
-        FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
+        [
+            CockpitStateProvider,
+            ComponentContainer,
+            FleetCockpitController,
+        ] = await Promise.all([
+            import('../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs').then(module => module.default),
+            import('../../../../../../../../node_modules/neo.mjs/src/container/Base.mjs').then(module => module.default),
+            import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs').then(module => module.default)
+        ])
     });
 
     test.afterEach(() => clearBridge());
@@ -124,7 +132,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         expect(stamped.stream.reason).toContain('wake push not wired');
         expect(stamped.catchUp).toEqual({state: null, at: null, pending: null});
         const slot = renderSlot(cockpit);
-        // #23: the slot wears the word pair; the stamped reason reaches the reader via title/aria
+        // The slot wears the word pair; the stamped reason reaches the reader via title/aria.
         expect(slot.text).toBe('wake off');
         expect(slot.vdom.title).toContain('wake push not wired');
 
@@ -234,6 +242,53 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         expect(cockpit.provider.getData('viewerWake').stream.reason).toContain('wake push not wired');
 
         cockpit.feed.destroy()
+    });
+
+    test('the real controller keeps its stream across a liveness stop and releases it on component destroy', () => {
+        const factory = makeConsumerFactory();
+
+        setBridge(factory);
+
+        const component = Neo.create(ComponentContainer, {
+            appName,
+            controller: FleetCockpitController,
+            livenessCadence: LivenessCadence.DEFAULT_INTERVALS,
+            livenessPollInterval: LivenessCadence.DEFAULT_PASS,
+            stateProvider: {
+                module: CockpitStateProvider,
+                stores: {
+                    viewerWakeFeed: {module: ViewerWakeFeed}
+                }
+            }
+        });
+
+        try {
+            const controller = component.getController();
+
+            // This witness owns polling/stream lifetime; read admission has its own coverage.
+            controller.loadBrainHealth = () => {};
+            controller.loadDeploymentState = () => {};
+
+            controller.startLiveness();
+            controller.ensureViewerWakeStream();
+            const consumer = factory.created[0];
+
+            expect(factory.created).toHaveLength(1);
+            expect(consumer.started).toBe(1);
+            expect(controller.livenessTimerId).not.toBeNull();
+
+            controller.stopLiveness();
+
+            expect(controller.livenessTimerId).toBe(null);
+            expect(consumer.stopped, 'stopping the liveness cadence must leave the view-owned stream running').toBe(0);
+
+            component.destroy();
+
+            expect(consumer.stopped, 'destroying the final component controller must release its consumer').toBe(1);
+            expect(controller.isDestroyed).toBe(true)
+        } finally {
+            component.destroy()
+        }
     });
 
     test('an injected wakePollDigest seam projects through as the pollDigest option', () => {

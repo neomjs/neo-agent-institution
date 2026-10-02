@@ -297,7 +297,7 @@ apps/agentos/view/fleet/cockpit/Controller.mjs
     09ab2456b19e4737b4b814d50b2a381dc028f3c7
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    4c2e13a2d642e55314b6e57e960646e1223d8a48
+    442d07d957e9aa9806b3470f44fbe5e3856246c1
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     3bc24c1b7d3498119de6210234cc74528fcfaa8f
@@ -310,6 +310,9 @@ apps/agentos/view/fleet/cockpit/StateProvider.mjs
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     b28949c0df2378dd5b3c70855c733d37872c0bb2
+
+apps/agentos/view/fleet/cockpit/ViewerWakeController.mjs
+    98461852e5d446ee2f386a67004c2142a15d56b6
 
 apps/agentos/view/fleet/cockpit/ViewerWakeTelltaleComponent.mjs
     388ce961936990404da0448e1462b6405b98e7e6
