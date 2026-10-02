@@ -71,6 +71,7 @@ import {createSmokeSafeStorage, startFixturePlane}            from './fixturePla
 import {carriesSecret, createMainLog}                         from './mainLog.mjs';
 import {
     createPlaneBroker,
+    launchedPlaneRecord,
     planeEnvFragment,
     probePlaneCredential,
     readPlaneConfig
@@ -1016,10 +1017,11 @@ async function bootProductBrain() {
     }
 
     // the backups sit beside the plane in the per-user root, so removing the plane never removes them
-    const packagedEnv = packagedMode
+    const planeFragment = packagedMode ? planeEnvFragment({env: process.env, planeConfig: storedPlane}) : {};
+    const packagedEnv   = packagedMode
         ? {
             ...buildPackagedBrainEnv({agentsRoot: seatRoot.record?.root, backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
-            ...planeEnvFragment({env: process.env, planeConfig: storedPlane}),
+            ...planeFragment,
             ELECTRON_RUN_AS_NODE    : '1',
             NEO_HARNESS_ELECTRON_BIN: process.execPath
         }
@@ -1107,7 +1109,7 @@ async function bootProductBrain() {
             lastLine   : () => fleetLastLine,
             mode,
             secrets    : mainSecrets(),
-            typeRefusal: refusal => typePlaneRefusal(refusal, {planeConfig: storedPlane, probe: probePlaneCredential})
+            typeRefusal: refusal => typePlaneRefusal(refusal, {planeConfig: launchedPlaneRecord(storedPlane, planeFragment), probe: probePlaneCredential})
         })
     }
 

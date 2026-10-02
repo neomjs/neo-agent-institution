@@ -8,6 +8,7 @@ import {homedir, tmpdir}                                     from 'node:os';
 import path                                                  from 'node:path';
 import {fileURLToPath}                                       from 'node:url';
 import {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} from 'neo-agent-brain/fleet-contract';
+import {launchedPlaneRecord, planeEnvFragment, probePlaneCredential} from '../../../../harness/planeConfig.mjs';
 import {
     allocatePort,
     assertIsolatedProfile,
@@ -422,6 +423,46 @@ test.describe('harness brain lifecycle', () => {
 
         await typePlaneRefusal(planeRefusal(line), {planeConfig: null, probe: async () => { probed = true }});
         expect(probed, 'no stored record, nothing to ask').toBe(false)
+    });
+
+    test('only a launch the stored record supplied is typed; an inherited plane or PAT keeps the refusal generic', async () => {
+        const
+            record  = {bearer: 'stored-bearer', identity: '@ada', planeBase: 'http://127.0.0.1:9'},
+            calls   = [],
+            probe   = async options => {calls.push(options); return {identity: null, verdict: 'unreachable'}},
+            typeFor = async (env, planeConfig = record) => (await typePlaneRefusal(planeRefusal('x'), {
+                planeConfig: launchedPlaneRecord(planeConfig, planeEnvFragment({env, planeConfig})),
+                probe
+            })).code;
+
+        expect(await typeFor({}), 'the record alone').toBe('plane-unreachable');
+        expect(await typeFor({NEO_FLEET_PLANE_BASE: 'http://127.0.0.1:10'}), 'an inherited plane base').toBe('plane-refused');
+        expect(await typeFor({NEO_FLEET_PLANE_BEARER: 'env-bearer'}), 'an inherited PAT').toBe('plane-refused');
+        expect(await typeFor({}, null), 'no stored record').toBe('plane-refused');
+        expect(calls, 'only the record\'s own launch reached the plane').toEqual([{bearer: 'stored-bearer', planeBase: 'http://127.0.0.1:9'}])
+    });
+
+    test('a request the real probe times out reads as unreachable, the way the connect card reads it', async () => {
+        const
+            timedOut = () => Promise.reject(Object.assign(new Error('The operation was aborted due to timeout'), {name: 'TimeoutError'})),
+            typed    = await typePlaneRefusal(planeRefusal('x'), {
+                planeConfig: {bearer: 'b', identity: '@ada', planeBase: 'http://127.0.0.1:9'},
+                probe      : options => probePlaneCredential({...options, fetchFn: timedOut})
+            });
+
+        expect(typed.code).toBe('plane-unreachable')
+    });
+
+    test('the probe as a whole is bounded: a slow multi-hop answer past the deadline keeps the refusal generic', async () => {
+        const
+            planeConfig   = {bearer: 'b', identity: '@ada', planeBase: 'http://127.0.0.1:9'},
+            slowChallenge = () => new Promise(resolve => setTimeout(() => resolve(new Response('', {headers: {'www-authenticate': 'Bearer'}, status: 401})), 300)),
+            probe         = options => probePlaneCredential({...options, fetchFn: slowChallenge, timeoutMs: 5000}),
+            started       = Date.now();
+
+        expect((await typePlaneRefusal(planeRefusal('x'), {deadlineMs: 100, planeConfig, probe})).code, 'two 300 ms hops miss a 100 ms deadline').toBe('plane-refused');
+        expect(Date.now() - started, 'the deadline ended the wait, not the 600 ms probe').toBeLessThan(500);
+        expect((await typePlaneRefusal(planeRefusal('x'), {deadlineMs: 2000, planeConfig, probe})).code, 'the same hops inside the deadline').toBe('plane-credential-refused')
     });
 
     test('a plane-attach refusal is typed once, after its line is quoted, and a ready fleet never is', async () => {
