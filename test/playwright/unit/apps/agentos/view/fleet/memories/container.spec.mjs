@@ -403,18 +403,20 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
         pane.onTurnScrollEdge();
         expect(drills).toHaveLength(3);
 
-        // back to the list: the edge the register announced behind the drill was refused, not
-        // forgotten — the pane replays it once, and the re-shown layout (same count, engine latched)
-        // adds nothing
+        // back to the list: the pane replays nothing on its own — a layout at the latched count stays
+        // quiet; then the register MOUNTS again (in the browser, the re-show), the engine clears its
+        // edge latch, and the next layout announces the edge the drill hid: the pane asks once
         pane.onDrillBackClick();
-        expect(requests).toEqual([{agentIdentity: '@neo-opus-ada', offset: 1}]);
         edge(summaryGrid);
-        expect(requests).toHaveLength(1);
+        expect(requests).toEqual([]);
+        summaryGrid.body.mounted = true;
+        edge(summaryGrid);
+        expect(requests).toEqual([{agentIdentity: '@neo-opus-ada', offset: 1}]);
 
         pane.destroy()
     });
 
-    test('a summary continuation that lands behind an open drill pages nothing there, and the edge it announced is replayed once on return', () => {
+    test('a summary continuation that lands behind an open drill pages nothing there; on return the register mounts, the engine re-announces, and the pane asks once', () => {
         const
             {pane, drills, requests} = createDrillPane(),
             summaryGrid              = pane.getReference('memories-summary-grid');
@@ -437,13 +439,18 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
         edge(summaryGrid);
         expect(requests).toHaveLength(2);
 
-        // back: the re-shown register lays out at the latched count, so the engine stays quiet; the
-        // pane replays the edge it refused, exactly once
+        // back: a layout at the latched count stays quiet and the pane replays nothing; the register
+        // mounting again clears the engine's latch (grid.Body re-arms on mount), so the next layout
+        // announces the edge the drill hid and the pane asks exactly once — the engine is the
+        // source: without the mount write the request never comes
         pane.onDrillBackClick();
+        edge(summaryGrid);
+        expect(requests).toHaveLength(2);
+        summaryGrid.body.mounted = true;
+        edge(summaryGrid);
         expect(requests.at(-1)).toEqual({agentIdentity: '@neo-opus-ada', offset: 3});
         expect(requests).toHaveLength(3);
         edge(summaryGrid);
-        pane.onDrillBackClick();
         expect(requests).toHaveLength(3);
 
         pane.destroy()
