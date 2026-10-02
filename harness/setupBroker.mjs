@@ -398,11 +398,13 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                     dir      = path.join(setupRoot, 'credentials'),
                     filePath = path.join(dir, stepId);
 
-                await fsModule.mkdir(dir, {recursive: true, mode: 0o700});
-                await fsModule.writeFile(filePath, value, {mode: 0o600});
-                await fsModule.chmod(filePath, 0o600);
-
+                // the file write is part of the consent's operation: a second window answered while
+                // this consent is still being accepted cannot replace the value its path refers to
                 return await serialize(async () => {
+                    await fsModule.mkdir(dir, {recursive: true, mode: 0o700});
+                    await fsModule.writeFile(filePath, value, {mode: 0o600});
+                    await fsModule.chmod(filePath, 0o600);
+
                     const
                         {host, record, recordPath} = await resolveRun(admitted.modules, null),
                         reference                  = await hostEffects.admitCredentialReference({answer: filePath, fsModule});

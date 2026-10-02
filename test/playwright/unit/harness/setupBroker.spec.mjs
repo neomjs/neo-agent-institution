@@ -260,6 +260,48 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         expect(record.consents).toEqual([{stepId: 'plane-credential', answer: kept.path, consentedAt: '2026-10-02T10:00:00.000Z'}])
     });
 
+    test('two credential windows answered together: the second value is not written until the first consent is accepted, and each consent refers to its own value', async () => {
+        const
+            values             = ['ghp_firstValueNeverReal', 'ghp_secondValueNeverReal'],
+            seenAtConsent      = [],
+            gate               = [],
+            {modules}          = fakeModules(),
+            original           = modules.hostEffects.recordConsent,
+            {broker, setupRoot} = createBroker({modules, prompt: async () => values.shift()}),
+            filePath           = path.join(setupRoot, 'credentials', 'plane-credential');
+
+        // the consent's persistence pauses until the test releases it, and records what the
+        // referenced file holds at that moment
+        modules.hostEffects.recordConsent = async options => {
+            seenAtConsent.push(readFileSync(options.answer, 'utf8'));
+            await new Promise(resolve => gate.push(resolve));
+
+            return original(options)
+        };
+
+        await broker.evaluate(trusted, {});
+
+        const
+            first  = broker.credential(trusted, {stepId: 'plane-credential'}),
+            second = broker.credential(trusted, {stepId: 'plane-credential'});
+
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        expect(readFileSync(filePath, 'utf8'), 'the second window\'s value waits behind the first consent').toBe('ghp_firstValueNeverReal');
+        expect(gate.length, 'one consent in flight').toBe(1);
+
+        gate.shift()();
+        await first;
+        await new Promise(resolve => setTimeout(resolve, 20));
+        gate.shift()();
+        await second;
+
+        expect(seenAtConsent, 'each consent was accepted over its own value').toEqual(values.length === 0 ? ['ghp_firstValueNeverReal', 'ghp_secondValueNeverReal'] : seenAtConsent);
+        expect(readFileSync(filePath, 'utf8')).toBe('ghp_secondValueNeverReal');
+
+        modules.hostEffects.recordConsent = original
+    });
+
     test('effect refuses by name until the Brain exports the CLI\'s orchestration — never a second implementation here', async () => {
         const {modules} = fakeModules();
 
