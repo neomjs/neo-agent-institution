@@ -173,13 +173,13 @@ class MailboxPane extends Container {
      */
     store = null
     /**
-     * Armed by {@link #afterSetSnapshot} and consumed by ONE {@link #applySnapshot} run: the drain
-     * request (the next window beyond `page.hasMore`) fires only for a freshly landed snapshot —
-     * a freshness re-render (`now`) or a record swap re-projects without re-requesting.
-     * @member {Boolean} drainArmed=false
+     * The offset of the window this pane has requested and not yet received, `null` otherwise —
+     * the one-request-in-flight gate of {@link #onScrollEdge}. Cleared by every landed snapshot
+     * ({@link #afterSetSnapshot}), whatever its offset.
+     * @member {Number|null} pendingOffset=null
      * @protected
      */
-    drainArmed = false
+    pendingOffset = null
     /**
      * The last projected window's identity (`[offset, rows]` fingerprint) — the explicit
      * identical-poll gate: a refresh carrying the same rows skips the projection, so view-owned
@@ -196,13 +196,19 @@ class MailboxPane extends Container {
     onConstructed(...args) {
         super.onConstructed(...args);
 
-        this.store = Neo.create(AgentMailboxStore);
+        let me       = this,
+            rowsGrid = me.getReference('mailbox-rows');
+
+        me.store = Neo.create(AgentMailboxStore);
 
         // the grid renders what this pane projects: injected store (autoDestroyStore: false on the
         // grid — this pane stays the owner), refresh driven by applySnapshot() per projection
-        this.getReference('mailbox-rows').store = this.store;
+        rowsGrid.store = me.store;
 
-        this.applySnapshot()
+        // the next window is asked for when the operator reaches the loaded end, never before
+        rowsGrid.on('scrollEdge', me.onScrollEdge, me);
+
+        me.applySnapshot()
     }
 
     /**
@@ -218,13 +224,14 @@ class MailboxPane extends Container {
 
     /**
      * Triggered after the snapshot config changed — a new adapter read projects (the first window
-     * replaces wholesale; a follow-up window appends), and arms exactly one drain request.
+     * replaces wholesale; a follow-up window appends), and clears the window request in flight.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
      */
     afterSetSnapshot(value, oldValue) {
-        this.drainArmed = true;
+        // whatever landed answers the request in flight; the edge decides whether to ask again
+        this.pendingOffset = null;
         this.isConstructed && this.applySnapshot()
     }
 
@@ -366,8 +373,8 @@ class MailboxPane extends Container {
 
         // Projection: the FIRST window replaces wholesale; a follow-up window (offset > 0) extends
         // the held corpus — the accumulation half of the no-paging contract (the buffered surface
-        // owns the whole corpus; the old offset chrome moved windows, the drain below fetches
-        // them). An identical-rows poll (only capture time advanced) skips the projection
+        // owns the whole corpus; the old offset chrome moved windows, the scroll edge fetches
+        // them, see onScrollEdge). An identical-rows poll (only capture time advanced) skips the projection
         // entirely, so the operator's expansion state survives a refresh with nothing new — the
         // gate is explicit and pane-owned. Both branches ride the grid's ONE data path
         // (`applyBags`): fresh windows arrive collapsed, an extension re-projects the held rows
@@ -383,17 +390,38 @@ class MailboxPane extends Container {
             me.projectedFingerprint = fingerprint
         }
 
-        // The drain: while the producer says more exists beyond this window, request the next one —
-        // exactly ONE request per received snapshot (sequential by construction, no in-flight
-        // stacking), fired only when a NEW snapshot landed (afterSetSnapshot arms it) so freshness
-        // re-renders and record swaps never re-request. Row 51+ stays reachable without any chrome:
-        // the corpus assembles itself at the pane's own pace, and the honest end (hasMore: false)
-        // is the only stop.
-        if (rows && me.drainArmed && snapshot.page?.hasMore) {
-            me.fire('pageRequest', {offset: snapshot.page.offset + snapshot.page.limit, source: me})
+        // Nothing is requested from here. A landed window is projected and that is all; the next
+        // window is the operator's to reach ({@link #onScrollEdge}). This pass used to request the
+        // next window itself while `page.hasMore` held, and a boot walked the whole inbox through
+        // the Memory Core, 173 pages in three minutes, starving every other read on it.
+    }
+
+    /**
+     * @summary The grid reached the loaded end: ask for the next window, once. The gate is the last
+     * landed snapshot's `page.hasMore` (the honest end asks for nothing) and {@link #pendingOffset}
+     * (one request in flight; a second edge announcement while it is out fires nothing). The body
+     * re-announces only when the VISIBLE count changes, so a landed window that still leaves the
+     * viewport at the edge asks again, and a viewport parked at the edge does not.
+     *
+     * Continuation is deliberate. A landed window the collapse filter hides entirely (replies under
+     * a collapsed head) reveals no row, so it ends that gesture's reach: the head's "+N earlier"
+     * count carries the mail that arrived, and expanding the thread — the pane's own toggle — is how
+     * the operator continues into it; the rows then scroll, and the edge asks for the next window
+     * as usual. Asking again on the hidden total instead would walk a collapsed inbox window by
+     * window with no gesture, the boot drain this pane no longer performs.
+     * @param {Object} data The grid's `scrollEdge` payload (`{startIndex, endIndex, count}`).
+     * @protected
+     */
+    onScrollEdge(data) {
+        let me   = this,
+            page = me.snapshot?.page;
+
+        if (me.getPaneState() !== 'rows' || !page?.hasMore || me.pendingOffset !== null) {
+            return
         }
 
-        me.drainArmed = false
+        me.pendingOffset = page.offset + page.limit;
+        me.fire('pageRequest', {offset: me.pendingOffset, source: me})
     }
 
     /**

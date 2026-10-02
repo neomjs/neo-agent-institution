@@ -405,7 +405,7 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         pane.destroy()
     });
 
-    test('the drain: row 51+ stays reachable — hasMore requests the next window, appends it, and stops at the honest end', () => {
+    test('#416 · a landed window asks for nothing on its own; the next window is asked for at the scroll edge, once, and the honest end asks for nothing', () => {
         const
             fired    = [],
             firstWin = Array.from({length: 50}, (v, i) => row({
@@ -415,18 +415,28 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
             pane = createPane({
                 snapshot : wiredSnapshot(firstWin, {limit: 50, offset: 0, count: 50, hasMore: true}),
                 listeners: {pageRequest: data => fired.push(data.offset)}
-            });
+            }),
+            grid = pane.getReference('mailbox-rows');
 
-        // the construction-time snapshot already carried hasMore — exactly ONE drain request for
-        // the next window, no chrome involved
-        expect(fired).toEqual([50]);
+        // the construction-time snapshot carries hasMore and the pane requests NOTHING: the drain
+        // this replaces fired [50] here, and a boot walked the whole inbox page by page
+        expect(fired).toEqual([]);
         expect(pane.store.getCount()).toBe(50);
 
-        // a freshness re-render must NOT re-request (the drain arms per SNAPSHOT, not per render)
+        // a freshness re-render asks for nothing either
         pane.now = NOW + 1000;
+        expect(fired).toEqual([]);
+
+        // the operator reaches the loaded end: ONE request for the next window
+        grid.fire('scrollEdge', {startIndex: 40, endIndex: 50, count: 50});
+        expect(fired).toEqual([50]);
+        expect(pane.pendingOffset).toBe(50);
+
+        // a second announcement while that request is out fires nothing
+        grid.fire('scrollEdge', {startIndex: 40, endIndex: 50, count: 50});
         expect(fired).toEqual([50]);
 
-        // the follow-up window APPENDS — row 51+ is now genuinely present, not stranded
+        // the follow-up window APPENDS — row 51+ is genuinely present — and clears the gate
         pane.snapshot = wiredSnapshot(
             Array.from({length: 10}, (v, i) => row({messageId: `MESSAGE:5${i}`, subject: `late ${i}`, sentAt: `2026-07-16T09:0${i % 10}:00.000Z`})),
             {limit: 50, offset: 50, count: 10, hasMore: false}
@@ -434,11 +444,159 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
 
         expect(pane.store.getCount()).toBe(60);
         expect(pane.store.allItems.get('MESSAGE:55')).toBeTruthy();
+        expect(pane.pendingOffset).toBeNull();
 
-        // hasMore: false is the honest end — no further request fired
+        // hasMore: false is the honest end — the edge asks for nothing more
+        grid.fire('scrollEdge', {startIndex: 50, endIndex: 60, count: 60});
         expect(fired).toEqual([50]);
 
         pane.destroy()
+    });
+
+    test('#416 · a landed window with more beyond it re-opens the gate: the next edge asks for the following window', () => {
+        const
+            fired = [],
+            win   = (offset, n) => Array.from({length: n}, (v, i) => row({messageId: `MESSAGE:${offset + i}`, sentAt: `2026-07-16T0${9 - (offset / 50)}:${String(59 - i).padStart(2, '0')}:00.000Z`})),
+            pane  = createPane({
+                snapshot : wiredSnapshot(win(0, 50), {limit: 50, offset: 0, count: 50, hasMore: true}),
+                listeners: {pageRequest: data => fired.push(data.offset)}
+            }),
+            grid  = pane.getReference('mailbox-rows');
+
+        grid.fire('scrollEdge', {startIndex: 40, endIndex: 50, count: 50});
+        pane.snapshot = wiredSnapshot(win(50, 50), {limit: 50, offset: 50, count: 50, hasMore: true});
+
+        // the landed window carries hasMore and still asks for nothing by itself (the committed
+        // pane requested 100 right here); the operator's next edge does
+        expect(fired).toEqual([50]);
+        expect(pane.store.getCount()).toBe(100);
+
+        grid.fire('scrollEdge', {startIndex: 90, endIndex: 100, count: 100});
+        expect(fired).toEqual([50, 100]);
+
+        // a non-rows state asks for nothing, whatever the edge says
+        pane.snapshot = null;
+        grid.fire('scrollEdge', {startIndex: 0, endIndex: 0, count: 0});
+        expect(fired).toEqual([50, 100]);
+
+        pane.destroy()
+    });
+
+    test('#416 · continuation is deliberate: a window of collapsed-only replies ends the gesture\'s reach (no walk of a collapsed inbox), and expanding the thread is how the operator reaches older mail', () => {
+        // Sophie's two halves in one arm. Fifty replies under ONE collapsed head render as one
+        // visible row. (1) The short first page asks for one window; when that window lands and
+        // reveals nothing, the pane asks for NOTHING more however many layouts follow — a
+        // total-keyed latch would have walked the whole collapsed inbox at boot, the drain under
+        // another projection. (2) The head's count carries what arrived; the operator expands the
+        // thread, the rows scroll, and the edge asks for the next window as usual.
+        const
+            fired  = [],
+            reply  = (i, minute) => row({messageId: `MESSAGE:t${i}`, partOfThread: 'THREAD:one', subject: `reply ${i}`, sentAt: `2026-07-16T${String(10 - Math.floor(minute / 60)).padStart(2, '0')}:${String(59 - (minute % 60)).padStart(2, '0')}:00.000Z`}),
+            pane   = createPane({
+                snapshot : wiredSnapshot(Array.from({length: 50}, (v, i) => reply(i, i)), {limit: 50, offset: 0, count: 50, hasMore: true}),
+                listeners: {pageRequest: data => fired.push(data.offset)}
+            }),
+            grid   = pane.getReference('mailbox-rows'),
+            body   = grid.body,
+            at     = startIndex => { body.startIndex = startIndex; body.updateMountedAndVisibleRows() };
+
+        body.availableRows = 10;
+
+        expect(pane.store.getCount(), 'one visible head over 49 collapsed replies').toBe(1);
+
+        // the short first page is at its edge from the first layout: one window is asked for
+        at(0);
+        expect(fired).toEqual([50]);
+
+        // it lands hidden entirely: visible count unchanged, total 100, the producer says more
+        pane.snapshot = wiredSnapshot(Array.from({length: 50}, (v, i) => reply(50 + i, 50 + i)), {limit: 50, offset: 50, count: 50, hasMore: true});
+        expect(pane.store.getCount()).toBe(1);
+        expect(pane.store.allItems.getCount()).toBe(100);
+        expect(pane.pendingOffset).toBeNull();
+        expect(pane.store.get('MESSAGE:t0').threadFacts.hiddenCount, 'the head carries what arrived').toBe(99);
+
+        // no gesture: however many layouts follow, nothing more is asked for
+        at(0); at(0); at(0);
+        expect(fired, 'a hidden-only append ends the gesture\'s reach').toEqual([50]);
+
+        // the operator expands the thread: the rows are reachable, the edge works as usual
+        grid.onThreadToggleClick({path: [{cls: ['fm-mail-thread-toggle']}, {cls: ['neo-grid-row'], data: {recordId: 'MESSAGE:t0'}}]});
+        expect(pane.store.getCount()).toBe(100);
+        at(90);
+        expect(fired).toEqual([50, 100]);
+
+        // the next window of the expanded thread lands visible; the operator scrolls on
+        pane.snapshot = wiredSnapshot(Array.from({length: 50}, (v, i) => reply(100 + i, 100 + i)), {limit: 50, offset: 100, count: 50, hasMore: true});
+        expect(pane.store.getCount(), 'the expansion survived the append').toBe(150);
+        at(140);
+        expect(fired).toEqual([50, 100, 150]);
+
+        // the honest end
+        pane.snapshot = wiredSnapshot(Array.from({length: 10}, (v, i) => reply(150 + i, 150 + i)), {limit: 50, offset: 150, count: 10, hasMore: false});
+        at(150);
+        expect(fired).toEqual([50, 100, 150]);
+
+        pane.destroy()
+    });
+
+    test('#416 · the body announces the edge once per store count: parked there it stays quiet, leaving and returning or a grown store re-arms it, a short store announces on first layout', () => {
+        const
+            edges = [],
+            pane  = createPane({snapshot: wiredSnapshot(
+                Array.from({length: 50}, (v, i) => row({messageId: `MESSAGE:${i}`, sentAt: `2026-07-16T10:${String(59 - (i % 60)).padStart(2, '0')}:00.000Z`})),
+                {limit: 50, offset: 0, count: 50, hasMore: true}
+            )}),
+            grid  = pane.getReference('mailbox-rows'),
+            body  = grid.body,
+            at    = startIndex => { body.startIndex = startIndex; body.updateMountedAndVisibleRows() };
+
+        // the engine stamps the firing component as `source`; the contract is the three numbers
+        grid.on('scrollEdge', ({count, endIndex, startIndex}) => edges.push({count, endIndex, startIndex}));
+
+        // the engine's own math, with no layout measured in a unit test: 10 visible rows, buffer 3
+        body.availableRows = 10;
+
+        at(0);
+        expect(edges).toEqual([]);                      // the top of 50 rows is not the edge
+        at(40);
+        expect(edges).toEqual([{count: 50, endIndex: 50, startIndex: 40}]);
+        at(41);
+        expect(edges).toHaveLength(1);                  // parked at the edge: quiet
+        at(10);
+        at(40);
+        expect(edges).toHaveLength(2);                  // left and returned: announced again
+        at(47);
+        expect(edges).toHaveLength(2);                  // still the same edge of the same count
+
+        // the store grows: the viewport is no longer at the edge; reaching the new end announces it
+        pane.snapshot = wiredSnapshot(
+            Array.from({length: 20}, (v, i) => row({messageId: `MESSAGE:5${i}`, sentAt: `2026-07-16T09:${String(59 - i).padStart(2, '0')}:00.000Z`})),
+            {limit: 50, offset: 50, count: 20, hasMore: false}
+        );
+        at(47);
+        expect(edges).toHaveLength(2);                  // 57 + 3 < 70
+        at(60);
+        expect(edges).toHaveLength(3);
+        expect(edges[2]).toEqual({count: 70, endIndex: 70, startIndex: 60});
+
+        pane.destroy();
+
+        // a store shorter than one window is at its edge from the first layout
+        const
+            shortEdges = [],
+            shortPane  = createPane({snapshot: wiredSnapshot(
+                Array.from({length: 5}, (v, i) => row({messageId: `MESSAGE:s${i}`, sentAt: `2026-07-16T10:0${i}:00.000Z`})),
+                {limit: 50, offset: 0, count: 5, hasMore: true}
+            )}),
+            shortGrid  = shortPane.getReference('mailbox-rows');
+
+        shortGrid.on('scrollEdge', ({count, endIndex, startIndex}) => shortEdges.push({count, endIndex, startIndex}));
+        shortGrid.body.availableRows = 10;
+        shortGrid.body.updateMountedAndVisibleRows();
+        shortGrid.body.updateMountedAndVisibleRows();
+        expect(shortEdges).toEqual([{count: 5, endIndex: 5, startIndex: 0}]);
+
+        shortPane.destroy()
     });
 
     test('presence is not permission: only GRANTED over WIRED with a real page window is a mail claim', () => {

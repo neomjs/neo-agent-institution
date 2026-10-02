@@ -359,17 +359,20 @@ apps/agentos/view/fleet/instances/MenuList.mjs
 apps/agentos/view/fleet/instances/SwitcherButton.mjs
     97e71ba7326fecd3d757a23b1197b996f9d5d1be
 
+apps/agentos/view/fleet/mailbox/Body.mjs
+    6570af2da93723c2b56861f9dc3ee44745163f5b
+
 apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     04ea267aa98a0de4ec26c5c1f027e2b97d5d4da3
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    fce8a47d88eea2eb7d3b31d8d45bb4a9229203b2
+    474eecf2a0ca3a8eb22fd19b854bf1014fa31eaa
 
 apps/agentos/view/fleet/mailbox/Grid.mjs
-    5167f951886ed083b5fc9674789cb679e11fdbbc
+    ff3bf64c961243252ebe66d4b36a701dc3946c51
 
 apps/agentos/view/fleet/mailbox/OperatorContainer.mjs
-    6f2913f66d9b5ec3fcd930088f5370066d3376ae
+    9bce5767c64e688193587e20b29961f3d01f5067
 
 apps/agentos/view/fleet/mailbox/RecipientChip.mjs
     eb2c5727a9a2dc3af3183d0b218b0be686607e5a
