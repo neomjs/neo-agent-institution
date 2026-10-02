@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    8d7cd3e8ccf99d6c02f72503666ef6d971607ec6
+    f3b6f871bbdcab825a3637bf4e38158ff678052b
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -240,10 +240,10 @@ apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
 
 apps/agentos/util/RosterRow.mjs
-    09cbfa2fd5e0b1aa0488ee71b2ffb8ae88667982
+    09165e12b3a3681cd7c67999d254f0b48914c5d4
 
 apps/agentos/util/SourceHealth.mjs
-    f92b9d452aa9754f764a2e530fac73da98e83b84
+    66fa93af6c0010f99d2a8079eb8046083db61bde
 
 apps/agentos/util/SpineBanner.mjs
     d4b27038e3515fc3e53c2c20bf6ec84cb372baea
@@ -321,7 +321,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    24a08581134347f5aac545fe80e8e9201c51e6e2
+    6010b573c203ecc7eb1503e3ddbe010f1e8c5336
 
 apps/agentos/view/fleet/detail/RepositoryList.mjs
     c5ea39cc6a96f2874cb6f84dba77c9d0695150f5
@@ -426,7 +426,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    880c38cf42c0ab4b8e0350986e53afa55ef95724
+    ebd21673c80dcaea674627804cd5bb5d0836ddb1
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     64238dd4bac922bbfd33878431f3b9a21f9d8dfb
@@ -654,7 +654,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    4f46c5c111adb059dc13865f09765169a34159da
+    1b38d330ac9d17faef1375013f4ade5bd680574c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     a97e556c84a3cf1dddded67dc001da74a366ac4d
@@ -696,10 +696,16 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-inter
     25006d38cf3b16d778ba0fb388cf76c6ad746299
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
-    e101be44b8152f1cfb8136fcd5b13e7f7baee8a6
+    3938638c3f57b6136c26e35e0e3985088ab599e6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
     76243c74b4810955f0b09a14b4ae1ee0a921b760
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-lane-claim.png
+    a6856140788ddc1c7d3d9ba667196f4a2ba065ef
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-lane-empty.png
+    668a044328a2a948e2a6b6349bcfd5fe3c35504d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-grid-cards.png
     760ec27e828e90b2c112b6f2ff9b3f92bc482c5b
@@ -774,7 +780,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agen
     3de86314c2dbd31e67ed445d25e00f8e5d3925a7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-agent-detail.png
-    f5d9ee974b3b9c3c169c61836a1f1bfb10089a56
+    806c7394347db7199f9b5d69c8154310f4036739
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up.png
     2ba41477f2f7e9959f085805877952ea79e12110

@@ -6,7 +6,7 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  *
  * @summary The cockpit fleet-roster record contract: one row per resident, keyed by the durable
  * `agentId`. The `fields` array IS the card's data contract — display state (`displayName`,
- * `avatarUrl`, `engineTag`, `family`, `laneLine`), the roster-DTO tri-state truths (`launchable`,
+ * `avatarUrl`, `engineTag`, `family`, `laneLine`, `laneClaimedAt`), the roster-DTO tri-state truths (`launchable`,
  * `openLaneCount`, `participationStatus` — stamped Brain-side, null = not stamped, never guessed),
  * session `state` (what the resident is doing now, never identity), per-source `sources`
  * provenance, and the B4/C2 lifecycle-control seam (`pendingAction`, `controlReason`) all live on
@@ -66,6 +66,11 @@ class FleetAgent extends Model {
         }, {
             name: 'laneLine',
             type: 'String'
+        }, {
+            // The lane claim's roster-source instant; null means the row has no claim timestamp.
+            name        : 'laneClaimedAt',
+            type        : 'String',
+            defaultValue: null
         }, {
             // The S2 wake telltale axis: the roster row's `{source, state, confidence, reason?}`
             // observation, where `state` is `on | off | suppressed | unknown`. Typeless so the

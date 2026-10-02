@@ -661,11 +661,10 @@ class AgentDetail extends Container {
      * of the source that answered, or did not.
      *
      * An explicit `paneLedgers` entry wins (a feed stamping the pane directly). Otherwise the pane's
-     * owning producer decides. The repository pane reads the roster row's `repoStatus` fact, the
-     * SAME descriptor the header's `repository` row renders (`renderStateLedger`), so the two can
-     * never disagree: a wired fact observes at the roster admission instant, any other fact is the
-     * descriptor in the roster's own words, and a mount no roster read has reached says so. The
-     * other three panes have no producer on this plane yet ({@link AWAITING} names each), so they
+     * owning producer decides. The lane and repository panes read their roster-row source facts;
+     * wired facts observe at the roster admission instant, any other fact is the descriptor in the
+     * roster's own words, and a mount no roster read has reached says so. The thought-stream and
+     * pull-request panes have no producer on this plane yet ({@link AWAITING} names each), so they
      * resolve to nothing and the pill states the honest unobserved.
      * @param {String} key Pane key.
      * @param {Object|null} explicitLedger The `paneLedgers` entry, if any.
@@ -678,16 +677,17 @@ class AgentDetail extends Container {
             return {descriptor: null, ledger: explicitLedger}
         }
 
-        if (key !== 'repo') {
+        if (key !== 'repo' && key !== 'lane') {
             return {descriptor: null, ledger: null}
         }
 
-        const fact = SourceHealth.normalizeFleetSources(record.sources).repoStatus;
+        const fact = SourceHealth.normalizeFleetSources(record.sources)[key === 'lane' ? 'lane' : 'repoStatus'];
+        const axis = key === 'lane' ? 'lane claim' : 'repository';
 
         if (fact.state !== 'wired') {
-            // the roster's own words when it carried any; a row that carried no repository fact at
-            // all is normalized to not-wired without one, and that absence is the reason
-            return {descriptor: {state: fact.state.replace(/-/g, ' '), reason: fact.reason || 'the roster row carried no repository fact'}, ledger: null}
+            // the roster's own words when it carried any; a row with no fact is normalized to
+            // not-wired without one, and that absence is the reason
+            return {descriptor: {state: fact.state.replace(/-/g, ' '), reason: fact.reason || `the roster row carried no ${axis} fact`}, ledger: null}
         }
 
         return Number.isFinite(this.rosterObservedAt)
@@ -740,8 +740,9 @@ class AgentDetail extends Container {
     /**
      * @summary The honest body content for one pane from the record's known facts.
      *
-     * The lane pane renders the record's lane line with the open-lane count. The repository pane
-     * renders the roster row's slug and clone path. The thought-stream and pull requests panes
+     * The lane pane renders the lane line with its claim age when its source is wired, plus the
+     * independent open-lane count. The repository pane renders the roster row's slug and clone path.
+     * The thought-stream and pull requests panes
      * render nothing until their producers land: each pill names what it waits for, and a body
      * line repeating it would tell the same fact twice per section.
      * @param {String} key Pane key.
@@ -762,11 +763,20 @@ class AgentDetail extends Container {
 
         if (key === 'lane') {
             const
+                laneSource = SourceHealth.normalizeFleetSources(record.sources).lane,
+                wired     = laneSource.state === 'wired',
+                claimedMs = typeof record.laneClaimedAt === 'string' ? Date.parse(record.laneClaimedAt) : NaN,
+                claimAge  = Number.isFinite(claimedMs)
+                    ? AgentFreshness.formatAge((this.now ?? Date.now()) - claimedMs)
+                    : null,
                 laneLine  = record.laneLine || 'no current lane reported',
                 laneCount = Number.isInteger(record.openLaneCount) && record.openLaneCount > 0 ? record.openLaneCount : null,
-                countText = laneCount === null ? '' : ` · ${laneCount} open ${laneCount === 1 ? 'lane' : 'lanes'}`;
+                countText = laneCount === null ? '' : ` · ${laneCount} open ${laneCount === 1 ? 'lane' : 'lanes'}`,
+                lineText  = wired
+                    ? record.laneLine ? `${record.laneLine}${claimAge ? ` · claimed ${claimAge}` : ''}` : 'no lane claimed'
+                    : laneLine;
 
-            body.text = `${laneLine}${countText}`;
+            body.text = `${lineText}${countText}`;
             return
         }
 

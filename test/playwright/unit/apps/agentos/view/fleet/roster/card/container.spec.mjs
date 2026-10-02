@@ -26,7 +26,8 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
             repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
             runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
-        };
+        },
+        observedLane = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed'};
 
     // a real store-backed record — the production shape (an AgentOS.store.FleetRoster row). The
     // store mirrors FleetRoster's keyProperty (the collection default 'id' would shadow the model's).
@@ -809,6 +810,128 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(card.down({reference: 'card-state'}).text).toBe('idle');
 
         card.destroy()
+    });
+
+    test('a wired lane carries its claim age; a wired-empty lane says so, with open-lane count orthogonal', () => {
+        const
+            card = createCard({
+                agentId: 'vega',
+                laneLine: 'working on #418',
+                laneClaimedAt: new Date(Date.now() - 120_000).toISOString(),
+                openLaneCount: 17,
+                sources: {...observedSources, lane: observedLane},
+                state: 'ok'
+            }),
+            lane = () => card.down({reference: 'card-lane'}),
+            text = () => lane().vdom.cn.map(node => node.text).join('');
+
+        expect(text()).toBe('working on #418 · claimed 2m ago');
+        expect(lane().vdom.title).toBe('working on #418 · claimed 2m ago');
+        expect(lane().vdom.cn.every(node => node.html == null)).toBe(true);
+        expect(card.down({reference: 'card-lane-count'}).text).toBe('17 lanes');
+
+        // A wired read with no current subject is explicit; a zero open-work count remains unbadged.
+        applySet(card, {laneLine: null, laneClaimedAt: null, openLaneCount: 0});
+        expect(text()).toBe('no lane claimed');
+        expect(lane().vdom.title).toBeFalsy();
+        expect(card.down({reference: 'card-lane-count'}).hidden).toBe(true);
+
+        card.destroy()
+    });
+
+    test('a non-wired lane source preserves the prior subject without inventing claim age', () => {
+        const card = createCard({
+            agentId: 'ada',
+            laneLine: 'existing lane text',
+            laneClaimedAt: new Date(Date.now() - 120_000).toISOString(),
+            sources: observedSources,
+            state: 'ok'
+        });
+
+        expect(card.down({reference: 'card-lane'}).vdom.cn[0].text).toBe('existing lane text');
+        expect(card.down({reference: 'card-lane'}).vdom.cn[0].text).not.toContain('claimed');
+        expect(card.down({reference: 'card-lane'}).vdom.title).toBeFalsy();
+
+        card.destroy()
+    });
+
+    test('a claim age preserves the distinguishing tail of long lane subjects', () => {
+        const subjects = ['source-alpha', 'source-beta'].map(source =>
+            `control-plane state synchronization for ${source} continuation`);
+        const rendered = subjects.map(laneLine => {
+            const card = createCard({
+                agentId: 'ada', laneLine,
+                laneClaimedAt: new Date(Date.now() - 120_000).toISOString(),
+                sources: {...observedSources, lane: observedLane}, state: 'ok'
+            });
+            const lane = card.down({reference: 'card-lane'});
+            const text = lane.vdom.cn.map(node => node.text).join('');
+            const title = lane.vdom.title;
+
+            card.destroy();
+            return {text, title}
+        });
+
+        expect(rendered[0].text).toContain('source-alpha continuation · claimed 2m ago');
+        expect(rendered[1].text).toContain('source-beta continuation · claimed 2m ago');
+        expect(rendered[0].text).not.toBe(rendered[1].text);
+        expect(rendered[0].title).toContain('source-alpha continuation · claimed 2m ago');
+        expect(rendered[1].title).toContain('source-beta continuation · claimed 2m ago')
+    });
+
+    test('a wired claim ages without a record change and its ticker is canceled on reseat and destroy', async () => {
+        const
+            claimedAt = Date.parse('2026-10-02T10:00:00.000Z'),
+            card      = createCard({
+                agentId: 'vega', laneLine: 'working on #418', laneClaimedAt: new Date(claimedAt).toISOString(),
+                sources: {...observedSources, lane: observedLane}, state: 'ok'
+            }),
+            waits = [],
+            originalNow = Date.now;
+        let now = claimedAt + 60_000;
+
+        card.stopLaneAging();
+        Date.now = () => now;
+        try {
+            card.timeout = (ms, {signal} = {}) => new Promise((resolve, reject) => {
+                const wait = {ms, signal, resolve, reject};
+                waits.push(wait);
+                signal?.addEventListener('abort', () => reject(signal.reason), {once: true})
+            });
+            card.refreshLaneLine();
+
+            const record = card.record;
+            expect(card.down({reference: 'card-lane'}).vdom.title).toBe('working on #418 · claimed 1m ago');
+            expect(waits[0].ms).toBe(30_000);
+            // Only wall time advances: neither the record nor the injected clock config is written.
+            now += 60_000;
+            waits[0].resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(card.record).toBe(record);
+            expect(card.down({reference: 'card-lane'}).vdom.cn.map(node => node.text).join('')).toBe('working on #418 · claimed 2m ago');
+            expect(card.down({reference: 'card-lane'}).vdom.title).toBe('working on #418 · claimed 2m ago');
+            expect(waits).toHaveLength(2);
+
+            card.now = claimedAt + 180_000;
+            expect(card.down({reference: 'card-lane'}).vdom.title).toBe('working on #418 · claimed 3m ago');
+
+            // A new wired claim updates the existing ticker in place; loss of the lane source stops it.
+            applySet(card, {laneLine: 'working on #419', laneClaimedAt: new Date(claimedAt).toISOString()});
+            expect(waits).toHaveLength(2);
+            applySet(card, {sources: observedSources});
+            expect(waits[1].signal.aborted).toBe(true);
+            expect(card.down({reference: 'card-lane'}).vdom.title).toBeFalsy();
+
+            // A subsequent ageable claim starts again, and destruction aborts its owned wait.
+            applySet(card, {sources: {...observedSources, lane: observedLane}});
+            expect(waits).toHaveLength(3);
+            card.destroy();
+            expect(waits[2].signal.aborted).toBe(true)
+        } finally {
+            Date.now = originalNow;
+            card.isDestroyed || card.destroy()
+        }
     });
 
     test('density (#14592): the open-lane count badge renders a REPORTED count beside the lane line — in place, pluralized honestly (#14598)', () => {
