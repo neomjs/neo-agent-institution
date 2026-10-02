@@ -227,6 +227,9 @@ apps/agentos/util/NameSlot.mjs
 apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
 
+apps/agentos/util/PlaneVerdict.mjs
+    64f745a119e321684026b59ddebe957a538022f7
+
 apps/agentos/util/RosterRow.mjs
     09cbfa2fd5e0b1aa0488ee71b2ffb8ae88667982
 
@@ -234,7 +237,7 @@ apps/agentos/util/SourceHealth.mjs
     f92b9d452aa9754f764a2e530fac73da98e83b84
 
 apps/agentos/util/SpineBanner.mjs
-    efbf19ff84922048319fbb8c9c9802e3048cc2ae
+    2b541b0e3cc94f769a8845e3e620844799eade4a
 
 apps/agentos/util/TargetBinding.mjs
     09c041ed645afa7f10a0ce92e5a56bd512e003b1
@@ -249,7 +252,7 @@ apps/agentos/util/ViewerWakeTelltale.mjs
     31bff815feed1bf14ee4b9608168118f4621834a
 
 apps/agentos/view/PlaneSetupPanel.mjs
-    ae710be8bd4072d01ae9fbb062ee66cc3c948506
+    e6c3b2e8b46b94fda5d77041bd9cdb620115924e
 
 apps/agentos/view/Viewport.mjs
     6e203678d070708d65e76950f9ab89f035cf7fee
@@ -294,7 +297,7 @@ apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     23b1b61fa78fc26e11af1507360c296855038d7e
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    bb062f820ed18a8f9697a2b8bf9f8eb3db6f64f6
+    de820701522eaeaa0ea93151b97ed92b16ad6061
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     70627e2a75f8e8e679647ed887ecf6674719224c

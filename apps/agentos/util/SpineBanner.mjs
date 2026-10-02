@@ -1,4 +1,5 @@
-import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import Base         from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import PlaneVerdict from './PlaneVerdict.mjs';
 
 /**
  * @module apps/agentos/util/SpineBanner
@@ -88,6 +89,20 @@ function reasonFor(surfaces, state) {
  * @type {String[]}
  */
 const DAEMON_FAULT_STATES = Object.freeze(['degraded', 'stopped']);
+
+/**
+ * The boot refusals the shell tells apart by asking the plane (`harness/brain.mjs` `typePlaneRefusal`):
+ * each one's pill word, and its title's lead, which is the connect card's sentence for that answer
+ * ({@link AgentOS.util.PlaneVerdict}) followed by what connecting again fixes. Their reason is the
+ * plane's address.
+ * @type {Object}
+ */
+const PLANE_REFUSALS = Object.freeze({
+    'plane-credential-refused': {lead: `${PlaneVerdict.sentences.rejected} Connect again with a current one.`, text: 'pat refused'},
+    'plane-identity-changed'  : {lead: 'The plane now names that PAT as another account. Connect again to confirm it.', text: 'account changed'},
+    'plane-not-a-plane'       : {lead: `${PlaneVerdict.sentences['not-a-plane']} Connect to the plane's own address.`, text: 'not a plane'},
+    'plane-unreachable'       : {lead: `${PlaneVerdict.sentences.unreachable} Bring that plane back, or connect to another.`, text: 'plane unreachable'}
+});
 
 /**
  * @summary Picks the cold-case fallback line for SILENCE, from the topology that owns the truth.
@@ -223,6 +238,13 @@ class SpineBanner extends Base {
         // record reads as configured, so the card does not come back by itself; Connect brings it.
         if (daemon?.cause === 'plane-refused') {
             return verdict('cold', 'plane refused', `The plane refused this shell — connect it again${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
+        }
+
+        // A refusal the shell told apart by asking the plane speaks the card's words for that answer.
+        if (Object.hasOwn(PLANE_REFUSALS, daemon?.cause ?? '')) {
+            const {lead, text} = PLANE_REFUSALS[daemon.cause];
+
+            return verdict('cold', text, `${lead}${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
         }
 
         // Only a cold GRID enters the cold family: its copy asserts server facts, and a cold sibling

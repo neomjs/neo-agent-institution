@@ -64,11 +64,18 @@ import {
     startBrainChild,
     stopBrainTree,
     sweepStaleRunState,
+    typePlaneRefusal,
     writeRunState
 } from './brain.mjs';
 import {createSmokeSafeStorage, startFixturePlane}            from './fixturePlane.mjs';
 import {carriesSecret, createMainLog}                         from './mainLog.mjs';
-import {createPlaneBroker, planeEnvFragment, readPlaneConfig} from './planeConfig.mjs';
+import {
+    createPlaneBroker,
+    launchedPlaneRecord,
+    planeEnvFragment,
+    probePlaneCredential,
+    readPlaneConfig
+} from './planeConfig.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                  from './seatRootRecord.mjs';
 import {
     WAKE_RECEIVER_LAUNCH_AGENT,
@@ -1010,10 +1017,11 @@ async function bootProductBrain() {
     }
 
     // the backups sit beside the plane in the per-user root, so removing the plane never removes them
-    const packagedEnv = packagedMode
+    const planeFragment = packagedMode ? planeEnvFragment({env: process.env, planeConfig: storedPlane}) : {};
+    const packagedEnv   = packagedMode
         ? {
             ...buildPackagedBrainEnv({agentsRoot: seatRoot.record?.root, backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
-            ...planeEnvFragment({env: process.env, planeConfig: storedPlane}),
+            ...planeFragment,
             ELECTRON_RUN_AS_NODE    : '1',
             NEO_HARNESS_ELECTRON_BIN: process.execPath
         }
@@ -1096,11 +1104,12 @@ async function bootProductBrain() {
 
         registerBrainChild({child: fleet, label: 'fleet'});
         await fleetReadyOrPlaneRefusal({
-            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
-            child     : fleet,
-            lastLine  : () => fleetLastLine,
+            awaitReady : () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
+            child      : fleet,
+            lastLine   : () => fleetLastLine,
             mode,
-            secrets   : mainSecrets()
+            secrets    : mainSecrets(),
+            typeRefusal: refusal => typePlaneRefusal(refusal, {planeConfig: launchedPlaneRecord(storedPlane, planeFragment), probe: probePlaneCredential})
         })
     }
 

@@ -5,6 +5,7 @@ import path                                    from 'node:path';
 import {
     createPlaneBroker,
     forgetPlaneConfig,
+    launchedPlaneRecord,
     normalizePlaneBase,
     PLANE_BEARER_FILE,
     PLANE_CONFIG_FILE,
@@ -184,6 +185,18 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         expect(planeEnvFragment({planeConfig: {planeBase: null, bearer: null}, env: {}})).toEqual({});
         expect(planeEnvFragment({planeConfig: {planeBase: 'https://plane.example', bearer: null}, env: {}}), 'a bearer that no longer decrypts is no record').toEqual({});
         expect(planeEnvFragment({planeConfig: {planeBase: 'https://plane.example', bearer: null}, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'})
+    });
+
+    test('a launch is the stored record\'s only when the record supplied both its plane and its credential', () => {
+        const
+            record   = {bearer: 'stored-bearer', identity: '@ada', planeBase: 'https://plane.example'},
+            launched = (env, planeConfig = record) => launchedPlaneRecord(planeConfig, planeEnvFragment({env, planeConfig}));
+
+        expect(launched({}), 'the record alone').toBe(record);
+        expect(launched({NEO_FLEET_PLANE_BASE: 'https://other.example'}), 'an inherited plane base').toBeNull();
+        expect(launched({NEO_FLEET_PLANE_BEARER: 'env-bearer'}), 'an inherited PAT on the record\'s plane').toBeNull();
+        expect(launched({}, null), 'no stored record').toBeNull();
+        expect(launched({}, {...record, identity: null}), 'a record without its identity supplies no launch').toBeNull()
     });
 
     test('the credential probe accepts only the Memory Core naming itself after a bearer challenge, and learns whose PAT it is', async () => {

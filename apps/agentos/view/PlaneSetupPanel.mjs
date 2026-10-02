@@ -1,6 +1,7 @@
-import Button    from '../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Panel     from '../../../node_modules/neo.mjs/src/container/Panel.mjs';
-import TextField from '../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import Button       from '../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Panel        from '../../../node_modules/neo.mjs/src/container/Panel.mjs';
+import TextField    from '../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import PlaneVerdict from '../util/PlaneVerdict.mjs';
 
 /**
  * @summary The packaged shell's "connect to a plane" card: inline, dismissible, and never a gate — the
@@ -15,7 +16,8 @@ import TextField from '../../../node_modules/neo.mjs/src/form/field/Text.mjs';
  */
 class PlaneSetupPanel extends Panel {
     /**
-     * The line each refusal from `attachPlane()` renders.
+     * The line each refusal from `attachPlane()` renders. A plane's own verdicts take the sentences the
+     * spine banner shares ({@link AgentOS.util.PlaneVerdict}).
      * @member {Object} reasonText
      * @static
      */
@@ -23,10 +25,10 @@ class PlaneSetupPanel extends Panel {
         canceled                : 'Canceled. Nothing was stored.',
         'encryption-unavailable': 'This Mac cannot store the PAT encrypted, so nothing was stored.',
         'invalid-plane-base'    : 'Use an https address, or http on this machine (127.0.0.1 or localhost).',
-        'no-identity'           : 'The plane accepted that PAT but named no identity for it. Nothing was stored.',
-        'not-a-plane'           : 'That address is not a Neo plane. Nothing was stored.',
-        rejected                : 'The plane refused that PAT. Nothing was stored.',
-        unreachable             : 'No plane answered at that address.'
+        'no-identity'           : `${PlaneVerdict.sentences['no-identity']} Nothing was stored.`,
+        'not-a-plane'           : `${PlaneVerdict.sentences['not-a-plane']} Nothing was stored.`,
+        rejected                : `${PlaneVerdict.sentences.rejected} Nothing was stored.`,
+        unreachable             : PlaneVerdict.sentences.unreachable
     }
 
     static config = {

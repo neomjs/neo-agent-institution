@@ -192,6 +192,20 @@ export function planeEnvFragment({planeConfig, env}) {
 }
 
 /**
+ * @summary The stored record, when it alone supplied a launch: {@link planeEnvFragment} gave the fleet child
+ * the record's base and bearer. An inherited base or bearer means the child spoke to another plane or with
+ * another credential, so nothing the record says describes that launch, and `null` is returned.
+ * @param {{planeBase: String|null, bearer: String|null, identity: String|null}|null} planeConfig
+ * @param {Object} fragment What {@link planeEnvFragment} returned for the launch.
+ * @returns {Object|null}
+ */
+export function launchedPlaneRecord(planeConfig, fragment) {
+    return planeConfig?.bearer &&
+        fragment?.NEO_FLEET_PLANE_BEARER === planeConfig.bearer &&
+        fragment.NEO_FLEET_PLANE_BASE === planeConfig.planeBase ? planeConfig : null
+}
+
+/**
  * The name the Memory Core's MCP server gives itself in its `initialize` answer — the positive proof
  * that a plane admitted the credential. A status alone proves nothing: a stranger's host answers 404 or
  * 405, never 401, and "not refused" is not "admitted".

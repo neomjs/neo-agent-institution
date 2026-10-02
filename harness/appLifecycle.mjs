@@ -9,13 +9,17 @@ const brainStates = new Set(BRAIN_STATES);
 // Severity encodes the supersession rule: an owned-child fault outranks every window-scoped or
 // readiness cause, mirroring settleBrainBoot's `up && !brainFaulted` vote.
 const CAUSE_SEVERITY = Object.freeze({
-    'boot-not-ready'         : 1,
-    'cockpit-closed'         : 1,
-    'cockpit-destroyed'      : 1,
-    'organism-beside-plane'  : 1,
-    'owned-child-termination': 2,
-    'plane-refused'          : 1,
-    'render-process-gone'    : 1
+    'boot-not-ready'          : 1,
+    'cockpit-closed'          : 1,
+    'cockpit-destroyed'       : 1,
+    'organism-beside-plane'   : 1,
+    'owned-child-termination' : 2,
+    'plane-credential-refused': 1,
+    'plane-identity-changed'  : 1,
+    'plane-not-a-plane'       : 1,
+    'plane-refused'           : 1,
+    'plane-unreachable'       : 1,
+    'render-process-gone'     : 1
 });
 
 /**
