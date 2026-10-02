@@ -400,8 +400,15 @@ class MailboxPane extends Container {
      * @summary The grid reached the loaded end: ask for the next window, once. The gate is the last
      * landed snapshot's `page.hasMore` (the honest end asks for nothing) and {@link #pendingOffset}
      * (one request in flight; a second edge announcement while it is out fires nothing). The body
-     * re-announces only when the store's count changes, so a landed window that still leaves the
+     * re-announces only when the VISIBLE count changes, so a landed window that still leaves the
      * viewport at the edge asks again, and a viewport parked at the edge does not.
+     *
+     * Continuation is deliberate. A landed window the collapse filter hides entirely (replies under
+     * a collapsed head) reveals no row, so it ends that gesture's reach: the head's "+N earlier"
+     * count carries the mail that arrived, and expanding the thread — the pane's own toggle — is how
+     * the operator continues into it; the rows then scroll, and the edge asks for the next window
+     * as usual. Asking again on the hidden total instead would walk a collapsed inbox window by
+     * window with no gesture, the boot drain this pane no longer performs.
      * @param {Object} data The grid's `scrollEdge` payload (`{startIndex, endIndex, count}`).
      * @protected
      */

@@ -482,11 +482,13 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         pane.destroy()
     });
 
-    test('#416 · a window of collapsed-only replies moves the corpus without moving a row: the edge re-arms on the store\'s total, so the next window is still asked for', () => {
-        // Sophie's falsifier: fifty replies under ONE collapsed thread head render as one visible
-        // row; a count-keyed latch sees the same count after the append and never re-announces,
-        // and a one-row viewport cannot scroll away and back to re-arm it. Older mail would be
-        // unreachable while the thread stays collapsed.
+    test('#416 · continuation is deliberate: a window of collapsed-only replies ends the gesture\'s reach (no walk of a collapsed inbox), and expanding the thread is how the operator reaches older mail', () => {
+        // Sophie's two halves in one arm. Fifty replies under ONE collapsed head render as one
+        // visible row. (1) The short first page asks for one window; when that window lands and
+        // reveals nothing, the pane asks for NOTHING more however many layouts follow — a
+        // total-keyed latch would have walked the whole collapsed inbox at boot, the drain under
+        // another projection. (2) The head's count carries what arrived; the operator expands the
+        // thread, the rows scroll, and the edge asks for the next window as usual.
         const
             fired  = [],
             reply  = (i, minute) => row({messageId: `MESSAGE:t${i}`, partOfThread: 'THREAD:one', subject: `reply ${i}`, sentAt: `2026-07-16T${String(10 - Math.floor(minute / 60)).padStart(2, '0')}:${String(59 - (minute % 60)).padStart(2, '0')}:00.000Z`}),
@@ -496,31 +498,43 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
             }),
             grid   = pane.getReference('mailbox-rows'),
             body   = grid.body,
-            layout = () => body.updateMountedAndVisibleRows();
+            at     = startIndex => { body.startIndex = startIndex; body.updateMountedAndVisibleRows() };
 
         body.availableRows = 10;
 
         expect(pane.store.getCount(), 'one visible head over 49 collapsed replies').toBe(1);
-        expect(pane.store.allItems.getCount()).toBe(50);
 
-        // the first layout: a one-row store is at its edge, the pane asks for the next window
-        layout();
+        // the short first page is at its edge from the first layout: one window is asked for
+        at(0);
         expect(fired).toEqual([50]);
 
-        // the next window: fifty MORE replies of the same thread land collapsed — visible count
-        // unchanged at 1, total 100, the producer still says more exists
+        // it lands hidden entirely: visible count unchanged, total 100, the producer says more
         pane.snapshot = wiredSnapshot(Array.from({length: 50}, (v, i) => reply(50 + i, 50 + i)), {limit: 50, offset: 50, count: 50, hasMore: true});
         expect(pane.store.getCount()).toBe(1);
         expect(pane.store.allItems.getCount()).toBe(100);
-        expect(pane.pendingOffset, 'the landed window cleared the gate').toBeNull();
+        expect(pane.pendingOffset).toBeNull();
+        expect(pane.store.get('MESSAGE:t0').threadFacts.hiddenCount, 'the head carries what arrived').toBe(99);
 
-        layout();
-        expect(fired, 'the edge re-armed on the total and the pane asked for the following window').toEqual([50, 100]);
+        // no gesture: however many layouts follow, nothing more is asked for
+        at(0); at(0); at(0);
+        expect(fired, 'a hidden-only append ends the gesture\'s reach').toEqual([50]);
 
-        // the honest end: the same shape with hasMore: false asks for nothing more
-        pane.snapshot = wiredSnapshot(Array.from({length: 10}, (v, i) => reply(100 + i, 100 + i)), {limit: 50, offset: 100, count: 10, hasMore: false});
-        layout();
+        // the operator expands the thread: the rows are reachable, the edge works as usual
+        grid.onThreadToggleClick({path: [{cls: ['fm-mail-thread-toggle']}, {cls: ['neo-grid-row'], data: {recordId: 'MESSAGE:t0'}}]});
+        expect(pane.store.getCount()).toBe(100);
+        at(90);
         expect(fired).toEqual([50, 100]);
+
+        // the next window of the expanded thread lands visible; the operator scrolls on
+        pane.snapshot = wiredSnapshot(Array.from({length: 50}, (v, i) => reply(100 + i, 100 + i)), {limit: 50, offset: 100, count: 50, hasMore: true});
+        expect(pane.store.getCount(), 'the expansion survived the append').toBe(150);
+        at(140);
+        expect(fired).toEqual([50, 100, 150]);
+
+        // the honest end
+        pane.snapshot = wiredSnapshot(Array.from({length: 10}, (v, i) => reply(150 + i, 150 + i)), {limit: 50, offset: 150, count: 10, hasMore: false});
+        at(150);
+        expect(fired).toEqual([50, 100, 150]);
 
         pane.destroy()
     });
