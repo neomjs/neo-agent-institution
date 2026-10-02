@@ -134,6 +134,11 @@ class FleetAdmission extends Base {
         }});
         grid && (grid.adapterState = 'live');
 
+        // the detail panes that read the roster row (the repository pane) observe at this admission:
+        // the owner holds the instant for a pane projected later, the live pane re-ages now
+        owner.rosterObservedAt = Date.now();
+        cockpit.getAgentDetailPane?.()?.set({rosterObservedAt: owner.rosterObservedAt});
+
         TargetBinding.refreshRosterConsumers(owner);
 
         if (owner.operatorRecord) {

@@ -897,6 +897,9 @@ class FleetCockpit extends VesselContainer {
                     agentDefinitions: me.resolveProviderStore('agentDefinitions'),
                     fleetTenants    : me.resolveProviderStore('fleetTenants'),
                     record          : me.detailRecord,
+                    // the roster admission instant the owner holds: a pane projected after the
+                    // roster landed ages its roster-read panes from the real observation
+                    rosterObservedAt: controller.rosterObservedAt,
                     shellTools      : [me.buildDetailWindowToggle()]
                 };
                 break;
