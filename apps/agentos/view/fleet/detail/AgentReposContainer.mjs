@@ -181,7 +181,8 @@ class AgentReposCard extends Container {
 
     /**
      * @summary The last start's outcome per repository slug, from the seat's roster record. A
-     * repository added since that start has no entry, so it shows none until the next start.
+     * repository that start did not cover has no entry and shows none until the next start. One removed
+     * and re-added since keeps that start's entry: the outcome records the start, not the current list.
      * @returns {Map<String, {reason: String|null, state: String}>}
      */
     getRepoOutcomes() {

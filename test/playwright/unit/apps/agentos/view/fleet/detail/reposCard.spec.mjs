@@ -164,7 +164,7 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         store.destroy()
     });
 
-    test('each other repository shows the last start\'s outcome from the seat\'s roster record; one added since shows none', () => {
+    test('each other repository shows the last start\'s outcome from the seat\'s roster record; one that start did not cover shows none', () => {
         const
             createApp = {repoSlug: 'neomjs/create-app', cloneUrl: 'https://github.com/neomjs/create-app.git'},
             roster    = Neo.create(FleetRoster);
@@ -180,7 +180,7 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
             {repoSlug: 'neomjs/neo',              state: null,       reason: null},
             {repoSlug: 'neomjs/neo-agent-brain',  state: 'prepared', reason: null},
             {repoSlug: 'neomjs/neo-agent-skills', state: 'failed',   reason},
-            // added after the last start: no outcome until the next one
+            // the last start did not cover it: no outcome until the next one
             {repoSlug: 'neomjs/create-app',       state: null,       reason: null}
         ]);
         // an outcome is a fact of the last start, and the heading says so
@@ -242,6 +242,30 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         roster.get('ada').set({repoOutcomes: null});
         expect(refreshes).toBe(1);
 
+        roster.destroy();
+        store.destroy()
+    });
+
+    test('a repository removed and re-added before the next start shows that start\'s outcome again: it records the start, not the list', () => {
+        const roster = Neo.create(FleetRoster);
+
+        roster.add({agentId: 'ada', repoOutcomes: [{repoSlug: brain.repoSlug, state: 'failed', reason}]});
+
+        const {card, outcomes, record, store} = mount({repo: working, repos: [brain]}, roster);
+
+        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: 'failed', reason});
+
+        // removed: the readback drops the row, and its outcome with it
+        record.set({metadata: {repo: working, repos: []}});
+        card.refresh();
+        expect(outcomes().map(row => row.repoSlug)).toEqual(['neomjs/neo']);
+
+        // re-added before another start: that start did try it, so its outcome is still true
+        record.set({metadata: {repo: working, repos: [brain]}});
+        card.refresh();
+        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: 'failed', reason});
+
+        card.destroy();
         roster.destroy();
         store.destroy()
     });

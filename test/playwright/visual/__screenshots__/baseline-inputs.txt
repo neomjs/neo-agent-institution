@@ -306,7 +306,7 @@ apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
     4e83392a4dce073a7a80f08f8ccd43a236a07c90
 
 apps/agentos/view/fleet/detail/AgentReposContainer.mjs
-    db076ae6f072c699b8f6453fb94c6555f49fd974
+    9b166bd6afc7287cea036adde0cc1ce9e44bdcc4
 
 apps/agentos/view/fleet/detail/Container.mjs
     62528194cbb4154236581018f25e8f5eb87734a9
