@@ -186,7 +186,7 @@ apps/agentos/util/CockpitPerspectives.mjs
     f892864ca8a1ec0d92fb7e3fa45fa8f68c5c770f
 
 apps/agentos/util/ConfigIntentRoundTrip.mjs
-    1d7187c1dddf2f5842e025c6554f9081bf9b74f9
+    02e2c77143c351c03e91c174436262f3ec902325
 
 apps/agentos/util/DeploymentStateRead.mjs
     d2699ce646972d0252ce188b3012ca469a87be54
@@ -303,7 +303,7 @@ apps/agentos/view/fleet/cockpit/ViewerWakeTelltaleComponent.mjs
     388ce961936990404da0448e1462b6405b98e7e6
 
 apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
-    49ec354f495fbef466aa811d1a99c4b0b370be78
+    4e83392a4dce073a7a80f08f8ccd43a236a07c90
 
 apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     f2a242212840067fecbccc5aa381bff6d163c5b0
@@ -627,10 +627,10 @@ test/playwright/visual/FleetCockpitVisual.spec.mjs
     f10946724cf686286640b118eed0a89d141ab57a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
-    cff9a05a77b628ce83927dbf728dafc12c09be28
+    a97e556c84a3cf1dddded67dc001da74a366ac4d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1280x800.png
-    adf7702dc6348c414a63c1e83a9acd1bc1e9d0de
+    0ce4820298dd5c0815c22bce97a386721a75bf52
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-1000x640.png
     5cbf73d84fc120a1c12dd93a6fa32703c278b923
@@ -639,7 +639,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-addi
     97ba7103e6812710d6029a01ba2bec6d6960d854
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
-    b10120de0aea789b76269d9f2b27f88cab22f9b5
+    a17389d2fbae10fb1fbc75af6ee9351e5fd6d615
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/activity-stream-chips.png
     7f9563d60cfbeb6040b75b8a9f4b7882a237ac22
