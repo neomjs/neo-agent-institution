@@ -32,6 +32,7 @@ import {
     bootFailureCause,
     fleetReadyOrPlaneRefusal,
     PLANE_REFUSAL_DETAIL_MAX,
+    planeProbeCause,
     planeRefusal,
     resolveRealPath,
     resolveSmokeRoot,
@@ -41,6 +42,7 @@ import {
     stopBrainChild,
     stopBrainTree,
     sweepStaleRunState,
+    typePlaneRefusal,
     writeRunState
 } from '../../../../harness/brain.mjs';
 
@@ -383,6 +385,65 @@ test.describe('harness brain lifecycle', () => {
             lastLine  : () => null,
             mode      : 'plane-attach'
         }), 'an output that never closes is waited for a bounded time').rejects.toMatchObject({code: 'plane-refused', detail: null})
+    });
+
+    test('a refused plane-attach boot takes the cause the connect card\'s probe names', () => {
+        expect(planeProbeCause({verdict: 'unreachable', identity: null}, '@ada')).toBe('plane-unreachable');
+        expect(planeProbeCause({verdict: 'rejected', identity: null}, '@ada')).toBe('plane-credential-refused');
+        expect(planeProbeCause({verdict: 'not-a-plane', identity: null}, '@ada')).toBe('plane-not-a-plane');
+        expect(planeProbeCause({verdict: 'accepted', identity: '@grace'}, '@ada'), 'the PAT now names another account').toBe('plane-identity-changed');
+        expect(planeProbeCause({verdict: 'accepted', identity: '@ada'}, '@ada'), 'the plane admits the stored account').toBe('plane-refused');
+        expect(planeProbeCause({verdict: 'no-identity', identity: null}, '@ada')).toBe('plane-refused');
+        expect(planeProbeCause(null, '@ada'), 'a probe that threw tells nothing apart').toBe('plane-refused')
+    });
+
+    test('typePlaneRefusal asks the plane once with the stored record and names it by address, never by credential', async () => {
+        const
+            bearer      = 'SENTINEL-BEARER-4c1d',
+            planeConfig = {bearer, identity: '@ada', planeBase: 'http://127.0.0.1:9'},
+            line        = '[fleet] plane mode refused (http://127.0.0.1:9): plane unreachable (TypeError) — fix fleet.planeBase / fleet.planeBearer, or empty the base for in-process mode.',
+            calls       = [],
+            typed       = await typePlaneRefusal(planeRefusal(line, [bearer]), {
+                planeConfig,
+                probe: async options => {calls.push(options); return {identity: null, verdict: 'unreachable'}}
+            });
+
+        expect(calls).toEqual([{bearer, planeBase: 'http://127.0.0.1:9'}]);
+        expect(typed).toMatchObject({code: 'plane-unreachable', detail: 'http://127.0.0.1:9'});
+        expect(typed.message, 'the main log still gets the child\'s own line').toContain('plane unreachable (TypeError)');
+        expect(bootFailureCause(typed)).toEqual({detail: 'http://127.0.0.1:9', source: 'plane-unreachable'});
+        expect(JSON.stringify({cause: bootFailureCause(typed), message: typed.message})).not.toContain(bearer);
+
+        const thrown = await typePlaneRefusal(planeRefusal(line), {planeConfig, probe: () => { throw new Error('probe broke') }});
+
+        expect(thrown, 'a probe that throws keeps the refusal as it was').toMatchObject({code: 'plane-refused', detail: line});
+
+        let probed = false;
+
+        await typePlaneRefusal(planeRefusal(line), {planeConfig: null, probe: async () => { probed = true }});
+        expect(probed, 'no stored record, nothing to ask').toBe(false)
+    });
+
+    test('a plane-attach refusal is typed once, after its line is quoted, and a ready fleet never is', async () => {
+        const
+            failure = new Error('fleet transport exited before ready (code=1 signal=null)'),
+            refused = createFakeChild(),
+            typed   = [];
+
+        refused.exitCode = 1;
+
+        await expect(fleetReadyOrPlaneRefusal({
+            awaitReady : async () => { throw failure },
+            child      : refused,
+            drainMs    : 20,
+            lastLine   : () => '[fleet] plane mode refused (http://127.0.0.1:9): plane unreachable (TypeError)',
+            mode       : 'plane-attach',
+            typeRefusal: async refusal => {typed.push(refusal.detail); refusal.code = 'plane-unreachable'; return refusal}
+        })).rejects.toMatchObject({code: 'plane-unreachable'});
+        expect(typed).toEqual(['[fleet] plane mode refused (http://127.0.0.1:9): plane unreachable (TypeError)']);
+
+        await fleetReadyOrPlaneRefusal({awaitReady: async () => {}, child: createFakeChild(), lastLine: () => null, mode: 'plane-attach', typeRefusal: async refusal => {typed.push(refusal); return refusal}});
+        expect(typed).toHaveLength(1)
     });
 
     test('resolveProductBrainPlan: a declared plane outranks host liveness and can start only Fleet', () => {

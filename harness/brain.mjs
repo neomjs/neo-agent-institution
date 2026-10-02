@@ -229,6 +229,61 @@ export function planeRefusal(lastLine, secrets = []) {
 }
 
 /**
+ * The refusal cause each connect-card verdict of `probePlaneCredential` names. A verdict missing here
+ * cannot be told apart from a refusal, so it stays `plane-refused`.
+ * @type {Object}
+ */
+const PLANE_PROBE_CAUSES = Object.freeze({
+    'not-a-plane': 'plane-not-a-plane',
+    rejected     : 'plane-credential-refused',
+    unreachable  : 'plane-unreachable'
+});
+
+/**
+ * @summary The refusal cause a plane probe's answer names: the card's verdict when it has one, and a PAT
+ * the plane now admits as another account than the stored one.
+ * @param {Object|null} answer `{verdict, identity}` from `probePlaneCredential`, or `null` when it threw.
+ * @param {String|null} storedIdentity The identity the stored plane record was saved with.
+ * @returns {String} A boot refusal code; `plane-refused` when the answer tells the case apart from none.
+ */
+export function planeProbeCause(answer, storedIdentity) {
+    if (PLANE_PROBE_CAUSES[answer?.verdict]) {
+        return PLANE_PROBE_CAUSES[answer.verdict]
+    }
+
+    return answer?.verdict === 'accepted' && answer.identity && storedIdentity && answer.identity !== storedIdentity
+        ? 'plane-identity-changed'
+        : 'plane-refused'
+}
+
+/**
+ * @summary Types a refused plane-attach boot by asking the plane once, with the probe the connect card
+ * uses, so the cockpit names what the card would. A typed refusal carries the plane's address as its
+ * detail; the fleet child's line stays in the error's message, which only the main log prints.
+ * @param {Error} refusal A `plane-refused` error from {@link planeRefusal}.
+ * @param {Object} options
+ * @param {Object|null} options.planeConfig The stored plane record, `{planeBase, bearer, identity}`.
+ * @param {Function} options.probe `probePlaneCredential`.
+ * @returns {Promise<Error>} The same error, retyped when the probe tells the case apart.
+ */
+export async function typePlaneRefusal(refusal, {planeConfig, probe}) {
+    const {bearer, identity, planeBase} = planeConfig ?? {};
+
+    if (!bearer || !planeBase) {
+        return refusal
+    }
+
+    const code = planeProbeCause(await Promise.resolve().then(() => probe({bearer, planeBase})).catch(() => null), identity);
+
+    if (code !== 'plane-refused') {
+        refusal.code   = code;
+        refusal.detail = planeBase
+    }
+
+    return refusal
+}
+
+/**
  * @summary Awaits a fleet child's readiness, and names the refusal when a plane-attach child exits before
  * it. The refusal line lands on the child's output streams, which can still be in flight at `exit`, so it
  * is quoted once `close` says they drained (or after `drainMs`). Any other failure — a boot that is not
@@ -239,10 +294,12 @@ export function planeRefusal(lastLine, secrets = []) {
  * @param {Function} options.lastLine `() => String|null`, the child's last output line so far.
  * @param {String} options.mode The boot plan's mode.
  * @param {String[]} [options.secrets=[]] Forwarded to {@link planeRefusal}.
+ * @param {Function} [options.typeRefusal] `refusal => Promise<Error>`, run once on a refusal, e.g.
+ *     {@link typePlaneRefusal}.
  * @param {Number} [options.drainMs=1000]
  * @returns {Promise<void>}
  */
-export async function fleetReadyOrPlaneRefusal({awaitReady, child, lastLine, mode, secrets = [], drainMs = 1000}) {
+export async function fleetReadyOrPlaneRefusal({awaitReady, child, lastLine, mode, secrets = [], typeRefusal = refusal => refusal, drainMs = 1000}) {
     try {
         await awaitReady()
     } catch (error) {
@@ -258,11 +315,11 @@ export async function fleetReadyOrPlaneRefusal({awaitReady, child, lastLine, mod
         ]);
         clearTimeout(timer);
 
-        throw planeRefusal(lastLine(), secrets)
+        throw await typeRefusal(planeRefusal(lastLine(), secrets))
     }
 }
 
-const TYPED_BOOT_REFUSALS = new Set(['organism-beside-plane', 'plane-refused']);
+const TYPED_BOOT_REFUSALS = new Set(['organism-beside-plane', 'plane-refused', ...Object.values(PLANE_PROBE_CAUSES), 'plane-identity-changed']);
 
 /**
  * @summary The lifecycle cause a failed boot carries: a typed refusal names itself; anything else

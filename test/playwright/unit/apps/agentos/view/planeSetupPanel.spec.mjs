@@ -11,6 +11,7 @@ import * as core       from '../../../../../../node_modules/neo.mjs/src/core/_ex
 import                      '../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import BaseContainer   from '../../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import PlaneSetupPanel from '../../../../../../apps/agentos/view/PlaneSetupPanel.mjs';
+import PlaneVerdict    from '../../../../../../apps/agentos/util/PlaneVerdict.mjs';
 
 /**
  * Installs a stand-in for the `WS/ShellPlane` main addon's attach remote, recording every request.
@@ -81,5 +82,18 @@ test.describe('AgentOS.view.PlaneSetupPanel — the packaged shell\'s connect-to
         panel.onDismissClick();
         expect(panel.hidden).toBe(true);
         host.destroy()
+    });
+
+    test('a plane\'s own verdicts read the sentences the spine banner shares, word for word as before', () => {
+        expect(PlaneSetupPanel.reasonText).toMatchObject({
+            'no-identity': 'The plane accepted that PAT but named no identity for it. Nothing was stored.',
+            'not-a-plane': 'That address is not a Neo plane. Nothing was stored.',
+            rejected     : 'The plane refused that PAT. Nothing was stored.',
+            unreachable  : 'No plane answered at that address.'
+        });
+
+        for (const [verdict, sentence] of Object.entries(PlaneVerdict.sentences)) {
+            expect(PlaneSetupPanel.reasonText[verdict].startsWith(sentence), verdict).toBe(true)
+        }
     })
 });

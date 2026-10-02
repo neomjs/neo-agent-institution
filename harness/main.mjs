@@ -64,11 +64,17 @@ import {
     startBrainChild,
     stopBrainTree,
     sweepStaleRunState,
+    typePlaneRefusal,
     writeRunState
 } from './brain.mjs';
 import {createSmokeSafeStorage, startFixturePlane}            from './fixturePlane.mjs';
 import {carriesSecret, createMainLog}                         from './mainLog.mjs';
-import {createPlaneBroker, planeEnvFragment, readPlaneConfig} from './planeConfig.mjs';
+import {
+    createPlaneBroker,
+    planeEnvFragment,
+    probePlaneCredential,
+    readPlaneConfig
+} from './planeConfig.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                  from './seatRootRecord.mjs';
 import {
     WAKE_RECEIVER_LAUNCH_AGENT,
@@ -1096,11 +1102,12 @@ async function bootProductBrain() {
 
         registerBrainChild({child: fleet, label: 'fleet'});
         await fleetReadyOrPlaneRefusal({
-            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
-            child     : fleet,
-            lastLine  : () => fleetLastLine,
+            awaitReady : () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
+            child      : fleet,
+            lastLine   : () => fleetLastLine,
             mode,
-            secrets   : mainSecrets()
+            secrets    : mainSecrets(),
+            typeRefusal: refusal => typePlaneRefusal(refusal, {planeConfig: storedPlane, probe: probePlaneCredential})
         })
     }
 

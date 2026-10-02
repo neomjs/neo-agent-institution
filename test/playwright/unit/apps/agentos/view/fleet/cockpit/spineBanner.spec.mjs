@@ -5,6 +5,7 @@ setup({appConfig: {name: 'FleetSpineBannerTest'}});
 import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import PlaneVerdict   from '../../../../../../../../apps/agentos/util/PlaneVerdict.mjs';
 import SpineBanner    from '../../../../../../../../apps/agentos/util/SpineBanner.mjs';
 
 /**
@@ -120,6 +121,41 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         test('a refusal whose line was withheld still names itself', () => {
             expect(SpineBanner.deriveSpineBanner({daemon: {...refused, reason: null}, grid: {state: 'cold'}, stream: {state: 'cold'}}).title)
                 .toBe('The plane refused this shell — connect it again')
+        })
+    });
+
+    test.describe('a refusal the shell told apart by asking the plane — the connect card\'s own words', () => {
+        const
+            cold    = {state: 'cold', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}},
+            derive  = cause => SpineBanner.deriveSpineBanner({daemon: {cause, reason: 'http://127.0.0.1:9', state: 'degraded'}, grid: cold, stream: cold}),
+            answers = [
+                ['plane-unreachable',        'plane unreachable', PlaneVerdict.sentences.unreachable],
+                ['plane-credential-refused', 'pat refused',       PlaneVerdict.sentences.rejected],
+                ['plane-not-a-plane',        'not a plane',       PlaneVerdict.sentences['not-a-plane']]
+            ];
+
+        test('each answer leads with the card\'s sentence, names the plane by address, and offers Connect', () => {
+            for (const [cause, text, sentence] of answers) {
+                const verdict = derive(cause);
+
+                expect(verdict, cause).toMatchObject({action: 'connect-plane', hidden: false, kind: 'cold', text});
+                expect(verdict.title.startsWith(sentence), cause).toBe(true);
+                expect(verdict.title.endsWith(' · http://127.0.0.1:9'), cause).toBe(true);
+                expect(verdict.ariaLabel).toBe(verdict.title)
+            }
+
+            expect(derive('plane-identity-changed')).toMatchObject({action: 'connect-plane', kind: 'cold', text: 'account changed'})
+        });
+
+        test('none of them passes on the fleet child\'s config advice', () => {
+            for (const cause of ['plane-unreachable', 'plane-credential-refused', 'plane-not-a-plane', 'plane-identity-changed']) {
+                expect(derive(cause).title, cause).not.toMatch(/fleet\.plane|in-process/)
+            }
+        });
+
+        test('a cause that only shares a name with an object key is not one of them', () => {
+            expect(derive('constructor').text).not.toBe(undefined);
+            expect(derive('constructor').action).not.toBe('connect-plane')
         })
     });
 

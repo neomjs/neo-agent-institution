@@ -377,6 +377,15 @@ test.describe('harness app lifecycle', () => {
             expect(lifecycle.brainHealth.cause).toMatchObject({detail, source: 'plane-refused'})
         });
 
+        test('each refusal the plane probe tells apart settles as its own cause, with the plane\'s address', () => {
+            for (const source of ['plane-unreachable', 'plane-credential-refused', 'plane-not-a-plane', 'plane-identity-changed']) {
+                const lifecycle = createAppLifecycle({app: createFakeApp(), teardownBrain: async () => ({})});
+
+                expect(lifecycle.settleBrainBoot(false, {detail: 'http://127.0.0.1:9', source}), source).toBe('degraded');
+                expect(lifecycle.brainHealth.cause).toMatchObject({detail: 'http://127.0.0.1:9', source})
+            }
+        });
+
         test('an explicit quit path never renders as impairment: stopped clears the cause', async () => {
             const
                 app       = createFakeApp(),
