@@ -120,6 +120,13 @@ class FleetAgent extends Model {
             name        : 'repoPath',
             defaultValue: null
         }, {
+            // the last start's outcome for each of the seat's other repositories,
+            // `[{repoSlug, state: 'prepared' | 'failed', reason?}]`, kept on the Fleet's launch record
+            // (the roster DTO's `repoOutcomes`), so it outlives a roster read and an app reload. A new
+            // start replaces it. Null = no start yet, or a Brain that does not report it
+            name        : 'repoOutcomes',
+            defaultValue: null
+        }, {
             // open assigned lanes for the resident (measured density evidence: 7–17 per active
             // agent — one lane line cannot carry that truth, the count badge can). Owned by the
             // roster DTO end-to-end (assembler stamp → mapRosterRow → this record → the badge);

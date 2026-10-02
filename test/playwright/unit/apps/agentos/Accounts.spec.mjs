@@ -263,6 +263,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
         // upsert goes through the provider-bound roster store with the form's readback, behind the
         // flow's own guard — never a request-derived projection or a module-global singleton import.
         expect(source).toContain("agentDefinitionsStore: 'stores.agentDefinitions'");
+        expect(source).toContain("fleetRosterStore     : 'stores.fleetRoster'");
         expect(source).toContain("fleetTenantsStore    : 'stores.fleetTenants'");
         expect(source).toContain('store.add(definition)');
         expect(source).toContain('AddAgentFlow.validateReadback(definition)');
@@ -460,6 +461,12 @@ test.describe('AgentOS.view.accounts.Panel — master-detail (multiple agents)',
         stub.onAddAgentClick();
         expect(repos.hidden).toBe(true);
         expect(card.hidden).toBe(true);
+
+        // the provider's fleet roster reaches the card as the exact instance it reads outcomes from
+        const roster = {};
+
+        Accounts.prototype.afterSetFleetRosterStore.call(stub, roster);
+        expect(repos.rosterStore).toBe(roster);
 
         store.destroy()
     });
