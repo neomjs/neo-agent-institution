@@ -171,12 +171,13 @@ class AgentReposCard extends Container {
     }
 
     /**
-     * @summary The seat's other repositories as the registry holds them: `{repoSlug, cloneUrl}`
-     * each, the exact entries a new list must carry forward.
+     * @summary The seat's other repositories as the registry holds them: `{repoSlug, cloneUrl}` each,
+     * plus the `forge` the registry records for a GitLab repository. These are the exact entries a new
+     * list must carry forward; an entry without its `forge` would read as GitHub.
      * @returns {Object[]}
      */
     getOtherRepos() {
-        return (this.record?.['metadata.repos'] ?? []).map(({cloneUrl, repoSlug}) => ({cloneUrl, repoSlug}))
+        return (this.record?.['metadata.repos'] ?? []).map(({cloneUrl, forge, repoSlug}) => forge ? {cloneUrl, forge, repoSlug} : {cloneUrl, repoSlug})
     }
 
     /**
@@ -253,7 +254,8 @@ class AgentReposCard extends Container {
 
     /**
      * @summary Re-derive the rows from the CURRENT record data, the working repository first, each
-     * other repository with its last start outcome. Public on purpose: a readback changes the
+     * other repository with its last start outcome, and the add field's slug shape for the seat's
+     * forge. Public on purpose: a readback changes the
      * record's fields without changing its identity, so the owning view calls `refresh()` when the
      * roster changes.
      */
@@ -272,8 +274,9 @@ class AgentReposCard extends Container {
             ? 'Repositories · declared · last start'
             : 'Repositories · declared';
 
-        me.getReference('repo-list').store.data = rows;
-        me.getReference('repos-empty').hidden   = !me.record || rows.length > 0;
+        me.getReference('repo-list').store.data        = rows;
+        me.getReference('repos-empty').hidden          = !me.record || rows.length > 0;
+        me.getReference('field-repo').placeholderText = me.record?.forge === 'gitlab' ? 'group/project' : 'owner/repo';
         me.renderSaveStatus()
     }
 

@@ -6,13 +6,19 @@ import AddAgentFlow  from '../../../util/AddAgentFlow.mjs';
 import HarnessChoice from '../../../util/HarnessChoice.mjs';
 
 /**
+ * The forges a seat's account can live on, in chip order.
+ * @member {Object} FORGE_LABELS
+ */
+const FORGE_LABELS = Object.freeze({github: 'GitHub', gitlab: 'GitLab'});
+
+/**
  * @class AgentOS.view.fleet.instances.AddAgentForm
  * @extends Neo.form.Container
  *
  * @summary The one add-agent form (design SSOT Lane D1). It serves the cockpit's rail and the
- * Accounts view. It collects the GitHub account (username, plus a personal access token for
- * direct-browser ingress), the working repository, and the harness, and submits through the Fleet
- * Registry bridge. It renders the flow states from `AddAgentFlow`: `idle → validating → submitting →
+ * Accounts view. It collects the seat's account (its forge, a GitLab seat's instance, the username,
+ * plus a personal access token for direct-browser ingress), the working repository, and the harness,
+ * and submits through the Fleet Registry bridge. It renders the flow states from `AddAgentFlow`: `idle → validating → submitting →
  * readback-confirmed | gated | rejected`. The registry's canonical readback is the only success
  * truth.
  *
@@ -69,6 +75,13 @@ class AddAgentForm extends FormContainer {
          */
         flowStatus_: {state: 'idle', reason: ''},
         /**
+         * The forge the seat's account lives on: `github` or `gitlab`. The instance field, the token
+         * hint and the repository's shape follow it.
+         * @member {String} forge_='github'
+         * @reactive
+         */
+        forge_: 'github',
+        /**
          * The selected harness type, the catalog's launched unit. The product and run-mode chips
          * both derive their selection from it, so there is one selection state.
          * @member {String|null} harnessType_=null
@@ -81,9 +94,10 @@ class AddAgentForm extends FormContainer {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The form anatomy: pane head · the GitHub account (username, token) · working repository
-         * · harness (product chips, then App / Command line when the product has both) · the action
-         * slot · status line. Geometry + skin in `AddAgentForm.scss`, colors token-only.
+         * The form anatomy: pane head · the account (forge chips, the GitLab instance, username,
+         * token) · working repository · harness (product chips, then App / Command line when the
+         * product has both) · the action slot · status line. Geometry + skin in `AddAgentForm.scss`,
+         * colors token-only.
          * @member {Object[]} items
          */
         // every row is flex:'none': the vbox default (grow 1) would distribute a stretched host's
@@ -99,7 +113,35 @@ class AddAgentForm extends FormContainer {
             ntype: 'component',
             cls  : ['fm-add-section'],
             flex : 'none',
-            text : 'GitHub account'
+            text : 'Account'
+        }, {
+            // the selected chip names the forge once; the token, instance and repository follow it
+            ntype    : 'container',
+            cls      : ['fm-add-forge-row'],
+            flex     : 'none',
+            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+            reference: 'forge-row',
+
+            items: Object.entries(FORGE_LABELS).map(([forge, text]) => ({
+                module : Button,
+                cls    : ['fm-chip'],
+                text,
+                handler: 'up.onForgeChipClick',
+                forge
+            }))
+        }, {
+            // a GitLab seat's PAT is presented to this origin only
+            module         : TextField,
+            clearable      : true,
+            flex           : 'none',
+            hidden         : true,
+            labelPosition  : 'inline',
+            labelText      : 'GitLab instance',
+            name           : 'forgeHost',
+            placeholderText: 'https://gitlab.example.com',
+            reference      : 'field-forge-host',
+            required       : true,
+            value          : 'https://gitlab.com'
         }, {
             module         : TextField,
             clearable      : true,
@@ -209,6 +251,8 @@ class AddAgentForm extends FormContainer {
             secretField && me.remove(secretField)
         }
 
+        me.syncForge();
+
         if (!bridge?.defineAgent) {
             me.flowStatus = {state: 'gated', reason: AddAgentFlow.FLEET_OFFLINE_REASON}
         }
@@ -242,6 +286,16 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
+     * Triggered after the forge config got changed — re-mark the forge chips and the fields that follow them.
+     * @param {String} value
+     * @param {String} oldValue
+     * @protected
+     */
+    afterSetForge(value, oldValue) {
+        oldValue !== undefined && this.syncForge()
+    }
+
+    /**
      * Triggered after the harnessType config got changed — re-mark both chip rows.
      * @param {String|null} value
      * @param {String|null} oldValue
@@ -266,6 +320,37 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
+     * @summary Mark the selected forge chip, show the instance field only for GitLab, and let the token
+     * and repository hints follow the forge. The default repository is a GitHub one, so a GitLab seat
+     * starts from an empty field, and an empty field gets the default back on GitHub.
+     */
+    syncForge() {
+        const
+            me     = this,
+            gitlab = me.forge === 'gitlab',
+            host   = me.getReference('field-forge-host'),
+            repo   = me.getReference('field-repo'),
+            token  = me.getReference('field-credential');
+
+        me.getReference('forge-row')?.items.forEach(chip => {
+            chip[chip.forge === me.forge ? 'addCls' : 'removeCls']('is-selected')
+        });
+
+        if (host) host.hidden = !gitlab;
+        if (token) token.placeholderText = gitlab ? 'glpat-…' : 'github_pat_…';
+
+        if (repo) {
+            repo.placeholderText = gitlab ? 'group/project' : 'owner/repo';
+
+            if (gitlab && repo.value === AddAgentFlow.DEFAULT_REPO_SLUG) {
+                repo.value = ''
+            } else if (!gitlab && !repo.value) {
+                repo.value = AddAgentFlow.DEFAULT_REPO_SLUG
+            }
+        }
+    }
+
+    /**
      * @summary Mark the selected product chip, and show the App / Command line row with its
      * selected run mode only while the product ships both.
      */
@@ -287,6 +372,14 @@ class AddAgentForm extends FormContainer {
                 chip[chip.runsAs === choice?.runsAs ? 'addCls' : 'removeCls']('is-selected')
             })
         }
+    }
+
+    /**
+     * @summary A forge chip selects the forge the seat's account lives on.
+     * @param {Object} data
+     */
+    onForgeChipClick(data) {
+        this.forge = data.component.forge
     }
 
     /**
@@ -327,6 +420,8 @@ class AddAgentForm extends FormContainer {
             shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
             payload    = AddAgentFlow.createDefineAgentIntent({
                 credential    : values.credential,
+                forge         : me.forge,
+                forgeHost     : values.forgeHost,
                 githubUsername: values.githubUsername,
                 harnessType   : me.harnessType
             }, bridge);
