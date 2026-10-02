@@ -369,13 +369,13 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     04ea267aa98a0de4ec26c5c1f027e2b97d5d4da3
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    474eecf2a0ca3a8eb22fd19b854bf1014fa31eaa
+    ef2948a70973e41f442b85d2cbcc0019a77b85be
 
 apps/agentos/view/fleet/mailbox/Grid.mjs
     ff3bf64c961243252ebe66d4b36a701dc3946c51
 
 apps/agentos/view/fleet/mailbox/OperatorContainer.mjs
-    9bce5767c64e688193587e20b29961f3d01f5067
+    52039f01912c8a053118f1120d25210c8f67789a
 
 apps/agentos/view/fleet/mailbox/RecipientChip.mjs
     eb2c5727a9a2dc3af3183d0b218b0be686607e5a
@@ -537,7 +537,7 @@ resources/scss/src/apps/agentos/fleet/mailbox/Grid.scss
     0fe6b3f1aee33f40f893c390f3f49881653aa8ef
 
 resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
-    350a3069ab76cb50850852518a3225043a9c2707
+    f2fd0f8220d9f1c0c6dcb26d3a7b614ceca6142b
 
 resources/scss/src/apps/agentos/fleet/memories/Container.scss
     e3996dea292621ea000e65cd782a7a6746451b19
@@ -753,7 +753,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-golden-p
     e6731410077f02e152453268bfa97128da486319
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox.png
-    e8b3ac693152c4092b25062091b88714f844eb59
+    8249a32fd767e68ac0cd0f96a12a8ef868033825
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-memories.png
     2cd86cbf807da9d16de7d376b029da45ab7ed8f0

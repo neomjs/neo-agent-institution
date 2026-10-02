@@ -8,10 +8,37 @@
     overflow-y: auto;
 
     /* the composed inbox pane: mount-agnostic by contract (no padding/surface of its own — see
-       MailboxPane.scss). The floor keeps the read half visible when the compose form's natural
-       height exceeds the drawer well — the form shrinks and scrolls, the inbox never hits 0px. */
-    > .fm-mailbox-pane {
-        min-height: 96px;
+       MailboxPane.scss). Compose is a reveal: folded, the form is out of the layout and the inbox
+       takes the strip; revealed, the inbox keeps ONE designed row of context and the form scrolls
+       internally in what is left. The floor is the sum the engine needs for one row: the head
+       (23px) + the pane gap (6px) + the grid's own chrome around its body (20px) + one row of the
+       lattice (84px, mailbox/Grid.scss) + slack (8px), because the engine derives its row count from
+       the measured BODY as ceil(height / rowHeight) - 1. The former 96px floor left a 48px body,
+       under one row, and rendered none. */
+    &.is-composing > .fm-mailbox-pane {
+        min-height: calc(23px + 6px + 20px + 84px + 8px);
+    }
+
+    /* the compose affordance in the inbox pane's head (the mailbox design page's "Compose
+       placement"): an affordance-class chip inside the head's actions group — scale, padding and
+       the chrome font are the group's law (Viewport.scss .fm-pane-actions); this rule adds only
+       the chip's outline, its ink and its pressed state while the form is revealed */
+    .fm-pane-actions .fm-compose-affordance {
+        --button-background-color      : transparent;
+        --button-background-color-hover: transparent;
+        --button-border                : 1px solid var(--fm-line-soft);
+        --button-border-hover          : 1px solid var(--fm-ink-dim);
+        --button-border-pressed        : 1px solid var(--fm-ink-dim);
+        --button-border-radius         : 6px;
+
+        .neo-button-text {
+            color: var(--fm-ink-dim);
+        }
+
+        &:hover .neo-button-text,
+        &.pressed .neo-button-text {
+            color: var(--fm-ink);
+        }
     }
 
     /* the seat-conflation truth marker — sits directly above the compose surface so the fact is

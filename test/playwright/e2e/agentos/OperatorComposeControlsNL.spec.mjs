@@ -32,6 +32,8 @@ test.describe('AgentOS operator compose — removable recipients + priority radi
 
         await expect(mailboxTab).toBeVisible({timeout: 30000});
         await mailboxTab.click();
+        // compose is a reveal behind the inbox head's chip (the design page's placement)
+        await page.locator('.fm-compose-affordance').first().click();
 
         const form = page.locator('.fm-operator-compose-form');
 

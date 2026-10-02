@@ -599,6 +599,17 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         shortPane.destroy()
     });
 
+    test('the head is a slot: a host reaches it by reference, and alone the pane puts only its title and freshness chip there', () => {
+        const
+            pane = createPane(),
+            head = pane.getReference('mailbox-head');
+
+        expect(head).toBeTruthy();
+        expect(head.items.map(item => item.reference)).toEqual(['mailbox-title', 'mailbox-freshness']);
+
+        pane.destroy()
+    });
+
     test('presence is not permission: only GRANTED over WIRED with a real page window is a mail claim', () => {
         // The reviewer's literal falsifier. Four members PRESENT is not the producer saying anything:
         // a `wired` capability beside an `unavailable` admission is a read that never happened, and

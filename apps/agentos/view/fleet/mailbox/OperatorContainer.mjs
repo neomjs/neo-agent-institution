@@ -1,3 +1,4 @@
+import Button              from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container           from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import MailboxPane         from './Container.mjs';
 import OperatorComposeForm from './ComposeForm.mjs';
@@ -29,6 +30,14 @@ import OperatorComposeForm from './ComposeForm.mjs';
  * The container owns no `state.Provider` (the cockpit scopes it) — `record` / `snapshot` /
  * `recipientOptions` are injected by the cockpit from state it already holds, and passed straight
  * through to the children, so this surface never reaches for a service.
+ *
+ * **Compose is a reveal.** The inbox pane's head carries the `✎ compose` affordance (the mailbox
+ * design page's "Compose placement": an affordance-class chip, right-pinned, reachable without
+ * scroll); the form is out of the layout until the chip opens it, so the operator's own rows get
+ * the strip. Open, the inbox keeps one designed row of context and the form scrolls internally in
+ * what is left (the floor lives in the skin). A send keeps the form open with its outcome rows; the
+ * chip, or Escape inside the form, closes it. The page's open slot — inline reveal or an own south
+ * tab — stays open: if compose becomes a tab, the chip routes there and the rows do not move.
  *
  * @class AgentOS.view.fleet.mailbox.OperatorContainer
  * @extends Neo.container.Base
@@ -79,6 +88,13 @@ class OperatorMailbox extends Container {
          */
         composeOutcome_: null,
         /**
+         * Whether the compose form is revealed. `false` keeps it out of the layout; the head's
+         * `✎ compose` chip toggles it, Escape inside the form closes it, a send never does.
+         * @member {Boolean} composeOpen_=false
+         * @reactive
+         */
+        composeOpen_: false,
+        /**
          * The operator-seat identity posture (`{conflated, seatIdentity}` | `null`), injected by the
          * cockpit from its resolved viewer identity vs the roster. A conflated posture renders the
          * truth marker directly above the compose surface: sends through this transport are
@@ -119,6 +135,7 @@ class OperatorMailbox extends Container {
             // the inbox floor.
             module   : OperatorComposeForm,
             flex     : '0 1 auto',
+            hidden   : true,
             reference: 'operator-compose-form'
         }]
     }
@@ -157,9 +174,75 @@ class OperatorMailbox extends Container {
         form && me.recipientOptions?.length && (form.recipientOptions = me.recipientOptions);
         me.applyIdentityPosture();
 
+        // the compose affordance lives in the inbox pane's head (the pane exposes the slot by
+        // reference), inside the head's actions group so it speaks at the pane-head law's chip
+        // scale; the form is a reveal behind it, and Escape inside the form closes it
+        inbox?.getReference('mailbox-head')?.add({
+            ntype : 'container',
+            cls   : ['fm-pane-actions'],
+            flex  : 'none',
+            layout: {ntype: 'hbox', align: 'center'},
+            items : [{
+                module         : Button,
+                cls            : ['fm-compose-affordance'],
+                handler        : 'onComposeToggle', // a string: the button resolves it against handlerScope
+                handlerScope   : me,
+                pressed        : me.composeOpen,
+                reference      : 'compose-toggle',
+                text           : '✎ compose',
+                useRippleEffect: false // an affordance chip, not a filled button
+            }]
+        });
+        form?.addDomListeners({keydown: me.onComposeKeyDown, scope: me});
+        me.applyComposeOpen();
+
         // a construction-time identity lands its first inbox read without a page gesture (afterSetRecord
         // was skipped pre-construct, so this is the single fire for the identity-before-pane ordering)
         me.record && me.onInboxPageRequest({offset: 0})
+    }
+
+    /**
+     * Triggered after the compose reveal changed.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetComposeOpen(value, oldValue) {
+        this.isConstructed && this.applyComposeOpen()
+    }
+
+    /**
+     * @summary Render the reveal: the form's presence, the root's composing class (the skin's inbox
+     * floor keys on it) and the chip's pressed state.
+     * @protected
+     */
+    applyComposeOpen() {
+        const
+            me   = this,
+            open = me.composeOpen === true,
+            form = me.getReference('operator-compose-form'),
+            chip = me.getReference('compose-toggle');
+
+        form && (form.hidden = !open);
+        chip && (chip.pressed = open);
+        me.toggleCls('is-composing', open)
+    }
+
+    /**
+     * @summary The chip's handler: reveal or fold the compose form.
+     * @protected
+     */
+    onComposeToggle() {
+        this.composeOpen = !this.composeOpen
+    }
+
+    /**
+     * @summary Escape inside the form folds it; every other key stays the form's.
+     * @param {Object} data The keydown event data.
+     * @protected
+     */
+    onComposeKeyDown(data) {
+        data.key === 'Escape' && (this.composeOpen = false)
     }
 
     /**

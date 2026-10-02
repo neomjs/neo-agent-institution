@@ -90,6 +90,68 @@ test.describe('AgentOS OperatorMailbox — the operator mailbox surface (#15377)
         idle.destroy()
     });
 
+    test('compose is a reveal: the form is out of the layout at construction, and the inbox head carries the compose chip', () => {
+        const
+            box  = createBox({record: {agentId: 'op', githubUsername: 'tobiu'}}),
+            form = box.getReference('operator-compose-form'),
+            chip = box.getReference('compose-toggle'),
+            head = box.getReference('mailbox-head');
+
+        expect(box.composeOpen).toBe(false);
+        expect(form.hidden, 'the compose form stays out of the layout until asked for').toBe(true);
+        expect(chip, 'the affordance lives in the inbox pane\'s head').toBeTruthy();
+        expect(chip.parent.cls, 'inside the head\'s actions group, so the pane-head law sizes it').toContain('fm-pane-actions');
+        expect(head.items.includes(chip.parent)).toBe(true);
+        expect(chip.text).toBe('✎ compose');
+        expect(chip.pressed).toBe(false);
+        expect(chip.handler, 'the chip\'s handler is the host\'s toggle, resolved against the host').toBe('onComposeToggle');
+        expect(chip.handlerScope).toBe(box);
+
+        // the button's own click path reaches the host (a bare function handler would run against
+        // the button itself and set composeOpen on the wrong instance)
+        chip.onClick({});
+        expect(box.composeOpen).toBe(true);
+        chip.onClick({});
+        expect(box.composeOpen).toBe(false);
+        expect(box.cls.includes('is-composing')).toBe(false);
+
+        box.destroy()
+    });
+
+    test('the chip reveals and folds the form; Escape inside the form folds it; a settled send outcome never does', () => {
+        const
+            box  = createBox({record: {agentId: 'op', githubUsername: 'tobiu'}}),
+            form = box.getReference('operator-compose-form'),
+            chip = box.getReference('compose-toggle');
+
+        box.onComposeToggle();
+        expect(box.composeOpen).toBe(true);
+        expect(form.hidden).toBe(false);
+        expect(chip.pressed).toBe(true);
+        expect(box.cls.includes('is-composing'), 'the skin\'s inbox floor keys on the root class').toBe(true);
+
+        // a send settles while composing: the outcome rows show inside the still-open form
+        box.composeOutcome = {results: [{to: '@peer', outcome: {messageId: 'm-1'}}]};
+        expect(box.composeOpen).toBe(true);
+        expect(form.composeOutcome).toEqual({results: [{to: '@peer', outcome: {messageId: 'm-1'}}]});
+
+        // any other key stays the form's; Escape folds it
+        box.onComposeKeyDown({key: 'a'});
+        expect(box.composeOpen).toBe(true);
+        box.onComposeKeyDown({key: 'Escape'});
+        expect(box.composeOpen).toBe(false);
+        expect(form.hidden).toBe(true);
+        expect(chip.pressed).toBe(false);
+        expect(box.cls.includes('is-composing')).toBe(false);
+
+        // the chip folds it too
+        box.onComposeToggle();
+        box.onComposeToggle();
+        expect(box.composeOpen).toBe(false);
+
+        box.destroy()
+    });
+
     test('passes the operator snapshot straight to the inbox pane', () => {
         const
             box  = createBox(),
