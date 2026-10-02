@@ -121,6 +121,21 @@ test.describe('FM account configuration model', () => {
         expect(mcpServers.normalizeMcpOverrides({'gitlab-workflow': true}, evolvedCatalog)).toBeNull()
     });
 
+    test('the public forge survives hydration and readback; legacy definitions retain GitHub', () => {
+        const store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'legacy', harnessType: 'codex'},
+            {id: 'gitlab', forge: 'gitlab', harnessType: 'codex', mcpServers: null}
+        ]});
+
+        expect(store.get('legacy').forge).toBe('github');
+        expect(store.get('gitlab').forge).toBe('gitlab');
+        store.get('gitlab').set({forge: 'gitlab', mcpServers: {'gitlab-workflow': false}});
+        expect(store.get('gitlab').forge).toBe('gitlab');
+        expect(store.get('gitlab').mcpServers).toEqual({'gitlab-workflow': false});
+
+        store.destroy()
+    });
+
     test('the AgentDefinition record contract: matrix passthrough, tri-state toggles, credential-free', () => {
         const store = Neo.create(Store, {
             keyProperty: 'id',

@@ -6,8 +6,8 @@ const {contextBridge, ipcRenderer} = require('electron');
 // capabilities land with their consuming leaves (E5 carries the contract; additions amend the
 // shell ADR §2.3 first).
 contextBridge.exposeInMainWorld('neoShell', {
-    // The plane-attach broker pair (§2.3.8): main prompts for the PAT itself, so neither the request
-    // nor the reply ever carries it.
+    // The plane-attach broker (§2.3.8): main prompts for the PAT itself or probes the stored one, so no
+    // request or reply ever carries it.
     attachPlane : request => ipcRenderer.invoke('shell-plane-attach', request),
     // Pull-shaped whole-Brain health from the lifecycle owner. Consumers that render this answer
     // must re-read it for as long as they render (interval is leaf property).
@@ -23,7 +23,8 @@ contextBridge.exposeInMainWorld('neoShell', {
     setupEvaluate  : request => ipcRenderer.invoke('shell-setup-evaluate', request),
     setupPresets   : () => ipcRenderer.invoke('shell-setup-presets'),
     setupProbe     : () => ipcRenderer.invoke('shell-setup-probe'),
-    shellVersion   : process.versions.electron
+    shellVersion   : process.versions.electron,
+    verifyPlane    : () => ipcRenderer.invoke('shell-plane-verify')
 });
 
 /**

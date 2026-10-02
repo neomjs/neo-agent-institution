@@ -15,13 +15,13 @@ function forwardSetup(name, request) {
 }
 
 /**
- * @summary The cockpit's reach into the packaged shell's main-process brokers: the plane-attach pair and
- * the first-run setup channels.
+ * @summary The cockpit's reach into the packaged shell's main-process brokers: the plane-attach broker
+ * and the first-run setup channels.
  *
- * The shell's preload answers every call in Electron main. Main prompts for a credential itself, so no
- * call from here carries one, and no answer returns one — a credential answer is the path of the file
- * main kept. In a browser there is no shell: each call answers "not available" instead of failing, and
- * the setup card then shows the CLI's command.
+ * The shell's preload answers every call in Electron main. Main prompts for a credential itself, or
+ * probes the stored one, so no call from here carries one, and no answer returns one — a credential
+ * answer is the path of the file main kept. In a browser there is no shell: each call answers "not
+ * available" instead of failing, and the setup card then shows the CLI's command.
  * @class Neo.main.addon.ShellPlane
  * @extends Neo.main.addon.Base
  */
@@ -47,7 +47,8 @@ class ShellPlane extends Base {
                 'setupEffect',
                 'setupEvaluate',
                 'setupPresets',
-                'setupProbe'
+                'setupProbe',
+                'verifyPlane'
             ]
         }
     }
@@ -133,6 +134,16 @@ class ShellPlane extends Base {
      */
     setupProbe() {
         return forwardSetup('setupProbe', {})
+    }
+
+    /**
+     * @summary Asks the shell whether the plane still admits the PAT this shell launched with.
+     * @returns {Promise<{cause: String|null}>} `{cause: null}` without a shell.
+     */
+    async verifyPlane() {
+        return globalThis.neoShell?.verifyPlane
+            ? globalThis.neoShell.verifyPlane()
+            : {cause: null}
     }
 }
 

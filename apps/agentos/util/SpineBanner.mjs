@@ -91,10 +91,11 @@ function reasonFor(surfaces, state) {
 const DAEMON_FAULT_STATES = Object.freeze(['degraded', 'stopped']);
 
 /**
- * The boot refusals the shell tells apart by asking the plane (`harness/brain.mjs` `typePlaneRefusal`):
- * each one's pill word, and its title's lead, which is the connect card's sentence for that answer
- * ({@link AgentOS.util.PlaneVerdict}) followed by what connecting again fixes. Their reason is the
- * plane's address.
+ * The refusals the shell tells apart by asking the plane — at boot (`harness/brain.mjs`
+ * `typePlaneRefusal`) and, for the credential's own two, while it runs (`verifyPlane()`): each one's
+ * pill word, and its title's lead, which is the connect card's sentence for that answer
+ * ({@link AgentOS.util.PlaneVerdict}) followed by what connecting again fixes. At boot their reason is
+ * the plane's address.
  * @type {Object}
  */
 const PLANE_REFUSALS = Object.freeze({
@@ -212,6 +213,8 @@ class SpineBanner extends Base {
      * @param {{state: String, reason: ?String}} [options.daemon] Brain daemon health:
      *     `'running'|'degraded'|'stopped'`, with the diagnosis pointer as its reason. Optional — a caller
      *     that has not pulled daemon truth passes nothing rather than guessing `running`.
+     * @param {{cause: ?String}} [options.plane] The shell's answer, while it runs, on the PAT it launched
+     *     with (`plane-credential-refused`, `plane-identity-changed`); optional.
      * @param {Object|null} [options.transport] The shell transport-boot fact (see {@link coldFallbackFor}).
      *     Optional and `null`-safe — only the cold fallback consults it, so a retained surface reason
      *     still outranks any topology guess.
@@ -222,7 +225,7 @@ class SpineBanner extends Base {
      *     cause (one hover away, T5); `ariaLabel` mirrors the sentence so the distinction the
      *     sentence encodes stays reachable to a screen reader without the hover.
      */
-    static deriveSpineBanner({daemon, grid, stream, transport = null}) {
+    static deriveSpineBanner({daemon, grid, plane, stream, transport = null}) {
         const surfaces = [grid, stream],
               states   = surfaces.map(surface => surface?.state),
               verdict  = (kind, text, title, action = null) => ({action, hidden: false, kind, text, title, ariaLabel: title});
@@ -245,6 +248,15 @@ class SpineBanner extends Base {
             const {lead, text} = PLANE_REFUSALS[daemon.cause];
 
             return verdict('cold', text, `${lead}${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
+        }
+
+        // The same answers while the shell runs: a roster read failed, and the shell's probe named the
+        // launched PAT. A roster that was live keeps its last-known rows, so its skin is degraded; Connect
+        // is still the one action that can fix a credential.
+        if (Object.hasOwn(PLANE_REFUSALS, plane?.cause ?? '')) {
+            const {lead, text} = PLANE_REFUSALS[plane.cause];
+
+            return verdict(grid?.state === 'cold' ? 'cold' : 'degraded', text, lead, 'connect-plane')
         }
 
         // Only a cold GRID enters the cold family: its copy asserts server facts, and a cold sibling

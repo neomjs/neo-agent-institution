@@ -342,11 +342,15 @@ export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, 
 }
 
 /**
- * @summary The main-process handlers behind the preload's `planeStatus()` and `attachPlane()`. Both
- * refuse an untrusted sender, and neither reply ever carries the credential: the PAT exists only
- * between the credential prompt, the probe, and the encrypted write.
+ * @summary The main-process handlers behind the preload's `planeStatus()`, `attachPlane()` and
+ * `verifyPlane()`. Each refuses an untrusted sender, and no reply ever carries the credential: the PAT
+ * exists only between the credential prompt or the stored record, the probe, and the encrypted write.
  * @param {Object} options
+ * @param {Function} options.causeOf `(answer, storedIdentity) => String|null`: the runtime cause a probe
+ *     answer names (`runtimePlaneCause`).
  * @param {String} options.dir Directory holding the record (Electron `userData`).
+ * @param {Function} options.getLaunchedPlane Returns the stored record this shell launched its fleet
+ *     child with (`launchedPlaneRecord`), or `null` when the launch took its plane from elsewhere.
  * @param {Function} options.getTransportFact Returns the settled boot fact (`{mode, up}`) or `null`.
  * @param {Function} options.isTrustedSender `(event) => Boolean`, the §2.3.4 check.
  * @param {Boolean} options.packaged Only a packaged boot reads the record, so only it may attach.
@@ -355,9 +359,9 @@ export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, 
  * @param {Object} options.safeStorage Electron `safeStorage`.
  * @param {Function} [options.fetchFn=fetch]
  * @param {Object} [options.fsModule=fs]
- * @returns {{status: Function, attach: Function}}
+ * @returns {{status: Function, attach: Function, verify: Function}}
  */
-export function createPlaneBroker({dir, getTransportFact, isTrustedSender, packaged, promptCredential, relaunch, safeStorage, fetchFn = fetch, fsModule = fs}) {
+export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportFact, isTrustedSender, packaged, promptCredential, relaunch, safeStorage, fetchFn = fetch, fsModule = fs}) {
     const refuse = reason => ({ok: false, reason, relaunching: false});
 
     return {
@@ -426,6 +430,29 @@ export function createPlaneBroker({dir, getTransportFact, isTrustedSender, packa
             relaunch();
 
             return {ok: true, reason: null, relaunching: true}
+        },
+
+        /**
+         * @summary Asks the plane whether it still admits the PAT this shell launched with, so a
+         * credential that expires mid-session reads as the credential it is. Only the launched record
+         * is probed: a plane or PAT the environment supplied is not this shell's to judge.
+         * @param {Electron.IpcMainInvokeEvent} event
+         * @returns {Promise<{cause: String|null}>}
+         */
+        async verify(event) {
+            if (!isTrustedSender(event)) {
+                throw new Error('shell-plane-verify: untrusted sender')
+            }
+
+            const record = getLaunchedPlane();
+
+            if (!record?.bearer || !record.planeBase) {
+                return {cause: null}
+            }
+
+            const answer = await probePlaneCredential({bearer: record.bearer, fetchFn, planeBase: record.planeBase}).catch(() => null);
+
+            return {cause: causeOf(answer, record.identity)}
         }
     }
 }

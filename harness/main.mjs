@@ -61,6 +61,7 @@ import {
     resolveProductBrainPlan,
     resolveSmokeRoot,
     loadFleetRuntimeContracts,
+    runtimePlaneCause,
     startBrainChild,
     stopBrainTree,
     sweepStaleRunState,
@@ -141,7 +142,10 @@ let
     uiTransportFact = null,
     // The plane record's bearer once a boot has read it (the product's, or the smoke's fixture plane);
     // the log redacts it with the others.
-    storedPlaneBearer = null;
+    storedPlaneBearer = null,
+    // The stored record this boot launched its fleet child with (`launchedPlaneRecord`), or `null` when
+    // the plane came from elsewhere: the one record `verifyPlane()` may probe while the shell runs.
+    launchedPlane = null;
 
 // Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
 const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer];
@@ -1019,6 +1023,9 @@ async function bootProductBrain() {
 
     // the backups sit beside the plane in the per-user root, so removing the plane never removes them
     const planeFragment = packagedMode ? planeEnvFragment({env: process.env, planeConfig: storedPlane}) : {};
+
+    launchedPlane = launchedPlaneRecord(storedPlane, planeFragment);
+
     const packagedEnv   = packagedMode
         ? {
             ...buildPackagedBrainEnv({agentsRoot: seatRoot.record?.root, backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
@@ -1110,7 +1117,7 @@ async function bootProductBrain() {
             lastLine   : () => fleetLastLine,
             mode,
             secrets    : mainSecrets(),
-            typeRefusal: refusal => typePlaneRefusal(refusal, {planeConfig: launchedPlaneRecord(storedPlane, planeFragment), probe: probePlaneCredential})
+            typeRefusal: refusal => typePlaneRefusal(refusal, {planeConfig: launchedPlane, probe: probePlaneCredential})
         })
     }
 
@@ -1330,10 +1337,12 @@ app.whenReady().then(async () => {
         return {...appLifecycle.brainHealth, transport: uiTransportFact}
     });
 
-    // The plane-attach broker pair: the cockpit reads whether a plane is configured
-    // and asks main to attach one; the PAT stays in main custody from the prompt to the encrypted write.
+    // The plane-attach broker: the cockpit reads whether a plane is configured, asks main to attach
+    // one, and asks whether the plane still admits the launched PAT; the PAT stays in main custody.
     const planeBroker = createPlaneBroker({
+        causeOf         : runtimePlaneCause,
         dir             : app.getPath('userData'),
+        getLaunchedPlane: () => launchedPlane,
         getTransportFact: () => uiTransportFact,
         isTrustedSender : isTrustedIpcSender,
         packaged        : packagedMode,
@@ -1344,6 +1353,7 @@ app.whenReady().then(async () => {
 
     ipcMain.handle('shell-plane-status', planeBroker.status);
     ipcMain.handle('shell-plane-attach', planeBroker.attach);
+    ipcMain.handle('shell-plane-verify', planeBroker.verify);
 
     // The first-run setup broker: the setup card's Create door projects the recipe's live evaluation,
     // main runs the host effects through the Brain's host-effect module (one module, the CLI's), and
@@ -1528,7 +1538,7 @@ app.whenReady().then(async () => {
             }
 
             const
-                expectedShellKeys = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'shellVersion'],
+                expectedShellKeys = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'shellVersion', 'verifyPlane'],
                 probes            = [primary, popup, primaryAfterPopup, forgedSender],
                 surfaceExact      = probes.every(probe =>
                     JSON.stringify(probe.shellKeys) === JSON.stringify(expectedShellKeys)

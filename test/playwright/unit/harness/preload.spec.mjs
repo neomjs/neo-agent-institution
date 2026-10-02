@@ -137,7 +137,7 @@ test.describe('Electron harness preload capability', () => {
             request            = {method: 'listAgents', params: {}};
 
         expect(exposed.name).toBe('neoShell');
-        expect(Object.keys(exposed.value).sort()).toEqual(['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion']);
+        expect(Object.keys(exposed.value).sort()).toEqual(['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane']);
         expect(exposed.value.shellVersion).toBe('42.0.0');
         expect(exposed.value).not.toHaveProperty('bearerToken');
         expect(exposed.value).not.toHaveProperty('defineFleetAgent');
@@ -151,10 +151,11 @@ test.describe('Electron harness preload capability', () => {
         // ask, never influence.
         await expect(exposed.value.brainHealth()).resolves.toEqual({ok: true, result: []});
 
-        // The plane pair: status carries no payload, and attach forwards only the plane base — main
-        // prompts for the credential itself, so no argument could carry one.
+        // The plane broker: status and verify carry no payload, and attach forwards only the plane
+        // base — main prompts for the credential or probes the stored one, so no argument could carry it.
         await exposed.value.planeStatus();
         await exposed.value.attachPlane({planeBase: 'http://127.0.0.1:3102'});
+        await exposed.value.verifyPlane();
 
         // The setup six: each crosses its own named channel with the named fields only; the
         // credential call carries the step id, never a value — main's window is the input surface.
@@ -170,6 +171,7 @@ test.describe('Electron harness preload capability', () => {
             ['brain-health'],
             ['shell-plane-status'],
             ['shell-plane-attach', {planeBase: 'http://127.0.0.1:3102'}],
+            ['shell-plane-verify'],
             ['shell-setup-evaluate', {target: null}],
             ['shell-setup-probe'],
             ['shell-setup-presets'],

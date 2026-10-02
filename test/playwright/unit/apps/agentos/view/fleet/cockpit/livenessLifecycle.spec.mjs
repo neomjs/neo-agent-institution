@@ -187,6 +187,31 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(provider.data.streamConnection).toEqual({state: 'failed-upstream', reason: 'activity source unavailable'})
         });
 
+        test('a roster read that fails upstream asks the shell about the launched PAT once, and a read that answers clears it', async () => {
+            const
+                {host, provider} = makeRosterHost({state: 'live'}),
+                previousMain     = globalThis.Neo.main,
+                asked            = [],
+                failed           = () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.operationFailed, {error: "fleet: 'fleetRoster' failed"});
+            let calls = 0;
+
+            globalThis.Neo.main = {addon: {ShellPlane: {verifyPlane: args => { asked.push(args); return Promise.resolve({cause: 'plane-credential-refused'}) }}}};
+            installWire(() => ++calls <= 2 ? failed() : rosterReply('recovered'));
+
+            try {
+                await host.loadRoster();
+                await expect.poll(() => provider.data.planeCause).toBe('plane-credential-refused');
+
+                await host.loadRoster();
+                expect(asked.length, 'one ask per failure episode').toBe(1);
+
+                await host.loadRoster();
+                expect(provider.data.planeCause, 'an answered read ends the episode').toBe(null)
+            } finally {
+                globalThis.Neo.main = previousMain
+            }
+        });
+
         test('a roster timeout preserves last-known data and wire capacity until its late reply settles', async () => {
             const {host, provider, store} = makeRosterHost({state: 'live', timeout: 20});
             const wire = Promise.withResolvers();

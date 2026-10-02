@@ -17,6 +17,7 @@ import Accounts        from '../../../../../apps/agentos/view/accounts/Panel.mjs
 import AddAgentForm    from '../../../../../apps/agentos/view/fleet/instances/AddAgentForm.mjs';
 
 import ConfigIntentRoundTrip from '../../../../../apps/agentos/util/ConfigIntentRoundTrip.mjs';
+import {mcpCatalogFor, normalizeMcpOverrides, resolveMcpMatrix} from 'neo-agent-brain/fleet-contract';
 
 const
     __filename = fileURLToPath(import.meta.url),
@@ -635,6 +636,54 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         expect(record.mcpServers).toEqual({'memory-core': false});
         expect(record.harnessType).toBe('codex');
 
+        card.destroy();
+        store.destroy()
+    });
+
+    test('a GitLab definition renders its forge defaults and a workflow toggle survives backend readback', () => {
+        const
+            store   = makeAgentStore([{id: 'gitlab', forge: 'gitlab', harnessType: 'codex', mcpServers: null}]),
+            record  = store.get('gitlab'),
+            card    = Neo.create(AgentConfigCard, {record}),
+            intents = [],
+            catalog = mcpCatalogFor('gitlab'),
+            find    = (node, id) => node?.id === id ? node : (node?.cn || []).map(child => find(child, id)).find(Boolean),
+            row     = key => find(card.vdom, `${card.id}__srv__${key}`);
+
+        card.on('configIntent', intent => intents.push(intent));
+        expect(row('gitlab-workflow').cls).toContain('is-enabled');
+        expect(row('github-workflow').cls).toContain('is-disabled');
+
+        card.onCardClick({path: [{id: `${card.id}__srv__gitlab-workflow`}]});
+        expect(intents[0]).toMatchObject({id: 'gitlab', mcpServers: {'gitlab-workflow': false}});
+        expect(record.mcpServers).toBeNull();
+
+        record.set({forge: 'gitlab', mcpServers: normalizeMcpOverrides(intents[0].mcpServers, catalog)});
+        card.refresh();
+        expect(row('gitlab-workflow').cls).toContain('is-disabled');
+        expect(resolveMcpMatrix(record.mcpServers, catalog)['gitlab-workflow']).toBe(false);
+
+        card.onCardClick({path: [{id: `${card.id}__srv__gitlab-workflow`}]});
+        expect(intents[1]).toMatchObject({id: 'gitlab', mcpServers: null});
+        card.destroy();
+        store.destroy()
+    });
+
+    test('an unrelated server toggle preserves an explicit GitLab workflow disable', () => {
+        const
+            store   = makeAgentStore([{id: 'gitlab', forge: 'gitlab', harnessType: 'codex', mcpServers: {'gitlab-workflow': false}}]),
+            record  = store.get('gitlab'),
+            card    = Neo.create(AgentConfigCard, {record}),
+            intents = [],
+            catalog = mcpCatalogFor('gitlab');
+
+        card.on('configIntent', intent => intents.push(intent));
+        card.onCardClick({path: [{id: `${card.id}__srv__neural-link`}]});
+        expect(intents[0]).toMatchObject({id: 'gitlab', mcpServers: {'neural-link': false, 'gitlab-workflow': false}});
+
+        const readback = normalizeMcpOverrides(intents[0].mcpServers, catalog);
+        record.set({forge: 'gitlab', mcpServers: readback});
+        expect(resolveMcpMatrix(record.mcpServers, catalog)['gitlab-workflow']).toBe(false);
         card.destroy();
         store.destroy()
     });

@@ -159,6 +159,36 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         })
     });
 
+    test.describe('a PAT the plane refuses while the shell runs — Connect, not Reconnect', () => {
+        const
+            stale  = {state: 'stale', connection: {state: 'failed-upstream', reason: "fleet: 'fleetRoster' failed"}},
+            live   = {state: 'live'},
+            derive = (cause, grid = stale) => SpineBanner.deriveSpineBanner({daemon: {state: 'running'}, grid, plane: {cause}, stream: live});
+
+        test('the shell\'s answer speaks the card\'s words over a failed roster read, and offers Connect', () => {
+            expect(derive('plane-credential-refused')).toMatchObject({action: 'connect-plane', hidden: false, kind: 'degraded', text: 'pat refused'});
+            expect(derive('plane-credential-refused').title.startsWith(PlaneVerdict.sentences.rejected)).toBe(true);
+            expect(derive('plane-identity-changed')).toMatchObject({action: 'connect-plane', kind: 'degraded', text: 'account changed'});
+            expect(derive('plane-credential-refused', {state: 'cold'}).kind, 'a roster that never answered').toBe('cold')
+        });
+
+        test('no answer leaves today\'s verdict and its Reconnect', () => {
+            const verdict = derive(null);
+
+            expect(verdict.action).toBe(null);
+            expect(verdict.text).toBe('fleet failed')
+        });
+
+        test('a boot refusal still outranks it', () => {
+            expect(SpineBanner.deriveSpineBanner({
+                daemon: {cause: 'plane-unreachable', reason: 'http://127.0.0.1:9', state: 'degraded'},
+                grid  : stale,
+                plane : {cause: 'plane-credential-refused'},
+                stream: live
+            }).text).toBe('plane unreachable')
+        })
+    });
+
     test.describe('a shell beside a running plane — the refusal outranks its own consequences', () => {
         const besidePlane = {cause: 'organism-beside-plane', reason: 'Chroma holds localhost:8000', state: 'degraded'};
 

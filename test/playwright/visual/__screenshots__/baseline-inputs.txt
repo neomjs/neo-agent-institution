@@ -63,7 +63,7 @@ apps/agentos/index.html
     9ab6324cf458c8002667cd12b4ba1dd928ee33b6
 
 apps/agentos/model/AgentDefinition.mjs
-    f4316471c60e017a56b274c1bf35fe405e951bfb
+    1d0320e61114cb7f75b63c646bc9186d13a77d9c
 
 apps/agentos/model/CatchUpEntry.mjs
     29fd958061be44385f2c1fcd6548a40d619b0533
@@ -204,7 +204,7 @@ apps/agentos/util/FleetAdmission.mjs
     5d11901094202fb43245963d71a34ef3b1b37876
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
-    9c0491163279261fdb92e1e487093322cb1a26c5
+    328c3ab3a9d6ae06b692698932df2166a359748f
 
 apps/agentos/util/FleetStartPlan.mjs
     8133ea5500f9f193b515e5ab70ce1a172fa31921
@@ -233,6 +233,9 @@ apps/agentos/util/NameSlot.mjs
 apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
 
+apps/agentos/util/PlaneCredentialCheck.mjs
+    e90a4505028072781fd15134801cc3c9cb0a37b5
+
 apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
 
@@ -243,10 +246,10 @@ apps/agentos/util/SourceHealth.mjs
     f92b9d452aa9754f764a2e530fac73da98e83b84
 
 apps/agentos/util/SpineBanner.mjs
-    2b541b0e3cc94f769a8845e3e620844799eade4a
+    d4b27038e3515fc3e53c2c20bf6ec84cb372baea
 
 apps/agentos/util/TargetBinding.mjs
-    09c041ed645afa7f10a0ce92e5a56bd512e003b1
+    0f68ffd8fc9b129acb64931c1a8de93ab00135ad
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -288,10 +291,10 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     0b2e28dc76156cc987abf13ca9b2c574ac435c19
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    958c10449b0295c19d0e308362b1c78d26ce5672
+    09ab2456b19e4737b4b814d50b2a381dc028f3c7
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    409ff115ef07630efd1157ca9617b50e39381d02
+    4c2e13a2d642e55314b6e57e960646e1223d8a48
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     3bc24c1b7d3498119de6210234cc74528fcfaa8f
@@ -300,7 +303,7 @@ apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     23b1b61fa78fc26e11af1507360c296855038d7e
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    de820701522eaeaa0ea93151b97ed92b16ad6061
+    38e3cc7725fac181baec560fb52122ec69861e89
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     70627e2a75f8e8e679647ed887ecf6674719224c
@@ -309,7 +312,7 @@ apps/agentos/view/fleet/cockpit/ViewerWakeTelltaleComponent.mjs
     388ce961936990404da0448e1462b6405b98e7e6
 
 apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
-    4e83392a4dce073a7a80f08f8ccd43a236a07c90
+    ebd37a49aeaa1a7df12d352278eda640f0c06435
 
 apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     9b166bd6afc7287cea036adde0cc1ce9e44bdcc4
@@ -387,10 +390,10 @@ apps/agentos/view/fleet/mailbox/RowComponent.mjs
     157543a0c4855aedb34520c38ee6ff66b710be9a
 
 apps/agentos/view/fleet/memories/Container.mjs
-    f499e388c35845f6e2a16dc3771da8c85b28593b
+    649d695d1acedcd020d790c346b2a59f23332fa2
 
 apps/agentos/view/fleet/memories/RowsGrid.mjs
-    44c6e738dbdf2dbc24b23af68d34c432df8531bf
+    1d4efc0790226006393fae4319cff4ccf82b4ace
 
 apps/agentos/view/fleet/memories/SummaryGrid.mjs
     bc85e6185ca0158c06c71decc6ec1dcd71cc301f

@@ -158,4 +158,23 @@ test.describe('fleetLifecycleIntentAdapter — lifecycleIntent → registry brid
         expect(FleetLifecycleIntentAdapter.sanitizeControlReason('token: ghp_abc123 should not render')).toBe('[redacted] should not render');
         expect(FleetLifecycleIntentAdapter.sanitizeControlReason('plain lifecycle failure')).toBe('plain lifecycle failure')
     });
+
+    test('a refusal the Fleet answers as data ends rejected with its words, never settled (#443)', async () => {
+        const
+            reason = "agent 'vega' was released to its own harness.",
+            record = createRecord(),
+            bridge = {startAgent: async () => ({status: 'rejected', reason})},
+            result = await FleetLifecycleIntentAdapter.handleFleetLifecycleIntent({action: 'start', agentId: 'vega'}, record, {bridge});
+
+        expect(record.pendingAction).toBeNull();
+        expect(record.controlReason).toEqual({action: 'start', kind: 'rejected', reason});
+        expect(result).toMatchObject({accepted: true, ok: false, status: 'rejected'})
+    });
+
+    test('a refusal\'s bare words survive the redaction, a labelled value does not (#443)', () => {
+        const reason = "agent 'vega' has no GitHub PAT stored; store one before starting it.";
+
+        expect(FleetLifecycleIntentAdapter.sanitizeControlReason(reason)).toBe(reason);
+        expect(FleetLifecycleIntentAdapter.sanitizeControlReason('PAT=github_pat_x stored')).toBe('[redacted] stored')
+    });
 });
