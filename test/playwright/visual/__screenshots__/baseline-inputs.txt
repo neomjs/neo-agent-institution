@@ -240,7 +240,7 @@ apps/agentos/util/SpineBanner.mjs
     2b541b0e3cc94f769a8845e3e620844799eade4a
 
 apps/agentos/util/TargetBinding.mjs
-    09c041ed645afa7f10a0ce92e5a56bd512e003b1
+    0f68ffd8fc9b129acb64931c1a8de93ab00135ad
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -285,7 +285,7 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     3c7f0e76f5abe49215ff16f59cb7d327d1f13e2a
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    958c10449b0295c19d0e308362b1c78d26ce5672
+    128906b95d847faef7c22bb7fed3786e76f6a92b
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     82a2570c3976b574c557f592281830b8449f1125
