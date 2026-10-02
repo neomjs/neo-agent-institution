@@ -35,7 +35,8 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
             repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
             runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
-        };
+        },
+        observedLane = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed'};
 
     // a real store-backed record — the production shape (an AgentOS.store.FleetRoster row). The store
     // mirrors FleetRoster's keyProperty (the collection default 'id' would shadow the model's).
@@ -280,6 +281,48 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         // no lane reported → honest fallback, no fabricated count
         applySet(detail, {laneLine: null, openLaneCount: null});
         expect(body(detail, 'lane').text).toBe('no current lane reported');
+
+        detail.destroy()
+    });
+
+    test('the lane source uses the roster observation stamp while the body ages the lane claim itself', () => {
+        const detail = createDetail({
+            agentId: 'vega',
+            laneLine: 'working on #418',
+            laneClaimedAt: new Date(NOW - 120_000).toISOString(),
+            openLaneCount: 17,
+            sources: {...observedSources, lane: observedLane},
+            state: 'ok'
+        }, {rosterObservedAt: NOW - 10_000});
+
+        // With no explicit lane ledger, the wired lane fact derives its pill age from roster admission.
+        expect(chip(detail, 'lane').text).toBe('updated 10s ago');
+        expect(body(detail, 'lane').text).toBe('working on #418 · claimed 2m ago · 17 open lanes');
+
+        // A later roster read re-ages the source pill in place; it does not rewrite the claim timestamp.
+        detail.rosterObservedAt = NOW - 40 * 60_000;
+        expect(chip(detail, 'lane').cls).toContain('is-lost');
+        expect(body(detail, 'lane').text).toBe('working on #418 · claimed 2m ago · 17 open lanes');
+
+        detail.destroy()
+    });
+
+    test('an explicit lane pane ledger outranks the roster source for freshness only', () => {
+        const detail = createDetail({
+            agentId: 'vega',
+            laneLine: 'working on #418',
+            laneClaimedAt: new Date(NOW - 120_000).toISOString(),
+            openLaneCount: 1,
+            sources: {...observedSources, lane: observedLane},
+            state: 'ok'
+        }, {
+            paneLedgers: {lane: {observedAt: new Date(NOW - 20_000).toISOString(), freshnessTtl: 30_000}},
+            rosterObservedAt: NOW - 40 * 60_000
+        });
+
+        expect(chip(detail, 'lane').text).toBe('updated 20s ago');
+        expect(chip(detail, 'lane').cls).toContain('is-fresh');
+        expect(body(detail, 'lane').text).toBe('working on #418 · claimed 2m ago · 1 open lane');
 
         detail.destroy()
     });
@@ -621,18 +664,23 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }
     });
 
-    test('every pane without a producer names the producer it waits for on its pill — never a bare "source not wired" (#391 AC-1)', () => {
+    test('panes without a producer name what they await; the lane pill states the roster source fact (#391 AC-1)', () => {
         const detail = createDetail({agentId: 'vega', state: 'ok'});
 
         for (const [key, producer] of [
             ['thought-stream', 'policy-aware read'],
-            ['lane',           'lane stamp'],
             ['prs',            'per-seat open-work projection']
         ]) {
             expect(chip(detail, key).text, key).toBe('not observed — source not wired');
             expect(chip(detail, key).cls, key).toContain('is-unobserved');
             expect(chip(detail, key).vdom.title, key).toContain(producer)
         }
+
+        // The lane now has a roster-row source axis. An absent lane fact uses its explicit source
+        // vocabulary rather than borrowing the old feed-waiting text from an unwired pane.
+        expect(chip(detail, 'lane').text).toBe('not wired — the roster row carried no lane claim fact');
+        expect(chip(detail, 'lane').cls).toContain('is-unobserved');
+        expect(chip(detail, 'lane').vdom.title).toBe(chip(detail, 'lane').text);
 
         // a pane whose source answered carries no awaiting title: the pill itself is the answer
         detail.rosterObservedAt = NOW;

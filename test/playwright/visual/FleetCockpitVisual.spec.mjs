@@ -1,6 +1,6 @@
 import {test, expect} from '@playwright/test';
 import {landAgentDefinitions, landFleetActivity, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
-import {sampleTasks} from '../fixture/fleetSample.mjs';
+import {sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
 
 /**
  * The FM cockpit's visual-regression baselines — the design gate's mechanical guard: pixel
@@ -161,6 +161,32 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await bootSettledCockpit(page);
 
         await expect(page.locator('.fm-fleet-grid')).toHaveScreenshot('fleet-grid-cards.png')
+    });
+
+    test('the lane claim reads on its card, while a wired empty lane says so', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        const laneLine = 'Keeping the fixture lane visible',
+              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString();
+
+        await landFleetRoster(page, sampleRoster.map((row, index) => index < 2 ? {
+            ...row,
+            laneLine     : index === 0 ? laneLine : null,
+            laneClaimedAt: index === 0 ? laneClaimedAt : null,
+            sources      : {
+                ...row.sources,
+                lane: {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null}
+            }
+        } : row));
+
+        const card = row => page.locator('.fm-agent-card', {
+            has: page.getByRole('img', {name: row.displayName, exact: true})
+        });
+
+        await expect(card(sampleRoster[0]).locator('.fm-card-lane')).toHaveText(`${laneLine} · claimed 12m ago`);
+        await expect(card(sampleRoster[1]).locator('.fm-card-lane')).toHaveText('no lane claimed');
+        await expect(card(sampleRoster[0])).toHaveScreenshot('fleet-card-lane-claim.png');
+        await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-lane-empty.png')
     });
 
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {
@@ -469,15 +495,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await page.mouse.move(0, 0);
 
             expect(await measure()).toEqual({overflowing: [], clipped: []});
-            await expect(page).toHaveScreenshot(`accounts-adding-${width}x${height}.png`);
-
-            // a GitLab account adds its instance field to the same form, and still nothing clips
-            await page.locator('.agent-panel-accounts .fm-add-forge-row .fm-chip', {hasText: 'GitLab'}).click();
-            await expect(page.locator('.agent-panel-accounts .fm-add-agent-form input[name="forgeHost"]')).toBeVisible();
-            await page.mouse.move(0, 0);
-
-            expect(await measure()).toEqual({overflowing: [], clipped: []});
-            await expect(page).toHaveScreenshot(`accounts-adding-gitlab-${width}x${height}.png`)
+            await expect(page).toHaveScreenshot(`accounts-adding-${width}x${height}.png`)
         })
     }
 

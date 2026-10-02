@@ -61,10 +61,11 @@ const BEACON_FACETS = Object.freeze({
  */
 const BEACON_PRESENT_GLYPH = '◉';
 
-import FamilyTokens from '../../../../util/FamilyTokens.mjs';
-import NameSlot     from '../../../../util/NameSlot.mjs';
-import SourceHealth from '../../../../util/SourceHealth.mjs';
-import Telltale     from '../../../../util/Telltale.mjs';
+import AgentFreshness from '../../../../util/AgentFreshness.mjs';
+import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
+import NameSlot       from '../../../../util/NameSlot.mjs';
+import SourceHealth   from '../../../../util/SourceHealth.mjs';
+import Telltale       from '../../../../util/Telltale.mjs';
 
 /**
  * The word boundaries a monogram reads initials across: whitespace, hyphens, underscores, dots.
@@ -558,11 +559,19 @@ class AgentCard extends Container {
 
         me.getReference('card-engine').text = record.engineTag ?? '';
 
-        // the lane: head+tail middle elision so a shared prefix cannot collapse two lanes to the same
-        // visible fragment — the preserved tail distinguishes them
+        // A wired lane source earns a claim-age suffix. If the producer answered but the seat has
+        // no current claim, say so; an older/non-wired source keeps the existing lane rendering.
+        // The age uses the shared formatter so the card and the detail pane speak one vocabulary.
         const
-            lane   = me.getReference('card-lane'),
-            elided = AgentCard.elideLaneLine(record.laneLine);
+            laneSource = sources.lane,
+            laneLine   = record.laneLine,
+            claimedMs  = typeof record.laneClaimedAt === 'string' ? Date.parse(record.laneClaimedAt) : NaN,
+            claimAge   = Number.isFinite(claimedMs) ? AgentFreshness.formatAge(Date.now() - claimedMs) : null,
+            laneText   = laneSource.state === 'wired'
+                ? laneLine ? `${laneLine}${claimAge ? ` · claimed ${claimAge}` : ''}` : 'no lane claimed'
+                : laneLine,
+            lane       = me.getReference('card-lane'),
+            elided     = AgentCard.elideLaneLine(laneText);
 
         // set the lane's CHILD nodes (mutating cn, not replacing the whole vdom — a full replace
         // clobbers the component's root id/cls and the lane never mounts). Each fragment renders as an

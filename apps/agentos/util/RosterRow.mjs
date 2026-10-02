@@ -6,8 +6,8 @@ import SourceHealth from './SourceHealth.mjs';
  *
  * Identity facts and launch-derived truths flow through tri-state (`null` = the row carried no
  * fact — never guessed), the runtime lifecycle maps onto the session-state vocabulary only when
- * the runtime source is usable ({@link AgentOS.util.SourceHealth}), and fields the roster producer
- * does not own (`laneLine`) are OMITTED so a roster merge never wipes what another producer wrote.
+ * the runtime source is usable ({@link AgentOS.util.SourceHealth}), and the lane claim fields pass
+ * through from the roster DTO just like the other roster-owned facts.
  * The liveness controller delegates here; the row shape is the Brain's cockpit DTO assembler's.
  *
  * @class AgentOS.util.RosterRow
@@ -52,6 +52,8 @@ class RosterRow extends Base {
             repoOutcomes       : row.repoOutcomes ?? null,
             launchable         : row.launchable ?? null,
             openLaneCount      : row.openLaneCount ?? null,
+            laneLine           : row.laneLine ?? null,
+            laneClaimedAt      : row.laneClaimedAt ?? null,
             lastActivityAt     : row.lastActivityAt ?? null,
             participationStatus: row.participationStatus ?? null,
             sources            : sessionHealth.sources,

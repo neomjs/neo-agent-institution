@@ -26,7 +26,8 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
             repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
             runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
-        };
+        },
+        observedLane = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed'};
 
     // a real store-backed record — the production shape (an AgentOS.store.FleetRoster row). The
     // store mirrors FleetRoster's keyProperty (the collection default 'id' would shadow the model's).
@@ -807,6 +808,46 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
 
         expect(card.down({ntype: 'fm-state-dot'}).state).toBe('idle');
         expect(card.down({reference: 'card-state'}).text).toBe('idle');
+
+        card.destroy()
+    });
+
+    test('a wired lane carries its claim age; a wired-empty lane says so, with open-lane count orthogonal', () => {
+        const
+            card = createCard({
+                agentId: 'vega',
+                laneLine: 'working on #418',
+                laneClaimedAt: new Date(Date.now() - 120_000).toISOString(),
+                openLaneCount: 17,
+                sources: {...observedSources, lane: observedLane},
+                state: 'ok'
+            }),
+            lane = () => card.down({reference: 'card-lane'}),
+            text = () => lane().vdom.cn.map(node => node.text).join('');
+
+        expect(text()).toBe('working on #418 · claimed 2m ago');
+        expect(lane().vdom.cn.every(node => node.html == null)).toBe(true);
+        expect(card.down({reference: 'card-lane-count'}).text).toBe('17 lanes');
+
+        // A wired read with no current subject is explicit; a zero open-work count remains unbadged.
+        applySet(card, {laneLine: null, laneClaimedAt: null, openLaneCount: 0});
+        expect(text()).toBe('no lane claimed');
+        expect(card.down({reference: 'card-lane-count'}).hidden).toBe(true);
+
+        card.destroy()
+    });
+
+    test('a non-wired lane source preserves the prior subject without inventing claim age', () => {
+        const card = createCard({
+            agentId: 'ada',
+            laneLine: 'existing lane text',
+            laneClaimedAt: new Date(Date.now() - 120_000).toISOString(),
+            sources: observedSources,
+            state: 'ok'
+        });
+
+        expect(card.down({reference: 'card-lane'}).vdom.cn[0].text).toBe('existing lane text');
+        expect(card.down({reference: 'card-lane'}).vdom.cn[0].text).not.toContain('claimed');
 
         card.destroy()
     });
