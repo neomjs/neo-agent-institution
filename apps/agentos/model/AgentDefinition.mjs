@@ -5,7 +5,7 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  * @extends Neo.data.Model
  *
  * @summary Public, Body-side shape for Fleet Manager agent definitions — the per-agent
- * configuration model every account surface binds: identity, ONE harness choice (a registered
+ * configuration model every account surface binds: identity, its bound forge, ONE harness choice (a registered
  * public harness-catalog key), the per-agent sparse MCP-server overrides (`mcpServers` — null
  * means every current catalog default applies; resolve via the public MCP catalog, never persist
  * the fully resolved matrix), the narrow MCP target (`mcpTarget` — null = resident services;
@@ -31,6 +31,11 @@ class AgentDefinition extends Model {
         }, {
             name: 'githubUsername',
             type: 'String'
+        }, {
+            // The Brain's bound forge is read-only here; definitions predating it are GitHub seats.
+            name        : 'forge',
+            type        : 'String',
+            defaultValue: 'github'
         }, {
             name        : 'displayName',
             type        : 'String',

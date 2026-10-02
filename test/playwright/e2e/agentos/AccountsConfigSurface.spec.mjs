@@ -35,6 +35,7 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             priorDataDir    = FleetRegistryService.dataDir,
             tmpDir          = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-config-e2e-')),
             agentId         = 'config-proof-agent',
+            gitlabAgentId   = 'gitlab-seat-proof',
             createdAgentId  = 'cold-proof-agent',
             createdSecret   = 'ghp_e2e_add_must_stay_brain_side',
             duplicateSecret = 'ghp_e2e_duplicate_must_stay_brain_side';
@@ -45,6 +46,14 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             githubUsername: agentId,
             harnessType   : 'codex',
             credential    : 'ghp_e2e_must_stay_brain_side'
+        });
+        FleetRegistryService.defineAgent({
+            id            : gitlabAgentId,
+            githubUsername: gitlabAgentId,
+            forge         : 'gitlab',
+            forgeHost     : 'https://gitlab.example.test',
+            harnessType   : 'codex',
+            credential    : 'glpat_e2e_config_must_stay_brain_side'
         });
 
         let server;
@@ -186,6 +195,24 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
                 family   : 'gemini'
             });
 
+            await listItems.filter({hasText: gitlabAgentId}).click();
+            const
+                gitlabWorkflow = page.locator('.fm-config-toggle').filter({hasText: 'GitLab workflow'}),
+                githubWorkflow = page.locator('.fm-config-toggle').filter({hasText: 'GitHub workflow'}),
+                neuralLinkRow  = page.locator('.fm-config-toggle').filter({hasText: 'Neural Link'});
+
+            await expect(gitlabWorkflow).toHaveClass(/is-enabled/);
+            await expect(githubWorkflow).toHaveClass(/is-disabled/);
+            await gitlabWorkflow.dispatchEvent('click');
+            await expect(gitlabWorkflow).toHaveClass(/is-disabled/);
+            await neuralLinkRow.dispatchEvent('click');
+            await expect(neuralLinkRow).toHaveClass(/is-disabled/);
+            await expect(gitlabWorkflow).toHaveClass(/is-disabled/);
+            expect(FleetRegistryService.getDefinition(gitlabAgentId)).toMatchObject({
+                forge     : 'gitlab',
+                mcpServers: {'neural-link': false, 'gitlab-workflow': false}
+            });
+
             // A fresh page/store hydration must re-read the canonical sparse result, not the
             // request or the seed. This also proves persisted state survived the first app session.
             await page.reload();
@@ -206,6 +233,10 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             await expect(listItems.filter({hasText: agentId})).toHaveCount(1);
             await expect(listItems.filter({hasText: createdAgentId})).toHaveCount(1);
             await expect(page.locator('.fm-config-toggle').filter({hasText: 'Memory Core'})).toHaveClass(/is-disabled/);
+            await listItems.filter({hasText: gitlabAgentId}).click();
+            await expect(gitlabWorkflow).toHaveClass(/is-disabled/);
+            await expect(githubWorkflow).toHaveClass(/is-disabled/);
+            await expect(neuralLinkRow).toHaveClass(/is-disabled/);
 
             // the shared form offers one chip per catalog product, never one per harness type
             await addAction.click();
