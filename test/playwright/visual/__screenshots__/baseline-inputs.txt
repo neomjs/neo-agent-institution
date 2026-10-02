@@ -171,7 +171,7 @@ apps/agentos/store/ViewerWakeFeed.mjs
     2416a3352de08dc4fa72d503913c6450a6f8dab6
 
 apps/agentos/util/AddAgentFlow.mjs
-    4bc9e479b894a8fe686536dc508633065604d2d9
+    95038caa9c8374c747cc729b3faa53be9a4f94b1
 
 apps/agentos/util/AgentFreshness.mjs
     6e46a29e3d686fc10340783b676e3712fc03100e
@@ -312,7 +312,7 @@ apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
     ebd37a49aeaa1a7df12d352278eda640f0c06435
 
 apps/agentos/view/fleet/detail/AgentReposContainer.mjs
-    9b166bd6afc7287cea036adde0cc1ce9e44bdcc4
+    147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
     24a08581134347f5aac545fe80e8e9201c51e6e2
@@ -354,7 +354,7 @@ apps/agentos/view/fleet/health/SwatchComponent.mjs
     a2d3e1d8509ca2e06f4f024959aae9005a73dd13
 
 apps/agentos/view/fleet/instances/AddAgentForm.mjs
-    619f4426971f8c5680c6e608f469666039240977
+    cf3bfd9b949d1da882fcc1e01704d80dd5c2deea
 
 apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f
@@ -516,7 +516,7 @@ resources/scss/src/apps/agentos/fleet/health/SwatchComponent.scss
     6250d529db45caf4e535d8279d9f5b3cc738c538
 
 resources/scss/src/apps/agentos/fleet/instances/AddAgentForm.scss
-    7c23af867c03e306b802e1ee7a1d24250ae3cdee
+    0047dd7780eef87cf8b751c72251dbbe8fc08c4a
 
 resources/scss/src/apps/agentos/fleet/instances/ManagerContainer.scss
     536374ecba673b0de06f733ddcf731238f746494
@@ -630,7 +630,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    f10946724cf686286640b118eed0a89d141ab57a
+    5c3e7dfa92f9b141ba7d5e8a73eacc43fbba427c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     a97e556c84a3cf1dddded67dc001da74a366ac4d
@@ -639,10 +639,16 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1280
     ec90483f70b98fa55dfdf2c5a5fbc8c19a17a240
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-1000x640.png
-    5cbf73d84fc120a1c12dd93a6fa32703c278b923
+    9dce49fbcf1c094e14a0f505d81ac15100d5c37f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-1280x800.png
-    97ba7103e6812710d6029a01ba2bec6d6960d854
+    082b371bcab02722ef35e3835afc4da6d636bc06
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-gitlab-1000x640.png
+    b363a32b37dcf82cb5ed51252de8c5f3109a5acf
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-gitlab-1280x800.png
+    60558037b71f32c9b0421d76aacc3bdbb323d880
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
     a11ccdab38185115725e6294b6aca9686d9597af
@@ -741,7 +747,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-activity
     160ffee0ba9d663630899a978240d755c7ce6cde
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agent.png
-    a0a5eaa12b562be34eecfedcb30cbca6465e6b3a
+    3de86314c2dbd31e67ed445d25e00f8e5d3925a7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-agent-detail.png
     f5d9ee974b3b9c3c169c61836a1f1bfb10089a56
