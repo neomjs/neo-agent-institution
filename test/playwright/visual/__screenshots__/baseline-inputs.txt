@@ -456,10 +456,10 @@ apps/agentos/view/setup/ConnectContainer.mjs
     d942330ea4f2fe19c9e94091c641be38f6acebe7
 
 apps/agentos/view/setup/CreateContainer.mjs
-    d173173294e68647a00a59a5190bbe20139c6f2c
+    4af869344b9f95a3d70ec2a3756b5781a0a3503b
 
 apps/agentos/view/setup/Panel.mjs
-    023a8ce51fa7712f1a537622e02cbf7da2a5d998
+    b05bdade7c7ba7f5b1378ab83cc6cbfd0ccf1916
 
 apps/agentos/view/setup/StepList.mjs
     c25dcb9201983cac7385311c895291fc1f760543
