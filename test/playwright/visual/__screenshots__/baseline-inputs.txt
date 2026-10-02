@@ -228,7 +228,7 @@ apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
 
 apps/agentos/util/PlaneCredentialCheck.mjs
-    01fff68e14167183d74b555894a5b002a5f1db78
+    e90a4505028072781fd15134801cc3c9cb0a37b5
 
 apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
@@ -291,7 +291,7 @@ apps/agentos/view/fleet/cockpit/Controller.mjs
     958c10449b0295c19d0e308362b1c78d26ce5672
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    f876ba9a22f22d1dcd18dd87b358f77ddb634026
+    4c2e13a2d642e55314b6e57e960646e1223d8a48
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     3bc24c1b7d3498119de6210234cc74528fcfaa8f
