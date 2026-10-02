@@ -23,6 +23,22 @@ const PANES = [
 ];
 
 /**
+ * What each pane waits for while no source has answered for it, on the freshness pill's title —
+ * each names the producer that owns the pane's fact, so an operator reads a gap, never a bug: the
+ * thought stream waits for a read of a resident's turns that the plane's sharing policy admits (its
+ * recency read answers the caller's own turns only), the lane waits for the roster row's lane
+ * stamp (the latest lane claim per seat, one derivation for the card and this pane), the pull
+ * requests wait for the per-seat open-work projection.
+ * @type {Object<String, String>}
+ */
+const AWAITING = {
+    'thought-stream': 'awaiting a policy-aware read of this resident\'s turns — the plane\'s recency read answers the caller\'s own turns only',
+    lane            : 'awaiting the roster row\'s lane stamp — the latest lane claim per seat lands on the roster read',
+    repo            : 'awaiting the roster read — the repository pane reads the roster row',
+    prs             : 'awaiting the per-seat open-work projection — pull requests have no source on this plane yet'
+};
+
+/**
  * @summary One pane's config: a header (title + referenced freshness chip) over a referenced body.
  * Built from the {@link PANES} descriptor so the reference ids derive from the pane key.
  * @param {Object} pane A {@link PANES} entry.
@@ -149,6 +165,14 @@ class AgentDetail extends Container {
          * @reactive
          */
         paneLedgers_: null,
+        /**
+         * The reader's clock (epoch ms) at the last roster admission — the repository pane's
+         * observation instant, since that pane reads the roster row and nothing else. `null` = no
+         * roster read has landed (a bare mount): the pane says so.
+         * @member {Number|null} rosterObservedAt_=null
+         * @reactive
+         */
+        rosterObservedAt_: null,
         /**
          * Injected wall-clock (ms) for freshness classification; `null` → the live `Date.now()`.
          * Tests pin it so the freshness contract renders deterministically.
@@ -361,6 +385,17 @@ class AgentDetail extends Container {
      * @protected
      */
     afterSetPaneLedgers(value, oldValue) {
+        this.isConstructed && this.record && this.applyPaneFreshness()
+    }
+
+    /**
+     * @summary Triggered after the roster admission instant changed — the repository pane re-ages
+     * from the new observation without a record re-seat.
+     * @param {Number|null} value
+     * @param {Number|null} oldValue
+     * @protected
+     */
+    afterSetRosterObservedAt(value, oldValue) {
         this.isConstructed && this.record && this.applyPaneFreshness()
     }
 
@@ -622,14 +657,52 @@ class AgentDetail extends Container {
     }
 
     /**
-     * @summary Render each pane's freshness chip + known body content, honestly.
+     * @summary Resolve what one pane's pill speaks for: its observation ledger and the descriptor
+     * of the source that answered, or did not.
      *
-     * Every pane header shows its observation freshness — timestamped `fresh`/`stale`/`lost` from a
-     * wired ledger, or `unobserved` until its feed lands (never a silently-current
-     * claim). The `lane` pane additionally renders the record-known lane line + open-lane count; the
-     * feed-gated panes (thought-stream / repo / prs) keep their body EMPTY until their Lane-C /
-     * memory-surface leaf wires content — the head's freshness pill carries the awaiting truth on
-     * its title, the one provenance pill per section.
+     * An explicit `paneLedgers` entry wins (a feed stamping the pane directly). Otherwise the pane's
+     * owning producer decides. The repository pane reads the roster row's `repoStatus` fact, the
+     * SAME descriptor the header's `repository` row renders (`renderStateLedger`), so the two can
+     * never disagree: a wired fact observes at the roster admission instant, any other fact is the
+     * descriptor in the roster's own words, and a mount no roster read has reached says so. The
+     * other three panes have no producer on this plane yet ({@link AWAITING} names each), so they
+     * resolve to nothing and the pill states the honest unobserved.
+     * @param {String} key Pane key.
+     * @param {Object|null} explicitLedger The `paneLedgers` entry, if any.
+     * @param {Object} record The drilled-in FleetAgent record (never null here).
+     * @returns {{descriptor: (Object|null), ledger: (Object|null)}}
+     * @protected
+     */
+    resolvePaneSource(key, explicitLedger, record) {
+        if (explicitLedger) {
+            return {descriptor: null, ledger: explicitLedger}
+        }
+
+        if (key !== 'repo') {
+            return {descriptor: null, ledger: null}
+        }
+
+        const fact = SourceHealth.normalizeFleetSources(record.sources).repoStatus;
+
+        if (fact.state !== 'wired') {
+            // the roster's own words when it carried any; a row that carried no repository fact at
+            // all is normalized to not-wired without one, and that absence is the reason
+            return {descriptor: {state: fact.state.replace(/-/g, ' '), reason: fact.reason || 'the roster row carried no repository fact'}, ledger: null}
+        }
+
+        return Number.isFinite(this.rosterObservedAt)
+            ? {descriptor: fact, ledger: {observedAt: new Date(this.rosterObservedAt).toISOString()}}
+            : {descriptor: {state: 'unobserved', reason: 'no roster read has landed in this mount'}, ledger: null}
+    }
+
+    /**
+     * @summary Render each pane's freshness chip + body content, honestly.
+     *
+     * Every pane header shows its observation freshness — timestamped `fresh`/`stale`/`lost` from
+     * its source's ledger — or the source's own answer when it did not observe: `<state> — <reason>`
+     * in the producer's words (never a generic "source not wired" once a reason exists), or
+     * `unobserved` with what the pane waits for on the pill's title while no source has answered
+     * at all. Never a silently-current claim.
      * @protected
      */
     applyPaneFreshness() {
@@ -640,46 +713,64 @@ class AgentDetail extends Container {
 
         PANES.forEach(pane => {
             const
-                ledger       = ledgers[pane.key] ?? null,
-                merged       = ledger ? {freshnessTtl: pane.freshnessTtl, ...ledger} : null,
-                {cls, label} = AgentFreshness.describePaneFreshness(AgentFreshness.classifyPaneFreshness(merged, now));
-
-            // .text (never .html): the label is ours but the pane body is record-derived
-            // (laneLine), so it must be escaped text, never interpreted markup — no injection surface
-            const freshnessChip = me.getReference(`pane-${pane.key}-freshness`);
+                {descriptor, ledger} = me.resolvePaneSource(pane.key, ledgers[pane.key] ?? null, record),
+                merged               = ledger ? {freshnessTtl: pane.freshnessTtl, ...ledger} : null,
+                answered             = !ledger && descriptor,
+                {cls, label}         = answered
+                    ? {
+                        cls  : ['fm-freshness', descriptor.state === 'degraded' ? 'is-stale' : 'is-unobserved'],
+                        label: `${descriptor.state} — ${descriptor.reason || 'no reason given'}`
+                    }
+                    : AgentFreshness.describePaneFreshness(AgentFreshness.classifyPaneFreshness(merged, now)),
+                // .text (never .html): reasons cross a process boundary before they reach here, so
+                // they must be escaped text, never interpreted markup — no injection surface
+                freshnessChip        = me.getReference(`pane-${pane.key}-freshness`);
 
             freshnessChip.set({cls, text: label});
-            // the awaiting truth rides the pill's title (one provenance pill per section);
-            // an attribute string is inert, like every text node here
-            freshnessChip.vdom.title = ledger ? null : 'awaiting live feed — no source wired for this pane yet';
+            // the pill's title carries what the pill cannot show in full: the awaiting truth while
+            // no source answered, the whole answer when a producer's reason elides at rail width
+            // (one provenance pill per section); an attribute string is inert, like every text node
+            freshnessChip.vdom.title = ledger ? null : answered ? label : AWAITING[pane.key];
             freshnessChip.update();
 
-            me.getReference(`pane-${pane.key}-body`).text = me.renderPaneBody(pane.key, record)
+            me.renderPaneBody(pane.key, record)
         })
     }
 
     /**
-     * @summary The honest body content for one pane from the record's known facts. The `lane` pane
-     * renders the real lane line + open-lane count; the feed-gated panes render NO body until
-     * their source leaf lands — the head's freshness pill already states "not observed — source
-     * not wired" and carries the awaiting detail on its title, so a body line repeating it would
-     * tell the same fact twice per section.
+     * @summary The honest body content for one pane from the record's known facts.
+     *
+     * The lane pane renders the record's lane line with the open-lane count. The repository pane
+     * renders the roster row's slug and clone path. The thought-stream and pull requests panes
+     * render nothing until their producers land: each pill names what it waits for, and a body
+     * line repeating it would tell the same fact twice per section.
      * @param {String} key Pane key.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
-     * @returns {String}
      * @protected
      */
     renderPaneBody(key, record) {
+        const body = this.getReference(`pane-${key}-body`);
+
+        if (key === 'repo') {
+            body.vdom.cn = [
+                {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},
+                ...(record.repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: record.repoPath}] : [])
+            ];
+            body.update();
+            return
+        }
+
         if (key === 'lane') {
             const
                 laneLine  = record.laneLine || 'no current lane reported',
                 laneCount = Number.isInteger(record.openLaneCount) && record.openLaneCount > 0 ? record.openLaneCount : null,
                 countText = laneCount === null ? '' : ` · ${laneCount} open ${laneCount === 1 ? 'lane' : 'lanes'}`;
 
-            return `${laneLine}${countText}`
+            body.text = `${laneLine}${countText}`;
+            return
         }
 
-        return ''
+        body.text = ''
     }
 }
 

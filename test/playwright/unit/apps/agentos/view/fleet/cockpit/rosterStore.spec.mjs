@@ -609,7 +609,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     test('reconcileSelection (real Store): first-live clear/add re-seats a surviving selection onto the new instance', async () => {
         const store              = Neo.create(FleetRoster, {data: []}),
               setCalls           = [],
-              detail             = {set(config) { setCalls.push(config) }},
+              // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
+              detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 4, detail);
 
         // a sample 'vega' is open in the inspector before live truth resolves
@@ -631,7 +632,11 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(liveInstance).not.toBe(sampleInstance);           // a genuinely new record instance
         expect(view.detailRecord).toBe(liveInstance);            // re-seated onto the live instance
         expect(view.selectionState).toEqual({selectedAgentId: 'vega', selectedAgentIdentity: null});
-        expect(setCalls).toEqual([{record: liveInstance}]);      // the inspector re-rendered
+        // the inspector re-rendered in ONE write carrying the record and the admission's clock (the
+        // repository pane's observation) — a re-seat never lands a record against the previous
+        // roster's instant, and the admission adds no second write
+        expect(setCalls).toEqual([{record: liveInstance, rosterObservedAt: expect.any(Number)}]);
+        expect(controller.rosterObservedAt).toBe(setCalls[0].rosterObservedAt);
 
         store.destroy()
     });
@@ -639,7 +644,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     test('reconcileSelection (real Store): a later empty snapshot clears a removed resident to the honest empty state', async () => {
         const store              = Neo.create(FleetRoster, {data: []}),
               setCalls           = [],
-              detail             = {set(config) { setCalls.push(config) }},
+              // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
+              detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 5, detail);
 
         controller.rosterWired = true;                           // past the first-live replacement
@@ -654,7 +660,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(store.get('vega')).toBeFalsy();                   // removed via the real Store path
         expect(view.detailRecord).toBeNull();                   // selection cleared
         expect(view.selectionState).toEqual({selectedAgentId: null, selectedAgentIdentity: null});
-        expect(setCalls).toEqual([{record: null}]);             // AgentDetail → honest empty state
+        // AgentDetail → honest empty state, paired with the admission's clock in the one write
+        expect(setCalls).toEqual([{record: null, rosterObservedAt: expect.any(Number)}]);
 
         store.destroy()
     });
@@ -662,7 +669,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     test('reconcileSelection (real Store): a surviving same-instance reconcile is a no-op (mutation path owns it)', async () => {
         const store              = Neo.create(FleetRoster, {data: []}),
               setCalls           = [],
-              detail             = {set(config) { setCalls.push(config) }},
+              // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
+              detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 6, detail);
 
         controller.rosterWired = true;
@@ -681,7 +689,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         expect(store.get('vega')).toBe(instance);               // same instance, mutated in place
         expect(view.detailRecord).toBe(instance);               // selection unchanged
-        expect(setCalls).toEqual([]);                           // no re-seat — recordChange owns mutation
+        // no re-seat — recordChange owns mutation; the unchanged record gets the admission's clock
+        // alone, so the repository pane re-ages in place
+        expect(setCalls).toEqual([{rosterObservedAt: expect.any(Number)}]);
 
         store.destroy()
     });
@@ -813,7 +823,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         removedHost.reconcileSelection();
         expect(removedHost.view.detailRecord).toBeNull();
         expect(removedHost.view.selectionState).toEqual({selectedAgentId: null, selectedAgentIdentity: null});
-        expect(setCalls).toEqual([{record: null}]);
+        // the pane write pairs the record with the owner's clock — null here: no roster has landed
+        expect(setCalls).toEqual([{record: null, rosterObservedAt: null}]);
 
         // (2) the resident survives as the SAME instance (in-place record.set reconcile) → no re-seat;
         //     the mutation path (recordChange → applyRecord) already keeps the inspector truthful
@@ -832,7 +843,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         reseatHost.reconcileSelection();
         expect(reseatHost.view.detailRecord).toBe(fresh);
         expect(reseatHost.view.selectionState).toEqual({selectedAgentId: 'vega', selectedAgentIdentity: null});
-        expect(setCalls).toEqual([{record: fresh}]);
+        expect(setCalls).toEqual([{record: fresh, rosterObservedAt: null}]);
 
         // (4) nothing selected → no-op, and the Store is never touched
         setCalls.length = 0;

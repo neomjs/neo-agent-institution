@@ -195,7 +195,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    00d795dfde98cf820746eab30df785f728e38796
+    5d11901094202fb43245963d71a34ef3b1b37876
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     9c0491163279261fdb92e1e487093322cb1a26c5
@@ -282,13 +282,13 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    3c7f0e76f5abe49215ff16f59cb7d327d1f13e2a
+    0b2e28dc76156cc987abf13ca9b2c574ac435c19
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     958c10449b0295c19d0e308362b1c78d26ce5672
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    82a2570c3976b574c557f592281830b8449f1125
+    409ff115ef07630efd1157ca9617b50e39381d02
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     3bc24c1b7d3498119de6210234cc74528fcfaa8f
@@ -312,7 +312,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     9b166bd6afc7287cea036adde0cc1ce9e44bdcc4
 
 apps/agentos/view/fleet/detail/Container.mjs
-    62528194cbb4154236581018f25e8f5eb87734a9
+    24a08581134347f5aac545fe80e8e9201c51e6e2
 
 apps/agentos/view/fleet/detail/RepositoryList.mjs
     c5ea39cc6a96f2874cb6f84dba77c9d0695150f5
@@ -495,7 +495,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    ba67b51e2a93c23b1d6b1e22a9fe508350088898
+    6d41cf5fe1552c5276787896f560f2a56dbf15ff
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
@@ -663,7 +663,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-inter
     25006d38cf3b16d778ba0fb388cf76c6ad746299
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
-    f0813964bea12a2eb948cc26d194a09a0486c21f
+    e101be44b8152f1cfb8136fcd5b13e7f7baee8a6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
     76243c74b4810955f0b09a14b4ae1ee0a921b760
@@ -741,7 +741,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agen
     a0a5eaa12b562be34eecfedcb30cbca6465e6b3a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-agent-detail.png
-    89f5a9f4cacb18fd4b200e9a9b86077d424c5099
+    f5d9ee974b3b9c3c169c61836a1f1bfb10089a56
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up.png
     2ba41477f2f7e9959f085805877952ea79e12110

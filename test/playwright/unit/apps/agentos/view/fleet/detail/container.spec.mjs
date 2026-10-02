@@ -275,7 +275,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         // "not observed" as a body line either: the body stays EMPTY, the awaiting truth
         // rides the freshness pill's title
         expect(body(detail, 'thought-stream').text).toBe('');
-        expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting live feed');
+        expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting a policy-aware read');
 
         // no lane reported → honest fallback, no fabricated count
         applySet(detail, {laneLine: null, openLaneCount: null});
@@ -619,5 +619,75 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             AgentDetail.prototype.onDefinitionsStoreMutation = originalMutation;
             AgentDetail.prototype.onDefinitionRecordChange   = originalRecChange
         }
+    });
+
+    test('every pane without a producer names the producer it waits for on its pill — never a bare "source not wired" (#391 AC-1)', () => {
+        const detail = createDetail({agentId: 'vega', state: 'ok'});
+
+        for (const [key, producer] of [
+            ['thought-stream', 'policy-aware read'],
+            ['lane',           'lane stamp'],
+            ['prs',            'per-seat open-work projection']
+        ]) {
+            expect(chip(detail, key).text, key).toBe('not observed — source not wired');
+            expect(chip(detail, key).cls, key).toContain('is-unobserved');
+            expect(chip(detail, key).vdom.title, key).toContain(producer)
+        }
+
+        // a pane whose source answered carries no awaiting title: the pill itself is the answer
+        detail.rosterObservedAt = NOW;
+        expect(chip(detail, 'repo').vdom.title).toBeNull();
+
+        detail.destroy()
+    });
+
+    test('the repository pane and the header row derive from ONE descriptor — the roster row\'s repoStatus fact, aged from the roster admission (#391 AC-2)', () => {
+        const detail = createDetail({agentId: 'vega', state: 'ok', repoSlug: 'neomjs/neo', repoPath: '/seats/vega/neo'}, {rosterObservedAt: NOW - 10_000});
+
+        expect(chip(detail, 'repo').cls).toContain('is-fresh');
+        expect(chip(detail, 'repo').text).toBe('updated 10s ago');
+        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo', '/seats/vega/neo']);
+
+        // no roster read in this mount: the pane says so instead of claiming an observation it never had
+        detail.rosterObservedAt = null;
+        expect(chip(detail, 'repo').text).toBe('unobserved — no roster read has landed in this mount');
+        expect(chip(detail, 'repo').cls).toContain('is-unobserved');
+
+        // the roster's own missing fact reaches the pane in the roster's words — the SAME fact the
+        // header's `repository` row renders, so the two cannot disagree
+        const missing = createDetail({
+            agentId: 'ada', state: 'ok',
+            sources: {...observedSources, repoStatus: {source: 'fleet:fleetStatus', state: 'missing', confidence: 'none', reason: 'no repository status answered for this agent'}}
+        }, {rosterObservedAt: NOW});
+
+        expect(chip(missing, 'repo').text).toBe('missing — no repository status answered for this agent');
+        // the full answer rides the title too: a rail-width head elides the pill's words
+        expect(chip(missing, 'repo').vdom.title).toBe('missing — no repository status answered for this agent');
+        expect(body(missing, 'repo').vdom.cn.map(node => node.text)).toEqual(['no repository declared']);
+
+        const rows = missing.down({reference: 'detail-ledger'}).vdom.cn,
+              axis = rows.findIndex(node => node.text === 'repository');
+
+        expect(axis).toBeGreaterThan(-1);
+        expect(rows[axis + 1].text).toBe('missing');
+
+        detail.destroy();
+        missing.destroy()
+    });
+
+    test('an explicit pane ledger outranks the derived source, and the roster stamp re-ages the repository pane in place', () => {
+        const detail = createDetail({agentId: 'vega', state: 'ok', repoSlug: 'neomjs/neo'}, {rosterObservedAt: NOW - 5_000});
+
+        expect(chip(detail, 'repo').text).toBe('updated 5s ago');
+
+        // a later roster admission moves the observation without a record re-seat
+        detail.rosterObservedAt = NOW - 1_000;
+        expect(chip(detail, 'repo').text).toBe('updated 1s ago');
+
+        // a feed stamping the pane directly still wins over the derived roster source
+        detail.paneLedgers = {repo: {lost: true}};
+        expect(chip(detail, 'repo').cls).toContain('is-lost');
+
+        detail.destroy()
     });
 });
