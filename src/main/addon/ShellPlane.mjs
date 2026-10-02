@@ -1,11 +1,11 @@
 import Base from '../../../node_modules/neo.mjs/src/main/addon/Base.mjs';
 
 /**
- * @summary The cockpit's reach into the packaged shell's plane-attach broker pair.
+ * @summary The cockpit's reach into the packaged shell's plane-attach broker.
  *
- * The shell's preload answers both calls in Electron main. Main prompts for the credential itself, so
- * no call from here carries one, and no answer returns one. In a browser there is no shell: each call
- * answers "not available" instead of failing.
+ * The shell's preload answers every call in Electron main. Main prompts for the credential itself, or
+ * probes the stored one, so no call from here carries one, and no answer returns one. In a browser there
+ * is no shell: each call answers "not available" instead of failing.
  * @class Neo.main.addon.ShellPlane
  * @extends Neo.main.addon.Base
  */
@@ -25,7 +25,8 @@ class ShellPlane extends Base {
         remote: {
             app: [
                 'attachPlane',
-                'planeStatus'
+                'planeStatus',
+                'verifyPlane'
             ]
         }
     }
@@ -51,6 +52,16 @@ class ShellPlane extends Base {
         return globalThis.neoShell?.planeStatus
             ? {available: true, ...await globalThis.neoShell.planeStatus()}
             : {available: false}
+    }
+
+    /**
+     * @summary Asks the shell whether the plane still admits the PAT this shell launched with.
+     * @returns {Promise<{cause: String|null}>} `{cause: null}` without a shell.
+     */
+    async verifyPlane() {
+        return globalThis.neoShell?.verifyPlane
+            ? globalThis.neoShell.verifyPlane()
+            : {cause: null}
     }
 }
 

@@ -15,6 +15,7 @@ import {
     readPlaneConfig,
     writePlaneConfig
 } from '../../../../harness/planeConfig.mjs';
+import {runtimePlaneCause} from '../../../../harness/brain.mjs';
 
 const BEARER   = 'ghp_fixtureBearerNeverReal0000000000',
       IDENTITY = '@fixture-viewer';
@@ -352,5 +353,57 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
         expect(() => broker.status({})).toThrow('untrusted sender');
         await expect(broker.attach({}, {planeBase: 'http://127.0.0.1:3102'})).rejects.toThrow('untrusted sender');
         expect(calls.prompts).toEqual([])
+    })
+});
+
+test.describe('harness/planeConfig — verifyPlane(), the broker asking about the launched PAT', () => {
+    const LAUNCHED = {bearer: BEARER, identity: IDENTITY, planeBase: 'http://127.0.0.1:3102'};
+
+    function verifier({host = fakePlane(), launched = LAUNCHED, trusted = true} = {}) {
+        return createPlaneBroker({
+            causeOf         : runtimePlaneCause,
+            dir             : tempDir(),
+            fetchFn         : host.fetchFn,
+            getLaunchedPlane: () => launched,
+            getTransportFact: () => null,
+            isTrustedSender : () => trusted,
+            packaged        : true,
+            promptCredential: async () => null,
+            relaunch        : () => {},
+            safeStorage     : fakeSafeStorage()
+        })
+    }
+
+    test('names a launched PAT the plane refuses, and the reply never carries it', async () => {
+        const reply = await verifier({host: fakePlane({admits: false})}).verify({});
+
+        expect(reply).toEqual({cause: 'plane-credential-refused'});
+        expect(JSON.stringify(reply)).not.toContain(BEARER)
+    });
+
+    test('names a PAT the plane now admits as another account', async () => {
+        expect(await verifier({host: fakePlane({identity: '@someone-else'})}).verify({})).toEqual({cause: 'plane-identity-changed'})
+    });
+
+    test('an unchanged PAT, a plane that does not answer, or no plane at all names nothing', async () => {
+        const silent = {fetchFn: async () => { throw new TypeError('fetch failed') }};
+
+        expect(await verifier().verify({})).toEqual({cause: null});
+        expect(await verifier({host: silent}).verify({})).toEqual({cause: null});
+        expect(await verifier({host: stranger(404)}).verify({})).toEqual({cause: null})
+    });
+
+    test('a launch that took its plane from elsewhere is never probed', async () => {
+        const host = fakePlane({admits: false});
+
+        expect(await verifier({host, launched: null}).verify({})).toEqual({cause: null});
+        expect(host.requests).toEqual([])
+    });
+
+    test('an untrusted sender is refused before the plane is asked', async () => {
+        const host = fakePlane();
+
+        await expect(verifier({host, trusted: false}).verify({})).rejects.toThrow('shell-plane-verify: untrusted sender');
+        expect(host.requests).toEqual([])
     })
 });
