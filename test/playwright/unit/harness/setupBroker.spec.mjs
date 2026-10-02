@@ -3,7 +3,7 @@ import {existsSync, mkdtempSync, readFileSync, statSync, writeFileSync} from 'no
 import {tmpdir}                  from 'node:os';
 import path                      from 'node:path';
 import {
-    EFFECT_UNWIRED_REASON,
+    CONFIG_SOURCE_PATH,
     SETUP_CHANNELS,
     SETUP_MODULE_PATHS,
     createSetupBroker,
@@ -40,7 +40,15 @@ function fakeModules({evaluations = []} = {}) {
                 evaluateRecipe: async options => {
                     calls.push(['evaluateRecipe', {target: options.target, consents: options.record.consents.map(row => row.stepId)}]);
 
-                    return evaluations.shift() ?? {recipeVersion: 1, target: options.target, binding: 'bound', bindingReason: null, steps: [{id: 'placement', status: 'ok'}], terminal: null}
+                    // the effect rows read the record's receipts the way the recipe does: an accepted
+                    // receipt reads ok, a pending one reconcile-required, none pending
+                    const effectRow = effectId => {
+                        const receipt = options.record.receipts.find(row => row.effectId === effectId);
+
+                        return {id: effectId, kind: 'effect', effectId, status: !receipt ? 'pending' : receipt.outcome === 'accepted' ? 'ok' : 'reconcile-required', receipt: receipt?.outcome ?? null}
+                    };
+
+                    return evaluations.shift() ?? {recipeVersion: 1, target: options.target, binding: 'bound', bindingReason: null, steps: [{id: 'placement', status: 'ok'}, effectRow('write-secrets'), effectRow('write-env'), effectRow('compose-up')], terminal: null}
                 }
             },
             record: {
@@ -71,6 +79,38 @@ function fakeModules({evaluations = []} = {}) {
                 createDefaultReaders: ({run}) => ({run}),
                 probePlacement      : async ({target}) => ({target, host: {totalBytes: 1}, runningPlane: null})
             },
+            // the shared orchestration: one effect at a time in the recipe's order, a receipt per
+            // applied effect, a refusal reported and nothing written; the settle pass flips a
+            // pending receipt to accepted when the evaluation says the served plane matches
+            orchestration: {
+                EFFECT_ORDER  : ['write-secrets', 'write-env', 'compose-up'],
+                performEffects: async ({record, recordPath, effectIds, report, configSourcePath, evaluation}) => {
+                    calls.push(['performEffects', {effectIds, configSourcePath, hasEvaluation: Boolean(evaluation)}]);
+
+                    if (record.consents.some(row => row.answer === 'refuse-me')) {
+                        report('the preset \'refuse-me\' declares an env key the profile does not consume');
+
+                        return record
+                    }
+
+                    const next = {...record, receipts: [...record.receipts, ...(effectIds ?? ['write-secrets', 'write-env', 'compose-up']).map(effectId => ({effectId, outcome: 'accepted'}))]};
+                    const {writeFileSync} = await import('node:fs');
+
+                    writeFileSync(recordPath, JSON.stringify(next));
+
+                    return next
+                },
+                settlePending: async ({record, recordPath, evaluation}) => {
+                    calls.push(['settlePending', {reconcile: evaluation.steps.filter(step => step.status === 'reconcile-required').map(step => step.id)}]);
+
+                    const next = {...record, receipts: record.receipts.map(receipt => receipt.outcome === 'pending' ? {...receipt, outcome: 'accepted'} : receipt)};
+                    const {writeFileSync} = await import('node:fs');
+
+                    writeFileSync(recordPath, JSON.stringify(next));
+
+                    return next
+                }
+            },
             cli: {
                 hostLayout         : ({stateRoot}) => ({envFile: path.join(stateRoot, 'config', 'local-agent-os.env'), secretsDir: path.join(stateRoot, 'secrets')}),
                 productionObservers: ({layout}) => ({layout})
@@ -81,11 +121,12 @@ function fakeModules({evaluations = []} = {}) {
 
 const trusted = {sender: 'trusted'};
 
-function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), loadModules} = {}) {
+function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs'} = {}) {
     return {
         setupRoot,
         stateRoot,
         broker: createSetupBroker({
+            configSourcePath,
             isTrustedSender : event => event === trusted,
             loadModules     : loadModules === undefined ? (modules ? async () => modules : null) : loadModules,
             packaged,
@@ -102,12 +143,13 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         expect(Object.keys(SETUP_CHANNELS).sort()).toEqual(['answer', 'credential', 'effect', 'evaluate', 'presets', 'probe']);
         expect(Object.values(SETUP_CHANNELS).every(channel => channel.startsWith('shell-setup-'))).toBe(true);
         expect(SETUP_MODULE_PATHS).toEqual({
-            cli        : 'ai/scripts/setup/firstRun.mjs',
-            hostEffects: 'ai/services/fleet/hostEffects.mjs',
-            presets    : 'ai/services/fleet/placementPresets.mjs',
-            probe      : 'ai/services/fleet/probePlacement.mjs',
-            recipe     : 'ai/services/fleet/firstRunRecipe.mjs',
-            record     : 'ai/services/fleet/setupRunRecord.mjs'
+            cli          : 'ai/scripts/setup/firstRun.mjs',
+            hostEffects  : 'ai/services/fleet/hostEffects.mjs',
+            orchestration: 'ai/services/fleet/setupOrchestration.mjs',
+            presets      : 'ai/services/fleet/placementPresets.mjs',
+            probe        : 'ai/services/fleet/probePlacement.mjs',
+            recipe       : 'ai/services/fleet/firstRunRecipe.mjs',
+            record       : 'ai/services/fleet/setupRunRecord.mjs'
         })
     });
 
@@ -134,7 +176,8 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         const first = await broker.evaluate(trusted, {target: null});
 
         expect(first.ok).toBe(true);
-        expect(first.evaluation).toMatchObject({binding: 'bound', recipeVersion: 1, steps: [{id: 'placement', status: 'ok'}]});
+        expect(first.evaluation).toMatchObject({binding: 'bound', recipeVersion: 1});
+        expect(first.evaluation.steps[0]).toEqual({id: 'placement', status: 'ok'});
         expect(first.evaluation.runId).toMatch(/^[0-9a-f-]{36}$/);
         expect(first.evaluation.recordPath).toBe(path.join(setupRoot, `${first.evaluation.runId}.json`));
         expect(persisted.length, 'the record is persisted at creation').toBe(1);
@@ -350,10 +393,63 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         expect(readFileSync(kept.path, 'utf8')).toBe('ghp_answeredForB')
     });
 
-    test('effect refuses by name until the Brain exports the CLI\'s orchestration — never a second implementation here', async () => {
-        const {modules} = fakeModules();
+    test('effect runs the one consented effect through the shared orchestration, serialized, and answers the re-evaluated run; an unknown effect and a boot without a config source are refused by name', async () => {
+        const
+            {calls, modules} = fakeModules(),
+            {broker}         = createBroker({modules});
 
-        expect(await createBroker({modules}).broker.effect(trusted, {effectId: 'write-env'})).toEqual({ok: false, reason: EFFECT_UNWIRED_REASON, effectId: 'write-env'})
+        await broker.evaluate(trusted, {});
+
+        expect(await broker.effect(trusted, {effectId: 'nope'})).toEqual({ok: false, reason: '\'nope\' is not an effect of this recipe', effectId: 'nope'});
+        expect((await createBroker({modules, configSourcePath: null}).broker.effect(trusted, {effectId: 'write-env'})).reason).toMatch(/^no-brain-root/);
+
+        const reply = await broker.effect(trusted, {effectId: 'write-env'});
+
+        expect(reply.ok).toBe(true);
+        expect(reply.evaluation.steps.find(step => step.id === 'write-env')).toMatchObject({status: 'ok', receipt: 'accepted'});
+        expect(reply.evaluation.steps.find(step => step.id === 'compose-up')).toMatchObject({status: 'pending'});
+        expect(calls.filter(([name]) => name === 'performEffects')).toEqual([['performEffects', {effectIds: ['write-env'], configSourcePath: '/runtime/ai/configBase.mjs', hasEvaluation: true}]]);
+        expect(calls.filter(([name]) => name === 'settlePending'), 'nothing to settle: no settle pass ran').toEqual([]);
+        expect(SETUP_MODULE_PATHS.orchestration).toBe('ai/services/fleet/setupOrchestration.mjs');
+        expect(CONFIG_SOURCE_PATH).toBe('ai/configBase.mjs')
+    });
+
+    test('a refused effect answers in the orchestration\'s words and writes nothing', async () => {
+        const
+            {calls, modules}   = fakeModules(),
+            {broker, setupRoot} = createBroker({modules});
+
+        const first = await broker.evaluate(trusted, {});
+
+        modules.presets.presets.push({id: 'refuse-me'});
+        await broker.answer(trusted, {stepId: 'preset', answer: 'refuse-me'});
+
+        expect(await broker.effect(trusted, {effectId: 'write-secrets'})).toEqual({ok: false, reason: 'the preset \'refuse-me\' declares an env key the profile does not consume', effectId: 'write-secrets'});
+
+        const record = JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8'));
+
+        expect(record.receipts).toEqual([]);
+        expect(calls.filter(([name]) => name === 'performEffects').length).toBe(1)
+    });
+
+    test('re-check: an interrupted effect settles through the shared pass before the run is read, on evaluate', async () => {
+        const
+            {calls, modules}   = fakeModules(),
+            {broker, setupRoot} = createBroker({modules});
+
+        const first = await broker.evaluate(trusted, {});
+
+        // an effect interrupted before its receipt was written: the record holds a pending receipt
+        const recordPath = path.join(setupRoot, `${first.evaluation.runId}.json`);
+
+        writeFileSync(recordPath, JSON.stringify({...JSON.parse(readFileSync(recordPath, 'utf8')), receipts: [{effectId: 'write-env', outcome: 'pending'}]}));
+
+        // a fresh broker resumes the record (the shell was restarted mid-effect)
+        const again = createBroker({modules, setupRoot}).broker;
+        const reply = await again.evaluate(trusted, {});
+
+        expect(calls.filter(([name]) => name === 'settlePending')).toEqual([['settlePending', {reconcile: ['write-env']}]]);
+        expect(reply.evaluation.steps.find(step => step.id === 'write-env')).toMatchObject({status: 'ok', receipt: 'accepted'})
     });
 
     test('probe and presets answer the Brain modules\' own tables', async () => {

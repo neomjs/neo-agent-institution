@@ -258,6 +258,27 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         host.destroy()
     });
 
+    test('run: a refusal from the orchestration is the shell\'s own word on the effect — the status line speaks, no manual action, the last observation stands', async () => {
+        stubShell({
+            setupEvaluate: {ok: true, evaluation: coldEvaluation()},
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS},
+            setupEffect  : ({effectId}) => ({ok: false, reason: 'the preset \'hosted\' declares an env key the profile does not consume', effectId})
+        });
+
+        const {host, door, progress} = createDoor();
+
+        await settle();
+        await door.onStepClick({record: door.store.get('write-secrets')});
+
+        expect(door.getReference('status-line').text).toBe('write-secrets could not run: the preset \'hosted\' declares an env key the profile does not consume');
+        expect(door.manualActions).toBe(0);
+        expect(door.store.get('write-secrets').status).toBe('pending');
+        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+
+        host.destroy()
+    });
+
     test('first persistence: the quiet confirmation is the done row\'s own text, fired once with the density count; a repeated evaluation does not fire again', async () => {
         const finished = coldEvaluation();
 

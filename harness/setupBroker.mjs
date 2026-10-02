@@ -34,19 +34,21 @@ export const SETUP_CHANNELS = Object.freeze({
  * @type {Object}
  */
 export const SETUP_MODULE_PATHS = Object.freeze({
-    cli        : 'ai/scripts/setup/firstRun.mjs',
-    hostEffects: 'ai/services/fleet/hostEffects.mjs',
-    presets    : 'ai/services/fleet/placementPresets.mjs',
-    probe      : 'ai/services/fleet/probePlacement.mjs',
-    recipe     : 'ai/services/fleet/firstRunRecipe.mjs',
-    record     : 'ai/services/fleet/setupRunRecord.mjs'
+    cli          : 'ai/scripts/setup/firstRun.mjs',
+    hostEffects  : 'ai/services/fleet/hostEffects.mjs',
+    orchestration: 'ai/services/fleet/setupOrchestration.mjs',
+    presets      : 'ai/services/fleet/placementPresets.mjs',
+    probe        : 'ai/services/fleet/probePlacement.mjs',
+    recipe       : 'ai/services/fleet/firstRunRecipe.mjs',
+    record       : 'ai/services/fleet/setupRunRecord.mjs'
 });
 
 /**
- * The reason every channel answers while the effect orchestration is not exported by the Brain.
+ * The Brain's `ai/configBase.mjs`, relative to the runtime root: the file a preset's env set is
+ * checked against before any write (the orchestration derives no path itself).
  * @type {String}
  */
-export const EFFECT_UNWIRED_REASON = 'unwired: the recipe\'s effect orchestration is the CLI\'s own until the Brain exports it; run the CLI on the host, then re-check';
+export const CONFIG_SOURCE_PATH = 'ai/configBase.mjs';
 
 const setupModules = new Map();
 
@@ -133,11 +135,12 @@ async function newestRecord({setupRoot, record, fsModule}) {
  * @param {Function} options.promptCredential `({event, method}) => Promise<String|null>` in main custody.
  * @param {String} options.setupRoot The setup records' directory.
  * @param {String} options.stateRoot The host state root the recipe's layout derives from.
+ * @param {String|null} [options.configSourcePath=null] The Brain's `ai/configBase.mjs` under the runtime root; `null` without a Brain root.
  * @param {Object} [options.fsModule=fs]
  * @param {Function} [options.now=Date.now]
  * @returns {Object} One handler per {@link SETUP_CHANNELS} key: `(event, request) => Promise<Object>`.
  */
-export function createSetupBroker({isTrustedSender, loadModules, packaged, promptCredential, setupRoot, stateRoot, fsModule = fs, now = Date.now}) {
+export function createSetupBroker({isTrustedSender, loadModules, packaged, promptCredential, setupRoot, stateRoot, configSourcePath = null, fsModule = fs, now = Date.now}) {
     const
         refuse = (reason, extra = {}) => ({ok: false, reason, ...extra}),
         run    = {record: null, recordPath: null, target: null};
@@ -250,6 +253,32 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
         return {runId: record.runId, recordPath, ...evaluation}
     }
 
+    /**
+     * @summary One evaluation, with the CLI's settle pass before it: an interrupted effect whose
+     * result is observable while the served plane is the target's settles through the shared
+     * orchestration, then the run is read again. Nothing to settle → one read.
+     * @param {Object} modules
+     * @param {Object|null} [requested=null]
+     * @returns {Promise<Object>} The CLI's `--json` shape
+     */
+    async function settleThenEvaluate(modules, requested = null) {
+        const
+            {hostEffects, orchestration} = modules,
+            evaluation                   = await evaluateNow(modules, requested);
+
+        if (!evaluation.steps.some(step => step.status === 'reconcile-required')) {
+            return evaluation
+        }
+
+        const
+            host                 = hostEffects.createHost({fsModule, now}),
+            {record, recordPath} = run;
+
+        run.record = await orchestration.settlePending({record, recordPath, host, evaluation});
+
+        return evaluateNow(modules, requested)
+    }
+
     return {
         /**
          * @param {Electron.IpcMainInvokeEvent} event
@@ -262,7 +291,7 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             if (!admitted.modules) return admitted;
 
             try {
-                return {ok: true, evaluation: await serialize(() => evaluateNow(admitted.modules, request?.target ?? null))}
+                return {ok: true, evaluation: await serialize(() => settleThenEvaluate(admitted.modules, request?.target ?? null))}
             } catch (error) {
                 return refuse(`the recipe could not be evaluated: ${error.message}`)
             }
@@ -349,20 +378,58 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
         },
 
         /**
-         * @summary Consent to one host effect. Until the Brain exports the CLI's effect orchestration
-         * (the per-effect inputs composed from the preset and the credential files), the vessel
-         * refuses by name and the row's action is the operator's instruction — never a second
-         * implementation of the effects here.
+         * @summary Consent to one host effect: the shared orchestration (the CLI's own module) runs
+         * the one named effect in the recipe's order rules — the settle pass first, an earlier
+         * effect that is not `ok` halts it, a refusal (the preset's env set, the credential
+         * composition) writes nothing and answers in the orchestration's words — and the reply is
+         * the re-evaluated run. One serialized operation; never a second implementation of the
+         * effects here.
          * @param {Electron.IpcMainInvokeEvent} event
          * @param {{effectId: String}} request
-         * @returns {Promise<Object>}
+         * @returns {Promise<Object>} `{ok: true, evaluation}`, or `{ok: false, reason, effectId}`
          */
         async effect(event, request = {}) {
             const admitted = await admit(event, SETUP_CHANNELS.effect);
 
             if (!admitted.modules) return admitted;
 
-            return refuse(EFFECT_UNWIRED_REASON, {effectId: request?.effectId ?? null})
+            const
+                {cli, hostEffects, orchestration} = admitted.modules,
+                effectId                          = request?.effectId ?? null;
+
+            if (!orchestration.EFFECT_ORDER.includes(effectId)) {
+                return refuse(`'${effectId}' is not an effect of this recipe`, {effectId})
+            }
+
+            if (!configSourcePath) {
+                return refuse('no-brain-root: the preset\'s env set has no config to be checked against', {effectId})
+            }
+
+            try {
+                return await serialize(async () => {
+                    const
+                        evaluation           = await settleThenEvaluate(admitted.modules, null),
+                        host                 = hostEffects.createHost({fsModule, now}),
+                        layout               = cli.hostLayout({stateRoot}),
+                        {record, recordPath, target} = run,
+                        reported             = [];
+
+                    run.record = await orchestration.performEffects({
+                        record, recordPath, host, layout, target, evaluation,
+                        configSourcePath,
+                        effectIds: [effectId],
+                        report   : line => reported.push(String(line))
+                    });
+
+                    if (reported.length > 0) {
+                        return refuse(reported.join('; '), {effectId})
+                    }
+
+                    return {ok: true, evaluation: await evaluateNow(admitted.modules, null)}
+                })
+            } catch (error) {
+                return refuse(`${effectId} could not run: ${error.message}`, {effectId})
+            }
         },
 
         /**

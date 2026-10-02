@@ -78,7 +78,7 @@ import {
     readPlaneConfig
 } from './planeConfig.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                  from './seatRootRecord.mjs';
-import {SETUP_CHANNELS, createSetupBroker, loadSetupModules, resolveSetupRoots} from './setupBroker.mjs';
+import {CONFIG_SOURCE_PATH, SETUP_CHANNELS, createSetupBroker, loadSetupModules, resolveSetupRoots} from './setupBroker.mjs';
 import {
     WAKE_RECEIVER_LAUNCH_AGENT,
     settleWakeReceiver,
@@ -1360,6 +1360,7 @@ app.whenReady().then(async () => {
     // a credential enters main's window and leaves as a kept file's path. A boot without a Brain root
     // keeps every channel registered and answers each with the named reason.
     const setupBroker = createSetupBroker({
+        configSourcePath: agentosRuntimeRoot ? path.join(agentosRuntimeRoot, CONFIG_SOURCE_PATH) : null,
         isTrustedSender : isTrustedIpcSender,
         loadModules     : agentosRuntimeRoot ? () => loadSetupModules({runtimeRoot: agentosRuntimeRoot}) : null,
         packaged        : packagedMode,

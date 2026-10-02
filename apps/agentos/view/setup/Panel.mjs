@@ -75,12 +75,34 @@ class Panel extends BasePanel {
          */
         items: [{
             module   : CreateContainer,
+            // the door's events are the card's events to its owner (events do not bubble)
+            listeners: {
+                firstPersistence: 'up.onFirstPersistence',
+                openMemories    : 'up.onOpenMemories'
+            },
             reference: 'create-door'
         }, {
             module   : ConnectContainer,
             hidden   : true,
             reference: 'connect-door'
         }]
+    }
+
+    /**
+     * @summary Relays the Create door's first persistence to the card's owner, which retires the
+     * card from the primary slot.
+     * @param {Object} data `{density, evaluation}`
+     */
+    onFirstPersistence(data) {
+        this.fire('firstPersistence', data)
+    }
+
+    /**
+     * @summary Relays the `done` row's action to the card's owner.
+     * @param {Object} data
+     */
+    onOpenMemories(data) {
+        this.fire('openMemories', data)
     }
 
     /**
