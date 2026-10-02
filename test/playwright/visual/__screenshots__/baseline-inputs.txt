@@ -263,11 +263,14 @@ apps/agentos/view/Viewport.mjs
 apps/agentos/view/ViewportController.mjs
     002dd094d855963d15704836d37b5dc49478d210
 
+apps/agentos/view/accounts/Controller.mjs
+    443cd1c7a7cd062c51d03bf4076a4ff1620d6acc
+
 apps/agentos/view/accounts/List.mjs
     ec8f3ed16cb692813a9ae5d7068d6542e8954b61
 
 apps/agentos/view/accounts/Panel.mjs
-    9881d60c918d89578a8e663ec17d87cd009b1624
+    e2def173679cc06e12c98f549bd1568d9db9ddd9
 
 apps/agentos/view/fleet/activity/ActorChipComponent.mjs
     80e172b5f0d9a4ed464309e308fb14024fd14b4a
