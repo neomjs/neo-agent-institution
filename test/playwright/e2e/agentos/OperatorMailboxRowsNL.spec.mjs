@@ -91,28 +91,40 @@ test.describe('AgentOS operator mailbox — the inbox gets the strip, compose is
 
             const
                 mailboxPane = page.locator('.fm-operator-mailbox'),
-                body        = page.locator('.fm-mailbox-grid .neo-grid-body').first(),
+                gridDom     = page.locator('.fm-mailbox-grid').first(),
                 firstRow    = page.locator('.fm-mailbox-grid .fm-mail-row').first(),
                 form        = page.locator('.fm-operator-compose-form'),
                 chip        = page.locator('.fm-compose-affordance').first(),
                 ROW         = 84,
-                bodyHeight  = async () => (await body.boundingBox())?.height ?? 0;
+                // the engine's own reading: the grid measures its body and derives the row count as
+                // ceil(availableHeight / rowHeight) - 1 (the body ELEMENT is the scroll content, 4284
+                // px for 51 pooled rows, so its box proves nothing)
+                engine      = async () => {
+                    const [grid] = await app.queryComponent({className: 'AgentOS.view.fleet.mailbox.Grid'}, ['id']),
+                          state  = await app.getComponent(grid.properties.id, ['body']),
+                          bodyId = state?.body?.id ?? state?.body;
+                    return bodyId ? await app.getComponent(bodyId, ['availableRows', 'availableHeight']) : {availableRows: 0, availableHeight: 0}
+                },
+                gridHeight  = async () => (await gridDom.boundingBox())?.height ?? 0;
 
             await expect(mailboxPane).toBeVisible({timeout: 10000});
 
-            // the strip is the inbox's: the body holds at least one lattice row and rows render
-            // where before none did (dev at 1280×720: a 48px body, zero rows)
-            await expect.poll(bodyHeight, {timeout: 15000}).toBeGreaterThan(ROW);
+            // the strip is the inbox's: one full lattice row at 1280×720 (measured: grid 147 px →
+            // availableRows 1; before the reveal: a 48 px body, availableRows 0, no row rendered)
+            await expect.poll(async () => (await engine()).availableRows, {timeout: 15000}).toBeGreaterThanOrEqual(1);
+            expect(await gridHeight()).toBeGreaterThan(ROW);
             await expect(firstRow).toBeVisible({timeout: 10000});
             await expect(page.locator('.fm-mailbox-grid')).toContainText('fixture subject 0');
             await expect(form).toBeHidden();
             await expect(chip).toBeVisible();
-            const folded = await bodyHeight();
+            const folded = await gridHeight();
 
-            // the chip reveals the form; the inbox keeps one row of context, the form has room
+            // the chip reveals the form; the inbox keeps one full row (the floor: measured grid
+            // 101 px → availableRows 1) and the form has room to scroll in
             await chip.click();
             await expect(form).toBeVisible({timeout: 5000});
-            await expect.poll(bodyHeight, {timeout: 15000}).toBeGreaterThan(ROW);
+            await expect.poll(async () => (await engine()).availableRows, {timeout: 15000}).toBeGreaterThanOrEqual(1);
+            expect(await gridHeight()).toBeGreaterThan(ROW);
             await expect(firstRow).toBeVisible();
             expect((await form.boundingBox()).height, 'the form has room to scroll in').toBeGreaterThan(40);
 
@@ -120,7 +132,7 @@ test.describe('AgentOS operator mailbox — the inbox gets the strip, compose is
             await page.getByRole('textbox', {name: 'Subject'}).focus();
             await page.keyboard.press('Escape');
             await expect(form).toBeHidden({timeout: 5000});
-            await expect.poll(bodyHeight, {timeout: 15000}).toBeGreaterThanOrEqual(folded)
+            await expect.poll(gridHeight, {timeout: 15000}).toBeGreaterThanOrEqual(folded)
         } finally {
             await fleet.close()
         }
