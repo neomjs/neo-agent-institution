@@ -108,7 +108,7 @@ apps/agentos/model/SessionTurn.mjs
     fe47cbf0610931e60c7a36b2725a6692fe8b781b
 
 apps/agentos/model/SetupStep.mjs
-    ea561cefc4644cdbd814860f2443a79303c297b2
+    46173b9822a9a2815258a03578de2efa3e216ed3
 
 apps/agentos/model/WakeRouteSeat.mjs
     02132c9f2c3a8f1d3885ed0b1ad7147e102881a5
