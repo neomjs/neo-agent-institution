@@ -350,7 +350,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
             component: {getOperatorMailboxPane: () => ({set() {}})}, isDestroyed: false, operatorRecord: null
         });
 
-        await expect(cockpit.loadOperatorIdentity()).resolves.toBe(false);
+        await expect(cockpit.loadOperatorIdentity()).resolves.toBe(null);
 
         expect(cockpit.operatorRecord, 'a throw is absence, never a fallback identity').toBe(null)
     });
@@ -403,7 +403,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
 
             setBridge({profileId: 'b', resolveViewerIdentity: async () => { throw new Error('plane unreachable') }});
 
-            await expect(cockpit.loadOperatorIdentity()).resolves.toBe(false);
+            await expect(cockpit.loadOperatorIdentity()).resolves.toBe(null);
 
             expect(pane.sets).toEqual([retired]);
             expect(cockpit.operatorRecord).toBe(null);
@@ -438,7 +438,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
             setBridge({profileId: 'b'});
             release({ok: true, agentIdentityNodeId: '@op'});
 
-            await expect(identity).resolves.toBe(false);
+            await expect(identity).resolves.toBe(null);
             expect(cockpit.operatorRecord).toBe(null);
             expect(pane.sets).toEqual([]);
 
@@ -500,6 +500,56 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
             expect(pane.sets).toEqual([{record: operator, identityPosture: null}]);
             expect(cockpit.operatorSnapshot).toBe(mail);
             expect(reads).toEqual([{offset: 0}])
+        });
+
+        test('an A Reconnect still in flight when B binds adds no read of B\'s window', async () => {
+            let release;
+
+            const
+                {pane, cockpit} = heldByA(),
+                reads           = [];
+
+            reconnectable(cockpit).loadOperatorInbox = params => { reads.push(params) };
+
+            setBridge({profileId: 'a', resolveViewerIdentity: () => new Promise(resolve => { release = resolve })});
+            cockpit.reconnectFleet();
+
+            setBridge({profileId: 'b', resolveViewerIdentity: async () => ({ok: true, agentIdentityNodeId: '@op'})});
+            cockpit.reconnectFleet();
+            await flush();
+
+            // A's answer settles last: stale, so its continuation reads nothing
+            release({ok: true, agentIdentityNodeId: '@op'});
+            await flush();
+
+            expect(pane.sets).toEqual([retired, {record: operator, identityPosture: null}]);
+            expect(cockpit.operatorProfileId).toBe('b');
+            expect(reads, 'B bound anew, so only the pane asks for its first window').toEqual([])
+        });
+
+        test('a send A started that settles after B binds keeps its result, but never reaches B\'s pane or B\'s inbox', async () => {
+            let release;
+
+            const
+                {pane, cockpit} = heldByA(),
+                receipt         = {messageId: 'MESSAGE:a-sent'},
+                reads           = [];
+
+            cockpit.getReference      = reference => reference === 'operator-mailbox' ? pane : null;
+            cockpit.loadOperatorInbox = params => { reads.push(params) };
+
+            setBridge({profileId: 'a', composeOperatorMessage: () => new Promise(resolve => { release = resolve })});
+
+            const sent = cockpit.onOperatorCompose({message: {to: '@peer', subject: 's', body: 'b'}});
+
+            setBridge({profileId: 'b', resolveViewerIdentity: async () => ({ok: true, agentIdentityNodeId: '@op'})});
+            await cockpit.loadOperatorIdentity();
+            release(receipt);
+
+            await expect(sent, 'the real send result still returns').resolves.toEqual({results: [{to: '@peer', outcome: receipt}]});
+            expect(pane.composeOutcome, 'A\'s receipt never lands in B\'s form').toBe(undefined);
+            expect(reads, 'and B\'s inbox is not re-read on A\'s behalf').toEqual([]);
+            expect(pane.sets).toEqual([retired, {record: operator, identityPosture: null}])
         });
     });
 });
