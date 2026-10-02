@@ -37,14 +37,15 @@ class PlaneCredentialCheck extends Base {
     static async ask(owner, connectionState) {
         if (!askingStates.includes(connectionState) || owner.planeCheckEpisode) return;
 
-        owner.planeCheckEpisode = true;
+        const episode = owner.planeCheckEpisode = Symbol('planeCheckEpisode');
 
         const reply = await Promise.resolve(
             Neo.main?.addon?.ShellPlane?.verifyPlane({windowId: owner.component.windowId})
         ).catch(() => null);
 
-        // A read that answered while the shell was asking ended the episode: its answer is newer.
-        if (owner.isDestroyed || !owner.planeCheckEpisode) return;
+        // Only the episode that asked may answer: a read that answered since ended it, and a failure after
+        // that opened another episode, whose own answer is the newer one.
+        if (owner.isDestroyed || owner.planeCheckEpisode !== episode) return;
 
         owner.component.getStateProvider()?.setData('planeCause', typeof reply?.cause === 'string' ? reply.cause : null)
     }
@@ -54,7 +55,7 @@ class PlaneCredentialCheck extends Base {
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      */
     static settle(owner) {
-        owner.planeCheckEpisode = false;
+        owner.planeCheckEpisode = null;
         owner.component.getStateProvider()?.setData('planeCause', null)
     }
 }

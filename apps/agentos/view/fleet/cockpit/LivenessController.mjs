@@ -97,12 +97,13 @@ class LivenessController extends ComponentController {
      */
     gridReadInFlight = 0
     /**
-     * True from a failed roster read until one answers: the shell is asked about the plane
-     * credential once per such episode ({@link AgentOS.util.PlaneCredentialCheck}).
-     * @member {Boolean} planeCheckEpisode=false
+     * The open episode's token, from a failed roster read until one answers: the shell is asked about
+     * the plane credential once per episode, and only the asking episode's answer is published
+     * ({@link AgentOS.util.PlaneCredentialCheck}).
+     * @member {Symbol|null} planeCheckEpisode=null
      * @protected
      */
-    planeCheckEpisode = false
+    planeCheckEpisode = null
     /**
      * The last mapped LIVE roster rows — the vessel-return reconcile source.
      * @member {Object[]|null} lastLiveRows=null

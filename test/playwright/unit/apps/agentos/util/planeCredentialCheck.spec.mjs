@@ -29,12 +29,42 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
             component        : {getStateProvider: () => ({setData: (key, value) => { data[key] = value }}), windowId: 7},
             data,
             isDestroyed      : false,
-            planeCheckEpisode: false
+            planeCheckEpisode: null
         }
     }
 
     function shellAnswers(reply) {
         globalThis.Neo.main = {addon: {ShellPlane: {verifyPlane: args => { calls.push(args); return reply }}}}
+    }
+
+    /**
+     * @summary Episode A asks, a read recovers, episode B asks; B's answer lands first, then A's.
+     * @param {Object} newer B's answer.
+     * @param {Object} older A's answer.
+     * @returns {Promise<String|null>} The published cause.
+     */
+    async function reenter(newer, older) {
+        const owner = makeOwner(), releases = [];
+
+        globalThis.Neo.main = {addon: {ShellPlane: {verifyPlane: args => {
+            calls.push(args);
+            return new Promise(resolve => releases.push(resolve))
+        }}}};
+
+        const first = PlaneCredentialCheck.ask(owner, 'failed-upstream');
+
+        PlaneCredentialCheck.settle(owner);
+
+        const second = PlaneCredentialCheck.ask(owner, 'failed-upstream');
+
+        releases[1](newer);
+        await second;
+        releases[0](older);
+        await first;
+
+        expect(calls.length).toBe(2);
+
+        return owner.data.planeCause
     }
 
     test.beforeEach(() => {
@@ -67,7 +97,7 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         PlaneCredentialCheck.settle(owner);
 
         expect(owner.data.planeCause).toBe(null);
-        expect(owner.planeCheckEpisode).toBe(false);
+        expect(owner.planeCheckEpisode).toBe(null);
 
         await PlaneCredentialCheck.ask(owner, 'failed-upstream');
 
@@ -100,6 +130,14 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         await asking;
 
         expect(owner.data.planeCause).toBe(null)
+    });
+
+    test('after a recovery and a second failure, an older refusal cannot undo the newer episode\'s clear', async () => {
+        expect(await reenter({cause: null}, {cause: 'plane-credential-refused'})).toBe(null)
+    });
+
+    test('after a recovery and a second failure, an older clear cannot drop the newer episode\'s refusal', async () => {
+        expect(await reenter({cause: 'plane-credential-refused'}, {cause: null})).toBe('plane-credential-refused')
     });
 
     test('without a shell, or with an answer that is not a cause, nothing is named', async () => {
