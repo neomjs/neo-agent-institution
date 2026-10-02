@@ -482,6 +482,49 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         pane.destroy()
     });
 
+    test('#416 · a window of collapsed-only replies moves the corpus without moving a row: the edge re-arms on the store\'s total, so the next window is still asked for', () => {
+        // Sophie's falsifier: fifty replies under ONE collapsed thread head render as one visible
+        // row; a count-keyed latch sees the same count after the append and never re-announces,
+        // and a one-row viewport cannot scroll away and back to re-arm it. Older mail would be
+        // unreachable while the thread stays collapsed.
+        const
+            fired  = [],
+            reply  = (i, minute) => row({messageId: `MESSAGE:t${i}`, partOfThread: 'THREAD:one', subject: `reply ${i}`, sentAt: `2026-07-16T${String(10 - Math.floor(minute / 60)).padStart(2, '0')}:${String(59 - (minute % 60)).padStart(2, '0')}:00.000Z`}),
+            pane   = createPane({
+                snapshot : wiredSnapshot(Array.from({length: 50}, (v, i) => reply(i, i)), {limit: 50, offset: 0, count: 50, hasMore: true}),
+                listeners: {pageRequest: data => fired.push(data.offset)}
+            }),
+            grid   = pane.getReference('mailbox-rows'),
+            body   = grid.body,
+            layout = () => body.updateMountedAndVisibleRows();
+
+        body.availableRows = 10;
+
+        expect(pane.store.getCount(), 'one visible head over 49 collapsed replies').toBe(1);
+        expect(pane.store.allItems.getCount()).toBe(50);
+
+        // the first layout: a one-row store is at its edge, the pane asks for the next window
+        layout();
+        expect(fired).toEqual([50]);
+
+        // the next window: fifty MORE replies of the same thread land collapsed — visible count
+        // unchanged at 1, total 100, the producer still says more exists
+        pane.snapshot = wiredSnapshot(Array.from({length: 50}, (v, i) => reply(50 + i, 50 + i)), {limit: 50, offset: 50, count: 50, hasMore: true});
+        expect(pane.store.getCount()).toBe(1);
+        expect(pane.store.allItems.getCount()).toBe(100);
+        expect(pane.pendingOffset, 'the landed window cleared the gate').toBeNull();
+
+        layout();
+        expect(fired, 'the edge re-armed on the total and the pane asked for the following window').toEqual([50, 100]);
+
+        // the honest end: the same shape with hasMore: false asks for nothing more
+        pane.snapshot = wiredSnapshot(Array.from({length: 10}, (v, i) => reply(100 + i, 100 + i)), {limit: 50, offset: 100, count: 10, hasMore: false});
+        layout();
+        expect(fired).toEqual([50, 100]);
+
+        pane.destroy()
+    });
+
     test('#416 · the body announces the edge once per store count: parked there it stays quiet, leaving and returning or a grown store re-arms it, a short store announces on first layout', () => {
         const
             edges = [],

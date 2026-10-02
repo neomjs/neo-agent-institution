@@ -7,11 +7,13 @@ import GridBody from '../../../../../node_modules/neo.mjs/src/grid/Body.mjs';
  * @summary Fires `scrollEdge` once per entry into the store's last `bufferRowRange` rows, from the
  * same pass that computes the mounted and visible windows ({@link #updateMountedAndVisibleRows}),
  * so scrolling, a resize and a store change all reach it. The announcement is re-armed only by a
- * change of the store's count: a viewport parked at the edge does not fire on every scroll tick,
- * an append that leaves it at the new edge fires once more, and a store shorter than one window
- * fires on its first layout, so a short first page still reaches its consumer. The pane turns the
- * announcement into a window request under its own gate (`page.hasMore`, one request in flight);
- * this body decides nothing about data.
+ * change of the store's size — its visible count OR its total behind the filter: a viewport parked
+ * at the edge does not fire on every scroll tick, an append that leaves it at the new edge fires
+ * once more, an append the collapse filter hides entirely (fifty replies under one collapsed
+ * thread head) still fires, because the corpus moved even though no row did, and a store shorter
+ * than one window fires on its first layout, so a short first page still reaches its consumer. The
+ * pane turns the announcement into a window request under its own gate (`page.hasMore`, one
+ * request in flight); this body decides nothing about data.
  *
  * Interim by design: the engine's own body is to publish the same event, and the pin that carries
  * it retires this class; the grid's relay and the pane's handler stay as they are.
@@ -34,9 +36,10 @@ class Body extends GridBody {
     }
 
     /**
-     * The store count the edge was last announced for; `null` while the window is away from the
-     * edge. The re-arm is the count change, never a scroll tick.
-     * @member {Number|null} edgeAnnouncedFor=null
+     * The store size the edge was last announced for, `visible/total`; `null` while the window is
+     * away from the edge. The re-arm is a size change, never a scroll tick; the total is in the key
+     * so a window the filter hides entirely still re-arms it.
+     * @member {String|null} edgeAnnouncedFor=null
      * @protected
      */
     edgeAnnouncedFor = null
@@ -50,15 +53,18 @@ class Body extends GridBody {
         super.updateMountedAndVisibleRows();
 
         let me               = this,
-            count            = me.store?.count ?? 0,
+            {store}          = me,
+            count            = store?.count ?? 0,
+            total            = store?.allItems?.getCount?.() ?? count,
+            size             = `${count}/${total}`,
             [start, endIndex] = me.visibleRows,
             atEdge           = count > 0 && endIndex + me.bufferRowRange >= count;
 
         if (!atEdge) {
             me.edgeAnnouncedFor = null
-        } else if (me.edgeAnnouncedFor !== count) {
-            me.edgeAnnouncedFor = count;
-            me.fire('scrollEdge', {count, endIndex, startIndex: start})
+        } else if (me.edgeAnnouncedFor !== size) {
+            me.edgeAnnouncedFor = size;
+            me.fire('scrollEdge', {count, endIndex, startIndex: start, total})
         }
     }
 }
