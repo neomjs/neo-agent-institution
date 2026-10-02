@@ -384,10 +384,10 @@ apps/agentos/view/fleet/mailbox/RowComponent.mjs
     157543a0c4855aedb34520c38ee6ff66b710be9a
 
 apps/agentos/view/fleet/memories/Container.mjs
-    f499e388c35845f6e2a16dc3771da8c85b28593b
+    649d695d1acedcd020d790c346b2a59f23332fa2
 
 apps/agentos/view/fleet/memories/RowsGrid.mjs
-    44c6e738dbdf2dbc24b23af68d34c432df8531bf
+    1d4efc0790226006393fae4319cff4ccf82b4ace
 
 apps/agentos/view/fleet/memories/SummaryGrid.mjs
     bc85e6185ca0158c06c71decc6ec1dcd71cc301f

@@ -167,8 +167,9 @@ async function startMemoriesFleet() {
  * @summary Native Fleet memories journey over session summaries: activating the resident
  * south-strip tab shows the pane; choosing an agent is the roster's selection (the pane carries
  * no chooser of its own — the one-picker IA); the App Worker crosses the authenticated allowlisted
- * bridge; summary cards render with honest multi-agent attribution; the summary drain appends
- * the older pages until the producer's total is assembled (the paging chrome is retired); guarded
+ * bridge; summary cards render with honest multi-agent attribution; the register's scroll edge
+ * requests the older pages until the producer's total is assembled (the paging chrome is retired;
+ * a corpus shorter than one window is at its edge on first layout, so it assembles unasked); guarded
  * non-string titles/summaries are named; and the wire carries only the explicit target — never a
  * viewer claim, never a projection. The rematerialization variants create TRUE document absence
  * (committed clones) — a resident tab switch only hides the inactive card.
@@ -179,7 +180,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
     test.setTimeout(120000);
     test.use({viewport: {width: 1600, height: 1000}});
 
-    test('tab → roster selection → summary cards → drained append → guarded non-string card', async ({page, neuralLink}) => {
+    test('tab → roster selection → summary cards → edge-requested append → guarded non-string card', async ({page, neuralLink}) => {
         const fleet = await startMemoriesFleet();
 
         try {
@@ -251,10 +252,11 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             // the in-flight response lands in the REBUILT pane (write-time pane resolve), with
             // the selection attached — variant B's "renders with activeAgent: null" is dead. The
-            // summary DRAIN (the paging chrome's replacement) then follows the producer's total:
-            // one follow-up intent per accepted envelope until the corpus is assembled, so the
-            // first page's "2 of 3" is transient and the settled line reads the whole corpus. The
-            // captured stamp renders in the VIEWER's locale (ViewerTime); asserted as a shape.
+            // register's scroll EDGE (the paging chrome's replacement) then follows the producer's
+            // total: two cards are shorter than the window, so the engine announces the edge on the
+            // first layout and the pane asks for the next window once; the first page's "2 of 3"
+            // is transient and the settled line reads the whole corpus. The captured stamp renders
+            // in the VIEWER's locale (ViewerTime); asserted as a shape.
             await expect(paneB.locator('.fm-memories-card')).toHaveCount(3, {timeout: 10000});
             await expect(pane).toContainText(/@neo-opus-ada · 3 of 3 sessions · captured .+/);
             await expect(pane.locator('.fm-memories-card').nth(0)).toContainText('Wake transport and integrity contracts');
@@ -284,7 +286,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             expect(await cellChrome(), 'a card click marks no row and paints no band: the register has no selection model').toEqual({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px', selected: false});
             expect(await pane.locator('.fm-memories-summary-grid .neo-grid-view').evaluate(view => [...view.classList].filter(cls => cls.startsWith('neo-selection'))), 'no selection model registered on the register').toEqual([]);
 
-            // the paging chrome is retired: the drain did the append, and no "Older sessions"
+            // the paging chrome is retired: the edge did the append, and no "Older sessions"
             // affordance exists to click — corpus exhaustion is the settled "3 of 3" line above
             const older = pane.getByRole('button', {name: 'Older sessions'});
             await expect(older).toHaveCount(0);
@@ -330,9 +332,9 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             // from the rebuilt pane — a cold projection carrying a target and no snapshot re-reads
             // by design (memories/Container.mjs, onConstructed: a pane that renders "Reading X…"
             // forever is a hung claim), while the controller's read generation adopts the latest
-            // response; the drain's offset continuation; Bob's page zero. NO offset request for
-            // Bob exists anywhere — the continuation could not fire in the pending window, so his
-            // page zero was never superseded or preceded.
+            // response; the edge's one offset continuation (a second page-zero landing with the
+            // same count announces no new edge); Bob's page zero. NO offset request for Bob exists
+            // anywhere — his one card completes his corpus, so his edge asks nothing.
             expect(memoriesRequests.map(request => request.params)).toEqual([
                 {agentIdentity: '@neo-opus-ada'},
                 {agentIdentity: '@neo-opus-ada'},

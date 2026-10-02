@@ -17,12 +17,13 @@ import ViewerTime            from '../../../util/ViewerTime.mjs';
  * Choosing whose memories to read is an explicit act — the pane never auto-defaults to a roster
  * agent.
  *
- * **No paging chrome** (operator direction 2026-08-28, as in the mailbox): the
- * buffered grids scroll, and the pane DRAINS the remote corpus itself — after each accepted
- * coherent envelope it fires exactly ONE follow-up read intent while the producer's `total` says
- * more corpus exists (armed per envelope arrival, floored per rendered depth so a repeated or
- * echo-less answer can never loop), and the honest end is the only stop. Refresh stays: an
- * explicit re-read intent is not paging.
+ * **No paging chrome** (operator direction 2026-08-28, as in the mailbox): the buffered grids
+ * scroll, and continuation is deliberate — each register's grid relays the engine's `scrollEdge`
+ * when the operator's window reaches the loaded end, and the pane then fires exactly ONE follow-up
+ * read intent at the rendered depth while the producer's `total` says more corpus exists and no
+ * window is in flight. A corpus shorter than one window is at its edge on first layout, so a short
+ * corpus still assembles; the honest end is the only stop. Refresh stays: an explicit re-read
+ * intent is not paging.
  *
  * Honest states are first-class: no-selection, switch-pending, unavailable (with the source's
  * reason), a genuinely-empty corpus (`total: 0`), per-card guarded non-string titles/summaries,
@@ -192,29 +193,24 @@ class MemoriesPane extends Container {
      */
     renderedDrillSession = null
     /**
-     * Armed by {@link #afterSetSnapshot} and consumed by ONE {@link #applySnapshot} run: the
-     * summary drain fires only when a NEW envelope landed — a drill open/close re-render never
-     * re-requests.
-     * @member {Boolean} drainArmed=false
+     * The offset of the summary window in flight — set when the register's edge requests it,
+     * cleared when the next envelope lands or the target switches; `null` while nothing is pending.
+     * @member {Number|null} pendingOffset=null
      */
-    drainArmed = false
+    pendingOffset = null
     /**
-     * The rendered depth the summary drain last requested from — a follow-up fires only ABOVE
-     * it, so an echo-less or repeated answer can never loop the chain. Reset to -1 whenever the
-     * corpus replaces (a fresh page zero re-opens the whole chain).
-     * @member {Number} drainFloor=-1
+     * The drill twin of {@link #pendingOffset}.
+     * @member {Number|null} drillPendingOffset=null
      */
-    drainFloor = -1
+    drillPendingOffset = null
     /**
-     * The drill twin of {@link #drainArmed}.
-     * @member {Boolean} drillDrainArmed=false
+     * The summary register announced a valid edge while a drill owned the zone and the pane refused
+     * to page behind it. A hidden register keeps its last geometry, so a continuation landing behind
+     * the drill announces its new count and the engine latches that count; the refusal is replayed
+     * once on return, or the list would sit short of its corpus with no edge left to reach.
+     * @member {Boolean} summaryEdgeDeferred=false
      */
-    drillDrainArmed = false
-    /**
-     * The drill twin of {@link #drainFloor}.
-     * @member {Number} drillDrainFloor=-1
-     */
-    drillDrainFloor = -1
+    summaryEdgeDeferred = false
 
     /**
      * @summary Create the pane-local Stores, hand each to its grid register, and render held
@@ -235,12 +231,17 @@ class MemoriesPane extends Container {
         me.turnStore    = Neo.create(AgentSessionTurns);
 
         // pane-owned stores flow INTO the injected grids (autoDestroyStore: false on the grid —
-        // this pane stays the owner); the drill-open intent flows back out of the summary grid
-        const summaryGrid = me.getReference('memories-summary-grid');
+        // this pane stays the owner); the drill-open intent and each register's scroll edge flow
+        // back out of the grids
+        const
+            summaryGrid = me.getReference('memories-summary-grid'),
+            turnGrid    = me.getReference('memories-turn-grid');
 
         summaryGrid.store = me.summaryStore;
-        summaryGrid.on('cardOpen', me.onGridCardOpen, me);
-        me.getReference('memories-turn-grid').store = me.turnStore;
+        summaryGrid.on('cardOpen',   me.onGridCardOpen,      me);
+        summaryGrid.on('scrollEdge', me.onSummaryScrollEdge, me);
+        turnGrid.store = me.turnStore;
+        turnGrid.on('scrollEdge', me.onTurnScrollEdge, me);
 
         // Rematerialization coherence: a pane rebuilt from an owner-held snapshot must not render
         // cards for a target no selection points at — the selection is derived from the rendered
@@ -293,15 +294,16 @@ class MemoriesPane extends Container {
         }
 
         me.getReference('memories-summary-grid').applyBags([]);
-        me.renderedTarget = null;
-        me.drainFloor     = -1;
+        me.renderedTarget      = null;
+        me.pendingOffset       = null;
+        me.summaryEdgeDeferred = false;
         me.applySnapshot();
         value && me.fire('memoriesRequest', {agentIdentity: value})
     }
 
     /** @param {Object|null} value @param {Object|null} oldValue */
     afterSetSnapshot(value, oldValue) {
-        this.drainArmed = true;
+        this.pendingOffset = null;
         this.isConstructed && this.applySnapshot()
     }
 
@@ -312,7 +314,7 @@ class MemoriesPane extends Container {
 
     /** @param {Object|null} value @param {Object|null} oldValue */
     afterSetDrillSnapshot(value, oldValue) {
-        this.drillDrainArmed = true;
+        this.drillPendingOffset = null;
         this.isConstructed && this.applyDrillSnapshot()
     }
 
@@ -357,7 +359,7 @@ class MemoriesPane extends Container {
 
         me.getReference('memories-turn-grid').applyBags([]);
         me.renderedDrillSession = null;
-        me.drillDrainFloor      = -1;
+        me.drillPendingOffset   = null;
         me.drillSession         = {sessionId, title: target.title ?? null};
         me.fire('sessionDetailRequest', {sessionId, title: target.title ?? null})
     }
@@ -370,12 +372,68 @@ class MemoriesPane extends Container {
     onDrillBackClick() {
         const me = this;
 
-        me.drillSession = null;
+        const replayEdge = me.summaryEdgeDeferred;
+
+        me.summaryEdgeDeferred  = false;
+        me.drillSession         = null;
         me.getReference('memories-turn-grid').applyBags([]);
         me.renderedDrillSession = null;
-        me.drillDrainFloor      = -1;
+        me.drillPendingOffset   = null;
         me.fire('sessionDetailClosed', {});
-        me.applySnapshot()
+        me.applySnapshot();
+
+        // the edge the list announced behind the drill: the engine will not announce that count
+        // again, so the pane replays its own refusal exactly once, after the list is back
+        replayEdge && me.onSummaryScrollEdge()
+    }
+
+    /**
+     * @summary The summary register reached its loaded end: request the next window at the
+     * rendered depth, while the adopted envelope says more corpus exists and none is in flight.
+     * Never off a corpus the selection does not point at, never from {@link #applySnapshot}
+     * (continuation starts at the operator's edge), and never behind an open drill — that edge is
+     * remembered and replayed on return ({@link #summaryEdgeDeferred}).
+     */
+    onSummaryScrollEdge() {
+        const
+            me       = this,
+            target   = me.activeAgent,
+            snapshot = me.snapshot,
+            adopted  = target && me.renderedTarget === target && snapshot?.target === target &&
+                       snapshot.capability?.state === 'wired' ? snapshot : null,
+            count    = me.summaryStore?.count ?? 0;
+
+        if (!adopted || me.pendingOffset !== null || !Number.isFinite(adopted.total) || count >= adopted.total) {
+            return
+        }
+
+        if (me.drillSession) {
+            me.summaryEdgeDeferred = true;
+            return
+        }
+
+        me.pendingOffset = count;
+        me.fire('memoriesRequest', {agentIdentity: target, offset: count})
+    }
+
+    /**
+     * @summary The drill twin of {@link #onSummaryScrollEdge}: the turn register reached the
+     * loaded end of the open session.
+     */
+    onTurnScrollEdge() {
+        const
+            me       = this,
+            open     = me.drillSession,
+            snapshot = me.drillSnapshot,
+            adopted  = open && me.renderedDrillSession === open.sessionId &&
+                       snapshot?.sessionId === open.sessionId &&
+                       snapshot.capability?.state === 'wired' ? snapshot : null,
+            count    = me.turnStore?.count ?? 0;
+
+        if (adopted && me.drillPendingOffset === null && Number.isFinite(adopted.total) && count < adopted.total) {
+            me.drillPendingOffset = count;
+            me.fire('sessionDetailRequest', {sessionId: open.sessionId, title: open.title, offset: count})
+        }
     }
 
     /**
@@ -385,7 +443,9 @@ class MemoriesPane extends Container {
      * switch-pending state instead, so a stale or late foreign-target page can never resurrect
      * old cards or re-open the drain. Replace is the default; a same-target `page.offset > 0`
      * continuation on an already-accepted page zero EXTENDS the held corpus through the grid's
-     * one data path. Then: sync the zones and run the drain.
+     * one data path. Then: sync the zones. No read starts here — the register's scroll edge asks
+     * ({@link #onSummaryScrollEdge}); the rendered key is written BEFORE the bags seat, because a
+     * corpus shorter than one window announces its edge inside that very set.
      */
     applySnapshot() {
         const
@@ -406,6 +466,7 @@ class MemoriesPane extends Container {
         if (wired) {
             // the cells read the target for co-author attribution — set BEFORE the bags seat
             summaryGrid.target = adopted.target;
+            me.renderedTarget  = adopted.target;
 
             const incoming = adopted.sessions.filter(session => session?.id).map(session => ({...session}));
 
@@ -416,14 +477,11 @@ class MemoriesPane extends Container {
 
                 summaryGrid.applyBags(held.concat(incoming.filter(bag => !heldIds.has(bag.id))))
             } else {
-                me.drainFloor = -1;
                 summaryGrid.applyBags(incoming)
             }
-
-            me.renderedTarget = adopted.target
         } else {
-            me.drainFloor     = -1;
-            me.renderedTarget = null;
+            me.renderedTarget      = null;
+            me.summaryEdgeDeferred = false;
             me.summaryStore.count > 0 && summaryGrid.applyBags([])
         }
 
@@ -443,20 +501,7 @@ class MemoriesPane extends Container {
 
         refreshEl && (refreshEl.hidden = !me.activeAgent || Boolean(me.drillSession));
 
-        me.syncZones();
-
-        // The summary drain — the paging chrome's replacement: exactly one follow-up intent per
-        // NEWLY-arrived accepted envelope (armed per afterSetSnapshot) while the producer's total
-        // says more corpus exists, floored by rendered depth so a repeated answer cannot loop.
-        // Suspended while the drill owns the zone; the corpus resumes assembling on return.
-        if (me.drainArmed && wired && !pending && !me.drillSession &&
-            Number.isFinite(adopted.total) && me.summaryStore.count < adopted.total &&
-            me.summaryStore.count > me.drainFloor) {
-            me.drainFloor = me.summaryStore.count;
-            me.fire('memoriesRequest', {agentIdentity: me.activeAgent, offset: me.summaryStore.count})
-        }
-
-        me.drainArmed = false
+        me.syncZones()
     }
 
     /**
@@ -465,7 +510,7 @@ class MemoriesPane extends Container {
      * envelope whose `sessionId` mismatches the open drill is NOT adopted — a stale or late
      * foreign-session page can never resurrect old rows or re-open the drill drain. Replace is
      * the default; a same-session continuation extends through the one data path. Then: sync the
-     * zones and run the drill drain.
+     * zones. No read starts here — the turn register's scroll edge asks ({@link #onTurnScrollEdge}).
      */
     applyDrillSnapshot() {
         const
@@ -483,6 +528,8 @@ class MemoriesPane extends Container {
             append   = wired && adopted.page?.offset > 0 && adopted.sessionId === me.renderedDrillSession;
 
         if (wired) {
+            me.renderedDrillSession = adopted.sessionId;
+
             const incoming = adopted.turns.filter(turn => turn?.id).map(turn => ({...turn}));
 
             if (append) {
@@ -492,27 +539,14 @@ class MemoriesPane extends Container {
 
                 turnGrid.applyBags(held.concat(incoming.filter(bag => !heldIds.has(bag.id))))
             } else {
-                me.drillDrainFloor = -1;
                 turnGrid.applyBags(incoming)
             }
-
-            me.renderedDrillSession = adopted.sessionId
         } else {
-            me.drillDrainFloor      = -1;
             me.renderedDrillSession = null;
             me.turnStore.count > 0 && turnGrid.applyBags([])
         }
 
-        me.syncZones();
-
-        // the drill drain — the "older turns" button's replacement, same contract one level down
-        if (me.drillDrainArmed && wired && Number.isFinite(adopted.total) &&
-            me.turnStore.count < adopted.total && me.turnStore.count > me.drillDrainFloor) {
-            me.drillDrainFloor = me.turnStore.count;
-            me.fire('sessionDetailRequest', {sessionId: open.sessionId, title: open.title, offset: me.turnStore.count})
-        }
-
-        me.drillDrainArmed = false
+        me.syncZones()
     }
 
     /**
