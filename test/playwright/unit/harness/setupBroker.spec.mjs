@@ -1,5 +1,5 @@
 import {expect, test}            from '@playwright/test';
-import {mkdtempSync, readFileSync, statSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdtempSync, readFileSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir}                  from 'node:os';
 import path                      from 'node:path';
 import {
@@ -49,8 +49,9 @@ function fakeModules({evaluations = []} = {}) {
                 setupRecordPath  : (root, runId) => path.join(root, `${runId}.json`),
                 readSetupRecord  : async filePath => { try { return {record: JSON.parse(readFileSync(filePath, 'utf8')), problem: null} } catch { return {record: null, problem: 'unreadable'} } },
                 resumeTarget     : (record, invocation) => ({...record.target, ...Object.fromEntries(Object.entries(invocation).filter(([, value]) => value != null))}),
-                describeBinding  : (record, {recipeVersion}) => record.recipeVersion === recipeVersion ? 'bound' : 'version-mismatch',
-                retireCurrentProof: (record, {reason}) => ({...record, consents: [], receipts: [], retired: reason})
+                describeBinding  : (record, {recipeVersion, target}) => record.recipeVersion !== recipeVersion ? 'version-mismatch' : JSON.stringify(record.target) !== JSON.stringify(target) ? 'target-mismatch' : 'bound',
+                // the real module re-binds the record to the new target and retires the old proof into history
+                retireCurrentProof: (record, {reason, target}) => ({...record, target, consents: [], receipts: [], retired: reason})
             },
             hostEffects: {
                 createHost             : () => ({run: async () => ({stdout: '', stderr: ''}), fsModule: null, now: Date.now}),
@@ -300,6 +301,53 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         expect(readFileSync(filePath, 'utf8')).toBe('ghp_secondValueNeverReal');
 
         modules.hostEffects.recordConsent = original
+    });
+
+    test('a credential answered for one run never lands in another: a window opened for target A is refused once a second window re-targets the run to B; the same target stays A', async () => {
+        const
+            gate      = [],
+            {modules} = fakeModules(),
+            {broker, setupRoot} = createBroker({modules, prompt: () => new Promise(resolve => gate.push(resolve))}),
+            targetA   = {planeId: 'plane-a', dataRoot: '/srv/a', endpoint: 'http://127.0.0.1:3102'},
+            targetB   = {planeId: 'plane-b', dataRoot: '/srv/b', endpoint: 'http://127.0.0.1:3102'};
+
+        const first = await broker.evaluate(trusted, {target: targetA});
+
+        expect(first.evaluation.target).toEqual(targetA);
+
+        // the window opens for A and is held; a second trusted window re-targets the run to B
+        const held = broker.credential(trusted, {stepId: 'plane-credential'});
+
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(gate.length, 'the window is open').toBe(1);
+
+        const retargeted = await broker.evaluate(trusted, {target: targetB});
+
+        expect(retargeted.evaluation.target).toEqual(targetB);
+
+        // the held window answers: refused, nothing written, nothing recorded
+        gate.shift()('ghp_answeredForA');
+
+        expect(await held).toEqual({ok: false, reason: 'the run was re-targeted while the window was open: nothing kept', stepId: 'plane-credential'});
+        expect(existsSync(path.join(setupRoot, 'credentials', 'plane-credential')), 'no file for the refused value').toBe(false);
+
+        const record = JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8'));
+
+        expect(record.target).toEqual(targetB);
+        expect(record.consents).toEqual([]);
+
+        // the same-target control: a window opened for B, an evaluate for B meanwhile, the answer lands
+        const heldSame = broker.credential(trusted, {stepId: 'plane-credential'});
+
+        await new Promise(resolve => setTimeout(resolve, 10));
+        await broker.evaluate(trusted, {target: targetB});
+        gate.shift()('ghp_answeredForB');
+
+        const kept = await heldSame;
+
+        expect(kept.ok).toBe(true);
+        expect(JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8')).consents.map(row => row.stepId)).toEqual(['plane-credential']);
+        expect(readFileSync(kept.path, 'utf8')).toBe('ghp_answeredForB')
     });
 
     test('effect refuses by name until the Brain exports the CLI\'s orchestration — never a second implementation here', async () => {

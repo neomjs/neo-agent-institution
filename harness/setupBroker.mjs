@@ -387,6 +387,20 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                 return refuse(`'${stepId}' is not a credential question of this recipe`, {stepId})
             }
 
+            // the run the window is opened FOR, captured before the prompt: the window is modal to
+            // its own shell window only, and another window may re-target the run meanwhile
+            let expected;
+
+            try {
+                expected = await serialize(async () => {
+                    const {record, target} = await resolveRun(admitted.modules, null);
+
+                    return {runId: record.runId, target: JSON.stringify(target)}
+                })
+            } catch (error) {
+                return refuse(`the run could not be resolved: ${error.message}`, {stepId})
+            }
+
             const value = await promptCredential({event, method: 'setup-credential'});
 
             if (!value) {
@@ -399,14 +413,22 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                     filePath = path.join(dir, stepId);
 
                 // the file write is part of the consent's operation: a second window answered while
-                // this consent is still being accepted cannot replace the value its path refers to
+                // this consent is still being accepted cannot replace the value its path refers to;
+                // and a value answered for one run never lands in another — the run and its target
+                // are verified inside the operation before anything is written or admitted
                 return await serialize(async () => {
+                    const current = await resolveRun(admitted.modules, null);
+
+                    if (current.record.runId !== expected.runId || JSON.stringify(current.target) !== expected.target) {
+                        return refuse('the run was re-targeted while the window was open: nothing kept', {stepId})
+                    }
+
                     await fsModule.mkdir(dir, {recursive: true, mode: 0o700});
                     await fsModule.writeFile(filePath, value, {mode: 0o600});
                     await fsModule.chmod(filePath, 0o600);
 
                     const
-                        {host, record, recordPath} = await resolveRun(admitted.modules, null),
+                        {host, record, recordPath} = current,
                         reference                  = await hostEffects.admitCredentialReference({answer: filePath, fsModule});
 
                     if (!reference.ok) {
