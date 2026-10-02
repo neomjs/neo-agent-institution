@@ -195,7 +195,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    fee3647e508540967c6b203eb41251dbd6066c99
+    5d11901094202fb43245963d71a34ef3b1b37876
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     9c0491163279261fdb92e1e487093322cb1a26c5
@@ -279,7 +279,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    f7647fc932868c92d487938d25ac2005ba9f2551
+    0b2e28dc76156cc987abf13ca9b2c574ac435c19
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     958c10449b0295c19d0e308362b1c78d26ce5672
@@ -309,7 +309,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     f2a242212840067fecbccc5aa381bff6d163c5b0
 
 apps/agentos/view/fleet/detail/Container.mjs
-    a8e874ae74353cbd0b642288c913bc3824bfa814
+    24a08581134347f5aac545fe80e8e9201c51e6e2
 
 apps/agentos/view/fleet/detail/RepositoryList.mjs
     e0b21d333884e03c5c0bab0d84d0a73a65e1e855
