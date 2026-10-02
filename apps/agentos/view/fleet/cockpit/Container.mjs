@@ -523,7 +523,13 @@ class FleetCockpit extends VesselContainer {
      * @protected
      */
     afterSetDetailRecord(value, oldValue) {
-        oldValue !== undefined && this.getAgentDetailPane()?.set({record: value ?? null});
+        // the record and the roster observation it was read under travel as ONE write: a re-seat
+        // inside an admission carries the admission's clock, so the pane never renders a new
+        // record against the previous roster's instant
+        oldValue !== undefined && this.getAgentDetailPane()?.set({
+            record          : value ?? null,
+            rosterObservedAt: this.getController()?.rosterObservedAt ?? null
+        });
         this.pushVesselTitles()
     }
 

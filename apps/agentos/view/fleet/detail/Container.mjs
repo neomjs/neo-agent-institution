@@ -389,7 +389,8 @@ class AgentDetail extends Container {
     }
 
     /**
-     * Triggered after the roster admission instant changed — the repository pane re-ages.
+     * @summary Triggered after the roster admission instant changed — the repository pane re-ages
+     * from the new observation without a record re-seat.
      * @param {Number|null} value
      * @param {Number|null} oldValue
      * @protected
