@@ -24,7 +24,8 @@ const LIFECYCLE_ACTION_METHODS = Object.freeze({
 
 const SECRET_PATTERNS = [
     /\b(?:github_pat|ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]+/gi,
-    /\b(PAT|token|credential|secret)\b\s*[:=]?\s*[^\s,;]+/gi
+    // a labelled value (`PAT: …`, `token=…`), never the bare word: the Fleet's own refusals say "no GitHub PAT stored"
+    /\b(PAT|token|credential|secret)\b\s*[:=]\s*[^\s,;]+/gi
 ];
 
 /**
@@ -142,6 +143,8 @@ class FleetLifecycleIntentAdapter extends Base {
 
     /**
      * @summary Consume one per-card lifecycle intent and write honest record state for B4 to render.
+     * A refusal the Fleet answers as data (`{status: 'rejected', reason}`, the bridge's domain outcome)
+     * ends `rejected` like a throw, never `settled`.
      * @param {Object} intent
      * @param {'start'|'stop'|'restart'} intent.action
      * @param {String} intent.agentId Durable fleet agent id.
@@ -195,12 +198,15 @@ class FleetLifecycleIntentAdapter extends Base {
                 options
             );
 
-            FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {
-                controlReason: null,
-                pendingAction: null
-            });
+            const controlReason = result?.status === 'rejected'
+                ? FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', result.reason)
+                : null;
 
-            return {accepted: true, action, method, ok: true, status: 'settled', result}
+            FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {controlReason, pendingAction: null});
+
+            return controlReason
+                ? {accepted: true, action, method, ok: false, status: 'rejected', controlReason}
+                : {accepted: true, action, method, ok: true, status: 'settled', result}
         } catch (error) {
             const
                 kind          = error?.isFleetLifecycleTimeout ? 'timeout' : 'rejected',
