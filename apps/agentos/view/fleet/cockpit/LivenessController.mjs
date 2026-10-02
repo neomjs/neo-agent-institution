@@ -785,7 +785,8 @@ class LivenessController extends ViewerWakeController {
         cockpit.getCatchUpPane()?.onRefreshClick();
         cockpit.getWakeRoutesPane()?.onRefreshClick();
 
-        me.loadTasks()
+        me.loadTasks();
+        me.loadOpenWork()
     }
 
     /**

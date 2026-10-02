@@ -721,6 +721,7 @@ class FleetCockpit extends VesselContainer {
         controller.loadActivity();
         controller.loadRoster();
         controller.loadTasks();
+        controller.loadOpenWork();
         controller.loadOperatorIdentity();
         controller.startLiveness();
         controller.ensureViewerWakeStream()
