@@ -74,7 +74,7 @@ jobs:
               uses: actions/checkout@v7
               with:
                   repository: neomjs/neo-agent-brain
-                  ref: e6f0bb023872ebc2dfb20d4b8c281e4f9e72403a
+                  ref: cbd11cb62be316ec9f195b6dff0732e0cfe8ba40
                   path: brain
 
             - name: Set up Node.js
