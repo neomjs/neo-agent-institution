@@ -285,7 +285,7 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     3c7f0e76f5abe49215ff16f59cb7d327d1f13e2a
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    128906b95d847faef7c22bb7fed3786e76f6a92b
+    09ab2456b19e4737b4b814d50b2a381dc028f3c7
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     82a2570c3976b574c557f592281830b8449f1125
