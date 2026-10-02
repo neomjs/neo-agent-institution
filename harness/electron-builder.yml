@@ -23,6 +23,7 @@ files:
     - planeConfig.mjs
     - preload.cjs
     - seatRootRecord.mjs
+    - setupBroker.mjs
     - wakeReceiver.mjs
     - package.json
     - assets/tray/**

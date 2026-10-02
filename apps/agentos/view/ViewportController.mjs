@@ -1,6 +1,6 @@
 import Controller                                      from '../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import InstanceManager                                 from './fleet/instances/ManagerContainer.mjs';
-import PlaneSetupPanel                                 from './PlaneSetupPanel.mjs';
+import SetupPanel                                      from './setup/Panel.mjs';
 import {createFleetProfile, deriveFleetProfileId}      from '../fleet/connectionProfiles.mjs';
 import {
     establishFleetSessionCustody,
@@ -83,15 +83,30 @@ class ViewportController extends Controller {
     }
 
     /**
+     * @summary The door a packaged shell opens first: a configured plane, or one already running on
+     * this machine, means Connect; nothing of either means Create (the probe's `runningPlane` read).
+     * @param {Object} status The shell's plane status
+     * @returns {Promise<String>} `create` | `connect`
+     */
+    async choosePrimaryDoor(status) {
+        if (status?.configured) return 'connect';
+
+        const probe = await Promise.resolve(Neo.main?.addon?.ShellPlane?.setupProbe?.({windowId: this.windowId})).catch(() => null);
+
+        return probe?.ok && probe.probe?.runningPlane ? 'connect' : 'create'
+    }
+
+    /**
      * @summary Publishes whether a packaged shell has a plane (`shellPlaneConfigured`, which Home
-     * reads), then mounts the plane-setup card above the shell when it has none, or on request
+     * reads), then mounts the setup card above the shell when it has none, or on request
      * (`force`: another plane, or one that refused this shell). A browser build never creates the
      * card, so its field styles never reorder the cascade the other surfaces render against.
      * @param {Object}  [options]
      * @param {Boolean} [options.force=false] Mount for a configured shell too.
+     * @param {String}  [options.door] The door to open; the shell's status decides when omitted.
      * @returns {Promise<void>}
      */
-    async mountPlaneSetup({force = false} = {}) {
+    async mountPlaneSetup({door = null, force = false} = {}) {
         const
             me       = this,
             status   = await me.readPlaneStatus(),
@@ -102,29 +117,60 @@ class ViewportController extends Controller {
         me.component.stateProvider.setData({shellPlaneConfigured: packaged ? Boolean(status.configured) : null});
 
         if (packaged && (force || !status.configured) && !me.getReference('plane-setup')) {
-            const viewport = me.component;
+            const
+                viewport   = me.component,
+                activeDoor = door ?? await me.choosePrimaryDoor(status);
+
+            if (me.isDestroyed || me.getReference('plane-setup')) return;
 
             viewport.insert(viewport.items.indexOf(me.getReference('shell')), {
-                module   : PlaneSetupPanel,
-                flex     : 'none',
-                reference: 'plane-setup'
+                module    : SetupPanel,
+                activeDoor,
+                flex      : 'none',
+                listeners : {
+                    firstPersistence: 'onSetupFirstPersistence',
+                    openMemories    : 'onSetupOpenMemories'
+                },
+                reference : 'plane-setup'
             })
         }
     }
 
     /**
-     * @summary Brings the plane-setup card back on request (the banner's Connect, the shell switcher),
-     * a dismissed card included; mounts it when this boot never created one, plane or not.
+     * @summary Brings the setup card back on request (the banner's Connect, the shell switcher,
+     * Home's doors), a dismissed card included; mounts it when this boot never created one, plane
+     * or not.
+     * @param {Object} [options]
+     * @param {String} [options.door] The door to open; a mounted card keeps its door when omitted.
      * @returns {Promise<void>}
      */
-    async showPlaneSetup() {
+    async showPlaneSetup({door = null} = {}) {
         const card = this.getReference('plane-setup');
 
         if (card) {
+            door && (card.activeDoor = door);
             card.hidden = false
         } else {
-            await this.mountPlaneSetup({force: true})
+            await this.mountPlaneSetup({door, force: true})
         }
+    }
+
+    /**
+     * @summary First persistence: the quiet confirmation is on the card; the card retires from the
+     * primary slot and stays reachable from the rail, the banner and Home's doors.
+     * @param {Object} data `{density, evaluation}`
+     */
+    onSetupFirstPersistence(data) {
+        const card = this.getReference('plane-setup');
+
+        card && (card.hidden = true)
+    }
+
+    /**
+     * @summary The `done` row's action: the cockpit, where the first memory shows.
+     */
+    onSetupOpenMemories() {
+        Neo.Main.setRoute({value: '/fleet', windowId: this.windowId})
     }
 
     /**

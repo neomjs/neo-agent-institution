@@ -102,6 +102,12 @@ class Viewport extends BaseViewport {
                 // declared HERE so a sibling keeper-view can bind it; leaf-complete by construction
                 // (a block declared null would stop the leaf bubble on its first real answer)
                 deploymentState: DeploymentStateRead.blank(),
+                // the first-run recipe's projected progress and run, written by the setup card's
+                // Create door from its step rows alone (never from the record) and declared HERE so
+                // the chrome's progress line binds it; leaf-complete by construction, every leaf
+                // null until a recipe evaluation lands
+                setupProgress: {blocking: null, next: null, ok: null, total: null},
+                setupRun     : {dataRoot: null, decisions: null, manualActions: null, planeId: null, preset: null, recipeVersion: null, runId: null},
                 // the Golden Path envelope, same shape of ownership: the cockpit's Golden Path read
                 // writes it, the cockpit's reading panes bind it
                 goldenPathEnvelope: GoldenPathEnvelope.blank(),
@@ -165,6 +171,24 @@ class Viewport extends BaseViewport {
                     attachplane    : 'onAttachPlane',
                     manageinstances: 'onManageInstances',
                     switchinstance : 'onSwitchInstance'
+                }
+            }, {
+                // the recipe's projected progress IS the shell spec's visible, honest progress line:
+                // `n of m observed ok · next: <step>`, from the step rows only; absent before a run
+                ntype    : 'component',
+                cls      : ['agent-setup-progress'],
+                reference: 'setup-progress',
+                bind     : {
+                    hidden: data => data.setupProgress.total === null,
+                    text  : data => {
+                        const {blocking, next, ok, total} = data.setupProgress;
+
+                        if (total === null) return '';
+
+                        const tail = blocking ? `${blocking} needs attention` : next ? `next: ${next}` : 'complete';
+
+                        return `${ok} of ${total} observed ok · ${tail}`
+                    }
                 }
             }, '->', {
                 ntype    : 'button',

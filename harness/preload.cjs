@@ -14,7 +14,16 @@ contextBridge.exposeInMainWorld('neoShell', {
     brainHealth : () => ipcRenderer.invoke('brain-health'),
     fleetRequest: request => ipcRenderer.invoke('fleet-request', request),
     planeStatus : () => ipcRenderer.invoke('shell-plane-status'),
-    shellVersion: process.versions.electron
+    // The first-run setup broker (the setup card's Create door): every reply is the recipe's own
+    // JSON, main runs the host effects through the Brain's host-effect module, and a credential is
+    // asked for in main's window — the reply names the kept file's path only, never a value.
+    setupAnswer    : request => ipcRenderer.invoke('shell-setup-answer', request),
+    setupCredential: request => ipcRenderer.invoke('shell-setup-credential', request),
+    setupEffect    : request => ipcRenderer.invoke('shell-setup-effect', request),
+    setupEvaluate  : request => ipcRenderer.invoke('shell-setup-evaluate', request),
+    setupPresets   : () => ipcRenderer.invoke('shell-setup-presets'),
+    setupProbe     : () => ipcRenderer.invoke('shell-setup-probe'),
+    shellVersion   : process.versions.electron
 });
 
 /**

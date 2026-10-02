@@ -1,0 +1,134 @@
+/* The Create door: the three questions as a row each (a key column, then the answer), the preset
+   question as three choice cards, the quiet confirmation as one line in the body role. The served
+   path (no vessel) shows the CLI's command in the mono detail role over a field for its JSON. */
+.fm-setup-create {
+    .fm-setup-q {
+        gap        : var(--fm-space-2);
+        padding    : var(--fm-space-2) var(--fm-space-3) 0;
+        align-items: start;
+    }
+
+    .fm-setup-q-key {
+        flex       : 0 0 140px;
+        padding-top: 3px;
+        font       : var(--fm-text-detail);
+        color      : var(--fm-ink-dim);
+    }
+
+    .fm-setup-budget,
+    .fm-setup-q-note {
+        font : var(--fm-text-detail);
+        color: var(--fm-ink);
+    }
+
+    .fm-setup-q-note {
+        color: var(--fm-ink-dim);
+    }
+
+    .neo-button.fm-setup-credential-button {
+        margin-right: var(--fm-space-2);
+    }
+
+    .fm-setup-presets {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-setup-preset {
+        flex         : 1 1 0;
+        min-width    : 0;
+        border       : 1px solid var(--fm-line);
+        border-radius: 6px;
+        padding      : var(--fm-space-2) var(--fm-space-3);
+        background   : var(--fm-panel-2);
+
+        &.is-chosen {
+            border-color: color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
+        }
+
+        &.is-refused {
+            opacity: .72;
+
+            .fm-setup-preset-verdict {
+                color: var(--fm-ink);
+            }
+        }
+    }
+
+    .fm-setup-preset-name {
+        font       : var(--fm-text-body);
+        font-weight: 600;
+        color      : var(--fm-ink);
+    }
+
+    .fm-setup-preset-fact {
+        margin-top: 3px;
+        font      : var(--fm-text-micro);
+        color     : var(--fm-ink-dim);
+    }
+
+    .fm-setup-preset-verdict {
+        margin-top : var(--fm-space-2);
+        padding-top: var(--fm-space-1);
+        border-top : 1px solid var(--fm-line-soft);
+        font       : var(--fm-text-micro);
+        color      : var(--fm-ink-dim);
+    }
+
+    .neo-button.fm-setup-preset-choose {
+        --button-height: 24px;
+
+        margin-top : var(--fm-space-2);
+        align-self : start;
+        border     : 1px solid var(--fm-line);
+        background : var(--fm-panel);
+        color      : var(--fm-ink);
+        font-weight: 500;
+
+        .neo-button-text {
+            font: var(--fm-text-micro);
+        }
+
+        .neo-button-glyph,
+        .neo-button-text {
+            color: inherit;
+        }
+    }
+
+    .fm-setup-quiet {
+        margin       : var(--fm-space-3) var(--fm-space-3) 0;
+        padding      : var(--fm-space-2) var(--fm-space-3);
+        border       : 1px solid var(--fm-line-soft);
+        border-radius: 6px;
+        background   : var(--fm-panel-2);
+        font         : var(--fm-text-body);
+        color        : var(--fm-ink);
+    }
+
+    .fm-setup-served {
+        gap    : var(--fm-space-2);
+        padding: var(--fm-space-2) var(--fm-space-3) 0;
+    }
+
+    .fm-setup-served-line {
+        font : var(--fm-text-body);
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-setup-served-command {
+        font : var(--fm-text-detail);
+        color: var(--fm-ink);
+    }
+
+    .fm-setup-served-json {
+        margin: 0;
+
+        .neo-textfield-label {
+            color: var(--fm-ink-dim);
+            font : var(--fm-text-body);
+        }
+    }
+
+    .neo-button.fm-setup-project-button {
+        align-self: start;
+    }
+}

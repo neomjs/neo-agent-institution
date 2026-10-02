@@ -1,10 +1,51 @@
-/* The packaged shell's "connect to a plane" card: inline under the top chrome, never a modal gate,
-   so it reads as a quiet panel on the frame ground rather than an alert. It only exists while a
-   packaged shell has no plane configured. Every control inside speaks the FM tokens: the engine's
-   button scale and label role are re-valued at this scope (the mechanism the bar and the band use),
-   the field takes the FM font, and the two buttons carry the product's hierarchy — Not now quiet,
-   Connect in the signal, the add-agent form's idiom. */
+/* The packaged shell's setup card — two doors, Create and Connect: inline under the top chrome,
+   never a modal gate, so it reads as a quiet panel on the frame ground rather than an alert. It
+   exists while a packaged shell has no plane configured, and on request. Every control inside speaks
+   the FM tokens: the engine's button scale and label role are re-valued at this scope (the mechanism
+   the bar and the band use), the field takes the FM font, and the buttons carry the product's
+   hierarchy — Not now quiet, the one primary action in the signal, the add-agent form's idiom. The
+   doors' own rules live beside them (CreateContainer.scss, StepList.scss); this is the family's base. */
 .agent-plane-setup.neo-panel {
+    /* the two doors in the head: micro role, a pressed door in the signal */
+    .fm-setup-doors {
+        gap        : 2px;
+        margin-left: var(--fm-space-3);
+
+        .neo-button.fm-setup-door-button {
+            --button-height: 22px;
+
+            border     : 1px solid var(--fm-line);
+            background : var(--fm-panel-2);
+            color      : var(--fm-ink-dim);
+            font-weight: 500;
+
+            .neo-button-text {
+                font: var(--fm-text-micro);
+            }
+
+            &.pressed {
+                border-color: color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
+                background  : color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
+                color       : var(--fm-signal);
+            }
+
+            .neo-button-glyph,
+            .neo-button-text {
+                color: inherit;
+            }
+        }
+    }
+
+    /* never a gate: the card is bounded and scrolls inside itself, so the shell below keeps its
+       height and stays operable behind it */
+    max-height: 62vh;
+
+    .fm-setup-door {
+        min-height    : 0;
+        overflow-y    : auto;
+        padding-bottom: var(--fm-space-2);
+    }
+
     margin       : var(--fm-space-2) var(--fm-space-3) 0;
     border       : 1px solid var(--fm-line);
     border-left  : 3px solid var(--fm-signal);

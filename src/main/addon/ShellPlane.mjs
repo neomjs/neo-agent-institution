@@ -1,11 +1,27 @@
 import Base from '../../../node_modules/neo.mjs/src/main/addon/Base.mjs';
 
 /**
- * @summary The cockpit's reach into the packaged shell's plane-attach broker pair.
+ * @summary Forwards one setup call to the shell, or answers the no-shell envelope: every setup
+ * channel replies in the same `{ok, reason}` shape, so a browser reads one honest refusal. A
+ * module function, so the remotes read no instance state.
+ * @param {String} name The preload key (`setupEvaluate`, …)
+ * @param {Object} request
+ * @returns {Promise<Object>}
+ */
+function forwardSetup(name, request) {
+    return globalThis.neoShell?.[name]
+        ? globalThis.neoShell[name](request)
+        : Promise.resolve({ok: false, reason: 'no-shell'})
+}
+
+/**
+ * @summary The cockpit's reach into the packaged shell's main-process brokers: the plane-attach pair and
+ * the first-run setup channels.
  *
- * The shell's preload answers both calls in Electron main. Main prompts for the credential itself, so
- * no call from here carries one, and no answer returns one. In a browser there is no shell: each call
- * answers "not available" instead of failing.
+ * The shell's preload answers every call in Electron main. Main prompts for a credential itself, so no
+ * call from here carries one, and no answer returns one — a credential answer is the path of the file
+ * main kept. In a browser there is no shell: each call answers "not available" instead of failing, and
+ * the setup card then shows the CLI's command.
  * @class Neo.main.addon.ShellPlane
  * @extends Neo.main.addon.Base
  */
@@ -25,7 +41,13 @@ class ShellPlane extends Base {
         remote: {
             app: [
                 'attachPlane',
-                'planeStatus'
+                'planeStatus',
+                'setupAnswer',
+                'setupCredential',
+                'setupEffect',
+                'setupEvaluate',
+                'setupPresets',
+                'setupProbe'
             ]
         }
     }
@@ -51,6 +73,66 @@ class ShellPlane extends Base {
         return globalThis.neoShell?.planeStatus
             ? {available: true, ...await globalThis.neoShell.planeStatus()}
             : {available: false}
+    }
+
+    /**
+     * @summary Records a consent for one question. A credential answer is the path main produced;
+     * a value is refused by main, never recorded.
+     * @param {Object} data
+     * @param {String} data.stepId
+     * @param {String} data.answer
+     * @returns {Promise<Object>} `{ok, evaluation}`, or `{ok: false, reason}`
+     */
+    setupAnswer({answer, stepId}) {
+        return forwardSetup('setupAnswer', {answer, stepId})
+    }
+
+    /**
+     * @summary Opens main's credential window for one credential question; the reply names the
+     * kept file's path only, beside the re-evaluated steps.
+     * @param {Object} data
+     * @param {String} data.stepId
+     * @returns {Promise<Object>}
+     */
+    setupCredential({stepId}) {
+        return forwardSetup('setupCredential', {stepId})
+    }
+
+    /**
+     * @summary Consents to one host effect; main runs it through the host-effect module and answers
+     * the re-evaluated steps.
+     * @param {Object} data
+     * @param {String} data.effectId
+     * @returns {Promise<Object>}
+     */
+    setupEffect({effectId}) {
+        return forwardSetup('setupEffect', {effectId})
+    }
+
+    /**
+     * @summary Evaluates the recipe for the bound target — the CLI's `--json` shape.
+     * @param {Object} [data]
+     * @param {Object} [data.target] `{planeId, dataRoot, endpoint}`, each optional
+     * @returns {Promise<Object>}
+     */
+    setupEvaluate(data = {}) {
+        return forwardSetup('setupEvaluate', {target: data.target ?? null})
+    }
+
+    /**
+     * @summary The preset table, as main holds it.
+     * @returns {Promise<Object>}
+     */
+    setupPresets() {
+        return forwardSetup('setupPresets', {})
+    }
+
+    /**
+     * @summary The placement probe's JSON for this machine.
+     * @returns {Promise<Object>}
+     */
+    setupProbe() {
+        return forwardSetup('setupProbe', {})
     }
 }
 
