@@ -403,13 +403,48 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
         pane.onTurnScrollEdge();
         expect(drills).toHaveLength(3);
 
-        // back to the list: the next edge entry on the summary register resumes the partial corpus
-        // at its depth. The engine already announced this count's edge above (a hidden register
-        // never ticks in the browser; the arm forced it), so a fresh entry is the relayed event.
+        // back to the list: the edge the register announced behind the drill was refused, not
+        // forgotten — the pane replays it once, and the re-shown layout (same count, engine latched)
+        // adds nothing
         pane.onDrillBackClick();
-        edge(summaryGrid);
-        pane.onSummaryScrollEdge();
         expect(requests).toEqual([{agentIdentity: '@neo-opus-ada', offset: 1}]);
+        edge(summaryGrid);
+        expect(requests).toHaveLength(1);
+
+        pane.destroy()
+    });
+
+    test('a summary continuation that lands behind an open drill pages nothing there, and the edge it announced is replayed once on return', () => {
+        const
+            {pane, drills, requests} = createDrillPane(),
+            summaryGrid              = pane.getReference('memories-summary-grid');
+
+        pane.activeAgent = '@neo-opus-ada';
+        pane.snapshot = envelope({target: '@neo-opus-ada', sessions: [row('a1'), row('a2')], total: 10});
+        edge(summaryGrid);
+        expect(requests).toEqual([{agentIdentity: '@neo-opus-ada'}, {agentIdentity: '@neo-opus-ada', offset: 2}]);
+
+        pane.onCardOpen(pane.summaryStore.first());
+        expect(drills).toHaveLength(1);
+
+        // the offset-2 window lands while the drill owns the zone. A hidden register keeps the
+        // geometry it last measured, so in the browser the store set itself runs the body's layout
+        // (onStoreLoad → createViewData → updateMountedAndVisibleRows), which announces the NEW
+        // count and latches it; a unit grid has no width, so that layout is forced here. The pane
+        // pages nothing behind the drill.
+        pane.snapshot = envelope({target: '@neo-opus-ada', offset: 2, sessions: [row('a3')], total: 10});
+        expect(pane.summaryStore.count).toBe(3);
+        edge(summaryGrid);
+        expect(requests).toHaveLength(2);
+
+        // back: the re-shown register lays out at the latched count, so the engine stays quiet; the
+        // pane replays the edge it refused, exactly once
+        pane.onDrillBackClick();
+        expect(requests.at(-1)).toEqual({agentIdentity: '@neo-opus-ada', offset: 3});
+        expect(requests).toHaveLength(3);
+        edge(summaryGrid);
+        pane.onDrillBackClick();
+        expect(requests).toHaveLength(3);
 
         pane.destroy()
     });

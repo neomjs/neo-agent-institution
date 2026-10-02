@@ -203,6 +203,14 @@ class MemoriesPane extends Container {
      * @member {Number|null} drillPendingOffset=null
      */
     drillPendingOffset = null
+    /**
+     * The summary register announced a valid edge while a drill owned the zone and the pane refused
+     * to page behind it. A hidden register keeps its last geometry, so a continuation landing behind
+     * the drill announces its new count and the engine latches that count; the refusal is replayed
+     * once on return, or the list would sit short of its corpus with no edge left to reach.
+     * @member {Boolean} summaryEdgeDeferred=false
+     */
+    summaryEdgeDeferred = false
 
     /**
      * @summary Create the pane-local Stores, hand each to its grid register, and render held
@@ -286,8 +294,9 @@ class MemoriesPane extends Container {
         }
 
         me.getReference('memories-summary-grid').applyBags([]);
-        me.renderedTarget = null;
-        me.pendingOffset  = null;
+        me.renderedTarget      = null;
+        me.pendingOffset       = null;
+        me.summaryEdgeDeferred = false;
         me.applySnapshot();
         value && me.fire('memoriesRequest', {agentIdentity: value})
     }
@@ -363,19 +372,27 @@ class MemoriesPane extends Container {
     onDrillBackClick() {
         const me = this;
 
-        me.drillSession = null;
+        const replayEdge = me.summaryEdgeDeferred;
+
+        me.summaryEdgeDeferred  = false;
+        me.drillSession         = null;
         me.getReference('memories-turn-grid').applyBags([]);
         me.renderedDrillSession = null;
         me.drillPendingOffset   = null;
         me.fire('sessionDetailClosed', {});
-        me.applySnapshot()
+        me.applySnapshot();
+
+        // the edge the list announced behind the drill: the engine will not announce that count
+        // again, so the pane replays its own refusal exactly once, after the list is back
+        replayEdge && me.onSummaryScrollEdge()
     }
 
     /**
      * @summary The summary register reached its loaded end: request the next window at the
      * rendered depth, while the adopted envelope says more corpus exists and none is in flight.
-     * Never while a drill owns the zone, never off a corpus the selection does not point at —
-     * and never from {@link #applySnapshot}: continuation starts at the operator's edge.
+     * Never off a corpus the selection does not point at, never from {@link #applySnapshot}
+     * (continuation starts at the operator's edge), and never behind an open drill — that edge is
+     * remembered and replayed on return ({@link #summaryEdgeDeferred}).
      */
     onSummaryScrollEdge() {
         const
@@ -386,11 +403,17 @@ class MemoriesPane extends Container {
                        snapshot.capability?.state === 'wired' ? snapshot : null,
             count    = me.summaryStore?.count ?? 0;
 
-        if (adopted && !me.drillSession && me.pendingOffset === null &&
-            Number.isFinite(adopted.total) && count < adopted.total) {
-            me.pendingOffset = count;
-            me.fire('memoriesRequest', {agentIdentity: target, offset: count})
+        if (!adopted || me.pendingOffset !== null || !Number.isFinite(adopted.total) || count >= adopted.total) {
+            return
         }
+
+        if (me.drillSession) {
+            me.summaryEdgeDeferred = true;
+            return
+        }
+
+        me.pendingOffset = count;
+        me.fire('memoriesRequest', {agentIdentity: target, offset: count})
     }
 
     /**
@@ -457,7 +480,8 @@ class MemoriesPane extends Container {
                 summaryGrid.applyBags(incoming)
             }
         } else {
-            me.renderedTarget = null;
+            me.renderedTarget      = null;
+            me.summaryEdgeDeferred = false;
             me.summaryStore.count > 0 && summaryGrid.applyBags([])
         }
 
