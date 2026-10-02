@@ -67,12 +67,65 @@ function normalizeOrigin(value) {
 }
 
 /**
+ * @summary The words a pull request's row may use for its state, keyed by GitHub's enums. A value
+ * outside these maps names nothing.
+ * @type {Object}
+ */
+const PR_STATE_LABELS    = Object.freeze({CLOSED: 'closed', MERGED: 'merged'});
+const PR_DECISION_LABELS = Object.freeze({
+    APPROVED         : 'approved',
+    CHANGES_REQUESTED: 'changes requested',
+    REVIEW_REQUIRED  : 'review required'
+});
+
+/**
+ * @summary Resolves the status a `pr-activity` row names, from the payload the Brain's PR adapter
+ * already carries.
+ *
+ * A merged or closed PR names that. An open draft names `draft`. An open PR names GitHub's
+ * `reviewDecision`, and where the repository computes none (no required reviews), the Brain's
+ * `humanGateState`, read from the latest reviews. Anything else resolves `null`: a status is
+ * never guessed.
+ * @param {Object} event Record or record-shaped object.
+ * @returns {String|null}
+ */
+export function getPullRequestStatus(event) {
+    if (event?.type !== 'pr-activity') {
+        return null
+    }
+
+    const {humanGateState, isDraft, reviewDecision, state} = event.payload || {};
+
+    if (Object.hasOwn(PR_STATE_LABELS, state)) {
+        return PR_STATE_LABELS[state]
+    }
+
+    if (state !== 'OPEN') {
+        return null
+    }
+
+    if (isDraft === true) {
+        return 'draft'
+    }
+
+    if (Object.hasOwn(PR_DECISION_LABELS, reviewDecision)) {
+        return PR_DECISION_LABELS[reviewDecision]
+    }
+
+    if (humanGateState?.changedRequested === true) {
+        return PR_DECISION_LABELS.CHANGES_REQUESTED
+    }
+
+    return humanGateState?.approved === true ? PR_DECISION_LABELS.APPROVED : null
+}
+
+/**
  * @summary Resolves the producer-owned object/message carried by one activity event.
  *
  * Actor and recipient render in their own fixed cells, so this function never repeats them. PR,
  * issue, lane and stall payloads prefer their stable object reference + title; A2A and fixture
  * events use their bounded subject/text. Unknown shapes degrade to the event kind, never an object
- * stringification.
+ * stringification. A PR row ends with its {@link getPullRequestStatus status} when one resolves.
  * @param {Object} event Record or record-shaped object.
  * @returns {String}
  */
@@ -89,7 +142,13 @@ export function getActivityObjectText(event) {
             .find(value => typeof value === 'string' && value.trim());
 
     if (object) {
-        return event?.type === 'work-stall' ? `stalled · ${object}` : object
+        if (event?.type === 'work-stall') {
+            return `stalled · ${object}`
+        }
+
+        const status = getPullRequestStatus(event);
+
+        return status ? `${object} · ${status}` : object
     }
 
     if (text) {
@@ -135,6 +194,14 @@ class RowContainer extends Container {
          */
         actorDirectory_: {},
         /**
+         * The record version {@link Neo.list.Buffered} stamps before every bind. A bind of the same
+         * record at a new version never reaches {@link #afterSetRecord}, so this is how the row learns
+         * its record changed in place: a PR approved, then merged.
+         * @member {Number|null} lastRecordVersion_=null
+         * @reactive
+         */
+        lastRecordVersion_: null,
+        /**
          * The current Store record assigned to this physical pool slot.
          * @member {Neo.data.Record|null} record_=null
          * @reactive
@@ -176,9 +243,27 @@ class RowContainer extends Container {
         }]
     }
 
+    /**
+     * The record version {@link #updateRow} last drew.
+     * @member {Number|null} renderedVersion=null
+     * @protected
+     */
+    renderedVersion = null
+
     /** @param {Object} value @param {Object} oldValue @protected */
     afterSetActorDirectory(value, oldValue) {
         this.isConstructed && this.updateRow()
+    }
+
+    /**
+     * Redraws only when the record already shown has moved past the version it was drawn at; a bind
+     * of another record arrives through {@link #afterSetRecord}.
+     * @param {Number|null} value
+     * @param {Number|null} oldValue
+     * @protected
+     */
+    afterSetLastRecordVersion(value, oldValue) {
+        this.isConstructed && this.record?.version === value && this.renderedVersion !== value && this.updateRow()
     }
 
     /** @param {Neo.data.Record|null} value @param {Neo.data.Record|null} oldValue @protected */
@@ -216,6 +301,8 @@ class RowContainer extends Container {
         if (!timeCell || !kindCell || !actorCell || !toCell || !textCell) {
             return
         }
+
+        me.renderedVersion = event?.version ?? null;
 
         timeCell.vdom.title = time?.title ?? null;
         timeCell.setSilent({text: time?.text ?? '—'});
