@@ -26,18 +26,18 @@ export const CLI_COMMAND = 'node ai/scripts/setup/firstRun.mjs --json';
  * list the preset sits in and the recipe's reason for it.
  * @param {Object|null} placement The placement step's `{recommended, possible, refused}`
  * @param {String} presetId
- * @returns {{verdict: String, reason: String}}
+ * @returns {{verdict: String, reason: String, margins: Object|null}} `margins` is the row's `{host, guest}`
  */
 export function presetVerdict(placement, presetId) {
     for (const verdict of ['recommended', 'possible', 'refused']) {
         const row = placement?.[verdict]?.find(entry => entry.id === presetId);
 
         if (row) {
-            return {verdict, reason: row.reason ?? ''}
+            return {verdict, reason: row.reason ?? '', margins: row.margins ?? null}
         }
     }
 
-    return {verdict: 'unknown', reason: 'the placement step has not answered'}
+    return {verdict: 'unknown', reason: 'the placement step has not answered', margins: null}
 }
 
 /**
@@ -172,7 +172,17 @@ class CreateContainer extends Container {
                 layout: {ntype: 'hbox', align: 'start'},
                 items : [
                     {ntype: 'component', cls: ['fm-setup-q-key'], text: 'placement'},
-                    {ntype: 'component', cls: ['fm-setup-budget'], reference: 'budget-line', text: 'not probed yet'}
+                    {
+                        // the budgets, then the frame the three verdicts answer
+                        ntype : 'container',
+                        cls   : ['fm-setup-placement'],
+                        flex  : 1,
+                        layout: {ntype: 'vbox'},
+                        items : [
+                            {ntype: 'component', cls: ['fm-setup-budget'],         flex: 'none', reference: 'budget-line',    text: 'not probed yet'},
+                            {ntype: 'component', cls: ['fm-setup-placement-line'], flex: 'none', reference: 'placement-line', text: ''}
+                        ]
+                    }
                 ]
             }, {
                 ntype : 'container',
@@ -417,7 +427,24 @@ class CreateContainer extends Container {
         me.getReference('credential-button').text = credential?.status === 'ok' ? 'Change' : 'Open the credential window';
         me.getReference('provider-key-line').text = key?.reason ?? 'decided by the preset';
         me.getReference('advanced-line').text     = advanced?.reason ?? 'folded: defaults apply';
+        me.getReference('placement-line').text    = CreateContainer.placementText(step('placement')?.placement ?? null);
         me.applyPresetCards()
+    }
+
+    /**
+     * @summary The frame the three verdicts answer: the recommended presets, or that none is and
+     * each card says why.
+     * @param {Object|null} placement The placement step's `{recommended, possible, refused}`
+     * @returns {String}
+     */
+    static placementText(placement) {
+        if (!placement) return '';
+
+        const recommended = placement.recommended ?? [];
+
+        return recommended.length > 0
+            ? `recommended: ${recommended.map(row => row.id).join(', ')}`
+            : 'nothing recommended — each preset says why'
     }
 
     /**
@@ -444,12 +471,15 @@ class CreateContainer extends Container {
 
         container.add(presets.map(preset => {
             const
-                {reason, verdict} = presetVerdict(placement, preset.id),
-                refused           = verdict === 'refused',
-                facts             = `chat ${preset.chatModel} · embed ${preset.embedder} · ${preset.vectorDimension} dims`,
-                footprint         = preset.inference === 'local'
-                    ? `models ${gibText(preset.workload?.modelsBytes)} · ${preset.qualityFloor ? 'floor recorded' : 'no recorded floor'}`
-                    : 'no local models · needs a provider key';
+                {margins, reason, verdict} = presetVerdict(placement, preset.id),
+                refused                    = verdict === 'refused',
+                workload                   = preset.workload ?? {},
+                facts                      = `chat ${preset.chatModel} · embed ${preset.embedder} · ${preset.vectorDimension} dims`,
+                // the decision numbers: the plane's own footprint, the models, the floor's date
+                footprint                  = preset.inference === 'local'
+                    ? `models ${gibText(workload.modelsBytes)} · ${preset.qualityFloor?.measuredAt ? `floor recorded ${preset.qualityFloor.measuredAt}` : 'no recorded floor'}`
+                    : `plane ${Number.isFinite(workload.planeIdleBytes) ? (workload.planeIdleBytes / GiB).toFixed(1) : '?'}–${gibText(workload.planePeakBytes)} · no local models · needs a provider key`,
+                margin                     = Number.isFinite(margins?.host) && margins.host >= 0 ? ` · ${gibText(margins.host)} host margin` : '';
 
             return {
                 ntype    : 'container',
@@ -460,7 +490,7 @@ class CreateContainer extends Container {
                     {ntype: 'component', cls: ['fm-setup-preset-name'],    text: preset.label ?? preset.id},
                     {ntype: 'component', cls: ['fm-setup-preset-fact'],    text: facts},
                     {ntype: 'component', cls: ['fm-setup-preset-fact'],    text: footprint},
-                    {ntype: 'component', cls: ['fm-setup-preset-verdict'], text: `${verdict} — ${reason}`},
+                    {ntype: 'component', cls: ['fm-setup-preset-verdict'], text: `${verdict} — ${reason}${margin}`},
                     {module: Button, cls: ['fm-setup-preset-choose'], disabled: refused || chosen === preset.id, handler: 'up.onPresetClick', presetId: preset.id, text: chosen === preset.id ? 'chosen' : 'choose'}
                 ]
             }

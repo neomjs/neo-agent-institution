@@ -19,6 +19,9 @@
         background           : transparent;
         color                : var(--fm-ink-dim);
         cursor               : default;
+        /* the reason is the operator's decision material: the row grows to as many lines as it
+           needs (the engine's list rows are nowrap by default) */
+        white-space          : normal;
 
         &:hover {
             background: transparent;

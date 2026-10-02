@@ -14,62 +14,15 @@ import StateProvider   from '../../../../../../../node_modules/neo.mjs/src/state
 import CreateContainer, {CLI_COMMAND, countDensity, presetVerdict} from '../../../../../../../apps/agentos/view/setup/CreateContainer.mjs';
 import SetupSteps      from '../../../../../../../apps/agentos/store/SetupSteps.mjs';
 import {actionFor}     from '../../../../../../../apps/agentos/view/setup/StepList.mjs';
+import {sampleColdEvaluation, samplePlacement, samplePresets, sampleProbe, sampleStep} from '../../../../../fixture/setupRecipeSample.mjs';
 
-const GiB = 1073741824;
-
-/**
- * The preset table's three rows, as `placementPresets.presets` declares them (the facts a card shows).
- */
-const PRESETS = [
-    {id: 'hosted',      label: 'Hosted inference (Gemini)',       inference: 'hosted', chatModel: 'gemini-3.5-flash',      embedder: 'gemini-embedding-001', vectorDimension: 3072, workload: {modelsBytes: 0},           qualityFloor: null, requires: ['providerKey', 'pat']},
-    {id: 'local-small', label: 'Local inference, small index',    inference: 'local',  chatModel: 'google/gemma-4-26b-a4b', embedder: 'qwen3-embedding-0.6b', vectorDimension: 1024, workload: {modelsBytes: 15.2 * GiB}, qualityFloor: {at: '2026-09-23'}, requires: ['pat']},
-    {id: 'local-full',  label: 'Local inference, full index',     inference: 'local',  chatModel: 'google/gemma-4-26b-a4b', embedder: 'qwen3-embedding-8b',   vectorDimension: 4096, workload: {modelsBytes: 18.9 * GiB}, qualityFloor: {at: '2026-09-23'}, requires: ['pat']}
-];
-
-/**
- * The placement probe's fixture: a 32 GiB laptop with 14 GiB of other use and a 16 GiB Docker VM.
- */
-const PROBE = {
-    host : {totalBytes: 32 * GiB, availableBytes: 15.5 * GiB, pressure: 'ok', complete: true},
-    guest: {capBytes: 16 * GiB, availableBytes: 13.5 * GiB, complete: true},
-    runningPlane: null
-};
-
-const PLACEMENT = {
-    recommended  : [],
-    possible     : [{id: 'hosted', reason: 'no recorded quality floor: a candidate, never recommended by default'}],
-    refused      : [{id: 'local-small', reason: 'the host budget falls 2.2 GiB short'}, {id: 'local-full', reason: 'the host budget falls 5.9 GiB short'}],
-    headroomBytes: 4 * GiB
-};
-
-/**
- * One row in the recipe's step shape.
- */
-const row = (id, kind, status, reason, extra = {}) => ({id, kind, status, reason, summary: `${id} summary`, ...extra});
-
-/**
- * The CLI's cold `--json` for that host: two rows observed ok, nothing consented, nothing written.
- */
-function coldEvaluation() {
-    return {
-        runId: '11111111-1111-4111-8111-111111111111', recordPath: '/tmp/setup/1.json', recipeVersion: 1,
-        target: {planeId: null, dataRoot: null, endpoint: null}, binding: 'bound', bindingReason: null,
-        steps: [
-            row('placement',        'observation', 'ok',      'nothing recommended; possible: hosted (no recorded quality floor: a candidate, never recommended by default); refused: local-small (the host budget falls 2.2 GiB short), local-full (the host budget falls 5.9 GiB short)', {placement: PLACEMENT, observedAt: '2026-10-02T10:00:00.000Z'}),
-            row('preset',           'question',    'pending', 'unanswered', {answer: null}),
-            row('plane-credential', 'question',    'pending', 'unanswered', {answer: null}),
-            row('provider-key',     'question',    'pending', 'decided by the preset: none consented yet', {answer: null}),
-            row('advanced',         'question',    'ok',      'folded: defaults apply', {answer: null}),
-            row('write-env',        'effect',      'pending', '~/.neo-ai/config/local-agent-os.env does not exist', {effectId: 'write-env', receipt: null}),
-            row('write-secrets',    'effect',      'pending', 'no secret files under ~/.neo-ai/secrets', {effectId: 'write-secrets', receipt: null}),
-            row('compose-up',       'effect',      'pending', 'the compose project is not running', {effectId: 'compose-up', receipt: null}),
-            row('served-plane',     'observation', 'unknown', 'connection refused'),
-            row('validation',       'observation', 'unknown', 'no plane to ask'),
-            row('done',             'observation', 'unknown', 'no plane to ask')
-        ],
-        terminal: row('done', 'observation', 'unknown', 'no plane to ask')
-    }
-}
+// the recipe's sample answers for the fixture host (shared with the e2e and visual tiers)
+const
+    PRESETS        = samplePresets,
+    PROBE          = sampleProbe,
+    PLACEMENT      = samplePlacement,
+    row            = sampleStep,
+    coldEvaluation = sampleColdEvaluation;
 
 /**
  * Installs a stand-in for the `WS/ShellPlane` main addon's setup remotes, recording every request.
@@ -180,10 +133,14 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         expect(cards.map(card => card.presetId)).toEqual(['hosted', 'local-small', 'local-full']);
         expect(cards.map(card => card.items[4].disabled), 'refused presets stay visible and disabled').toEqual([false, true, true]);
-        expect(cards[1].items[3].text).toBe('refused — the host budget falls 2.2 GiB short');
-        expect(cards[0].items[3].text).toBe('possible — no recorded quality floor: a candidate, never recommended by default');
+        expect(cards[1].items[3].text, 'a refused card names the shortfall, never a negative margin').toBe('refused — the host budget falls 2.2 GiB short');
+        expect(cards[0].items[3].text, 'a possible card carries its host margin').toBe('possible — no recorded quality floor: a candidate, never recommended by default · 13.0 GiB host margin');
         expect(cards[0].items[1].text).toBe('chat gemini-3.5-flash · embed gemini-embedding-001 · 3072 dims');
-        expect(cards[1].items[2].text).toBe('models 15.2 GiB · floor recorded');
+        expect(cards[0].items[2].text, 'the plane\'s own footprint').toBe('plane 0.4–2.5 GiB · no local models · needs a provider key');
+        expect(cards[1].items[2].text, 'the floor is a receipt with a date').toBe('models 15.2 GiB · floor recorded 2026-10-02');
+        expect(door.getReference('placement-line').text).toBe('nothing recommended — each preset says why');
+        // the provider key is asked only once the consented preset requires it
+        expect(actionFor(door.store.get('provider-key'))).toBe(null);
 
         // the PAT step opens main's window; the renderer holds the kept file's path and never a value
         await door.onCredentialClick();
@@ -222,6 +179,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.store.get('preset').answer).toBe('hosted');
         expect(door.getReference('presets').items[0].items[4].text).toBe('chosen');
         expect(door.getReference('provider-key-line').text).toBe('unanswered');
+        expect(actionFor(door.store.get('provider-key')), 'the hosted preset requires a key: the row gets its window').toBe('open window');
         expect(run().preset).toBe('hosted');
         expect(progress()).toEqual({ok: 3, total: 11, next: 'plane-credential', blocking: null});
 
@@ -363,8 +321,9 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(store.describeProgress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
         expect(store.projectEvaluation(null), 'no steps clears the list').toBe(0);
         expect(store.describeProgress()).toEqual({ok: 0, total: 0, next: null, blocking: null});
-        expect(presetVerdict(PLACEMENT, 'local-full')).toEqual({verdict: 'refused', reason: 'the host budget falls 5.9 GiB short'});
-        expect(presetVerdict(null, 'hosted')).toEqual({verdict: 'unknown', reason: 'the placement step has not answered'});
+        expect(presetVerdict(PLACEMENT, 'local-full')).toMatchObject({verdict: 'refused', reason: 'the host budget falls 5.9 GiB short'});
+        expect(presetVerdict(PLACEMENT, 'hosted').margins).toEqual(PLACEMENT.possible[0].margins);
+        expect(presetVerdict(null, 'hosted')).toEqual({verdict: 'unknown', reason: 'the placement step has not answered', margins: null});
 
         store.destroy()
     })

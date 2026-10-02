@@ -9,13 +9,19 @@
 export const GiB = 1073741824;
 
 /**
+ * The fixture plane's footprint every preset carries (`placementPresets.FIXTURE_PLANE`).
+ * @type {Object}
+ */
+const FIXTURE_PLANE = {planeIdleBytes: Math.round(0.39 * GiB), planePeakBytes: Math.round(2.5 * GiB)};
+
+/**
  * The preset table's facts a card shows.
  * @type {Object[]}
  */
 export const samplePresets = [
-    {id: 'hosted',      label: 'Hosted inference (Gemini)',    inference: 'hosted', chatModel: 'gemini-3.5-flash',      embedder: 'gemini-embedding-001', vectorDimension: 3072, workload: {modelsBytes: 0},           qualityFloor: null,               requires: ['providerKey', 'pat']},
-    {id: 'local-small', label: 'Local inference, small index', inference: 'local',  chatModel: 'google/gemma-4-26b-a4b', embedder: 'qwen3-embedding-0.6b', vectorDimension: 1024, workload: {modelsBytes: 15.2 * GiB}, qualityFloor: {at: '2026-09-23'}, requires: ['pat']},
-    {id: 'local-full',  label: 'Local inference, full index',  inference: 'local',  chatModel: 'google/gemma-4-26b-a4b', embedder: 'qwen3-embedding-8b',   vectorDimension: 4096, workload: {modelsBytes: 18.9 * GiB}, qualityFloor: {at: '2026-09-23'}, requires: ['pat']}
+    {id: 'hosted',      label: 'Hosted inference (Gemini)',    inference: 'hosted', chatModel: 'gemini-3.5-flash',      embedder: 'gemini-embedding-001', vectorDimension: 3072, workload: {...FIXTURE_PLANE, modelsBytes: 0},           qualityFloor: null,                       requires: ['providerKey', 'pat']},
+    {id: 'local-small', label: 'Local inference, small index', inference: 'local',  chatModel: 'google/gemma-4-26b-a4b', embedder: 'qwen3-embedding-0.6b', vectorDimension: 1024, workload: {...FIXTURE_PLANE, modelsBytes: 15.2 * GiB}, qualityFloor: {measuredAt: '2026-10-02'}, requires: ['pat']},
+    {id: 'local-full',  label: 'Local inference, full index',  inference: 'local',  chatModel: 'google/gemma-4-26b-a4b', embedder: 'qwen3-embedding-8b',   vectorDimension: 4096, workload: {...FIXTURE_PLANE, modelsBytes: 18.9 * GiB}, qualityFloor: {measuredAt: '2026-10-02'}, requires: ['pat']}
 ];
 
 /**
@@ -29,13 +35,16 @@ export const sampleProbe = {
 };
 
 /**
- * The placement step's verdicts on that host.
+ * The placement step's verdicts on that host, each with the margins the recipe computed.
  * @type {Object}
  */
 export const samplePlacement = {
     recommended  : [],
-    possible     : [{id: 'hosted', reason: 'no recorded quality floor: a candidate, never recommended by default'}],
-    refused      : [{id: 'local-small', reason: 'the host budget falls 2.2 GiB short'}, {id: 'local-full', reason: 'the host budget falls 5.9 GiB short'}],
+    possible     : [{id: 'hosted', margins: {host: 13 * GiB, guest: 11 * GiB}, reason: 'no recorded quality floor: a candidate, never recommended by default'}],
+    refused      : [
+        {id: 'local-small', margins: {host: -2.2 * GiB, guest: 5.5 * GiB}, reason: 'the host budget falls 2.2 GiB short'},
+        {id: 'local-full',  margins: {host: -5.9 * GiB, guest: 5.5 * GiB}, reason: 'the host budget falls 5.9 GiB short'}
+    ],
     headroomBytes: 4 * GiB
 };
 
@@ -105,6 +114,7 @@ export function sampleShellInitScript() {
             window.__neoShellCalls = calls;
             window.neoShell = {
                 planeStatus    : async () => ({attached: false, configured: false, packaged: true, planeBase: null}),
+                verifyPlane    : async () => ({cause: null}),
                 attachPlane    : async request => { calls.push(['attachPlane', request]); return {ok: false, reason: 'unreachable', relaunching: false} },
                 setupEvaluate  : async request => { calls.push(['setupEvaluate', request]); return {ok: true, evaluation: current} },
                 setupProbe     : async () => { calls.push(['setupProbe']); return {ok: true, probe} },

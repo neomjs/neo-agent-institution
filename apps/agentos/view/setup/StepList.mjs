@@ -15,13 +15,18 @@ export const STATUS_MARKS = Object.freeze({
 /**
  * @summary The row's one action, decided by the step's kind and status: a question is answered or
  * changed, an effect is run or re-checked, an observation re-read. The served-plane mismatch asks
- * its own question. `null` means no action and no chip (the exception-only rule).
- * @param {Object} step `{id, kind, status}`
+ * its own question; the provider key is asked only once the consented preset requires it (until
+ * then the row is the sentence it carries). `null` means no action and no chip (the exception-only
+ * rule).
+ * @param {Object} step `{id, kind, status, reason}`
  * @returns {String|null}
  */
-export function actionFor({id, kind, status}) {
+export function actionFor({id, kind, status, reason}) {
     if (kind === 'question') {
-        return status === 'ok' ? (id === 'advanced' ? 'unfold' : 'change') : (id === 'plane-credential' || id === 'provider-key' ? 'open window' : 'choose')
+        if (status === 'ok') return id === 'advanced' ? 'unfold' : 'change';
+        if (id === 'provider-key') return typeof reason === 'string' && reason.startsWith('unanswered') ? 'open window' : null;
+
+        return id === 'plane-credential' ? 'open window' : 'choose'
     }
 
     if (kind === 'effect') {

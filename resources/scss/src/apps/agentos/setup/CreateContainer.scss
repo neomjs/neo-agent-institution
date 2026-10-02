@@ -2,6 +2,28 @@
    question as three choice cards, the quiet confirmation as one line in the body role. The served
    path (no vessel) shows the CLI's command in the mono detail role over a field for its JSON. */
 .fm-setup-create {
+    /* the bounded door scrolls: a fade at its foot says the rows continue */
+    &::after {
+        content       : '';
+        display       : block;
+        position      : sticky;
+        bottom        : 0;
+        flex          : none;
+        height        : 28px;
+        margin-top    : -28px;
+        background    : linear-gradient(to bottom, transparent, var(--fm-panel));
+        pointer-events: none;
+    }
+
+    .fm-setup-placement {
+        gap: 2px;
+    }
+
+    .fm-setup-placement-line {
+        font : var(--fm-text-detail);
+        color: var(--fm-ink-dim);
+    }
+
     .fm-setup-q {
         gap        : var(--fm-space-2);
         padding    : var(--fm-space-2) var(--fm-space-3) 0;
