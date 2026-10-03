@@ -57,8 +57,15 @@ export const DEFAULT_USER_DATA_DIR = path.join(os.homedir(), 'Library', 'Applica
 export const DEFAULT_ROLLBACK_DIR  = path.join(DEFAULT_USER_DATA_DIR, 'rollback');
 export const DEFAULT_ROLLBACK_PATH = path.join(DEFAULT_ROLLBACK_DIR, ROLLBACK_BUNDLE_NAME);
 
-/** The custody files harness/README.md names as travelling together; the leg proves it left them alone. */
-export const CUSTODY_RELATIVE_DIR = path.join('brain', 'fleet');
+/**
+ * The custody set the leg proves it left alone: the plane record at the userData root and the
+ * fleet root's own files (registry, credentials, keys, tenants). Seat homes under `brain/fleet/agents/`
+ * are the seats' own mutable state — full checkouts whose `.neo-ai-data` links point INTO the
+ * bundle this leg replaces — so only their presence is custody, never their contents.
+ */
+export const CUSTODY_PLANE_FILES = Object.freeze(['plane.json', 'plane-bearer.bin', 'seat-root.json']);
+export const CUSTODY_FLEET_DIR   = path.join('brain', 'fleet');
+export const CUSTODY_AGENTS_DIR  = 'agents';
 
 export const PEER_QUIT_WARNING =
     `Quitting ${APP_NAME} also stops the peer harnesses it launched. Checkpoint those seats first; ` +
@@ -85,7 +92,7 @@ const HARNESS_BUNDLE_PATTERN = new RegExp(`/${APP_NAME.replace(/ /g, '\\s')}[^/]
  * @param {Object} [input.parked] `{path, exists, receipt}` of the `.restoring` sibling
  * @param {String[]} [input.running=[]] executable paths of every Neo Harness process alive now
  * @param {Object} [input.flags={}] `{quit, open}`
- * @param {String|null} [input.custodyDir=null] the custody directory to hash before and after; `null` skips the check
+ * @param {String|null} [input.custodyDir=null] the userData root whose custody set is hashed before and after; `null` skips the check
  * @returns {{ok: true, steps: Object[], warnings: String[], note?: String}|{ok: false, reason: String, detail: String[]}}
  */
 export function planInstall({mode = 'install', artifact, installed, rollback, parked, running = [], flags = {}, custodyDir = null}) {
@@ -225,7 +232,7 @@ export function executePlan(steps, {runFn = run, runningFn = () => runningHarnes
                         custody.after = custodyDigest(step.dir);
 
                         if (custody.after !== custody.before) {
-                            throw new Error(`the custody files under ${step.dir} changed while the app was stopped; inspect them before launching`)
+                            throw new Error(`the custody files under ${step.dir} (plane record, fleet root, seat presence) changed while the app was stopped; inspect them before launching`)
                         }
                     }
                     break;
@@ -354,30 +361,79 @@ export function parseInstallArgs(argv) {
 }
 
 /**
- * @summary A SHA-256 over the custody files' relative paths and contents — the proof the leg left
- * the plane record and credentials alone. Contents are hashed, never printed or copied.
- * @param {String} dir
- * @returns {String|null} `null` when the directory does not exist
+ * @summary A SHA-256 over the custody set — the proof the leg left the plane record and the fleet's
+ * own files alone. ONE policy for every selected path, applied before anything is read: a symlink
+ * contributes its target string (dangling or not) and is never followed; a regular file its bytes;
+ * the fleet root's directory its depth-1 entries under the same policy; the `agents` directory the
+ * names of the seats, never their homes. Contents are hashed, never printed or copied. The first
+ * run of this leg hashed every file under the seat homes and followed their `.neo-ai-data` links
+ * into the bundle it had just replaced, so a correct install read as a custody change; the policy
+ * here is the one that cannot, and it covers the plane record whether or not a fleet root exists.
+ * @param {String} userDataDir The app's userData root (`app.getPath('userData')`)
+ * @returns {String|null} `null` when no custody member exists at all — the empty set, not a verdict
  */
-export function custodyDigest(dir) {
-    if (!fs.existsSync(dir)) {
-        return null
-    }
-
+export function custodyDigest(userDataDir) {
     const
-        files = fs.readdirSync(dir, {recursive: true, withFileTypes: true})
-            .filter(entry => entry.isFile())
-            .map(entry => path.join(entry.parentPath, entry.name))
-            .sort(),
-        hash  = createHash('sha256');
+        hash     = createHash('sha256'),
+        feed     = (label, bytes) => {
+            hash.update(`${label}\0`);
+            bytes !== null && hash.update(bytes);
+            hash.update('\0')
+        },
+        // The classification is the policy: what a path IS decides what is read, and a link is read
+        // as a link however the loop that found it would have liked to treat it.
+        classify = full => {
+            let stat;
 
-    for (const file of files) {
-        hash.update(`${path.relative(dir, file)}\0`);
-        hash.update(fs.readFileSync(file));
-        hash.update('\0')
+            try {
+                stat = fs.lstatSync(full)
+            } catch {
+                return null
+            }
+
+            if (stat.isSymbolicLink()) return {kind: 'link', bytes: Buffer.from(fs.readlinkSync(full))};
+            if (stat.isFile())         return {kind: 'file', bytes: fs.readFileSync(full)};
+            if (stat.isDirectory())    return {kind: 'dir',  bytes: null};
+            return {kind: 'other', bytes: null}
+        },
+        fleetDir  = path.join(userDataDir, CUSTODY_FLEET_DIR),
+        fleetRoot = classify(fleetDir);
+
+    let members = 0;
+
+    for (const name of CUSTODY_PLANE_FILES) {
+        const member = classify(path.join(userDataDir, name));
+
+        if (member) {
+            members++;
+            feed(`${name} [${member.kind}]`, member.bytes)
+        }
     }
 
-    return hash.digest('hex')
+    if (fleetRoot) {
+        members++;
+        feed(`${CUSTODY_FLEET_DIR} [${fleetRoot.kind}]`, fleetRoot.bytes);
+
+        // Only a real directory is entered; a linked fleet root is custody by its target alone.
+        if (fleetRoot.kind === 'dir') {
+            const entries = fs.readdirSync(fleetDir).sort();
+
+            for (const name of entries) {
+                const
+                    label  = path.join(CUSTODY_FLEET_DIR, name),
+                    member = classify(path.join(fleetDir, name));
+
+                if (!member) continue;
+
+                // The seats' presence is custody; their homes are their own.
+                feed(`${label} [${member.kind}]`, member.kind === 'dir' && name === CUSTODY_AGENTS_DIR
+                    ? Buffer.from(fs.readdirSync(path.join(fleetDir, name)).sort().join('\0'))
+                    : member.bytes)
+            }
+        }
+    }
+
+    return members ? hash.digest('hex') : null
 }
 
 /**
@@ -472,7 +528,7 @@ function refusal(reason, detail) {
 export function describeStep(step) {
     switch (step.type) {
         case 'quit'   : return `quit    ${APP_NAME} (${processCount(step.paths)})`;
-        case 'custody': return `${step.phase === 'baseline' ? 'hash   ' : 'compare'} the custody files under ${step.dir}`;
+        case 'custody': return `${step.phase === 'baseline' ? 'hash   ' : 'compare'} the custody set under ${step.dir} (plane record · fleet root · seat presence)`;
         case 'stage'  : return `copy    ${step.from}\n     →  ${step.to}`;
         case 'remove' : return `remove  ${step.path}`;
         case 'rename' : return `move    ${step.from}\n     →  ${step.to}`;
@@ -514,7 +570,7 @@ async function main() {
     }
 
     const
-        custodyDir = path.join(options.userDataDir, CUSTODY_RELATIVE_DIR),
+        custodyDir = options.userDataDir,
         installed  = readSlot(path.join(options.applicationsDir, `${APP_NAME}.app`)),
         parked     = readSlot(`${installed.path}.restoring`),
         rollback   = readSlot(path.join(options.rollbackDir, ROLLBACK_BUNDLE_NAME)),
