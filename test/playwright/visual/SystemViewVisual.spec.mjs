@@ -30,7 +30,7 @@ test.describe('System keeper-view — visual baseline (the cold engine room)', (
 });
 
 /**
- * The populated System view at the operator's own window widths (#508): six plane cards, one carrying
+ * The populated System view at the operator's own window widths: six plane cards, one carrying
  * the installed picture's longest words (a 240+ character diagnosis, a long class) and one an unmapped
  * compose id. The guard is the reading contract: every line on a card wraps inside it, a card is as tall
  * as its content, a column is at least 360 px, and a narrow list is one column. The picture lands through

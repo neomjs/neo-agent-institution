@@ -29,12 +29,12 @@ const
 let listId = null, storeId = null;
 
 /**
- * @summary The System view's plane cards read in full at the list's real widths (#508): the REAL
- * list and its cards in a browser, because only layout can show text escaping a card. The engine's
+ * @summary The System view's plane cards read in full at the list's real widths: the REAL list and
+ * its cards in a browser, because only layout can show text escaping a card. The engine's
  * `.neo-list-item` is single-line (`white-space: nowrap`), and a service card is that item, so every
- * head span and the diagnosis paragraph inherited it and ran past the card edge on the installed
- * build. Each arm mounts the list at one width and asserts the list's own width first (a viewport
- * is not a pane width), then that no card, head line, diagnosis line or descendant passes its card,
+ * head span and the diagnosis paragraph inherit it unless the card resets it. Each arm mounts the
+ * list at one width and asserts the list's own width first (a viewport is not a pane width), then
+ * that no card, head line, diagnosis line or descendant passes its card,
  * and finally the room rule: a column of at least 360 px when the list is that wide, one column below.
  */
 test.describe('AgentOS.view.system.List — plane cards read in full', () => {
