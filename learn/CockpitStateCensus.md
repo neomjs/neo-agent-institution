@@ -55,14 +55,19 @@ with one of its sources down while the others answer.
 
 ### Instance switcher — `apps/agentos/view/fleet/instances/SwitcherButton.mjs` (`updateSwitcher`, `INSTANCE_STATE_WORDS`)
 
+The word follows the spine banner's kind (`view/fleet/cockpit/StateProvider.mjs`, the
+`instanceState` formula): no banner reads `connected`, a degraded banner `degraded`, a cold one
+`not connected`. The stale and one-source-failing cells were re-read by the walkthrough's fixture
+arm at `e1a9dbe`.
+
 | State | Rendered |
 |---|---|
 | cold / unreachable | Dot + label; title and `aria-label` `<label> — not connected` (`off`). Word only: **no reason, no next step** in the button; the menu lists the other instances. |
 | live | `<label> — connected` (`ok`). |
-| stale | `cannot enter` — the switcher has no stale word; staleness is the feeds'. |
+| stale | `<label> — degraded` (`limited`): the stale feed's degraded banner. Word only. |
 | degraded | `<label> — degraded` (`limited`). Word only. |
 | switching | `<label> — switching` (`starting`). |
-| one source failing | `cannot enter`. |
+| one source failing | `<label> — degraded` (`limited`): the partial feed's degraded banner. Word only. |
 
 ### Home's live field — `apps/agentos/view/home/Container.mjs` (`teamLine`, `updateField`)
 
