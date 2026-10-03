@@ -16,7 +16,7 @@
 //
 //   §2.1.5   one retained cockpit + tray; explicit quit owns exact-once Brain teardown
 
-import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, Tray} from 'electron';
+import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell, Tray} from 'electron';
 import {createReadStream}                                                        from 'node:fs';
 import {fileURLToPath}                                                           from 'node:url';
 import path                                                                      from 'node:path';
@@ -35,7 +35,7 @@ import {
     createHarnessAssetResolver,
     isAllowedHarnessAssetPath,
     isHarnessDocumentUrl,
-    isHarnessPopupUrl
+    windowOpenDisposition
 } from './contentPolicy.mjs';
 import {
     allocatePort,
@@ -282,7 +282,12 @@ async function serveHarnessContent(request) {
  */
 function configureWebContents(contents) {
     contents.setWindowOpenHandler(({url: target}) => {
-        if (!isHarnessPopupUrl(target)) {
+        const disposition = windowOpenDisposition(target);
+
+        if (disposition.action === 'deny') {
+            // An allowlisted https link leaves for the operator's browser; the shell still opens
+            // nothing for it (shell ADR §2.3 item 2, the external hand-off).
+            disposition.openExternal && shell.openExternal(target);
             return {action: 'deny'}
         }
 

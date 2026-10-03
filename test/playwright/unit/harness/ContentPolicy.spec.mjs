@@ -8,6 +8,9 @@ import {
     isAllowedHarnessAssetPath,
     isHarnessDocumentUrl,
     isHarnessPopupUrl,
+    isExternalLinkUrl,
+    EXTERNAL_LINK_HOSTS,
+    windowOpenDisposition,
     parseHarnessUrl
 } from '../../../../harness/contentPolicy.mjs';
 
@@ -97,6 +100,40 @@ test.describe('harness content policy', () => {
         ]) {
             expect(isHarnessPopupUrl(url), url).toBe(false)
         }
+    });
+
+    test('hands only an https link on an allowlisted host with no credentials to the system browser; the in-app window is denied either way', () => {
+        expect(EXTERNAL_LINK_HOSTS).toEqual(['github.com']);
+
+        for (const url of [
+            'https://github.com/neomjs/neo/pull/19379',
+            'https://github.com/neomjs/neo-agent-institution/issues/493#issuecomment-1',
+            'https://github.com/'
+        ]) {
+            expect(isExternalLinkUrl(url), url).toBe(true);
+            expect(windowOpenDisposition(url), url).toEqual({action: 'deny', openExternal: true})
+        }
+
+        for (const url of [
+            'http://github.com/neomjs/neo/pull/1',
+            'https://gitlab.com/neomjs/neo',
+            'https://evil.github.com.example/x',
+            'https://user:secret@github.com/neomjs/neo',
+            'https://user@github.com/neomjs/neo',
+            'javascript:alert(1)',
+            'file:///etc/passwd',
+            'app://neo/apps/agentos/app.mjs',
+            'data:text/html,<p>x</p>',
+            'not a url',
+            ''
+        ]) {
+            expect(isExternalLinkUrl(url), url).toBe(false);
+            expect(windowOpenDisposition(url), url).toEqual({action: 'deny', openExternal: false})
+        }
+
+        // The harness's own popups keep their allow; nothing about them leaves the shell.
+        expect(windowOpenDisposition('about:blank')).toEqual({action: 'allow', openExternal: false});
+        expect(windowOpenDisposition('app://neo/apps/agentos/childapps/widget/index.html?tearout=memories')).toEqual({action: 'allow', openExternal: false})
     });
 
     test('defines a restrictive policy with only the named passive-image exception', () => {
