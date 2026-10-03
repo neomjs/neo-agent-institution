@@ -60,18 +60,18 @@ const SUBMIT_TEXT = {
     connectTenant     : 'Admit',
     defineAgent       : 'Add agent',
     'plane-attach'    : 'Connect',
-    setPlaneCredential: 'Set'
+    setPlaneCredential: 'Update token'
 };
 
 /**
- * The line under the heading, keyed like {@link SUBMIT_TEXT}. A seat's plane credential is the one
- * request where the obvious paste is wrong: the seat's checkout PAT writes its repositories, and the
- * plane only needs to know who the seat is.
+ * The line under the heading, keyed like {@link SUBMIT_TEXT}. Add collects the account token once
+ * for repositories and the connected Agent OS; the legacy plane prompt changes that binding only.
  * @type {Object}
  */
 const HINT_TEXT = {
     default           : 'Use the one your team\'s plane signs in with. Only this app\'s main process receives it.',
-    setPlaneCredential: 'Use a PAT of this seat\'s own account with no repository access, never its checkout PAT: the plane only needs to know who the seat is. Only this app\'s main process receives it.'
+    defineAgent       : 'Use this agent\'s account token for repository access and the connected Agent OS. Enter it once; Fleet reuses it at Start.',
+    setPlaneCredential: 'Use this agent\'s account token for the connected Agent OS.'
 };
 
 /**

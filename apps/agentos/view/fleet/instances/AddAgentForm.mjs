@@ -4,6 +4,7 @@ import PasswordField from '../../../../../node_modules/neo.mjs/src/form/field/Pa
 import TextField     from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 import AddAgentFlow  from '../../../util/AddAgentFlow.mjs';
 import HarnessChoice from '../../../util/HarnessChoice.mjs';
+import {displayInstanceLabel, displayShellLabel} from './MenuList.mjs';
 
 /**
  * The forges a seat's account can live on, in chip order.
@@ -27,8 +28,8 @@ const FORGE_LABELS = Object.freeze({github: 'GitHub', gitlab: 'GitLab'});
  * stored value stays the catalog's harness type (`harnessType`), which the Fleet launches.
  *
  * **Mount-independent by design.** The form ends at the `agentDefinitionAccepted` event carrying the
- * validated public definition; the mounting owner writes the roster. It holds no store and no
- * credential state.
+ * validated public definition; the mounting owner writes the roster. It reads the injected instance
+ * Store only to name the bound destination, never owning that Store or retaining credential state.
  *
  * **Credential boundary (the fleet credential matrix).** A direct-browser token lives in the password
  * field only as long as a submission needs it, and the field clears on every settle. A bridge marked
@@ -66,6 +67,30 @@ class AddAgentForm extends FormContainer {
          * @member {Function|null} bridgeResolver=null
          */
         bridgeResolver: null,
+        /**
+         * Whether the packaged shell owns the connected plane binding.
+         * @member {Boolean} shellCustody_=false
+         * @reactive
+         */
+        shellCustody_: false,
+        /**
+         * The attached shell plane base, or null when the shell runs its own Agent OS.
+         * @member {String|null} shellPlaneBase_=null
+         * @reactive
+         */
+        shellPlaneBase_: null,
+        /**
+         * The currently bound Agent OS profile and its provider-owned roster.
+         * @member {String|null} boundProfileId_=null
+         * @reactive
+         */
+        boundProfileId_: null,
+        /**
+         * The provider-owned instance roster used to resolve the bound destination label.
+         * @member {Neo.data.Store|null} instanceStore_=null
+         * @reactive
+         */
+        instanceStore_: null,
         /**
          * The flow's rendered lifecycle state — `{state, reason}` with state in the
          * {@link AgentOS.util.AddAgentFlow#ADD_AGENT_STATES flow vocabulary}.
@@ -109,6 +134,11 @@ class AddAgentForm extends FormContainer {
             flex  : 'none',
             layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             items : [{ntype: 'component', cls: ['fm-pane-title'], text: 'Add an agent'}]
+        }, {
+            ntype    : 'component',
+            cls      : ['fm-add-destination'],
+            flex     : 'none',
+            reference: 'destination-line'
         }, {
             ntype: 'component',
             cls  : ['fm-add-section'],
@@ -162,6 +192,11 @@ class AddAgentForm extends FormContainer {
             placeholderText: 'github_pat_…',
             reference      : 'field-credential',
             required       : true
+        }, {
+            ntype: 'component',
+            cls  : ['fm-add-credential-help'],
+            flex : 'none',
+            text : 'This token gives the agent access to its repositories and the connected Agent OS.'
         }, {
             // the repo the seat's first Start clones and runs in
             module         : TextField,
@@ -251,6 +286,7 @@ class AddAgentForm extends FormContainer {
             secretField && me.remove(secretField)
         }
 
+        me.updateDestinationLine();
         me.syncForge();
 
         if (!bridge?.defineAgent) {
@@ -303,6 +339,79 @@ class AddAgentForm extends FormContainer {
      */
     afterSetHarnessType(value, oldValue) {
         oldValue !== undefined && this.syncHarnessChips()
+    }
+
+    /**
+     * @summary Refresh the destination when the shell-custody mode changes.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetShellCustody(value, oldValue) {
+        oldValue !== undefined && this.updateDestinationLine()
+    }
+
+    /**
+     * @summary Refresh the destination when the attached shell plane changes.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetShellPlaneBase(value, oldValue) {
+        oldValue !== undefined && this.updateDestinationLine()
+    }
+
+    /**
+     * @summary Refresh the destination when the bound profile changes.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetBoundProfileId(value, oldValue) {
+        oldValue !== undefined && this.updateDestinationLine()
+    }
+
+    /**
+     * @summary Rebind the injected instance roster and refresh the read-only destination label.
+     * @param {Neo.data.Store|null} value
+     * @param {Neo.data.Store|null} oldValue
+     * @protected
+     */
+    afterSetInstanceStore(value, oldValue) {
+        const
+            me        = this,
+            listeners = {
+                load        : me.onInstanceStoreChange,
+                mutate      : me.onInstanceStoreChange,
+                recordChange: me.onInstanceStoreChange,
+                scope       : me
+            };
+
+        oldValue?.un(listeners);
+        value?.on(listeners);
+        this.updateDestinationLine()
+    }
+
+    /**
+     * @summary Refresh the destination after the roster loads, mutates, or changes a record.
+     * @protected
+     */
+    onInstanceStoreChange() {
+        this.updateDestinationLine()
+    }
+
+    /**
+     * @summary Render the current bound Agent OS destination without offering a target selector.
+     */
+    updateDestinationLine() {
+        const
+            me     = this,
+            record = me.boundProfileId && me.instanceStore?.get(me.boundProfileId),
+            label  = me.shellCustody
+                ? displayShellLabel(me.shellPlaneBase)
+                : displayInstanceLabel(record);
+
+        me.getReference('destination-line')?.set({text: `Agent OS: ${label}`})
     }
 
     /**
@@ -452,6 +561,17 @@ class AddAgentForm extends FormContainer {
         } finally {
             me.getReference('field-credential')?.reset('')
         }
+    }
+
+    /** @summary Remove the Store listener; the provider retains ownership of that Store. */
+    destroy(...args) {
+        this.instanceStore?.un({
+            load        : this.onInstanceStoreChange,
+            mutate      : this.onInstanceStoreChange,
+            recordChange: this.onInstanceStoreChange,
+            scope       : this
+        });
+        super.destroy(...args)
     }
 }
 

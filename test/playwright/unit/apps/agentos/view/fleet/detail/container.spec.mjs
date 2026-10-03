@@ -513,6 +513,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             ),
             card = detail.getReference('config-pane');
 
+        card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
         expect(card.tenantStore).toBe(tenants);
         expect(JSON.stringify(card.vdom.cn)).toContain('https://tenant.example.com');
         expect(JSON.stringify(card.vdom.cn)).not.toContain('Unavailable');
@@ -696,6 +697,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             replacement = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
                 {id: 'ada', githubUsername: 'ada', harnessType: 'claude-code'}
             ]}),
+            replacementLoaded = new Promise(resolve => replacement.on('load', resolve)),
             result = deferred();
 
         stores.push(definitions, replacement);
@@ -720,23 +722,28 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(statuses.map(([, state]) => state)).toEqual(['pending']);
 
         // The response belongs to the old shared Store; this inspector now renders the replacement.
-        detail.agentDefinitions = replacement;
-        expect(card.record).toBe(replacement.get('ada'));
         const originalRefresh = card.refresh;
         let refreshes = 0;
         card.refresh = function(...args) {
             refreshes++;
             return originalRefresh.apply(this, args)
         };
+        detail.agentDefinitions = replacement;
+        expect(card.record).toBe(replacement.get('ada'));
+        expect(card.agentDefinitionsStore).toBe(replacement);
+        await replacementLoaded; // settle the new Store's legitimate initial load before measuring the late response
+        const refreshesAfterRebind = refreshes;
+        definitions.get('ada').set({statusText: 'old Store mutation'});
+        expect(refreshes, 'the old Store listener is detached after rebinding').toBe(refreshesAfterRebind);
         result.resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo'}});
         await request;
 
         expect(definitions.get('ada').harnessType).toBe('native-neo');
         expect(replacement.get('ada').harnessType).toBe('claude-code');
         expect(statuses.map(([, state]) => state)).toEqual(['pending']);
-        expect(refreshes, 'the old Store listener is detached').toBe(0);
+        expect(refreshes, 'the late readback caused no repaint after the new Store was bound').toBe(refreshesAfterRebind);
         replacement.get('ada').set({statusText: 'current Store'});
-        expect(refreshes, 'the replacement Store listener remains live').toBeGreaterThan(0);
+        expect(refreshes, 'the replacement Store listener remains live').toBeGreaterThan(refreshesAfterRebind);
 
         globalThis.AgentOS.fleet = priorFleet;
         detail.destroy()

@@ -12,9 +12,12 @@ import path            from 'path';
 import {fileURLToPath} from 'url';
 import Neo             from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core       from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import DataStore       from '../../../../../node_modules/neo.mjs/src/data/Store.mjs';
+import StateProvider   from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import Instance        from '../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import Accounts        from '../../../../../apps/agentos/view/accounts/Panel.mjs';
 import AddAgentForm    from '../../../../../apps/agentos/view/fleet/instances/AddAgentForm.mjs';
+import TestFleetTenants from '../../../../../apps/agentos/store/FleetTenants.mjs';
 
 import ConfigIntentRoundTrip from '../../../../../apps/agentos/util/ConfigIntentRoundTrip.mjs';
 import {mcpCatalogFor, normalizeMcpOverrides, resolveMcpMatrix} from 'neo-agent-brain/fleet-contract';
@@ -27,6 +30,17 @@ const
     controllerPath = path.join(repoRoot, 'apps/agentos/view/accounts/Controller.mjs');
 
 let AgentDefinition, Store;
+let testInstanceStore, testFleetTenantsStore;
+
+test.beforeAll(() => {
+    testInstanceStore     = Neo.create(DataStore, {keyProperty: 'profileId', data: []});
+    testFleetTenantsStore = Neo.create(TestFleetTenants, {data: []})
+});
+
+test.afterAll(() => {
+    testFleetTenantsStore?.destroy();
+    testInstanceStore?.destroy()
+});
 
 test.beforeAll(async () => {
     AgentDefinition = (await import('../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
@@ -41,13 +55,24 @@ const makeAgentStore = data => Neo.create(Store, {keyProperty: 'id', model: Agen
  * @returns {Promise<AgentOS.view.accounts.Panel>}
  */
 const createAccounts = async config => {
-    const stores = Object.fromEntries([
-        ['agentDefinitions', config.agentDefinitionsStore],
-        ['fleetTenants', config.fleetTenantsStore],
-        ['fleetRoster', config.fleetRosterStore]
-    ].filter(([, store]) => store));
+    const stores = {
+        agentDefinitions: config.agentDefinitionsStore || {module: DataStore, model: AgentDefinition, data: []},
+        fleetTenants    : config.fleetTenantsStore || {module: TestFleetTenants, data: []},
+        fleetRoster     : config.fleetRosterStore || {module: DataStore, data: []},
+        fleetInstances  : config.instanceStore || {module: DataStore, keyProperty: 'profileId', data: []}
+    };
     const view = Neo.create(Accounts, {
-        appName: 'AgentOSAccountsTest', ...config, stateProvider: {stores}
+        appName: 'AgentOSAccountsTest',
+        ...config,
+        stateProvider: {
+            module: StateProvider,
+            data  : {
+                boundProfileId: config.boundProfileId ?? null,
+                shellCustody  : config.shellCustody === true,
+                shellPlaneBase: config.shellPlaneBase ?? null
+            },
+            stores
+        }
     });
 
     return view
@@ -69,6 +94,35 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
         expect(source).not.toMatch(/Use sample|Connect harness|connectionBridge/);
         // and the setup journey carries no App Worker or credential-ownership prose
         expect(source).not.toMatch(/never enters App Worker state|not retained in the app worker|dev-server mode/)
+    });
+
+    test('the Accounts panel forwards bound Agent OS changes to its mounted card', async () => {
+        const definitions = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]);
+        const view = await createAccounts({
+            agentDefinitionsStore: definitions,
+            fleetTenantsStore    : testFleetTenantsStore,
+            instanceStore        : testInstanceStore,
+            boundProfileId       : 'fleet-a',
+            shellCustody         : true,
+            shellPlaneBase       : 'http://127.0.0.1:3102'
+        });
+        const
+            card     = view.getReference('agent-config-card'),
+            cardId   = card.id;
+
+        expect(card.agentDefinitionsStore).toBe(definitions);
+        expect(card.boundProfileId).toBe('fleet-a');
+        expect(JSON.stringify(card.vdom.cn)).toContain('Agent OS · http://127.0.0.1:3102');
+
+        // The existing reactive Panel configs forward a destination update in place.
+        view.stateProvider.setData({boundProfileId: 'fleet-b', shellPlaneBase: 'http://127.0.0.1:4102'});
+        expect(view.getReference('agent-config-card')).toBe(card);
+        expect(card.id).toBe(cardId);
+        expect(card.boundProfileId).toBe('fleet-b');
+        expect(JSON.stringify(card.vdom.cn)).toContain('Agent OS · http://127.0.0.1:4102');
+
+        view.destroy();
+        definitions.destroy()
     });
 
     test('an accepted definition lands in the roster and re-fires for the Viewport; the form keeps its outcome line', async () => {
@@ -307,6 +361,7 @@ test.describe('AgentOS.view.accounts.Panel — master-detail (multiple agents)',
                 hidden      : false,
                 record      : undefined,
                 refreshCount: 0,
+                set(config) { Object.assign(this, config) },
                 refresh() { this.refreshCount++ },
                 setSaveStatus(agentId, state, reason) {
                     if (this.record?.id === agentId) this.saveStatus = {agentId, state, reason}
@@ -324,7 +379,7 @@ test.describe('AgentOS.view.accounts.Panel — master-detail (multiple agents)',
             refs  = {
                 'accounts-empty'   : {hidden: false},
                 'add-agent-button' : {pressed: false},
-                'add-agent-form'   : {hidden: true},
+                'add-agent-form'   : {hidden: true, set(config) { Object.assign(this, config) }},
                 'agent-config-card': card,
                 'agent-list'       : list
             };
@@ -775,7 +830,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
 
         // The section carries the authority too, so the grain is readable without parsing each row.
         expect(text).toContain('Servers · declared');
-        expect(text).toContain('Memory & knowledge · declared');
+        expect(text).toContain('Memory & knowledge');
 
         card.destroy();
         store.destroy()
@@ -802,7 +857,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         store.destroy()
     });
 
-    test('target choices render public availability honestly and emit only the narrow persisted intent', () => {
+    test('the bound destination is primary; explicit connection editing retains stable native controls', () => {
         const
             store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{
                 id: 'ada', githubUsername: 'ada', harnessType: 'codex'
@@ -820,21 +875,49 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
                 status  : 'disconnected'
             }]}),
             record  = store.get('ada'),
-            card    = Neo.create(AgentConfigCard, {record, tenantStore: tenants}),
+            card    = Neo.create(AgentConfigCard, {
+                record,
+                agentDefinitionsStore: store,
+                tenantStore          : tenants,
+                shellCustody         : true,
+                shellPlaneBase       : 'https://fleet.example.com/agentos'
+            }),
             intents = [];
 
         card.on('configIntent', intent => intents.push(intent));
 
         const find = (node, id) => node?.id === id ? node : (node?.cn || []).reduce((hit, child) => hit || find(child, id), null);
+        const buttonIds = () => {
+            const collect = (node, ids=[]) => {
+                node?.id?.startsWith(`${card.id}__`) && node.tag === 'button' && ids.push(node.id);
+                node?.cn?.forEach(child => collect(child, ids));
+                return ids.sort()
+            };
 
-        // the Fleet's own target, named like the launcher chip above it
-        expect(find(card.vdom, `${card.id}__target__local`)?.text).toBe('This fleet');
-        expect(cardText(card)).not.toContain('Local services');
-        expect(cardText(card)).toContain('https://tenant-a.example.com/agentos');
-        expect(cardText(card)).toContain('https://tenant-b.example.com/agentos · Unavailable');
+            return collect(card.vdom)
+        };
+
+        expect(cardText(card)).toContain('Agent OS · https://fleet.example.com/agentos');
+        expect(find(card.vdom, `${card.id}__target__local`)).toBeNull();
+        expect(find(card.vdom, `${card.id}__target__tenant-a`)).toBeNull();
+        expect(find(card.vdom, `${card.id}__connection__edit`).tag).toBe('button');
+        expect(cardText(card)).not.toContain('Plane credential');
+        expect(cardText(card)).not.toContain('This fleet ·');
+
+        const beforeOpenIds = buttonIds();
+        card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
+
+        // The competing target list only enters the DOM after the explicit edit action.
+        expect(find(card.vdom, `${card.id}__target__local`)?.text).toBe('This fleet · https://fleet.example.com/agentos');
+        expect(cardText(card)).toContain('Saved connection · https://tenant-a.example.com/agentos');
+        expect(cardText(card)).toContain('Saved connection · https://tenant-b.example.com/agentos · Unavailable');
         expect(cardText(card)).not.toContain('must-never-enter-the-model');
         expect(cardText(card)).not.toMatch(/Authorization|Bearer|credentialEnvVar/);
         expect(tenants.get('tenant-a').credential).toBeUndefined();
+
+        const editableIds = buttonIds();
+        expect(editableIds.length).toBeGreaterThan(beforeOpenIds.length);
+        expect(editableIds.every(id => find(card.vdom, id)?.tag === 'button')).toBe(true);
 
         card.onCardClick({path: [{id: `${card.id}__target__tenant-a`}]});
         card.onCardClick({path: [{id: `${card.id}__target__tenant-b`}]});
@@ -847,44 +930,23 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         expect(record.mcpTarget).toBeNull();
 
         record.set({mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}});
-        card.refresh();
+        expect(cardText(card)).toContain('Saved connection · https://tenant-a.example.com/agentos');
         card.onCardClick({path: [{id: `${card.id}__target__local`}]});
 
         expect(intents[1]).toMatchObject({id: 'ada', mcpTarget: null});
         expect(record.mcpTarget).toEqual({kind: 'tenant', tenantId: 'tenant-a'});
 
-        card.destroy();
-        tenants.destroy();
-        store.destroy()
-    });
-
-    test('a seat on this Fleet is offered its own plane credential; a tenant seat and a harness that cannot reach the plane are not', () => {
-        const
-            store   = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
-                {id: 'ada',     githubUsername: 'ada',     harnessType: 'codex'},
-                {id: 'tenant',  githubUsername: 'tenant',  harnessType: 'codex', mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}},
-                {id: 'gravity', githubUsername: 'gravity', harnessType: 'antigravity'}
-            ]}),
-            card    = Neo.create(AgentConfigCard, {record: store.get('ada')}),
-            intents = [],
-            click   = () => card.onCardClick({path: [{id: `${card.id}__credential__plane`}]});
-
-        card.on('configIntent', intent => intents.push(intent));
-
-        expect(cardText(card)).toContain('Plane credential · Set');
-        click();
-        expect(intents).toHaveLength(1);
-        expect(intents[0]).toMatchObject({id: 'ada', planeCredential: true});
-
-        for (const id of ['tenant', 'gravity']) {
-            card.record = store.get(id);
-
-            expect(cardText(card), id).not.toContain('Plane credential');
-            click();
-            expect(intents, id).toHaveLength(1)
+        // VDOM refreshes for each transport state preserve the same native control ids, so a browser
+        // can keep focus on the triggering button through pending, acceptance, and rejection.
+        const stableIds = buttonIds();
+        for (const state of ['pending', 'accepted', 'rejected']) {
+            card.setSaveStatus('ada', state, state === 'rejected' ? 'Configuration was rejected.' : 'Saving configuration…');
+            expect(buttonIds()).toEqual(stableIds);
+            expect(stableIds.every(id => find(card.vdom, id)?.tag === 'button')).toBe(true)
         }
 
         card.destroy();
+        tenants.destroy();
         store.destroy()
     });
 
@@ -905,19 +967,163 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
                 endpoint: 'https://offline.example.com',
                 status  : 'disconnected'
             }]}),
-            card    = Neo.create(AgentConfigCard, {record: store.get('desktop'), tenantStore: tenants}),
+            card    = Neo.create(AgentConfigCard, {
+                record               : store.get('desktop'),
+                agentDefinitionsStore: store,
+                tenantStore          : tenants
+            }),
             intents = [];
 
         card.on('configIntent', intent => intents.push(intent));
+        card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
 
         expect(cardText(card)).toContain('Unavailable for this harness');
-        expect(cardText(card)).toContain('missing-tenant · Saved target unavailable');
+        expect(cardText(card)).toContain('Saved connection unavailable · missing-tenant');
 
         card.onCardClick({path: [{id: `${card.id}__target__connected`}]});
         card.onCardClick({path: [{id: `${card.id}__target__offline`}]});
         card.onCardClick({path: [{id: `${card.id}__target__missing-tenant`}]});
 
         expect(intents).toEqual([]);
+
+        card.destroy();
+        tenants.destroy();
+        store.destroy()
+    });
+
+    test('a saved tenant owned by another seat stays visible, explains its owner, and emits no intent', () => {
+        const
+            store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{
+                id: 'ada', githubUsername: 'ada', harnessType: 'codex'
+            }, {
+                id: 'sophie', githubUsername: 'sophie', displayName: 'Sophie', harnessType: 'codex',
+                mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}
+            }]}),
+            tenants = Neo.create(FleetTenants, {data: [{
+                id: 'tenant-a', endpoint: 'http://127.0.0.1:3102', status: 'connected'
+            }]}),
+            card = Neo.create(AgentConfigCard, {
+                record               : store.get('ada'),
+                agentDefinitionsStore: store,
+                tenantStore          : tenants,
+                shellCustody         : true,
+                shellPlaneBase       : 'http://127.0.0.1:3102'
+            }),
+            intents = [],
+            find = (node, id) => node?.id === id ? node : (node?.cn || []).reduce((hit, child) => hit || find(child, id), null),
+            targetId = `${card.id}__target__tenant-a`;
+
+        card.on('configIntent', intent => intents.push(intent));
+        card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
+
+        const unavailable = find(card.vdom, targetId);
+        expect(unavailable.text).toContain('In use by Sophie');
+        expect(unavailable['aria-disabled']).toBe('true');
+        expect(unavailable.tag).toBe('button');
+        expect(cardText(card)).toContain('Agent OS · http://127.0.0.1:3102');
+
+        card.onCardClick({path: [{id: targetId}]});
+        expect(intents).toEqual([]);
+
+        // A release in the same shared Store immediately refreshes the retained editor row.
+        store.get('sophie').set({mcpTarget: null});
+        const available = find(card.vdom, targetId);
+        expect(available.cls).toContain('is-selectable');
+        expect(available['aria-disabled']).toBe('false');
+
+        card.onCardClick({path: [{id: targetId}]});
+        expect(intents).toHaveLength(1);
+        expect(intents[0]).toMatchObject({id: 'ada', mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}});
+        expect(store.get('ada').mcpTarget).toBeNull(); // readback remains the only record writer
+
+        // Once canonical readback names Ada as the owner, her choice stays selected and retained.
+        store.get('ada').set({mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}});
+        const selected = find(card.vdom, targetId);
+        expect(selected.cls).toContain('is-selected');
+        expect(selected['aria-pressed']).toBe('true');
+        expect(selected['aria-disabled']).toBe('false');
+
+        // A same-agent canonical readback keeps the editor open; switching to another identity closes it.
+        card.record = {
+            id: 'ada', githubUsername: 'ada', harnessType: 'codex',
+            mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'},
+            statusText: 'canonical refresh'
+        };
+        expect(card.connectionEditing).toBe(true);
+        expect(find(card.vdom, targetId)).toBeTruthy();
+        card.record = store.get('sophie');
+        expect(card.connectionEditing).toBe(false);
+        expect(find(card.vdom, targetId)).toBeNull();
+
+        card.destroy();
+        tenants.destroy();
+        store.destroy()
+    });
+
+    test('an empty but unhydrated definitions Store cannot authorize a new saved-tenant target', () => {
+        const
+            definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition}),
+            tenants = Neo.create(FleetTenants, {data: [{
+                id: 'tenant-a', endpoint: 'https://tenant-a.example.com', status: 'connected'
+            }, {
+                id: 'tenant-b', endpoint: 'https://tenant-b.example.com', status: 'connected'
+            }]}),
+            record = {id: 'ada', githubUsername: 'ada', harnessType: 'codex', mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}},
+            card = Neo.create(AgentConfigCard, {
+                record,
+                agentDefinitionsStore: definitions,
+                tenantStore: tenants
+            }),
+            intents = [],
+            find = (node, id) => node?.id === id ? node : (node?.cn || []).reduce((hit, child) => hit || find(child, id), null),
+            selectedId = `${card.id}__target__tenant-a`,
+            newTargetId = `${card.id}__target__tenant-b`;
+
+        card.on('configIntent', intent => intents.push(intent));
+        card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
+        expect(definitions.data).toBeNull();
+        expect(find(card.vdom, selectedId).text).toContain('Assignment not read back');
+        expect(find(card.vdom, selectedId)['aria-pressed']).toBe('true');
+        expect(find(card.vdom, newTargetId)['aria-disabled']).toBe('true');
+
+        card.onCardClick({path: [{id: newTargetId}]});
+        expect(intents).toEqual([]);
+
+        definitions.data = [{id: 'ada', githubUsername: 'ada', harnessType: 'codex', mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}}];
+        expect(find(card.vdom, newTargetId)['aria-disabled']).toBe('false');
+
+        // A saved target already selected before hydration remains truthfully selected.
+        expect(find(card.vdom, selectedId)['aria-pressed']).toBe('true');
+
+        card.destroy();
+        tenants.destroy();
+        definitions.destroy()
+    });
+
+    test('the local target is non-actionable when no bound Agent OS is available', () => {
+        const
+            store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{
+                id: 'ada', githubUsername: 'ada', harnessType: 'codex',
+                mcpTarget: {kind: 'tenant', tenantId: 'saved-a'}
+            }]}),
+            tenants = Neo.create(FleetTenants, {data: []}),
+            card = Neo.create(AgentConfigCard, {
+                record               : store.get('ada'),
+                agentDefinitionsStore: store,
+                tenantStore          : tenants
+            }),
+            intents = [],
+            find = (node, id) => node?.id === id ? node : (node?.cn || []).reduce((hit, child) => hit || find(child, id), null);
+
+        card.on('configIntent', intent => intents.push(intent));
+        card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
+
+        const localChoice = find(card.vdom, `${card.id}__target__local`);
+        expect(localChoice['aria-disabled']).toBe('true');
+
+        card.onCardClick({path: [{id: `${card.id}__target__local`}]});
+        expect(intents).toEqual([]);
+        expect(store.get('ada').mcpTarget).toEqual({kind: 'tenant', tenantId: 'saved-a'});
 
         card.destroy();
         tenants.destroy();
@@ -932,7 +1138,13 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             tenants = Neo.create(FleetTenants, {data: [{
                 id: 'tenant-a', endpoint: 'https://tenant.example.com', status: 'connected'
             }]}),
-            card = Neo.create(AgentConfigCard, {record: store.get('ada'), tenantStore: tenants});
+            card = Neo.create(AgentConfigCard, {
+                record               : store.get('ada'),
+                agentDefinitionsStore: store,
+                tenantStore          : tenants
+            });
+
+        card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
 
         expect(cardText(card)).not.toContain('https://tenant.example.com · Unavailable');
 

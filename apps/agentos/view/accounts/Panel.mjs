@@ -63,13 +63,25 @@ class Accounts extends DashboardPanel {
          * @reactive
          */
         fleetTenantsStore_: null,
+        /** @member {String|null} boundProfileId_=null @reactive */
+        boundProfileId_: null,
+        /** @member {Neo.data.Store|null} instanceStore_=null @reactive */
+        instanceStore_: null,
+        /** @member {Boolean} shellCustody_=false @reactive */
+        shellCustody_: false,
+        /** @member {String|null} shellPlaneBase_=null @reactive */
+        shellPlaneBase_: null,
         /**
          * @member {Object} bind
          */
         bind: {
             agentDefinitionsStore: 'stores.agentDefinitions',
             fleetRosterStore     : 'stores.fleetRoster',
-            fleetTenantsStore    : 'stores.fleetTenants'
+            fleetTenantsStore    : 'stores.fleetTenants',
+            boundProfileId       : data => data.boundProfileId ?? null,
+            instanceStore        : 'stores.fleetInstances',
+            shellCustody         : data => data.shellCustody === true,
+            shellPlaneBase       : data => data.shellPlaneBase ?? null
         },
         /**
          * @member {String[]} cls=['agent-panel-accounts']
@@ -191,9 +203,21 @@ class Accounts extends DashboardPanel {
         const
             me    = this,
             card  = me.getReference('agent-config-card'),
-            repos = me.getReference('agent-repos-card');
+            form  = me.getReference('add-agent-form'),
+            repos = me.getReference('agent-repos-card'),
+            destination = {
+                boundProfileId: me.boundProfileId,
+                instanceStore : me.instanceStore,
+                shellCustody  : me.shellCustody,
+                shellPlaneBase: me.shellPlaneBase
+            };
 
-        if (card) card.tenantStore = me.fleetTenantsStore;
+        card?.set({
+            agentDefinitionsStore: me.agentDefinitionsStore,
+            tenantStore          : me.fleetTenantsStore,
+            ...destination
+        });
+        form?.set(destination);
 
         if (repos) repos.rosterStore = me.fleetRosterStore;
 
@@ -234,6 +258,17 @@ class Accounts extends DashboardPanel {
         value   ?.on({...listeners});
         oldValue?.un({...listeners});
 
+        const card = me.getReference('agent-config-card');
+
+        card?.set({
+            agentDefinitionsStore: value,
+            tenantStore          : me.fleetTenantsStore,
+            boundProfileId       : me.boundProfileId,
+            instanceStore        : me.instanceStore,
+            shellCustody         : me.shellCustody,
+            shellPlaneBase       : me.shellPlaneBase
+        });
+
         if (oldValue && oldValue !== value) {
             me.agentConfigSaveStatuses.clear();
             me.agentReposSaveStatuses.clear()
@@ -264,10 +299,32 @@ class Accounts extends DashboardPanel {
      * @protected
      */
     afterSetFleetTenantsStore(value, oldValue) {
-        const card = this.getReference('agent-config-card');
-
-        if (card) card.tenantStore = value;
+        this.getReference('agent-config-card')?.set({tenantStore: value});
         value && this.isConstructed && void this.controller.loadFleetTenants()
+    }
+
+    /** @summary Forward the bound profile change to both setup surfaces. @protected */
+    afterSetBoundProfileId(value) {
+        this.getReference('agent-config-card')?.set({boundProfileId: value});
+        this.getReference('add-agent-form')?.set({boundProfileId: value})
+    }
+
+    /** @summary Forward the instance roster change to both setup surfaces. @protected */
+    afterSetInstanceStore(value) {
+        this.getReference('agent-config-card')?.set({instanceStore: value});
+        this.getReference('add-agent-form')?.set({instanceStore: value})
+    }
+
+    /** @summary Forward shell custody changes to both setup surfaces. @protected */
+    afterSetShellCustody(value) {
+        this.getReference('agent-config-card')?.set({shellCustody: value});
+        this.getReference('add-agent-form')?.set({shellCustody: value})
+    }
+
+    /** @summary Forward the bound plane endpoint change to both setup surfaces. @protected */
+    afterSetShellPlaneBase(value) {
+        this.getReference('agent-config-card')?.set({shellPlaneBase: value});
+        this.getReference('add-agent-form')?.set({shellPlaneBase: value})
     }
 
     /**
