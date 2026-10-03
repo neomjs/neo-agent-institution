@@ -1,10 +1,12 @@
 import AgentConfigCard                      from './AgentConfigComponent.mjs';
+import Button                               from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container                            from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import FamilyRail                           from '../shared/FamilyRailComponent.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
+import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
 import Controller                          from './Controller.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
@@ -72,8 +74,30 @@ const paneConfig = pane => ({
         ntype    : 'component',
         cls      : ['fm-detail-pane-body'],
         reference: `pane-${pane.key}-body`
-    }]
+    }, ...(pane.key === 'repo' ? repoPathAction() : [])]
 });
+
+/**
+ * @summary The Repository pane's one action under its clone path: `Copy path`, and the unseen field
+ * it copies from. The action stays hidden until the roster row reports a path.
+ * @returns {Object[]}
+ * @private
+ */
+const repoPathAction = () => [{
+    module   : Button,
+    cls      : ['fm-detail-repo-copy'],
+    hidden   : true,
+    reference: 'detail-repo-copy',
+    text     : 'Copy path',
+    tooltip  : 'Copy the clone path',
+    ui       : 'ghost'
+}, {
+    // the copy source: an inert field the Copy action selects, unseen and unfocusable
+    ntype    : 'component',
+    cls      : ['fm-detail-repo-field'],
+    reference: 'detail-repo-field',
+    vdom     : {tag: 'input', 'aria-hidden': true, readonly: true, tabIndex: -1, type: 'text', value: ''}
+}];
 
 /**
  * The cockpit drill-in surface: one resident's detail — the identity header over the four SSOT
@@ -255,6 +279,27 @@ class AgentDetail extends Container {
                     ntype    : 'component',
                     cls      : ['fm-detail-id'],
                     reference: 'detail-id'
+                }, {
+                    // the seat, read deliberately here and never on the roster card: its harness
+                    // family in words, and for a Claude Desktop seat the one step its first launch
+                    // needs. The folder itself is the Repository pane's line, never repeated here
+                    ntype    : 'container',
+                    cls      : ['fm-detail-seat'],
+                    hidden   : true,
+                    layout   : {ntype: 'vbox', align: 'stretch'},
+                    reference: 'detail-seat',
+
+                    items: [{
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-family'],
+                        reference: 'detail-seat-family'
+                    }, {
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-launch'],
+                        hidden   : true,
+                        reference: 'detail-seat-launch',
+                        text     : 'Open the repository folder below in Claude\'s Code tab, then Start on the card.'
+                    }]
                 }]
             }]
         }, {
@@ -322,6 +367,7 @@ class AgentDetail extends Container {
         // the old identity-header placement floated the verb OVER the identity block at rail
         // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
+        this.getReference('detail-repo-copy').set({handler: 'onCopyRepoPath', handlerScope: this});
         const configPane = this.getReference('config-pane');
 
         if (configPane) {
@@ -462,6 +508,7 @@ class AgentDetail extends Container {
         me.getReference('detail-engine').text = record.engineTag ?? '';
         me.getReference('detail-id').text     = agentId;
 
+        me.applySeatRow(record);
         me.renderStateLedger(record, sources, display);
 
         me.getReference('detail-avatar').set({
@@ -470,6 +517,42 @@ class AgentDetail extends Container {
         });
 
         me.applyPaneFreshness()
+    }
+
+    /**
+     * @summary The Seat row: the harness family in words, only for a REPORTED family (none renders no
+     * row and no placeholder). A Claude Desktop seat with a reported folder adds the one step its first
+     * launch needs, pointing at the Repository pane's path, since that Desktop cannot be launched into
+     * a folder. Every value is an inert `text` node.
+     * @param {Object} record The drilled-in FleetAgent record.
+     * @protected
+     */
+    applySeatRow(record) {
+        const
+            me          = this,
+            harnessType = typeof record.harnessType === 'string' && record.harnessType ? record.harnessType : null;
+
+        me.getReference('detail-seat').hidden = harnessType === null;
+
+        if (harnessType === null) return;
+
+        me.getReference('detail-seat-family').text   = HarnessChoice.describe(harnessType) ?? harnessType;
+        me.getReference('detail-seat-launch').hidden = !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath)
+    }
+
+    /**
+     * @summary The Copy path action: the clone path goes to the clipboard through the main thread's
+     * selection of the unseen field, and the focus returns to the action.
+     * @param {Object} data The click; `detail` is 0 where the keyboard pressed the action
+     */
+    async onCopyRepoPath(data) {
+        const me = this, copy = me.getReference('detail-repo-copy'), field = me.getReference('detail-repo-field'), {windowId} = me;
+
+        if (field.vdom.value) {
+            await Neo.main.DomAccess.selectNode({id: field.id, windowId});
+            await Neo.main.DomAccess.execCommand({command: 'copy', windowId});
+            copy.focus(copy.id, false, true, data?.detail ? 'pointer' : 'keyboard')
+        }
     }
 
     /**
@@ -636,7 +719,8 @@ class AgentDetail extends Container {
      * @summary The honest body content for one pane from the record's known facts.
      *
      * The lane pane renders the lane line with its claim age when its source is wired, plus the
-     * independent open-lane count. The repository pane renders the roster row's slug and clone path.
+     * independent open-lane count. The repository pane renders the roster row's slug and its whole
+     * clone path, and shows the path's Copy action only while a path is reported.
      * The thought-stream and pull requests panes
      * render nothing until their producers land: each pill names what it waits for, and a body
      * line repeating it would tell the same fact twice per section.
@@ -648,11 +732,22 @@ class AgentDetail extends Container {
         const body = this.getReference(`pane-${key}-body`);
 
         if (key === 'repo') {
+            const
+                repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null,
+                field    = this.getReference('detail-repo-field');
+
             body.vdom.cn = [
                 {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},
-                ...(record.repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: record.repoPath}] : [])
+                ...(repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: repoPath}] : [])
             ];
             body.update();
+
+            this.getReference('detail-repo-copy').hidden = repoPath === null;
+
+            if (field.vdom.value !== (repoPath ?? '')) {
+                field.vdom.value = repoPath ?? '';
+                field.update()
+            }
             return
         }
 

@@ -348,15 +348,6 @@ class AgentCard extends Container {
                 reference: 'card-lane'
             }]
         }, {
-            // the seat's clone path — one quiet mono line, present only when the roster reports a
-            // path. A Claude Desktop seat's line leads with the one verb its operator must perform:
-            // that Desktop cannot be launched into a folder, so the Code tab opens it by hand.
-            ntype    : 'component',
-            cls      : ['fm-card-repo'],
-            flex     : 'none',
-            hidden   : true,
-            reference: 'card-repo'
-        }, {
             // ONE honest source word-line: the fm-strip-<level> cls colours the ::before dot; the text
             // is summary-default and NAMES the abnormal source. Full facts reach via the drill (detail).
             ntype    : 'component',
@@ -713,24 +704,6 @@ class AgentCard extends Container {
         me.getReference('card-engine').text = record.engineTag ?? '';
 
         me.refreshLaneLine(record, sources.lane);
-
-        // the clone path: only a REPORTED path renders (null = no repository or no repo status on
-        // the row → no line, never a placeholder). A Claude Desktop seat leads with the verb, since
-        // that Desktop cannot be launched into a folder. Inert `text` nodes, never `html`: the path
-        // is adapter-supplied data, and the title carries the whole path where the line elides it.
-        const
-            repo     = me.getReference('card-repo'),
-            repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null;
-
-        repo.vdom.title = repoPath;
-        repo.vdom.cn    = repoPath
-            ? [
-                ...(record.harnessType === 'claude-desktop' ? [{tag: 'span', cls: ['fm-repo-verb'], text: 'Open in the Code tab'}] : []),
-                {tag: 'span', cls: ['fm-repo-path'], text: repoPath}
-            ]
-            : [];
-        repo.set({hidden: repoPath === null});
-        repoPath !== null && repo.update();
 
         // a badge only for a REPORTED positive count: null/absent = no stamped count → no badge.
         // The text is always the whole phrase; `data-count` is the narrow form the SCSS renders where

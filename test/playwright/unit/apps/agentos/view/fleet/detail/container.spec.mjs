@@ -167,6 +167,77 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
+    test('the Seat row names the family in words, only for a reported family; a Claude Desktop seat with a folder adds its first-launch step, and the row never repeats the path', () => {
+        const
+            repoPath = '/Users/x/Library/Application Support/neo-harness/brain/fleet/agents/vega/neomjs/neo',
+            detail   = createDetail({agentId: 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok'}),
+            part     = reference => detail.down({reference});
+
+        expect(part('detail-seat').hidden).toBe(false);
+        expect(part('detail-seat-family').text).toBe('Claude · App');
+        expect(part('detail-seat-launch').hidden).toBe(false);
+        expect(part('detail-seat-launch').text).toBe('Open the repository folder below in Claude\'s Code tab, then Start on the card.');
+        expect(part('detail-seat').items.map(item => item.text ?? '').join(' '), 'the path lives on the Repository pane alone').not.toContain(repoPath);
+
+        // another family has the row and no first-launch step: it is launched into its folder
+        applySet(detail, {harnessType: 'codex-desktop'});
+        expect(part('detail-seat-family').text).toBe('Codex · App');
+        expect(part('detail-seat-launch').hidden).toBe(true);
+
+        // a Claude Desktop seat without a reported folder has no step to point at
+        applySet(detail, {harnessType: 'claude-desktop', repoPath: null});
+        expect(part('detail-seat').hidden).toBe(false);
+        expect(part('detail-seat-launch').hidden).toBe(true);
+
+        // no reported family: no row, no placeholder
+        applySet(detail, {harnessType: null});
+        expect(part('detail-seat').hidden).toBe(true);
+
+        detail.destroy()
+    });
+
+    test('the Repository pane shows the whole clone path, with Copy path only while a path is reported', () => {
+        const
+            repoPath = '/Users/x/Library/Application Support/neo-harness/brain/fleet/agents/vega/neomjs/neo',
+            detail   = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath, state: 'ok'}),
+            part     = reference => detail.down({reference});
+
+        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo', repoPath]);
+        expect(part('detail-repo-copy').hidden).toBe(false);
+        expect(part('detail-repo-copy').text).toBe('Copy path');
+        expect(part('detail-repo-field').vdom.value).toBe(repoPath);
+
+        applySet(detail, {repoPath: null});
+        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo']);
+        expect(part('detail-repo-copy').hidden).toBe(true);
+        expect(part('detail-repo-field').vdom.value).toBe('');
+
+        detail.destroy()
+    });
+
+    test('Copy path selects the unseen field, copies through the main thread, and hands the focus back', async () => {
+        const
+            detail = createDetail({agentId: 'vega', harnessType: 'codex', repoPath: '/Users/x/agents/vega/neomjs/neo', state: 'ok'}),
+            calls  = [],
+            main   = Neo.main ?? (Neo.main = {}),
+            saved  = main.DomAccess;
+
+        main.DomAccess = {
+            selectNode : async ({id})      => calls.push(['select', id]),
+            execCommand: async ({command}) => calls.push(['execCommand', command]),
+            focus      : async ({id})      => calls.push(['focus', id])
+        };
+
+        try {
+            await detail.onCopyRepoPath({detail: 1});
+
+            expect(calls.slice(0, 2)).toEqual([['select', detail.down({reference: 'detail-repo-field'}).id], ['execCommand', 'copy']])
+        } finally {
+            main.DomAccess = saved;
+            detail.destroy()
+        }
+    });
+
     test('ADR-0032 §2.3.2: name/engine are display state over the durable id — a rename re-renders in place, never a re-key', () => {
         const detail   = createDetail({agentId: 'vega', displayName: 'Vega', engineTag: 'opus-4.8', state: 'ok'});
         const beforeId = detail.id;
