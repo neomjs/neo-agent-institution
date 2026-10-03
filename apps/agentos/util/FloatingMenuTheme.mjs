@@ -30,12 +30,7 @@ class FloatingMenuTheme extends Base {
             theme = owner.getTheme(),
             cls   = menu.cls.filter(value => !value.startsWith('neo-theme-'));
 
-        if (theme) {
-            menu.theme = theme;
-            cls.push(theme)
-        }
-
-        menu.cls = cls
+        menu.set(theme ? {theme, cls: [...cls, theme]} : {cls})
     }
 }
 

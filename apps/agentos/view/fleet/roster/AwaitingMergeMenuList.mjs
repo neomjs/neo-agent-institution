@@ -38,26 +38,33 @@ class AwaitingMergeMenuList extends MenuList {
     }
 
     /**
-     * @summary Preserve provider Store ownership when a binding replaces the Store instance: list.Base
-     * destroys a replaced Store it assumes is its own, so this detaches the inherited listeners and
-     * returns the new instance verbatim.
+     * @summary A replaced provider Store keeps living, so the list lets go of it first.
      * @param {Neo.data.Store} value
      * @param {Neo.data.Store|null} oldValue
      * @returns {Neo.data.Store}
      * @protected
      */
     beforeSetStore(value, oldValue) {
-        let me = this;
+        this.detachStore(oldValue);
+        return super.beforeSetStore(value, oldValue)
+    }
 
-        oldValue?.un({
-            filter      : me.onStoreFilter,
-            load        : me.onStoreLoad,
-            recordChange: me.onStoreRecordChange,
-            sort        : me.onStoreSort,
-            scope       : me
-        });
-
-        return value
+    /**
+     * @summary Releases the four subscriptions list.Base#afterSetStore registers. A list that does
+     * not own its Store leaves them behind on swap and destroy, and a destroyed list keeps its id, so
+     * the Store's next event would still call into it.
+     * @param {Neo.data.Store|null} store
+     * @protected
+     */
+    detachStore(store) {
+        // by name, as list.Base registers them: un() matches a string handler only by the same string
+        store?.un({
+            filter      : 'onStoreFilter',
+            load        : 'onStoreLoad',
+            recordChange: 'onStoreRecordChange',
+            sort        : 'onStoreSort',
+            scope       : this
+        })
     }
 
     /**
@@ -106,6 +113,15 @@ class AwaitingMergeMenuList extends MenuList {
     unmount() {
         this.parentComponent?.syncMenuExpanded(false);
         super.unmount()
+    }
+
+    /**
+     * @summary The provider Store outlives this menu: release its subscriptions, never the Store.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        this.detachStore(this.store);
+        super.destroy(...args)
     }
 }
 

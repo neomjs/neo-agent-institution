@@ -65,7 +65,9 @@ class OpenWorkSeat extends Base {
     }
 
     /**
-     * @summary The seat's held open work, or `null` when it holds none or the read cannot say.
+     * @summary The seat's held open work, or `null` when it holds none or the read cannot say. Its
+     * `observedAt` is the oldest observation among the held rows, the envelope's own when no row carries
+     * one, so a chip that is stale because of one row ages from that row.
      * @param {Object|null} snapshot     One `fleetOpenWork` envelope, or `null` while unanswered.
      * @param {String|null} seatIdentity The seat's identity, e.g. `@neo-opus-ada`.
      * @returns {{count: Number, worst: String, stale: Boolean, observedAt: String|null}|null}
@@ -80,7 +82,7 @@ class OpenWorkSeat extends Base {
         [...(lists.authored ?? []), ...(lists.reviewing ?? [])].forEach(row => {
             const kind = OpenWorkSeat.kindOf(row, seatIdentity);
 
-            kind && held.set(`${row.repo}#${row.number}`, {kind, stale: row.stale === true})
+            kind && held.set(`${row.repo}#${row.number}`, {kind, observedAt: row.observedAt ?? null, stale: row.stale === true})
         });
 
         if (held.size === 0) return null;
@@ -91,8 +93,18 @@ class OpenWorkSeat extends Base {
             count     : rows.length,
             worst     : KIND_RANK.find(kind => rows.some(row => row.kind === kind)),
             stale     : snapshot.state === 'stale' || rows.some(row => row.stale),
-            observedAt: snapshot.observedAt ?? null
+            observedAt: OpenWorkSeat.oldestObservedAt(rows) ?? snapshot.observedAt ?? null
         }
+    }
+
+    /**
+     * @summary The oldest observation among open-work rows: a surface that one row made stale ages
+     * from that row. The seat chip and the fleet head's merge queue share this rule.
+     * @param {Object[]} rows Rows or records carrying an ISO-8601 `observedAt`.
+     * @returns {String|null} `null` when no row carries one.
+     */
+    static oldestObservedAt(rows) {
+        return rows.map(row => row.observedAt).filter(Boolean).sort()[0] ?? null
     }
 
     /**

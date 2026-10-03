@@ -56,8 +56,10 @@ class OpenWorkRead extends Base {
     /**
      * @summary Project the held answer onto the surfaces that show it: the provider's `openWork` block
      * (the read's state for the fleet head), the provider's merge queue Store, and each roster record's
-     * held open work ({@link AgentOS.util.OpenWorkSeat#summarize}). A bare mount without the provider's
-     * stores projects what it can.
+     * held open work ({@link AgentOS.util.OpenWorkSeat#summarize}). Every record, the ones a view filter
+     * hides included, so a card that reappears never shows an older answer. The roster's last live
+     * snapshot is re-stamped too, so a source-precedence re-apply carries this answer and not the one
+     * the roster landed with. A bare mount without the provider's stores projects what it can.
      * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      */
     static project(owner) {
@@ -83,9 +85,13 @@ class OpenWorkRead extends Base {
 
         queue && (queue.data = OpenWorkRead.mergeRows(snapshot));
 
-        roster?.forEach(record => {
+        roster && (roster.allItems ?? roster).items.forEach(record => {
             record.set({openWork: OpenWorkRead.seatOpenWork(owner, record.githubUsername)})
-        })
+        });
+
+        if (Array.isArray(owner.lastLiveRows)) {
+            owner.lastLiveRows = owner.lastLiveRows.map(row => ({...row, openWork: OpenWorkRead.seatOpenWork(owner, row.githubUsername)}))
+        }
     }
 
     /**

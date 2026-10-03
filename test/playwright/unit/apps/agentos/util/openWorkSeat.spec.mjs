@@ -71,6 +71,18 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
         expect(OpenWorkSeat.summarize(held([{...red, stale: true}]), ada).stale).toBe(true)
     });
 
+    test('the chip ages from the oldest held row, not from a fresher envelope', () => {
+        const
+            fresh = row(1, {role: 'author', ids: [ada]}, {ci: 'red', observedAt: '2026-10-03T07:58:00.000Z'}),
+            stale = row(2, {role: 'reviewer', ids: [ada]}, {observedAt: '2026-10-03T07:40:00.000Z', stale: true});
+
+        // the envelope pulsed at 08:00; the row that makes the chip stale was last seen at 07:40
+        expect(OpenWorkSeat.summarize(held([fresh], [stale]), ada)).toEqual({count: 2, worst: 'red', stale: true, observedAt: '2026-10-03T07:40:00.000Z'});
+
+        // rows that carry no observation of their own age from the envelope
+        expect(OpenWorkSeat.summarize(held([row(3, {role: 'author', ids: [ada]})]), ada).observedAt).toBe('2026-10-03T08:00:00.000Z')
+    });
+
     test('describe words the chip as one unit: text, aria-label and title from the same facts', () => {
         expect(OpenWorkSeat.describe(null)).toEqual({hidden: true, stale: false, text: '', ariaLabel: null, title: null});
 

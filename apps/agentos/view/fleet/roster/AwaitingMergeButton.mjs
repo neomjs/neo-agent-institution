@@ -2,26 +2,30 @@ import AgentFreshness        from '../../../util/AgentFreshness.mjs';
 import AwaitingMergeMenuList from './AwaitingMergeMenuList.mjs';
 import Button                from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import FloatingMenuTheme     from '../../../util/FloatingMenuTheme.mjs';
+import OpenWorkSeat          from '../../../util/OpenWorkSeat.mjs';
 
 /**
- * @summary What the fleet head shows for the open-work read's state and the merge queue's size.
+ * @summary What the fleet head shows for the open-work read's state and the merge queue's rows.
  *
  * Zero earns no pixels, and neither does an answer nobody gave: no read yet, a bridge without the
  * open-work verb (an expected absence), or a read that threw (the connection's story, which the spine
  * banner already tells). A producer that answered `unavailable` is named once, so a blind queue never
- * reads as an empty one. A stale queue says so in its words.
+ * reads as an empty one. A queue made stale by the read or by one of its rows says so in its words, aged
+ * from its oldest row ({@link AgentOS.util.OpenWorkSeat#oldestObservedAt}).
  * @param {Object|null} openWork The provider's `openWork` block `{coverage, observedAt, reason, state}`.
- * @param {Number} count The merge queue's row count.
+ * @param {Object[]} rows The merge queue's rows (`{observedAt, stale}`).
  * @param {Number} [now=Date.now()] The viewer's clock, for a stale queue's age.
  * @returns {{hidden: Boolean, interactive: Boolean, stale: Boolean, unavailable: Boolean, text: String, title: String}}
  */
-export function describeMergeQueue(openWork, count, now = Date.now()) {
+export function describeMergeQueue(openWork, rows, now = Date.now()) {
     const
         state       = openWork?.state ?? null,
+        count       = rows.length,
         unavailable = state === 'unavailable' && openWork.coverage === 'unavailable',
-        stale       = state === 'stale',
-        interactive = count > 0 && (state === 'ok' || stale),
-        ageMs       = stale && openWork.observedAt ? now - Date.parse(openWork.observedAt) : NaN,
+        stale       = state === 'stale' || rows.some(row => row.stale === true),
+        interactive = count > 0 && (state === 'ok' || state === 'stale'),
+        observedAt  = OpenWorkSeat.oldestObservedAt(rows) ?? openWork?.observedAt,
+        ageMs       = stale && observedAt ? now - Date.parse(observedAt) : NaN,
         age         = Number.isFinite(ageMs) ? `, observed ${AgentFreshness.formatAge(ageMs)}` : '',
         prs         = count === 1 ? 'pull request' : 'pull requests';
 
@@ -177,7 +181,7 @@ class AwaitingMergeButton extends Button {
         let me         = this,
             {menuList} = me;
 
-        if (!describeMergeQueue(me.openWork, me.store?.count ?? 0).interactive) return;
+        if (!describeMergeQueue(me.openWork, me.store?.items ?? []).interactive) return;
 
         if (!menuList) {
             me.ensureMergeMenu();
@@ -193,14 +197,17 @@ class AwaitingMergeButton extends Button {
     }
 
     /**
-     * @summary Words the button from the read's state and the queue's size: text, title, accessible
-     * name, visibility. An unavailable read is named but opens nothing.
+     * @summary Words the button from the read's state and the queue's rows: text, title, accessible
+     * name, visibility. An unavailable read is named but opens nothing, and a list left open when the
+     * queue stops being one closes.
      * @protected
      */
     updateButton() {
         let me    = this,
-            queue = describeMergeQueue(me.openWork, me.store?.count ?? 0),
+            queue = describeMergeQueue(me.openWork, me.store?.items ?? []),
             root  = me.getVdomRoot();
+
+        !queue.interactive && me.menuList && !me.menuList.hidden && me.menuList.unmount();
 
         me.set({
             cls   : ['fm-awaiting-merge', ...(queue.stale ? ['is-stale'] : []), ...(queue.unavailable ? ['is-unavailable'] : [])],

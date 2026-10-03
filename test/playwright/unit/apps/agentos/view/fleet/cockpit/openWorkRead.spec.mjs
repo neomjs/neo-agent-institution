@@ -238,4 +238,44 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
         expect(host.mapRosterRow({id: 'neo-opus-ada', githubUsername: 'neo-opus-ada'}).openWork).toBeNull();
         expect(host.mapRosterRow({id: 'no-login'}).openWork, 'no identity, no claim').toBeNull()
     });
+
+    test('a card a view filter hides reappears with the answer given while it was hidden, both ways', async () => {
+        const
+            StateProvider      = (await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default,
+            FleetAwaitingMerge = (await import('../../../../../../../../apps/agentos/store/FleetAwaitingMerge.mjs')).default,
+            FleetRoster        = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default,
+            rows               = [{agentId: 'neo-opus-ada', githubUsername: 'neo-opus-ada'}, {agentId: 'neo-gpt', githubUsername: 'neo-gpt'}],
+            provider           = Neo.create(StateProvider, {stores: {fleetAwaitingMerge: {module: FleetAwaitingMerge}, fleetRoster: {module: FleetRoster, data: rows}}}),
+            host               = Object.assign(makeHost(), {component: {getStateProvider: () => provider}, lastLiveRows: rows}),
+            roster             = provider.getStore('fleetRoster'),
+            observedAt         = '2026-10-03T08:00:00.000Z',
+            held               = {count: 1, worst: 'review-due', stale: false, observedAt},
+            hideEuclid         = () => {roster.filters = [{property: 'githubUsername', operator: '!==', value: 'neo-gpt'}]},
+            answer             = seats => host.admitOpenWork({state: 'ok', observedAt, seats, awaitingMerge: []}, null);
+
+        try {
+            // adding: Euclid's card is hidden when a review lands on it
+            hideEuclid();
+            expect(roster.get('neo-gpt'), 'hidden from the view').toBeFalsy();
+
+            answer({'@neo-gpt': {authored: [], reviewing: [{repo: 'neomjs/neo', number: 7, observedAt, holder: {role: 'reviewer', ids: ['@neo-gpt']}}]}});
+
+            expect(host.lastLiveRows.find(row => row.agentId === 'neo-gpt').openWork, 'a re-apply of the last live roster keeps the answer').toEqual(held);
+            expect(host.lastLiveRows.find(row => row.agentId === 'neo-opus-ada').openWork).toBeNull();
+
+            roster.filters = [];
+            expect(roster.get('neo-gpt').openWork, 'revealed with the review it gained').toEqual(held);
+
+            // clearing: hidden again when the review is done
+            hideEuclid();
+            answer({});
+
+            expect(host.lastLiveRows.find(row => row.agentId === 'neo-gpt').openWork).toBeNull();
+
+            roster.filters = [];
+            expect(roster.get('neo-gpt').openWork, 'revealed without the review it lost').toBeNull()
+        } finally {
+            provider.destroy()
+        }
+    });
 });
