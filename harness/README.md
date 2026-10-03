@@ -63,15 +63,18 @@ cd harness && npm run dist && npm run install:mac -- --dry-run
 `install:mac` resolves the one bundle under `dist-artifacts/mac*/`, prints the installed, rollback
 and artifact receipts, then replaces `/Applications/Neo Harness.app` by rename and moves the
 displaced bundle to the single rollback slot,
-`~/Library/Application Support/neo-harness/rollback/Neo Harness.app` — exactly one rollback, never
-another launchable copy in Applications. `--dry-run` prints the plan and changes nothing;
+`~/Library/Application Support/neo-harness/rollback/Neo Harness.rollback` — exactly one rollback,
+never another launchable copy anywhere: the slot's name carries no `.app` suffix, so Launch
+Services never registers it (every development build shares one bundle identifier, and Spotlight
+had 17 registered copies on one machine). `--dry-run` prints the plan and changes nothing;
 `--restore` swaps the rollback back (a second `--restore` undoes it); `--open` relaunches the
 installed bundle; `--artifact <bundle.app>` names a bundle explicitly. Equal receipts end the run
 with nothing replaced.
 
 A running Neo Harness is a refusal: `--quit` is the only way the leg stops it, through the app's
-own quit, and **quitting also stops the peer harnesses it launched** — checkpoint those seats
-first. Closing the cockpit window only hides it. A Neo Harness running from any bundle other than
+own quit addressed to the canonical bundle by path (an identifier-addressed quit would pick one
+of the registered copies and launch it if it was not running), and **quitting also stops the peer
+harnesses it launched** — checkpoint those seats first. Closing the cockpit window only hides it. A Neo Harness running from any bundle other than
 the canonical one — a renamed previous copy, a dist copy — is refused by path, with or without
 `--quit`; the census reads every process inside a bundle named `Neo Harness….app`.
 

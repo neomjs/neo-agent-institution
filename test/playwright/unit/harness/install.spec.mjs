@@ -13,6 +13,7 @@ import {
     readSlot,
     RECEIPT_RELATIVE_PATH,
     resolveArtifactPath,
+    ROLLBACK_BUNDLE_NAME,
     runningHarnessPaths
 } from '../../../../harness/install.mjs';
 
@@ -21,7 +22,7 @@ const
     INSTALLED    = `${APPLICATIONS}/${APP_NAME}.app`,
     PARKED       = `${INSTALLED}.restoring`,
     STAGED       = `${INSTALLED}.installing`,
-    ROLLBACK     = `/Users/me/Library/Application Support/neo-harness/rollback/${APP_NAME}.app`,
+    ROLLBACK     = `/Users/me/Library/Application Support/neo-harness/rollback/${ROLLBACK_BUNDLE_NAME}`,
     ARTIFACT     = `/repo/harness/dist-artifacts/mac-arm64/${APP_NAME}.app`,
     CUSTODY      = '/Users/me/Library/Application Support/neo-harness/brain/fleet',
     MAIN_EXE     = `${INSTALLED}/Contents/MacOS/${APP_NAME}`,
@@ -105,6 +106,7 @@ test.describe('harness/install.mjs — the plan', () => {
 
         expect(plan.ok).toBe(true);
         expect(order.slice(0, 2)).toEqual(['quit', 'custody']);
+        expect(plan.steps[0]).toEqual({type: 'quit', bundle: INSTALLED, paths: [MAIN_EXE]});
         expect(plan.steps[1]).toEqual({type: 'custody', phase: 'baseline', dir: CUSTODY});
         expect(order.slice(-2)).toEqual(['custody', 'open']);
         expect(plan.steps.at(-2)).toEqual({type: 'custody', phase: 'compare', dir: CUSTODY});
@@ -229,7 +231,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         custody      = path.join(root, 'brain', 'fleet');
         installed    = path.join(applications, `${APP_NAME}.app`);
         parked       = `${installed}.restoring`;
-        rollback     = path.join(root, 'rollback', `${APP_NAME}.app`);
+        rollback     = path.join(root, 'rollback', ROLLBACK_BUNDLE_NAME);
         artifact     = path.join(root, 'dist', 'mac-arm64', `${APP_NAME}.app`)
     });
 
@@ -333,6 +335,8 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
 
         expect(digest.before).toBe(digest.after);
         expect(shutdownWrite.map(call => call.command)).toEqual(['osascript', 'ditto', 'open']);
+        // The quit addresses the canonical bundle by path, never by the shared bundle identifier.
+        expect(shutdownWrite[0].args).toEqual(['-e', `tell application "${installed}" to quit`]);
 
         // A write while the slots move is NOT the app's: the comparison fails and nothing relaunches.
         const

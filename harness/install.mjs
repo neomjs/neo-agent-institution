@@ -29,8 +29,15 @@ import {isDeepStrictEqual} from 'node:util';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 
-export const APP_NAME  = 'Neo Harness';
-export const BUNDLE_ID = 'mjs.neo.harness';
+export const APP_NAME = 'Neo Harness';
+
+/**
+ * The rollback slot's bundle name carries no `.app` suffix: Launch Services registers every
+ * `.app` Spotlight sees (this machine indexed 17 bundles with the harness's identifier at once),
+ * and a registered copy is a launchable copy — the thing this leg exists to stop. The directory is
+ * the same bundle byte for byte; `--restore` renames it back under its `.app` name.
+ */
+export const ROLLBACK_BUNDLE_NAME = `${APP_NAME}.rollback`;
 
 /** The organism receipt inside a bundle — the only identity a development build carries. */
 export const RECEIPT_RELATIVE_PATH = path.join('Contents', 'Resources', 'organism', 'organism-build-info.json');
@@ -48,6 +55,7 @@ export const DEFAULT_APPLICATIONS_DIR = '/Applications';
  */
 export const DEFAULT_USER_DATA_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'neo-harness');
 export const DEFAULT_ROLLBACK_DIR  = path.join(DEFAULT_USER_DATA_DIR, 'rollback');
+export const DEFAULT_ROLLBACK_PATH = path.join(DEFAULT_ROLLBACK_DIR, ROLLBACK_BUNDLE_NAME);
 
 /** The custody files harness/README.md names as travelling together; the leg proves it left them alone. */
 export const CUSTODY_RELATIVE_DIR = path.join('brain', 'fleet');
@@ -88,7 +96,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
         custody      = phase => custodyDir && steps.push({type: 'custody', phase, dir: custodyDir}),
         quit         = () => {
             if (running.length) {
-                steps.push({type: 'quit', paths: running});
+                steps.push({type: 'quit', bundle: installed.path, paths: running});
                 warnings.push(PEER_QUIT_WARNING)
             }
             // The baseline is taken once nothing of the app's own runs: a lifecycle write during its
@@ -203,8 +211,11 @@ export function executePlan(steps, {runFn = run, runningFn = () => runningHarnes
             switch (step.type) {
                 case 'quit':
                     // Through the app's own lifecycle, never a signal: an orderly quit is what stops
-                    // launched peers cleanly, and a SIGKILL would orphan them.
-                    runFn('osascript', ['-e', `tell application id "${BUNDLE_ID}" to quit`]);
+                    // launched peers cleanly, and a SIGKILL would orphan them. Addressed by PATH, not
+                    // bundle identifier: every development build shares the identifier, so an id-based
+                    // quit resolves through a Launch Services pick among every registered copy — and
+                    // AppleScript launches the copy it picked if that one is not running.
+                    runFn('osascript', ['-e', `tell application "${step.bundle}" to quit`]);
                     waitUntilGone(runningFn, quitTimeoutMs);
                     break;
                 case 'custody':
@@ -475,7 +486,7 @@ function printUsage() {
     console.log('Usage: node install.mjs [--artifact <bundle.app>] [--quit] [--open] [--restore] [--dry-run]');
     console.log('');
     console.log(`  Replaces ${DEFAULT_APPLICATIONS_DIR}/${APP_NAME}.app with the packaged bundle and moves the displaced`);
-    console.log(`  bundle to the single rollback slot (${DEFAULT_ROLLBACK_DIR}).`);
+    console.log(`  bundle to the single rollback slot (${DEFAULT_ROLLBACK_PATH}).`);
     console.log('');
     console.log('  --artifact   The bundle to install (default: the one bundle under dist-artifacts/mac*/).');
     console.log(`  --quit       Ask a running ${APP_NAME} to quit first. Without it a running app is a refusal.`);
@@ -506,7 +517,7 @@ async function main() {
         custodyDir = path.join(options.userDataDir, CUSTODY_RELATIVE_DIR),
         installed  = readSlot(path.join(options.applicationsDir, `${APP_NAME}.app`)),
         parked     = readSlot(`${installed.path}.restoring`),
-        rollback   = readSlot(path.join(options.rollbackDir, `${APP_NAME}.app`)),
+        rollback   = readSlot(path.join(options.rollbackDir, ROLLBACK_BUNDLE_NAME)),
         artifact   = options.mode === 'install' ? readSlot(options.artifactPath ?? resolveArtifactPath()) : null,
         running    = runningHarnessPaths(),
         legacy     = legacyCopies(options.applicationsDir),
