@@ -34,19 +34,21 @@ export const SETUP_CHANNELS = Object.freeze({
  * @type {Object}
  */
 export const SETUP_MODULE_PATHS = Object.freeze({
-    cli        : 'ai/scripts/setup/firstRun.mjs',
-    hostEffects: 'ai/services/fleet/hostEffects.mjs',
-    presets    : 'ai/services/fleet/placementPresets.mjs',
-    probe      : 'ai/services/fleet/probePlacement.mjs',
-    recipe     : 'ai/services/fleet/firstRunRecipe.mjs',
-    record     : 'ai/services/fleet/setupRunRecord.mjs'
+    cli          : 'ai/scripts/setup/firstRun.mjs',
+    hostEffects  : 'ai/services/fleet/hostEffects.mjs',
+    orchestration: 'ai/services/fleet/setupOrchestration.mjs',
+    presets      : 'ai/services/fleet/placementPresets.mjs',
+    probe        : 'ai/services/fleet/probePlacement.mjs',
+    recipe       : 'ai/services/fleet/firstRunRecipe.mjs',
+    record       : 'ai/services/fleet/setupRunRecord.mjs'
 });
 
 /**
- * The reason every channel answers while the effect orchestration is not exported by the Brain.
+ * The Brain's `ai/configBase.mjs`, relative to the runtime root: the file a preset's env set is
+ * checked against before any write (the orchestration derives no path itself).
  * @type {String}
  */
-export const EFFECT_UNWIRED_REASON = 'unwired: the recipe\'s effect orchestration is the CLI\'s own until the Brain exports it; run the CLI on the host, then re-check';
+export const CONFIG_SOURCE_PATH = 'ai/configBase.mjs';
 
 const setupModules = new Map();
 
@@ -72,7 +74,7 @@ export function resolveSetupRoots({env, homeDir = os.homedir()}) {
  * CLI's observers from the runtime root — the same modules the CLI runs — cached per root.
  * @param {Object} options
  * @param {String} options.runtimeRoot Absolute path of the Brain checkout or the packaged organism root
- * @returns {Promise<Object>} `{cli, hostEffects, presets, probe, recipe, record}`
+ * @returns {Promise<Object>} `{cli, hostEffects, orchestration, presets, probe, recipe, record}`
  */
 export function loadSetupModules({runtimeRoot}) {
     if (typeof runtimeRoot !== 'string' || !path.isAbsolute(runtimeRoot)) {
@@ -133,14 +135,18 @@ async function newestRecord({setupRoot, record, fsModule}) {
  * @param {Function} options.promptCredential `({event, method}) => Promise<String|null>` in main custody.
  * @param {String} options.setupRoot The setup records' directory.
  * @param {String} options.stateRoot The host state root the recipe's layout derives from.
+ * @param {String|null} [options.configSourcePath=null] The Brain's `ai/configBase.mjs` under the runtime root; `null` without a Brain root.
  * @param {Object} [options.fsModule=fs]
  * @param {Function} [options.now=Date.now]
  * @returns {Object} One handler per {@link SETUP_CHANNELS} key: `(event, request) => Promise<Object>`.
  */
-export function createSetupBroker({isTrustedSender, loadModules, packaged, promptCredential, setupRoot, stateRoot, fsModule = fs, now = Date.now}) {
-    const
-        refuse = (reason, extra = {}) => ({ok: false, reason, ...extra}),
-        run    = {record: null, recordPath: null, target: null};
+export function createSetupBroker({isTrustedSender, loadModules, packaged, promptCredential, setupRoot, stateRoot, configSourcePath = null, fsModule = fs, now = Date.now}) {
+    const refuse = (reason, extra = {}) => ({ok: false, reason, ...extra});
+
+    // the broker holds the run's BINDING only — the path of its record. The record itself is read
+    // from disk by every operation: a write the host rejected may or may not have landed (an
+    // effect's handler ran, its acknowledgement did not), and only the record on disk says which.
+    let boundRecordPath = null;
 
     // the run owner's record operations are SERIALIZED: one chain, every read-modify-write of the
     // record (resolve, consent, retire, evaluate) runs after the previous one settled, so two answers
@@ -189,65 +195,104 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
     }
 
     /**
-     * @summary The run's record: resumed from the newest record under the setup root, or created.
-     * A record bound to another target or recipe version retires its proof the way the CLI does.
+     * @summary The run as one operation starts from it: the bound record read from disk, or — on
+     * the first operation of a boot — the newest record under the setup root resumed, or a new one
+     * created. A bound record that is gone or unreadable refuses the operation: nothing runs over
+     * a record that was not read, and no fresh run takes its place. A record bound to another
+     * target or recipe version retires its proof the way the CLI does.
      * @param {Object} modules
      * @param {Object|null} requested A target the renderer named (`{planeId, dataRoot, endpoint}`)
-     * @returns {Promise<{record: Object, recordPath: String, target: Object}>}
+     * @returns {Promise<{host: Object, record: Object, recordPath: String, target: Object}>}
      */
     async function resolveRun(modules, requested) {
         const
             {hostEffects, record: recordModule, recipe} = modules,
             host                                        = hostEffects.createHost({fsModule, now});
 
-        if (!run.record) {
+        let record, recordPath = boundRecordPath;
+
+        if (recordPath) {
+            const read = await recordModule.readSetupRecord(recordPath, {fsModule});
+
+            if (!read.record) {
+                throw new Error(`the run's record could not be read (${read.problem ?? 'absent'}): nothing runs over an unread record`)
+            }
+
+            record = read.record
+        } else {
             const resumed = await newestRecord({setupRoot, record: recordModule, fsModule});
 
             if (resumed) {
-                run.record     = resumed.record;
-                run.recordPath = resumed.recordPath
+                ({record, recordPath} = resumed)
             } else {
                 const runId = randomUUID();
 
-                run.record     = recordModule.createSetupRecord({runId, target: requested ?? {}, recipeVersion: recipe.RECIPE_VERSION, now});
-                run.recordPath = recordModule.setupRecordPath(setupRoot, runId);
-                await hostEffects.persistSetupRecord(run.recordPath, run.record, host)
+                record     = recordModule.createSetupRecord({runId, target: requested ?? {}, recipeVersion: recipe.RECIPE_VERSION, now});
+                recordPath = recordModule.setupRecordPath(setupRoot, runId);
+                await hostEffects.persistSetupRecord(recordPath, record, host)
             }
+
+            // bound once the record is on disk: a rejected first write binds nothing
+            boundRecordPath = recordPath
         }
 
         // a resume names what it names; the record's bound target fills the rest
-        run.target = recordModule.resumeTarget(run.record, requested ?? {});
-
-        const binding = recordModule.describeBinding(run.record, {target: run.target, recipeVersion: recipe.RECIPE_VERSION});
+        const
+            target  = recordModule.resumeTarget(record, requested ?? {}),
+            binding = recordModule.describeBinding(record, {target, recipeVersion: recipe.RECIPE_VERSION});
 
         if (binding !== 'bound') {
-            run.record = recordModule.retireCurrentProof(run.record, {
-                target       : run.target,
+            record = recordModule.retireCurrentProof(record, {
+                target,
                 recipeVersion: recipe.RECIPE_VERSION,
                 reason       : binding === 'version-mismatch' ? recordModule.RETIRE_REASONS.versionChanged : recordModule.RETIRE_REASONS.targetChanged,
                 now
             });
-            await hostEffects.persistSetupRecord(run.recordPath, run.record, host)
+            await hostEffects.persistSetupRecord(recordPath, record, host)
         }
 
-        return {host, record: run.record, recordPath: run.recordPath, target: run.target}
+        return {host, record, recordPath, target}
     }
 
     /**
-     * @summary One live evaluation for the run's target over the CLI's production observers.
+     * @summary One live evaluation of a resolved run over the CLI's production observers.
      * @param {Object} modules
-     * @param {Object|null} [requested=null]
+     * @param {Object} resolved From {@link resolveRun}, its `record` the operation's current one
      * @returns {Promise<Object>} The CLI's `--json` shape: `{runId, recordPath, ...evaluation}`
      */
-    async function evaluateNow(modules, requested = null) {
+    async function evaluateRun(modules, {host, record, recordPath, target}) {
         const
-            {cli, presets, recipe}      = modules,
-            {host, record, recordPath, target} = await resolveRun(modules, requested),
-            layout                      = cli.hostLayout({stateRoot}),
-            observers                   = cli.productionObservers({layout, host}),
-            evaluation                  = await recipe.evaluateRecipe({target, record, observers, presets: presets.presets, now});
+            {cli, presets, recipe} = modules,
+            layout                 = cli.hostLayout({stateRoot}),
+            observers              = cli.productionObservers({layout, host}),
+            evaluation             = await recipe.evaluateRecipe({target, record, observers, presets: presets.presets, now});
 
         return {runId: record.runId, recordPath, ...evaluation}
+    }
+
+    /**
+     * @summary The run read from disk and evaluated, with the CLI's settle pass in between: an
+     * interrupted effect whose result is observable while the served plane is the target's settles
+     * through the shared orchestration, then the run is evaluated again. Nothing to settle → one
+     * evaluation.
+     * @param {Object} modules
+     * @param {Object|null} [requested=null]
+     * @returns {Promise<{evaluation: Object, resolved: Object}>} The CLI's `--json` shape, and the run it was read over
+     */
+    async function settleThenEvaluate(modules, requested = null) {
+        const
+            resolved   = await resolveRun(modules, requested),
+            evaluation = await evaluateRun(modules, resolved);
+
+        if (!evaluation.steps.some(step => step.status === 'reconcile-required')) {
+            return {evaluation, resolved}
+        }
+
+        const
+            {host, record, recordPath} = resolved,
+            settled                    = {...resolved, record: await modules.orchestration.settlePending({record, recordPath, host, evaluation})};
+
+        return {evaluation: await evaluateRun(modules, settled), resolved: settled}
     }
 
     return {
@@ -262,7 +307,7 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             if (!admitted.modules) return admitted;
 
             try {
-                return {ok: true, evaluation: await serialize(() => evaluateNow(admitted.modules, request?.target ?? null))}
+                return {ok: true, evaluation: (await serialize(() => settleThenEvaluate(admitted.modules, request?.target ?? null))).evaluation}
             } catch (error) {
                 return refuse(`the recipe could not be evaluated: ${error.message}`)
             }
@@ -337,11 +382,12 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
 
             try {
                 return await serialize(async () => {
-                    const {host, record, recordPath} = await resolveRun(admitted.modules, null);
+                    const
+                        resolved                   = await resolveRun(admitted.modules, null),
+                        {host, record, recordPath} = resolved,
+                        consented                  = (await hostEffects.recordConsent({stepId, answer, record, recordPath, host})).record;
 
-                    run.record = (await hostEffects.recordConsent({stepId, answer, record, recordPath, host})).record;
-
-                    return {ok: true, evaluation: await evaluateNow(admitted.modules, null)}
+                    return {ok: true, evaluation: await evaluateRun(admitted.modules, {...resolved, record: consented})}
                 })
             } catch (error) {
                 return refuse(`the consent was not recorded: ${error.message}`, {stepId})
@@ -349,20 +395,59 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
         },
 
         /**
-         * @summary Consent to one host effect. Until the Brain exports the CLI's effect orchestration
-         * (the per-effect inputs composed from the preset and the credential files), the vessel
-         * refuses by name and the row's action is the operator's instruction — never a second
-         * implementation of the effects here.
+         * @summary Consent to one host effect: the shared orchestration (the CLI's own module) runs
+         * the one named effect in the recipe's order rules — the settle pass first, an earlier
+         * effect that is not `ok` halts it, a refusal (the preset's env set, the credential
+         * composition) writes nothing and answers in the orchestration's words — and the reply is
+         * the re-evaluated run. One serialized operation over the record as disk holds it, so an
+         * effect whose acknowledgement write was rejected is found `pending` by the next request and
+         * settled by observation, never run again; never a second implementation of the effects
+         * here.
          * @param {Electron.IpcMainInvokeEvent} event
          * @param {{effectId: String}} request
-         * @returns {Promise<Object>}
+         * @returns {Promise<Object>} `{ok: true, evaluation}`, or `{ok: false, reason, effectId}`
          */
         async effect(event, request = {}) {
             const admitted = await admit(event, SETUP_CHANNELS.effect);
 
             if (!admitted.modules) return admitted;
 
-            return refuse(EFFECT_UNWIRED_REASON, {effectId: request?.effectId ?? null})
+            const
+                {cli, orchestration} = admitted.modules,
+                effectId             = request?.effectId ?? null;
+
+            if (!orchestration.EFFECT_ORDER.includes(effectId)) {
+                return refuse(`'${effectId}' is not an effect of this recipe`, {effectId})
+            }
+
+            if (!configSourcePath) {
+                return refuse('no-brain-root: the preset\'s env set has no config to be checked against', {effectId})
+            }
+
+            try {
+                return await serialize(async () => {
+                    const
+                        {evaluation, resolved}             = await settleThenEvaluate(admitted.modules, null),
+                        {host, record, recordPath, target} = resolved,
+                        layout                             = cli.hostLayout({stateRoot}),
+                        reported                           = [];
+
+                    const performed = await orchestration.performEffects({
+                        record, recordPath, host, layout, target, evaluation,
+                        configSourcePath,
+                        effectIds: [effectId],
+                        report   : line => reported.push(String(line))
+                    });
+
+                    if (reported.length > 0) {
+                        return refuse(reported.join('; '), {effectId})
+                    }
+
+                    return {ok: true, evaluation: await evaluateRun(admitted.modules, {...resolved, record: performed})}
+                })
+            } catch (error) {
+                return refuse(`${effectId} could not run: ${error.message}`, {effectId})
+            }
         },
 
         /**
@@ -435,9 +520,9 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                         return refuse(reference.reason, {stepId})
                     }
 
-                    run.record = (await hostEffects.recordConsent({stepId, answer: reference.path, record, recordPath, host})).record;
+                    const consented = (await hostEffects.recordConsent({stepId, answer: reference.path, record, recordPath, host})).record;
 
-                    return {ok: true, evaluation: await evaluateNow(admitted.modules, null), path: reference.path}
+                    return {ok: true, evaluation: await evaluateRun(admitted.modules, {...current, record: consented}), path: reference.path}
                 })
             } catch (error) {
                 return refuse(`the credential was not kept: ${error.message}`, {stepId})

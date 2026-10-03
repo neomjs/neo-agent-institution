@@ -130,7 +130,28 @@ export function sampleShellInitScript() {
                     consent(stepId, '/Users/op/.neo-ai/setup/credentials/' + stepId);
                     return {ok: true, evaluation: current, path: '/Users/op/.neo-ai/setup/credentials/' + stepId}
                 },
-                setupEffect    : async ({effectId}) => { calls.push(['setupEffect', {effectId}]); return {ok: false, reason: 'unwired: the recipe\\'s effect orchestration is the CLI\\'s own', effectId} }
+                // the vessel's effect channel: the consented effect reads ok with an accepted receipt;
+                // once the three effects are in, the served plane, the validation and done observe ok
+                // (the fixture plane answering its first query and keeping its first memory)
+                setupEffect    : async ({effectId}) => {
+                    calls.push(['setupEffect', {effectId}]);
+
+                    const step = current.steps.find(row => row.id === effectId);
+
+                    if (!step) return {ok: false, reason: "'" + effectId + "' is not an effect of this recipe", effectId};
+
+                    step.status = 'ok'; step.reason = 'observed; matches the accepted receipt'; step.receipt = 'accepted';
+
+                    if (current.steps.filter(row => row.kind === 'effect').every(row => row.status === 'ok')) {
+                        for (const [id, reason] of [['served-plane', 'served plane fixture-plane at its data root'], ['validation', 'provider answered; embedding observed at 3072 dimensions'], ['done', 'a query was answered and a first memory persisted']]) {
+                            const row = current.steps.find(step => step.id === id);
+                            row.status = 'ok'; row.reason = reason;
+                        }
+                        current.terminal = current.steps.find(step => step.id === 'done');
+                    }
+
+                    return {ok: true, evaluation: current}
+                }
             }
         })();
     `

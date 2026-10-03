@@ -70,6 +70,17 @@ class FleetLanding extends Base {
     }
 
     /**
+     * The Viewport provider's `setupRun` as plain leaves, for a spec to read from the page through
+     * `Neo.worker.App.getConfigs`; `null` while no Viewport holds a provider.
+     * @member {Object|null} setupRun
+     */
+    get setupRun() {
+        const provider = Neo.manager.Component.findFirst('className', 'AgentOS.view.Viewport')?.getStateProvider();
+
+        return provider ? Object.fromEntries(['decisions', 'manualActions', 'preset', 'runId'].map(key => [key, provider.getData(`setupRun.${key}`)])) : null
+    }
+
+    /**
      * @param {Object|null} value
      */
     afterSetActivity(value) {

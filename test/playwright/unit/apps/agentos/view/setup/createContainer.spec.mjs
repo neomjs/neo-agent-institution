@@ -229,7 +229,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
             setupProbe   : {ok: true, probe: PROBE},
             setupPresets : {ok: true, presets: PRESETS},
             setupEffect  : ({effectId}) => {
-                if (!wired) return {ok: false, reason: 'unwired: the recipe\'s effect orchestration is the CLI\'s own', effectId};
+                if (!wired) return {ok: false, reason: 'no-brain-root: the preset\'s env set has no config to be checked against', effectId};
 
                 const evaluation = coldEvaluation();
 
@@ -245,7 +245,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         await door.onStepClick({record: door.store.get('write-env')});
 
         expect(calls.filter(([name]) => name === 'setupEffect')).toEqual([['setupEffect', {effectId: 'write-env', windowId: 7}]]);
-        expect(door.getReference('status-line').text).toBe(`write-env: unwired: the recipe's effect orchestration is the CLI's own — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`);
+        expect(door.getReference('status-line').text).toBe(`write-env: no-brain-root: the preset's env set has no config to be checked against — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`);
         expect(door.manualActions).toBe(1);
         expect(door.store.get('write-env').status, 'nothing changed locally').toBe('pending');
 
@@ -254,6 +254,27 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         expect(door.store.get('write-env').status).toBe('ok');
         expect(door.getReference('status-line').text).toBe('');
+
+        host.destroy()
+    });
+
+    test('run: a refusal from the orchestration is the shell\'s own word on the effect — the status line speaks, no manual action, the last observation stands', async () => {
+        stubShell({
+            setupEvaluate: {ok: true, evaluation: coldEvaluation()},
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS},
+            setupEffect  : ({effectId}) => ({ok: false, reason: 'the preset \'hosted\' declares an env key the profile does not consume', effectId})
+        });
+
+        const {host, door, progress} = createDoor();
+
+        await settle();
+        await door.onStepClick({record: door.store.get('write-secrets')});
+
+        expect(door.getReference('status-line').text).toBe('write-secrets could not run: the preset \'hosted\' declares an env key the profile does not consume');
+        expect(door.manualActions).toBe(0);
+        expect(door.store.get('write-secrets').status).toBe('pending');
+        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
 
         host.destroy()
     });
