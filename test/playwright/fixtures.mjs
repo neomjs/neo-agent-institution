@@ -28,19 +28,39 @@ const FLEET_LANDING = '../../../../test/playwright/fixture/FleetLanding.mjs';
 let fleetLandingTick = 0;
 
 /**
- * @summary Sets the landing's configs inside the App worker: the module loads under a fresh URL each
- * time (its instance survives, the load finds it), then `Neo.worker.App.setConfigs` carries the payload.
+ * @summary Loads the landing into the App worker under a fresh URL: its instance survives, the load finds it.
+ * @param {Object} page The Playwright page.
+ * @returns {Promise<void>}
+ */
+async function loadLanding(page) {
+    const loaded = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${FLEET_LANDING}?t=${++fleetLandingTick}`);
+
+    if (!loaded?.success) {
+        throw new Error(`the fleet landing did not load: ${JSON.stringify(loaded)}`)
+    }
+}
+
+/**
+ * @summary The mounted Viewport provider's `setupRun` leaves (`{decisions, manualActions, preset, runId}`),
+ * read inside the App worker through the landing.
+ * @param {Object} page The Playwright page.
+ * @returns {Promise<Object|null>}
+ */
+export async function readSetupRun(page) {
+    await loadLanding(page);
+
+    return page.evaluate(() => Neo.worker.App.getConfigs({id: 'fm-fleet-landing', keys: 'setupRun'}))
+}
+
+/**
+ * @summary Sets the landing's configs inside the App worker, then `Neo.worker.App.setConfigs` carries the payload.
  * @param {Object} page The Playwright page.
  * @param {Object} configs `{roster: {rows}}`, `{activity: {events}}`, `{tasks: {snapshot}}`, `{mailbox: {events}}`
  *     and/or `{definitions: {rows}}`.
  * @returns {Promise<void>}
  */
 async function landFleet(page, configs) {
-    const loaded = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${FLEET_LANDING}?t=${++fleetLandingTick}`);
-
-    if (!loaded?.success) {
-        throw new Error(`landFleet: the landing did not load: ${JSON.stringify(loaded)}`)
-    }
+    await loadLanding(page);
 
     const landed = await page.evaluate(data => Neo.worker.App.setConfigs(data), {id: 'fm-fleet-landing', ...configs});
 

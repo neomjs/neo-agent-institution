@@ -684,7 +684,7 @@ class CreateContainer extends Container {
 
         if (me.isDestroyed) return;
 
-        if (!reply.ok && /^(unwired|no-brain-root|not-packaged|no-shell)/.test(reply.reason ?? '')) {
+        if (!reply.ok && /^(no-brain-root|not-packaged|no-shell)/.test(reply.reason ?? '')) {
             // the shell cannot run effects at all: the row's action is the operator's instruction
             me.manualActions++;
             me.getReference('status-line').text = `${effectId}: ${reply.reason ?? 'the shell could not run it'} — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`;

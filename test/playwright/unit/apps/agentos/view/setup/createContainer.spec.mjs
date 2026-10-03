@@ -229,7 +229,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
             setupProbe   : {ok: true, probe: PROBE},
             setupPresets : {ok: true, presets: PRESETS},
             setupEffect  : ({effectId}) => {
-                if (!wired) return {ok: false, reason: 'unwired: the recipe\'s effect orchestration is the CLI\'s own', effectId};
+                if (!wired) return {ok: false, reason: 'no-brain-root: the preset\'s env set has no config to be checked against', effectId};
 
                 const evaluation = coldEvaluation();
 
@@ -245,7 +245,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         await door.onStepClick({record: door.store.get('write-env')});
 
         expect(calls.filter(([name]) => name === 'setupEffect')).toEqual([['setupEffect', {effectId: 'write-env', windowId: 7}]]);
-        expect(door.getReference('status-line').text).toBe(`write-env: unwired: the recipe's effect orchestration is the CLI's own — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`);
+        expect(door.getReference('status-line').text).toBe(`write-env: no-brain-root: the preset's env set has no config to be checked against — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`);
         expect(door.manualActions).toBe(1);
         expect(door.store.get('write-env').status, 'nothing changed locally').toBe('pending');
 

@@ -1,16 +1,25 @@
 import {expect, test}            from '@playwright/test';
-import {existsSync, mkdtempSync, readFileSync, statSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import fsPromises                from 'node:fs/promises';
 import {tmpdir}                  from 'node:os';
 import path                      from 'node:path';
+import {fileURLToPath}           from 'node:url';
 import {
     CONFIG_SOURCE_PATH,
     SETUP_CHANNELS,
     SETUP_MODULE_PATHS,
     createSetupBroker,
+    loadSetupModules,
     resolveSetupRoots
 } from '../../../../harness/setupBroker.mjs';
 
 const tempDir = () => mkdtempSync(path.join(tmpdir(), 'setup-broker-'));
+
+/**
+ * The pinned Brain package: the runtime root the Brain-backed arms load the recipe's modules from.
+ * @type {String}
+ */
+const BRAIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../node_modules/neo-agent-brain');
 
 /**
  * The Brain modules the broker reaches, as fakes with the exported names it calls — the recipe's
@@ -121,12 +130,13 @@ function fakeModules({evaluations = []} = {}) {
 
 const trusted = {sender: 'trusted'};
 
-function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs'} = {}) {
+function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs', fsModule} = {}) {
     return {
         setupRoot,
         stateRoot,
         broker: createSetupBroker({
             configSourcePath,
+            fsModule,
             isTrustedSender : event => event === trusted,
             loadModules     : loadModules === undefined ? (modules ? async () => modules : null) : loadModules,
             packaged,
@@ -477,5 +487,186 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         const record = JSON.parse(readFileSync(path.join(setupRoot, `${first.evaluation.runId}.json`), 'utf8'));
 
         expect(record.retired).toBe('version-changed')
+    })
+});
+
+const TARGET = {planeId: 'plane-a', dataRoot: '/srv/plane-a', endpoint: 'http://127.0.0.1:3102'};
+
+/**
+ * A temp layout's filesystem with the record writes and the secret-file writes counted. The Brain's
+ * writer lands every file through a rename, so a rename onto a record is one record write and a
+ * rename into the secrets directory is the `write-secrets` handler at work. `failRecordWrite` names
+ * the record write (1-based, since `recordWrites` was last reset) that rejects.
+ */
+function countingDisk({setupRoot, stateRoot}) {
+    const
+        secretsDir = path.join(stateRoot, 'secrets'),
+        disk       = {
+            failRecordWrite: null,
+            recordWrites   : 0,
+            secretWrites   : [],
+            handlerRuns    : () => disk.secretWrites.filter(name => name === disk.secretWrites[0]).length,
+            fsModule       : {
+                ...fsPromises,
+                rename: async (from, to) => {
+                    if (path.dirname(to) === setupRoot && to.endsWith('.json') && ++disk.recordWrites === disk.failRecordWrite) {
+                        throw Object.assign(new Error('EIO: i/o error, rename'), {code: 'EIO'})
+                    }
+
+                    path.dirname(to) === secretsDir && disk.secretWrites.push(path.basename(to));
+
+                    return fsPromises.rename(from, to)
+                }
+            }
+        };
+
+    return disk
+}
+
+/**
+ * The broker over the pinned Brain's own recipe, record, host-effect and orchestration modules: the
+ * replay guard these arms read is theirs, never a double's. Only the host is scripted — what each
+ * observer reports (`observed`, read at every evaluation) and the counting disk.
+ */
+async function brainBacked({setupRoot = tempDir(), stateRoot = tempDir(), disk = countingDisk({setupRoot, stateRoot}), observed = {}} = {}) {
+    const
+        real      = await loadSetupModules({runtimeRoot: BRAIN_ROOT}),
+        observers = {
+            envCarrier  : async () => observed.envCarrier   ?? {present: false, reason: 'not performed'},
+            runningPlane: async () => observed.runningPlane ?? {present: false, reason: 'the compose project is not running'},
+            secretFiles : async () => observed.secretFiles  ?? {present: false, reason: 'no secret files observed'},
+            servedPlane : async () => observed.servedPlane  ?? {id: 'another-plane', dataRoot: '/srv/another'}
+        },
+        modules   = {...real, cli: {...real.cli, productionObservers: () => observers}},
+        {broker}  = createBroker({modules, setupRoot, stateRoot, fsModule: disk.fsModule, configSourcePath: path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), prompt: async () => 'ghp_fixtureValueNeverReal0123456789abcdefgh'});
+
+    return {broker, disk, observed, setupRoot, stateRoot}
+}
+
+/**
+ * Binds the run to {@link TARGET} and consents to the preset and the plane credential.
+ * @returns {Promise<String>} The run's record path
+ */
+async function consented({broker}) {
+    const first = await broker.evaluate(trusted, {target: TARGET});
+
+    expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok).toBe(true);
+    expect((await broker.credential(trusted, {stepId: 'plane-credential'})).ok).toBe(true);
+
+    return first.evaluation.recordPath
+}
+
+/**
+ * Runs `write-secrets` with the record write that would acknowledge it rejected: the handler ran,
+ * the record on disk holds the pending receipt.
+ */
+async function interruptedAfterTheHandler({broker, disk}) {
+    disk.recordWrites    = 0;
+    disk.failRecordWrite = 2;
+
+    const reply = await broker.effect(trusted, {effectId: 'write-secrets'});
+
+    disk.failRecordWrite = null;
+
+    return reply
+}
+
+const receiptsOnDisk = recordPath => JSON.parse(readFileSync(recordPath, 'utf8')).receipts.map(receipt => [receipt.effectId, receipt.outcome]);
+
+test.describe('harness/setupBroker over the Brain\'s own modules — every operation starts from the record on disk', () => {
+    test('an effect whose acknowledgement write was rejected is never replayed: the same broker reads the pending receipt back, and so does a fresh one', async () => {
+        const
+            run            = await brainBacked(),
+            {broker, disk} = run,
+            recordPath     = await consented(run);
+
+        expect(await interruptedAfterTheHandler(run)).toEqual({ok: false, reason: 'write-secrets could not run: EIO: i/o error, rename', effectId: 'write-secrets'});
+        expect(disk.handlerRuns(), 'the handler ran once').toBe(1);
+        expect(receiptsOnDisk(recordPath), 'the record holds the pending receipt').toEqual([['write-secrets', 'pending']]);
+
+        // the same broker asks again; the result is not observable and another plane answers
+        const again = await broker.effect(trusted, {effectId: 'write-secrets'});
+
+        expect(disk.handlerRuns(), 'never replayed by the same broker').toBe(1);
+        expect(again.ok).toBe(true);
+        expect(again.evaluation.steps.find(step => step.id === 'write-secrets')).toMatchObject({status: 'reconcile-required', receipt: 'reconcile-required'});
+        expect(receiptsOnDisk(recordPath)).toEqual([['write-secrets', 'reconcile-required']]);
+
+        // the shell restarted: a fresh broker over the same roots
+        const restarted = await brainBacked({setupRoot: run.setupRoot, stateRoot: run.stateRoot, disk});
+
+        await restarted.broker.effect(trusted, {effectId: 'write-secrets'});
+
+        expect(disk.handlerRuns(), 'never replayed by a fresh broker').toBe(1);
+        expect(receiptsOnDisk(recordPath)).toEqual([['write-secrets', 'reconcile-required']])
+    });
+
+    test('a consent recorded after a rejected acknowledgement write is added to the record on disk: the pending receipt stays', async () => {
+        const
+            run            = await brainBacked(),
+            {broker, disk} = run,
+            recordPath     = await consented(run);
+
+        await interruptedAfterTheHandler(run);
+
+        expect((await broker.answer(trusted, {stepId: 'advanced', answer: 'unfolded'})).ok).toBe(true);
+
+        const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+
+        expect(record.consents.map(row => row.stepId)).toEqual(['preset', 'plane-credential', 'advanced']);
+        expect(receiptsOnDisk(recordPath), 'the consent did not overwrite the guard').toEqual([['write-secrets', 'pending']]);
+
+        await broker.effect(trusted, {effectId: 'write-secrets'});
+
+        expect(disk.handlerRuns(), 'and the effect is still never replayed').toBe(1)
+    });
+
+    test('control: an effect whose record writes land is acknowledged, and once the host shows its result it never runs again', async () => {
+        const
+            run                      = await brainBacked(),
+            {broker, disk, observed} = run,
+            recordPath               = await consented(run);
+
+        expect((await broker.effect(trusted, {effectId: 'write-secrets'})).ok).toBe(true);
+        expect(disk.handlerRuns()).toBe(1);
+        expect(receiptsOnDisk(recordPath)).toEqual([['write-secrets', 'accepted']]);
+
+        observed.secretFiles = {present: true, digest: null, problem: null};
+
+        const again = await broker.effect(trusted, {effectId: 'write-secrets'});
+
+        expect(again.evaluation.steps.find(step => step.id === 'write-secrets')).toMatchObject({status: 'ok', receipt: 'accepted'});
+        expect(disk.handlerRuns(), 'no second run').toBe(1)
+    });
+
+    test('a bound record that cannot be read refuses every record operation and is left as it is: no effect, no consent, no fresh run in its place', async () => {
+        const
+            run            = await brainBacked(),
+            {broker, disk} = run,
+            recordPath     = await consented(run),
+            refusals       = async () => [
+                (await broker.effect(trusted, {effectId: 'write-secrets'})).reason,
+                (await broker.answer(trusted, {stepId: 'advanced', answer: 'unfolded'})).reason,
+                (await broker.evaluate(trusted, {})).reason
+            ];
+
+        writeFileSync(recordPath, '{not json');
+
+        expect(await refusals()).toEqual([
+            expect.stringMatching(/^write-secrets could not run: the run's record could not be read \(malformed: /),
+            expect.stringMatching(/^the consent was not recorded: the run's record could not be read \(malformed: /),
+            expect.stringMatching(/^the recipe could not be evaluated: the run's record could not be read \(malformed: /)
+        ]);
+        expect(readFileSync(recordPath, 'utf8'), 'the damaged record is not overwritten').toBe('{not json');
+
+        rmSync(recordPath);
+
+        expect(await refusals()).toEqual([
+            'write-secrets could not run: the run\'s record could not be read (absent): nothing runs over an unread record',
+            'the consent was not recorded: the run\'s record could not be read (absent): nothing runs over an unread record',
+            'the recipe could not be evaluated: the run\'s record could not be read (absent): nothing runs over an unread record'
+        ]);
+        expect(disk.handlerRuns(), 'nothing ran').toBe(0);
+        expect(readdirSync(run.setupRoot).filter(name => name.endsWith('.json')), 'no fresh run took its place').toEqual([])
     })
 });

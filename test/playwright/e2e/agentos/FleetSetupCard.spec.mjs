@@ -1,5 +1,5 @@
-import {expect, test}         from '../../fixtures.mjs';
-import {sampleShellInitScript} from '../../fixture/setupRecipeSample.mjs';
+import {expect, readSetupRun, test} from '../../fixtures.mjs';
+import {sampleShellInitScript}      from '../../fixture/setupRecipeSample.mjs';
 
 /**
  * @summary The shell spec's first-run witness on the served cockpit with a fixture shell: before the
@@ -119,6 +119,10 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
 
         const effects = (await page.evaluate(() => window.__neoShellCalls)).filter(([name]) => name === 'setupEffect').map(([, request]) => request.effectId);
 
-        expect(effects, 'one consent per effect, in the recipe\'s order').toEqual(['write-secrets', 'write-env', 'compose-up'])
+        expect(effects, 'one consent per effect, in the recipe\'s order').toEqual(['write-secrets', 'write-env', 'compose-up']);
+
+        // the completed run's density on the mounted provider: three answered questions and three
+        // consented effects, and no instruction handed to the operator
+        expect(await readSetupRun(page)).toMatchObject({decisions: 6, manualActions: 0, preset: 'hosted'})
     })
 });
