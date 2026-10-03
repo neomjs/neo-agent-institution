@@ -210,7 +210,7 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
         const {pane, intents, reader, summaryGrid} = readyPane();
 
         click(summaryGrid, 0);
-        reader.fire('drillRequest', {record: reader.reading.records[0]});
+        reader.fire('drillRequest', {record: reader.reading.record});
 
         expect(intents).toEqual([{sessionId: 's1-session', title: 'Title s1'}]);
         expect(pane.drillSession).toEqual({sessionId: 's1-session', title: 'Title s1'});
@@ -250,5 +250,94 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
 
         pane.controller.followRecord('s3');
         expect(summaryGrid.view.selectionModel.selectedRows).toEqual(['s3'])
+    });
+
+    test('show all reads the register\'s own Store: a record changed or added there reads in the document', () => {
+        const {pane, reader} = readyPane(),
+              titles         = () => nodesWith(reader.vdom, 'fm-memories-read-title').map(node => node.text);
+
+        pane.controller.onShowAllClick();
+        expect(reader.store).toBe(pane.summaryStore);
+
+        pane.summaryStore.get('s2').set({summary: 'Summary s2, revised on the plane'});
+        expect(texts(reader.vdom)).toContain('Summary s2, revised on the plane');
+
+        pane.summaryStore.add(row('s4'));
+        expect(titles()).toEqual(['Title s1', 'Title s2', 'Title s3', 'Title s4']);
+
+        pane.onEscape();   // leaving show all unbinds the document from the Store
+        expect(reader.store).toBe(null)
+    });
+
+    test('a scroll measurement in flight when the pane closes never reaches the retired pane', async () => {
+        const
+            {pane}     = readyPane(),
+            controller = pane.controller,
+            followed   = [],
+            replies    = [],
+            domAccess  = Neo.ns('Neo.main.DomAccess', true),
+            original   = domAccess.getBoundingClientRect,
+            // the unthrottled method: the delayable wrapper returns nothing to await
+            followScroll = scrollTop => Object.getPrototypeOf(controller).followScroll.call(controller, scrollTop),
+            // the reader 0–300, then three 200 px articles: s2's is the first still below the top third
+            reply      = () => replies.shift()([{top: 0, bottom: 300, height: 300}, ...[0, 1, 2].map(i => ({top: i * 200 - 100, bottom: i * 200 + 100, height: 200}))]);
+
+        domAccess.getBoundingClientRect = () => new Promise(resolve => replies.push(resolve));
+        controller.followRecord         = recordId => followed.push(recordId);
+
+        try {
+            pane.controller.onShowAllClick();
+
+            let pending = followScroll(60);
+            reply();
+            await pending;
+            expect(followed).toEqual(['s2']);   // a live pane follows
+
+            pending = followScroll(60);
+            pane.onEscape();                    // show all left before the reply
+            reply();
+            await pending;
+            expect(followed).toEqual(['s2']);
+
+            pane.controller.onShowAllClick();
+            pending = followScroll(60);
+            pane.destroy();                     // the pane closes before the reply
+            reply();
+            await expect(pending).rejects.toBe(Neo.isDestroyed);
+            expect(followed).toEqual(['s2'])
+        } finally {
+            domAccess.getBoundingClientRect = original
+        }
+    });
+
+    test('a copy in flight when the pane closes stops at the retired reader', async () => {
+        const
+            {pane, reader, turnGrid} = readyPane(),
+            selections               = [],
+            domAccess                = Neo.ns('Neo.main.DomAccess', true),
+            originals                = {selectNode: domAccess.selectNode, execCommand: domAccess.execCommand, focus: domAccess.focus};
+
+        domAccess.selectNode  = () => new Promise(resolve => selections.push(resolve));
+        domAccess.execCommand = async () => true;
+        domAccess.focus       = async () => true;
+
+        try {
+            pane.openSession({sessionId: 's1-session', title: 'Title s1'});
+            pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's1-session', page: {offset: 0}, turns: [TURN], total: 1};
+            click(turnGrid, 0);
+
+            const pending = reader.onCopyClick({path: [{cls: ['fm-memories-read-copy'], data: {recordId: TURN.id, field: 'prompt'}}]});
+
+            while (selections.length === 0) {
+                await new Promise(resolve => setTimeout(resolve))
+            }
+
+            pane.destroy();
+            selections.shift()(true);
+
+            await expect(pending).rejects.toBe(Neo.isDestroyed)
+        } finally {
+            Object.assign(domAccess, originals)
+        }
     });
 });

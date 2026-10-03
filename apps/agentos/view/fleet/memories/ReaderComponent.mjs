@@ -10,9 +10,10 @@ const TURN_FIELDS = [['prompt', 'Prompt'], ['thought', 'Thought'], ['response', 
 /**
  * The Memories view's reading surface: the selected session summary or turn record, whole.
  *
- * @summary Renders the plain record bags the owning {@link AgentOS.view.fleet.memories.Container}
- * hands it: one record while the operator reads a selection, every loaded record of the open
- * register in list order under *show all*, none for the nothing-selected state. The wire already
+ * @summary Renders what the owning {@link AgentOS.view.fleet.memories.Container} hands it: the
+ * selected record's bag while the operator reads one, the open register's own Store under *show
+ * all* — its Model records in Store order, re-rendered on the Store's loads and changes, so the
+ * document and the rail read one collection — and the nothing-selected sentence otherwise. The wire already
  * carries each record whole — `get_all_summaries` the summary document, `get_session_memories` the
  * turn's prompt, thought and response — so nothing is fetched here and nothing is cut: the list
  * registers keep their clamped previews, and this pane is where the whole lives. A field the plane
@@ -43,14 +44,21 @@ class ReaderComponent extends Component {
          */
         baseCls: ['fm-memories-reader'],
         /**
-         * What to read, in one write so the pane renders once: `{backText: String, kind:
-         * 'summary'|'turn', records: Object[], emptyText: String}`. `records` are plain bags (never
-         * Model instances); an empty list renders `emptyText`. `backText` names the list the back
+         * What to read: `{backText: String, kind: 'summary'|'turn', record: Object|null, emptyText:
+         * String}`. `record` is the one selected record's bag; with neither a record nor a
+         * {@link #store} the surface renders `emptyText`. `backText` names the list the back
          * breadcrumb returns to — the narrow regime's way out, where the rail yields its room.
          * @member {Object|null} reading_=null
          * @reactive
          */
-        reading_: null
+        reading_: null,
+        /**
+         * The open register's Store while the pane reads it whole (*show all*), else null. The
+         * pane owns it; this surface only listens.
+         * @member {Neo.data.Store|null} store_=null
+         * @reactive
+         */
+        store_: null
     }
 
     /**
@@ -85,6 +93,57 @@ class ReaderComponent extends Component {
     afterSetReading(value, oldValue) {
         this.copiedKey = null;
         this.isConstructed && this.render()
+    }
+
+    /**
+     * @summary Move the Store listeners to the new register; the maps are rebuilt per call because
+     * Neo's event registration consumes its input object.
+     * @param {Neo.data.Store|null} value
+     * @param {Neo.data.Store|null} oldValue
+     */
+    afterSetStore(value, oldValue) {
+        oldValue?.un(this.getStoreListeners());
+        value?.on(this.getStoreListeners());
+        this.isConstructed && this.render()
+    }
+
+    /**
+     * @returns {Object} Every Store event that changes which records the document reads, or how.
+     * @protected
+     */
+    getStoreListeners() {
+        return {
+            filter      : this.render,
+            load        : this.render,
+            mutate      : this.render,
+            recordChange: this.render,
+            sort        : this.render,
+            scope       : this
+        }
+    }
+
+    /**
+     * @summary Leave the bound Store's listeners behind. The pane destroys its Stores before its
+     * children, and a destroyed Store holds no listeners to remove.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        const {store} = this;
+
+        store && !store.isDestroyed && store.un(this.getStoreListeners());
+        super.destroy(...args)
+    }
+
+    /**
+     * @summary The record a delegated button names: from the bound Store under show all, else the
+     * one read record.
+     * @param {String|undefined} recordId
+     * @returns {Object|null}
+     */
+    recordById(recordId) {
+        const {reading, store} = this;
+
+        return (store ? store.get(recordId) : reading?.record?.id === recordId ? reading.record : null) ?? null
     }
 
     /**
@@ -205,12 +264,14 @@ class ReaderComponent extends Component {
     }
 
     /**
-     * @summary Rebuild the whole surface from {@link #reading} — one pass, like the cells.
+     * @summary Rebuild the whole surface from {@link #reading} and the bound {@link #store} — one
+     * pass, like the cells.
      */
     render() {
         const
-            me = this,
-            {backText = '', kind = 'summary', records = [], emptyText = ''} = me.reading || {};
+            me      = this,
+            {backText = '', kind = 'summary', record = null, emptyText = ''} = me.reading || {},
+            records = me.store ? me.store.items : record ? [record] : [];
 
         me.vdom.cn = [
             ...records.length > 0 ? [{
@@ -240,14 +301,15 @@ class ReaderComponent extends Component {
 
     /**
      * @summary The copy action: the field's whole text goes to the clipboard through the hidden
-     * textarea, and the focus returns to the button.
+     * textarea, and the focus returns to the button. Each main-thread step is trapped on this
+     * component, so a reader closed mid-copy rejects with `Neo.isDestroyed` instead of rendering.
      * @param {Object} data The delegated click
      */
     async onCopyClick(data) {
         const
             me         = this,
             button     = me.buttonData(data, 'fm-memories-read-copy'),
-            record     = (me.reading?.records || []).find(bag => bag.id === button?.recordId),
+            record     = me.recordById(button?.recordId),
             value      = record?.[button?.field],
             {windowId} = me,
             source     = me.vdom.cn.at(-1);
@@ -257,10 +319,10 @@ class ReaderComponent extends Component {
         }
 
         source.text = value;
-        await me.promiseUpdate();
-        await Neo.main.DomAccess.selectNode({id: source.id, windowId});
-        await Neo.main.DomAccess.execCommand({command: 'copy', windowId});
-        await Neo.main.DomAccess.focus({id: me.partId(record.id, `copy-${button.field}`), windowId});
+        await me.trap(me.promiseUpdate());
+        await me.trap(Neo.main.DomAccess.selectNode({id: source.id, windowId}));
+        await me.trap(Neo.main.DomAccess.execCommand({command: 'copy', windowId}));
+        await me.trap(Neo.main.DomAccess.focus({id: me.partId(record.id, `copy-${button.field}`), windowId}));
 
         me.copiedKey = `${record.id}:${button.field}`;
         me.render()
@@ -274,14 +336,14 @@ class ReaderComponent extends Component {
     }
 
     /**
-     * @summary The drill affordance: fire the `drillRequest` intent with the summary's record bag.
+     * @summary The drill affordance: fire the `drillRequest` intent with the summary's record.
      * @param {Object} data The delegated click
      */
     onTurnsClick(data) {
         const
             me     = this,
             button = me.buttonData(data, 'fm-memories-read-turns'),
-            record = (me.reading?.records || []).find(bag => bag.id === button?.recordId);
+            record = me.recordById(button?.recordId);
 
         record && me.fire('drillRequest', {record})
     }

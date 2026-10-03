@@ -143,12 +143,16 @@ class ReadingController extends ComponentController {
             text   : component.showAll ? 'One at a time' : 'Show all'
         });
 
-        reader.reading = {
-            backText : drill ? 'Turns' : 'Summaries',
-            kind     : drill ? 'turn' : 'summary',
-            records  : showAll ? grid.extractBags() : record ? [grid.recordBag(record)] : [],
-            emptyText: drill ? 'Select a turn to read it in full.' : 'Select a session summary to read it in full.'
-        }
+        // show all binds the register's own Store, so the document follows its loads and changes
+        reader.set({
+            store  : showAll ? grid.store : null,
+            reading: {
+                backText : drill ? 'Turns' : 'Summaries',
+                kind     : drill ? 'turn' : 'summary',
+                record   : !showAll && record ? grid.recordBag(record) : null,
+                emptyText: drill ? 'Select a turn to read it in full.' : 'Select a session summary to read it in full.'
+            }
+        })
     }
 
     /**
@@ -259,7 +263,9 @@ class ReadingController extends ComponentController {
      * @summary Measure which record the reader is showing and follow it in the rail: the first
      * article still reaching below the viewport's top third — or, once the document is scrolled to
      * its end, the last one, which may never reach the top. Throttled via {@link #delayable}; one
-     * main-thread measure of every article per pass.
+     * main-thread measure of every article per pass, trapped on this controller: a pane closed
+     * before the main thread answers rejects the measure with `Neo.isDestroyed`, so nothing runs on
+     * the retired pane.
      * @param {Number} scrollTop The reader's scroll offset
      * @returns {Promise<void>}
      * @protected
@@ -268,11 +274,11 @@ class ReadingController extends ComponentController {
         const
             me                  = this,
             reader              = me.component.getReference('memories-reader'),
-            ids                 = (reader.reading?.records || []).map(bag => bag.id),
-            [view, ...articles] = await Neo.main.DomAccess.getBoundingClientRect({
+            ids                 = (reader.store?.items || []).map(record => record.id),
+            [view, ...articles] = await me.trap(Neo.main.DomAccess.getBoundingClientRect({
                 id      : [reader.id, ...ids.map(id => reader.partId(id, 'article'))],
                 windowId: reader.windowId
-            }),
+            })),
             atEnd               = scrollTop > 0 && articles.at(-1)?.bottom <= view.bottom + 1,
             index               = atEnd ? articles.length - 1 : articles.findIndex(rect => rect?.bottom > view.top + view.height / 3);
 
