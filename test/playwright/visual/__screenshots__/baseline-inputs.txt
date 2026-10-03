@@ -216,7 +216,7 @@ apps/agentos/util/FleetStartPlan.mjs
     8133ea5500f9f193b515e5ab70ce1a172fa31921
 
 apps/agentos/util/FloatingMenuTheme.mjs
-    7e0cbb296af046a08e7ff83d6deeeae92d76fbd4
+    84b03b77166b024f051b7aeb611873323c0e5cfb
 
 apps/agentos/util/GoldenPathEnvelope.mjs
     b112a479ca39a63d579e8dc5f13926fe6a9aa3a0
@@ -243,10 +243,10 @@ apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
 
 apps/agentos/util/OpenWorkRead.mjs
-    11a72a2fc4c0c4de815352fabbb2241e95ab490b
+    8a8ddcdbe87735ec36173c073f9e07df1e98be50
 
 apps/agentos/util/OpenWorkSeat.mjs
-    7742a70d1da1cc6fc20993a488e2f52ffc5d2879
+    ac3f69d1cbdf657cc25fd7e5e73b2d495eb7ce30
 
 apps/agentos/util/PlaneCredentialCheck.mjs
     e90a4505028072781fd15134801cc3c9cb0a37b5
@@ -435,10 +435,10 @@ apps/agentos/view/fleet/perspectives/Container.mjs
     f6548ca755ca9817cf13b8b7388cb62a0e8471e1
 
 apps/agentos/view/fleet/roster/AwaitingMergeButton.mjs
-    7801cfd18871e448c037baa0e3221d644612ef40
+    5209afe46d946b9b9a56b224b2afe59e947c870c
 
 apps/agentos/view/fleet/roster/AwaitingMergeMenuList.mjs
-    27bdc4e2599969b58487a2d32df1793b4f134b96
+    700df252dfafd63f8c8b49914d82a40faef44588
 
 apps/agentos/view/fleet/roster/Container.mjs
     a6f6f8a61427612cba00b5245e4b99de7c5ffeac
