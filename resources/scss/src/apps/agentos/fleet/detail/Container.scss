@@ -167,6 +167,31 @@
         font-family: var(--fm-font-mono);
     }
 
+    /* the pull requests pane: per held pull request, its reference (an anchor to the forge, in the
+       inspector's mono voice) over its line in the chip's words; both wrap at rail widths, so the
+       default placement reads every row in full */
+    .fm-detail-pane-prs .fm-detail-pane-body {
+        display: grid;
+        gap    : var(--fm-space-1);
+    }
+
+    .fm-detail-pr {
+        display: grid;
+        gap    : 1px;
+    }
+
+    .fm-detail-pr-ref {
+        color          : var(--fm-ink);
+        font-family    : var(--fm-font-mono);
+        overflow-wrap  : anywhere;
+        text-decoration: none;
+
+        &:hover,
+        &:focus-visible {
+            text-decoration: underline;
+        }
+    }
+
     /* the freshness ledger chip: a mono pill whose tone states the observation
        freshness — never a silent current claim. fresh reuses the live signal, stale the wedged tone
        (mirroring the ActivityStream adapter states), lost the alert tone, unobserved the honest

@@ -6,7 +6,7 @@ engine
     04362ea8181894ec75f5d0c79e5c9b32ee9c28d14437963cc2924a8925a1f025
 
 apps/agentos/CARD-CONTRACT.md
-    61c08d50b7c1219218e77f92b1ee880845be2f9b
+    8b84e41fe1f247b4e19e6df08ca2de27dc906622
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    ae785027a05d7164004b04a32a2f55fabc5e9eb7
+    52a85e4458fd987d78a81d1648406008c144b34b
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -243,10 +243,10 @@ apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
 
 apps/agentos/util/OpenWorkRead.mjs
-    8a8ddcdbe87735ec36173c073f9e07df1e98be50
+    fdaa7d572a845e4c6689a00762abf5fc9bf20a1b
 
 apps/agentos/util/OpenWorkSeat.mjs
-    ac3f69d1cbdf657cc25fd7e5e73b2d495eb7ce30
+    a63f123b50e853624eb8518eaac2f9c0cfc11dde
 
 apps/agentos/util/PlaneCredentialCheck.mjs
     e90a4505028072781fd15134801cc3c9cb0a37b5
@@ -309,7 +309,7 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     32488ae86f88be9980c0efc7aaf9497694bb7e4d
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    c517490af79f0270a45bd5cc3c37ad314b0d0af0
+    537696eb3f856a5e02eaa241b46cb3a3d318403a
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     54c7f51805bf68baab2d7bcc42a563556b5cf1e7
@@ -339,7 +339,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    ae9016617a230a41f85cd949eec8de1070bc46bb
+    cc5ba7598773d9c6c5b0be6caf3af6b2882ab940
 
 apps/agentos/view/fleet/detail/Controller.mjs
     9c9d839fd9613ad24cccb7b9cdbdf4e520c0bafe
@@ -540,7 +540,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    6d41cf5fe1552c5276787896f560f2a56dbf15ff
+    5999d449e75779cf33ab2979473d6a89b4eb7bdb
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
@@ -822,7 +822,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agen
     3de86314c2dbd31e67ed445d25e00f8e5d3925a7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-agent-detail.png
-    806c7394347db7199f9b5d69c8154310f4036739
+    f702042d7b9f2a71f7dd27e8bf13fc22679cd205
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up.png
     2ba41477f2f7e9959f085805877952ea79e12110

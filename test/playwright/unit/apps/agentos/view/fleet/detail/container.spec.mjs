@@ -25,7 +25,7 @@ import Instance       from '../../../../../../../../node_modules/neo.mjs/src/man
  * freshness contract renders deterministically.
  */
 test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () => {
-    let AgentDetail, AgentDetailController, AgentDefinition, FleetAgent, FleetTenants, Store;
+    let AgentDetail, AgentDetailController, AgentDefinition, FleetAgent, FleetTenants, OpenWorkSeat, Store;
 
     const
         stores          = [],
@@ -86,6 +86,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         AgentDefinition       = (await import('../../../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
         FleetAgent            = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
         FleetTenants          = (await import('../../../../../../../../apps/agentos/store/FleetTenants.mjs')).default;
+        OpenWorkSeat          = (await import('../../../../../../../../apps/agentos/util/OpenWorkSeat.mjs')).default;
         Store                 = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
     });
 
@@ -254,7 +255,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                 'thought-stream': {observedAt: '2026-07-11T23:59:50.000Z', freshnessTtl: 30_000}, // 10s → fresh
                 lane            : {observedAt: '2026-07-11T23:58:30.000Z', freshnessTtl: 30_000}, // 90s → stale
                 repo            : {lost: true}                                                    // explicit → lost
-                // prs: no ledger → unobserved
+                // prs: no ledger and no open-work answer → unobserved
             }
         });
 
@@ -263,7 +264,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(detail, 'lane').cls).toContain('is-stale');
         expect(chip(detail, 'repo').cls).toContain('is-lost');
         expect(chip(detail, 'prs').cls).toContain('is-unobserved');
-        expect(chip(detail, 'prs').text).toBe('not observed — source not wired');
+        expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
 
         detail.destroy()
     });
@@ -901,14 +902,13 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
     test('panes without a producer name what they await; the lane pill states the roster source fact (#391 AC-1)', () => {
         const detail = createDetail({agentId: 'vega', state: 'ok'});
 
-        for (const [key, producer] of [
-            ['thought-stream', 'policy-aware read'],
-            ['prs',            'per-seat open-work projection']
-        ]) {
-            expect(chip(detail, key).text, key).toBe('not observed — source not wired');
-            expect(chip(detail, key).cls, key).toContain('is-unobserved');
-            expect(chip(detail, key).vdom.title, key).toContain(producer)
-        }
+        expect(chip(detail, 'thought-stream').text).toBe('not observed — source not wired');
+        expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+        expect(chip(detail, 'thought-stream').vdom.title).toContain('policy-aware read');
+
+        // the pull requests pane has its producer: without an answer it says so in the resolver's words
+        expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
+        expect(chip(detail, 'prs').vdom.title).toBe(chip(detail, 'prs').text);
 
         // The lane now has a roster-row source axis. An absent lane fact uses its explicit source
         // vocabulary rather than borrowing the old feed-waiting text from an unwired pane.
@@ -921,6 +921,62 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(detail, 'repo').vdom.title).toBeNull();
 
         detail.destroy()
+    });
+
+    test.describe('the Pull requests pane reads the seat\'s open work (#501)', () => {
+        const
+            seat     = '@neo-vega',
+            minsAgo  = minutes => new Date(NOW - minutes * 60_000).toISOString(),
+            prRow    = (repo, number, role, extra = {}) => ({repo, number, holder: {role, ids: [seat]}, ...extra}),
+            answer   = (authored, reviewing, observedAt) => ({state: 'ok', observedAt, seats: {[seat]: {authored, reviewing}}}),
+            rowsOf   = detail => body(detail, 'prs').vdom.cn,
+            heldFrom = snapshot => OpenWorkSeat.held(snapshot, seat);
+
+        test('three held rows render worst first in the resolver\'s words, and the pill reads the read\'s observation (AC-1)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer(
+                [prRow('neomjs/neo-agent-brain', 806, 'author', {ci: 'pending'}), prRow('neomjs/neo-agent-institution', 504, 'author', {ci: 'red', observedAt: minsAgo(2)})],
+                [prRow('neomjs/neo', 19379, 'reviewer')],
+                minsAgo(1)
+            ))});
+
+            expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['neomjs/neo-agent-institution #504', 'neomjs/neo-agent-brain #806', 'neomjs/neo #19379']);
+            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['author · red · observed 2m ago', 'author · changes requested', 'reviewer · review due']);
+            expect(rowsOf(detail)[0].cn[0]).toMatchObject({tag: 'a', href: 'https://github.com/neomjs/neo-agent-institution/pull/504', rel: 'noopener', target: '_blank'});
+
+            // the oldest held row's observation is the pane's
+            expect(chip(detail, 'prs').text).toBe('updated 2m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-fresh');
+
+            detail.destroy()
+        });
+
+        test('nothing held renders the empty sentence, an unanswered read renders no list and says so on the pill (AC-2)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer([], [], minsAgo(1)))});
+
+            expect(rowsOf(detail)).toEqual([{tag: 'span', cls: ['fm-detail-prs-none'], text: 'no pull request waits on this seat'}]);
+            expect(chip(detail, 'prs').text).toBe('updated 1m ago');
+
+            applySet(detail, {openWorkHeld: heldFrom(null)});
+            expect(rowsOf(detail)).toEqual([]);
+            expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
+            expect(chip(detail, 'prs').cls).toContain('is-unobserved');
+
+            detail.destroy()
+        });
+
+        test('a stale read keeps its rows and carries its age; an answer never reads as source not wired (AC-3)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom({
+                ...answer([prRow('neomjs/neo', 7, 'author', {ci: 'red', stale: true, observedAt: minsAgo(12)})], [], minsAgo(12)),
+                state: 'stale'
+            })});
+
+            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['author · red · observed 12m ago · stale']);
+            expect(chip(detail, 'prs').text).toBe('stale · last seen 12m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-stale');
+            expect(chip(detail, 'prs').text).not.toContain('source not wired');
+
+            detail.destroy()
+        });
     });
 
     test('the repository pane and the header row derive from ONE descriptor — the roster row\'s repoStatus fact, aged from the roster admission (#391 AC-2)', () => {

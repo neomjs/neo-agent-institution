@@ -211,13 +211,20 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
             expect(roster.get('neo-opus-ada').openWork).toEqual({count: 1, worst: 'red', stale: false, observedAt});
             expect(roster.get('neo-gpt').openWork, 'a PR the seat reviews while its author holds it is not the reviewer\'s').toBeNull();
 
+            // the detail's rows ride the same write: the held row, and an answered seat holding nothing
+            expect(roster.get('neo-opus-ada').openWorkHeld).toEqual({
+                rows: [{kind: 'red', number: 1, observedAt: null, repo: 'neomjs/neo', role: 'author', stale: false}], stale: false, observedAt
+            });
+            expect(roster.get('neo-gpt').openWorkHeld).toEqual({rows: [], stale: false, observedAt});
+
             // another profile's read retires the answer, and with it everything the answer put on screen
             setFleetBridge({profileId: 'instance-b', fleetOpenWork: () => new Promise(() => {})});
             host.loadOpenWork();
 
             expect(provider.getData('openWork')).toEqual({coverage: null, observedAt: null, reason: null, state: null});
             expect(queue.count).toBe(0);
-            expect(roster.get('neo-opus-ada').openWork).toBeNull()
+            expect(roster.get('neo-opus-ada').openWork).toBeNull();
+            expect(roster.get('neo-opus-ada').openWorkHeld, 'no answer is not an empty answer').toBeNull()
         } finally {
             clearFleetBridge();
             provider.destroy()
@@ -235,8 +242,11 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
         }, null);
 
         expect(host.mapRosterRow({id: 'neo-gpt', githubUsername: 'neo-gpt'}).openWork).toEqual({count: 1, worst: 'review-due', stale: false, observedAt: '2026-10-03T08:00:00.000Z'});
+        expect(host.mapRosterRow({id: 'neo-gpt', githubUsername: 'neo-gpt'}).openWorkHeld.rows.map(row => row.number)).toEqual([7]);
         expect(host.mapRosterRow({id: 'neo-opus-ada', githubUsername: 'neo-opus-ada'}).openWork).toBeNull();
-        expect(host.mapRosterRow({id: 'no-login'}).openWork, 'no identity, no claim').toBeNull()
+        expect(host.mapRosterRow({id: 'neo-opus-ada', githubUsername: 'neo-opus-ada'}).openWorkHeld.rows).toEqual([]);
+        expect(host.mapRosterRow({id: 'no-login'}).openWork, 'no identity, no claim').toBeNull();
+        expect(host.mapRosterRow({id: 'no-login'}).openWorkHeld).toBeNull()
     });
 
     test('a card a view filter hides reappears with the answer given while it was hidden, both ways', async () => {
@@ -261,6 +271,7 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
             answer({'@neo-gpt': {authored: [], reviewing: [{repo: 'neomjs/neo', number: 7, observedAt, holder: {role: 'reviewer', ids: ['@neo-gpt']}}]}});
 
             expect(host.lastLiveRows.find(row => row.agentId === 'neo-gpt').openWork, 'a re-apply of the last live roster keeps the answer').toEqual(held);
+            expect(host.lastLiveRows.find(row => row.agentId === 'neo-gpt').openWorkHeld.rows.map(row => row.number)).toEqual([7]);
             expect(host.lastLiveRows.find(row => row.agentId === 'neo-opus-ada').openWork).toBeNull();
 
             roster.filters = [];
