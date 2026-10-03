@@ -310,6 +310,31 @@ test.describe('harness Fleet capability', () => {
         })).toEqual({tenantUrl: 'https://tenant.example.com/agentos/'})
     });
 
+    test('native Add preserves the selected forge and instance through main-owned credential ingress', async () => {
+        const
+            intent = {githubUsername: 'gitlab-seat', harnessType: 'codex', forge: 'gitlab', forgeHost: 'https://gitlab.example.test'},
+            calls = [],
+            capability = createCapability({
+                isTrustedSender: () => true,
+                getBrain: async () => ({up: true, fleetPort: 8083}),
+                credentialProvider: async request => {
+                    expect(request.intent).toEqual(intent);
+                    return 'main-owned-gitlab-token'
+                },
+                fetchImpl: async (url, options) => {
+                    calls.push(JSON.parse(options.body));
+                    return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {id: 'gitlab-seat'}})}
+                }
+            });
+
+        await capability.request({}, {method: 'defineAgent', params: {...intent, credential: 'discard-renderer-value'}});
+
+        expect(calls).toHaveLength(1);
+        expect(calls[0].params).toEqual({...intent, credential: 'main-owned-gitlab-token'});
+        expect(projectPublicAgentIntent({...intent, forge: {value: 'gitlab'}})).toBeNull();
+        expect(projectPublicAgentIntent({...intent, forgeHost: null})).toBeNull()
+    });
+
     test('a seat\'s plane credential projects to the seat id alone: no credential, plane or identity rides in from the renderer', () => {
         expect(projectPublicCredentialIntent('setPlaneCredential', {
             id        : ' neo-gpt-sophie ',

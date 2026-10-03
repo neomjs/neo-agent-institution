@@ -10,6 +10,7 @@ import TabContainer           from '../../../../../node_modules/neo.mjs/src/tab/
 import CatchUpPane            from '../catchup/Container.mjs';
 import DockService           from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
 import VesselContainer        from './VesselContainer.mjs';
+import {boundAgentOsBind}     from '../instances/MenuList.mjs';
 import PerspectiveLibrary     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
@@ -197,7 +198,8 @@ class FleetCockpit extends VesselContainer {
                 module    : AgentDetail,
                 header    : {text: 'Agent detail'},
                 reference : 'agent-detail',
-                autoHidden: true
+                autoHidden: true,
+                bind      : {...boundAgentOsBind}
             },
             perspectives: {
                 module    : () => import('../perspectives/Container.mjs'),
@@ -218,6 +220,7 @@ class FleetCockpit extends VesselContainer {
                 header    : {text: 'Add agent'},
                 reference : 'define-agent',
                 autoHidden: true,
+                bind      : {...boundAgentOsBind},
                 listeners : {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'}
             },
             wakeRoutes: {
@@ -902,18 +905,25 @@ class FleetCockpit extends VesselContainer {
                 seeds = {actorDirectory: controller.buildActivityActorDirectory()};
                 break;
             case 'detail':
-                // the stores resolved imperatively keep the view provider-agnostic; the selected
-                // resident is OWNER-held so a pane created from true absence never drops the
-                // selection; the return verb (away phases only) is SHELL-owned config through the
-                // `shellTools` slot — docked, the dock header owns pop-out
+                // Store references are seeded for bare/vessel mounts; destination scalars stay live
+                // through the pane binding. The selected resident is OWNER-held so a pane created from
+                // true absence never drops the selection; the return verb (away phases only) is
+                // SHELL-owned config through the `shellTools` slot — docked, the dock header owns pop-out
                 seeds = {
                     agentDefinitions: me.resolveProviderStore('agentDefinitions'),
                     fleetTenants    : me.resolveProviderStore('fleetTenants'),
                     record          : me.detailRecord,
+                    instanceStore   : me.resolveProviderStore('fleetInstances'),
                     // the roster admission instant the owner holds: a pane projected after the
                     // roster landed ages its roster-read panes from the real observation
                     rosterObservedAt: controller.rosterObservedAt,
                     shellTools      : [me.buildDetailWindowToggle()]
+                };
+                break;
+            case 'defineAgent':
+                // Store references are instance-bound; destination scalars follow the live pane binding.
+                seeds = {
+                    instanceStore: me.resolveProviderStore('fleetInstances')
                 };
                 break;
             case 'operator':

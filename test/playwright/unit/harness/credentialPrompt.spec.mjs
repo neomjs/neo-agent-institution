@@ -134,16 +134,18 @@ test.describe('harness/credentialPrompt — the shell\'s one credential window',
         )
     });
 
-    test('a seat\'s plane credential asks for the seat\'s own identity PAT, never its checkout PAT', () => {
+    test('Add explains one-token admission and later plane repair never demands a separate token', () => {
         const
             loaded = method => decodeURIComponent(openPrompt({method}).win.url.replace('data:text/html;charset=utf-8,', '')),
             seat   = loaded('setPlaneCredential');
 
-        expect(seat).toContain('<p>Use a PAT of this seat\'s own account with no repository access, never its checkout PAT: the plane only needs to know who the seat is. Only this app\'s main process receives it.</p>');
-        expect(seat).toContain('<button type="submit" class="primary" disabled>Set</button>');
+        expect(loaded('defineAgent')).toContain('<p>Use this agent\'s account token for repository access and the connected Agent OS. Enter it once; Fleet reuses it at Start.</p>');
+        expect(seat).toContain('<p>Use this agent\'s account token for the connected Agent OS.</p>');
+        expect(seat).toContain('<button type="submit" class="primary" disabled>Update token</button>');
+        expect(seat).not.toMatch(/no repository access|never its checkout PAT|second token/i);
 
         // every other request keeps the plane's own sign-in line
-        for (const method of ['connectTenant', 'defineAgent', 'plane-attach']) {
+        for (const method of ['connectTenant', 'plane-attach']) {
             expect(loaded(method), method).toContain('<p>Use the one your team\'s plane signs in with. Only this app\'s main process receives it.</p>')
         }
     });
