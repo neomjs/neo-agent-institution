@@ -210,8 +210,8 @@ class InstanceMenuList extends MenuList {
         });
         // `list.Base#afterSetStore` builds items only for a Store that already holds rows, and waits
         // for `load` otherwise. The packaged shell's Store holds none — its saved plane is the shell's,
-        // not a Fleet profile row — so nothing ever built the terminal item and the open menu was a
-        // 10 px bar (#500's installed witness). The menu's own affordance does not depend on rows.
+        // not a Fleet profile row — so nothing built the terminal item and the open menu was a bare
+        // 10 px bar on the installed vessel. The menu's own affordance does not depend on rows.
         this.createItems(true);
         this.parentComponent?.onInstanceMenuReady(this)
     }
