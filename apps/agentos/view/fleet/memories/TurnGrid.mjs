@@ -41,6 +41,17 @@ class TurnGrid extends RowsGrid {
     }
 
     /**
+     * = {@link #rowHeight}, the card lattice the rail returns to.
+     * @member {Number} cardRowHeight=104
+     */
+    cardRowHeight = 104
+    /**
+     * The rail's lattice — meta line and one line of prose (`.is-rail .fm-memories-turn-cell`).
+     * @member {Number} railRowHeight=64
+     */
+    railRowHeight = 64
+
+    /**
      * @summary One headerless component column: the designed turn row IS the cell. The factory
      * builds a FRESH `rowData` bag per call (the pooled-cell contract — see
      * {@link AgentOS.view.fleet.memories.TurnRowComponent}).

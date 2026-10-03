@@ -64,6 +64,16 @@ class SummaryGrid extends RowsGrid {
      * @member {String[]} derivedFields=['bandFacts']
      */
     derivedFields = ['bandFacts']
+    /**
+     * = {@link #rowHeight}, the card lattice the rail returns to.
+     * @member {Number} cardRowHeight=132
+     */
+    cardRowHeight = 132
+    /**
+     * The rail's lattice — band slot, title and meta line (`.is-rail .fm-memories-card-cell`).
+     * @member {Number} railRowHeight=84
+     */
+    railRowHeight = 84
 
     /**
      * @summary One headerless component column: the designed card IS the cell. The factory

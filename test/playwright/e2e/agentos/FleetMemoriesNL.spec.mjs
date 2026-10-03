@@ -266,8 +266,8 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             // the registers wear no engine grid chrome: the card carries the only frame and surface —
             // no cell lattice, no cell background, no cell padding around the height-normed card; and
-            // a card click marks no row: the register declares no selection model (`viewConfig:
-            // {selectionModel: null}`), so there is no selection paint to neutralize at the skin layer
+            // a card click selects its row into the reader (#506): the RowModel marks the row, the
+            // skin re-binds its cell paint, and the card's own border carries the mark
             const cellChrome = () => pane.locator('.fm-memories-summary-grid .neo-grid-cell').first().evaluate(cell => {
                 const style = getComputedStyle(cell);
 
@@ -283,8 +283,9 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             expect(await pane.locator('.fm-memories-summary-grid').evaluate(grid => getComputedStyle(grid).borderTopWidth), 'the register carries no container frame').toBe('0px');
             await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-title').click();
             await expect(pane.locator('.fm-memories-card').nth(1)).not.toContainText('with @');
-            expect(await cellChrome(), 'a card click marks no row and paints no band: the register has no selection model').toEqual({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px', selected: false});
-            expect(await pane.locator('.fm-memories-summary-grid .neo-grid-view').evaluate(view => [...view.classList].filter(cls => cls.startsWith('neo-selection'))), 'no selection model registered on the register').toEqual([]);
+            await expect(pane.locator('.fm-memories-summary-grid .neo-grid-row', {hasText: 'Wake transport and integrity contracts'}), 'a card click marks its row').toHaveClass(/\bneo-selected\b/);
+            expect(await cellChrome(), 'and no cell paints a band').toMatchObject({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px'});
+            await expect(pane.locator('.fm-memories-reader .fm-memories-read-text'), 'the selected summary reads whole').toHaveText('Established verifiable wake transport between plane and host.');
 
             // the paging chrome is retired: the edge did the append, and no "Older sessions"
             // affordance exists to click — corpus exhaustion is the settled "3 of 3" line above
@@ -453,19 +454,92 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             await assertBareRegister('turns', '.fm-memories-turn-grid');
 
-            // a click marks no row one level down either: the turn register has no selection model
+            // a click selects the turn into the reader (#506): its row is marked, the card carries the
+            // mark, no cell paints a band — and the reader holds the whole record, a missing thought named
             await pane.locator('.fm-memories-turn').nth(1).click();
-            await expect(pane.locator('.fm-memories-turn').nth(1)).toBeVisible();
+
+            const reader = pane.locator('.fm-memories-reader');
+
+            await expect(reader.locator('.fm-memories-read-label')).toHaveText(['Prompt', 'Thought', 'Response']);
+            await expect(reader.locator('.fm-memories-read-text')).toHaveText([
+                'Read the integrity contract.',
+                'The plane returned no thought for this turn · turn turn-1',
+                'The contract names two receipts per wake; the second one is the host\'s.'
+            ]);
             (await chromeOf('.fm-memories-turn-grid .neo-grid-cell')).forEach((cell, index) => {
-                expect(cell.selected,   `turn cell ${index} sits in no marked row`).toBe(false);
                 expect(cell.background, `turn cell ${index} paints no selection band`).toBe('rgba(0, 0, 0, 0)')
             });
+            expect((await chromeOf('.fm-memories-turn-grid .neo-grid-cell')).filter(cell => cell.selected), 'one marked row').toHaveLength(1);
 
             for (const [skin, theme] of [...skins].reverse()) {
                 await setSkin(theme);
                 await settleForGolden();
                 await expect(pane).toHaveScreenshot(`memories-turns-${skin}.png`)
             }
+
+            // Copy puts the field's whole text on the clipboard, through the main thread's selection
+            const copyResponse = reader.getByRole('button', {name: 'Copy the response'});
+
+            await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+            await copyResponse.click();
+            await expect(copyResponse).toHaveText('Copied');
+            expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('The contract names two receipts per wake; the second one is the host\'s.')
+        } finally {
+            await fleet.close()
+        }
+    });
+
+    /**
+     * @summary #506 AC-3: room for reading is the dock's own maximize, never a pane-local mode. A
+     * selected summary reads whole beside its rail in the south strip; the strip's maximize toggle
+     * paints the Memories node over the workspace and the reader takes the width; Escape restores
+     * the strip, and the reading survives both moves.
+     */
+    test('reading takes the room through the dock\'s maximize, and Escape gives it back', async ({page, neuralLink}) => {
+        const fleet = await startMemoriesFleet();
+
+        try {
+            await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl: fleet.endpoint})}`);
+            await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+            const app = await neuralLink.connectToApp('AgentOS');
+            await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken: fleet.bearerToken});
+
+            const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
+            await app.callMethod(cockpit.properties.id, 'controller.loadRoster');
+            await page.getByRole('tab', {name: 'Memories', exact: true}).click();
+
+            const
+                pane   = page.locator('.fm-memories-pane'),
+                reader = pane.locator('.fm-memories-reader'),
+                strip  = page.locator('.neo-dashboard-dock-tabs', {has: page.getByRole('tab', {name: 'Memories', exact: true})}).first(),
+                settle = () => expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+            await page.locator('.fm-fleet-cards > .neo-list-item', {hasText: /\bAda\b/}).click();
+            await expect(pane.locator('.fm-memories-card')).toHaveCount(3, {timeout: 10000});
+            await pane.locator('.fm-pane-title').click();   // dismiss the inspector's reveal
+            await settle();
+
+            await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-meta').click();
+            await expect(reader.locator('.fm-memories-read-text')).toHaveText('Established verifiable wake transport between plane and host.');
+            await expect(pane.locator('.fm-memories-summary-grid')).toHaveClass(/\bis-rail\b/);
+
+            const docked = await reader.boundingBox();
+
+            const readerHeight = async () => (await reader.boundingBox()).height;
+
+            await strip.locator('.fa-window-maximize').first().click();
+            // the FLIP lands after the click: the toggle flips to its restore glyph, then the rect grows
+            await expect(strip.locator('.fa-window-minimize').first()).toBeVisible();
+            await expect.poll(readerHeight, {message: 'the maximized node gives the reader the workspace height'}).toBeGreaterThan(docked.height * 2);
+            await settle();
+            await expect(reader.locator('.fm-memories-read-text'), 'the reading survives the move').toHaveText('Established verifiable wake transport between plane and host.');
+
+            await page.keyboard.press('Escape');
+
+            await expect.poll(readerHeight, {message: 'Escape returns the strip'}).toBeLessThan(docked.height * 1.5);
+            await settle();
+            await expect(reader.locator('.fm-memories-read-text')).toHaveText('Established verifiable wake transport between plane and host.')
         } finally {
             await fleet.close()
         }
