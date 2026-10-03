@@ -776,14 +776,14 @@ class Controller extends ReadingSurfacesController {
 
     /**
      * @summary A roster row as its record, carrying the seat's held open work, so a roster refresh never
-     * drops the card's open-work chip ({@link AgentOS.util.OpenWorkRead#seatOpenWork}).
+     * drops the card's open-work chip or the detail's rows ({@link AgentOS.util.OpenWorkRead#seatOpenWork}).
      * @param {Object} row One roster DTO row.
      * @returns {Object}
      */
     mapRosterRow(row) {
         const mapped = super.mapRosterRow(row);
 
-        return {...mapped, openWork: OpenWorkRead.seatOpenWork(this, mapped.githubUsername)}
+        return {...mapped, ...OpenWorkRead.seatOpenWork(this, mapped.githubUsername)}
     }
 
     /**

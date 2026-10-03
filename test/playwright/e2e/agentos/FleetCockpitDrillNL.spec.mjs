@@ -1,5 +1,5 @@
-import {expect, landFleetRoster, landFleetSample, test} from '../../fixtures.mjs';
-import {sampleRoster}                                   from '../../fixture/fleetSample.mjs';
+import {expect, landFleetOpenWork, landFleetRoster, landFleetSample, test} from '../../fixtures.mjs';
+import {sampleOpenWork, sampleRoster}                                      from '../../fixture/fleetSample.mjs';
 
 /**
  * @summary The FM cockpit card→detail drill, proven LIVE through nested content inside the semantic
@@ -93,10 +93,30 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
 
         await expect(pill('lane')).toHaveText('not wired — the roster row carried no lane claim fact');
 
-        for (const [key, producer] of [['thought-stream', /policy-aware read/], ['prs', /open-work projection/]]) {
-            await expect(pill(key), key).toHaveText('not observed — source not wired');
-            await expect(pill(key), key).toHaveAttribute('title', producer)
-        }
+        await expect(pill('thought-stream')).toHaveText('not observed — source not wired');
+        await expect(pill('thought-stream')).toHaveAttribute('title', /policy-aware read/);
+        await expect(pill('prs')).toHaveText('not observed — open-work read unanswered');
+
+        // The Pull requests pane reads the cockpit's one open-work answer: the red head the seat
+        // authored before the review it owes, each reference a link to the forge, and the card's chip
+        // counting the same rows.
+        const
+            seat       = `@${expectedAgentId}`,
+            observedAt = new Date().toISOString(),
+            prRow      = (repo, number, ci, role) => ({repo, number, head: null, ci, verdict: null, mergeable: null, draft: false, reviews: [], observedAt, stale: false, holder: {role, ids: [seat]}}),
+            prs        = detail.locator('.fm-detail-pane-prs .fm-detail-pr');
+
+        await landFleetOpenWork(page, {...sampleOpenWork, observedAt, seats: {
+            [seat]: {authored: [prRow('neomjs/neo', 19501, 'red', 'author')], reviewing: [prRow('neomjs/neo-agent-brain', 802, 'green', 'reviewer')]}
+        }});
+
+        await expect(prs).toHaveCount(2, {timeout: 15000});
+        await expect(prs.nth(0).locator('.fm-detail-pr-ref')).toHaveText('neomjs/neo #19501');
+        await expect(prs.nth(0).locator('.fm-detail-pr-ref')).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/19501');
+        await expect(prs.nth(0).locator('.fm-detail-pr-line')).toHaveText(/^author · red · observed \d+s ago$/);
+        await expect(prs.nth(1).locator('.fm-detail-pr-line')).toHaveText(/^reviewer · review due · observed \d+s ago$/);
+        await expect(pill('prs')).toHaveText(/^updated \d+s ago$/);
+        await expect(targetItem.locator('.fm-card-open-work')).toHaveText('2 PRs · red');
 
         // A roster answer that carries the resident's repository fact lands on the open inspector
         // through the roster's own reconcile: the pill dates from that admission and the pane shows

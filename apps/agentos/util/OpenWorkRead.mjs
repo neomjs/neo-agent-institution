@@ -86,23 +86,29 @@ class OpenWorkRead extends Base {
         queue && (queue.data = OpenWorkRead.mergeRows(snapshot));
 
         roster && (roster.allItems ?? roster).items.forEach(record => {
-            record.set({openWork: OpenWorkRead.seatOpenWork(owner, record.githubUsername)})
+            record.set(OpenWorkRead.seatOpenWork(owner, record.githubUsername))
         });
 
         if (Array.isArray(owner.lastLiveRows)) {
-            owner.lastLiveRows = owner.lastLiveRows.map(row => ({...row, openWork: OpenWorkRead.seatOpenWork(owner, row.githubUsername)}))
+            owner.lastLiveRows = owner.lastLiveRows.map(row => ({...row, ...OpenWorkRead.seatOpenWork(owner, row.githubUsername)}))
         }
     }
 
     /**
-     * @summary One seat's held open work from the owner's held answer ({@link AgentOS.util.OpenWorkSeat#summarize}),
-     * by the seat's GitHub login.
+     * @summary One seat's open-work fields for its roster record, from the owner's held answer, by the
+     * seat's GitHub login: the card chip's summary ({@link AgentOS.util.OpenWorkSeat#summarize}) and the
+     * Agent Detail's rows ({@link AgentOS.util.OpenWorkSeat#held}). One answer feeds both in one write.
      * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      * @param {String|null} githubUsername The seat's login; none claims nothing.
-     * @returns {Object|null}
+     * @returns {{openWork: Object|null, openWorkHeld: Object|null}}
      */
     static seatOpenWork(owner, githubUsername) {
-        return OpenWorkSeat.summarize(owner.openWorkSnapshot, githubUsername ? `@${githubUsername}` : null)
+        const seat = githubUsername ? `@${githubUsername}` : null;
+
+        return {
+            openWork    : OpenWorkSeat.summarize(owner.openWorkSnapshot, seat),
+            openWorkHeld: OpenWorkSeat.held(owner.openWorkSnapshot, seat)
+        }
     }
 
     /**
