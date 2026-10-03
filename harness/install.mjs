@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// The local install leg of the E6 packaging pipeline (ADR 0034 §2.5): the UNSIGNED development
-// artifact `npm run dist` produced replaces the installed app WHOLE — §2.5.3's "ships a new package",
-// never a partial copy into the old bundle — and the bundle it displaces becomes the ONE rollback,
-// at a fixed path outside /Applications. A hand-copy had no retirement rule, so every refresh left
-// another launchable `Neo Harness.previous-*.app` beside the live one; this leg leaves none.
+// The local install leg of the unsigned packaging pipeline: the development artifact `npm run dist`
+// produced replaces the installed app WHOLE (the shell ADR's "ships a new package" — never a partial
+// copy into the old bundle), and the bundle it displaces becomes the ONE rollback, at a fixed path
+// outside /Applications. A hand-copy had no retirement rule, so every refresh left another launchable
+// `Neo Harness.previous-*.app` beside the live one; this leg leaves none.
 //
 // Two facts shape every rule here:
 //   - the shell version (`0.0.1`) and bundle identifier are constant across development builds, so
