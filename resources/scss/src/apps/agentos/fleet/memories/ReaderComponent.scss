@@ -33,13 +33,26 @@
         gap        : var(--fm-space-2);
     }
 
+    /* each record's header line stays in view while its text scrolls — under show-all it names
+       the record being read */
+    .fm-memories-read-head,
+    .fm-memories-read.is-turn > .fm-memories-read-meta {
+        position      : sticky;
+        top           : 0;
+        z-index       : 1;
+        background    : var(--fm-ground);
+        padding-bottom: var(--fm-space-1);
+    }
+
+    /* a reading surface clips nothing: the title wraps, a long unbroken token included */
     .fm-memories-read-title {
-        flex       : 1;
-        min-width  : 0;
-        margin     : 0;
-        color      : var(--fm-ink);
-        font       : var(--fm-text-body);
-        font-weight: 650;
+        flex         : 1;
+        min-width    : 0;
+        margin       : 0;
+        color        : var(--fm-ink);
+        font         : var(--fm-text-body);
+        font-weight  : 650;
+        overflow-wrap: anywhere;
     }
 
     .fm-memories-read-meta {
@@ -75,7 +88,16 @@
         }
     }
 
-    /* drill and copy: native buttons in the chip family's quiet voice (the card's `turns` twin) */
+    /* the back breadcrumb exists for the narrow regime only (the query below) */
+    .fm-memories-read-back {
+        display    : none;
+        align-items: center;
+        gap        : var(--fm-space-1);
+        margin-top : var(--fm-space-2);
+    }
+
+    /* back, drill and copy: native buttons in the chip family's quiet voice (the card's `turns` twin) */
+    .fm-memories-read-back,
     .fm-memories-read-copy,
     .fm-memories-read-turns {
         background   : transparent;
@@ -101,5 +123,12 @@
         width   : 1px;
         height  : 1px;
         opacity : 0;
+    }
+}
+
+/* the narrow regime (Container.scss, 720 px): the rail is gone, so the reader carries the way back */
+@container fm-memories-pane (max-width: 720px) {
+    .fm-memories-reader .fm-memories-read-back {
+        display: inline-flex;
     }
 }

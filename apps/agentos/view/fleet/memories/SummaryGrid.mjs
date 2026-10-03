@@ -2,8 +2,7 @@ import RowsGrid   from './RowsGrid.mjs';
 import SummaryRowComponent from './SummaryRowComponent.mjs';
 
 /**
- * The browse register: one agent's session-summary cards through the buffered grid — the second
- * scored #20-arc surface (#44), on the #40/#41 pattern.
+ * The browse register: one agent's session-summary cards through the buffered grid.
  *
  * @summary A headerless single-component-column grid of pooled
  * {@link AgentOS.view.fleet.memories.SummaryRowComponent} cells. Owns two derivations and one delegation:

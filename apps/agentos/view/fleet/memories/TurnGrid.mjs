@@ -3,7 +3,7 @@ import TurnRowComponent from './TurnRowComponent.mjs';
 
 /**
  * The drill register: one session's authored turn records through the buffered grid — the depth
- * below {@link AgentOS.view.fleet.memories.SummaryGrid}, same #40/#41 pattern (#44).
+ * below {@link AgentOS.view.fleet.memories.SummaryGrid}, on the same pattern.
  *
  * @summary A headerless single-component-column grid of pooled
  * {@link AgentOS.view.fleet.memories.TurnRowComponent} cells. Derives nothing (turn rows carry no

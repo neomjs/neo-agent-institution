@@ -3,6 +3,7 @@ import AgentSessionTurns     from '../../../store/AgentSessionTurns.mjs';
 import Button                from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container             from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import ReaderComponent       from './ReaderComponent.mjs';
+import ReadingController     from './ReadingController.mjs';
 import Splitter              from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
 import SummaryGrid           from './SummaryGrid.mjs';
 import TurnGrid              from './TurnGrid.mjs';
@@ -34,12 +35,13 @@ import ViewerTime            from '../../../util/ViewerTime.mjs';
  * foreign-target envelope is never adopted), the open session is part of the rendered drill KEY,
  * and `page.offset > 0` continuations extend only an already-accepted page zero of the same key.
  *
- * **Reading is a selection** (#506): the registers keep their clamped previews for scanning, and
+ * **Reading is a selection**: the registers keep their clamped previews for scanning, and
  * the {@link AgentOS.view.fleet.memories.ReaderComponent} beside them renders the selected record
  * whole — a summary's full text, a turn's prompt, thought and response. Selecting collapses the
  * open register to its rail so the text gets the width; ↑/↓ move the selection, Escape closes the
  * reading, and *show all* reads every loaded record of the register in list order. Records arrive
- * whole on the wire, so reading fetches nothing.
+ * whole on the wire, so reading fetches nothing. The pane renders the zones; its
+ * {@link AgentOS.view.fleet.memories.ReadingController} decides what is read.
  *
  * @class AgentOS.view.fleet.memories.Container
  * @extends Neo.container.Base
@@ -97,6 +99,11 @@ class MemoriesPane extends Container {
          */
         drillSnapshot_: null,
         /**
+         * The reading orchestration: which record the reader shows and how the register makes room.
+         * @member {AgentOS.view.fleet.memories.ReadingController} controller=ReadingController
+         */
+        controller: ReadingController,
+        /**
          * Escape closes the reading (or leaves *show all*).
          * @member {Object} keys={Escape: 'onEscape'}
          */
@@ -141,7 +148,7 @@ class MemoriesPane extends Container {
                     iconCls  : 'fa fa-align-left',
                     ui       : 'ghost',
                     hidden   : true,
-                    handler  : 'up.onShowAllClick'
+                    handler  : 'onShowAllClick'
                 }, {
                     module   : Button,
                     reference: 'memories-refresh',
@@ -258,21 +265,6 @@ class MemoriesPane extends Container {
      * @member {Number|null} drillPendingOffset=null
      */
     drillPendingOffset = null
-    /**
-     * The summary the reading surface shows — its record id in the summary Store, or null.
-     * @member {String|null} readSummaryId=null
-     */
-    readSummaryId = null
-    /**
-     * The turn the reading surface shows while a drill is open — its record id, or null.
-     * @member {String|null} readTurnId=null
-     */
-    readTurnId = null
-    /**
-     * The rail's width while the pane reads; a splitter drag replaces it for the session.
-     * @member {String} railWidth='340px'
-     */
-    railWidth = '340px'
 
     /**
      * @summary Create the pane-local Stores, hand each to its grid register, and render held
@@ -300,21 +292,10 @@ class MemoriesPane extends Container {
             turnGrid    = me.getReference('memories-turn-grid');
 
         summaryGrid.store = me.summaryStore;
-        summaryGrid.on({
-            cardOpen      : me.onGridCardOpen,
-            recordDeselect: me.onRecordDeselect,
-            recordSelect  : me.onSummarySelect,
-            scrollEdge    : me.onSummaryScrollEdge,
-            scope         : me
-        });
+        summaryGrid.on('cardOpen',   me.onGridCardOpen,      me);
+        summaryGrid.on('scrollEdge', me.onSummaryScrollEdge, me);
         turnGrid.store = me.turnStore;
-        turnGrid.on({
-            recordDeselect: me.onRecordDeselect,
-            recordSelect  : me.onTurnSelect,
-            scrollEdge    : me.onTurnScrollEdge,
-            scope         : me
-        });
-        me.getReference('memories-reader').on('drillRequest', me.onReaderDrill, me);
+        turnGrid.on('scrollEdge', me.onTurnScrollEdge, me);
 
         // Rematerialization coherence: a pane rebuilt from an owner-held snapshot must not render
         // cards for a target no selection points at — the selection is derived from the rendered
@@ -366,11 +347,8 @@ class MemoriesPane extends Container {
             return
         }
 
-        const summaryGrid = me.getReference('memories-summary-grid');
-
-        summaryGrid.clearSelection();
-        summaryGrid.applyBags([]);
-        me.readSummaryId  = null;
+        me.controller.clearReading('summary');
+        me.getReference('memories-summary-grid').applyBags([]);
         me.renderedTarget = null;
         me.pendingOffset  = null;
         me.applySnapshot();
@@ -438,11 +416,8 @@ class MemoriesPane extends Container {
 
         if (!sessionId || me.drillSession?.sessionId === sessionId) return;
 
-        const turnGrid = me.getReference('memories-turn-grid');
-
-        turnGrid.clearSelection();
-        turnGrid.applyBags([]);
-        me.readTurnId           = null;
+        me.controller.clearReading('turn');
+        me.getReference('memories-turn-grid').applyBags([]);
         me.renderedDrillSession = null;
         me.drillPendingOffset   = null;
         me.drillSession         = {sessionId, title: target.title ?? null};
@@ -455,14 +430,11 @@ class MemoriesPane extends Container {
      * never a drill the operator already left.
      */
     onDrillBackClick() {
-        const
-            me       = this,
-            turnGrid = me.getReference('memories-turn-grid');
+        const me = this;
 
         me.drillSession = null;
-        turnGrid.clearSelection();
-        turnGrid.applyBags([]);
-        me.readTurnId           = null;
+        me.controller.clearReading('turn');
+        me.getReference('memories-turn-grid').applyBags([]);
         me.renderedDrillSession = null;
         me.drillPendingOffset   = null;
         me.fire('sessionDetailClosed', {});
@@ -667,7 +639,7 @@ class MemoriesPane extends Container {
                         : 'No turn records in this session.'
             }
 
-            me.syncReader(rows)
+            me.controller.syncReader(rows)
         } else {
             const
                 snapshot = me.snapshot,
@@ -692,142 +664,16 @@ class MemoriesPane extends Container {
                             : 'No sessions in this corpus.'
             }
 
-            me.syncReader(rows)
+            me.controller.syncReader(rows)
         }
     }
 
     /**
-     * @summary One owner for the reading surface, called by {@link #syncZones} for the open
-     * register: the reader shows beside rows only, the selected record whole (or every loaded
-     * record under *show all*), and the nothing-selected sentence otherwise. While it reads, the
-     * register is its rail and the splitter is live. A selection whose record left the Store (a
-     * refresh, a switch) is dropped, never rendered from a stale bag.
-     * @param {Boolean} rows Whether the open register renders rows
-     */
-    syncReader(rows) {
-        const
-            me      = this,
-            drill   = Boolean(me.drillSession),
-            grid    = me.getReference(drill ? 'memories-turn-grid' : 'memories-summary-grid'),
-            store   = drill ? me.turnStore : me.summaryStore,
-            idKey   = drill ? 'readTurnId' : 'readSummaryId',
-            record  = rows && me[idKey] !== null ? store.get(me[idKey]) : null,
-            showAll = rows && me.showAll,
-            reading = showAll || Boolean(record),
-            button  = me.getReference('memories-show-all'),
-            reader  = me.getReference('memories-reader');
-
-        if (me[idKey] !== null && !record) {
-            me[idKey] = null
-        }
-
-        reader.hidden = !rows;
-        me.getReference('memories-splitter').hidden = !reading;
-        me.toggleCls('is-reading', reading);
-        me.sizeList(reading);
-        me.getReference('memories-summary-grid').rail = reading && !drill;
-        me.getReference('memories-turn-grid').rail    = reading && drill;
-
-        button.set({
-            hidden : !rows,
-            pressed: showAll,
-            text   : me.showAll ? 'One at a time' : 'Show all'
-        });
-
-        reader.reading = {
-            kind     : drill ? 'turn' : 'summary',
-            records  : showAll ? grid.extractBags() : record ? [grid.recordBag(record)] : [],
-            emptyText: drill ? 'Select a turn to read it in full.' : 'Select a session summary to read it in full.'
-        }
-    }
-
-    /**
-     * @summary Size the list column for the mode: a rail of {@link #railWidth} while the pane reads
-     * (the width the operator last dragged the splitter to, once there is one), its share of the
-     * body otherwise. The splitter and this method write the same `wrapperStyle` keys.
-     * @param {Boolean} reading
-     * @protected
-     */
-    sizeList(reading) {
-        const
-            me                     = this,
-            list                   = me.getReference('memories-list'),
-            {flex, width, ...rest} = list.wrapperStyle || {};
-
-        if (reading) {
-            list.wrapperStyle = {...rest, flex: 'none', width: width ?? me.railWidth}
-        } else {
-            width && (me.railWidth = width);
-            list.wrapperStyle = {...rest, flex: '2 1 0%'}
-        }
-    }
-
-    /**
-     * @summary A summary row was selected (click or ↑/↓): read it — under *show all*, bring it into view.
-     * @param {Object} data
-     * @param {Neo.data.Model} data.record
-     */
-    onSummarySelect({record}) {
-        this.onRecordSelect('readSummaryId', record)
-    }
-
-    /**
-     * @summary A turn row was selected: read it.
-     * @param {Object} data
-     * @param {Neo.data.Model} data.record
-     */
-    onTurnSelect({record}) {
-        this.onRecordSelect('readTurnId', record)
-    }
-
-    /**
-     * @summary The shared half of both selects.
-     * @param {String}         idKey  `readSummaryId` or `readTurnId`
-     * @param {Neo.data.Model} record
-     * @protected
-     */
-    onRecordSelect(idKey, record) {
-        const me = this;
-
-        me[idKey] = record.id;
-        me.syncZones();
-        me.showAll && me.getReference('memories-reader').scrollToRecord(record.id)
-    }
-
-    /**
-     * @summary The selected row was clicked again: the reading closes.
-     */
-    onRecordDeselect() {
-        this[this.drillSession ? 'readTurnId' : 'readSummaryId'] = null;
-        this.syncZones()
-    }
-
-    /**
-     * @summary Escape leaves *show all* first, then closes the reading; the list keeps its place.
+     * @summary Escape belongs to the reading: the pane's keys resolve on the pane, so it hands the
+     * key to {@link AgentOS.view.fleet.memories.ReadingController#onEscape}.
      */
     onEscape() {
-        const me = this;
-
-        if (me.showAll) {
-            me.showAll = false
-        } else if (me[me.drillSession ? 'readTurnId' : 'readSummaryId'] !== null) {
-            me.getReference(me.drillSession ? 'memories-turn-grid' : 'memories-summary-grid').clearSelection();
-            me.onRecordDeselect()
-        }
-    }
-
-    /** @summary Toggle *show all*. */
-    onShowAllClick() {
-        this.showAll = !this.showAll
-    }
-
-    /**
-     * @summary The reader's *Read the turns*: open the summary's session, as its card's button does.
-     * @param {Object} data
-     * @param {Object} data.record The summary's bag
-     */
-    onReaderDrill({record}) {
-        this.openSession({sessionId: record.sessionId, title: record.title})
+        this.controller.onEscape()
     }
 
     /**

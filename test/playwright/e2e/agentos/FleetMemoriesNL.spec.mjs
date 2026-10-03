@@ -266,7 +266,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             // the registers wear no engine grid chrome: the card carries the only frame and surface —
             // no cell lattice, no cell background, no cell padding around the height-normed card; and
-            // a card click selects its row into the reader (#506): the RowModel marks the row, the
+            // a card click selects its row into the reader: the RowModel marks the row, the
             // skin re-binds its cell paint, and the card's own border carries the mark
             const cellChrome = () => pane.locator('.fm-memories-summary-grid .neo-grid-cell').first().evaluate(cell => {
                 const style = getComputedStyle(cell);
@@ -454,7 +454,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             await assertBareRegister('turns', '.fm-memories-turn-grid');
 
-            // a click selects the turn into the reader (#506): its row is marked, the card carries the
+            // a click selects the turn into the reader: its row is marked, the card carries the
             // mark, no cell paints a band — and the reader holds the whole record, a missing thought named
             await pane.locator('.fm-memories-turn').nth(1).click();
 
@@ -490,7 +490,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
     });
 
     /**
-     * @summary #506 AC-3: room for reading is the dock's own maximize, never a pane-local mode. A
+     * @summary Room for reading is the dock's own maximize, never a pane-local mode. A
      * selected summary reads whole beside its rail in the south strip; the strip's maximize toggle
      * paints the Memories node over the workspace and the reader takes the width; Escape restores
      * the strip, and the reading survives both moves.
@@ -540,6 +540,61 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await expect.poll(readerHeight, {message: 'Escape returns the strip'}).toBeLessThan(docked.height * 1.5);
             await settle();
             await expect(reader.locator('.fm-memories-read-text')).toHaveText('Established verifiable wake transport between plane and host.')
+        } finally {
+            await fleet.close()
+        }
+    });
+
+    /**
+     * @summary Show all is one document whose rail follows the scroll, the reader's
+     * title wraps, and at 720 px and below the pane is list OR reader — the rail collapses behind
+     * the reader's back breadcrumb.
+     */
+    test('show all\'s rail follows the scroll, and the narrow regime swaps list and reader', async ({page, neuralLink}) => {
+        const fleet = await startMemoriesFleet();
+
+        try {
+            await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl: fleet.endpoint})}`);
+            await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+            const app = await neuralLink.connectToApp('AgentOS');
+            await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken: fleet.bearerToken});
+
+            const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
+            await app.callMethod(cockpit.properties.id, 'controller.loadRoster');
+            await page.getByRole('tab', {name: 'Memories', exact: true}).click();
+
+            const
+                pane     = page.locator('.fm-memories-pane'),
+                reader   = pane.locator('.fm-memories-reader'),
+                selected = () => pane.locator('.fm-memories-summary-grid .neo-grid-row.neo-selected').textContent();
+
+            await page.locator('.fm-fleet-cards > .neo-list-item', {hasText: /\bAda\b/}).click();
+            await expect(pane.locator('.fm-memories-card')).toHaveCount(3, {timeout: 10000});
+            await pane.locator('.fm-pane-title').click();   // dismiss the inspector's reveal
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+            await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-meta').click();
+            await pane.getByRole('button', {name: 'Show all'}).click();
+            await expect(reader.locator('.fm-memories-read')).toHaveCount(3);
+            expect(await selected()).toContain('Wake transport and integrity contracts');
+
+            await reader.evaluate(node => node.scrollTop = node.scrollHeight);
+            await expect.poll(selected, {message: 'the rail follows the record the reader shows'}).not.toContain('Wake transport and integrity contracts');
+
+            expect(await reader.locator('.fm-memories-read-title').first().evaluate(title => {
+                const style = getComputedStyle(title);
+                return [style.whiteSpace, style.overflowWrap]
+            }), 'a reading surface clips nothing: the title wraps').toEqual(['normal', 'anywhere']);
+
+            await page.keyboard.press('Escape');   // leaves show all; the followed record stays read
+            await expect(reader.locator('.fm-memories-read')).toHaveCount(1);
+
+            await page.setViewportSize({width: 700, height: 1000});
+            await expect(pane.locator('.fm-memories-list'), 'narrow and reading: the rail yields').toBeHidden();
+            await reader.locator('.fm-memories-read-back').click();
+            await expect(pane.locator('.fm-memories-list'), 'the breadcrumb returns to the list').toBeVisible();
+            await expect(reader, 'an idle reader yields its room').toBeHidden()
         } finally {
             await fleet.close()
         }

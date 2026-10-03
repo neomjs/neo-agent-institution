@@ -174,7 +174,7 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
 
         expect(button.hidden).toBe(false);
 
-        pane.onShowAllClick();
+        pane.controller.onShowAllClick();
 
         expect(nodesWith(reader.vdom, 'fm-memories-read-title').map(node => node.text)).toEqual(['Title s1', 'Title s2', 'Title s3']);
         expect(texts(reader.vdom)).toContain(LONG_SUMMARY);
@@ -220,8 +220,35 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
 
         pane.activeAgent = '@neo-opus-ada';
 
-        expect(pane.readSummaryId).toBe(null);
+        expect(pane.controller.readSummaryId).toBe(null);
         expect(summaryGrid.view.selectionModel.selectedRows).toEqual([]);
         expect(reader.hidden).toBe(true)
+    });
+
+    test('the back breadcrumb (the narrow regime\'s way out) closes the reading like Escape', () => {
+        const {reader, summaryGrid} = readyPane();
+
+        click(summaryGrid, 0);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-back').map(texts)).toEqual([['Summaries']]);
+
+        reader.fire('backRequest', {});
+
+        expect(summaryGrid.view.selectionModel.selectedRows).toEqual([]);
+        expect(texts(reader.vdom)).toContain('Select a session summary to read it in full.')
+    });
+
+    test('under show all the rail follows the read record silently: the selection moves, the document stays', () => {
+        const {pane, reader, summaryGrid} = readyPane(),
+              document                    = () => nodesWith(reader.vdom, 'fm-memories-read-title').map(node => node.text);
+
+        pane.controller.onShowAllClick();
+        pane.controller.followRecord('s2');
+
+        expect(summaryGrid.view.selectionModel.selectedRows).toEqual(['s2']);
+        expect(pane.controller.readSummaryId).toBe('s2');
+        expect(document()).toEqual(['Title s1', 'Title s2', 'Title s3']);
+
+        pane.controller.followRecord('s3');
+        expect(summaryGrid.view.selectionModel.selectedRows).toEqual(['s3'])
     });
 });

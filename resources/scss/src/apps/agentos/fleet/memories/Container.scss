@@ -336,23 +336,16 @@
     }
 }
 
-/* the narrow regime (a popped-out or vessel-width pane): the reader goes below the list, the
-   list keeps a third of the height while the pane reads, and an idle reader yields its room —
-   the splitter's horizontal drag has no axis here */
+/* the narrow regime (a popped-out or vessel-width pane, 720 px and below): list OR reader, never a
+   squeezed pair — reading, the rail collapses behind the reader's back breadcrumb and the reader
+   takes the whole body; idle, the reader yields its room. The splitter's drag has no axis here. */
 @container fm-memories-pane (max-width: 720px) {
-    .fm-memories-pane .fm-memories-body {
-        flex-direction: column;
-    }
-
     .fm-memories-pane .fm-memories-list {
         flex : 1 1 0% !important;   /* beats the wrapperStyle the wide regime writes */
         width: auto !important;
     }
 
-    .fm-memories-pane.is-reading .fm-memories-list {
-        flex: 0 0 33% !important;
-    }
-
+    .fm-memories-pane.is-reading .fm-memories-list,
     .fm-memories-pane:not(.is-reading) .fm-memories-reader,
     .fm-memories-pane .fm-memories-splitter {
         display: none;

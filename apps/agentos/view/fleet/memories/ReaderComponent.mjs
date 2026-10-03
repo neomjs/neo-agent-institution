@@ -43,9 +43,10 @@ class ReaderComponent extends Component {
          */
         baseCls: ['fm-memories-reader'],
         /**
-         * What to read, in one write so the pane renders once: `{kind: 'summary'|'turn', records:
-         * Object[], emptyText: String}`. `records` are plain bags (never Model instances); an empty
-         * list renders `emptyText`.
+         * What to read, in one write so the pane renders once: `{backText: String, kind:
+         * 'summary'|'turn', records: Object[], emptyText: String}`. `records` are plain bags (never
+         * Model instances); an empty list renders `emptyText`. `backText` names the list the back
+         * breadcrumb returns to — the narrow regime's way out, where the rail yields its room.
          * @member {Object|null} reading_=null
          * @reactive
          */
@@ -69,6 +70,7 @@ class ReaderComponent extends Component {
         const me = this;
 
         me.addDomListeners([
+            {click: me.onBackClick,  delegate: '.fm-memories-read-back',  scope: me},
             {click: me.onCopyClick,  delegate: '.fm-memories-read-copy',  scope: me},
             {click: me.onTurnsClick, delegate: '.fm-memories-read-turns', scope: me}
         ]);
@@ -208,11 +210,16 @@ class ReaderComponent extends Component {
     render() {
         const
             me = this,
-            {kind = 'summary', records = [], emptyText = ''} = me.reading || {};
+            {backText = '', kind = 'summary', records = [], emptyText = ''} = me.reading || {};
 
         me.vdom.cn = [
-            ...records.length > 0
-                ? records.map(record => kind === 'turn' ? me.turnArticle(record) : me.summaryArticle(record))
+            ...records.length > 0 ? [{
+                // shown by the narrow regime only (ReaderComponent.scss), where the rail yields its room
+                tag : 'button',
+                type: 'button',
+                cls : ['fm-memories-read-back'],
+                cn  : [{tag: 'i', cls: ['fa', 'fa-arrow-left']}, {tag: 'span', text: backText}]
+            }, ...records.map(record => kind === 'turn' ? me.turnArticle(record) : me.summaryArticle(record))]
                 : [{cls: ['fm-memories-reader-empty'], text: emptyText}],
             // the clipboard's way in: DomAccess.selectNode selects form fields only
             {tag: 'textarea', cls: ['fm-memories-copy-source'], id: me.partId('clipboard', 'source'), readonly: true, tabIndex: -1, 'aria-hidden': 'true'}
@@ -257,6 +264,13 @@ class ReaderComponent extends Component {
 
         me.copiedKey = `${record.id}:${button.field}`;
         me.render()
+    }
+
+    /**
+     * @summary The back breadcrumb: fire the `backRequest` intent — the owner closes the reading.
+     */
+    onBackClick() {
+        this.fire('backRequest', {})
     }
 
     /**
