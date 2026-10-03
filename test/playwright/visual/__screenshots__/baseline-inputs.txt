@@ -95,6 +95,9 @@ apps/agentos/model/GraphScenePeer.mjs
 apps/agentos/model/GraphSceneRelation.mjs
     65ede3d388e29ed66f4cb455add8b77ab81c1d62
 
+apps/agentos/model/HeldPullRequest.mjs
+    f47da2bc3b5b704244aeae9ede24636a481af75c
+
 apps/agentos/model/MailboxMessage.mjs
     2e999ccc7fd23d46519363cdf8f42814204e7857
 
@@ -173,6 +176,9 @@ apps/agentos/store/GraphScenePeers.mjs
 apps/agentos/store/GraphSceneRelations.mjs
     42208ebf1cabda3ffd28462bb2d0c8a10d42cd49
 
+apps/agentos/store/HeldPullRequests.mjs
+    7d9a7dabdb44b5ab58c114027e535c5862d58f8c
+
 apps/agentos/store/SeatRepositories.mjs
     3bb2013ec2e8d4c58cf28b490d7a7dd1702bb4d3
 
@@ -186,7 +192,7 @@ apps/agentos/util/AddAgentFlow.mjs
     95038caa9c8374c747cc729b3faa53be9a4f94b1
 
 apps/agentos/util/AgentFreshness.mjs
-    6e46a29e3d686fc10340783b676e3712fc03100e
+    82ac3c17912b1cb8b6fcae46662b0701f238e87e
 
 apps/agentos/util/BrainHealthRead.mjs
     2413d3ec4c94a0534baf778beb62867c728153e3
@@ -246,7 +252,7 @@ apps/agentos/util/OpenWorkRead.mjs
     fdaa7d572a845e4c6689a00762abf5fc9bf20a1b
 
 apps/agentos/util/OpenWorkSeat.mjs
-    e17225cb0a766852e9d7fef3b46e033993ee4f39
+    9cdbd64f758822ab9ed015e8f28790bcbe5600a4
 
 apps/agentos/util/PlaneCredentialCheck.mjs
     e90a4505028072781fd15134801cc3c9cb0a37b5
@@ -339,10 +345,13 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    7cdf292e97c552c1f73de0ef6ea38a1e52c6c61e
+    df04ad804236ca0bdb3b441cf6730cf2905ed871
 
 apps/agentos/view/fleet/detail/Controller.mjs
     9c9d839fd9613ad24cccb7b9cdbdf4e520c0bafe
+
+apps/agentos/view/fleet/detail/PullRequestList.mjs
+    e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
 
 apps/agentos/view/fleet/detail/RepositoryList.mjs
     c5ea39cc6a96f2874cb6f84dba77c9d0695150f5
@@ -540,7 +549,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    142dbb44bfee001f46ace23573b3bda95a7de06c
+    e6880281f5a7aca08233ae119ea7ad5518ec6646
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a

@@ -92,9 +92,9 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
 
         expect(OpenWorkSeat.held(answer, ada)).toEqual({
             rows: [
-                {kind: 'red',               number: 1, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: true,  title: null},
-                {kind: 'changes-requested', number: 2, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: false, title: 'feat: the pane reads open work'},
-                {kind: 'review-due',        number: 3, observedAt: '2026-10-03T07:50:00.000Z', repo: 'neomjs/neo-agent-brain', role: 'reviewer', stale: false, title: null}
+                {id: 'neomjs/neo#1',             kind: 'red',               number: 1, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: true,  title: null},
+                {id: 'neomjs/neo#2',             kind: 'changes-requested', number: 2, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: false, title: 'feat: the pane reads open work'},
+                {id: 'neomjs/neo-agent-brain#3', kind: 'review-due',        number: 3, observedAt: '2026-10-03T07:50:00.000Z', repo: 'neomjs/neo-agent-brain', role: 'reviewer', stale: false, title: null}
             ],
             stale     : true,
             observedAt: '2026-10-03T07:50:00.000Z'

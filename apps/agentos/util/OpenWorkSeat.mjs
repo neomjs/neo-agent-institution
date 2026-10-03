@@ -85,8 +85,8 @@ class OpenWorkSeat extends Base {
      * @param {Object|null} snapshot     One `fleetOpenWork` envelope, or `null` while unanswered.
      * @param {String|null} seatIdentity The seat's identity, e.g. `@neo-opus-ada`.
      * @returns {{rows: Object[], stale: Boolean, observedAt: String|null}|null} Each row is
-     * `{kind, number, observedAt, repo, role, stale, title}`; `title` is `null` while the producer's
-     * row carries none.
+     * `{id, kind, number, observedAt, repo, role, stale, title}`, keyed `id` = `<repo>#<number>`;
+     * `title` is `null` while the producer's row carries none.
      */
     static held(snapshot, seatIdentity) {
         if (!seatIdentity || !snapshot || snapshot.state === 'unavailable') return null;
@@ -96,9 +96,12 @@ class OpenWorkSeat extends Base {
             held  = new Map();
 
         [...(lists.authored ?? []), ...(lists.reviewing ?? [])].forEach(row => {
-            const kind = OpenWorkSeat.kindOf(row, seatIdentity);
+            const
+                id   = `${row.repo}#${row.number}`,
+                kind = OpenWorkSeat.kindOf(row, seatIdentity);
 
-            kind && held.set(`${row.repo}#${row.number}`, {
+            kind && held.set(id, {
+                id,
                 kind,
                 number    : row.number,
                 observedAt: row.observedAt ?? null,

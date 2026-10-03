@@ -167,12 +167,25 @@
         font-family: var(--fm-font-mono);
     }
 
-    /* the pull requests pane: per held pull request, its reference (an anchor to the forge, in the
-       inspector's mono voice), its title when the producer carries one, and its line in the chip's
-       words; all wrap at rail widths, so the default placement reads every row in full */
-    .fm-detail-pane-prs .fm-detail-pane-body {
-        display: grid;
-        gap    : var(--fm-space-1);
+    /* the pull requests pane: one list row per held pull request, its reference (an anchor to the
+       forge, in the inspector's mono voice), its title when the producer carries one, and its line
+       in the chip's words; all wrap at rail widths, so the default placement reads every row in
+       full. The rows inform, so the list's row skin (padding, hover, pointer, nowrap) stays off. */
+    .fm-detail-pr-list.neo-list {
+        --list-container-list-color        : var(--fm-ink-dim);
+        --list-item-background-color       : transparent;
+        --list-item-background-color-active: transparent;
+        --list-item-background-color-hover : transparent;
+
+        background: transparent;
+        display   : grid;
+        gap       : var(--fm-space-1);
+
+        .neo-list-item {
+            cursor     : default;
+            padding    : 0;
+            white-space: normal;
+        }
     }
 
     .fm-detail-pr {

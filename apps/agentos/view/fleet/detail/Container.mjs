@@ -2,10 +2,12 @@ import AgentConfigCard                      from './AgentConfigComponent.mjs';
 import Container                            from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import FamilyRail                           from '../shared/FamilyRailComponent.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
+import PullRequestList                      from './PullRequestList.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
 import Controller                           from './Controller.mjs';
+import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
 import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
@@ -13,14 +15,25 @@ import Telltale                             from '../../../util/Telltale.mjs';
 /**
  * The SSOT drill-in panes (design §B3: "thought-stream, lane, repo, and PRs"), each with the honest
  * live cadence its freshness is judged against. `freshnessTtl` is the default window a pane's ledger
- * may override once its feed stamps one; the values are tunable, not contractual.
+ * may override once its feed stamps one; the values are tunable, not contractual. A pane whose body
+ * is more than its text names its own `body` config: the pull requests pane holds the sentence an
+ * answer holding nothing renders, and its Store-backed list joins on the first resident shown.
  * @type {Object[]}
  */
 const PANES = [
     {key: 'thought-stream', title: 'Thought stream', freshnessTtl: 60_000},
     {key: 'lane',           title: 'Current lane',   freshnessTtl: 300_000},
     {key: 'repo',           title: 'Repository',     freshnessTtl: 300_000},
-    {key: 'prs',            title: 'Pull requests',  freshnessTtl: 300_000}
+    {key: 'prs',            title: 'Pull requests',  freshnessTtl: 300_000, body: {
+        ntype: 'container',
+        items: [{
+            ntype    : 'component',
+            cls      : ['fm-detail-prs-none'],
+            hidden   : true,
+            reference: 'prs-none',
+            text     : OpenWorkSeat.PANE_WORDS.none
+        }]
+    }}
 ];
 
 /**
@@ -69,6 +82,7 @@ const paneConfig = pane => ({
         }]
     }, {
         ntype    : 'component',
+        ...pane.body,
         cls      : ['fm-detail-pane-body'],
         reference: `pane-${pane.key}-body`
     }]
@@ -160,7 +174,7 @@ class AgentDetail extends Container {
          */
         record_: null,
         /**
-         * Per-pane freshness ledgers keyed by pane `key` — `{observedAt, freshnessTtl, lost}` the
+         * Per-pane freshness ledgers keyed by pane `key` — `{observedAt, freshnessTtl, lost, stale}` the
          * Lane-C / memory-surface feed leaves stamp as they land. `null` (today's reality) → every
          * pane degrades to the honest `unobserved`; the view sharpens to timestamped freshness with
          * no change the moment a feed wires a ledger.
@@ -558,9 +572,10 @@ class AgentDetail extends Container {
      * owning producer decides. The lane and repository panes read their roster-row source facts;
      * wired facts observe at the roster admission instant, any other fact is the descriptor in the
      * roster's own words, and a mount no roster read has reached says so. The pull-request pane reads
-     * the record's held open work: an answer observes at its own `observedAt`, no answer says so in
-     * the resolver's words. The thought-stream pane has no producer on this plane yet ({@link AWAITING}
-     * names it), so it resolves to nothing and the pill states the honest unobserved.
+     * the record's held open work: an answer observes at its own `observedAt` and stays stale while
+     * the producer says so, however recent; no answer says so in the resolver's words. The
+     * thought-stream pane has no producer on this plane yet ({@link AWAITING} names it), so it
+     * resolves to nothing and the pill states the honest unobserved.
      * @param {String} key Pane key.
      * @param {Object|null} explicitLedger The `paneLedgers` entry, if any.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
@@ -573,8 +588,10 @@ class AgentDetail extends Container {
         }
 
         if (key === 'prs') {
-            return record.openWorkHeld
-                ? {descriptor: null, ledger: {observedAt: record.openWorkHeld.observedAt}}
+            const {openWorkHeld} = record;
+
+            return openWorkHeld
+                ? {descriptor: null, ledger: {observedAt: openWorkHeld.observedAt, stale: openWorkHeld.stale}}
                 : {descriptor: {state: 'not observed', reason: OpenWorkSeat.PANE_WORDS.unanswered}, ledger: null}
         }
 
@@ -643,8 +660,9 @@ class AgentDetail extends Container {
      *
      * The lane pane renders the lane line with its claim age when its source is wired, plus the
      * independent open-lane count. The repository pane renders the roster row's slug and clone path.
-     * The pull requests pane lists the seat's held pull requests worst first, or says it holds none;
-     * without an answer it renders nothing, since its pill says so. The thought-stream pane renders
+     * The pull requests pane loads the seat's held pull requests, worst first, into its list's Store,
+     * or says it holds none; without an answer it renders nothing, since its pill says so. The
+     * list re-words its rows' ages at the pane's clock. The thought-stream pane renders
      * nothing until its producer lands: the pill names what it waits for, and a body line repeating
      * it would tell the same fact twice per section.
      * @param {String} key Pane key.
@@ -683,21 +701,22 @@ class AgentDetail extends Container {
         }
 
         if (key === 'prs') {
-            const {openWorkHeld} = record, now = this.now ?? Date.now();
-
-            // the row's reference is an anchor to the forge: the shell's window policy owns where it opens
-            body.vdom.cn = !openWorkHeld ? [] : openWorkHeld.rows.length === 0
-                ? [{tag: 'span', cls: ['fm-detail-prs-none'], text: OpenWorkSeat.PANE_WORDS.none}]
-                : openWorkHeld.rows.map(row => {
-                    const {href, line, ref, title} = OpenWorkSeat.describeRow(row, now);
-
-                    return {cls: ['fm-detail-pr'], cn: [
-                        {tag: 'a', cls: ['fm-detail-pr-ref'], href, rel: 'noopener', target: '_blank', text: ref},
-                        ...(title ? [{tag: 'span', cls: ['fm-detail-pr-title'], text: title}] : []),
-                        {tag: 'span', cls: ['fm-detail-pr-line'], text: line}
-                    ]}
+            const
+                {openWorkHeld} = record,
+                holds          = openWorkHeld?.rows.length > 0,
+                // built for the first resident shown, so an idle cockpit carries no list
+                list           = this.getReference('pr-list') ?? body.insert(0, {
+                    module   : PullRequestList,
+                    hidden   : !holds,
+                    reference: 'pr-list',
+                    store    : {module: HeldPullRequests}
                 });
-            body.update();
+
+            list.store.data = openWorkHeld?.rows ?? [];
+            list.now        = this.now ?? Date.now();
+            list.hidden     = !holds;
+
+            this.getReference('prs-none').hidden = !openWorkHeld || holds;
             return
         }
 

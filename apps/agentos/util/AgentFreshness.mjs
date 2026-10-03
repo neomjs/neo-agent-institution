@@ -51,14 +51,16 @@ class AgentFreshness extends Base {
     /**
      * @summary Classify one pane's freshness from its ledger, honestly. An observation is `fresh`
      * within its TTL, `stale` past it, and `lost` past `LOST_TTL_FACTOR × TTL` (or on an explicit
-     * source-reported `lost`). Anything we cannot place in time — no parseable `observedAt`, no finite
-     * `now`, or no positive `freshnessTtl` — is `unobserved`, the fail-closed default that never reads
-     * as current. A future/skewed observation clamps to `fresh` (skew resolves toward honesty, not a
-     * false "stale").
+     * source-reported `lost`). A source-reported `stale` is never `fresh`, however recent: it keeps its
+     * real age, and age past the lost bound still makes it `lost`. Anything we cannot place in time —
+     * no parseable `observedAt`, no finite `now`, or no positive `freshnessTtl` — is `unobserved`, the
+     * fail-closed default that never reads as current. A future/skewed observation clamps to `fresh`
+     * (skew resolves toward honesty, not a false "stale").
      * @param {Object|null} ledger
      * @param {String|null} [ledger.observedAt] ISO-8601 observation time (the feed stamps it).
      * @param {Number|null} [ledger.freshnessTtl] The pane's live-cadence window, in ms.
      * @param {Boolean} [ledger.lost] An explicit source-reported loss (overrides age).
+     * @param {Boolean} [ledger.stale] An explicit source-reported staleness, e.g. a failed refresh.
      * @param {Number|null} now Injected wall-clock ms (`Date.now()` at the call site; tests pin it).
      * @returns {{freshness: String, observedAt: (String|null), ageMs: (Number|null)}}
      */
@@ -84,7 +86,7 @@ class AgentFreshness extends Base {
 
         const ageMs = now - observedMs;
 
-        if (ageMs <= freshnessTtl) {
+        if (ageMs <= freshnessTtl && ledger.stale !== true) {
             return {freshness: 'fresh', observedAt, ageMs}
         }
 

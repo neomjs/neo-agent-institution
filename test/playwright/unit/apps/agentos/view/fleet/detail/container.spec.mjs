@@ -929,15 +929,24 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             minsAgo  = minutes => new Date(NOW - minutes * 60_000).toISOString(),
             prRow    = (repo, number, role, extra = {}) => ({repo, number, holder: {role, ids: [seat]}, ...extra}),
             answer   = (authored, reviewing, observedAt) => ({state: 'ok', observedAt, seats: {[seat]: {authored, reviewing}}}),
-            rowsOf   = detail => body(detail, 'prs').vdom.cn,
+            list     = detail => detail.down({reference: 'pr-list'}),
+            none     = detail => detail.down({reference: 'prs-none'}),
+            rowsOf   = detail => list(detail).vdom.cn,
             heldFrom = snapshot => OpenWorkSeat.held(snapshot, seat);
 
-        test('three held rows render worst first in the resolver\'s words, and the pill reads the read\'s observation (AC-1)', () => {
+        test('three held rows render worst first in the resolver\'s words through the list\'s Store, and the pill reads the read\'s observation (AC-1)', () => {
             const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer(
                 [prRow('neomjs/neo-agent-brain', 806, 'author', {ci: 'pending', title: 'feat: the memory import at Start'}), prRow('neomjs/neo-agent-institution', 504, 'author', {ci: 'red', observedAt: minsAgo(2)})],
                 [prRow('neomjs/neo', 19379, 'reviewer')],
                 minsAgo(1)
             ))});
+
+            // the rows are the list Store's records in the resolver's order: the Store sorts nothing
+            expect(list(detail).store.className).toBe('AgentOS.store.HeldPullRequests');
+            expect(list(detail).store.items.map(record => record.id)).toEqual(['neomjs/neo-agent-institution#504', 'neomjs/neo-agent-brain#806', 'neomjs/neo#19379']);
+            expect(list(detail).hidden).toBe(false);
+            expect(none(detail).hidden).toBe(true);
+            rowsOf(detail).forEach(row => expect(row.cls).toContain('fm-detail-pr'));
 
             expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['neomjs/neo-agent-institution #504', 'neomjs/neo-agent-brain #806', 'neomjs/neo #19379']);
             expect(rowsOf(detail).map(row => row.cn.at(-1).text)).toEqual(['author · red · observed 2m ago', 'author · changes requested', 'reviewer · review due']);
@@ -955,16 +964,69 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             detail.destroy()
         });
 
-        test('nothing held renders the empty sentence, an unanswered read renders no list and says so on the pill (AC-2)', () => {
-            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer([], [], minsAgo(1)))});
+        test('an idle detail carries no list: it joins the pane for the first resident shown', () => {
+            const idle = Neo.create(AgentDetail, {appName});
 
-            expect(rowsOf(detail)).toEqual([{tag: 'span', cls: ['fm-detail-prs-none'], text: 'no pull request waits on this seat'}]);
+            expect(list(idle)).toBeFalsy();
+            idle.destroy();
+
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(null)});
+
+            expect(list(detail).store.className).toBe('AgentOS.store.HeldPullRequests');
+            expect(list(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
+
+        test('nothing held renders the empty sentence, an unanswered read renders no list and says so on the pill (AC-2)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer([prRow('neomjs/neo', 7, 'author', {ci: 'red'})], [], minsAgo(1)))});
+
+            expect(list(detail).store.getCount()).toBe(1);
+
+            // the next answer holds nothing: the Store empties and the sentence replaces the list
+            applySet(detail, {openWorkHeld: heldFrom(answer([], [], minsAgo(1)))});
+            expect(list(detail).store.getCount()).toBe(0);
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(false);
+            expect(none(detail).text).toBe('no pull request waits on this seat');
             expect(chip(detail, 'prs').text).toBe('updated 1m ago');
 
             applySet(detail, {openWorkHeld: heldFrom(null)});
-            expect(rowsOf(detail)).toEqual([]);
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden, 'no answer is not an answer holding nothing').toBe(true);
             expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
             expect(chip(detail, 'prs').cls).toContain('is-unobserved');
+
+            detail.destroy()
+        });
+
+        test('a failed pulse reads stale at once: a recent observation the producer marks stale keeps its rows and its real age', () => {
+            const
+                failed = {...answer([prRow('neomjs/neo', 7, 'author', {ci: 'red', observedAt: minsAgo(1)})], [], minsAgo(1)), state: 'stale'},
+                detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(failed)});
+
+            expect(chip(detail, 'prs').text).toBe('stale · last seen 1m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-stale');
+            expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['neomjs/neo #7']);
+
+            // the control: the same observation from a pulse that succeeded is fresh
+            applySet(detail, {openWorkHeld: heldFrom({...failed, state: 'ok'})});
+            expect(chip(detail, 'prs').text).toBe('updated 1m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-fresh');
+
+            detail.destroy()
+        });
+
+        test('the rows re-age with the pane\'s clock, like its pill', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer(
+                [prRow('neomjs/neo', 7, 'author', {ci: 'red', observedAt: minsAgo(2)})], [], minsAgo(2)
+            ))});
+
+            expect(rowsOf(detail)[0].cn.at(-1).text).toBe('author · red · observed 2m ago');
+
+            detail.now = NOW + 60_000;
+            expect(rowsOf(detail)[0].cn.at(-1).text).toBe('author · red · observed 3m ago');
+            expect(chip(detail, 'prs').text).toBe('updated 3m ago');
 
             detail.destroy()
         });
