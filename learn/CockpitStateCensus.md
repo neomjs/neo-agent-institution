@@ -174,11 +174,21 @@ with one of its sources down while the others answer.
 | unreachable | `Wake routes unavailable · <reason>` (fallback `unknown reason`). |
 | one source failing | The degraded line above is exactly this case (one axis silent, the rest answered). |
 
-### Accounts (Repositories card) — `apps/agentos/view/accounts/Panel.mjs` (`setAgentConfigSaveStatus` and its Repositories twin)
+### Accounts (configuration and Repositories cards) — `apps/agentos/view/accounts/Panel.mjs` (`setAgentConfigSaveStatus` and its Repositories twin) over `apps/agentos/util/ConfigIntentRoundTrip.mjs` (`runConfigIntent`, `runPlaneCredentialIntent`)
+
+The cards show no feed state: they read the roster for their rows and render an ephemeral per-agent
+save status with four states — `pending · accepted · rejected · superseded` — each with its sentence.
 
 | State | Rendered |
 |---|---|
-| all | `unknown` — the card renders an ephemeral per-agent save status and reads the roster for the last known rows; its state words were not read in this census (the status setters compose their text at call time from the controller's results). Read `accounts/Controller.mjs`'s registry handlers before filling these cells. |
+| cold / unreachable | `cannot enter` as a feed word; an attempt against an unreachable registry ends `rejected` with `Could not save the configuration. Nothing was changed.` (the catch-all), or the Fleet's own reason. |
+| live (an attempt) | `pending` `Saving configuration…` → `accepted` `Configuration saved.`; plane credential: `Waiting for the plane credential…` → `Plane credential stored.` |
+| stale | `cannot enter` — a change from another surface reads `superseded` · `Superseded by a newer change from another surface.` (non-terminal, never latched). |
+| degraded | `rejected` with the Fleet's reason when it names one; otherwise `Configuration response was invalid. Nothing was changed.` |
+| refusals (by mode) | `Configuration is unavailable in dev-server mode. Nothing was changed.` · `This Fleet does not take plane credentials yet. Nothing was changed.` · `Set the plane credential from the installed Fleet Manager. Nothing was changed.` (next step named) · `The plane credential was not stored.` |
+| one source failing | `cannot enter`. |
+
+Every rejection says what did not change; only the installed-shell line names a next step.
 
 ## Candidate gaps (not filed — the walkthrough confirms them first)
 
@@ -193,7 +203,7 @@ installed candidate.
 6. **Mailbox · denied — next step.** `Access denied: <viewer> holds no read grant for <subject>'s inbox` names the reason and not the action (request access).
 7. **Connect card · unreachable — next step.** `No plane answered at that address.` is shorter than the banner's `Bring that plane back, or connect to another.`
 8. **Query-time panes (memories, tasks, Observatory, wake) · degraded / unavailable — next step.** Each names its reason; the only action is the `Refresh` / `Read routes` button, which is a retry, not guidance.
-9. **Accounts · all cells unknown** — a census read owed before the walkthrough can judge the surface.
+9. **Accounts · rejected — next step.** Every rejection ends `Nothing was changed.`; only `Set the plane credential from the installed Fleet Manager` names an action. The dev-server refusal, the invalid-response and the catch-all leave the operator with the fact and no step.
 10. **Roster · scoped-empty** — `Add your first agent` for an answer of `0 agents shared with you` on a live plane is the one gap already filed by source: neomjs/neo#16824.
 
 ## Reading this page against the installed candidate
