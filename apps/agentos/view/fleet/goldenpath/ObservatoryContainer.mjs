@@ -33,8 +33,8 @@ const HOVER_HINT = 'drag orbits · wheel zooms · click selects';
  * Golden Path leaf only qualifies the line and the route's control: its route's admission is not the graph
  * read's to report, so a withheld route is named beside the graph read's own words.
  *
- * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, at the top of the
- * side panel ({@link AgentOS.view.fleet.goldenpath.ObservatoryTeamContainer}), offers the team the read names,
+ * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, below the View
+ * section ({@link AgentOS.view.fleet.goldenpath.ObservatoryTeamContainer}), offers the team the read names,
  * busiest first, each peer in its own hue; checking peers draws their nodes in their hues, the union of them,
  * fades the rest, and names in the node list what each node is to its peer
  * ({@link AgentOS.util.ObservatorySceneLayout#roleOf}). Attention brightens what drew attention within the stated
@@ -131,9 +131,10 @@ class ObservatoryContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The head (title, the read's line, the hovered node) and the body: the side panel with the team lens's
-         * peers, the View section, the node list and the selected node's section, which the canvas joins in
-         * {@link #onConstructed} where a canvas worker exists. A selection never resizes the canvas.
+         * The head (title, the read's line, the hovered node) and the body: the side panel with the View section
+         * on top, where the lens controls never move, then the team lens's peers, the node list and the selected
+         * node's section, which the canvas joins in {@link #onConstructed} where a canvas worker exists. A
+         * selection never resizes the canvas.
          * @member {Object[]} items
          */
         items: [{
@@ -159,13 +160,13 @@ class ObservatoryContainer extends Container {
                 layout   : {ntype: 'vbox', align: 'stretch'},
                 reference: 'observatory-side',
                 items    : [{
-                    module   : ObservatoryTeamContainer,
-                    flex     : 'none',
-                    reference: 'observatory-team'
-                }, {
                     module   : ObservatoryViewContainer,
                     flex     : 'none',
                     reference: 'observatory-view-section'
+                }, {
+                    module   : ObservatoryTeamContainer,
+                    flex     : 'none',
+                    reference: 'observatory-team'
                 }, {
                     module   : Button,
                     cls      : ['fm-observatory-side-title', 'fm-observatory-section-head'],

@@ -17,12 +17,13 @@
         margin-left: 0;
     }
 
-    /* the Team head: the section's title, then the lens's Clear and the scope's All; the head draws the panel's
-       first line, so the title inside it keeps none of its own */
+    /* the Team head: the section's title, then the lens's Clear and the scope's All; the row draws the line
+       between the View section and the team across its full width, so the title inside it keeps none of its own */
     .fm-observatory-peers-head {
+        border-top   : thin solid var(--fm-line-soft);
         padding-right: var(--fm-space-3);
 
-        .fm-observatory-side-title {
+        .fm-observatory-side-title.neo-button {
             border-top: none;
             min-width : 0;
         }
@@ -171,8 +172,8 @@
         text-transform: uppercase;
     }
 
-    /* the head above already draws the panel's first line */
-    .fm-observatory-side > .fm-observatory-side-title:first-child {
+    /* the head above already draws the panel's first line, so the first section's title keeps none of its own */
+    .fm-observatory-side > :first-child > .fm-observatory-side-title:first-child {
         border-top: none;
     }
 
@@ -221,6 +222,13 @@
     .fm-observatory-node-list.is-collapsed,
     .fm-observatory-selected.is-collapsed > :not(.fm-observatory-section-head, .fm-observatory-selected-head) {
         display: none;
+    }
+
+    /* collapsed, the selected node's head is one line: the node the keys walk to, cut with an ellipsis */
+    .fm-observatory-selected.is-collapsed .fm-observatory-selected-label {
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
     }
 
     /* the team lens: the engine's check list, as tall as its open section, each peer in its own hue */
@@ -322,17 +330,16 @@
         }
     }
 
-    /* a node's title is the row's reason to exist: it wraps to two lines, and the Selected section shows it whole */
+    /* a node's title is the row's reason to exist: it wraps whole, in as many lines as it takes */
     .fm-observatory-node-list {
         .neo-list-item {
             white-space: normal;
         }
 
         .fm-observatory-row-label {
-            -webkit-box-orient: vertical;
-            -webkit-line-clamp: 2;
-            display           : -webkit-box;
-            overflow-wrap     : anywhere;
+            overflow     : visible;
+            overflow-wrap: anywhere;
+            text-overflow: clip;
         }
     }
 

@@ -1056,8 +1056,33 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await peers.filter({hasText: '@a-contributor'}).click();
         await expect(peers, 'unchecked, it leaves Team').toHaveCount(5);
 
+        // View sits first: opening a section never moves the lens controls
+        const viewTop = await top('.fm-observatory-view-row >> nth=0');
+
+        // no box holds the open Team list to a height of its own
+        expect(await pane.locator('.fm-observatory-peer-list').evaluate(el => getComputedStyle(el).maxHeight)).toBe('none');
+
         // a mouse click selects without an outline; the keys move the selection and outline the row they reach
         await nodesHead.click();
+        await expect(node(0)).toBeVisible();
+        expect(await top('.fm-observatory-view-row >> nth=0')).toBe(viewTop);
+
+        // a node's title wraps whole: a 90-character title on a detached copy of a row is cut nowhere
+        const wrap = await node(0).evaluate(row => {
+            const copy  = row.cloneNode(true),
+                  label = copy.querySelector('.fm-observatory-row-label');
+
+            [copy, ...copy.querySelectorAll('[id]')].forEach(el => el.removeAttribute('id'));
+            row.parentNode.append(copy);
+            label.textContent = 'one line';
+            const line = label.clientHeight;
+            label.textContent = 'A ninety-character node title reads whole in this list, however many lines it has to take.';
+            const result = {cut: label.scrollHeight > label.clientHeight, lines: Math.round(label.clientHeight / line)};
+            copy.remove();
+            return result
+        });
+        expect(wrap.cut, 'a long title is never clipped').toBe(false);
+        expect(wrap.lines, 'it takes the lines it needs').toBeGreaterThan(2);
         await node(1).click();
         await expect(label).toHaveText('Golden Path currency on the cockpit');
         expect(await outlineOf(node(1))).toBe('none');
