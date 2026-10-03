@@ -39,14 +39,14 @@ test.describe('AgentOS.util.LivenessCadence', () => {
 
         const minute = LivenessCadence.plan(dueAt, {cap: 2, inFlight: idle, intervals, now: 60000});
 
-        expect(minute.launch).toEqual(['activity', 'roster']);
+        expect(minute.launch).toEqual(['activity', 'roster', 'openWork']);
         expect(minute.dueAt.roster).toBe(120000);
         expect(minute.dueAt.tasks, 'a read not yet due keeps its turn').toBe(120000);
 
         dueAt = minute.dueAt;
 
         expect(LivenessCadence.plan(dueAt, {cap: 2, inFlight: idle, intervals, now: 120000}).launch)
-            .toEqual(['activity', 'roster', 'brainHealth', 'tasks', 'deploymentState'])
+            .toEqual(['activity', 'roster', 'brainHealth', 'tasks', 'deploymentState', 'openWork'])
     });
 
     test('a due read whose wires fill the cap does not launch, and still waits a whole interval', () => {
@@ -57,7 +57,7 @@ test.describe('AgentOS.util.LivenessCadence', () => {
             now     : 60000
         });
 
-        expect(launch).toEqual(['activity']);
+        expect(launch).toEqual(['activity', 'openWork']);
         expect(next.roster).toBe(120000)
     });
 
@@ -72,7 +72,7 @@ test.describe('AgentOS.util.LivenessCadence', () => {
         expect(launch).toContain('roster')
     });
 
-    test('ten minutes of 15 s passes at the default cadence launch 35 reads, where one shared tick launched 200', () => {
+    test('ten minutes of 15 s passes at the default cadence launch 35 Memory Core reads (plus 10 open-work reads that call none), where one shared tick launched 200', () => {
         let dueAt    = LivenessCadence.create(0, intervals),
             launched = 0;
 
@@ -83,7 +83,7 @@ test.describe('AgentOS.util.LivenessCadence', () => {
             dueAt     = pass.dueAt
         }
 
-        expect(launched).toBe(10 + 10 + 5 + 5 + 5)
+        expect(launched).toBe(10 + 10 + 5 + 5 + 5 + 10)
     });
 
     test('the next roster read lands inside the window the packaged smoke waits after a popup closes', () => {

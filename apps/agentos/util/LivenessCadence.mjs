@@ -6,9 +6,10 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  *
  * Each read has its own interval because each answers a question that changes on its own scale — the
  * roster and the activity stream within a minute, the tasks, the deployment picture and the Brain's
- * health over minutes. Every one of them is a Memory Core call behind the fleet server, so one
- * shared fast tick made an open cockpit the plane's heaviest caller, and a slow plane then queued
- * every other seat behind it.
+ * health over minutes. Every one of them but the open work is a Memory Core call behind the fleet
+ * server, so one shared fast tick made an open cockpit the plane's heaviest caller, and a slow plane
+ * then queued every other seat behind it. The open work reads the fleet server's own producer, which
+ * observes GitHub once a minute, so a faster read would only repeat its answer.
  *
  * A due read still launches while an earlier one of its wires hangs, up to the in-flight cap: that
  * probe is what notices a recovered transport. The bounded read window is far shorter than any
@@ -29,7 +30,8 @@ class LivenessCadence extends Base {
         roster         : 60000,
         brainHealth    : 120000,
         tasks          : 120000,
-        deploymentState: 120000
+        deploymentState: 120000,
+        openWork       : 60000
     })
 
     /**
@@ -50,7 +52,8 @@ class LivenessCadence extends Base {
         roster         : Object.freeze({load: 'loadRoster',          inFlight: 'gridReadInFlight'}),
         brainHealth    : Object.freeze({load: 'loadBrainHealth',     inFlight: 'brainHealthReadInFlight'}),
         tasks          : Object.freeze({load: 'loadTasks',           inFlight: 'tasksReadInFlight'}),
-        deploymentState: Object.freeze({load: 'loadDeploymentState', inFlight: 'deploymentStateReadInFlight'})
+        deploymentState: Object.freeze({load: 'loadDeploymentState', inFlight: 'deploymentStateReadInFlight'}),
+        openWork       : Object.freeze({load: 'loadOpenWork',        inFlight: 'openWorkReadInFlight'})
     })
 
     static config = {

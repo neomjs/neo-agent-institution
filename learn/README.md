@@ -4,6 +4,7 @@ Agent Institution is the operator-facing application for a team that runs its ow
 
 1. [Introduction](Introduction.md) — what the Institution gives your team and where the Engine and Agent OS fit.
 2. [Tour the cockpit](CockpitTour.md) — walk from a cold page to an answered view, including the visible limits of each pane.
+   - [The state census](CockpitStateCensus.md) — what every surface renders in each state, as shipped, with the file and symbol that own each sentence; the matrix the installed walkthrough reads against.
 3. [Run the Institution](RunningTheInstitution.md) — start the browser app and locate the separately owned Fleet transport.
 4. [The native vessel](TheNativeVessel.md) — understand the packaged shell, its custody boundary, and its update path.
 

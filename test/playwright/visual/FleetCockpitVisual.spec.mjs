@@ -1,6 +1,6 @@
 import {test, expect} from '@playwright/test';
-import {landAgentDefinitions, landFleetActivity, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
-import {sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
+import {landAgentDefinitions, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
+import {sampleOpenWork, sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
 import {sampleShellInitScript} from '../fixture/setupRecipeSample.mjs';
 
 /**
@@ -188,6 +188,28 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(card(sampleRoster[1]).locator('.fm-card-lane')).toHaveText('no lane claimed');
         await expect(card(sampleRoster[0])).toHaveScreenshot('fleet-card-lane-claim.png');
         await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-lane-empty.png')
+    });
+
+    test('the open work reads on the cards it waits on, and the merge queue sits after the bar; both skins', async ({page}) => {
+        await bootSettledCockpit(page);
+        await landFleetOpenWork(page, sampleOpenWork);
+
+        const head = page.locator('.fm-fleet-head'),
+              card = displayName => page.locator('.fm-agent-card', {
+                  has: page.getByRole('img', {name: displayName, exact: true})
+              });
+
+        await expect(head.locator('.fm-awaiting-merge')).toHaveText('2 awaiting merge');
+        await expect(card('Grace').locator('.fm-card-open-work')).toHaveText('2 PRs · red');
+        await expect(card('Euclid').locator('.fm-card-open-work')).toHaveText('1 PR · changes requested');
+        await expect(card('Vega').locator('.fm-card-open-work')).toHaveText('1 PR · review due');
+        await expect(card('Ada').locator('.fm-card-open-work'), 'nothing held: no chip').toBeHidden();
+        await expect(head).toHaveScreenshot('fleet-head-awaiting-merge.png');
+        await expect(card('Grace')).toHaveScreenshot('fleet-card-open-work.png');
+
+        await switchToLightSkin(page);
+        await expect(head).toHaveScreenshot('fleet-head-awaiting-merge-light.png');
+        await expect(card('Grace')).toHaveScreenshot('fleet-card-open-work-light.png')
     });
 
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {

@@ -7,7 +7,7 @@ import {isDescriptor} from '../../../node_modules/neo.mjs/src/core/ConfigSymbols
  * `Neo.worker.App.setConfigs` — no remote of the App worker lands rows otherwise. A landed roster,
  * activity, or tasks envelope is handed to the cockpit owner's own admission. Roster and activity
  * follow the liveness admission used by their reads; tasks follow `Controller.admitTasks`, which
- * invalidates an older in-flight read. Every set lands — the configs compare nothing — so a spec
+ * invalidates an older in-flight read, and open work follows `Controller.admitOpenWork` the same way. Every set lands — the configs compare nothing — so a spec
  * re-lands the same facts at will. Loading the module again (a fresh `t`) finds the instance. A set
  * mailbox is served as the bridge's `fleetActivity`, so the cockpit's own reads page it. Landed
  * definitions replace the Viewport provider's `agentDefinitions` Store, the Accounts view's source.
@@ -37,6 +37,11 @@ class FleetLanding extends Base {
          * @member {Object|null} tasks_=null
          */
         tasks_: {[isDescriptor]: true, value: null, isEqual: () => false},
+        /**
+         * One `fleetOpenWork` envelope to land as the owner's answer, `{snapshot}`.
+         * @member {Object|null} openWork_=null
+         */
+        openWork_: {[isDescriptor]: true, value: null, isEqual: () => false},
         /**
          * A mailbox the cockpit reads, `{events}` newest first: set, it becomes the bridge's `fleetActivity`.
          * @member {Object|null} mailbox_=null
@@ -99,6 +104,13 @@ class FleetLanding extends Base {
      */
     afterSetMailbox(value) {
         value && this.serveMailbox(value.events)
+    }
+
+    /**
+     * @param {Object|null} value
+     */
+    afterSetOpenWork(value) {
+        value && this.owner.admitOpenWork(value.snapshot)
     }
 
     /**
