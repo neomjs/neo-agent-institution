@@ -2,6 +2,7 @@ import {loadAgentOsModule} from '../../fixtures.mjs';
 import fs                  from 'node:fs';
 import os                  from 'node:os';
 import path                from 'node:path';
+import {fileURLToPath}       from 'node:url';
 
 const [
     {generateLocalBearerToken},
@@ -17,7 +18,10 @@ const [
     import('neo-agent-brain/fleet-contract')
 ]);
 
-const E2E_MANAGED_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'institution-fleet-e2e-'));
+const
+    E2E_MANAGED_ROOT   = fs.mkdtempSync(path.join(os.tmpdir(), 'institution-fleet-e2e-')),
+    // the synced issue tree the PR/lane slot reads in every real-producer spec
+    FIXTURE_ISSUES_DIR = fileURLToPath(new URL('../../fixtures/issues', import.meta.url));
 
 // The Brain service deliberately has no cwd fallback. Cross-repository tests inject their
 // disposable target root through the same composition seam as a real launcher, and the registry
@@ -153,5 +157,54 @@ export async function reloadRoster(app) {
 
     if (cockpit?.properties?.id) {
         await app.callMethod(cockpit.properties.id, 'controller.loadRoster')
+    }
+}
+
+/**
+ * @summary Composes the real activity producer onto `FleetControlBridge` with the slot readers
+ * `devFleetServer` injects: the A2A slot over a bound `listMessages`, the PR/lane slot over a synced
+ * issue tree. A transport that answers through it is the production producer, never a stub behind a
+ * socket. Re-wiring replaces the source, which is how a spec makes one slot fail.
+ * @param {Object} [options]
+ * @param {Function} [options.listMessages] The A2A slot's reader; an honest empty inbox by default.
+ * @param {String} [options.issuesDir] The PR/lane slot's corpus; the fixture tree by default.
+ * @returns {Promise<void>}
+ */
+export async function wireRealFleetSources({listMessages = async () => [], issuesDir = FIXTURE_ISSUES_DIR} = {}) {
+    // the Neo namespace devFleetServer's entry performs, so the bridge singletons construct
+    await import('../../../../node_modules/neo.mjs/src/Neo.mjs');
+    await import('../../../../node_modules/neo.mjs/src/core/_export.mjs');
+    await import('../../../../node_modules/neo.mjs/src/manager/Instance.mjs');
+
+    const {wireFleetActivityReadSource} = await loadAgentOsModule('ai/services/fleet/wireFleetActivityReadSource.mjs');
+
+    wireFleetActivityReadSource({issuesDir, listMessages})
+}
+
+/**
+ * @summary Starts the authenticated Fleet bridge on the real dispatch path, so `fleetRoster` and
+ * `fleetActivity` resolve through `FleetControlBridge`. Restarting with the captured `port` and
+ * `bearerToken` re-listens at the endpoint the browser bridge already targets. Closing ends open
+ * connections too, so an event stream cannot postpone the transport's death.
+ * @param {Object} [options]
+ * @param {Number} [options.port=0] 0 binds an ephemeral port.
+ * @param {String} [options.bearerToken] Reused across a restart.
+ * @returns {Promise<{bearerToken: String, port: Number, endpoint: String, close: Function}>}
+ */
+export async function startRealFleetServer({port = 0, bearerToken} = {}) {
+    const
+        {startFleetBridgeServer} = await loadAgentOsModule('ai/services/fleet/fleetBridgeServer.mjs'),
+        options                  = authenticatedFleetOptions(bearerToken ? {port, bearerToken} : {port}),
+        server                   = await startFleetBridgeServer(options),
+        boundPort                = server.address().port;
+
+    return {
+        bearerToken: options.bearerToken,
+        port       : boundPort,
+        endpoint   : `http://127.0.0.1:${boundPort}/fleet`,
+        close      : () => new Promise(resolve => {
+            server.close(resolve);
+            server.closeAllConnections()
+        })
     }
 }

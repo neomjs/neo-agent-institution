@@ -1,5 +1,9 @@
-import {test, expect, loadAgentOsModule}                                       from '../../fixtures.mjs';
-import {authenticatedFleetOptions, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
+import {test, expect, loadAgentOsModule} from '../../fixtures.mjs';
+import {
+    startRealFleetServer,
+    wireAuthenticatedFleetBridge,
+    wireRealFleetSources
+} from './authenticatedFleetHarness.mjs';
 
 const {generateLocalBearerToken} = await loadAgentOsModule('ai/mcp/server/shared/helpers/localBearer.mjs');
 
@@ -29,68 +33,6 @@ const {generateLocalBearerToken} = await loadAgentOsModule('ai/mcp/server/shared
  * @see ai/services/fleet/wireFleetActivityReadSource.mjs (the real producer the dispatch traverses)
  */
 
-let neoBootstrapped = false;
-
-/**
- * @summary Compose the REAL Fleet producer onto `FleetControlBridge` once — mirroring the
- * `devFleetServer` boot wiring so the transport traverses `dispatchFleetRequest → activitySource`,
- * never a fabricated response. Idempotent (the bridge + activitySource are module singletons that
- * survive the kill/restart, which is exactly why recovery needs no re-wire).
- * @returns {Promise<void>}
- */
-async function wireRealFleetSources() {
-    if (neoBootstrapped) return;
-
-    // Neo namespace bootstrap (entry-point invariant) so the FleetControlBridge / FleetManager
-    // singletons construct — the same three imports devFleetServer's process entry performs.
-    await import('../../../../node_modules/neo.mjs/src/Neo.mjs');
-    await import('../../../../node_modules/neo.mjs/src/core/_export.mjs');
-    await import('../../../../node_modules/neo.mjs/src/manager/Instance.mjs');
-
-    const
-        {wireFleetActivityReadSource} = await loadAgentOsModule('ai/services/fleet/wireFleetActivityReadSource.mjs'),
-        {default: path}               = await import('node:path'),
-        {fileURLToPath}               = await import('node:url'),
-        issuesDir                     = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/issues');
-
-    // The production producer, with the SAME injected slot shape devFleetServer uses: the A2A slot
-    // over a bound listMessages (honestly-empty here — a real bound reader, not a fabricated snapshot),
-    // the PR/lane slot over the synced issue tree. Both slots read → the composer reports `wired`.
-    wireFleetActivityReadSource({
-        issuesDir,
-        listMessages: async () => []
-    });
-
-    neoBootstrapped = true
-}
-
-/**
- * @summary Start the authenticated Fleet bridge on the REAL dispatch path (no custom `dispatch`), so
- * `fleetRoster` / `fleetActivity` resolve through `FleetControlBridge`. Pass a fixed `port` + `bearerToken`
- * on restart to re-listen at the SAME endpoint the browser bridge already targets.
- * Closing ends existing HTTP connections too: an open event stream must not postpone transport death.
- * @param {Object} [opts]
- * @param {Number} [opts.port=0] 0 = ephemeral (first boot); the captured port on restart.
- * @param {String} [opts.bearerToken] Reused across restart so the already-installed bridge authenticates.
- * @returns {Promise<{bearerToken: String, port: Number, endpoint: String, close: Function}>}
- */
-async function startLivenessFleetServer({port = 0, bearerToken} = {}) {
-    const {startFleetBridgeServer} = await loadAgentOsModule('ai/services/fleet/fleetBridgeServer.mjs'),
-          options                  = authenticatedFleetOptions(bearerToken ? {port, bearerToken} : {port}),
-          server                   = await startFleetBridgeServer(options),
-          boundPort                = server.address().port;
-
-    return {
-        bearerToken: options.bearerToken,
-        port       : boundPort,
-        endpoint   : `http://127.0.0.1:${boundPort}/fleet`,
-        close      : () => new Promise(resolve => {
-            server.close(resolve);
-            server.closeAllConnections()
-        })
-    }
-}
-
 test.describe('AgentOS fleet cockpit — the liveness owner journey (live → transport killed → banner names loss → restart → clears, #15293 AC4)', () => {
     test.setTimeout(150000);
 
@@ -107,7 +49,7 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
 
         const bearerToken = generateLocalBearerToken();
 
-        let fleet = await startLivenessFleetServer({bearerToken});
+        let fleet = await startRealFleetServer({bearerToken});
 
         const fleetPort = fleet.port; // the endpoint the browser bridge binds to; restart re-listens here
 
@@ -188,7 +130,7 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
             .toHaveAttribute('title', /Roster connection unavailable — showing last-known data · .+/);
 
         // ── transport RESTARTED at the SAME endpoint, SAME bearer — the bridge is NOT re-wired ──
-        fleet = await startLivenessFleetServer({port: fleetPort, bearerToken});
+        fleet = await startRealFleetServer({port: fleetPort, bearerToken});
 
         // recovery is timer-driven and transport-isolated: the next tick reads the re-listened server
         // through the unchanged bridge → live → the retained reason clears
@@ -233,7 +175,7 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
         const produced = await bridge.activitySource.readActivitySnapshot();
         expect(produced.capability.state).toBe('degraded');
         expect(produced.events.some(event => event.type === 'a2a-activity')).toBe(true);
-        const fleet = await startLivenessFleetServer({bearerToken: generateLocalBearerToken()});
+        const fleet = await startRealFleetServer({bearerToken: generateLocalBearerToken()});
 
         try {
             await page.goto('/apps/agentos/index.html');
