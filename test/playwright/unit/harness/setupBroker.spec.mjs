@@ -584,12 +584,12 @@ test.describe('harness/setupBroker over the Brain\'s own modules — every opera
         expect(disk.handlerRuns(), 'the handler ran once').toBe(1);
         expect(receiptsOnDisk(recordPath), 'the record holds the pending receipt').toEqual([['write-secrets', 'pending']]);
 
-        // the same broker asks again; the result is not observable and another plane answers
+        // the same broker asks again: the effect settles only by its own observation, no secret file
+        // shows here, so the orchestration halts behind the unsettled row and says why
         const again = await broker.effect(trusted, {effectId: 'write-secrets'});
 
         expect(disk.handlerRuns(), 'never replayed by the same broker').toBe(1);
-        expect(again.ok).toBe(true);
-        expect(again.evaluation.steps.find(step => step.id === 'write-secrets')).toMatchObject({status: 'reconcile-required', receipt: 'reconcile-required'});
+        expect(again).toEqual({ok: false, reason: "'write-secrets' was interrupted and is not settled, so nothing runs past it: no secret files observed", effectId: 'write-secrets'});
         expect(receiptsOnDisk(recordPath)).toEqual([['write-secrets', 'reconcile-required']]);
 
         // the shell restarted: a fresh broker over the same roots
