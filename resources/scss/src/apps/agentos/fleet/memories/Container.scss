@@ -7,7 +7,21 @@
    pad 10, provenance pill pad 1/6, turn gap 6 + pad 9/10 — recorded here,
    deferred to the #17268 pane-composition pass. */
 .fm-memories-pane {
-    gap: var(--fm-space-3);   /* head · meta · registers on one rhythm */
+    container-name: fm-memories-pane;   /* the narrow regime below stacks list over reader */
+    container-type: inline-size;
+    gap           : var(--fm-space-3);   /* head · meta · registers on one rhythm */
+
+    /* the list beside its reading surface (#506): idle, the list takes two shares and the reader
+       one (its sentence names the act); reading, the list is a rail the splitter resizes */
+    .fm-memories-body {
+        gap       : var(--fm-space-2);
+        min-height: 0;
+    }
+
+    .fm-memories-list {
+        min-width : 0;
+        min-height: 0;
+    }
 
     .fm-memories-card-meta,
     .fm-memories-card-attribution {
@@ -130,12 +144,23 @@
        and surface. The colors are the engine's own custom properties, re-bound per surface; the
        1 px lattice and the cell padding are structural rules and are overridden (a transparent
        border still costs its pixel in the row lattice, and the cell padding ate 4 px of the
-       height-normed card). Row selection is off at the source (the registers' `viewConfig:
-       {selectionModel: null}`), so there is no selection paint to neutralize. */
-    --grid-container-border-color              : transparent;
-    --grid-container-cell-background-color     : transparent;
-    --grid-container-cell-background-color-even: transparent;
-    --grid-cell-background-color-hover         : transparent;
+       height-normed card). The engine's RowModel selection paint is re-bound the same way: the
+       selected CARD carries the mark (below), never a cell wash behind it. */
+    --grid-container-border-color                 : transparent;
+    --grid-container-cell-background-color        : transparent;
+    --grid-container-cell-background-color-even   : transparent;
+    --grid-cell-background-color-hover            : transparent;
+    --grid-rowmodel-selected-cell-background-color: transparent;
+    --grid-rowmodel-selected-cell-color           : inherit;
+
+    .neo-grid-row {
+        cursor: pointer;   /* the whole row reads: a click selects it into the reading surface */
+    }
+
+    .neo-grid-row.neo-selected :is(.fm-memories-card, .fm-memories-turn) {
+        border-color: var(--fm-signal);
+        box-shadow  : inset 0 0 0 1px var(--fm-signal);
+    }
 
     &.neo-grid-container {
         border: 0;
@@ -277,6 +302,54 @@
     overflow     : hidden;
     white-space  : nowrap;
     text-overflow: ellipsis;
+}
+
+/* ── the rail (#506): while the pane reads, each register keeps its cells at a smaller norm —
+      title and meta for a summary, meta and one line for a turn. The totals equal the grids'
+      railRowHeight (SummaryGrid: 84, TurnGrid: 64): change one, change both. ── */
+.fm-memories-summary-grid.is-rail {
+    .fm-memories-card-cell {
+        height: 84px;
+    }
+
+    .fm-memories-card-body {
+        display: none;
+    }
+}
+
+.fm-memories-turn-grid.is-rail {
+    .fm-memories-turn-cell {
+        height: 64px;
+    }
+
+    .fm-memories-turn-prompt {
+        display: none;
+    }
+
+    .fm-memories-turn-response {
+        -webkit-line-clamp: 1;
+    }
+
+    /* a miniSummary title is the rail's one line; the response under it would clip mid-glyph */
+    .fm-memories-turn-title + .fm-memories-turn-response {
+        display: none;
+    }
+}
+
+/* the narrow regime (a popped-out or vessel-width pane, 720 px and below): list OR reader, never a
+   squeezed pair — reading, the rail collapses behind the reader's back breadcrumb and the reader
+   takes the whole body; idle, the reader yields its room. The splitter's drag has no axis here. */
+@container fm-memories-pane (max-width: 720px) {
+    .fm-memories-pane .fm-memories-list {
+        flex : 1 1 0% !important;   /* beats the wrapperStyle the wide regime writes */
+        width: auto !important;
+    }
+
+    .fm-memories-pane.is-reading .fm-memories-list,
+    .fm-memories-pane:not(.is-reading) .fm-memories-reader,
+    .fm-memories-pane .fm-memories-splitter {
+        display: none;
+    }
 }
 
 /* the miniSummary turn title — the tweet-size headline once the wire carries it (Brain #210);

@@ -1,0 +1,134 @@
+/* AgentOS.view.fleet.memories.ReaderComponent — where a memory reads whole (#506): the selected
+   summary or turn beside the list, or every loaded record under show-all. The pane is the one
+   scroll owner; the text keeps its line breaks and wraps at a reading measure. Every color reads
+   from the --fm-* token layer. */
+.fm-memories-reader {
+    min-width : 0;
+    min-height: 0;
+    overflow  : auto;
+    padding   : 0 var(--fm-space-2) var(--fm-space-3);
+    position  : relative;   /* the clipboard textarea's anchor */
+
+    .fm-memories-reader-empty {
+        color  : var(--fm-ink-dim);
+        font   : var(--fm-text-body);
+        padding: var(--fm-space-3) 0;
+    }
+
+    .fm-memories-read {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-2);
+        padding       : var(--fm-space-3) 0;
+
+        & + .fm-memories-read {
+            border-top: 1px solid var(--fm-line-soft);
+        }
+    }
+
+    .fm-memories-read-head,
+    .fm-memories-read-block-head {
+        display    : flex;
+        align-items: center;
+        gap        : var(--fm-space-2);
+    }
+
+    /* each record's header line stays in view while its text scrolls — under show-all it names
+       the record being read */
+    .fm-memories-read-head,
+    .fm-memories-read.is-turn > .fm-memories-read-meta {
+        position      : sticky;
+        top           : 0;
+        z-index       : 1;
+        background    : var(--fm-ground);
+        padding-bottom: var(--fm-space-1);
+    }
+
+    /* a reading surface clips nothing: the title wraps, a long unbroken token included */
+    .fm-memories-read-title {
+        flex         : 1;
+        min-width    : 0;
+        margin       : 0;
+        color        : var(--fm-ink);
+        font         : var(--fm-text-body);
+        font-weight  : 650;
+        overflow-wrap: anywhere;
+    }
+
+    .fm-memories-read-meta {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);
+    }
+
+    .fm-memories-read-block {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-1);
+    }
+
+    .fm-memories-read-label {
+        margin        : 0;
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-micro);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    /* the whole text: its own line breaks, wrapped at a reading measure, never clamped */
+    .fm-memories-read-text {
+        max-width    : 100ch;
+        color        : var(--fm-ink);
+        font         : var(--fm-text-body);
+        white-space  : pre-wrap;
+        overflow-wrap: anywhere;
+
+        &.is-missing {
+            color     : var(--fm-ink-dim);
+            font-style: italic;
+        }
+    }
+
+    /* the back breadcrumb exists for the narrow regime only (the query below) */
+    .fm-memories-read-back {
+        display    : none;
+        align-items: center;
+        gap        : var(--fm-space-1);
+        margin-top : var(--fm-space-2);
+    }
+
+    /* back, drill and copy: native buttons in the chip family's quiet voice (the card's `turns` twin) */
+    .fm-memories-read-back,
+    .fm-memories-read-copy,
+    .fm-memories-read-turns {
+        background   : transparent;
+        border       : 1px solid var(--fm-line);
+        border-radius: var(--fm-chip-radius, 4px);
+        color        : var(--fm-ink-dim);
+        cursor       : pointer;
+        font         : var(--fm-text-micro);
+        padding      : var(--fm-chip-pad-y, 2px) var(--fm-chip-pad-x, 8px);
+        white-space  : nowrap;
+
+        &:hover {
+            border-color: var(--fm-ink-dim);
+            color       : var(--fm-ink);
+        }
+    }
+
+    /* the clipboard's way in: DomAccess.selectNode selects form fields only — present, never seen */
+    .fm-memories-copy-source {
+        position: absolute;
+        top     : 0;
+        left    : -9999px;
+        width   : 1px;
+        height  : 1px;
+        opacity : 0;
+    }
+}
+
+/* the narrow regime (Container.scss, 720 px): the rail is gone, so the reader carries the way back */
+@container fm-memories-pane (max-width: 720px) {
+    .fm-memories-reader .fm-memories-read-back {
+        display: inline-flex;
+    }
+}
