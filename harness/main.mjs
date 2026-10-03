@@ -1538,7 +1538,11 @@ app.whenReady().then(async () => {
             }
 
             const
-                expectedShellKeys = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'shellVersion', 'verifyPlane'],
+                expectedShellKeys = [
+                    'attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus',
+                    'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe',
+                    'shellVersion', 'verifyPlane'
+                ],
                 probes            = [primary, popup, primaryAfterPopup, forgedSender],
                 surfaceExact      = probes.every(probe =>
                     JSON.stringify(probe.shellKeys) === JSON.stringify(expectedShellKeys)
