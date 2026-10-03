@@ -167,6 +167,55 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
+    test('the Seat row: the family in words, the whole path and Copy path, only for a reported path; a Claude Desktop seat adds its first-launch step', () => {
+        const
+            repoPath = '/Users/x/Library/Application Support/neo-harness/brain/fleet/agents/vega/neomjs/neo',
+            detail   = createDetail({agentId: 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok'}),
+            part     = reference => detail.down({reference});
+
+        expect(part('detail-seat').hidden).toBe(false);
+        expect(part('detail-seat-family').text).toBe('Claude · App');
+        expect(part('detail-seat-path').text, 'the whole path, never elided').toBe(repoPath);
+        expect(part('detail-seat-copy').text).toBe('Copy path');
+        expect(part('detail-seat-field').vdom.value).toBe(repoPath);
+        expect(part('detail-seat-launch').hidden).toBe(false);
+        expect(part('detail-seat-launch').text).toBe('Open this folder in Claude\'s Code tab, then start the seat from its card.');
+
+        // another family has the row and no first-launch step: it is launched into its folder
+        applySet(detail, {harnessType: 'codex-desktop'});
+        expect(part('detail-seat-family').text).toBe('Codex · App');
+        expect(part('detail-seat-launch').hidden).toBe(true);
+
+        // no reported path: no row, no placeholder
+        applySet(detail, {repoPath: null});
+        expect(part('detail-seat').hidden).toBe(true);
+
+        detail.destroy()
+    });
+
+    test('Copy path selects the unseen field, copies through the main thread, and hands the focus back', async () => {
+        const
+            detail = createDetail({agentId: 'vega', harnessType: 'codex', repoPath: '/Users/x/agents/vega/neomjs/neo', state: 'ok'}),
+            calls  = [],
+            main   = Neo.main ?? (Neo.main = {}),
+            saved  = main.DomAccess;
+
+        main.DomAccess = {
+            selectNode : async ({id})      => calls.push(['select', id]),
+            execCommand: async ({command}) => calls.push(['execCommand', command]),
+            focus      : async ({id})      => calls.push(['focus', id])
+        };
+
+        try {
+            await detail.onCopySeatPath({detail: 1});
+
+            expect(calls.slice(0, 2)).toEqual([['select', detail.down({reference: 'detail-seat-field'}).id], ['execCommand', 'copy']])
+        } finally {
+            main.DomAccess = saved;
+            detail.destroy()
+        }
+    });
+
     test('ADR-0032 §2.3.2: name/engine are display state over the durable id — a rename re-renders in place, never a re-key', () => {
         const detail   = createDetail({agentId: 'vega', displayName: 'Vega', engineTag: 'opus-4.8', state: 'ok'});
         const beforeId = detail.id;

@@ -1,10 +1,12 @@
 import AgentConfigCard                      from './AgentConfigComponent.mjs';
+import Button                               from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container                            from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import FamilyRail                           from '../shared/FamilyRailComponent.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
+import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
 import Controller                          from './Controller.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
@@ -255,6 +257,52 @@ class AgentDetail extends Container {
                     ntype    : 'component',
                     cls      : ['fm-detail-id'],
                     reference: 'detail-id'
+                }, {
+                    // the seat's folder, read deliberately here and never on the roster card: the
+                    // harness family in words, the whole path, one copy action, and for a Claude
+                    // Desktop seat the one step its first launch needs
+                    ntype    : 'container',
+                    cls      : ['fm-detail-seat'],
+                    hidden   : true,
+                    layout   : {ntype: 'vbox', align: 'stretch'},
+                    reference: 'detail-seat',
+
+                    items: [{
+                        ntype : 'container',
+                        cls   : ['fm-detail-seat-row'],
+                        layout: {ntype: 'hbox', align: 'center'},
+
+                        items: [{
+                            ntype    : 'component',
+                            cls      : ['fm-detail-seat-family'],
+                            flex     : 'none',
+                            reference: 'detail-seat-family'
+                        }, {
+                            ntype    : 'component',
+                            cls      : ['fm-detail-seat-path'],
+                            flex     : 1,
+                            reference: 'detail-seat-path'
+                        }, {
+                            module   : Button,
+                            flex     : 'none',
+                            reference: 'detail-seat-copy',
+                            text     : 'Copy path',
+                            tooltip  : 'Copy the seat\'s folder',
+                            ui       : 'ghost'
+                        }]
+                    }, {
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-launch'],
+                        hidden   : true,
+                        reference: 'detail-seat-launch',
+                        text     : 'Open this folder in Claude\'s Code tab, then start the seat from its card.'
+                    }, {
+                        // the copy source: an inert field the Copy action selects, unseen and unfocusable
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-field'],
+                        reference: 'detail-seat-field',
+                        vdom     : {tag: 'input', 'aria-hidden': true, readonly: true, tabIndex: -1, type: 'text', value: ''}
+                    }]
                 }]
             }]
         }, {
@@ -322,6 +370,7 @@ class AgentDetail extends Container {
         // the old identity-header placement floated the verb OVER the identity block at rail
         // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
+        this.getReference('detail-seat-copy').set({handler: 'onCopySeatPath', handlerScope: this});
         const configPane = this.getReference('config-pane');
 
         if (configPane) {
@@ -462,6 +511,7 @@ class AgentDetail extends Container {
         me.getReference('detail-engine').text = record.engineTag ?? '';
         me.getReference('detail-id').text     = agentId;
 
+        me.applySeatRow(record);
         me.renderStateLedger(record, sources, display);
 
         me.getReference('detail-avatar').set({
@@ -470,6 +520,47 @@ class AgentDetail extends Container {
         });
 
         me.applyPaneFreshness()
+    }
+
+    /**
+     * @summary The Seat row: the harness family in words, the whole clone path and its Copy action,
+     * only for a REPORTED path (none renders no row and no placeholder). A Claude Desktop seat adds
+     * the one step its first launch needs, since that Desktop cannot be launched into a folder.
+     * Every value is an inert `text` node: the path is adapter-supplied data.
+     * @param {Object} record The drilled-in FleetAgent record.
+     * @protected
+     */
+    applySeatRow(record) {
+        const
+            me       = this,
+            field    = me.getReference('detail-seat-field'),
+            repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null;
+
+        me.getReference('detail-seat').hidden = repoPath === null;
+
+        if (repoPath === null) return;
+
+        me.getReference('detail-seat-family').text   = HarnessChoice.describe(record.harnessType) ?? record.harnessType ?? '';
+        me.getReference('detail-seat-path').text     = repoPath;
+        me.getReference('detail-seat-launch').hidden = record.harnessType !== 'claude-desktop';
+
+        field.vdom.value = repoPath;
+        field.update()
+    }
+
+    /**
+     * @summary The Copy path action: the seat's folder goes to the clipboard through the main thread's
+     * selection of the unseen field, and the focus returns to the action.
+     * @param {Object} data The click; `detail` is 0 where the keyboard pressed the action
+     */
+    async onCopySeatPath(data) {
+        const me = this, copy = me.getReference('detail-seat-copy'), field = me.getReference('detail-seat-field'), {windowId} = me;
+
+        if (field.vdom.value) {
+            await Neo.main.DomAccess.selectNode({id: field.id, windowId});
+            await Neo.main.DomAccess.execCommand({command: 'copy', windowId});
+            copy.focus(copy.id, false, true, data?.detail ? 'pointer' : 'keyboard')
+        }
     }
 
     /**
