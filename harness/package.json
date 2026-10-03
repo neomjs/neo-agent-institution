@@ -18,7 +18,8 @@
         "start:brain": "cross-env NEO_HARNESS_BRAIN=1 electron main.mjs",
         "witness:lifecycle": "cross-env NEO_HARNESS_LIFECYCLE_WITNESS=1 NEO_HARNESS_BRAIN=1 electron main.mjs",
         "predist": "node prepareAssets.mjs && node pack.mjs",
-        "dist": "electron-builder --mac --publish never"
+        "dist": "electron-builder --mac --publish never",
+        "install:mac": "node install.mjs"
     },
     "devDependencies": {
         "@electron/rebuild": "^4.0.1",

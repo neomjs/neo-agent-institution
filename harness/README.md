@@ -52,47 +52,47 @@ across updates, and behavior in a signed release, require separate verification.
 
 ## Updating an installed app
 
-The current development distribution is updated manually. There is no automatic update feed yet:
-reopening the app, merging a pull request, or updating a source checkout does not replace an
-installed copy. Operators receive a complete replacement app from their maintainer; they do not
-need Node.js or npm to install it.
+There is no automatic update feed yet: reopening the app, merging a pull request, or updating a
+source checkout does not replace an installed copy. A development build is replaced WHOLE, by the
+install leg of the packaging pipeline:
 
-For the current macOS build:
+```bash
+cd harness && npm run dist && npm run install:mac -- --dry-run
+```
 
-1. Obtain the replacement **Neo Harness.app** and its build receipt from the maintainer. Keep the
-   previous bundle until the replacement has been verified.
-2. Choose **Neo Harness → Quit Neo Harness**, or the tray's **Quit** action. Closing the cockpit
-   window only hides it; the retained process would continue running the old code.
-   Before replacing an older build, check whether it holds
-   `Contents/Resources/organism/.neo-ai-data/fleet/registry.json`. Those builds kept the Fleet
-   store inside the bundle. Preserve that entire `fleet` directory, then copy its contents to
-   `<userData>/brain/fleet/` while the app is stopped, retaining file permissions. The registry,
-   `credentials.enc`, and matching `fleet.key` must travel together; keep any tenant or signing-key
-   files with them. Never print credential/key contents or overwrite existing destination files:
-   a collision requires reconciling the two stores before proceeding. Preserve an existing
-   destination `agents/` directory. Keep the old copy until the new app lists the same seats and
-   resolves their credentials successfully. Subsequent builds keep this store under userData via
-   `NEO_FLEET_DATA_DIR`, independently of the seat working-tree root.
-   Older builds also left the plane's other state inside the bundle: seat tokens, heartbeats, and
-   in own mode the memory-core graph. Those start fresh after the replacement. From `#347` on,
-   every build keeps the whole plane under `<userData>/brain` (`NEO_PLANE_DATA_ROOT`).
-3. Replace the whole app in **Applications**, then open that copy. Do not copy individual renderer
-   files, dependencies or Brain files into the old bundle.
-4. Preserve the application's userData directory. On macOS it is normally
-   `~/Library/Application Support/neo-harness/`; it holds the saved plane record and encrypted
-   credential, separately from the application bundle. An update is not a reset or a change of
-   viewer identity. Use the shell's connection flow if the OS cannot recover the saved credential.
-5. Check the replacement's build receipt and the instance switcher's plane address. Then check
-   the roster and activity pane: an empty answer, an unavailable read and actual live rows are
-   different results. A connected transport alone does not prove every data source works, and
-   fixture rows are never evidence of a live connection.
+`install:mac` resolves the one bundle under `dist-artifacts/mac*/`, prints the installed, rollback
+and artifact receipts, then replaces `/Applications/Neo Harness.app` by rename and moves the
+displaced bundle to the single rollback slot,
+`~/Library/Application Support/neo-harness/rollback/Neo Harness.app` — exactly one rollback, never
+another launchable copy in Applications. `--dry-run` prints the plan and changes nothing;
+`--restore` swaps the rollback back (a second `--restore` undoes it); `--open` relaunches the
+installed bundle; `--artifact <bundle.app>` names a bundle explicitly. Equal receipts end the run
+with nothing replaced.
 
-The shell version currently remains `0.0.1` across development builds, so **the version label alone
-cannot prove an update**. A macOS bundle carries its build time, Engine pin and Brain revision in
-`Contents/Resources/organism/organism-build-info.json`. The Product entry currently records only
-its name and package version; the maintainer's receipt must also name the Institution source
-revision. The shell's boot log is available through Electron's logs directory, normally
-`~/Library/Logs/Neo Harness/main.log` on macOS.
+A running Neo Harness is a refusal: `--quit` is the only way the leg stops it, through the app's
+own quit, and **quitting also stops the peer harnesses it launched** — checkpoint those seats
+first. Closing the cockpit window only hides it. An app running from any path other than the
+canonical bundle is refused by path.
+
+The leg never reads or writes the application's userData
+(`~/Library/Application Support/neo-harness/`: the saved plane record, `brain/fleet/` custody
+files, encrypted credentials); it hashes `brain/fleet/` before and after and fails if those bytes
+moved. An update is not a reset or a change of viewer identity. Builds before `#347` kept the
+Fleet store inside the bundle (`Contents/Resources/organism/.neo-ai-data/fleet/`); migrate that
+`fleet` directory to `<userData>/brain/fleet/` by hand before replacing such a bundle, keeping the
+registry, `credentials.enc` and `fleet.key` together and never overwriting an existing
+destination. Since `#347` every build keeps the whole plane under `<userData>/brain`.
+
+After the install, check the instance switcher's plane address, then the roster and activity
+pane: an empty answer, an unavailable read and actual live rows are different results. A
+connected transport alone does not prove every data source works, and fixture rows are never
+evidence of a live connection.
+
+The shell version remains `0.0.1` across development builds, so **the version label alone cannot
+prove an update**. A bundle's identity is `Contents/Resources/organism/organism-build-info.json`
+(build time, Engine pin, Brain revision), which the leg prints old → new; the maintainer's receipt
+must also name the Institution source revision. The shell's boot log is available through
+Electron's logs directory, normally `~/Library/Logs/Neo Harness/main.log` on macOS.
 
 Automatic updates belong to the shell's release channel under
 [the Electron shell epic](https://github.com/neomjs/neo-agent-institution/issues/7) and
