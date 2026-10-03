@@ -124,6 +124,17 @@ export async function landFleetTasks(page, snapshot) {
 }
 
 /**
+ * @summary Lands one `fleetOpenWork` envelope in the mounted cockpit as the owner's answer: the roster
+ * cards' open-work chips and the fleet head's merge queue follow it.
+ * @param {Object} page The Playwright page.
+ * @param {Object} snapshot The envelope.
+ * @returns {Promise<void>}
+ */
+export async function landFleetOpenWork(page, snapshot) {
+    await landFleet(page, {openWork: {snapshot}})
+}
+
+/**
  * @summary Lands the tests' sample fleet (`test/playwright/fixture/fleetSample.mjs`): eleven roster
  * cards and six activity events, as live answers. A spec that reads cards or events calls this after
  * the cockpit is visible; it resolves once the first card renders.

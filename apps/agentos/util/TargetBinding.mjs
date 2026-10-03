@@ -84,6 +84,27 @@ class TargetBinding extends Base {
     }
 
     /**
+     * @summary Retire the held open work when the bridge in hand belongs to another profile than the
+     * one that answered it. The owner returns to unobserved until the new profile answers, so one
+     * instance's open PRs and merge queue never stand under another's name. The read that calls this
+     * has already taken its generation, which fences any earlier profile's read still in flight.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
+     * @param {Object} options
+     * @param {String|null} options.profileId The profile the bridge in hand is bound to.
+     * @returns {Boolean} whether a retirement happened
+     */
+    static retireOpenWork(owner, {profileId}) {
+        if (!owner.openWorkSnapshot || owner.openWorkProfileId === profileId) {
+            return false
+        }
+
+        owner.openWorkSnapshot  = null;
+        owner.openWorkProfileId = null;
+
+        return true
+    }
+
+    /**
      * @summary Retire the graph scene when the bridge in hand belongs to another profile than the read
      * the leaf holds. The leaf returns to its unobserved declaration until the new profile answers, so
      * the Observatory never draws one instance's neighbourhood under another's name; its selection

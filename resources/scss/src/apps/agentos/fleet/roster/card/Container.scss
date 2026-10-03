@@ -316,6 +316,26 @@
         }
     }
 
+    /* the open-work chip — the pull requests this seat holds, worst named in its words; hidden for
+       none or an unknown read. A stale chip dims its plate, never its text: the words keep the
+       4.5:1 floor, the dashed border says the count may have moved */
+    .fm-card-open-work {
+        flex         : none;
+        font         : var(--fm-text-micro);
+        line-height  : 1;
+        color        : var(--fm-ink-dim);
+        background   : color-mix(in srgb, var(--fm-ink-dim) 12%, transparent);
+        border       : 1px solid color-mix(in srgb, var(--fm-ink-dim) 25%, transparent);
+        border-radius: var(--fm-chip-radius);
+        padding      : var(--fm-chip-pad-y) var(--fm-chip-pad-x);
+        white-space  : nowrap;
+
+        &.is-stale {
+            background  : transparent;
+            border-style: dashed;
+        }
+    }
+
     /* ── actions: native buttons, contextual, never dominant. 32px regular, one 44px target narrow ── */
     .fm-card-control-verbs {
         flex: none;

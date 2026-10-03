@@ -70,6 +70,7 @@ const LANE_AGE_REFRESH_MS = 30_000;
 import AgentFreshness from '../../../../util/AgentFreshness.mjs';
 import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
 import NameSlot       from '../../../../util/NameSlot.mjs';
+import OpenWorkSeat   from '../../../../util/OpenWorkSeat.mjs';
 import SourceHealth   from '../../../../util/SourceHealth.mjs';
 import Telltale       from '../../../../util/Telltale.mjs';
 
@@ -90,7 +91,7 @@ const nameSeparators = /[\s\-_.]+/;
  * Anatomy (top-to-bottom, the family rail a left accent owned by FamilyRail):
  * - **head** — avatar (the face image, or a family-inked monogram in the same slot when the record
  *   carries no face — a src-less `<img>` never mounts) spanning a two-line **identity** column: `name-line` (name · provenance ·
- *   engine) over `state-line` (dot · state-word · telltale · presence band · beacon words ·
+ *   engine) over `state-line` (dot · state-word · telltale · open-work chip · presence band · beacon words ·
  *   lane-count badge — ONE row in priority order: a member the row cannot hold leaves whole, from
  *   the end), with the contextual lifecycle **actions** right-aligned;
  * - **work-row** — the current lane, two-line clamped with head+tail middle elision so two lanes
@@ -265,6 +266,15 @@ class AgentCard extends Container {
                         flex     : 'none',
                         hidden   : true,
                         reference: 'card-telltale'
+                    }, {
+                        // the open-work chip: the pull requests whose next action this seat holds,
+                        // counted, worst named (OpenWorkSeat). Hidden for none or an unknown read —
+                        // the open-lane badge's rule: unknown never poses as zero
+                        ntype    : 'component',
+                        cls      : ['fm-card-open-work'],
+                        flex     : 'none',
+                        hidden   : true,
+                        reference: 'card-open-work'
                     }, {
                         // the presence band: the plane's who_is_online observation, the THIRD
                         // independent axis — never fused into the session-state word. Hidden unless
@@ -748,6 +758,20 @@ class AgentCard extends Container {
         telltale.changeVdomRootKey('aria-label', ariaLabel);
         telltale.changeVdomRootKey('data-mark', hidden ? null : mark);
         telltale.changeVdomRootKey('title', title);
+
+        // the open-work chip, worded whole by its resolver: a stale chip dims (SCSS) and its title
+        // carries the age, the aria pair speaks the same words
+        const
+            openWorkChip = me.getReference('card-open-work'),
+            openWork     = OpenWorkSeat.describe(record.openWork);
+
+        openWorkChip.set({
+            cls   : ['fm-card-open-work', ...(openWork.stale ? ['is-stale'] : [])],
+            hidden: openWork.hidden,
+            text  : openWork.text
+        });
+        openWorkChip.changeVdomRootKey('aria-label', openWork.ariaLabel);
+        openWorkChip.changeVdomRootKey('title', openWork.title);
 
         // the source strip: ONE honest word-line, a PURE role=status — no ▸/disclosure affordance on a
         // non-interactive node (selecting the item → detail IS the disclosure route). The level cls
