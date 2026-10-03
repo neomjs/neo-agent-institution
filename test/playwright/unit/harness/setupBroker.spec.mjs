@@ -621,6 +621,28 @@ test.describe('harness/setupBroker over the Brain\'s own modules — every opera
         expect(disk.handlerRuns(), 'and the effect is still never replayed').toBe(1)
     });
 
+    test('an interrupted host-file effect whose result the host shows settles on the next request, with no plane of the target answering, and the run goes on', async () => {
+        const
+            run                      = await brainBacked(),
+            {broker, disk, observed} = run,
+            recordPath               = await consented(run);
+
+        await interruptedAfterTheHandler(run);
+
+        expect(receiptsOnDisk(recordPath)).toEqual([['write-secrets', 'pending']]);
+
+        // the host shows the secret files; the default observation keeps another plane answering
+        observed.secretFiles = {present: true, digest: null, problem: null};
+
+        const next = await broker.effect(trusted, {effectId: 'write-env'});
+
+        expect(next.ok, next.reason).toBe(true);
+        expect(disk.handlerRuns(), 'write-secrets settled by observation, never run again').toBe(1);
+        expect(receiptsOnDisk(recordPath)).toEqual([['write-secrets', 'accepted'], ['write-env', 'accepted']]);
+        expect(JSON.parse(readFileSync(recordPath, 'utf8')).receipts[0]).toMatchObject({effectId: 'write-secrets', settledBy: 'observation'});
+        expect(existsSync(path.join(run.stateRoot, 'config', 'local-agent-os.env')), 'the next effect wrote the carrier').toBe(true)
+    });
+
     test('control: an effect whose record writes land is acknowledged, and once the host shows its result it never runs again', async () => {
         const
             run                      = await brainBacked(),
