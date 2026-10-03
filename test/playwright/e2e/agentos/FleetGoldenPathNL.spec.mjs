@@ -109,8 +109,61 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
         const width = await pane.evaluate(el => ({visible: el.clientWidth, content: el.scrollWidth}));
         expect(width.content, 'the full recommendation wraps inside the narrow pane').toBeLessThanOrEqual(width.visible + 1);
         await expect(pane).toHaveScreenshot('golden-path-current-narrow.png');
-        await pane.evaluate(el => { el.scrollTop = el.scrollHeight });
+        // the recommendation column is the pane's one scroll seat; the pane itself never scrolls
+        await pane.locator('.fm-golden-path-markdown').evaluate(el => { el.scrollTop = el.scrollHeight });
         await expect(pane.locator('.fm-golden-path-markdown p').last()).toBeInViewport();
         await expect(pane).toHaveScreenshot('golden-path-current-narrow-bottom.png')
+    });
+
+    test('the facts row stays on screen at the lower dock\'s default height and only the recommendation column scrolls', async ({page, neuralLink}) => {
+        // 1400 × 900 is the installed vessel's size: the lower split's tab body measured 282 px there
+        await page.setViewportSize({width: 1400, height: 900});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        const app = await neuralLink.connectToApp('AgentOS');
+        await page.getByRole('tab', {name: 'Golden Path', exact: true}).click();
+
+        const
+            pane     = page.locator('.fm-golden-path-pane'),
+            facts    = pane.locator('.fm-golden-path-facts'),
+            column   = pane.locator('.fm-golden-path-markdown'),
+            [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+            cockpitState = await app.getComponent(cockpit.properties.id, ['controller']),
+            tallHandoff  = {...handoff, markdown: handoff.markdown + Array.from({length: 40}, (_, i) => `\n\n${i + 3}. **neo#${100 + i}**: Score 0.5${i} (Semantic: 0.4, Structural: 0.1)\n   - *A ranked item that pushes the column past the pane*`).join('')},
+            boxes        = async () => {
+                const paneBox   = await pane.evaluate(el => ({top: el.getBoundingClientRect().top, bottom: el.getBoundingClientRect().bottom, scroll: el.scrollHeight, client: el.clientHeight})),
+                      factsBox  = await facts.evaluate(el => el.getBoundingClientRect()),
+                      columnBox = await column.evaluate(el => ({scroll: el.scrollHeight, client: el.clientHeight, first: el.querySelector('ol li')?.getBoundingClientRect().bottom ?? null}));
+                return {paneBox, factsBox, columnBox}
+            };
+
+        await expect(pane).toBeVisible({timeout: 10000});
+        await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [{...STATES[0][1], handoff: tallHandoff}]);
+        await expect(pane.locator('.fm-golden-path-currency')).toHaveClass(/is-current/);
+        await page.evaluate(() => document.fonts.ready);
+
+        const tall = await boxes();
+
+        expect(tall.paneBox.client, 'the lower dock default leaves the pane well under the content height').toBeLessThan(400);
+        expect(tall.factsBox.bottom, 'the three facts are fully inside the pane without scrolling').toBeLessThanOrEqual(tall.paneBox.bottom);
+        expect(tall.paneBox.scroll, 'the pane itself does not scroll').toBeLessThanOrEqual(tall.paneBox.client + 1);
+        expect(tall.columnBox.scroll, 'the recommendation column is the scroll seat').toBeGreaterThan(tall.columnBox.client);
+        expect(tall.columnBox.first, 'the first ranked item is on screen with the facts').toBeLessThanOrEqual(tall.paneBox.bottom);
+        await expect(facts.locator('.fm-golden-path-provenance')).toHaveText(/run run-42/);
+
+        // a route whose producer recorded no run id says so in words
+        await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [{...STATES[0][1], route: route({provenance: {producer: 'GoldenPathSynthesizer', runId: null, algorithmVersion: 'golden-path.tri-vector.v1'}})}]);
+        await expect(facts.locator('.fm-golden-path-provenance')).toHaveText(/^GoldenPathSynthesizer · run id not recorded by the synthesizer · golden-path\.tri-vector\.v1 · expires /);
+
+        // a pane taller than its content scrolls nowhere: the column only moves when it has to
+        await page.setViewportSize({width: 1400, height: 2000});
+        await page.mouse.move(8, 8);
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+        const tallPane = await boxes();
+
+        expect(tallPane.paneBox.client, 'the taller viewport gives the pane more height than the short fixture needs').toBeGreaterThan(400);
+        expect(tallPane.columnBox.scroll).toBeLessThanOrEqual(tallPane.columnBox.client + 1);
+        expect(tallPane.paneBox.scroll).toBeLessThanOrEqual(tallPane.paneBox.client + 1)
     });
 });

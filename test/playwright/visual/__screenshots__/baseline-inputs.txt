@@ -348,7 +348,7 @@ apps/agentos/view/fleet/detail/RepositoryList.mjs
     c5ea39cc6a96f2874cb6f84dba77c9d0695150f5
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
-    859204e6ce743942b33096f2ae4a4f10ba06f8bb
+    6d7757960f1fa321b8228f3f634b4d1ba9eecd20
 
 apps/agentos/view/fleet/goldenpath/ObservatoryCanvas.mjs
     e4b96b75a295110ff60492041c1f9a49d1e2ad1f
@@ -546,7 +546,7 @@ resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
 
 resources/scss/src/apps/agentos/fleet/goldenpath/Container.scss
-    c5cdbc99a91efcd5bf2519591df837d580b4dd40
+    f610f3b7ee607ba9ae97e26fa982abdd2308553f
 
 resources/scss/src/apps/agentos/fleet/goldenpath/ObservatoryContainer.scss
     3a008af073c005c868f89fb89b7bbfa13982ea52
