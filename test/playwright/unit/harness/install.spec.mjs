@@ -399,7 +399,50 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         symlinkSync(path.join(root, 'elsewhere-b'), path.join(custody, 'shared'));
         expect(custodyDigest(userData), 'a retargeted depth-1 link moves it').not.toBe(afterLink);
 
-        expect(custodyDigest(path.join(root, 'nowhere'))).toBeNull()
+        expect(custodyDigest(path.join(root, 'nowhere')), 'no member at all is the empty set').toBeNull()
+    });
+
+    test('the plane record is custody without a fleet root, and every selected path — a plane file, the fleet root itself — is read as what it IS: a link by its target string, never followed', () => {
+        // A plane record written before any Fleet directory exists (planeConfig writes it alone).
+        const planeOnly = path.join(root, 'plane-only');
+
+        mkdirSync(planeOnly, {recursive: true});
+        writeFileSync(path.join(planeOnly, 'plane.json'), '{"base":"https://plane.example"}');
+
+        const before = custodyDigest(planeOnly);
+
+        expect(before, 'a plane record alone is a custody set').not.toBeNull();
+        writeFileSync(path.join(planeOnly, 'plane.json'), '{"base":"https://plane.example","viewer":"@me"}');
+        expect(custodyDigest(planeOnly), 'a plane byte moves it without a fleet root').not.toBe(before);
+
+        // A linked plane file: the link string is custody, its target's bytes are not.
+        const linked = path.join(root, 'linked');
+
+        mkdirSync(path.join(linked, 'elsewhere'), {recursive: true});
+        writeFileSync(path.join(linked, 'elsewhere', 'bearer.bin'), Buffer.from([1]));
+        symlinkSync(path.join(linked, 'elsewhere', 'bearer.bin'), path.join(linked, 'plane-bearer.bin'));
+
+        const linkedBefore = custodyDigest(linked);
+
+        writeFileSync(path.join(linked, 'elsewhere', 'bearer.bin'), Buffer.from([2]));
+        expect(custodyDigest(linked), 'bytes behind a linked plane file are not read').toBe(linkedBefore);
+        rmSync(path.join(linked, 'plane-bearer.bin'));
+        symlinkSync(path.join(linked, 'elsewhere', 'other.bin'), path.join(linked, 'plane-bearer.bin'));
+        expect(custodyDigest(linked), 'a retargeted (and dangling) plane link moves it').not.toBe(linkedBefore);
+
+        // A linked fleet root: custody by its target string alone, never entered.
+        const rootLinked = path.join(root, 'root-linked');
+
+        mkdirSync(path.join(rootLinked, 'brain'), {recursive: true});
+        mkdirSync(path.join(root, 'foreign-fleet'), {recursive: true});
+        writeFileSync(path.join(root, 'foreign-fleet', 'registry.json'), '{"agents":{}}');
+        symlinkSync(path.join(root, 'foreign-fleet'), path.join(rootLinked, 'brain', 'fleet'));
+
+        const rootLinkedBefore = custodyDigest(rootLinked);
+
+        expect(rootLinkedBefore, 'a linked fleet root is a custody member').not.toBeNull();
+        writeFileSync(path.join(root, 'foreign-fleet', 'registry.json'), '{"agents":{"x":1}}');
+        expect(custodyDigest(rootLinked), 'a linked fleet root is not entered').toBe(rootLinkedBefore)
     });
 
     test('legacyCopies lists only the hand-copied previous-* siblings; resolveArtifactPath requires exactly one mac* bundle', () => {

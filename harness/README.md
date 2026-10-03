@@ -84,9 +84,11 @@ there hash the custody set twice — the plane record (`plane.json`, `plane-bear
 `seat-root.json`) and `brain/fleet/`'s own files (registry, credentials, keys, tenants), plus the
 names of the seats under `brain/fleet/agents/` — once after the app has stopped, once after the
 slots moved and before any `--open`; a difference stops the run with the app down and nothing
-relaunches. Seat homes are the seats' own and are not read, and no link is followed: a seat home's
-`.neo-ai-data` links point into the bundle this leg replaces, so following them would make every
-correct install read as a custody change. The rollback slot lives under the same root. An update is not a reset or a change of viewer identity.
+relaunches. Seat homes are the seats' own and are not read, and no link is followed anywhere in
+the set — a plane file, the fleet root or an entry under it that is a link counts by its target
+string, dangling or not — because a seat home's `.neo-ai-data` links point into the bundle this leg
+replaces, and following them would make every correct install read as a custody change. A plane
+record is custody with or without a fleet root. The rollback slot lives under the same root. An update is not a reset or a change of viewer identity.
 A swap interrupted between two renames leaves a `Neo Harness.app.restoring` sibling; the next run
 recognizes it, moves it to the empty slot and stops, so the slots are read before another swap is
 asked for. Builds before `#347` kept the

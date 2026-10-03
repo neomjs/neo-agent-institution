@@ -362,53 +362,78 @@ export function parseInstallArgs(argv) {
 
 /**
  * @summary A SHA-256 over the custody set — the proof the leg left the plane record and the fleet's
- * own files alone. Contents are hashed, never printed or copied, and NO link is ever followed: a
- * symlink contributes its target string, the one custody fact about it. Seat homes contribute
- * their names only. The first run of this leg hashed every file under the seat homes and followed
- * their `.neo-ai-data` links into the bundle it had just replaced, so a correct install read as a
- * custody change; the scope here is the one that cannot.
+ * own files alone. ONE policy for every selected path, applied before anything is read: a symlink
+ * contributes its target string (dangling or not) and is never followed; a regular file its bytes;
+ * the fleet root's directory its depth-1 entries under the same policy; the `agents` directory the
+ * names of the seats, never their homes. Contents are hashed, never printed or copied. The first
+ * run of this leg hashed every file under the seat homes and followed their `.neo-ai-data` links
+ * into the bundle it had just replaced, so a correct install read as a custody change; the policy
+ * here is the one that cannot, and it covers the plane record whether or not a fleet root exists.
  * @param {String} userDataDir The app's userData root (`app.getPath('userData')`)
- * @returns {String|null} `null` when the fleet root does not exist
+ * @returns {String|null} `null` when no custody member exists at all — the empty set, not a verdict
  */
 export function custodyDigest(userDataDir) {
-    const fleetDir = path.join(userDataDir, CUSTODY_FLEET_DIR);
-
-    if (!fs.existsSync(fleetDir)) {
-        return null
-    }
-
     const
-        hash    = createHash('sha256'),
-        feed    = (label, bytes) => {
+        hash     = createHash('sha256'),
+        feed     = (label, bytes) => {
             hash.update(`${label}\0`);
             bytes !== null && hash.update(bytes);
             hash.update('\0')
         },
-        entries = fs.readdirSync(fleetDir, {withFileTypes: true}).sort((a, b) => a.name.localeCompare(b.name));
+        // The classification is the policy: what a path IS decides what is read, and a link is read
+        // as a link however the loop that found it would have liked to treat it.
+        classify = full => {
+            let stat;
+
+            try {
+                stat = fs.lstatSync(full)
+            } catch {
+                return null
+            }
+
+            if (stat.isSymbolicLink()) return {kind: 'link', bytes: Buffer.from(fs.readlinkSync(full))};
+            if (stat.isFile())         return {kind: 'file', bytes: fs.readFileSync(full)};
+            if (stat.isDirectory())    return {kind: 'dir',  bytes: null};
+            return {kind: 'other', bytes: null}
+        },
+        fleetDir  = path.join(userDataDir, CUSTODY_FLEET_DIR),
+        fleetRoot = classify(fleetDir);
+
+    let members = 0;
 
     for (const name of CUSTODY_PLANE_FILES) {
-        const file = path.join(userDataDir, name);
-        fs.existsSync(file) && feed(name, fs.readFileSync(file))
-    }
+        const member = classify(path.join(userDataDir, name));
 
-    for (const entry of entries) {
-        const
-            label = path.join(CUSTODY_FLEET_DIR, entry.name),
-            full  = path.join(fleetDir, entry.name);
-
-        if (entry.isSymbolicLink()) {
-            feed(`${label} -> `, Buffer.from(fs.readlinkSync(full)))
-        } else if (entry.isFile()) {
-            feed(label, fs.readFileSync(full))
-        } else if (entry.isDirectory()) {
-            // The seats' presence is custody; their homes are their own. Any other directory counts by name.
-            feed(`${label}/`, entry.name === CUSTODY_AGENTS_DIR
-                ? Buffer.from(fs.readdirSync(full).sort().join('\0'))
-                : null)
+        if (member) {
+            members++;
+            feed(`${name} [${member.kind}]`, member.bytes)
         }
     }
 
-    return hash.digest('hex')
+    if (fleetRoot) {
+        members++;
+        feed(`${CUSTODY_FLEET_DIR} [${fleetRoot.kind}]`, fleetRoot.bytes);
+
+        // Only a real directory is entered; a linked fleet root is custody by its target alone.
+        if (fleetRoot.kind === 'dir') {
+            const entries = fs.readdirSync(fleetDir).sort();
+
+            for (const name of entries) {
+                const
+                    label  = path.join(CUSTODY_FLEET_DIR, name),
+                    member = classify(path.join(fleetDir, name));
+
+                if (!member) continue;
+
+                // The seats' presence is custody; their homes are their own.
+                feed(`${label} [${member.kind}]`, member.kind === 'dir' && name === CUSTODY_AGENTS_DIR
+                    ? Buffer.from(fs.readdirSync(path.join(fleetDir, name)).sort().join('\0'))
+                    : member.bytes)
+            }
+        }
+    }
+
+    return members ? hash.digest('hex') : null
 }
 
 /**
