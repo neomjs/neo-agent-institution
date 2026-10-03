@@ -77,6 +77,8 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
         for (const [state, envelope] of STATES) {
             await land(envelope);
             await expect(currency).toHaveClass(new RegExp(`(?:^|\\s)is-${state}(?:\\s|$)`));
+            // the chip's frame is the currency: only a current route earns a solid line
+            await expect(currency).toHaveCSS('border-top-style', state === 'current' ? 'solid' : 'dashed');
 
             for (const [skin, theme] of skins) {
                 await app.callMethod(viewportState.controller.id, 'setTheme', [theme, false]);

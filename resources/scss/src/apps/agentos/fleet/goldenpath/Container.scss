@@ -13,8 +13,11 @@
         row-gap   : var(--fm-space-1);
     }
 
+    /* the chip's frame is the currency itself, in two dimensions: the colour names the state, and
+       only a current route earns a solid line — every other state is dashed, so the frame reads
+       as freshness before the words do */
     .fm-golden-path-currency {
-        border       : thin solid var(--fm-line-soft);
+        border       : thin dashed var(--fm-line-soft);
         border-radius: var(--fm-chip-radius);
         color        : var(--fm-ink);
         font         : var(--fm-text-body);
@@ -23,6 +26,7 @@
 
         &.is-current {
             border-color: var(--fm-state-ok);
+            border-style: solid;
         }
 
         &.is-withheld,

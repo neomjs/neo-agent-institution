@@ -546,7 +546,7 @@ resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
 
 resources/scss/src/apps/agentos/fleet/goldenpath/Container.scss
-    f610f3b7ee607ba9ae97e26fa982abdd2308553f
+    4a86c6e8bb0901057d8312353ab9213aa9521469
 
 resources/scss/src/apps/agentos/fleet/goldenpath/ObservatoryContainer.scss
     3a008af073c005c868f89fb89b7bbfa13982ea52
