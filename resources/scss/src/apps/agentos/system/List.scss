@@ -2,10 +2,11 @@
    connected instance's deployment-state picture, in a responsive grid. The left mark rebinds ONE
    custom property per folded state (the chip idiom); every color reads from the --fm-* token layer,
    every text node from a --fm-text-* role, every gap from the --fm-space-* rhythm. The 16px left pad
-   clears the 3px mark — the roster card's recorded exception, reused. */
+   clears the 3px mark — the roster card's recorded exception, reused. A column is at least 360px
+   and never wider than the list, so a narrow list is one column. */
 .fm-plane-list {
     display              : grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
     gap                  : var(--fm-space-3);
     margin               : 0;
     padding              : 0;
@@ -22,6 +23,9 @@
         background   : var(--fm-panel);
         border       : 1px solid var(--fm-line-soft);
         border-left  : var(--fm-chip-mark-w) solid var(--fm-plane);
+        // the card is the engine's single-line `.neo-list-item`: every line on it wraps instead
+        white-space  : normal;
+        overflow-wrap: anywhere;
 
         &.is-serving  { --fm-plane: var(--fm-state-ok); }
         &.is-degraded { --fm-plane: var(--fm-state-wedged); }
@@ -69,9 +73,8 @@
         }
 
         dd {
-            margin       : 0;
-            color        : var(--fm-ink);
-            overflow-wrap: anywhere;
+            margin: 0;
+            color : var(--fm-ink);
 
             &.is-quiet { color: var(--fm-ink-dim); }
             &.is-hot   { color: var(--fm-state-wedged); }
