@@ -83,6 +83,46 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
         expect(OpenWorkSeat.summarize(held([row(3, {role: 'author', ids: [ada]})]), ada).observedAt).toBe('2026-10-03T08:00:00.000Z')
     });
 
+    test('held lists the seat\'s rows worst first, tells nothing held from no answer, and summarize counts the same rows', () => {
+        const
+            review = row(3, {role: 'reviewer', ids: [ada]}, {repo: 'neomjs/neo-agent-brain', observedAt: '2026-10-03T07:50:00.000Z'}),
+            change = row(2, {role: 'author', ids: [ada]}, {ci: 'pending', title: 'feat: the pane reads open work'}),
+            red    = row(1, {role: 'author', ids: [ada]}, {ci: 'red', stale: true}),
+            answer = held([change, red], [review]);
+
+        expect(OpenWorkSeat.held(answer, ada)).toEqual({
+            rows: [
+                {id: 'neomjs/neo#1',             kind: 'red',               number: 1, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: true,  title: null},
+                {id: 'neomjs/neo#2',             kind: 'changes-requested', number: 2, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: false, title: 'feat: the pane reads open work'},
+                {id: 'neomjs/neo-agent-brain#3', kind: 'review-due',        number: 3, observedAt: '2026-10-03T07:50:00.000Z', repo: 'neomjs/neo-agent-brain', role: 'reviewer', stale: false, title: null}
+            ],
+            stale     : true,
+            observedAt: '2026-10-03T07:50:00.000Z'
+        });
+        expect(OpenWorkSeat.summarize(answer, ada)).toEqual({count: 3, worst: 'red', stale: true, observedAt: '2026-10-03T07:50:00.000Z'});
+
+        // an answer that lists nothing for the seat holds nothing; no answer is no answer
+        expect(OpenWorkSeat.held(held(), '@neo-gpt')).toEqual({rows: [], stale: false, observedAt: '2026-10-03T08:00:00.000Z'});
+        expect(OpenWorkSeat.held(held([row(4, {role: 'operator', ids: []})]), ada).rows).toEqual([]);
+        expect(OpenWorkSeat.held(null, ada), 'unanswered').toBeNull();
+        expect(OpenWorkSeat.held(held([red], [], {state: 'unavailable'}), ada), 'unavailable').toBeNull();
+        expect(OpenWorkSeat.held(answer, null), 'a seat without an identity').toBeNull()
+    });
+
+    test('describeRow words one held row in the chip\'s vocabulary, and its link comes from the row\'s own fields', () => {
+        const now = Date.parse('2026-10-03T08:07:00.000Z');
+
+        expect(OpenWorkSeat.describeRow({kind: 'red', number: 504, observedAt: '2026-10-03T08:04:00.000Z', repo: 'neomjs/neo-agent-institution', role: 'author', stale: false, title: 'fix: the card names no path'}, now)).toEqual({
+            href : 'https://github.com/neomjs/neo-agent-institution/pull/504',
+            ref  : 'neomjs/neo-agent-institution #504',
+            title: 'fix: the card names no path',
+            line : 'author · red · observed 3m ago'
+        });
+        expect(OpenWorkSeat.describeRow({kind: 'review-due', number: 7, observedAt: null, repo: 'neomjs/neo', role: 'reviewer', stale: true}, now).line)
+            .toBe('reviewer · review due · stale');
+        expect(OpenWorkSeat.PANE_WORDS).toEqual({none: 'no pull request waits on this seat', unanswered: 'open-work read unanswered'})
+    });
+
     test('describe words the chip as one unit: text, aria-label and title from the same facts', () => {
         expect(OpenWorkSeat.describe(null)).toEqual({hidden: true, stale: false, text: '', ariaLabel: null, title: null});
 

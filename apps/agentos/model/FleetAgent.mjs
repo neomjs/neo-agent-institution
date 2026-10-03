@@ -148,6 +148,13 @@ class FleetAgent extends Model {
             name        : 'openWork',
             defaultValue: null
         }, {
+            // the same answer's rows for the Agent Detail's Pull requests pane
+            // (`AgentOS.util.OpenWorkSeat.held`: `{rows, stale, observedAt}`), written beside `openWork`;
+            // typeless so `null` survives — null = the read has not answered, an empty `rows` = it
+            // answered and the seat holds nothing
+            name        : 'openWorkHeld',
+            defaultValue: null
+        }, {
             // the newest attributable per-agent activity instant (ISO string), stamped Brain-side
             // by the cockpit DTO assembler (activity-event fold merged with the presence
             // producer's lastSeenAt) and passed through whole — the roster's recency sort axis.

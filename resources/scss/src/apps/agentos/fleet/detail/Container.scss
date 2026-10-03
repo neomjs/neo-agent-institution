@@ -89,6 +89,24 @@
         padding-left: 15px;
     }
 
+    /* the Seat row: the harness family in words and, for a Claude Desktop seat, its first-launch
+       step, on the same text column as the name and the handle */
+    .fm-detail-seat {
+        padding-left: 15px;
+        margin-top  : 4px;
+        gap         : 2px;
+    }
+
+    .fm-detail-seat-family {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-detail-seat-launch {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink);
+    }
+
     /* THE ONE STATE LEDGER (#23): every liveness/wiring axis once, `axis · pill` per row, in the
        pane's own freshness-pill vocabulary — the three prior languages (italic telltale prose,
        coloured source lines, a dangling producer suffix) collapsed into it. Grid-locked columns:
@@ -149,22 +167,86 @@
     }
 
     /* the repository pane's two lines from the roster row: the slug in the inspector's mono voice,
-       the clone path beneath it, each eliding on its own line at rail widths */
-    .fm-detail-pane-repo .fm-detail-pane-body {
-        display: grid;
-        gap    : 2px;
+       eliding at rail widths, and the WHOLE clone path beneath it, wrapping, never elided, with its
+       Copy action under it. The field the action copies from is present but unseen and
+       unreachable, the Observatory's idiom */
+    .fm-detail-pane-repo {
+        position: relative;
+
+        .fm-detail-pane-body {
+            display: grid;
+            gap    : 2px;
+        }
     }
 
-    .fm-detail-repo-slug,
-    .fm-detail-repo-path {
+    .fm-detail-repo-slug {
+        color        : var(--fm-ink);
+        font-family  : var(--fm-font-mono);
         overflow     : hidden;
         text-overflow: ellipsis;
         white-space  : nowrap;
     }
 
-    .fm-detail-repo-slug {
-        color      : var(--fm-ink);
-        font-family: var(--fm-font-mono);
+    .fm-detail-repo-path {
+        min-width : 0;
+        word-break: break-all;
+    }
+
+    .fm-detail-repo-copy {
+        align-self: flex-start;
+    }
+
+    .fm-detail-repo-field {
+        border        : none;
+        height        : 1px;
+        opacity       : 0;
+        padding       : 0;
+        pointer-events: none;
+        position      : absolute;
+        width         : 1px;
+    }
+
+    /* the pull requests pane: one list row per held pull request, its reference (an anchor to the
+       forge, in the inspector's mono voice), its title when the producer carries one, and its line
+       in the chip's words; all wrap at rail widths, so the default placement reads every row in
+       full. The rows inform, so the list's row skin (padding, hover, pointer, nowrap) stays off. */
+    .fm-detail-pr-list.neo-list {
+        --list-container-list-color        : var(--fm-ink-dim);
+        --list-item-background-color       : transparent;
+        --list-item-background-color-active: transparent;
+        --list-item-background-color-hover : transparent;
+
+        background: transparent;
+        display   : grid;
+        gap       : var(--fm-space-1);
+
+        .neo-list-item {
+            cursor     : default;
+            padding    : 0;
+            white-space: normal;
+        }
+    }
+
+    .fm-detail-pr {
+        display: grid;
+        gap    : 1px;
+    }
+
+    .fm-detail-pr-ref {
+        color          : var(--fm-ink);
+        font-family    : var(--fm-font-mono);
+        overflow-wrap  : anywhere;
+        text-decoration: none;
+
+        &:hover,
+        &:focus-visible {
+            text-decoration: underline;
+        }
+    }
+
+    .fm-detail-pr-title {
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
     }
 
     /* the freshness ledger chip: a mono pill whose tone states the observation

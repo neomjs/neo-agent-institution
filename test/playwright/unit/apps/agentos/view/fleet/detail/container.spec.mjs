@@ -25,7 +25,7 @@ import Instance       from '../../../../../../../../node_modules/neo.mjs/src/man
  * freshness contract renders deterministically.
  */
 test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () => {
-    let AgentDetail, AgentDetailController, AgentDefinition, FleetAgent, FleetTenants, Store;
+    let AgentDetail, AgentDetailController, AgentDefinition, FleetAgent, FleetTenants, OpenWorkSeat, Store;
 
     const
         stores          = [],
@@ -86,6 +86,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         AgentDefinition       = (await import('../../../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
         FleetAgent            = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
         FleetTenants          = (await import('../../../../../../../../apps/agentos/store/FleetTenants.mjs')).default;
+        OpenWorkSeat          = (await import('../../../../../../../../apps/agentos/util/OpenWorkSeat.mjs')).default;
         Store                 = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
     });
 
@@ -165,6 +166,77 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(detail.down({reference: 'detail-id'}).text).toBe('vega');
 
         detail.destroy()
+    });
+
+    test('the Seat row names the family in words, only for a reported family; a Claude Desktop seat with a folder adds its first-launch step, and the row never repeats the path', () => {
+        const
+            repoPath = '/Users/x/Library/Application Support/neo-harness/brain/fleet/agents/vega/neomjs/neo',
+            detail   = createDetail({agentId: 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok'}),
+            part     = reference => detail.down({reference});
+
+        expect(part('detail-seat').hidden).toBe(false);
+        expect(part('detail-seat-family').text).toBe('Claude · App');
+        expect(part('detail-seat-launch').hidden).toBe(false);
+        expect(part('detail-seat-launch').text).toBe('Open the repository folder below in Claude\'s Code tab, then Start on the card.');
+        expect(part('detail-seat').items.map(item => item.text ?? '').join(' '), 'the path lives on the Repository pane alone').not.toContain(repoPath);
+
+        // another family has the row and no first-launch step: it is launched into its folder
+        applySet(detail, {harnessType: 'codex-desktop'});
+        expect(part('detail-seat-family').text).toBe('Codex · App');
+        expect(part('detail-seat-launch').hidden).toBe(true);
+
+        // a Claude Desktop seat without a reported folder has no step to point at
+        applySet(detail, {harnessType: 'claude-desktop', repoPath: null});
+        expect(part('detail-seat').hidden).toBe(false);
+        expect(part('detail-seat-launch').hidden).toBe(true);
+
+        // no reported family: no row, no placeholder
+        applySet(detail, {harnessType: null});
+        expect(part('detail-seat').hidden).toBe(true);
+
+        detail.destroy()
+    });
+
+    test('the Repository pane shows the whole clone path, with Copy path only while a path is reported', () => {
+        const
+            repoPath = '/Users/x/Library/Application Support/neo-harness/brain/fleet/agents/vega/neomjs/neo',
+            detail   = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath, state: 'ok'}),
+            part     = reference => detail.down({reference});
+
+        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo', repoPath]);
+        expect(part('detail-repo-copy').hidden).toBe(false);
+        expect(part('detail-repo-copy').text).toBe('Copy path');
+        expect(part('detail-repo-field').vdom.value).toBe(repoPath);
+
+        applySet(detail, {repoPath: null});
+        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo']);
+        expect(part('detail-repo-copy').hidden).toBe(true);
+        expect(part('detail-repo-field').vdom.value).toBe('');
+
+        detail.destroy()
+    });
+
+    test('Copy path selects the unseen field, copies through the main thread, and hands the focus back', async () => {
+        const
+            detail = createDetail({agentId: 'vega', harnessType: 'codex', repoPath: '/Users/x/agents/vega/neomjs/neo', state: 'ok'}),
+            calls  = [],
+            main   = Neo.main ?? (Neo.main = {}),
+            saved  = main.DomAccess;
+
+        main.DomAccess = {
+            selectNode : async ({id})      => calls.push(['select', id]),
+            execCommand: async ({command}) => calls.push(['execCommand', command]),
+            focus      : async ({id})      => calls.push(['focus', id])
+        };
+
+        try {
+            await detail.onCopyRepoPath({detail: 1});
+
+            expect(calls.slice(0, 2)).toEqual([['select', detail.down({reference: 'detail-repo-field'}).id], ['execCommand', 'copy']])
+        } finally {
+            main.DomAccess = saved;
+            detail.destroy()
+        }
     });
 
     test('ADR-0032 §2.3.2: name/engine are display state over the durable id — a rename re-renders in place, never a re-key', () => {
@@ -254,7 +326,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                 'thought-stream': {observedAt: '2026-07-11T23:59:50.000Z', freshnessTtl: 30_000}, // 10s → fresh
                 lane            : {observedAt: '2026-07-11T23:58:30.000Z', freshnessTtl: 30_000}, // 90s → stale
                 repo            : {lost: true}                                                    // explicit → lost
-                // prs: no ledger → unobserved
+                // prs: no ledger and no open-work answer → unobserved
             }
         });
 
@@ -263,7 +335,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(detail, 'lane').cls).toContain('is-stale');
         expect(chip(detail, 'repo').cls).toContain('is-lost');
         expect(chip(detail, 'prs').cls).toContain('is-unobserved');
-        expect(chip(detail, 'prs').text).toBe('not observed — source not wired');
+        expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
 
         detail.destroy()
     });
@@ -908,14 +980,13 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
     test('panes without a producer name what they await; the lane pill states the roster source fact (#391 AC-1)', () => {
         const detail = createDetail({agentId: 'vega', state: 'ok'});
 
-        for (const [key, producer] of [
-            ['thought-stream', 'policy-aware read'],
-            ['prs',            'per-seat open-work projection']
-        ]) {
-            expect(chip(detail, key).text, key).toBe('not observed — source not wired');
-            expect(chip(detail, key).cls, key).toContain('is-unobserved');
-            expect(chip(detail, key).vdom.title, key).toContain(producer)
-        }
+        expect(chip(detail, 'thought-stream').text).toBe('not observed — source not wired');
+        expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+        expect(chip(detail, 'thought-stream').vdom.title).toContain('policy-aware read');
+
+        // the pull requests pane has its producer: without an answer it says so in the resolver's words
+        expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
+        expect(chip(detail, 'prs').vdom.title).toBe(chip(detail, 'prs').text);
 
         // The lane now has a roster-row source axis. An absent lane fact uses its explicit source
         // vocabulary rather than borrowing the old feed-waiting text from an unwired pane.
@@ -928,6 +999,129 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(detail, 'repo').vdom.title).toBeNull();
 
         detail.destroy()
+    });
+
+    test.describe('the Pull requests pane reads the seat\'s open work (#501)', () => {
+        const
+            seat     = '@neo-vega',
+            minsAgo  = minutes => new Date(NOW - minutes * 60_000).toISOString(),
+            prRow    = (repo, number, role, extra = {}) => ({repo, number, holder: {role, ids: [seat]}, ...extra}),
+            answer   = (authored, reviewing, observedAt) => ({state: 'ok', observedAt, seats: {[seat]: {authored, reviewing}}}),
+            list     = detail => detail.down({reference: 'pr-list'}),
+            none     = detail => detail.down({reference: 'prs-none'}),
+            rowsOf   = detail => list(detail).vdom.cn,
+            heldFrom = snapshot => OpenWorkSeat.held(snapshot, seat);
+
+        test('three held rows render worst first in the resolver\'s words through the list\'s Store, and the pill reads the read\'s observation (AC-1)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer(
+                [prRow('neomjs/neo-agent-brain', 806, 'author', {ci: 'pending', title: 'feat: the memory import at Start'}), prRow('neomjs/neo-agent-institution', 504, 'author', {ci: 'red', observedAt: minsAgo(2)})],
+                [prRow('neomjs/neo', 19379, 'reviewer')],
+                minsAgo(1)
+            ))});
+
+            // the rows are the list Store's records in the resolver's order: the Store sorts nothing
+            expect(list(detail).store.className).toBe('AgentOS.store.HeldPullRequests');
+            expect(list(detail).store.items.map(record => record.id)).toEqual(['neomjs/neo-agent-institution#504', 'neomjs/neo-agent-brain#806', 'neomjs/neo#19379']);
+            expect(list(detail).hidden).toBe(false);
+            expect(none(detail).hidden).toBe(true);
+            rowsOf(detail).forEach(row => expect(row.cls).toContain('fm-detail-pr'));
+
+            expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['neomjs/neo-agent-institution #504', 'neomjs/neo-agent-brain #806', 'neomjs/neo #19379']);
+            expect(rowsOf(detail).map(row => row.cn.at(-1).text)).toEqual(['author · red · observed 2m ago', 'author · changes requested', 'reviewer · review due']);
+            expect(rowsOf(detail)[0].cn[0]).toMatchObject({tag: 'a', href: 'https://github.com/neomjs/neo-agent-institution/pull/504', rel: 'noopener', target: '_blank'});
+
+            // the title slot: a row whose producer carries a title shows it between reference and line
+            expect(rowsOf(detail)[1].cn.map(node => node.cls[0])).toEqual(['fm-detail-pr-ref', 'fm-detail-pr-title', 'fm-detail-pr-line']);
+            expect(rowsOf(detail)[1].cn[1].text).toBe('feat: the memory import at Start');
+            expect(rowsOf(detail)[0].cn, 'no title, no slot').toHaveLength(2);
+
+            // the oldest held row's observation is the pane's
+            expect(chip(detail, 'prs').text).toBe('updated 2m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-fresh');
+
+            detail.destroy()
+        });
+
+        test('an idle detail carries no list: it joins the pane for the first resident shown', () => {
+            const idle = Neo.create(AgentDetail, {appName});
+
+            expect(list(idle)).toBeFalsy();
+            idle.destroy();
+
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(null)});
+
+            expect(list(detail).store.className).toBe('AgentOS.store.HeldPullRequests');
+            expect(list(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
+
+        test('nothing held renders the empty sentence, an unanswered read renders no list and says so on the pill (AC-2)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer([prRow('neomjs/neo', 7, 'author', {ci: 'red'})], [], minsAgo(1)))});
+
+            expect(list(detail).store.getCount()).toBe(1);
+
+            // the next answer holds nothing: the Store empties and the sentence replaces the list
+            applySet(detail, {openWorkHeld: heldFrom(answer([], [], minsAgo(1)))});
+            expect(list(detail).store.getCount()).toBe(0);
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(false);
+            expect(none(detail).text).toBe('no pull request waits on this seat');
+            expect(chip(detail, 'prs').text).toBe('updated 1m ago');
+
+            applySet(detail, {openWorkHeld: heldFrom(null)});
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden, 'no answer is not an answer holding nothing').toBe(true);
+            expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
+            expect(chip(detail, 'prs').cls).toContain('is-unobserved');
+
+            detail.destroy()
+        });
+
+        test('a failed pulse reads stale at once: a recent observation the producer marks stale keeps its rows and its real age', () => {
+            const
+                failed = {...answer([prRow('neomjs/neo', 7, 'author', {ci: 'red', observedAt: minsAgo(1)})], [], minsAgo(1)), state: 'stale'},
+                detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(failed)});
+
+            expect(chip(detail, 'prs').text).toBe('stale · last seen 1m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-stale');
+            expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['neomjs/neo #7']);
+
+            // the control: the same observation from a pulse that succeeded is fresh
+            applySet(detail, {openWorkHeld: heldFrom({...failed, state: 'ok'})});
+            expect(chip(detail, 'prs').text).toBe('updated 1m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-fresh');
+
+            detail.destroy()
+        });
+
+        test('the rows re-age with the pane\'s clock, like its pill', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer(
+                [prRow('neomjs/neo', 7, 'author', {ci: 'red', observedAt: minsAgo(2)})], [], minsAgo(2)
+            ))});
+
+            expect(rowsOf(detail)[0].cn.at(-1).text).toBe('author · red · observed 2m ago');
+
+            detail.now = NOW + 60_000;
+            expect(rowsOf(detail)[0].cn.at(-1).text).toBe('author · red · observed 3m ago');
+            expect(chip(detail, 'prs').text).toBe('updated 3m ago');
+
+            detail.destroy()
+        });
+
+        test('a stale read keeps its rows and carries its age; an answer never reads as source not wired (AC-3)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom({
+                ...answer([prRow('neomjs/neo', 7, 'author', {ci: 'red', stale: true, observedAt: minsAgo(12)})], [], minsAgo(12)),
+                state: 'stale'
+            })});
+
+            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['author · red · observed 12m ago · stale']);
+            expect(chip(detail, 'prs').text).toBe('stale · last seen 12m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-stale');
+            expect(chip(detail, 'prs').text).not.toContain('source not wired');
+
+            detail.destroy()
+        });
     });
 
     test('the repository pane and the header row derive from ONE descriptor — the roster row\'s repoStatus fact, aged from the roster admission (#391 AC-2)', () => {

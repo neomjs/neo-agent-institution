@@ -1,5 +1,5 @@
-import {expect, landFleetRoster, landFleetSample, test} from '../../fixtures.mjs';
-import {sampleRoster}                                   from '../../fixture/fleetSample.mjs';
+import {expect, landFleetOpenWork, landFleetRoster, landFleetSample, test} from '../../fixtures.mjs';
+import {sampleOpenWork, sampleRoster}                                      from '../../fixture/fleetSample.mjs';
 
 /**
  * @summary The FM cockpit card→detail drill, proven LIVE through nested content inside the semantic
@@ -93,24 +93,47 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
 
         await expect(pill('lane')).toHaveText('not wired — the roster row carried no lane claim fact');
 
-        for (const [key, producer] of [['thought-stream', /policy-aware read/], ['prs', /open-work projection/]]) {
-            await expect(pill(key), key).toHaveText('not observed — source not wired');
-            await expect(pill(key), key).toHaveAttribute('title', producer)
-        }
+        await expect(pill('thought-stream')).toHaveText('not observed — source not wired');
+        await expect(pill('thought-stream')).toHaveAttribute('title', /policy-aware read/);
+        await expect(pill('prs')).toHaveText('not observed — open-work read unanswered');
+
+        // The Pull requests pane reads the cockpit's one open-work answer: the red head the seat
+        // authored before the review it owes, each reference a link to the forge, and the card's chip
+        // counting the same rows.
+        const
+            seat       = `@${expectedAgentId}`,
+            observedAt = new Date().toISOString(),
+            prRow      = (repo, number, ci, role) => ({repo, number, head: null, ci, verdict: null, mergeable: null, draft: false, reviews: [], observedAt, stale: false, holder: {role, ids: [seat]}}),
+            prs        = detail.locator('.fm-detail-pane-prs .fm-detail-pr');
+
+        await landFleetOpenWork(page, {...sampleOpenWork, observedAt, seats: {
+            [seat]: {authored: [prRow('neomjs/neo', 19501, 'red', 'author')], reviewing: [prRow('neomjs/neo-agent-brain', 802, 'green', 'reviewer')]}
+        }});
+
+        await expect(prs).toHaveCount(2, {timeout: 15000});
+        await expect(prs.nth(0).locator('.fm-detail-pr-ref')).toHaveText('neomjs/neo #19501');
+        await expect(prs.nth(0).locator('.fm-detail-pr-ref')).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/19501');
+        await expect(prs.nth(0).locator('.fm-detail-pr-line')).toHaveText(/^author · red · observed \d+s ago$/);
+        await expect(prs.nth(1).locator('.fm-detail-pr-line')).toHaveText(/^reviewer · review due · observed \d+s ago$/);
+        await expect(pill('prs')).toHaveText(/^updated \d+s ago$/);
+        await expect(targetItem.locator('.fm-card-open-work')).toHaveText('2 PRs · red');
 
         // A roster answer that carries the resident's repository fact lands on the open inspector
         // through the roster's own reconcile: the pill dates from that admission and the pane shows
         // the row's slug and clone path — one producer for the header row, the card and the pane.
-        const laneLine = 'Keeping the fixture lane visible',
-              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString();
+        const laneLine      = 'Keeping the fixture lane visible',
+              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString(),
+              // a seat home's real length: an elided line once hid it on every card
+              repoPath      = '/Users/operator/Library/Application Support/neo-harness/brain/fleet/agents/neo-opus-ada/neomjs/neo';
 
         await landFleetRoster(page, sampleRoster.map(row => row.agentId === expectedAgentId ? {
             ...row,
-            repoSlug: 'neomjs/neo',
-            repoPath: '/seats/neo/clone',
+            harnessType: 'claude-desktop',
+            repoSlug   : 'neomjs/neo',
+            repoPath,
             laneLine,
             laneClaimedAt,
-            sources : {
+            sources    : {
                 ...row.sources,
                 repoStatus: {source: 'fleet:fleetStatus', state: 'wired', confidence: 'observed', reason: null},
                 lane      : {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null}
@@ -120,7 +143,21 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(pill('repo')).toHaveText(/^updated \d+s ago$/, {timeout: 15000});
         await expect(pill('repo')).toHaveClass(/\bis-fresh\b/);
         await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-slug')).toHaveText('neomjs/neo');
-        await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-path')).toHaveText('/seats/neo/clone');
+        await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-path')).toHaveText(repoPath);
+
+        // the path is read once, on the Repository pane, whole (it wraps, nothing is clipped) and
+        // copyable; the Seat row names the family and the Claude Desktop first-launch step; the card
+        // names no path
+        await expect(detail.getByText(repoPath, {exact: true}), 'the path appears once on the detail').toHaveCount(1);
+        expect(await detail.locator('.fm-detail-repo-path').evaluate(line => line.scrollWidth <= line.clientWidth), 'the whole path shows').toBe(true);
+        await expect(detail.locator('.fm-detail-seat-family')).toHaveText('Claude · App');
+        await expect(detail.locator('.fm-detail-seat-launch')).toHaveText('Open the repository folder below in Claude\'s Code tab, then Start on the card.');
+        await expect(targetItem, 'the roster card names no path').not.toContainText(repoPath);
+
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+        await detail.locator('.fm-detail-pane-repo .fm-detail-repo-copy').click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()), {message: 'Copy path puts the whole path on the clipboard'})
+            .toBe(repoPath);
         await expect(detail.locator('.fm-detail-ledger'), 'the header row reads the same fact').toContainText(/repository\s*wired · observed/);
 
         await expect(targetItem.locator('.fm-card-lane')).toContainText(laneLine);

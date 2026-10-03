@@ -68,19 +68,24 @@ class AwaitingMergeMenuList extends MenuList {
     }
 
     /**
-     * @summary One row: the pull request's reference, and `stale` when the producer has not observed it
+     * @summary One row: an anchor to the pull request, and `stale` when the producer has not observed it
      * lately. Every row in the queue is approved on its head, green and mergeable, so the list's name says
-     * that once. Every fragment is an inert `text` node: the repository name is remote data.
+     * that once. The anchor's text is an inert `text` node (the repository name is remote data) and its
+     * `href` is composed from the record's two fields, never taken from the wire; `target="_blank"` reaches
+     * the shell's window policy, which hands an allowlisted `https://github.com` link to the system browser
+     * and opens no window (the shell ADR's external hand-off).
      * @param {AgentOS.model.OpenPullRequest} record
      * @returns {Object}
      */
     createItemContent(record) {
+        const href = `https://github.com/${record.repo}/pull/${record.number}`;
+
         return {
             cls  : ['fm-awaiting-merge-row', ...(record.stale ? ['is-stale'] : [])],
             role : 'menuitem',
-            title: `https://github.com/${record.repo}/pull/${record.number}`,
+            title: href,
             cn   : [
-                {tag: 'span', cls: ['fm-awaiting-merge-ref'], text: `${record.repo} #${record.number}`},
+                {tag: 'a', cls: ['fm-awaiting-merge-ref'], href, rel: 'noopener', target: '_blank', text: `${record.repo} #${record.number}`},
                 ...(record.stale ? [{tag: 'span', cls: ['fm-awaiting-merge-stale'], text: 'stale'}] : [])
             ]
         }

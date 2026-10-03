@@ -18,6 +18,16 @@ const KIND_WORDS = Object.freeze({
 const KIND_RANK = Object.freeze(Object.keys(KIND_WORDS));
 
 /**
+ * @summary The Agent Detail pane's two sentences without rows: the read answered and the seat holds
+ * nothing, or the read has not answered.
+ * @type {Object}
+ */
+const PANE_WORDS = Object.freeze({
+    none      : 'no pull request waits on this seat',
+    unanswered: 'open-work read unanswered'
+});
+
+/**
  * @summary One seat's share of the fleet's open work, as its roster card shows it: the pull requests whose
  * next action the seat holds, counted, with the worst of them named.
  *
@@ -31,13 +41,15 @@ const KIND_RANK = Object.freeze(Object.keys(KIND_WORDS));
  * review due (a requested reviewer's).
  *
  * The chip keeps the open-lane badge's rule: nothing held is no chip, never "0 PRs", and an unanswered or
- * unavailable read is no chip either. Unknown never poses as zero.
+ * unavailable read is no chip either. Unknown never poses as zero. The Agent Detail lists the same rows
+ * ({@link #held}, {@link #describeRow}) and tells nothing held from an unanswered read in words.
  * @class AgentOS.util.OpenWorkSeat
  * @extends Neo.core.Base
  */
 class OpenWorkSeat extends Base {
     static KIND_RANK  = KIND_RANK
     static KIND_WORDS = KIND_WORDS
+    static PANE_WORDS = PANE_WORDS
 
     static config = {
         /**
@@ -65,35 +77,87 @@ class OpenWorkSeat extends Base {
     }
 
     /**
-     * @summary The seat's held open work, or `null` when it holds none or the read cannot say. Its
-     * `observedAt` is the oldest observation among the held rows, the envelope's own when no row carries
-     * one, so a chip that is stale because of one row ages from that row.
+     * @summary The pull requests whose next action the seat holds, worst first, or `null` when the read
+     * has not answered for it (unanswered, unavailable, or no seat identity). An answer that names no
+     * row for the seat holds nothing: `rows` is empty. Its `observedAt` is the oldest observation among
+     * the held rows, the envelope's own when no row carries one, so a surface that is stale because of
+     * one row ages from that row.
+     * @param {Object|null} snapshot     One `fleetOpenWork` envelope, or `null` while unanswered.
+     * @param {String|null} seatIdentity The seat's identity, e.g. `@neo-opus-ada`.
+     * @returns {{rows: Object[], stale: Boolean, observedAt: String|null}|null} Each row is
+     * `{id, kind, number, observedAt, repo, role, stale, title}`, keyed `id` = `<repo>#<number>`;
+     * `title` is `null` while the producer's row carries none.
+     */
+    static held(snapshot, seatIdentity) {
+        if (!seatIdentity || !snapshot || snapshot.state === 'unavailable') return null;
+
+        const
+            lists = snapshot.seats?.[seatIdentity] ?? {},
+            held  = new Map();
+
+        [...(lists.authored ?? []), ...(lists.reviewing ?? [])].forEach(row => {
+            const
+                id   = `${row.repo}#${row.number}`,
+                kind = OpenWorkSeat.kindOf(row, seatIdentity);
+
+            kind && held.set(id, {
+                id,
+                kind,
+                number    : row.number,
+                observedAt: row.observedAt ?? null,
+                repo      : row.repo,
+                role      : row.holder.role,
+                stale     : row.stale === true,
+                title     : row.title || null
+            })
+        });
+
+        const rows = [...held.values()].sort((a, b) => KIND_RANK.indexOf(a.kind) - KIND_RANK.indexOf(b.kind));
+
+        return {
+            rows,
+            stale     : snapshot.state === 'stale' || rows.some(row => row.stale),
+            observedAt: OpenWorkSeat.oldestObservedAt(rows) ?? snapshot.observedAt ?? null
+        }
+    }
+
+    /**
+     * @summary The seat's held open work as its card's chip counts it, or `null` when it holds none or
+     * the read cannot say ({@link #held}).
      * @param {Object|null} snapshot     One `fleetOpenWork` envelope, or `null` while unanswered.
      * @param {String|null} seatIdentity The seat's identity, e.g. `@neo-opus-ada`.
      * @returns {{count: Number, worst: String, stale: Boolean, observedAt: String|null}|null}
      */
     static summarize(snapshot, seatIdentity) {
-        const lists = seatIdentity && snapshot?.state !== 'unavailable' ? snapshot?.seats?.[seatIdentity] : null;
+        const held = OpenWorkSeat.held(snapshot, seatIdentity);
 
-        if (!lists) return null;
+        if (!held?.rows.length) return null;
 
-        const held = new Map();
+        return {count: held.rows.length, worst: held.rows[0].kind, stale: held.stale, observedAt: held.observedAt}
+    }
 
-        [...(lists.authored ?? []), ...(lists.reviewing ?? [])].forEach(row => {
-            const kind = OpenWorkSeat.kindOf(row, seatIdentity);
-
-            kind && held.set(`${row.repo}#${row.number}`, {kind, observedAt: row.observedAt ?? null, stale: row.stale === true})
-        });
-
-        if (held.size === 0) return null;
-
-        const rows = [...held.values()];
+    /**
+     * @summary One held pull request as the Agent Detail lists it: its reference and the link the
+     * reference opens, its title when the producer's row carries one, and one line in the chip's
+     * vocabulary: the seat's role, the state word and the row's age. The link is composed from the
+     * row's own repository and number, never taken from the wire.
+     * @param {Object} row One {@link #held} row.
+     * @param {Number} [now=Date.now()] The viewer's clock, for the row's age.
+     * @returns {{href: String, ref: String, title: String|null, line: String}}
+     */
+    static describeRow(row, now = Date.now()) {
+        const ageMs = row.observedAt ? now - Date.parse(row.observedAt) : NaN;
 
         return {
-            count     : rows.length,
-            worst     : KIND_RANK.find(kind => rows.some(row => row.kind === kind)),
-            stale     : snapshot.state === 'stale' || rows.some(row => row.stale),
-            observedAt: OpenWorkSeat.oldestObservedAt(rows) ?? snapshot.observedAt ?? null
+            href : `https://github.com/${row.repo}/pull/${row.number}`,
+            ref  : `${row.repo} #${row.number}`,
+            title: row.title ?? null,
+            line : [
+                row.role,
+                KIND_WORDS[row.kind],
+                ...(Number.isFinite(ageMs) ? [`observed ${AgentFreshness.formatAge(ageMs)}`] : []),
+                ...(row.stale ? ['stale'] : [])
+            ].join(' · ')
         }
     }
 
