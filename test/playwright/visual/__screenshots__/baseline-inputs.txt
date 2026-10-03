@@ -294,7 +294,7 @@ apps/agentos/view/accounts/List.mjs
     ec8f3ed16cb692813a9ae5d7068d6542e8954b61
 
 apps/agentos/view/accounts/Panel.mjs
-    8ff2db8b9e5711cd14d97277f50eda8004e2e412
+    827ce2a3d75a1f2176af37da580d3600dc841131
 
 apps/agentos/view/fleet/activity/ActorChipComponent.mjs
     80e172b5f0d9a4ed464309e308fb14024fd14b4a
@@ -312,7 +312,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    6d5b93f9ce84934ea22c4e9c3b28b656b6341dd7
+    6e14343b5e3fcca73d4f9fcdc44ff5dabf858005
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     537696eb3f856a5e02eaa241b46cb3a3d318403a
@@ -339,7 +339,7 @@ apps/agentos/view/fleet/cockpit/ViewerWakeTelltaleComponent.mjs
     388ce961936990404da0448e1462b6405b98e7e6
 
 apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
-    063f80cd1cf0059ae79e35c90dee4a9ab0a84d36
+    5a0a48c9033b1a311da9ade7cad3c97caf411f86
 
 apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
@@ -390,13 +390,13 @@ apps/agentos/view/fleet/health/SwatchComponent.mjs
     a2d3e1d8509ca2e06f4f024959aae9005a73dd13
 
 apps/agentos/view/fleet/instances/AddAgentForm.mjs
-    4397a2eb2cf9fca325bd2ebb4e6e7d2ee31c3d3c
+    f29ff12dcd6538c804cb3093bfabd8130e1d4135
 
 apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f
 
 apps/agentos/view/fleet/instances/MenuList.mjs
-    11c7712fc59d19783c0884dc571fc9a2a3933d60
+    01f70510fc5587b1be5f5f27fb9dc11554c73936
 
 apps/agentos/view/fleet/instances/SwitcherButton.mjs
     85b41237b3f9c6326468d862efe72ca8a7ff3a19
