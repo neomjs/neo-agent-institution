@@ -56,3 +56,23 @@ test.describe('AgentOS.util.SourceHealth.resolveFleetDisplayState', () => {
         expect(resolve({sources: wired, state: 'quarantined'})).toEqual({reason: null, state: 'quarantined'})
     })
 });
+
+test.describe('AgentOS.util.SourceHealth.normalizeFleetSources lane axis', () => {
+    test('normalizes the Brain mailbox source, leaves absence not-wired, and rejects a different producer', () => {
+        const
+            lane = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null},
+            wired = SourceHealth.normalizeFleetSources({lane}),
+            empty = SourceHealth.normalizeFleetSources({}),
+            wrong = SourceHealth.normalizeFleetSources({lane: {...lane, source: 'fleet:activity-adapters'}});
+
+        expect(SourceHealth.FLEET_SOURCE_KEYS).toContain('lane');
+        expect(wired.lane).toEqual(lane);
+        expect(empty.lane).toEqual({source: null, state: 'not-wired', confidence: 'none', reason: null});
+        expect(wrong.lane).toEqual({
+            source    : 'fleet:activity-adapters',
+            state     : 'invalid',
+            confidence: 'none',
+            reason    : 'source fact failed producer validation'
+        });
+    });
+});

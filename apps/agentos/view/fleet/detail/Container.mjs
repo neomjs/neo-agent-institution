@@ -5,7 +5,7 @@ import Image                                from '../../../../../node_modules/ne
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
-import ConfigIntentRoundTrip                from '../../../util/ConfigIntentRoundTrip.mjs';
+import Controller                          from './Controller.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
 
@@ -112,6 +112,10 @@ class AgentDetail extends Container {
          * @protected
          */
         className: 'AgentOS.view.fleet.detail.Container',
+        /**
+         * @member {Neo.controller.Component} controller
+         */
+        controller: Controller,
         /**
          * @member {String} ntype='fm-agent-detail'
          * @protected
@@ -318,20 +322,12 @@ class AgentDetail extends Container {
         // the old identity-header placement floated the verb OVER the identity block at rail
         // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
-        // the pane renders and never fetches: it fires the page intent, this view (which holds the
-        // read seam and the subject) performs the bounded re-read. Wired explicitly rather than via
-        // a string handler — this view carries no controller for one to resolve against.
-        // same explicit-wiring rule for the config tab: the card fires, this view runs the shared
-        // bridge round-trip (see onConfigIntent)
         const configPane = this.getReference('config-pane');
-
-        configPane?.on('configIntent', this.onConfigIntent, this);
 
         if (configPane) {
             configPane.tenantStore = this.fleetTenants
         }
-        this.applyRecord();
-        this.startFreshnessAging()
+        this.applyRecord()
     }
 
     /**
@@ -344,26 +340,6 @@ class AgentDetail extends Container {
         const card = this.getReference?.('config-pane');
 
         if (card) card.tenantStore = value
-    }
-
-    /**
-     * @summary Age the freshness labels over wall-clock time — freshness is time-relative, so a
-     * pane that was `fresh` must mechanically decay to `stale` / `lost` even with no new data. A
-     * self-rescheduling timer re-classifies every {@link #freshnessRefreshMs} while a record is
-     * shown; the `isDestroyed` guard ends the loop on teardown (no explicit clear needed). Uses the
-     * live clock (`applyPaneFreshness` reads `now ?? Date.now()`), so a pinned test `now` ages
-     * deterministically via `afterSetNow` instead.
-     * @protected
-     */
-    startFreshnessAging() {
-        let me = this;
-
-        me.timeout(me.freshnessRefreshMs).then(() => {
-            if (!me.isDestroyed) {
-                me.record && me.applyPaneFreshness();
-                me.startFreshnessAging()
-            }
-        })
     }
 
     /**
@@ -411,71 +387,14 @@ class AgentDetail extends Container {
     }
 
     /**
-     * @summary Render the record onto the header, or fall back to the honest empty state.
-     *
-     * The identity header: displayName is mutable display state (falling back
-     * through the durable id, never blank), engineTag is subordinate session-metadata, the id is
-     * always shown as the anchor, participationStatus renders as availability (not a role), and the
-     * family rail + state dot mirror {@link AgentOS.view.fleet.roster.card.Container} (state gated on a wired
-     * runtime source so missing evidence never renders as live).
-     * @protected
-     */
-    /**
-     * The full store-lifecycle listener set for the definitions store — one map, attached and
-     * detached symmetrically ({@link #afterSetAgentDefinitions} + {@link #destroy}). Three distinct
-     * edges, three listeners: `recordChange` (a field mutated in place — record identity unchanged,
-     * so the card's reactive `record` never re-fires), `mutate` (membership: a definition added,
-     * replaced, or removed after this view mounted), `load` (a reload re-seated the rows wholesale).
-     * @returns {Object}
-     * @protected
-     */
-    getDefinitionsStoreListeners() {
-        const me = this;
-
-        return {
-            load        : me.onDefinitionsStoreMutation,
-            mutate      : me.onDefinitionsStoreMutation,
-            recordChange: me.onDefinitionRecordChange,
-            scope       : me
-        }
-    }
-
-    /**
-     * Triggered after the agentDefinitions config got changed — the composition seating the shared
-     * store (or a test seating one directly). Moves the store-lifecycle listeners old → new, then
-     * re-seats the card: a detail mounted BEFORE its definition existed must acquire the record the
-     * moment membership delivers it.
+     * @summary Relay a definitions-Store switch to the lifecycle owner. Initial config assignment
+     * precedes the constructed hook; that hook attaches the current Store once references exist.
      * @param {Neo.data.Store|null} value
      * @param {Neo.data.Store|null} oldValue
      * @protected
      */
     afterSetAgentDefinitions(value, oldValue) {
-        const me = this;
-
-        oldValue?.un?.(me.getDefinitionsStoreListeners());
-        value?.on?.(me.getDefinitionsStoreListeners());
-
-        me.isConstructed && me.applyConfigRecord()
-    }
-
-    /**
-     * @summary Store membership or a wholesale reload changed the definition rows — re-seat the
-     * card from the canonical store. Covers a definition ADDED after mount (null → record),
-     * REPLACED (new instance for the same id), REMOVED (record → honest empty state), and reloads.
-     * @protected
-     */
-    onDefinitionsStoreMutation() {
-        this.applyConfigRecord()
-    }
-
-    /**
-     * @summary Detach the provider-owned store's listeners — the store outlives this view, so an
-     * attached listener would keep firing into a destroyed component.
-     * @param {...*} args
-     */
-    destroy(...args) {
-        this.agentDefinitions?.un?.(this.getDefinitionsStoreListeners());
-        super.destroy(...args)
+        this.isConstructed && this.controller.onDefinitionsStoreChange(value, oldValue)
     }
 
     /**
@@ -494,39 +413,15 @@ class AgentDetail extends Container {
     }
 
     /**
-     * @summary A definition record changed in place (e.g. an accepted configure readback from ANY
-     * owner, incl. Accounts) — refresh the card when the change concerns the seated definition.
-     * @param {Object} data The store's `recordChange` payload.
+     * @summary Render the record onto the header, or fall back to the honest empty state.
+     *
+     * The identity header: displayName is mutable display state (falling back
+     * through the durable id, never blank), engineTag is subordinate session-metadata, the id is
+     * always shown as the anchor, participationStatus renders as availability (not a role), and the
+     * family rail + state dot mirror {@link AgentOS.view.fleet.roster.card.Container} (state gated on a wired
+     * runtime source so missing evidence never renders as live).
      * @protected
      */
-    onDefinitionRecordChange(data) {
-        const card = this.getReference('config-pane');
-
-        card?.record && data?.record?.id === card.record.id && card.refresh()
-    }
-
-    /**
-     * @summary The config tab's `configIntent` → the shared bridge round-trip. Ordering is NOT
-     * owned here: the runner arbitrates supersession per shared record across every owner
-     * (Accounts included), so a newer intent from either surface outranks an older in-flight
-     * response. This owner contributes only its store resolution and its status sink (the card).
-     * Fail-closed and readback-only by construction —
-     * see {@link module:apps/agentos/view/fleet/configIntentRoundTrip}.
-     * @param {Object} intent `{id, harnessType?, mcpServers?, mcpTarget?}` (+ event envelope,
-     *     stripped by the runner).
-     * @returns {Promise<void>}
-     */
-    onConfigIntent(intent={}) {
-        const me = this;
-
-        return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-            intent,
-            owner        : me,
-            setSaveStatus: (agentId, state, reason) => me.getReference('config-pane')?.setSaveStatus(agentId, state, reason),
-            store        : me.agentDefinitions
-        })
-    }
-
     applyRecord() {
         let me     = this,
             record = me.record,
@@ -661,11 +556,10 @@ class AgentDetail extends Container {
      * of the source that answered, or did not.
      *
      * An explicit `paneLedgers` entry wins (a feed stamping the pane directly). Otherwise the pane's
-     * owning producer decides. The repository pane reads the roster row's `repoStatus` fact, the
-     * SAME descriptor the header's `repository` row renders (`renderStateLedger`), so the two can
-     * never disagree: a wired fact observes at the roster admission instant, any other fact is the
-     * descriptor in the roster's own words, and a mount no roster read has reached says so. The
-     * other three panes have no producer on this plane yet ({@link AWAITING} names each), so they
+     * owning producer decides. The lane and repository panes read their roster-row source facts;
+     * wired facts observe at the roster admission instant, any other fact is the descriptor in the
+     * roster's own words, and a mount no roster read has reached says so. The thought-stream and
+     * pull-request panes have no producer on this plane yet ({@link AWAITING} names each), so they
      * resolve to nothing and the pill states the honest unobserved.
      * @param {String} key Pane key.
      * @param {Object|null} explicitLedger The `paneLedgers` entry, if any.
@@ -678,16 +572,17 @@ class AgentDetail extends Container {
             return {descriptor: null, ledger: explicitLedger}
         }
 
-        if (key !== 'repo') {
+        if (key !== 'repo' && key !== 'lane') {
             return {descriptor: null, ledger: null}
         }
 
-        const fact = SourceHealth.normalizeFleetSources(record.sources).repoStatus;
+        const fact = SourceHealth.normalizeFleetSources(record.sources)[key === 'lane' ? 'lane' : 'repoStatus'];
+        const axis = key === 'lane' ? 'lane claim' : 'repository';
 
         if (fact.state !== 'wired') {
-            // the roster's own words when it carried any; a row that carried no repository fact at
-            // all is normalized to not-wired without one, and that absence is the reason
-            return {descriptor: {state: fact.state.replace(/-/g, ' '), reason: fact.reason || 'the roster row carried no repository fact'}, ledger: null}
+            // the roster's own words when it carried any; a row with no fact is normalized to
+            // not-wired without one, and that absence is the reason
+            return {descriptor: {state: fact.state.replace(/-/g, ' '), reason: fact.reason || `the roster row carried no ${axis} fact`}, ledger: null}
         }
 
         return Number.isFinite(this.rosterObservedAt)
@@ -740,8 +635,9 @@ class AgentDetail extends Container {
     /**
      * @summary The honest body content for one pane from the record's known facts.
      *
-     * The lane pane renders the record's lane line with the open-lane count. The repository pane
-     * renders the roster row's slug and clone path. The thought-stream and pull requests panes
+     * The lane pane renders the lane line with its claim age when its source is wired, plus the
+     * independent open-lane count. The repository pane renders the roster row's slug and clone path.
+     * The thought-stream and pull requests panes
      * render nothing until their producers land: each pill names what it waits for, and a body
      * line repeating it would tell the same fact twice per section.
      * @param {String} key Pane key.
@@ -762,11 +658,20 @@ class AgentDetail extends Container {
 
         if (key === 'lane') {
             const
+                laneSource = SourceHealth.normalizeFleetSources(record.sources).lane,
+                wired     = laneSource.state === 'wired',
+                claimedMs = typeof record.laneClaimedAt === 'string' ? Date.parse(record.laneClaimedAt) : NaN,
+                claimAge  = Number.isFinite(claimedMs)
+                    ? AgentFreshness.formatAge((this.now ?? Date.now()) - claimedMs)
+                    : null,
                 laneLine  = record.laneLine || 'no current lane reported',
                 laneCount = Number.isInteger(record.openLaneCount) && record.openLaneCount > 0 ? record.openLaneCount : null,
-                countText = laneCount === null ? '' : ` · ${laneCount} open ${laneCount === 1 ? 'lane' : 'lanes'}`;
+                countText = laneCount === null ? '' : ` · ${laneCount} open ${laneCount === 1 ? 'lane' : 'lanes'}`,
+                lineText  = wired
+                    ? record.laneLine ? `${record.laneLine}${claimAge ? ` · claimed ${claimAge}` : ''}` : 'no lane claimed'
+                    : laneLine;
 
-            body.text = `${laneLine}${countText}`;
+            body.text = `${lineText}${countText}`;
             return
         }
 

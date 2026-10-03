@@ -32,7 +32,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     const liveSources = (runtimeConfidence = 'observed') => ({
         roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed', reason: null},
         repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed', reason: null},
-        runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: runtimeConfidence, reason: null}
+        runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: runtimeConfidence, reason: null},
+        lane      : {source: 'memory-core:mailbox', state: 'not-wired', confidence: 'none', reason: null}
     });
 
     // scope the mock to the `fleet` subkey ONLY: `globalThis.AgentOS` is the app's Neo NAMESPACE
@@ -302,6 +303,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             lastActivityAt: null,
             launchable    : null,
             openLaneCount : null,   // roster-DTO-owned tri-state: un-stamped → honest null (no badge)
+            laneLine      : null,
+            laneClaimedAt : null,
             // the authoritative participation fact: absent on the row → honest null, never guessed
             participationStatus: null,
             // the presence axis rides the same passthrough contract as wake/throttle below
@@ -319,8 +322,28 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             wake    : null
         });
 
-        // laneLine is OMITTED, never nulled — a roster merge must not wipe what the activity producer writes
-        expect(Object.hasOwn(mapped, 'laneLine')).toBe(false)
+        expect(mapped.sources.lane).toEqual(liveSources().lane)
+    });
+
+    test('mapRosterRow carries the lane claim and its independent source fact; a wired page without a claim stays empty', () => {
+        const
+            claimedAt = '2026-10-02T15:30:00.000Z',
+            lane      = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null},
+            mapped    = FleetCockpitController.prototype.mapRosterRow({
+                id: 'resident-key', githubUsername: 'neo-gpt-sophie',
+                laneLine: 'Review the current lane stamp', laneClaimedAt: claimedAt,
+                sources: {...liveSources(), lane}
+            }),
+            empty     = FleetCockpitController.prototype.mapRosterRow({
+                id: 'resident-without-claim', sources: {...liveSources(), lane}
+            });
+
+        expect(mapped).toMatchObject({
+            agentId: 'resident-key', githubUsername: 'neo-gpt-sophie',
+            laneLine: 'Review the current lane stamp', laneClaimedAt: claimedAt,
+            sources: {lane}
+        });
+        expect(empty).toMatchObject({laneLine: null, laneClaimedAt: null, sources: {lane}});
     });
 
     test('mapRosterRow carries the harness key and the working repository the Fleet derived — the clone-path line\'s facts', () => {
@@ -464,6 +487,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             lastActivityAt     : null,
             launchable         : null,
             openLaneCount      : null,
+            laneLine           : null,
+            laneClaimedAt      : null,
             participationStatus: null,
             presence           : null,
             repoOutcomes       : null,

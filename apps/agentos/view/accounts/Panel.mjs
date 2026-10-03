@@ -1,8 +1,7 @@
 import AgentConfigCard       from '../fleet/detail/AgentConfigComponent.mjs';
 import AgentReposCard        from '../fleet/detail/AgentReposContainer.mjs';
 import AddAgentForm          from '../fleet/instances/AddAgentForm.mjs';
-import AddAgentFlow          from '../../util/AddAgentFlow.mjs';
-import ConfigIntentRoundTrip from '../../util/ConfigIntentRoundTrip.mjs';
+import Controller            from './Controller.mjs';
 import List                  from './List.mjs';
 import Button                from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import DashboardPanel        from '../../../../node_modules/neo.mjs/src/dashboard/Panel.mjs';
@@ -77,6 +76,10 @@ class Accounts extends DashboardPanel {
          * @reactive
          */
         cls: ['agent-panel-accounts'],
+        /**
+         * @member {Neo.controller.Component} controller
+         */
+        controller: Controller,
         /**
          * The durable id of the agent whose configuration renders in the card — the fleet is
          * MULTIPLE agents; this view is scoped to one at a time via the definitions list.
@@ -162,22 +165,6 @@ class Accounts extends DashboardPanel {
     }
 
     /**
-     * Monotonic guard for canonical roster reads. An accepted configure response increments the
-     * generation so an older listAgents response cannot overwrite newer persisted truth.
-     * @member {Number} agentDefinitionsLoadGeneration=0
-     * @private
-     */
-    agentDefinitionsLoadGeneration = 0
-
-    /**
-     * Monotonic guard for canonical tenant-roster reads. Only the newest successful, well-formed
-     * `listTenants()` response may replace the provider Store; failures preserve last-known rows.
-     * @member {Number} fleetTenantsLoadGeneration=0
-     * @private
-     */
-    fleetTenantsLoadGeneration = 0
-
-    /**
      * Ephemeral save status per agent. Selection changes re-project this state onto the card, so a
      * pending/accepted/rejected result never moves to or disappears behind another agent.
      * @member {Map<String,Object>} agentConfigSaveStatuses
@@ -194,9 +181,8 @@ class Accounts extends DashboardPanel {
     agentReposSaveStatuses = new Map()
 
     /**
-     * @summary Wire the children's events: each card's `configIntent` (this view owns the bridge
-     * round-trip, see {@link #onAgentConfigIntent} and {@link #onAgentReposIntent}), the form's
-     * `agentDefinitionAccepted` and the list's `select`.
+     * @summary Bind child presentation to the provider Stores and wire local list selection.
+     * The controller handles registry intents after the component is constructed.
      * @param {...*} args
      */
     onConstructed(...args) {
@@ -207,16 +193,13 @@ class Accounts extends DashboardPanel {
             card  = me.getReference('agent-config-card'),
             repos = me.getReference('agent-repos-card');
 
-        card?.on({configIntent: me.onAgentConfigIntent, scope: me});
         if (card) card.tenantStore = me.fleetTenantsStore;
 
-        repos?.on({configIntent: me.onAgentReposIntent, scope: me});
         if (repos) repos.rosterStore = me.fleetRosterStore;
 
-        me.getReference('add-agent-form')?.on({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
         me.getReference('agent-list')?.on({select: me.onAgentListSelect, scope: me});
 
-        me.syncDetail()
+        me.syncSelection()
     }
 
     /**
@@ -251,8 +234,13 @@ class Accounts extends DashboardPanel {
         value   ?.on({...listeners});
         oldValue?.un({...listeners});
 
+        if (oldValue && oldValue !== value) {
+            me.agentConfigSaveStatuses.clear();
+            me.agentReposSaveStatuses.clear()
+        }
+
         me.syncSelection();
-        value && void me.loadAgentDefinitions?.()
+        value && me.isConstructed && void me.controller.loadAgentDefinitions()
     }
 
     /**
@@ -279,7 +267,7 @@ class Accounts extends DashboardPanel {
         const card = this.getReference('agent-config-card');
 
         if (card) card.tenantStore = value;
-        value && void this.loadFleetTenants?.()
+        value && this.isConstructed && void this.controller.loadFleetTenants()
     }
 
     /**
@@ -328,28 +316,6 @@ class Accounts extends DashboardPanel {
     }
 
     /**
-     * @summary The form's accepted definition: land it in the shared roster and re-fire
-     * `agentDefinitionAccepted` so the Viewport refreshes the cockpit's roster. The detail stays on
-     * the form: its status line carries the outcome, and an accepted add can still need the
-     * operator ("its working repository is not set"). The new agent is one click away in the list.
-     * The form's flow has already validated the readback; the check here keeps the roster write
-     * fail-closed on its own.
-     * @param {Object} data
-     * @param {Object} data.agent The registry's public definition.
-     */
-    onAddAgentAccepted({agent}={}) {
-        const me = this;
-
-        // before the roster write: the first agent of an empty roster would otherwise take the
-        // scope through the store listener and swap the form, with its outcome line, for a card
-        me.adding = true;
-
-        if (me.upsertPublicAgentDefinition(agent)) {
-            me.fire('agentDefinitionAccepted', {agent})
-        }
-    }
-
-    /**
      * @summary A list row picked: scope the card to it and leave the add form.
      * @param {Object} data
      * @param {Object[]} data.records
@@ -367,45 +333,6 @@ class Accounts extends DashboardPanel {
      */
     onAgentRosterChange() {
         this.syncSelection()
-    }
-
-    /**
-     * @summary The card's `configIntent` → the `configureAgent` bridge round-trip: the registry
-     * validates + persists, and the RESPONSE (the public definition — the readback) is written
-     * onto the store record, which re-renders the card. Fail-closed: without a bridge nothing
-     * mutates locally — a config that did not persist must never render as if it had.
-     * @param {Object} intent The one wire shape:
-     *     `{id, harnessType?, mcpServers?, mcpTarget?}`.
-     * @returns {Promise<void>}
-     */
-    async onAgentConfigIntent(intent={}) {
-        const me = this;
-
-        return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-            intent,
-            owner        : me,
-            setSaveStatus: me.setAgentConfigSaveStatus.bind(me),
-            store        : me.agentDefinitionsStore
-        })
-    }
-
-    /**
-     * @summary The Repositories card's `configIntent` (`{id, repos}`) → the `setRepos` round-trip,
-     * through the same runner as {@link #onAgentConfigIntent}. The card itself is the owner token:
-     * the runner stays silent when a request is superseded by its own owner, which assumes one
-     * status sink per owner, and the two cards are two sinks.
-     * @param {Object} intent `{id, repos}`.
-     * @returns {Promise<void>}
-     */
-    async onAgentReposIntent(intent={}) {
-        const me = this;
-
-        return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-            intent,
-            owner        : me.getReference('agent-repos-card'),
-            setSaveStatus: me.setAgentReposSaveStatus.bind(me),
-            store        : me.agentDefinitionsStore
-        })
     }
 
     /**
@@ -432,104 +359,12 @@ class Accounts extends DashboardPanel {
     }
 
     /**
-     * @summary Hydrate the provider-hosted AgentDefinitions store from the Brain's canonical public
-     * roster. A failed or stale request preserves the last rendered state. A generation guard keeps
-     * a slow boot read from overwriting a newer accepted configure response.
-     * @returns {Promise<Boolean>} True only when canonical roster data replaced the local projection.
+     * @summary Public Neural Link entrypoint for a canonical definitions refresh. The controller
+     * owns the read and its stale-response fences.
+     * @returns {Promise<Boolean>} Whether the controller accepted new rows.
      */
-    async loadAgentDefinitions() {
-        const
-            me         = this,
-            store      = me.agentDefinitionsStore,
-            bridge     = globalThis.AgentOS?.fleet?.registryBridge,
-            generation = (me.agentDefinitionsLoadGeneration || 0) + 1;
-
-        me.agentDefinitionsLoadGeneration = generation;
-
-        if (!store || typeof bridge?.listAgents !== 'function') {
-            return false
-        }
-
-        // the SHARED write recency: an accepted configure readback from ANY owner (this view's
-        // card OR the AgentDetail tab) bumps the store's write generation — a list snapshot older
-        // than that write must never regress the store
-        const writeGeneration = ConfigIntentRoundTrip.getDefinitionsWriteGeneration(store);
-
-        try {
-            const agents = await bridge.listAgents();
-
-            if (!Array.isArray(agents)) {
-                return false
-            }
-            if (
-                generation !== me.agentDefinitionsLoadGeneration ||
-                store      !== me.agentDefinitionsStore          ||
-                ConfigIntentRoundTrip.getDefinitionsWriteGeneration(store) !== writeGeneration
-            ) {
-                return false
-            }
-
-            store.data = agents;
-            me.syncSelection();
-
-            return true
-        } catch (error) {
-            return false
-        }
-    }
-
-    /**
-     * @summary Hydrate the provider-hosted FleetTenants Store from the Brain's public descriptor
-     * list. The projection is curated field-by-field so a malformed bridge response cannot smuggle
-     * credential-shaped data into Body state. Failed, malformed, or stale reads preserve the last
-     * known tenant choices.
-     * @returns {Promise<Boolean>} True only when canonical public rows replaced the Store.
-     */
-    async loadFleetTenants() {
-        const
-            me         = this,
-            store      = me.fleetTenantsStore,
-            bridge     = globalThis.AgentOS?.fleet?.registryBridge,
-            generation = (me.fleetTenantsLoadGeneration || 0) + 1;
-
-        me.fleetTenantsLoadGeneration = generation;
-
-        if (!store || typeof bridge?.listTenants !== 'function') {
-            return false
-        }
-
-        try {
-            const tenants = await bridge.listTenants();
-
-            if (!Array.isArray(tenants) || tenants.some(tenant =>
-                !tenant ||
-                typeof tenant !== 'object' ||
-                Array.isArray(tenant) ||
-                typeof tenant.id !== 'string' ||
-                !tenant.id ||
-                typeof tenant.endpoint !== 'string' ||
-                !tenant.endpoint ||
-                typeof tenant.status !== 'string' ||
-                !tenant.status
-            )) {
-                return false
-            }
-            if (generation !== me.fleetTenantsLoadGeneration || store !== me.fleetTenantsStore) {
-                return false
-            }
-
-            store.data = tenants.map(tenant => ({
-                id             : tenant.id,
-                endpoint       : tenant.endpoint,
-                status         : tenant.status,
-                deploymentClass: typeof tenant.deploymentClass === 'string' ? tenant.deploymentClass : null,
-                connectedAt    : typeof tenant.connectedAt === 'string' ? tenant.connectedAt : null
-            }));
-
-            return true
-        } catch {
-            return false
-        }
+    loadAgentDefinitions() {
+        return this.controller.loadAgentDefinitions()
     }
 
     /**
@@ -590,35 +425,10 @@ class Accounts extends DashboardPanel {
             };
 
         me.agentDefinitionsStore?.un({...listeners});
-        me.getReference('agent-config-card')?.un({configIntent: me.onAgentConfigIntent, scope: me});
-        me.getReference('agent-repos-card')?.un({configIntent: me.onAgentReposIntent, scope: me});
-        me.getReference('add-agent-form')?.un({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
         me.getReference('agent-list')?.un({select: me.onAgentListSelect, scope: me});
         super.destroy(...args)
     }
 
-    /**
-     * @summary Write the registry's public definition into the Viewport-owned `AgentDefinitions`
-     * store: an existing record updates in place, a new one is added. A definition the flow's
-     * readback guard refuses is not written. This is the configuration projection only — the
-     * separate FleetAgent roster refreshes through the Viewport-owned `agentDefinitionAccepted`
-     * composition seam.
-     * @param {Object} definition The public definition from the add-agent form.
-     * @returns {Boolean} True when the store holds the definition.
-     */
-    upsertPublicAgentDefinition(definition) {
-        const store = this.agentDefinitionsStore;
-
-        if (!store || !AddAgentFlow.validateReadback(definition).valid) {
-            return false
-        }
-
-        const record = store.get(definition.id);
-
-        record ? record.set(definition) : store.add(definition);
-
-        return true
-    }
 }
 
 export default Neo.setupClass(Accounts);

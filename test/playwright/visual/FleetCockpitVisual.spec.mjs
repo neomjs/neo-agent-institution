@@ -1,6 +1,6 @@
 import {test, expect} from '@playwright/test';
 import {landAgentDefinitions, landFleetActivity, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
-import {sampleTasks} from '../fixture/fleetSample.mjs';
+import {sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
 import {sampleShellInitScript} from '../fixture/setupRecipeSample.mjs';
 
 /**
@@ -162,6 +162,32 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await bootSettledCockpit(page);
 
         await expect(page.locator('.fm-fleet-grid')).toHaveScreenshot('fleet-grid-cards.png')
+    });
+
+    test('the lane claim reads on its card, while a wired empty lane says so', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        const laneLine = 'control-plane state synchronization for source-alpha continuation',
+              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString();
+
+        await landFleetRoster(page, sampleRoster.map((row, index) => index < 2 ? {
+            ...row,
+            laneLine     : index === 0 ? laneLine : null,
+            laneClaimedAt: index === 0 ? laneClaimedAt : null,
+            sources      : {
+                ...row.sources,
+                lane: {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null}
+            }
+        } : row));
+
+        const card = row => page.locator('.fm-agent-card', {
+            has: page.getByRole('img', {name: row.displayName, exact: true})
+        });
+
+        await expect(card(sampleRoster[0]).locator('.fm-card-lane')).toContainText('source-alpha continuation · claimed 12m ago');
+        await expect(card(sampleRoster[1]).locator('.fm-card-lane')).toHaveText('no lane claimed');
+        await expect(card(sampleRoster[0])).toHaveScreenshot('fleet-card-lane-claim.png');
+        await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-lane-empty.png')
     });
 
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {

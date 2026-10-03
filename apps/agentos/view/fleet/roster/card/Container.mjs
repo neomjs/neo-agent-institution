@@ -61,10 +61,17 @@ const BEACON_FACETS = Object.freeze({
  */
 const BEACON_PRESENT_GLYPH = '◉';
 
-import FamilyTokens from '../../../../util/FamilyTokens.mjs';
-import NameSlot     from '../../../../util/NameSlot.mjs';
-import SourceHealth from '../../../../util/SourceHealth.mjs';
-import Telltale     from '../../../../util/Telltale.mjs';
+/**
+ * Re-render relative lane age at the same cadence as the Agent Detail freshness panes.
+ * @type {Number}
+ */
+const LANE_AGE_REFRESH_MS = 30_000;
+
+import AgentFreshness from '../../../../util/AgentFreshness.mjs';
+import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
+import NameSlot       from '../../../../util/NameSlot.mjs';
+import SourceHealth   from '../../../../util/SourceHealth.mjs';
+import Telltale       from '../../../../util/Telltale.mjs';
 
 /**
  * The word boundaries a monogram reads initials across: whitespace, hyphens, underscores, dots.
@@ -146,8 +153,14 @@ class AgentCard extends Container {
          * rendering; `pendingAction` + `controlReason` are the B4/C2 control seam.
          * @member {Object|null} record_=null
          * @reactive
-         */
+        */
         record_: null,
+        /**
+         * Injected wall clock for relative lane-age rendering; `null` uses `Date.now()`.
+         * @member {Number|null} now_=null
+         * @reactive
+         */
+        now_: null,
         /**
          * The anatomy — head (avatar · identity[name-line · state-line] · actions) · work-row (lane) ·
          * source strip. Each referenced child is fed from the record by {@link #applyRecord}; FamilyRail
@@ -355,6 +368,14 @@ class AgentCard extends Container {
     }
 
     /**
+     * Owns the active relative-age wait. The Engine's `Base.timeout` cancels it on destroy; this
+     * controller also cancels it when the card is re-seated or its claim stops being ageable.
+     * @member {AbortController|null} laneAgeAbortController=null
+     * @protected
+     */
+    laneAgeAbortController = null
+
+    /**
      * @summary Split a long lane into a short context head + a preserved distinguishing tail with an
      * elided middle. Two lanes sharing a prefix (the narrow-density falsifier) still distinguish by
      * their tail. A lane short enough for the two-line clamp is returned whole (no elision).
@@ -415,6 +436,128 @@ class AgentCard extends Container {
     }
 
     /**
+     * Triggered when the injected wall clock advances; the lane ages without a roster record change.
+     * @param {Number|null} value
+     * @param {Number|null} oldValue
+     * @protected
+     */
+    afterSetNow(value, oldValue) {
+        this.isConstructed && this.refreshLaneLine()
+    }
+
+    /**
+     * @summary Re-renders only the lane child and starts or stops its age ticker from the current
+     * record's source and claim facts.
+     * @param {Object|null} [record=this.record]
+     * @param {Object|null} [laneSource]
+     * @returns {Boolean} true when the current record has a wired, valid lane claim to age.
+     * @protected
+     */
+    refreshLaneLine(record = this.record, laneSource = null) {
+        if (!record) {
+            this.stopLaneAging();
+            return false
+        }
+
+        const
+            source = laneSource ?? SourceHealth.normalizeFleetSources(record.sources).lane,
+            active = this.renderLaneLine(record, source);
+
+        if (active) {
+            this.startLaneAging()
+        } else {
+            this.stopLaneAging()
+        }
+
+        return active
+    }
+
+    /**
+     * @summary Renders the claim as inert text, eliding the subject before appending its age so the
+     * distinguishing tail remains visible.
+     * @param {Object} record
+     * @param {Object} laneSource Normalized `sources.lane` fact.
+     * @returns {Boolean} true when this wired subject has a parseable claim instant.
+     * @protected
+     */
+    renderLaneLine(record, laneSource) {
+        const
+            laneLine    = typeof record.laneLine === 'string' ? record.laneLine : null,
+            claimedMs   = typeof record.laneClaimedAt === 'string' ? Date.parse(record.laneClaimedAt) : NaN,
+            hasSubject  = laneSource?.state === 'wired' && Boolean(laneLine?.trim()),
+            active      = hasSubject && Number.isFinite(claimedMs),
+            now         = Number.isFinite(this.now) ? this.now : Date.now(),
+            ageMs       = active ? now - claimedMs : NaN,
+            claimAge    = Number.isFinite(ageMs) ? AgentFreshness.formatAge(ageMs) : null,
+            laneText    = laneSource?.state === 'wired' ? laneLine?.trim() ? laneLine : 'no lane claimed' : laneLine,
+            suffix      = active && claimAge ? ` · claimed ${claimAge}` : '',
+            lane        = this.getReference('card-lane'),
+            elided      = AgentCard.elideLaneLine(laneText);
+
+        lane.vdom.cn = elided.whole !== undefined
+            ? [{tag: 'span', cls: ['fm-lane-whole'], text: `${elided.whole}${suffix}`}]
+            : [
+                {tag: 'span', cls: ['fm-lane-elide'], text: elided.head},
+                {tag: 'span', cls: ['fm-lane-tail'],  text: `${elided.tail}${suffix}`}
+            ];
+        lane.changeVdomRootKey('title', hasSubject ? `${laneLine}${suffix}` : null);
+        lane.update();
+
+        return active
+    }
+
+    /**
+     * @summary Starts one card-owned wait while the current claim needs aging.
+     * @protected
+     */
+    startLaneAging() {
+        if (this.laneAgeAbortController || this.isDestroyed) return;
+
+        this.laneAgeAbortController = new AbortController();
+        this.scheduleLaneAging(this.laneAgeAbortController)
+    }
+
+    /**
+     * @summary Re-renders only the lane text on the card's owned timeout and continues while the
+     * same card still has an ageable claim.
+     * @param {AbortController} controller The current card-owned wait cancellation token.
+     * @protected
+     */
+    scheduleLaneAging(controller) {
+        this.timeout(LANE_AGE_REFRESH_MS, {signal: controller.signal}).then(() => {
+            if (this.isDestroyed || controller.signal.aborted || this.laneAgeAbortController !== controller) return;
+
+            if (this.renderLaneLine(this.record, SourceHealth.normalizeFleetSources(this.record?.sources).lane)) {
+                this.scheduleLaneAging(controller)
+            } else {
+                this.stopLaneAging()
+            }
+        }).catch(error => {
+            // Base.timeout rejects on destroy; the abort signal rejects on record/source changes.
+            if (!controller.signal.aborted && error !== Neo.isDestroyed) throw error
+        })
+    }
+
+    /**
+     * @summary Cancels the current age wait when its claim or card is retired.
+     * @protected
+     */
+    stopLaneAging() {
+        this.laneAgeAbortController?.abort();
+        this.laneAgeAbortController = null
+    }
+
+    /**
+     * Base.timeout is destroyed with the instance; abort the lane loop first so its owner token and
+     * re-seat path settle together with the card.
+     * @param {Boolean} value
+     * @protected
+     */
+    afterSetIsDestroying(value) {
+        value && this.stopLaneAging()
+    }
+
+    /**
      * @summary Render the record onto the card's referenced children, in place.
      *
      * Display fields land on the rail / avatar / identity / lane / strip surfaces. Source facts are
@@ -432,6 +575,7 @@ class AgentCard extends Container {
             record = me.record;
 
         if (!record) {
+            me.stopLaneAging();
             return
         }
 
@@ -558,24 +702,7 @@ class AgentCard extends Container {
 
         me.getReference('card-engine').text = record.engineTag ?? '';
 
-        // the lane: head+tail middle elision so a shared prefix cannot collapse two lanes to the same
-        // visible fragment — the preserved tail distinguishes them
-        const
-            lane   = me.getReference('card-lane'),
-            elided = AgentCard.elideLaneLine(record.laneLine);
-
-        // set the lane's CHILD nodes (mutating cn, not replacing the whole vdom — a full replace
-        // clobbers the component's root id/cls and the lane never mounts). Each fragment renders as an
-        // inert `text` node, NEVER `html`: record.laneLine is remote fleet data, and Neo's vdom `html`
-        // is innerHTML — a text node cannot execute an adapter-supplied lane string (mirrors the
-        // AgentDetail telltale contract: escaping is forgettable, a text node cannot be got wrong).
-        lane.vdom.cn = elided.whole !== undefined
-            ? [{tag: 'span', cls: ['fm-lane-whole'], text: elided.whole}]
-            : [
-                {tag: 'span', cls: ['fm-lane-elide'], text: elided.head},
-                {tag: 'span', cls: ['fm-lane-tail'],  text: elided.tail}
-            ];
-        lane.update();
+        me.refreshLaneLine(record, sources.lane);
 
         // the clone path: only a REPORTED path renders (null = no repository or no repo status on
         // the row → no line, never a placeholder). A Claude Desktop seat leads with the verb, since

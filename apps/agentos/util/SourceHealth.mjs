@@ -3,20 +3,22 @@ import {FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/f
 
 /**
  * @summary Closed source-health contract shared by the Fleet cockpit's store-backed cards and
- * serializable dock blueprints. It preserves the DTO's roster / repo / runtime provenance under a
+ * serializable dock blueprints. It preserves the DTO's roster / repo / runtime / lane provenance under a
  * three-way honesty split: GENUINE absence (absent key or declared `not-wired`) is calm; a present
  * fact the contract REJECTS (malformed, cross-axis, contradictory) is `invalid` — operator-visible
  * and attention-bearing, never a healthy fact and never silently absent.
  */
 
-const FLEET_SOURCE_KEYS = Object.freeze(['roster', 'repoStatus', 'runtime']);
+const FLEET_SOURCE_KEYS = Object.freeze(['roster', 'repoStatus', 'runtime', 'lane']);
 
 const
     CARD_STATES         = Object.freeze(['ok', 'idle', 'wedged', 'limited', 'off']),
     FLEET_SOURCE_BY_KEY = Object.freeze({
         roster    : FLEET_COCKPIT_SOURCES.roster,
         repoStatus: FLEET_COCKPIT_SOURCES.repoStatus,
-        runtime   : FLEET_COCKPIT_SOURCES.runtime
+        runtime   : FLEET_COCKPIT_SOURCES.runtime,
+        // Lane claims are folded from the A2A mailbox page already held by the Brain.
+        lane      : FLEET_COCKPIT_SOURCES.a2a
     });
 
 /**
@@ -110,7 +112,7 @@ class SourceHealth extends Base {
     /**
      * @summary Normalize one named Fleet source axis against its exact DTO producer. Unknown axes fail
      * closed rather than inheriting the generic source-fact behavior.
-     * @param {String} sourceKey `roster` · `repoStatus` · `runtime`
+     * @param {String} sourceKey `roster` · `repoStatus` · `runtime` · `lane`
      * @param {*} value Source-health input; malformed values fail closed.
      * @returns {{source: String|null, state: String, confidence: String}}
      */
@@ -121,10 +123,12 @@ class SourceHealth extends Base {
     }
 
     /**
-     * @summary Normalize the three per-row Fleet source facts. Extra future keys are ignored so this
-     * card-grain contract can evolve independently from broader cockpit DTO capabilities.
+     * @summary Normalize the four per-row Fleet source facts. Extra future keys are ignored so this
+     * card-grain contract can evolve independently from broader cockpit DTO capabilities. The
+     * lane axis is available to its card and detail pane; the card health summary keeps its existing
+     * runtime / repository / roster axes.
      * @param {*} value Source collection; malformed values fail closed.
-     * @returns {{roster: Object, repoStatus: Object, runtime: Object}}
+     * @returns {{roster: Object, repoStatus: Object, runtime: Object, lane: Object}}
      */
     static normalizeFleetSources(value) {
         const input = SourceHealth.#isPlainObject(value) ? value : {};

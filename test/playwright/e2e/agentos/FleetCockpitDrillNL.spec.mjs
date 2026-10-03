@@ -91,7 +91,9 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(pill('repo')).toHaveText('not wired — the roster row carried no repository fact', {timeout: 15000});
         await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-slug')).toHaveText('no repository declared');
 
-        for (const [key, producer] of [['thought-stream', /policy-aware read/], ['lane', /lane stamp/], ['prs', /open-work projection/]]) {
+        await expect(pill('lane')).toHaveText('not wired — the roster row carried no lane claim fact');
+
+        for (const [key, producer] of [['thought-stream', /policy-aware read/], ['prs', /open-work projection/]]) {
             await expect(pill(key), key).toHaveText('not observed — source not wired');
             await expect(pill(key), key).toHaveAttribute('title', producer)
         }
@@ -99,17 +101,34 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         // A roster answer that carries the resident's repository fact lands on the open inspector
         // through the roster's own reconcile: the pill dates from that admission and the pane shows
         // the row's slug and clone path — one producer for the header row, the card and the pane.
+        const laneLine = 'Keeping the fixture lane visible',
+              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString();
+
         await landFleetRoster(page, sampleRoster.map(row => row.agentId === expectedAgentId ? {
             ...row,
             repoSlug: 'neomjs/neo',
             repoPath: '/seats/neo/clone',
-            sources : {...row.sources, repoStatus: {source: 'fleet:fleetStatus', state: 'wired', confidence: 'observed', reason: null}}
+            laneLine,
+            laneClaimedAt,
+            sources : {
+                ...row.sources,
+                repoStatus: {source: 'fleet:fleetStatus', state: 'wired', confidence: 'observed', reason: null},
+                lane      : {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null}
+            }
         } : row));
 
         await expect(pill('repo')).toHaveText(/^updated \d+s ago$/, {timeout: 15000});
         await expect(pill('repo')).toHaveClass(/\bis-fresh\b/);
         await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-slug')).toHaveText('neomjs/neo');
         await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-path')).toHaveText('/seats/neo/clone');
-        await expect(detail.locator('.fm-detail-ledger'), 'the header row reads the same fact').toContainText(/repository\s*wired · observed/)
+        await expect(detail.locator('.fm-detail-ledger'), 'the header row reads the same fact').toContainText(/repository\s*wired · observed/);
+
+        await expect(targetItem.locator('.fm-card-lane')).toContainText(laneLine);
+        await expect(targetItem.locator('.fm-card-lane')).toContainText(/claimed \d+m ago/);
+        await expect(pill('lane')).toHaveText(/^updated \d+s ago$/);
+        await expect(pill('lane')).toHaveClass(/\bis-fresh\b/);
+        await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(laneLine);
+        await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(/claimed \d+m ago/)
     })
 });
+

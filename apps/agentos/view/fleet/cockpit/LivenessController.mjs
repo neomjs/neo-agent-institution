@@ -1,4 +1,4 @@
-import ComponentController  from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import ViewerWakeController from './ViewerWakeController.mjs';
 import BrainHealthRead      from '../../../util/BrainHealthRead.mjs';
 import DeploymentStateRead  from '../../../util/DeploymentStateRead.mjs';
 import FleetAdmission       from '../../../util/FleetAdmission.mjs';
@@ -29,8 +29,8 @@ const
 /**
  * @summary The cockpit's liveness layer — the fenced wire reads that make `live` mean live, and
  * everything derived from them: the roster/activity/Brain-health loads with their loss edges,
- * the cadence owner, the one-click reconnect, the viewer-wake stream custody and the
- * roster-derived option builders. The intent layer
+ * the cadence owner, the one-click reconnect and roster-derived option builders. Viewer-wake
+ * custody belongs to the inherited ViewerWakeController layer. The intent layer
  * ({@link AgentOS.view.fleet.cockpit.Controller}) extends this class; splitting the read layer
  * from the command layer keeps each below the app-file bound with one honest seam.
  *
@@ -40,9 +40,9 @@ const
  * {@link AgentOS.view.fleet.cockpit.StateProvider}; the banner and telltale derive themselves.
  *
  * @class AgentOS.view.fleet.cockpit.LivenessController
- * @extends Neo.controller.Component
+ * @extends AgentOS.view.fleet.cockpit.ViewerWakeController
  */
-class LivenessController extends ComponentController {
+class LivenessController extends ViewerWakeController {
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.cockpit.LivenessController'
@@ -182,19 +182,6 @@ class LivenessController extends ComponentController {
      */
     activityProfileId = null
     /**
-     * The live wake-stream consumer + the bridge identity it was opened against (custody heals
-     * swap the bridge; a kept consumer would outlive its authority).
-     * @member {Object|null} viewerWakeConsumer=null
-     * @protected
-     */
-    viewerWakeConsumer = null
-    /**
-     * @member {Object|null} viewerWakeBridge=null
-     * @protected
-     */
-    viewerWakeBridge = null
-
-    /**
      * @summary Re-poll the roster once a lifecycle intent genuinely changed runtime state — and
      * never on a rejected/timeout outcome, whose honest reason render must stand.
      * @param {Promise<Boolean>} settledOk
@@ -227,19 +214,6 @@ class LivenessController extends ComponentController {
     resolveFleetActivityEventsStore() {
         try {
             return this.component.getStateProvider()?.getStore('fleetActivityEvents') ?? null
-        } catch {
-            return null
-        }
-    }
-
-    /**
-     * @summary The provider-owned bounded viewer-wake feed, same tolerance.
-     * @returns {Neo.data.Store|null}
-     * @protected
-     */
-    getViewerWakeFeed() {
-        try {
-            return this.component.getStateProvider()?.getStore('viewerWakeFeed') ?? null
         } catch {
             return null
         }
@@ -815,119 +789,13 @@ class LivenessController extends ComponentController {
     }
 
     /**
-     * @summary Keep exactly one wake-stream consumer bound to the CURRENT bridge identity: a
-     * custody heal swaps the bridge, and a consumer kept across that swap would hold a
-     * credentialed connection on dead authority. An unwired bridge stamps the honest not-wired
-     * truth instead.
-     * @protected
-     */
-    ensureViewerWakeStream() {
-        const
-            me       = this,
-            {bridge} = me;
-
-        if (!bridge?.openWakeStream) {
-            if (me.viewerWakeConsumer) {
-                me.viewerWakeConsumer.stop();
-                me.viewerWakeConsumer = null;
-                me.viewerWakeBridge   = null
-            }
-
-            me.stampViewerWake({
-                stream: {
-                    alive     : 'unknown',
-                    reason    : 'wake push not wired — this composition carries no direct-browser wake capability',
-                    capturedAt: Date.now()
-                }
-            });
-            return
-        }
-
-        if (me.viewerWakeConsumer && me.viewerWakeBridge === bridge) {
-            me.stampViewerWake();
-            return
-        }
-
-        me.viewerWakeConsumer?.stop();
-
-        me.viewerWakeConsumer = bridge.openWakeStream({
-            onWake: signal => me.onViewerWakeSignal(signal),
-            ...(me.component.wakePollDigest ? {pollDigest: me.component.wakePollDigest} : {})
-        });
-        me.viewerWakeBridge = bridge;
-
-        me.viewerWakeConsumer.start();
-        me.stampViewerWake()
-    }
-
-    /**
-     * @summary One observed wake frame → the bounded feed + an immediate stamp. A frame carrying
-     * no envelope is still a receipt (the stream moved) but yields no feed row to fabricate.
-     * @param {Object} signal `{subscriptionId, envelope, receivedAt}` from the consumer's onWake.
-     * @protected
-     */
-    onViewerWakeSignal({subscriptionId, envelope, receivedAt}) {
-        const me = this;
-
-        if (me.isDestroyed) return;
-
-        if (envelope?.eventId) {
-            me.getViewerWakeFeed()?.addSignal({
-                eventId  : envelope.eventId,
-                kind     : envelope.eventType ?? 'wake',
-                logId    : envelope.logId ?? null,
-                emittedAt: envelope.emittedAt ?? null,
-                receivedAt,
-                subscriptionId
-            })
-        }
-
-        me.stampViewerWake()
-    }
-
-    /**
-     * @summary Write the consumer's OWN observations into the provider (`viewerWake`) — the
-     * telltale binds and renders itself: one writer, zero re-judging, liveness vocabulary and
-     * catch-up states pass through verbatim.
-     * @param {Object} [override] `{stream}` for the not-wired stamp, when no consumer exists.
-     * @protected
-     */
-    stampViewerWake(override = null) {
-        const
-            me       = this,
-            provider = me.component.getStateProvider(),
-            consumer = me.viewerWakeConsumer;
-
-        if (!provider) return;
-
-        provider.setData('viewerWake', {
-            stream: override?.stream ?? (consumer
-                ? {...consumer.resolveDeliveryLiveness(), capturedAt: Date.now()}
-                : {alive: 'unknown', reason: 'wake stream not started', capturedAt: Date.now()}),
-            catchUp: consumer?.describe().lastCatchUp ?? {state: null, at: null, pending: null},
-            // the bounded signal window rides the stamp so the telltale FORMULA derives the chip
-            // from data alone (formulas receive data, never the provider)
-            signals: (me.getViewerWakeFeed()?.items ?? []).slice(0, 5).map(record => ({
-                kind      : record.kind,
-                emittedAt : record.emittedAt,
-                receivedAt: record.receivedAt
-            }))
-        })
-    }
-
-    /**
-     * @summary Detach the controller-owned liveness machinery with the view: the timer and the
-     * credentialed wake consumer must not outlive the surface they speak for.
+     * @summary Stop liveness before the inherited wake owner releases its consumer.
      * @param {...*} args
      */
     destroy(...args) {
         const me = this;
 
         me.stopLiveness();
-
-        me.viewerWakeConsumer?.stop();
-        me.viewerWakeConsumer = null;
-        me.viewerWakeBridge   = null;
 
         super.destroy(...args)
     }
