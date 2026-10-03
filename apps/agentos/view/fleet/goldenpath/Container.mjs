@@ -10,9 +10,9 @@ import ViewerTime         from '../../../util/ViewerTime.mjs';
  * @summary Renders the `fleetGoldenPath` envelope as a complete producer-written Markdown reading surface.
  * The typed route remains compact independent state (currency, REM and provenance), never a duplicate
  * rendering of the same recommendations; it reads first, as one facts row under the head, in the order
- * of trust — when the route was captured, how digested the memory behind it is, which run produced it —
- * and the recommendation is the pane's scrolling column beneath it, so the facts never leave the screen
- * whatever height the pane gets. It synthesizes, ranks, merges and caches nothing. The envelope is the
+ * of trust — when the route was captured, how digested the memory behind it is, which run produced it,
+ * when the recommendation's own source last changed — and the recommendation is the pane's scrolling
+ * column beneath it, so the facts never leave the screen whatever height the pane gets. It synthesizes, ranks, merges and caches nothing. The envelope is the
  * cockpit's `goldenPathEnvelope` leaf, bound like every other Golden Path pane's. Reads are intent events
  * that the owning cockpit relays to the authenticated fleet bridge.
  *
@@ -91,13 +91,12 @@ class GoldenPathPane extends Container {
                 ntype    : 'component',
                 cls      : ['fm-golden-path-provenance'],
                 reference: 'golden-path-provenance'
+            }, {
+                ntype    : 'component',
+                cls      : ['fm-golden-path-handoff-state'],
+                hidden   : true,
+                reference: 'golden-path-handoff-state'
             }]
-        }, {
-            ntype    : 'component',
-            cls      : ['fm-golden-path-handoff-state'],
-            flex     : 'none',
-            hidden   : true,
-            reference: 'golden-path-handoff-state'
         }, {
             module    : MarkdownComponent,
             cls       : ['fm-golden-path-markdown'],

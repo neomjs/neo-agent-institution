@@ -62,8 +62,8 @@ test.describe('AgentOS.view.fleet.goldenpath.Container — complete producer han
             facts = pane.getReference('golden-path-facts'),
             order = pane.items.map(item => item.reference || item.cls?.[0]);
 
-        expect(facts.items.map(item => item.reference), 'currency, REM, run — the order of trust').toEqual([
-            'golden-path-currency', 'golden-path-rem', 'golden-path-provenance'
+        expect(facts.items.map(item => item.reference), 'currency, REM, run, the recommendation\'s source — the order of trust').toEqual([
+            'golden-path-currency', 'golden-path-rem', 'golden-path-provenance', 'golden-path-handoff-state'
         ]);
         expect(facts.flex, 'the facts never shrink or scroll').toBe('none');
         expect(order.indexOf('golden-path-facts'), 'the facts sit directly under the head').toBe(1);
