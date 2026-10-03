@@ -124,7 +124,7 @@ class InstanceMenuList extends MenuList {
             cn               : [
                 {tag: 'span', cls: ['fm-state-dot', stateClass(rowState)], 'aria-hidden': 'true'},
                 {tag: 'span', cls: ['fm-instance-row-name'],      text: displayInstanceLabel(record)},
-                {tag: 'span', cls: ['fm-instance-row-endpoint'],  text: record.canonicalEndpoint},
+                {tag: 'span', cls: ['fm-instance-row-endpoint'],  text: record.canonicalEndpoint || 'no address recorded for this instance'},
                 {tag: 'span', cls: ['fm-instance-row-custodian'], text: record.custodian}
             ]
         }
@@ -208,6 +208,11 @@ class InstanceMenuList extends MenuList {
             role        : 'menu',
             'aria-label': 'Available Agent OS instances'
         });
+        // `list.Base#afterSetStore` builds items only for a Store that already holds rows, and waits
+        // for `load` otherwise. The packaged shell's Store holds none — its saved plane is the shell's,
+        // not a Fleet profile row — so nothing ever built the terminal item and the open menu was a
+        // 10 px bar (#500's installed witness). The menu's own affordance does not depend on rows.
+        this.createItems(true);
         this.parentComponent?.onInstanceMenuReady(this)
     }
 

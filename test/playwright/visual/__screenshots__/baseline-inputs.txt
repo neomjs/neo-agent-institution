@@ -387,7 +387,7 @@ apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f
 
 apps/agentos/view/fleet/instances/MenuList.mjs
-    ccdf45c8b6908038853fa498cd5147fe98f43f32
+    e12ff210f89413975869a8e9235b39f99254a9b2
 
 apps/agentos/view/fleet/instances/SwitcherButton.mjs
     85b41237b3f9c6326468d862efe72ca8a7ff3a19

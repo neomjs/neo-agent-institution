@@ -75,6 +75,31 @@ test.describe('InstanceSwitcher — framework button + Store-backed menu (#17367
         store.destroy()
     });
 
+    test('an EMPTY Store still gets its terminal item at construction: the packaged shell\'s menu is never a bare bar (#500)', async () => {
+        // The installed witness: the shell's saved plane is not a Fleet profile row, so the Store holds
+        // nothing, `list.Base` builds items only for a Store with rows, and the open menu measured 10 px.
+        const store    = Neo.create(FleetInstances, {data: []});
+        const switcher = Neo.create(InstanceSwitcher, {appName, instanceState: 'limited', instanceStore: store, shellCustody: true, shellPlaneBase: 'http://127.0.0.1:3102'});
+        const menu     = await waitForMenu(switcher);
+
+        // No manual createItems here — the construction path is what the witness found silent.
+        expect(menu.vdom.cn, 'the menu built its own affordance without a Store row').toHaveLength(1);
+        expect(menu.vdom.cn[0].cls).toContain('fm-instance-manage');
+        expect(menu.vdom.cn[0].role).toBe('menuitem');
+        expect(menu.vdom.cn[0].text).toBe('Connect a plane…');
+
+        // A row the list can only half read says so in words instead of rendering "undefined".
+        store.add({...createFleetProfile({custodian: 'session-only', endpoint: 'http://127.0.0.1:8083/fleet', label: 'local'}), canonicalEndpoint: ''});
+        menu.createItems(true);
+
+        const row = menu.vdom.cn.find(item => item.cls?.includes('fm-instance-row'));
+
+        expect(row.cn[2].text).toBe('no address recorded for this instance');
+
+        switcher.destroy();
+        store.destroy()
+    });
+
     test('menu.List renders the provider Store records plus one terminal manage item; bound state is structural', async () => {
         const store    = makeStore();
         const switcher = Neo.create(InstanceSwitcher, {appName, boundProfileId: localId, instanceState: 'ok', instanceStore: store});
