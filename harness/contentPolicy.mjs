@@ -151,6 +151,52 @@ export function isHarnessPopupUrl(value) {
 }
 
 /**
+ * The hosts a denied window-open may be handed to the system browser for (shell ADR §2.3 item 2,
+ * the external hand-off): the one host the cockpit's citations and merge-queue rows link to. An
+ * addition amends the ADR paragraph first.
+ * @type {ReadonlyArray<String>}
+ */
+export const EXTERNAL_LINK_HOSTS = Object.freeze(['github.com']);
+
+/**
+ * @summary Whether a URL may leave the shell for the system browser: `https:`, an allowlisted host,
+ * no credentials. Anything else — `http:`, another host, a user:password pair, `javascript:`,
+ * `file:`, `app:` — is `false`, and a `false` opens nothing.
+ * @param {String} value
+ * @returns {Boolean}
+ */
+export function isExternalLinkUrl(value) {
+    let url;
+
+    try {
+        url = new URL(String(value))
+    } catch {
+        return false
+    }
+
+    return url.protocol === 'https:' &&
+        url.username === '' &&
+        url.password === '' &&
+        EXTERNAL_LINK_HOSTS.includes(url.hostname)
+}
+
+/**
+ * @summary The window policy's one decision for a `window.open` or a `target="_blank"` anchor:
+ * `allow` for the harness's own popups, otherwise `deny` — and, for an admitted external link, the
+ * hand-off to the system browser beside the denial. The in-app window is never opened for a
+ * foreign URL; `will-navigate` keeps same-window navigation on harness documents alone.
+ * @param {String} value
+ * @returns {{action: 'allow'|'deny', openExternal: Boolean}}
+ */
+export function windowOpenDisposition(value) {
+    if (isHarnessPopupUrl(value)) {
+        return {action: 'allow', openExternal: false}
+    }
+
+    return {action: 'deny', openExternal: isExternalLinkUrl(value)}
+}
+
+/**
  * Creates a resolver whose realpath containment check cannot be bypassed through symlinks.
  * @summary Maps only explicit public renderer assets to regular files inside the canonical repo root.
  * @param {String} repoRoot

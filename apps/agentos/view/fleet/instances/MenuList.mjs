@@ -124,7 +124,7 @@ class InstanceMenuList extends MenuList {
             cn               : [
                 {tag: 'span', cls: ['fm-state-dot', stateClass(rowState)], 'aria-hidden': 'true'},
                 {tag: 'span', cls: ['fm-instance-row-name'],      text: displayInstanceLabel(record)},
-                {tag: 'span', cls: ['fm-instance-row-endpoint'],  text: record.canonicalEndpoint},
+                {tag: 'span', cls: ['fm-instance-row-endpoint'],  text: record.canonicalEndpoint || 'no address recorded for this instance'},
                 {tag: 'span', cls: ['fm-instance-row-custodian'], text: record.custodian}
             ]
         }
@@ -208,6 +208,8 @@ class InstanceMenuList extends MenuList {
             role        : 'menu',
             'aria-label': 'Available Agent OS instances'
         });
+        // The terminal affordance must exist even when the Store is empty and has never emitted `load`.
+        this.createItems(true);
         this.parentComponent?.onInstanceMenuReady(this)
     }
 

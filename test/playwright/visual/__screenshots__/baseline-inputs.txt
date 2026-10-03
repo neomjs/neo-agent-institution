@@ -6,7 +6,7 @@ engine
     04362ea8181894ec75f5d0c79e5c9b32ee9c28d14437963cc2924a8925a1f025
 
 apps/agentos/CARD-CONTRACT.md
-    8b84e41fe1f247b4e19e6df08ca2de27dc906622
+    1de3ce3d389d3d65cbb4e21e71b7c26c071cc404
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -345,7 +345,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    df04ad804236ca0bdb3b441cf6730cf2905ed871
+    2c8e8fe9a52096c08d7bf8b7e4c1db129ed6f381
 
 apps/agentos/view/fleet/detail/Controller.mjs
     9c9d839fd9613ad24cccb7b9cdbdf4e520c0bafe
@@ -396,7 +396,7 @@ apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f
 
 apps/agentos/view/fleet/instances/MenuList.mjs
-    ccdf45c8b6908038853fa498cd5147fe98f43f32
+    11c7712fc59d19783c0884dc571fc9a2a3933d60
 
 apps/agentos/view/fleet/instances/SwitcherButton.mjs
     85b41237b3f9c6326468d862efe72ca8a7ff3a19
@@ -447,7 +447,7 @@ apps/agentos/view/fleet/roster/AwaitingMergeButton.mjs
     5209afe46d946b9b9a56b224b2afe59e947c870c
 
 apps/agentos/view/fleet/roster/AwaitingMergeMenuList.mjs
-    700df252dfafd63f8c8b49914d82a40faef44588
+    13ff844cf5d0303aef565b344da9837af134096c
 
 apps/agentos/view/fleet/roster/Container.mjs
     a6f6f8a61427612cba00b5245e4b99de7c5ffeac
@@ -462,7 +462,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    e381dcc64fd5dcd262e5264219ae04c339a7705d
+    93844c0035c87bfd19e999a8e1d4b8930395912a
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     64238dd4bac922bbfd33878431f3b9a21f9d8dfb
@@ -549,7 +549,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    e6880281f5a7aca08233ae119ea7ad5518ec6646
+    164df639397b08ebdd36de349677136263cbe8f3
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
@@ -603,7 +603,7 @@ resources/scss/src/apps/agentos/fleet/roster/Container.scss
     6d2873b22214c71368ae1e7352e1023eede8cc08
 
 resources/scss/src/apps/agentos/fleet/roster/card/Container.scss
-    1a9bb4feabe5a94444f1a3587b1e3eab0d38a92c
+    3f134908ca4f7e93a8367525f0cace88215b9d34
 
 resources/scss/src/apps/agentos/fleet/shared/FamilyRailComponent.scss
     a44934170253161f3d0067031116e88e141223b3
