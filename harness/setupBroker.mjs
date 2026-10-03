@@ -198,8 +198,9 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
      * @summary The run as one operation starts from it: the bound record read from disk, or — on
      * the first operation of a boot — the newest record under the setup root resumed, or a new one
      * created. A bound record that is gone or unreadable refuses the operation: nothing runs over
-     * a record that was not read, and no fresh run takes its place. A record bound to another
-     * target or recipe version retires its proof the way the CLI does.
+     * a record that was not read, and no new run takes its place unless the operator asks for
+     * one. A record bound to another target or recipe version retires its proof the way the CLI
+     * does.
      * @param {Object} modules
      * @param {Object|null} requested A target the renderer named (`{planeId, dataRoot, endpoint}`)
      * @returns {Promise<{host: Object, record: Object, recordPath: String, target: Object}>}
@@ -255,6 +256,34 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
     }
 
     /**
+     * @summary A NEW run for the target — the shell's form of a CLI run that names no run id. The
+     * record the broker held is not read and not written, so a record that cannot be read does not
+     * stand in the way, and the new record is bound once it is on disk: a rejected write leaves the
+     * binding where it was.
+     * @param {Object} modules
+     * @param {Object|null} requested The target the renderer named
+     * @returns {Promise<String|null>} The id of the run this one retires, `null` when there was none
+     */
+    async function startFreshRun(modules, requested) {
+        const
+            {hostEffects, record: recordModule, recipe} = modules,
+            host                                        = hostEffects.createHost({fsModule, now}),
+            heldPath                                    = boundRecordPath ?? (await newestRecord({setupRoot, record: recordModule, fsModule}))?.recordPath ?? null,
+            runId                                       = randomUUID(),
+            recordPath                                  = recordModule.setupRecordPath(setupRoot, runId);
+
+        await hostEffects.persistSetupRecord(
+            recordPath,
+            recordModule.createSetupRecord({runId, target: requested ?? {}, recipeVersion: recipe.RECIPE_VERSION, now}),
+            host
+        );
+
+        boundRecordPath = recordPath;
+
+        return heldPath ? path.basename(heldPath, '.json') : null
+    }
+
+    /**
      * @summary One live evaluation of a resolved run over the CLI's production observers.
      * @param {Object} modules
      * @param {Object} resolved From {@link resolveRun}, its `record` the operation's current one
@@ -298,18 +327,31 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
     return {
         /**
          * @param {Electron.IpcMainInvokeEvent} event
-         * @param {{target: Object|null}} [request]
-         * @returns {Promise<Object>} `{ok: true, evaluation}` or a refusal
+         * @param {{target: Object|null, fresh: Boolean}} [request] `fresh: true` starts a new run
+         *     for the target and leaves the run the broker held as history
+         * @returns {Promise<Object>} `{ok: true, evaluation}` — with `retiredRunId` for a fresh run — or a refusal
          */
         async evaluate(event, request = {}) {
             const admitted = await admit(event, SETUP_CHANNELS.evaluate);
 
             if (!admitted.modules) return admitted;
 
+            if (request?.fresh !== undefined && typeof request.fresh !== 'boolean') {
+                return refuse('fresh is a boolean: true starts a new run')
+            }
+
+            const
+                requested = request?.target ?? null,
+                retired   = {};
+
             try {
-                return {ok: true, evaluation: (await serialize(() => settleThenEvaluate(admitted.modules, request?.target ?? null))).evaluation}
+                return await serialize(async () => {
+                    request?.fresh && (retired.retiredRunId = await startFreshRun(admitted.modules, requested));
+
+                    return {ok: true, evaluation: (await settleThenEvaluate(admitted.modules, requested)).evaluation, ...retired}
+                })
             } catch (error) {
-                return refuse(`the recipe could not be evaluated: ${error.message}`)
+                return refuse(`the recipe could not be evaluated: ${error.message}`, retired)
             }
         },
 

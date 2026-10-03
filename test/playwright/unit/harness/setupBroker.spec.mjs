@@ -690,5 +690,70 @@ test.describe('harness/setupBroker over the Brain\'s own modules — every opera
         ]);
         expect(disk.handlerRuns(), 'nothing ran').toBe(0);
         expect(readdirSync(run.setupRoot).filter(name => name.endsWith('.json')), 'no fresh run took its place').toEqual([])
+    });
+
+    test('a fresh run binds a new record for the target and names the run it retires: the retired record stays as it was, nothing is replayed, and a later boot resumes the new run', async () => {
+        const run = await brainBacked(), {broker, disk} = run, recordPath = await consented(run);
+
+        await interruptedAfterTheHandler(run);
+
+        const
+            retiredRunId = path.basename(recordPath, '.json'),
+            stuck        = await broker.evaluate(trusted, {}),
+            retired      = readFileSync(recordPath, 'utf8'),
+            fresh        = await broker.evaluate(trusted, {target: TARGET, fresh: true}),
+            status       = (reply, id) => reply.evaluation.steps.find(step => step.id === id).status;
+
+        expect(status(stuck, 'write-secrets')).toBe('reconcile-required');
+        expect(fresh).toMatchObject({ok: true, retiredRunId});
+        expect(fresh.evaluation.runId).not.toBe(retiredRunId);
+        expect([status(fresh, 'preset'), status(fresh, 'write-secrets')], 'the fresh run asks again and holds no receipt').toEqual(['pending', 'pending']);
+        expect(readFileSync(recordPath, 'utf8'), 'the retired record is not rewritten').toBe(retired);
+        expect(JSON.parse(readFileSync(fresh.evaluation.recordPath, 'utf8'))).toMatchObject({runId: fresh.evaluation.runId, consents: [], receipts: [], history: []});
+        expect(disk.handlerRuns(), 'no effect ran for the fresh run').toBe(1);
+
+        expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).evaluation.runId).toBe(fresh.evaluation.runId);
+        expect(readFileSync(recordPath, 'utf8'), 'the retired record took no consent').toBe(retired);
+
+        const later = await brainBacked({setupRoot: run.setupRoot, stateRoot: run.stateRoot});
+
+        expect((await later.broker.evaluate(trusted, {})).evaluation.runId, 'a later boot resumes the fresh run').toBe(fresh.evaluation.runId);
+        expect(await (await brainBacked()).broker.evaluate(trusted, {target: TARGET, fresh: true}), 'nothing on disk: nothing retired').toMatchObject({ok: true, retiredRunId: null})
+    });
+
+    test('a fresh run is the one request a broker answers over a record it cannot read, and the damaged record is left as it is', async () => {
+        const run = await brainBacked(), {broker} = run, recordPath = await consented(run);
+
+        writeFileSync(recordPath, '{not json');
+
+        expect((await broker.evaluate(trusted, {})).ok).toBe(false);
+
+        const fresh = await broker.evaluate(trusted, {target: TARGET, fresh: true});
+
+        expect(fresh).toMatchObject({ok: true, retiredRunId: path.basename(recordPath, '.json')});
+        expect(readFileSync(recordPath, 'utf8')).toBe('{not json');
+        expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok, 'the run takes consents again').toBe(true)
+    });
+
+    test('a fresh run whose record write the host rejects binds nothing, and a fresh that is not a boolean starts nothing', async () => {
+        const run = await brainBacked(), {broker, disk} = run, recordPath = await consented(run), records = () => readdirSync(run.setupRoot).filter(name => name.endsWith('.json'));
+
+        disk.recordWrites    = 0;
+        disk.failRecordWrite = 1;
+
+        const rejected = await broker.evaluate(trusted, {target: TARGET, fresh: true});
+
+        disk.failRecordWrite = null;
+
+        expect(rejected.ok).toBe(false);
+        expect(rejected.reason).toMatch(/^the recipe could not be evaluated: EIO/);
+        expect(rejected).not.toHaveProperty('retiredRunId');
+
+        for (const fresh of ['true', 1, null]) {
+            expect(await broker.evaluate(trusted, {target: TARGET, fresh})).toEqual({ok: false, reason: 'fresh is a boolean: true starts a new run'})
+        }
+
+        expect(records(), 'no second record').toEqual([path.basename(recordPath)]);
+        expect((await broker.evaluate(trusted, {})).evaluation.runId, 'the broker still holds the run it had').toBe(path.basename(recordPath, '.json'))
     })
 });

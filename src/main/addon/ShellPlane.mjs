@@ -114,10 +114,11 @@ class ShellPlane extends Base {
      * @summary Evaluates the recipe for the bound target — the CLI's `--json` shape.
      * @param {Object} [data]
      * @param {Object} [data.target] `{planeId, dataRoot, endpoint}`, each optional
+     * @param {Boolean} [data.fresh] `true` starts a new run; main refuses anything but a boolean
      * @returns {Promise<Object>}
      */
     setupEvaluate(data = {}) {
-        return forwardSetup('setupEvaluate', {target: data.target ?? null})
+        return forwardSetup('setupEvaluate', {target: data.target ?? null, ...(data.fresh === undefined ? {} : {fresh: data.fresh})})
     }
 
     /**
