@@ -265,6 +265,9 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
         pane.summaryStore.add(row('s4'));
         expect(titles()).toEqual(['Title s1', 'Title s2', 'Title s3', 'Title s4']);
 
+        pane.summaryStore.remove(pane.summaryStore.get('s3'));
+        expect(titles()).toEqual(['Title s1', 'Title s2', 'Title s4']);
+
         pane.onEscape();   // leaving show all unbinds the document from the Store
         expect(reader.store).toBe(null)
     });

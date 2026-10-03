@@ -108,14 +108,14 @@ class ReaderComponent extends Component {
     }
 
     /**
-     * @returns {Object} Every Store event that changes which records the document reads, or how.
+     * @returns {Object} Every Store event that changes which records the document reads, or how. An
+     * add or a removal arrives as `load`: the Store re-fires each collection mutation as one.
      * @protected
      */
     getStoreListeners() {
         return {
             filter      : this.render,
             load        : this.render,
-            mutate      : this.render,
             recordChange: this.render,
             sort        : this.render,
             scope       : this
