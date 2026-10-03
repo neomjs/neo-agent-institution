@@ -4,7 +4,7 @@ import PasswordField from '../../../../../node_modules/neo.mjs/src/form/field/Pa
 import TextField     from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 import AddAgentFlow  from '../../../util/AddAgentFlow.mjs';
 import HarnessChoice from '../../../util/HarnessChoice.mjs';
-import {displayInstanceLabel, displayShellLabel} from './MenuList.mjs';
+import {displayBoundAgentOs} from './MenuList.mjs';
 
 /**
  * The forges a seat's account can live on, in chip order.
@@ -193,10 +193,11 @@ class AddAgentForm extends FormContainer {
             reference      : 'field-credential',
             required       : true
         }, {
-            ntype: 'component',
-            cls  : ['fm-add-credential-help'],
-            flex : 'none',
-            text : 'This token gives the agent access to its repositories and the connected Agent OS.'
+            ntype    : 'component',
+            cls      : ['fm-add-credential-help'],
+            flex     : 'none',
+            reference: 'credential-help',
+            text     : 'This token gives the agent access to its repositories and the connected Agent OS.'
         }, {
             // the repo the seat's first Start clones and runs in
             module         : TextField,
@@ -283,7 +284,10 @@ class AddAgentForm extends FormContainer {
         me.syncHarnessChips();
 
         if (AddAgentFlow.isShellCredentialIngress(bridge)) {
-            secretField && me.remove(secretField)
+            // the shell owns credential entry (harness/credentialPrompt.mjs): the field goes, and its
+            // help line names the next step
+            secretField && me.remove(secretField);
+            me.getReference('credential-help')?.set({text: 'On Add, the app asks once for this agent\'s token.'})
         }
 
         me.updateDestinationLine();
@@ -406,10 +410,8 @@ class AddAgentForm extends FormContainer {
     updateDestinationLine() {
         const
             me     = this,
-            record = me.boundProfileId && me.instanceStore?.get(me.boundProfileId),
-            label  = me.shellCustody
-                ? displayShellLabel(me.shellPlaneBase)
-                : displayInstanceLabel(record);
+            record = (me.boundProfileId && me.instanceStore?.get(me.boundProfileId)) || null,
+            label  = displayBoundAgentOs({shellCustody: me.shellCustody, shellPlaneBase: me.shellPlaneBase, record}) ?? 'no instance';
 
         me.getReference('destination-line')?.set({text: `Agent OS: ${label}`})
     }

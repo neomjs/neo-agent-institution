@@ -1,5 +1,6 @@
-import Component     from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
-import HarnessChoice from '../../../util/HarnessChoice.mjs';
+import Component             from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import HarnessChoice         from '../../../util/HarnessChoice.mjs';
+import {displayBoundAgentOs} from '../instances/MenuList.mjs';
 import {
     mcpCatalogFor,
     normalizeMcpOverrides,
@@ -102,15 +103,34 @@ class AgentConfigCard extends Component {
          * Accounts and a docked/popped-out AgentDetail refresh from the same availability truth.
          * @member {Neo.data.Store|null} tenantStore_=null
          * @reactive
-        */
+         */
         tenantStore_: null,
-        /** @member {String|null} boundProfileId_=null @reactive */
+        /**
+         * The bound Agent OS profile. With `instanceStore` it names the "This fleet" destination,
+         * by the same words the Add form uses.
+         * @member {String|null} boundProfileId_=null
+         * @reactive
+         */
         boundProfileId_: null,
-        /** @member {Neo.data.Store|null} instanceStore_=null @reactive */
+        /**
+         * The provider-hosted instance roster the bound profile resolves against, for its label
+         * and endpoint. The provider owns it; the card only reads it.
+         * @member {Neo.data.Store|null} instanceStore_=null
+         * @reactive
+         */
         instanceStore_: null,
-        /** @member {Boolean} shellCustody_=false @reactive */
+        /**
+         * True while the installed shell holds the plane binding: the destination is then the
+         * shell's plane, not an instance record.
+         * @member {Boolean} shellCustody_=false
+         * @reactive
+         */
         shellCustody_: false,
-        /** @member {String|null} shellPlaneBase_=null @reactive */
+        /**
+         * The plane the shell is attached to, or `null` for this machine.
+         * @member {String|null} shellPlaneBase_=null
+         * @reactive
+         */
         shellPlaneBase_: null,
         /**
          * Ephemeral save feedback for the currently rendered record. This is deliberately component
@@ -397,15 +417,24 @@ class AgentConfigCard extends Component {
             return `Saved connection · ${endpoint}${availability.available ? '' : ` · ${availability.reason}`}`
         }
 
-        const endpoint = this.getBoundAgentOsEndpoint();
+        const name = this.getBoundAgentOsName();
 
-        if (endpoint) {
-            return `Agent OS · ${endpoint}`
-        }
+        return name ? `Agent OS · ${name}` : 'Agent OS destination not reported'
+    }
 
-        return this.shellCustody
-            ? 'Agent OS · this machine'
-            : 'Agent OS destination not reported'
+    /**
+     * @summary The bound Agent OS by the same name the Add form gives it ({@link displayBoundAgentOs}):
+     * one destination, one name.
+     * @returns {String|null}
+     */
+    getBoundAgentOsName() {
+        const me = this;
+
+        return displayBoundAgentOs({
+            shellCustody  : me.shellCustody,
+            shellPlaneBase: me.shellPlaneBase,
+            record        : (me.boundProfileId && me.instanceStore?.get(me.boundProfileId)) || null
+        })
     }
 
     /**
@@ -621,13 +650,16 @@ class AgentConfigCard extends Component {
                 ? record.mcpTarget.tenantId
                 : null,
             records          = me.tenantStore?.items || [],
+            // the chip names the bound Agent OS; its full address stays one hover away, as on a saved connection
+            endpoint         = me.getBoundAgentOsEndpoint(),
             choices          = [{
                 id   : `${me.id}__target__local`,
                 tag  : 'button',
                 type : 'button',
                 cls  : ['fm-chip', 'fm-target-choice', selectedTenantId ? 'is-selectable' : 'is-selected'],
-                text : `This fleet · ${me.getBoundAgentOsEndpoint() || (me.shellCustody ? 'this machine' : 'destination not reported')}`,
-                ...me.getButtonAccessibilityAttrs(!selectedTenantId, !me.getBoundAgentOsEndpoint() && !me.shellCustody)
+                text : `This fleet · ${me.getBoundAgentOsName() ?? 'destination not reported'}`,
+                ...(endpoint ? {title: endpoint} : {}),
+                ...me.getButtonAccessibilityAttrs(!selectedTenantId, !endpoint && !me.shellCustody)
             }];
 
         for (const tenant of records) {

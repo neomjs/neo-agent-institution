@@ -600,14 +600,14 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
             expect(detail.boundProfileId).toBe('profile-a');
             expect(detail.shellPlaneBase).toBe('http://127.0.0.1:3102');
-            expect(card.getDestinationText({})).toBe('Agent OS · http://127.0.0.1:3102');
+            expect(card.getDestinationText({})).toBe('Agent OS · 127.0.0.1:3102');
 
             localShell.setData({boundProfileId: 'profile-b', shellPlaneBase: 'http://127.0.0.1:4102'});
 
             expect(localCockpit.getReference('agent-detail')).toBe(detail);
             expect(detail.id).toBe(detailId);
             expect(card.boundProfileId).toBe('profile-b');
-            expect(card.getDestinationText({})).toBe('Agent OS · http://127.0.0.1:4102')
+            expect(card.getDestinationText({})).toBe('Agent OS · 127.0.0.1:4102')
         } finally {
             localCockpit.destroy();
             localShell.destroy();

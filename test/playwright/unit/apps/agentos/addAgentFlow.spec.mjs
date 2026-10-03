@@ -458,6 +458,8 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         });
 
         expect(form.items.some(item => item.name === 'credential')).toBe(false);
+        // the help line no longer describes a field the form does not show: it names the next step
+        expect(form.getReference('credential-help').text).toBe('On Add, the app asks once for this agent\'s token.');
         // shell ingress removes the inline PAT control; its submit remains an idle, valid state
         expect(form.flowStatus).toEqual({state: 'idle', reason: ''});
 

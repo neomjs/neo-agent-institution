@@ -1,6 +1,7 @@
 import AgentConfigCard       from '../fleet/detail/AgentConfigComponent.mjs';
 import AgentReposCard        from '../fleet/detail/AgentReposContainer.mjs';
 import AddAgentForm          from '../fleet/instances/AddAgentForm.mjs';
+import {boundAgentOsBind}    from '../fleet/instances/MenuList.mjs';
 import Controller            from './Controller.mjs';
 import List                  from './List.mjs';
 import Button                from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
@@ -63,25 +64,41 @@ class Accounts extends DashboardPanel {
          * @reactive
          */
         fleetTenantsStore_: null,
-        /** @member {String|null} boundProfileId_=null @reactive */
+        /**
+         * The bound Agent OS facts (`boundProfileId`, `instanceStore`, `shellCustody`,
+         * `shellPlaneBase`) follow the root provider and pass on to the mounted card and form,
+         * which name the destination from them. This Panel only forwards them.
+         * @member {String|null} boundProfileId_=null
+         * @reactive
+         */
         boundProfileId_: null,
-        /** @member {Neo.data.Store|null} instanceStore_=null @reactive */
+        /**
+         * The provider-hosted instance roster; see `boundProfileId_`.
+         * @member {Neo.data.Store|null} instanceStore_=null
+         * @reactive
+         */
         instanceStore_: null,
-        /** @member {Boolean} shellCustody_=false @reactive */
+        /**
+         * True while the installed shell holds the plane binding; see `boundProfileId_`.
+         * @member {Boolean} shellCustody_=false
+         * @reactive
+         */
         shellCustody_: false,
-        /** @member {String|null} shellPlaneBase_=null @reactive */
+        /**
+         * The shell's attached plane, or `null` for this machine; see `boundProfileId_`.
+         * @member {String|null} shellPlaneBase_=null
+         * @reactive
+         */
         shellPlaneBase_: null,
         /**
          * @member {Object} bind
          */
         bind: {
+            ...boundAgentOsBind,
             agentDefinitionsStore: 'stores.agentDefinitions',
             fleetRosterStore     : 'stores.fleetRoster',
             fleetTenantsStore    : 'stores.fleetTenants',
-            boundProfileId       : data => data.boundProfileId ?? null,
-            instanceStore        : 'stores.fleetInstances',
-            shellCustody         : data => data.shellCustody === true,
-            shellPlaneBase       : data => data.shellPlaneBase ?? null
+            instanceStore        : 'stores.fleetInstances'
         },
         /**
          * @member {String[]} cls=['agent-panel-accounts']

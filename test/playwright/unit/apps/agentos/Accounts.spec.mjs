@@ -112,14 +112,14 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
 
         expect(card.agentDefinitionsStore).toBe(definitions);
         expect(card.boundProfileId).toBe('fleet-a');
-        expect(JSON.stringify(card.vdom.cn)).toContain('Agent OS · http://127.0.0.1:3102');
+        expect(JSON.stringify(card.vdom.cn)).toContain('Agent OS · 127.0.0.1:3102');
 
         // The existing reactive Panel configs forward a destination update in place.
         view.stateProvider.setData({boundProfileId: 'fleet-b', shellPlaneBase: 'http://127.0.0.1:4102'});
         expect(view.getReference('agent-config-card')).toBe(card);
         expect(card.id).toBe(cardId);
         expect(card.boundProfileId).toBe('fleet-b');
-        expect(JSON.stringify(card.vdom.cn)).toContain('Agent OS · http://127.0.0.1:4102');
+        expect(JSON.stringify(card.vdom.cn)).toContain('Agent OS · 127.0.0.1:4102');
 
         view.destroy();
         definitions.destroy()
@@ -897,7 +897,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             return collect(card.vdom)
         };
 
-        expect(cardText(card)).toContain('Agent OS · https://fleet.example.com/agentos');
+        expect(cardText(card)).toContain('Agent OS · fleet.example.com/agentos');
         expect(find(card.vdom, `${card.id}__target__local`)).toBeNull();
         expect(find(card.vdom, `${card.id}__target__tenant-a`)).toBeNull();
         expect(find(card.vdom, `${card.id}__connection__edit`).tag).toBe('button');
@@ -908,7 +908,9 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
 
         // The competing target list only enters the DOM after the explicit edit action.
-        expect(find(card.vdom, `${card.id}__target__local`)?.text).toBe('This fleet · https://fleet.example.com/agentos');
+        // the chip carries the card's name for the bound Agent OS; the full address is its hover
+        expect(find(card.vdom, `${card.id}__target__local`)?.text).toBe('This fleet · fleet.example.com/agentos');
+        expect(find(card.vdom, `${card.id}__target__local`)?.title).toBe('https://fleet.example.com/agentos');
         expect(cardText(card)).toContain('Saved connection · https://tenant-a.example.com/agentos');
         expect(cardText(card)).toContain('Saved connection · https://tenant-b.example.com/agentos · Unavailable');
         expect(cardText(card)).not.toContain('must-never-enter-the-model');
@@ -1020,7 +1022,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
         expect(unavailable.text).toContain('In use by Sophie');
         expect(unavailable['aria-disabled']).toBe('true');
         expect(unavailable.tag).toBe('button');
-        expect(cardText(card)).toContain('Agent OS · http://127.0.0.1:3102');
+        expect(cardText(card)).toContain('Agent OS · 127.0.0.1:3102');
 
         card.onCardClick({path: [{id: targetId}]});
         expect(intents).toEqual([]);
