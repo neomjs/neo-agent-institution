@@ -1,3 +1,4 @@
+import Button                        from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container                     from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import GoldenPathEnvelope            from '../../../util/GoldenPathEnvelope.mjs';
 import GraphNodeSource               from '../../../util/GraphNodeSource.mjs';
@@ -69,6 +70,12 @@ class ObservatoryContainer extends Container {
      * @static
      */
     static geographies = ['communities', 'density', 'strategic']
+    /**
+     * The side panel's sections that open to its remaining height; the View section always shows.
+     * @member {String[]} sections=['nodes','selected','team']
+     * @static
+     */
+    static sections = ['nodes', 'selected', 'team']
 
     static config = {
         /**
@@ -160,11 +167,12 @@ class ObservatoryContainer extends Container {
                     flex     : 'none',
                     reference: 'observatory-view-section'
                 }, {
-                    ntype    : 'component',
-                    cls      : ['fm-observatory-side-title'],
+                    module   : Button,
+                    cls      : ['fm-observatory-side-title', 'fm-observatory-section-head'],
                     flex     : 'none',
                     reference: 'observatory-nodes-title',
-                    text     : 'Nodes'
+                    text     : 'Nodes',
+                    ui       : 'ghost'
                 }, {
                     module   : ObservatoryNodeList,
                     flex     : 1,
@@ -191,6 +199,13 @@ class ObservatoryContainer extends Container {
          * @reactive
          */
         lensPeers_: [],
+        /**
+         * The side panel's open section (`team`, `nodes` or `selected`): it takes the panel's remaining height and
+         * the others collapse to their heads, each still naming its count. Selecting a node opens `selected`.
+         * @member {String} openSection_='team'
+         * @reactive
+         */
+        openSection_: 'team',
         /**
          * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf. Only its
          * currency is read: a withheld route qualifies the line and reads unavailable in its control.
@@ -296,6 +311,10 @@ class ObservatoryContainer extends Container {
         me.getReference('heat-toggle')        .set({handler: 'onHeatToggleClick',  handlerScope: me});
         me.getReference('mail-toggle')        .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle')       .set({handler: 'onRouteToggleClick', handlerScope: me});
+        me.getReference('observatory-nodes-title').set({handler: () => me.openSection = 'nodes', handlerScope: me});
+        me.getReference('observatory-team').on('sectionHeadClick', ({section}) => me.openSection = section);
+        me.getReference('observatory-selected').on('sectionHeadClick', ({section}) => me.openSection = section);
+        me.syncSections();
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
             me.getReference('observatory-body').insert(0, {
@@ -461,7 +480,18 @@ class ObservatoryContainer extends Container {
 
         me.getReference('observatory-canvas')?.set({selectedId: value});
         me.syncLists();
-        me.updateSelection()
+        me.updateSelection();
+        value && (me.openSection = 'selected')
+    }
+
+    /**
+     * Triggered after the openSection config got changed: the side panel opens that section.
+     * @param {String} value
+     * @param {String|undefined} oldValue
+     * @protected
+     */
+    afterSetOpenSection(value, oldValue) {
+        oldValue !== undefined && this.syncSections()
     }
 
     /**
@@ -503,6 +533,17 @@ class ObservatoryContainer extends Container {
      */
     beforeSetGeography(value, oldValue) {
         return this.beforeSetEnumValue(value, oldValue, 'geography', ObservatoryContainer.geographies)
+    }
+
+    /**
+     * Triggered before the openSection config gets changed: only a known section opens.
+     * @param {String} value
+     * @param {String} oldValue
+     * @returns {String|undefined}
+     * @protected
+     */
+    beforeSetOpenSection(value, oldValue) {
+        return this.beforeSetEnumValue(value, oldValue, 'openSection', ObservatoryContainer.sections)
     }
 
     /**
@@ -814,6 +855,27 @@ class ObservatoryContainer extends Container {
             nodes.selectionModel.deselectAll(true);
             record && nodes.selectItem(record)
         }
+    }
+
+    /**
+     * @summary Opens {@link #openSection} to the side panel's remaining height and collapses the others to their
+     * heads; a head is pressed and `aria-expanded` while its section is open. The View section is not a section: it always shows.
+     * @protected
+     */
+    syncSections() {
+        const me = this, {openSection} = me;
+
+        [['team', 'observatory-team', 'observatory-peers-title'],
+         ['nodes', 'observatory-nodes', 'observatory-nodes-title'],
+         ['selected', 'observatory-selected', 'selected-section-head']].forEach(([section, body, head]) => {
+            const isOpen = section === openSection, component = me.getReference(body), button = me.getReference(head);
+
+            component.flex = isOpen ? 1 : 'none';
+            component.toggleCls('is-collapsed', !isOpen);
+            button.pressed               = isOpen;
+            button.vdom['aria-expanded'] = String(isOpen);
+            button.update()
+        })
     }
 
     /**

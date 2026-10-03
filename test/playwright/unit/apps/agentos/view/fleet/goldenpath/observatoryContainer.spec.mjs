@@ -704,3 +704,55 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         pane.destroy()
     });
 });
+
+test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side panel opens one section to its height', () => {
+    const
+        // each section's flex and collapse, and whether its head reads expanded for assistive technology
+        sectionsOf = pane => Object.fromEntries([
+            ['team',     pane.getReference('observatory-team'),  pane.getReference('observatory-peers-title')],
+            ['nodes',    pane.getReference('observatory-nodes'), pane.getReference('observatory-nodes-title')],
+            ['selected', selectedOf(pane),                       selectedOf(pane).getReference('selected-section-head')]
+        ].map(([name, section, head]) => [name, [section.flex, section.cls.includes('is-collapsed'), head.vdom['aria-expanded']]])),
+        clickHead  = button => {
+            // the ripple measures the rendered button, which the unit harness has none of
+            button.useRippleEffect = false;
+            button.onClick({})
+        };
+
+    test('Team opens first; a head opens its section and collapses the others to their heads; an unknown section changes nothing', () => {
+        const pane = createPane({envelope: graphRead()});
+
+        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
+
+        clickHead(pane.getReference('observatory-nodes-title'));
+        expect(sectionsOf(pane)).toEqual({team: ['none', true, 'false'], nodes: [1, false, 'true'], selected: ['none', true, 'false']});
+
+        clickHead(selectedOf(pane).getReference('selected-section-head'));
+        expect(pane.openSection).toBe('selected');
+
+        clickHead(pane.getReference('observatory-peers-title'));
+        expect(pane.openSection).toBe('team');
+
+        pane.openSection = 'view';
+        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
+
+        pane.destroy()
+    });
+
+    test('a collapsed head still names its count, and selecting a node opens the Selected section with its whole title', () => {
+        const pane = createPane({envelope: graphRead()});
+
+        expect(pane.getReference('observatory-nodes-title').text).toMatch(/^Nodes/);
+        expect(pane.getReference('observatory-peers-title').text).toMatch(/^Team · /);
+
+        pane.selectedId = q('issue-202');
+        expect(pane.openSection).toBe('selected');
+        expect(headOf(pane)[0]).toBe('second route item');
+
+        // clearing the selection leaves the open section where the viewer is
+        pane.selectedId = null;
+        expect(pane.openSection).toBe('selected');
+
+        pane.destroy()
+    });
+});

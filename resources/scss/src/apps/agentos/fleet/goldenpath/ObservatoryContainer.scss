@@ -103,18 +103,15 @@
         min-width  : 0;
         padding    : var(--fm-space-1) var(--fm-space-3) 0;
 
+        /* the selected node's title reads whole: it wraps */
         .fm-observatory-selected-label {
             color        : var(--fm-ink);
             font         : var(--fm-text-body);
             min-width    : 0;
-            overflow     : hidden;
-            text-overflow: ellipsis;
-            white-space  : nowrap;
+            overflow-wrap: anywhere;
 
-            /* a clearing note wraps: its reason is the point */
             &.is-empty {
-                color      : var(--fm-ink-dim);
-                white-space: normal;
+                color: var(--fm-ink-dim);
             }
 
             &.is-hint {
@@ -179,10 +176,26 @@
         border-top: none;
     }
 
-    /* the team lens: the engine's check list, a few rows high, each peer in its own hue */
-    .fm-observatory-peer-list {
-        max-height: 132px;
+    /* a section's head is its title as a button: the open section's head is pressed, and a collapsed section
+       keeps only its head, which still names its count */
+    .fm-observatory-section-head {
+        border-radius  : 0;
+        justify-content: flex-start;
+        width          : 100%;
 
+        &.pressed {
+            color: var(--fm-ink);
+        }
+    }
+
+    .fm-observatory-team.is-collapsed .fm-observatory-peer-list,
+    .fm-observatory-node-list.is-collapsed,
+    .fm-observatory-selected.is-collapsed > :not(.fm-observatory-section-head, .fm-observatory-selected-head) {
+        display: none;
+    }
+
+    /* the team lens: the engine's check list, as tall as its open section, each peer in its own hue */
+    .fm-observatory-peer-list {
         .fm-observatory-peer-swatch {
             background   : hsl(var(--fm-peer-hue) 55% var(--fm-peer-lightness));
             border-radius: 50%;
@@ -277,6 +290,20 @@
             min-width    : 0;
             overflow     : hidden;
             text-overflow: ellipsis;
+        }
+    }
+
+    /* a node's title is the row's reason to exist: it wraps to two lines, and the Selected section shows it whole */
+    .fm-observatory-node-list {
+        .neo-list-item {
+            white-space: normal;
+        }
+
+        .fm-observatory-row-label {
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            display           : -webkit-box;
+            overflow-wrap     : anywhere;
         }
     }
 
