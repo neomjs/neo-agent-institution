@@ -1137,6 +1137,49 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(Math.round(await heightOf(long) / await heightOf(short)), 'it takes the lines it needs').toBeGreaterThan(1)
     });
 
+    test('the side panel is as wide as the operator drags it, between 280 px and half the body, for the session only', async ({page}) => {
+        const
+            pane     = page.locator('.fm-observatory-pane'),
+            side     = pane.locator('.fm-observatory-side'),
+            splitter = pane.locator('.fm-observatory-splitter'),
+            widthOf  = async locator => (await locator.boundingBox()).width,
+            drag     = async dx => {
+                const box = await splitter.boundingBox(),
+                      x   = box.x + box.width / 2,
+                      y   = box.y + box.height / 2;
+
+                await page.mouse.move(x, y);
+                await page.mouse.down();
+                await page.mouse.move(x + dx, y, {steps: 8});
+                await page.mouse.up()
+            };
+
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete$/);
+
+        expect(await widthOf(side), 'a pane starts at the default').toBe(320);
+
+        await drag(-200);
+        await expect.poll(() => widthOf(side)).toBe(520);
+        await page.mouse.move(0, 0);
+        await expect(pane).toHaveScreenshot('observatory-pane-widened.png');
+        await switchToLightSkin(page);
+        await expect(pane).toHaveScreenshot('observatory-pane-widened-light.png');
+
+        await drag(-2000);
+        const half = (await widthOf(pane.locator('.fm-observatory-body'))) / 2;
+        await expect.poll(async () => Math.abs(await widthOf(side) - half), 'never wider than half the body').toBeLessThanOrEqual(1);
+
+        await drag(2000);
+        await expect.poll(() => widthOf(side), 'never narrower than 280 px').toBe(280);
+
+        // nothing keeps the width: a reload is a new session
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        expect(await widthOf(side)).toBe(320)
+    });
+
     /**
      * @summary Creates the packaged shell's plane-setup card in the viewport above the shell, the way
      * `ViewportController#mountPlaneSetup` inserts it on an unconfigured packaged boot. The harness
