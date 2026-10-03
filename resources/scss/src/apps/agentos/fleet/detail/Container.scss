@@ -89,6 +89,48 @@
         padding-left: 15px;
     }
 
+    /* the Seat row: the harness family in words, then the WHOLE path (it wraps, never elides) and its
+       Copy action, on the same text column as the name and the handle. The field it copies from is
+       present but unseen and unreachable, the Observatory's idiom */
+    .fm-detail-seat {
+        position    : relative;
+        padding-left: 15px;
+        margin-top  : 4px;
+        gap         : 2px;
+    }
+
+    .fm-detail-seat-row {
+        gap: 7px;
+    }
+
+    .fm-detail-seat-family {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-detail-seat-path {
+        font       : var(--fm-text-micro);
+        font-family: var(--fm-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+        color      : var(--fm-ink);
+        min-width  : 0;
+        word-break : break-all;
+    }
+
+    .fm-detail-seat-launch {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink);
+    }
+
+    .fm-detail-seat-field {
+        border        : none;
+        height        : 1px;
+        opacity       : 0;
+        padding       : 0;
+        pointer-events: none;
+        position      : absolute;
+        width         : 1px;
+    }
+
     /* THE ONE STATE LEDGER (#23): every liveness/wiring axis once, `axis · pill` per row, in the
        pane's own freshness-pill vocabulary — the three prior languages (italic telltale prose,
        coloured source lines, a dangling producer suffix) collapsed into it. Grid-locked columns:

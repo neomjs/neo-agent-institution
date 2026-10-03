@@ -121,6 +121,11 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(pill('repo')).toHaveClass(/\bis-fresh\b/);
         await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-slug')).toHaveText('neomjs/neo');
         await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-path')).toHaveText('/seats/neo/clone');
+
+        // the seat's folder is read on the detail's Seat row, whole and copyable; the card names none
+        await expect(detail.locator('.fm-detail-seat-path')).toHaveText('/seats/neo/clone');
+        await expect(detail.locator('.fm-detail-seat-row')).toContainText('Copy path');
+        await expect(targetItem, 'the roster card names no path').not.toContainText('/seats/neo/clone');
         await expect(detail.locator('.fm-detail-ledger'), 'the header row reads the same fact').toContainText(/repository\s*wired · observed/);
 
         await expect(targetItem.locator('.fm-card-lane')).toContainText(laneLine);
