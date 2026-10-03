@@ -9,8 +9,11 @@ import ViewerTime         from '../../../util/ViewerTime.mjs';
  *
  * @summary Renders the `fleetGoldenPath` envelope as a complete producer-written Markdown reading surface.
  * The typed route remains compact independent state (currency, REM and provenance), never a duplicate
- * rendering of the same recommendations. It synthesizes, ranks, merges and caches nothing. The envelope is
- * the cockpit's `goldenPathEnvelope` leaf, bound like every other Golden Path pane's. Reads are intent events
+ * rendering of the same recommendations; it reads first, as one facts row under the head, in the order
+ * of trust — when the route was captured, how digested the memory behind it is, which run produced it,
+ * when the recommendation's own source last changed — and the recommendation is the pane's scrolling
+ * column beneath it, so the facts never leave the screen whatever height the pane gets. It synthesizes, ranks, merges and caches nothing. The envelope is the
+ * cockpit's `goldenPathEnvelope` leaf, bound like every other Golden Path pane's. Reads are intent events
  * that the owning cockpit relays to the authenticated fleet bridge.
  *
  * @class AgentOS.view.fleet.goldenpath.Container
@@ -70,37 +73,40 @@ class GoldenPathPane extends Container {
                 }]
             }]
         }, {
-            ntype    : 'component',
-            cls      : ['fm-golden-path-handoff-state'],
+            ntype    : 'container',
+            cls      : ['fm-golden-path-facts'],
             flex     : 'none',
-            hidden   : true,
-            reference: 'golden-path-handoff-state'
+            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+            reference: 'golden-path-facts',
+            items    : [{
+                ntype    : 'component',
+                cls      : ['fm-golden-path-currency', 'is-unobserved'],
+                reference: 'golden-path-currency',
+                text     : 'Typed route · not observed yet'
+            }, {
+                ntype    : 'component',
+                cls      : ['fm-golden-path-rem'],
+                reference: 'golden-path-rem'
+            }, {
+                ntype    : 'component',
+                cls      : ['fm-golden-path-provenance'],
+                reference: 'golden-path-provenance'
+            }, {
+                ntype    : 'component',
+                cls      : ['fm-golden-path-handoff-state'],
+                hidden   : true,
+                reference: 'golden-path-handoff-state'
+            }]
         }, {
             module    : MarkdownComponent,
             cls       : ['fm-golden-path-markdown'],
-            flex      : 'none',
+            flex      : 1,
             reference : 'golden-path-markdown',
             value     : null,
             // A handoff is a complete producer document, not an appending transcript. Rendering every
-            // block lets the pane's ordinary scroll surface begin at its heading instead of following
-            // a synthetic tail window.
+            // block lets the column's scroll surface begin at its heading instead of following a
+            // synthetic tail window.
             virtualize: false
-        }, {
-            ntype    : 'component',
-            cls      : ['fm-golden-path-currency', 'is-unobserved'],
-            flex     : 'none',
-            reference: 'golden-path-currency',
-            text     : 'Typed route · not observed yet'
-        }, {
-            ntype    : 'component',
-            cls      : ['fm-golden-path-rem'],
-            flex     : 'none',
-            reference: 'golden-path-rem'
-        }, {
-            ntype    : 'component',
-            cls      : ['fm-golden-path-provenance'],
-            flex     : 'none',
-            reference: 'golden-path-provenance'
         }]
     }
 
@@ -215,16 +221,19 @@ class GoldenPathPane extends Container {
     }
 
     /**
-     * @summary The producer's provenance for the route shown.
+     * @summary The producer's provenance for the route shown. The run id is the one value this line exists
+     * to show, so its absence is said in words rather than as `unknown`.
      * @param {Object|null} route
      * @returns {String}
      */
     provenanceText(route) {
         if (!route) return '';
 
-        const {producer, runId, algorithmVersion} = route.provenance || {};
+        const
+            {producer, runId, algorithmVersion} = route.provenance || {},
+            run = runId ? `run ${runId}` : 'run id not recorded by the synthesizer';
 
-        return `${producer || 'unknown producer'} · run ${runId || 'unknown'} · ${algorithmVersion || 'unknown algorithm'} · expires ${this.formatStamp(route.expiresAt)}${route.expired === true ? ' (expired)' : ''}`
+        return `${producer || 'unknown producer'} · ${run} · ${algorithmVersion || 'unknown algorithm'} · expires ${this.formatStamp(route.expiresAt)}${route.expired === true ? ' (expired)' : ''}`
     }
 
     /**

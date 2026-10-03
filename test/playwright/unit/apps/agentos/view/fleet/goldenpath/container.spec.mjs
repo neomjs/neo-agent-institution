@@ -56,6 +56,35 @@ test.describe('AgentOS.view.fleet.goldenpath.Container — complete producer han
         pane.destroy()
     });
 
+    test('the typed route reads first as one facts row and the recommendation is the flex column', () => {
+        const
+            pane  = createPane({envelope: envelope()}),
+            facts = pane.getReference('golden-path-facts'),
+            order = pane.items.map(item => item.reference || item.cls?.[0]);
+
+        expect(facts.items.map(item => item.reference), 'currency, REM, run, the recommendation\'s source — the order of trust').toEqual([
+            'golden-path-currency', 'golden-path-rem', 'golden-path-provenance', 'golden-path-handoff-state'
+        ]);
+        expect(facts.flex, 'the facts never shrink or scroll').toBe('none');
+        expect(order.indexOf('golden-path-facts'), 'the facts sit directly under the head').toBe(1);
+        expect(order.indexOf('golden-path-markdown'), 'the recommendation is the last item').toBe(pane.items.length - 1);
+        expect(handoffOf(pane).flex, 'the column takes the remaining height and scrolls on its own').toBe(1);
+
+        pane.destroy()
+    });
+
+    test('a route without a run id says so in words, never "unknown"', () => {
+        const pane = createPane({envelope: envelope({route: route({provenance: {producer: 'GoldenPathSynthesizer', runId: null, algorithmVersion: 'golden-path.tri-vector.v1'}})})});
+
+        expect(pane.getReference('golden-path-provenance').text).toMatch(/^GoldenPathSynthesizer · run id not recorded by the synthesizer · golden-path\.tri-vector\.v1 · expires /);
+        expect(pane.getReference('golden-path-provenance').text).not.toContain('unknown');
+
+        pane.envelope = envelope();
+        expect(pane.getReference('golden-path-provenance').text).toMatch(/^golden-path-synthesizer · run run-42 · gp-v2 · expires /);
+
+        pane.destroy()
+    });
+
     test('keeps handoff freshness and availability independent from typed-route currency', () => {
         const pane = createPane({envelope: envelope({
             handoff : handoff({stale: true}),
