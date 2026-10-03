@@ -5,12 +5,16 @@
 // outside /Applications. A hand-copy had no retirement rule, so every refresh left another launchable
 // `Neo Harness.previous-*.app` beside the live one; this leg leaves none.
 //
-// Two facts shape every rule here:
+// Three facts shape every rule here:
 //   - the shell version (`0.0.1`) and bundle identifier are constant across development builds, so
 //     the organism receipt (`organism-build-info.json`) is the only identity a build has; the leg
-//     prints it old → new and fails when the installed copy does not carry the artifact's;
+//     verifies the staged copy carries the artifact's receipt BEFORE any slot moves, and prints the
+//     receipt old → new;
 //   - quitting Neo Harness also stops the peer harnesses it launched (harness/README.md), so a
-//     running app is a refusal by default and `--quit` is the only way this leg stops one.
+//     running app is a refusal by default, `--quit` is the only way this leg stops one, and a copy
+//     running from ANY bundle named `Neo Harness*.app` counts — a renamed previous copy included;
+//   - a swap is several renames, and a process can die between two of them. Every intermediate
+//     state is a slot the next run recognizes and completes, never an absence it refuses.
 //
 // `planInstall` is pure and unit-specced; `executePlan` is the thin shell around `rename(2)`,
 // `ditto` and `osascript`, with the child-process runner injectable like pack.mjs's `runFn`.
@@ -38,8 +42,9 @@ export const DEFAULT_APPLICATIONS_DIR = '/Applications';
 
 /**
  * The app's own Application Support root (`app.getPath('userData')`). The rollback slot lives
- * under it so the displaced bundle stays out of /Applications, Launchpad and the Dock; the plane
- * record and credentials beside it are never read or written by this leg.
+ * under it so the displaced bundle stays out of /Applications, Launchpad and the Dock. The plane
+ * record and credentials beside it are never written by this leg; the custody files are READ once
+ * per run, to hash them.
  */
 export const DEFAULT_USER_DATA_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'neo-harness');
 export const DEFAULT_ROLLBACK_DIR  = path.join(DEFAULT_USER_DATA_DIR, 'rollback');
@@ -51,23 +56,45 @@ export const PEER_QUIT_WARNING =
     `Quitting ${APP_NAME} also stops the peer harnesses it launched. Checkpoint those seats first; ` +
     'reopening the app does not itself prove their sessions resumed.';
 
+/** A running executable inside any bundle named `Neo Harness….app`: the canonical one, a renamed copy, a staging twin. */
+const HARNESS_BUNDLE_PATTERN = new RegExp(`/${APP_NAME.replace(/ /g, '\\s')}[^/]*\\.app/`);
+
 /**
  * @summary The pure plan: ordered steps for one install or restore, or one refusal. Nothing here
  * touches the filesystem — callers pass what they read, tests pass what they mean.
+ *
+ * The slot vocabulary: `installed` is the canonical bundle, `rollback` the single rollback slot,
+ * `parked` the `.restoring` sibling a restore moves the installed bundle through, `staged` the
+ * `.installing` sibling an install copies into. A `parked` bundle found at planning time is an
+ * interrupted restore; the plan completes it (installed empty → it goes back; rollback empty → it
+ * becomes the rollback) and stops, so the operator re-reads the slots before asking for another
+ * swap. Both slots full beside a parked bundle is a refusal: three bundles, two slots.
  * @param {Object} input
  * @param {'install'|'restore'} [input.mode='install']
  * @param {Object} input.artifact `{path, exists, receipt}` of the bundle to install (ignored on restore)
  * @param {Object} input.installed `{path, exists, receipt}` of the canonical installed bundle
  * @param {Object} input.rollback `{path, exists, receipt}` of the single rollback slot
+ * @param {Object} [input.parked] `{path, exists, receipt}` of the `.restoring` sibling
  * @param {String[]} [input.running=[]] executable paths of every Neo Harness process alive now
  * @param {Object} [input.flags={}] `{quit, open}`
+ * @param {String|null} [input.custodyDir=null] the custody directory to hash before and after; `null` skips the check
  * @returns {{ok: true, steps: Object[], warnings: String[], note?: String}|{ok: false, reason: String, detail: String[]}}
  */
-export function planInstall({mode = 'install', artifact, installed, rollback, running = [], flags = {}}) {
+export function planInstall({mode = 'install', artifact, installed, rollback, parked, running = [], flags = {}, custodyDir = null}) {
     const
         offCanonical = running.filter(exe => !isInside(exe, installed.path)),
         steps        = [],
-        warnings     = [];
+        warnings     = [],
+        custody      = phase => custodyDir && steps.push({type: 'custody', phase, dir: custodyDir}),
+        quit         = () => {
+            if (running.length) {
+                steps.push({type: 'quit', paths: running});
+                warnings.push(PEER_QUIT_WARNING)
+            }
+            // The baseline is taken once nothing of the app's own runs: a lifecycle write during its
+            // shutdown is the app's, not this leg's.
+            custody('baseline')
+        };
 
     if (offCanonical.length) {
         return refusal('running-off-canonical', [
@@ -81,6 +108,23 @@ export function planInstall({mode = 'install', artifact, installed, rollback, ru
             `${APP_NAME} is running (${processCount(running)}); pass --quit to stop it first.`,
             PEER_QUIT_WARNING
         ])
+    }
+
+    if (parked?.exists) {
+        if (installed.exists && rollback.exists) {
+            return refusal('interrupted-restore-ambiguous', [
+                `An interrupted restore left ${parked.path} beside a filled installed slot and a filled rollback slot; move one by hand before running again.`
+            ])
+        }
+
+        const to = installed.exists ? rollback.path : installed.path;
+
+        quit();
+        steps.push({type: 'rename', from: parked.path, to});
+        steps.push({type: 'verify', path: installed.path, receipt: installed.exists ? installed.receipt : parked.receipt});
+        custody('compare');
+
+        return {ok: true, steps, warnings, note: `An interrupted restore left ${parked.path}; this run only completes it (→ ${to}). Re-run for a swap.`}
     }
 
     if (mode === 'restore') {
@@ -103,26 +147,26 @@ export function planInstall({mode = 'install', artifact, installed, rollback, ru
         }
     }
 
-    if (running.length) {
-        steps.push({type: 'quit', paths: running});
-        warnings.push(PEER_QUIT_WARNING)
-    }
+    quit();
 
     if (mode === 'restore') {
         // Three renames swap the two slots, so a second --restore returns to the start.
-        const parked = `${installed.path}.restoring`;
+        const parkedPath = parked?.path ?? `${installed.path}.restoring`;
 
-        installed.exists && steps.push({type: 'rename', from: installed.path, to: parked});
+        installed.exists && steps.push({type: 'rename', from: installed.path, to: parkedPath});
         steps.push({type: 'rename', from: rollback.path, to: installed.path});
-        installed.exists && steps.push({type: 'rename', from: parked, to: rollback.path});
+        installed.exists && steps.push({type: 'rename', from: parkedPath, to: rollback.path});
         steps.push({type: 'verify', path: installed.path, receipt: rollback.receipt})
     } else {
         const staged = `${installed.path}.installing`;
 
-        // The artifact is copied beside the destination first, so the live path is replaced by one
-        // rename and is never half-written. The displaced bundle takes the single rollback slot,
-        // replacing whatever held it — exactly one rollback, never a sibling in the applications folder.
+        // The artifact is copied beside the destination and verified THERE, so a copy that lost its
+        // receipt stops the run while both slots still hold what they held. Then the live path is
+        // replaced by one rename and is never half-written, and the displaced bundle takes the single
+        // rollback slot, replacing whatever held it — exactly one rollback, never a sibling in the
+        // applications folder.
         steps.push({type: 'stage', from: artifact.path, to: staged});
+        steps.push({type: 'verify', path: staged, receipt: artifact.receipt});
 
         if (installed.exists) {
             rollback.exists && steps.push({type: 'remove', path: rollback.path});
@@ -133,6 +177,8 @@ export function planInstall({mode = 'install', artifact, installed, rollback, ru
         steps.push({type: 'verify', path: installed.path, receipt: artifact.receipt})
     }
 
+    // The custody comparison sits BEFORE the relaunch: a mismatch stops the run with the app down.
+    custody('compare');
     flags.open && steps.push({type: 'open', path: installed.path});
 
     return {ok: true, steps, warnings}
@@ -140,15 +186,18 @@ export function planInstall({mode = 'install', artifact, installed, rollback, ru
 
 /**
  * @summary Runs the planned steps in order. The first failure stops the run; the error names the
- * step, and the receipt verification turns "copied" into "installed".
+ * step. Receipt verification turns "copied" into "installed", and the custody comparison turns
+ * "replaced" into "replaced without touching the plane's custody files".
  * @param {Object[]} steps From {@link planInstall}
  * @param {Object} [options]
  * @param {Function} [options.runFn=run] Child-process seam (`ditto`, `osascript`, `open`); tests inject it
- * @param {Function} [options.runningFn=runningHarnessPaths] Process census the quit step polls
+ * @param {Function} [options.runningFn] Process census the quit step polls; defaults to the real `ps` reader
  * @param {Number} [options.quitTimeoutMs=30000]
- * @returns {void}
+ * @returns {{custody: {before: String|null, after: String|null}|null}}
  */
-export function executePlan(steps, {runFn = run, runningFn = runningHarnessPaths, quitTimeoutMs = 30000} = {}) {
+export function executePlan(steps, {runFn = run, runningFn = () => runningHarnessPaths(), quitTimeoutMs = 30000} = {}) {
+    const custody = {before: undefined, after: undefined};
+
     for (const step of steps) {
         try {
             switch (step.type) {
@@ -157,6 +206,17 @@ export function executePlan(steps, {runFn = run, runningFn = runningHarnessPaths
                     // launched peers cleanly, and a SIGKILL would orphan them.
                     runFn('osascript', ['-e', `tell application id "${BUNDLE_ID}" to quit`]);
                     waitUntilGone(runningFn, quitTimeoutMs);
+                    break;
+                case 'custody':
+                    if (step.phase === 'baseline') {
+                        custody.before = custodyDigest(step.dir)
+                    } else {
+                        custody.after = custodyDigest(step.dir);
+
+                        if (custody.after !== custody.before) {
+                            throw new Error(`the custody files under ${step.dir} changed while the app was stopped; inspect them before launching`)
+                        }
+                    }
                     break;
                 case 'stage':
                     fs.rmSync(step.to, {force: true, recursive: true});
@@ -187,6 +247,8 @@ export function executePlan(steps, {runFn = run, runningFn = runningHarnessPaths
             throw new Error(`failed at "${describeStep(step).split('\n')[0].trim()}": ${error.message}`, {cause: error})
         }
     }
+
+    return {custody: custody.before === undefined ? null : custody}
 }
 
 /**
@@ -332,7 +394,7 @@ export function readSlot(bundlePath) {
  * @summary The hand-copied `Neo Harness.previous-*.app` siblings an applications folder still holds.
  * Listed with their receipts so the operator can retire them knowingly; this leg never removes them.
  * @param {String} applicationsDir
- * @returns {{path: String, receipt: Object|null}[]}
+ * @returns {{path: String, exists: Boolean, receipt: Object|null}[]}
  */
 export function legacyCopies(applicationsDir) {
     const prefix = `${APP_NAME}.previous`;
@@ -346,16 +408,17 @@ export function legacyCopies(applicationsDir) {
 }
 
 /**
- * @summary Every running Neo Harness executable path (main process and helpers), from `ps`.
+ * @summary Every running Neo Harness executable path (main process and helpers) inside ANY bundle
+ * named `Neo Harness….app` — the canonical one, a renamed previous copy running from wherever it
+ * was moved, a staging twin. The off-canonical refusal can only see what this returns.
+ * @param {String} [psText] The `ps -axo comm=` output; read live when omitted (tests pass it)
  * @returns {String[]}
  */
-export function runningHarnessPaths() {
-    const marker = `/${APP_NAME}.app/`;
-
-    return execFileSync('ps', ['-axo', 'comm='], {encoding: 'utf8'})
+export function runningHarnessPaths(psText = execFileSync('ps', ['-axo', 'comm='], {encoding: 'utf8'})) {
+    return psText
         .split('\n')
         .map(line => line.trim())
-        .filter(line => line.includes(marker))
+        .filter(line => HARNESS_BUNDLE_PATTERN.test(line))
 }
 
 /**
@@ -397,13 +460,14 @@ function refusal(reason, detail) {
  */
 export function describeStep(step) {
     switch (step.type) {
-        case 'quit'  : return `quit    ${APP_NAME} (${processCount(step.paths)})`;
-        case 'stage' : return `copy    ${step.from}\n     →  ${step.to}`;
-        case 'remove': return `remove  ${step.path}`;
-        case 'rename': return `move    ${step.from}\n     →  ${step.to}`;
-        case 'verify': return `verify  ${step.path} carries "${describeReceipt(step.receipt)}"`;
-        case 'open'  : return `open    ${step.path}`;
-        default      : return step.type
+        case 'quit'   : return `quit    ${APP_NAME} (${processCount(step.paths)})`;
+        case 'custody': return `${step.phase === 'baseline' ? 'hash   ' : 'compare'} the custody files under ${step.dir}`;
+        case 'stage'  : return `copy    ${step.from}\n     →  ${step.to}`;
+        case 'remove' : return `remove  ${step.path}`;
+        case 'rename' : return `move    ${step.from}\n     →  ${step.to}`;
+        case 'verify' : return `verify  ${step.path} carries "${describeReceipt(step.receipt)}"`;
+        case 'open'   : return `open    ${step.path}`;
+        default       : return step.type
     }
 }
 
@@ -415,7 +479,7 @@ function printUsage() {
     console.log('');
     console.log('  --artifact   The bundle to install (default: the one bundle under dist-artifacts/mac*/).');
     console.log(`  --quit       Ask a running ${APP_NAME} to quit first. Without it a running app is a refusal.`);
-    console.log('  --open       Launch the installed bundle afterwards.');
+    console.log('  --open       Launch the installed bundle afterwards (never after a failed custody comparison).');
     console.log('  --restore    Swap the rollback slot back into place (a second --restore undoes it).');
     console.log('  --dry-run    Print the plan and the receipts; change nothing.')
 }
@@ -441,14 +505,16 @@ async function main() {
     const
         custodyDir = path.join(options.userDataDir, CUSTODY_RELATIVE_DIR),
         installed  = readSlot(path.join(options.applicationsDir, `${APP_NAME}.app`)),
+        parked     = readSlot(`${installed.path}.restoring`),
         rollback   = readSlot(path.join(options.rollbackDir, `${APP_NAME}.app`)),
         artifact   = options.mode === 'install' ? readSlot(options.artifactPath ?? resolveArtifactPath()) : null,
         running    = runningHarnessPaths(),
         legacy     = legacyCopies(options.applicationsDir),
-        plan       = planInstall({artifact, flags: {open: options.open, quit: options.quit}, installed, mode: options.mode, rollback, running});
+        plan       = planInstall({artifact, custodyDir, flags: {open: options.open, quit: options.quit}, installed, mode: options.mode, parked, rollback, running});
 
     console.log(describeSlot('installed', installed, 'absent'));
     console.log(describeSlot('rollback', rollback, 'empty'));
+    parked.exists && console.log(describeSlot('parked', parked, 'absent'));
     artifact && console.log(describeSlot('artifact', artifact, 'absent'));
 
     if (legacy.length) {
@@ -464,8 +530,9 @@ async function main() {
         process.exit(1)
     }
 
-    if (plan.note) {
-        console.log(plan.note);
+    plan.note && console.log(`${plan.note}\n`);
+
+    if (!plan.steps.length) {
         return
     }
 
@@ -477,23 +544,13 @@ async function main() {
         return
     }
 
-    const custodyBefore = custodyDigest(custodyDir);
-
     console.log('');
-    executePlan(plan.steps);
 
-    const
-        custodyAfter = custodyDigest(custodyDir),
-        unchanged    = custodyBefore === custodyAfter;
+    const {custody} = executePlan(plan.steps);
 
     console.log(`\n${describeSlot('installed', readSlot(installed.path), 'absent')}`);
     console.log(describeSlot('rollback', readSlot(rollback.path), 'empty'));
-    console.log(`${'custody'.padEnd(10)} ${custodyDir}\n           ${custodyBefore === null ? 'absent' : unchanged ? `unchanged (${custodyBefore.slice(0, 12)})` : 'CHANGED'}`);
-
-    if (!unchanged) {
-        console.error('The plane custody files changed while this ran; inspect them before launching.');
-        process.exit(1)
-    }
+    custody && console.log(`${'custody'.padEnd(10)} ${custodyDir}\n           ${custody.before === null ? 'absent' : `unchanged (${custody.before.slice(0, 12)})`}`)
 }
 
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

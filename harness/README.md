@@ -71,13 +71,18 @@ with nothing replaced.
 
 A running Neo Harness is a refusal: `--quit` is the only way the leg stops it, through the app's
 own quit, and **quitting also stops the peer harnesses it launched** — checkpoint those seats
-first. Closing the cockpit window only hides it. An app running from any path other than the
-canonical bundle is refused by path.
+first. Closing the cockpit window only hides it. A Neo Harness running from any bundle other than
+the canonical one — a renamed previous copy, a dist copy — is refused by path, with or without
+`--quit`; the census reads every process inside a bundle named `Neo Harness….app`.
 
-The leg never reads or writes the application's userData
-(`~/Library/Application Support/neo-harness/`: the saved plane record, `brain/fleet/` custody
-files, encrypted credentials); it hashes `brain/fleet/` before and after and fails if those bytes
-moved. An update is not a reset or a change of viewer identity. Builds before `#347` kept the
+The leg never writes the application's userData (`~/Library/Application Support/neo-harness/`:
+the saved plane record, the `brain/fleet/` custody files, encrypted credentials). Its only reads
+there hash `brain/fleet/` twice: once after the app has stopped, once after the slots moved and
+before any `--open`; a difference stops the run with the app down and nothing relaunches. The
+rollback slot lives under the same root. An update is not a reset or a change of viewer identity.
+A swap interrupted between two renames leaves a `Neo Harness.app.restoring` sibling; the next run
+recognizes it, moves it to the empty slot and stops, so the slots are read before another swap is
+asked for. Builds before `#347` kept the
 Fleet store inside the bundle (`Contents/Resources/organism/.neo-ai-data/fleet/`); migrate that
 `fleet` directory to `<userData>/brain/fleet/` by hand before replacing such a bundle, keeping the
 registry, `credentials.enc` and `fleet.key` together and never overwriting an existing
