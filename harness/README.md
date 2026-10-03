@@ -80,9 +80,13 @@ the canonical one — a renamed previous copy, a dist copy — is refused by pat
 
 The leg never writes the application's userData (`~/Library/Application Support/neo-harness/`:
 the saved plane record, the `brain/fleet/` custody files, encrypted credentials). Its only reads
-there hash `brain/fleet/` twice: once after the app has stopped, once after the slots moved and
-before any `--open`; a difference stops the run with the app down and nothing relaunches. The
-rollback slot lives under the same root. An update is not a reset or a change of viewer identity.
+there hash the custody set twice — the plane record (`plane.json`, `plane-bearer.bin`,
+`seat-root.json`) and `brain/fleet/`'s own files (registry, credentials, keys, tenants), plus the
+names of the seats under `brain/fleet/agents/` — once after the app has stopped, once after the
+slots moved and before any `--open`; a difference stops the run with the app down and nothing
+relaunches. Seat homes are the seats' own and are not read, and no link is followed: a seat home's
+`.neo-ai-data` links point into the bundle this leg replaces, so following them would make every
+correct install read as a custody change. The rollback slot lives under the same root. An update is not a reset or a change of viewer identity.
 A swap interrupted between two renames leaves a `Neo Harness.app.restoring` sibling; the next run
 recognizes it, moves it to the empty slot and stops, so the slots are read before another swap is
 asked for. Builds before `#347` kept the

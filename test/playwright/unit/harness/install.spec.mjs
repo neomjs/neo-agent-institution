@@ -1,5 +1,5 @@
 import {expect, test}                                                       from '@playwright/test';
-import {cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
+import {cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir}                                                             from 'node:os';
 import path                                                                 from 'node:path';
 import {
@@ -24,7 +24,7 @@ const
     STAGED       = `${INSTALLED}.installing`,
     ROLLBACK     = `/Users/me/Library/Application Support/neo-harness/rollback/${ROLLBACK_BUNDLE_NAME}`,
     ARTIFACT     = `/repo/harness/dist-artifacts/mac-arm64/${APP_NAME}.app`,
-    CUSTODY      = '/Users/me/Library/Application Support/neo-harness/brain/fleet',
+    CUSTODY      = '/Users/me/Library/Application Support/neo-harness',
     MAIN_EXE     = `${INSTALLED}/Contents/MacOS/${APP_NAME}`,
     HELPER_EXE   = `${INSTALLED}/Contents/Frameworks/${APP_NAME} Helper.app/Contents/MacOS/${APP_NAME} Helper`,
     PREVIOUS_EXE = `/Users/me/archive/${APP_NAME}.previous-20260930-pre-649.app/Contents/MacOS/${APP_NAME}`,
@@ -197,7 +197,7 @@ test.describe('harness/install.mjs — the plan', () => {
 });
 
 test.describe('harness/install.mjs — the executor on real directories', () => {
-    let root, applications, custody, installed, parked, rollback, artifact;
+    let root, applications, userData, custody, installed, parked, rollback, artifact;
 
     /** A bundle is a directory carrying the receipt at the organism path. */
     function writeBundle(bundlePath, bundleReceipt) {
@@ -208,11 +208,23 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         writeFileSync(receiptPath, JSON.stringify(bundleReceipt))
     }
 
+    /**
+     * A userData root as the installed app leaves it: the plane record at the root, the fleet root's
+     * files, and one seat home that is a checkout with a directory link INTO the bundle's organism.
+     */
     function writeCustody() {
-        mkdirSync(path.join(custody, 'agents', 'neo-opus-ada'), {recursive: true});
+        const home = path.join(custody, 'agents', 'neo-opus-ada', 'neomjs', 'neo');
+
+        mkdirSync(path.join(home, '.neo-ai-data'), {recursive: true});
+        mkdirSync(path.join(root, 'organism', 'sqlite'), {recursive: true});
+        writeFileSync(path.join(userData, 'plane.json'), '{"base":"https://plane.example"}');
+        writeFileSync(path.join(userData, 'plane-bearer.bin'), Buffer.from([7, 7, 7]));
         writeFileSync(path.join(custody, 'registry.json'), '{"agents":{}}');
         writeFileSync(path.join(custody, 'credentials.enc'), Buffer.from([1, 2, 3]));
-        writeFileSync(path.join(custody, 'agents', 'neo-opus-ada', 'seat.json'), '{}')
+        writeFileSync(path.join(custody, 'fleet.key'), Buffer.from([4, 4]));
+        writeFileSync(path.join(home, 'seat.json'), '{}');
+        writeFileSync(path.join(root, 'organism', 'sqlite', 'storage.db'), 'rows-v1');
+        symlinkSync(path.join(root, 'organism', 'sqlite'), path.join(home, '.neo-ai-data', 'sqlite'))
     }
 
     /** The slots as the CLI reads them from disk, for a re-plan after an interruption. */
@@ -228,7 +240,8 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
     test.beforeEach(() => {
         root         = mkdtempSync(path.join(tmpdir(), 'install-leg-'));
         applications = path.join(root, 'Applications');
-        custody      = path.join(root, 'brain', 'fleet');
+        userData     = path.join(root, 'userData');
+        custody      = path.join(userData, 'brain', 'fleet');
         installed    = path.join(applications, `${APP_NAME}.app`);
         parked       = `${installed}.restoring`;
         rollback     = path.join(root, 'rollback', ROLLBACK_BUNDLE_NAME);
@@ -329,7 +342,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
             running       = [`${installed}/Contents/MacOS/${APP_NAME}`],
             gone          = () => [];
 
-        let plan = planInstall({...slots(), running, flags: {quit: true, open: true}, custodyDir: custody});
+        let plan = planInstall({...slots(), running, flags: {quit: true, open: true}, custodyDir: userData});
 
         const {custody: digest} = executePlan(plan.steps, {runFn: quiet, runningFn: gone});
 
@@ -344,20 +357,48 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
             tampering      = runFn(installerWrite, {ditto: () => writeFileSync(path.join(custody, 'credentials.enc'), Buffer.from([9, 9, 9]))});
 
         writeBundle(artifact, receipt('2026-10-03T07:00:00.000Z', 'eeeeeee5555555'));
-        plan = planInstall({...slots(), flags: {open: true}, custodyDir: custody});
+        plan = planInstall({...slots(), flags: {open: true}, custodyDir: userData});
 
-        expect(() => executePlan(plan.steps, {runFn: tampering})).toThrow(/failed at "compare the custody files.*changed while the app was stopped/);
+        expect(() => executePlan(plan.steps, {runFn: tampering})).toThrow(/failed at "compare the custody set.*changed while the app was stopped/);
         expect(installerWrite.map(call => call.command)).not.toContain('open')
     });
 
-    test('custodyDigest is stable over untouched files and moves when one byte of a credential file does', () => {
+    test('custodyDigest reads the plane record, the fleet root and seat presence — never a seat home\'s contents, never through a link', () => {
         writeCustody();
 
-        const before = custodyDigest(custody);
+        const before = custodyDigest(userData);
 
-        expect(before).toBe(custodyDigest(custody));
+        expect(before).toBe(custodyDigest(userData));
+
+        // What a real install changes, and must not count: the organism behind a seat home's link.
+        writeFileSync(path.join(root, 'organism', 'sqlite', 'storage.db'), 'rows-v2-from-the-new-bundle');
+        expect(custodyDigest(userData), 'a change behind a seat home\'s link is not custody').toBe(before);
+
+        // What a seat does to its own home, and must not count.
+        writeFileSync(path.join(custody, 'agents', 'neo-opus-ada', 'neomjs', 'neo', 'seat.json'), '{"turns":1}');
+        expect(custodyDigest(userData), 'a seat home\'s own file is not custody').toBe(before);
+
+        // What IS custody: one byte of a fleet-root file, one byte of the plane record, a seat's presence,
+        // and a depth-1 link's target string.
         writeFileSync(path.join(custody, 'credentials.enc'), Buffer.from([1, 2, 4]));
-        expect(custodyDigest(custody)).not.toBe(before);
+        const afterCredential = custodyDigest(userData);
+        expect(afterCredential, 'a credential byte moves it').not.toBe(before);
+
+        writeFileSync(path.join(userData, 'plane.json'), '{"base":"https://other.example"}');
+        const afterPlane = custodyDigest(userData);
+        expect(afterPlane, 'the plane record moves it').not.toBe(afterCredential);
+
+        mkdirSync(path.join(custody, 'agents', 'neo-gpt-sophie'));
+        const afterSeat = custodyDigest(userData);
+        expect(afterSeat, 'a seat appearing moves it').not.toBe(afterPlane);
+
+        symlinkSync(path.join(root, 'elsewhere-a'), path.join(custody, 'shared'));
+        const afterLink = custodyDigest(userData);
+        expect(afterLink, 'a depth-1 link counts by its target string').not.toBe(afterSeat);
+        rmSync(path.join(custody, 'shared'));
+        symlinkSync(path.join(root, 'elsewhere-b'), path.join(custody, 'shared'));
+        expect(custodyDigest(userData), 'a retargeted depth-1 link moves it').not.toBe(afterLink);
+
         expect(custodyDigest(path.join(root, 'nowhere'))).toBeNull()
     });
 
