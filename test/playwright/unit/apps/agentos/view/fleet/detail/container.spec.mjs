@@ -934,14 +934,19 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         test('three held rows render worst first in the resolver\'s words, and the pill reads the read\'s observation (AC-1)', () => {
             const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer(
-                [prRow('neomjs/neo-agent-brain', 806, 'author', {ci: 'pending'}), prRow('neomjs/neo-agent-institution', 504, 'author', {ci: 'red', observedAt: minsAgo(2)})],
+                [prRow('neomjs/neo-agent-brain', 806, 'author', {ci: 'pending', title: 'feat: the memory import at Start'}), prRow('neomjs/neo-agent-institution', 504, 'author', {ci: 'red', observedAt: minsAgo(2)})],
                 [prRow('neomjs/neo', 19379, 'reviewer')],
                 minsAgo(1)
             ))});
 
             expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['neomjs/neo-agent-institution #504', 'neomjs/neo-agent-brain #806', 'neomjs/neo #19379']);
-            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['author · red · observed 2m ago', 'author · changes requested', 'reviewer · review due']);
+            expect(rowsOf(detail).map(row => row.cn.at(-1).text)).toEqual(['author · red · observed 2m ago', 'author · changes requested', 'reviewer · review due']);
             expect(rowsOf(detail)[0].cn[0]).toMatchObject({tag: 'a', href: 'https://github.com/neomjs/neo-agent-institution/pull/504', rel: 'noopener', target: '_blank'});
+
+            // the title slot: a row whose producer carries a title shows it between reference and line
+            expect(rowsOf(detail)[1].cn.map(node => node.cls[0])).toEqual(['fm-detail-pr-ref', 'fm-detail-pr-title', 'fm-detail-pr-line']);
+            expect(rowsOf(detail)[1].cn[1].text).toBe('feat: the memory import at Start');
+            expect(rowsOf(detail)[0].cn, 'no title, no slot').toHaveLength(2);
 
             // the oldest held row's observation is the pane's
             expect(chip(detail, 'prs').text).toBe('updated 2m ago');

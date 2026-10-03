@@ -213,7 +213,7 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
 
             // the detail's rows ride the same write: the held row, and an answered seat holding nothing
             expect(roster.get('neo-opus-ada').openWorkHeld).toEqual({
-                rows: [{kind: 'red', number: 1, observedAt: null, repo: 'neomjs/neo', role: 'author', stale: false}], stale: false, observedAt
+                rows: [{kind: 'red', number: 1, observedAt: null, repo: 'neomjs/neo', role: 'author', stale: false, title: null}], stale: false, observedAt
             });
             expect(roster.get('neo-gpt').openWorkHeld).toEqual({rows: [], stale: false, observedAt});
 

@@ -85,7 +85,8 @@ class OpenWorkSeat extends Base {
      * @param {Object|null} snapshot     One `fleetOpenWork` envelope, or `null` while unanswered.
      * @param {String|null} seatIdentity The seat's identity, e.g. `@neo-opus-ada`.
      * @returns {{rows: Object[], stale: Boolean, observedAt: String|null}|null} Each row is
-     * `{kind, number, observedAt, repo, role, stale}`.
+     * `{kind, number, observedAt, repo, role, stale, title}`; `title` is `null` while the producer's
+     * row carries none.
      */
     static held(snapshot, seatIdentity) {
         if (!seatIdentity || !snapshot || snapshot.state === 'unavailable') return null;
@@ -103,7 +104,8 @@ class OpenWorkSeat extends Base {
                 observedAt: row.observedAt ?? null,
                 repo      : row.repo,
                 role      : row.holder.role,
-                stale     : row.stale === true
+                stale     : row.stale === true,
+                title     : row.title || null
             })
         });
 
@@ -133,19 +135,21 @@ class OpenWorkSeat extends Base {
 
     /**
      * @summary One held pull request as the Agent Detail lists it: its reference and the link the
-     * reference opens, and one line in the chip's vocabulary: the seat's role, the state word and the
-     * row's age. The link is composed from the row's own repository and number, never taken from the wire.
+     * reference opens, its title when the producer's row carries one, and one line in the chip's
+     * vocabulary: the seat's role, the state word and the row's age. The link is composed from the
+     * row's own repository and number, never taken from the wire.
      * @param {Object} row One {@link #held} row.
      * @param {Number} [now=Date.now()] The viewer's clock, for the row's age.
-     * @returns {{href: String, ref: String, line: String}}
+     * @returns {{href: String, ref: String, title: String|null, line: String}}
      */
     static describeRow(row, now = Date.now()) {
         const ageMs = row.observedAt ? now - Date.parse(row.observedAt) : NaN;
 
         return {
-            href: `https://github.com/${row.repo}/pull/${row.number}`,
-            ref : `${row.repo} #${row.number}`,
-            line: [
+            href : `https://github.com/${row.repo}/pull/${row.number}`,
+            ref  : `${row.repo} #${row.number}`,
+            title: row.title ?? null,
+            line : [
                 row.role,
                 KIND_WORDS[row.kind],
                 ...(Number.isFinite(ageMs) ? [`observed ${AgentFreshness.formatAge(ageMs)}`] : []),

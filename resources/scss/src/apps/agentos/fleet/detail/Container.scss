@@ -168,8 +168,8 @@
     }
 
     /* the pull requests pane: per held pull request, its reference (an anchor to the forge, in the
-       inspector's mono voice) over its line in the chip's words; both wrap at rail widths, so the
-       default placement reads every row in full */
+       inspector's mono voice), its title when the producer carries one, and its line in the chip's
+       words; all wrap at rail widths, so the default placement reads every row in full */
     .fm-detail-pane-prs .fm-detail-pane-body {
         display: grid;
         gap    : var(--fm-space-1);
@@ -190,6 +190,11 @@
         &:focus-visible {
             text-decoration: underline;
         }
+    }
+
+    .fm-detail-pr-title {
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
     }
 
     /* the freshness ledger chip: a mono pill whose tone states the observation

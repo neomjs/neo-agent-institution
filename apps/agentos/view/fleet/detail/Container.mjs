@@ -689,10 +689,11 @@ class AgentDetail extends Container {
             body.vdom.cn = !openWorkHeld ? [] : openWorkHeld.rows.length === 0
                 ? [{tag: 'span', cls: ['fm-detail-prs-none'], text: OpenWorkSeat.PANE_WORDS.none}]
                 : openWorkHeld.rows.map(row => {
-                    const {href, line, ref} = OpenWorkSeat.describeRow(row, now);
+                    const {href, line, ref, title} = OpenWorkSeat.describeRow(row, now);
 
                     return {cls: ['fm-detail-pr'], cn: [
                         {tag: 'a', cls: ['fm-detail-pr-ref'], href, rel: 'noopener', target: '_blank', text: ref},
+                        ...(title ? [{tag: 'span', cls: ['fm-detail-pr-title'], text: title}] : []),
                         {tag: 'span', cls: ['fm-detail-pr-line'], text: line}
                     ]}
                 });

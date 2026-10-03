@@ -86,15 +86,15 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
     test('held lists the seat\'s rows worst first, tells nothing held from no answer, and summarize counts the same rows', () => {
         const
             review = row(3, {role: 'reviewer', ids: [ada]}, {repo: 'neomjs/neo-agent-brain', observedAt: '2026-10-03T07:50:00.000Z'}),
-            change = row(2, {role: 'author', ids: [ada]}, {ci: 'pending'}),
+            change = row(2, {role: 'author', ids: [ada]}, {ci: 'pending', title: 'feat: the pane reads open work'}),
             red    = row(1, {role: 'author', ids: [ada]}, {ci: 'red', stale: true}),
             answer = held([change, red], [review]);
 
         expect(OpenWorkSeat.held(answer, ada)).toEqual({
             rows: [
-                {kind: 'red',               number: 1, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: true},
-                {kind: 'changes-requested', number: 2, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: false},
-                {kind: 'review-due',        number: 3, observedAt: '2026-10-03T07:50:00.000Z', repo: 'neomjs/neo-agent-brain', role: 'reviewer', stale: false}
+                {kind: 'red',               number: 1, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: true,  title: null},
+                {kind: 'changes-requested', number: 2, observedAt: null,                       repo: 'neomjs/neo',             role: 'author',   stale: false, title: 'feat: the pane reads open work'},
+                {kind: 'review-due',        number: 3, observedAt: '2026-10-03T07:50:00.000Z', repo: 'neomjs/neo-agent-brain', role: 'reviewer', stale: false, title: null}
             ],
             stale     : true,
             observedAt: '2026-10-03T07:50:00.000Z'
@@ -112,10 +112,11 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
     test('describeRow words one held row in the chip\'s vocabulary, and its link comes from the row\'s own fields', () => {
         const now = Date.parse('2026-10-03T08:07:00.000Z');
 
-        expect(OpenWorkSeat.describeRow({kind: 'red', number: 504, observedAt: '2026-10-03T08:04:00.000Z', repo: 'neomjs/neo-agent-institution', role: 'author', stale: false}, now)).toEqual({
-            href: 'https://github.com/neomjs/neo-agent-institution/pull/504',
-            ref : 'neomjs/neo-agent-institution #504',
-            line: 'author · red · observed 3m ago'
+        expect(OpenWorkSeat.describeRow({kind: 'red', number: 504, observedAt: '2026-10-03T08:04:00.000Z', repo: 'neomjs/neo-agent-institution', role: 'author', stale: false, title: 'fix: the card names no path'}, now)).toEqual({
+            href : 'https://github.com/neomjs/neo-agent-institution/pull/504',
+            ref  : 'neomjs/neo-agent-institution #504',
+            title: 'fix: the card names no path',
+            line : 'author · red · observed 3m ago'
         });
         expect(OpenWorkSeat.describeRow({kind: 'review-due', number: 7, observedAt: null, repo: 'neomjs/neo', role: 'reviewer', stale: true}, now).line)
             .toBe('reviewer · review due · stale');

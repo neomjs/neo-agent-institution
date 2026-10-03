@@ -246,7 +246,7 @@ apps/agentos/util/OpenWorkRead.mjs
     fdaa7d572a845e4c6689a00762abf5fc9bf20a1b
 
 apps/agentos/util/OpenWorkSeat.mjs
-    a63f123b50e853624eb8518eaac2f9c0cfc11dde
+    e17225cb0a766852e9d7fef3b46e033993ee4f39
 
 apps/agentos/util/PlaneCredentialCheck.mjs
     e90a4505028072781fd15134801cc3c9cb0a37b5
@@ -339,7 +339,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    cc5ba7598773d9c6c5b0be6caf3af6b2882ab940
+    7cdf292e97c552c1f73de0ef6ea38a1e52c6c61e
 
 apps/agentos/view/fleet/detail/Controller.mjs
     9c9d839fd9613ad24cccb7b9cdbdf4e520c0bafe
@@ -540,7 +540,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    5999d449e75779cf33ab2979473d6a89b4eb7bdb
+    142dbb44bfee001f46ace23573b3bda95a7de06c
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
