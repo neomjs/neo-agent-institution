@@ -6,7 +6,7 @@ engine
     04362ea8181894ec75f5d0c79e5c9b32ee9c28d14437963cc2924a8925a1f025
 
 apps/agentos/CARD-CONTRACT.md
-    7cbbc4717c641ab36089a0c7ded20095a91c44fa
+    61c08d50b7c1219218e77f92b1ee880845be2f9b
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    f3b6f871bbdcab825a3637bf4e38158ff678052b
+    ae785027a05d7164004b04a32a2f55fabc5e9eb7
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -97,6 +97,9 @@ apps/agentos/model/GraphSceneRelation.mjs
 
 apps/agentos/model/MailboxMessage.mjs
     2e999ccc7fd23d46519363cdf8f42814204e7857
+
+apps/agentos/model/OpenPullRequest.mjs
+    149dacb874a7ab27c11f41d071550be1b75969df
 
 apps/agentos/model/SeatRepository.mjs
     403f001ea89e9c9f8ab035a05908aaa300047521
@@ -145,6 +148,9 @@ apps/agentos/store/DeploymentServices.mjs
 
 apps/agentos/store/FleetActivityEvents.mjs
     c7458f1746e86b54af7ae41567e31795e976ec40
+
+apps/agentos/store/FleetAwaitingMerge.mjs
+    e4742597ec65aba40ea9c192a560b746ea78da38
 
 apps/agentos/store/FleetInstances.mjs
     6b877eaef0a4528e2fb590d39867ae95bba21ba2
@@ -209,6 +215,9 @@ apps/agentos/util/FleetLifecycleIntentAdapter.mjs
 apps/agentos/util/FleetStartPlan.mjs
     8133ea5500f9f193b515e5ab70ce1a172fa31921
 
+apps/agentos/util/FloatingMenuTheme.mjs
+    7e0cbb296af046a08e7ff83d6deeeae92d76fbd4
+
 apps/agentos/util/GoldenPathEnvelope.mjs
     b112a479ca39a63d579e8dc5f13926fe6a9aa3a0
 
@@ -225,13 +234,19 @@ apps/agentos/util/KindRegistry.mjs
     b33024720f4b84257113f91ea0664f7be2e26081
 
 apps/agentos/util/LivenessCadence.mjs
-    9ec9be1604627e7cf221f6eb7f06a9c4d182c458
+    427251ad9f71485ebf30c33c752f27989544532a
 
 apps/agentos/util/NameSlot.mjs
     3fe98fcc20425319dc01e37d905079564c308f3f
 
 apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
+
+apps/agentos/util/OpenWorkRead.mjs
+    11a72a2fc4c0c4de815352fabbb2241e95ab490b
+
+apps/agentos/util/OpenWorkSeat.mjs
+    7742a70d1da1cc6fc20993a488e2f52ffc5d2879
 
 apps/agentos/util/PlaneCredentialCheck.mjs
     e90a4505028072781fd15134801cc3c9cb0a37b5
@@ -249,7 +264,7 @@ apps/agentos/util/SpineBanner.mjs
     d4b27038e3515fc3e53c2c20bf6ec84cb372baea
 
 apps/agentos/util/TargetBinding.mjs
-    0f68ffd8fc9b129acb64931c1a8de93ab00135ad
+    aaf37a9f17e958b9ca06f4fc3d50d681534242a1
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -261,7 +276,7 @@ apps/agentos/util/ViewerWakeTelltale.mjs
     31bff815feed1bf14ee4b9608168118f4621834a
 
 apps/agentos/view/Viewport.mjs
-    1336dc4a28bc41ae8d5833f7dd858681a27b70d1
+    17c61c12e13f57d1a7367d401ba925a1d4419db3
 
 apps/agentos/view/ViewportController.mjs
     e21ce8a845864164331d4849e88017e4025acbb7
@@ -291,13 +306,13 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    0b2e28dc76156cc987abf13ca9b2c574ac435c19
+    32488ae86f88be9980c0efc7aaf9497694bb7e4d
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    09ab2456b19e4737b4b814d50b2a381dc028f3c7
+    c517490af79f0270a45bd5cc3c37ad314b0d0af0
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    442d07d957e9aa9806b3470f44fbe5e3856246c1
+    54c7f51805bf68baab2d7bcc42a563556b5cf1e7
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     3bc24c1b7d3498119de6210234cc74528fcfaa8f
@@ -375,7 +390,7 @@ apps/agentos/view/fleet/instances/MenuList.mjs
     ccdf45c8b6908038853fa498cd5147fe98f43f32
 
 apps/agentos/view/fleet/instances/SwitcherButton.mjs
-    97e71ba7326fecd3d757a23b1197b996f9d5d1be
+    85b41237b3f9c6326468d862efe72ca8a7ff3a19
 
 apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     04ea267aa98a0de4ec26c5c1f027e2b97d5d4da3
@@ -419,8 +434,14 @@ apps/agentos/view/fleet/memories/TurnRowComponent.mjs
 apps/agentos/view/fleet/perspectives/Container.mjs
     f6548ca755ca9817cf13b8b7388cb62a0e8471e1
 
+apps/agentos/view/fleet/roster/AwaitingMergeButton.mjs
+    7801cfd18871e448c037baa0e3221d644612ef40
+
+apps/agentos/view/fleet/roster/AwaitingMergeMenuList.mjs
+    27bdc4e2599969b58487a2d32df1793b4f134b96
+
 apps/agentos/view/fleet/roster/Container.mjs
-    8ad08662ddf4a13ce013b993f1eb85eb39678eca
+    a6f6f8a61427612cba00b5245e4b99de7c5ffeac
 
 apps/agentos/view/fleet/roster/Controller.mjs
     9e6126021991ca47d823c6f44583d4f6a292bd26
@@ -432,7 +453,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    ebd21673c80dcaea674627804cd5bb5d0836ddb1
+    e381dcc64fd5dcd262e5264219ae04c339a7705d
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     64238dd4bac922bbfd33878431f3b9a21f9d8dfb
@@ -566,11 +587,14 @@ resources/scss/src/apps/agentos/fleet/memories/Container.scss
 resources/scss/src/apps/agentos/fleet/perspectives/Container.scss
     ebd226f7f44bd6bca6a78ab5a361d051c093a660
 
+resources/scss/src/apps/agentos/fleet/roster/AwaitingMergeButton.scss
+    f1a1d6a6c03c6715975542e4bb355121fb2398cc
+
 resources/scss/src/apps/agentos/fleet/roster/Container.scss
     6d2873b22214c71368ae1e7352e1023eede8cc08
 
 resources/scss/src/apps/agentos/fleet/roster/card/Container.scss
-    68f47604631a2ba45629d117483a98937bf9e5ad
+    1a9bb4feabe5a94444f1a3587b1e3eab0d38a92c
 
 resources/scss/src/apps/agentos/fleet/shared/FamilyRailComponent.scss
     a44934170253161f3d0067031116e88e141223b3
@@ -660,7 +684,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    1b38d330ac9d17faef1375013f4ade5bd680574c
+    4871c7fd8642c5a04aee4bca358d5486a1aaed9e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     a97e556c84a3cf1dddded67dc001da74a366ac4d
@@ -713,8 +737,20 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-la
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-lane-empty.png
     668a044328a2a948e2a6b6349bcfd5fe3c35504d
 
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-open-work-light.png
+    0f5dbe37ac4dc6d00479cfa9c0ca53ffa038cdef
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-open-work.png
+    677c0d6de3b5278f69a1d47b3112679491514d55
+
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-grid-cards.png
     760ec27e828e90b2c112b6f2ff9b3f92bc482c5b
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-awaiting-merge-light.png
+    fc821e50c0d13aa81cdb0467f6b9f9fcb4ad4ab5
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-awaiting-merge.png
+    2f3e17b74f4c4fa42f837e6b437b000efad4077c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
     0facff4dc71f0aac3e6c09d21336642ad02279c2

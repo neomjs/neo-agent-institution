@@ -104,6 +104,39 @@ export const sampleActivity = [
 ];
 
 /**
+ * @summary A test-owned open-work answer over the sample roster: Grace holds a red head and a review,
+ * Vega a review, Euclid a change request, and two PRs await the operator's merge. The app never
+ * imports this envelope.
+ * @type {Object}
+ */
+export const sampleOpenWork = (() => {
+    const
+        observedAt = '2026-07-05T10:00:00.000Z',
+        row        = (repo, number, ci, holder) => ({repo, number, head: null, ci, verdict: null, mergeable: null, draft: false, reviews: [], observedAt, stale: false, holder}),
+        redHead    = row('neomjs/neo', 19501, 'red', {role: 'author', ids: ['@neo-opus-grace']}),
+        reviewDue  = row('neomjs/neo-agent-brain', 802, 'green', {role: 'reviewer', ids: ['@neo-opus-grace', '@neo-opus-vega']}),
+        changes    = row('neomjs/neo-agent-institution', 481, 'green', {role: 'author', ids: ['@neo-gpt']});
+
+    return {
+        state     : 'ok',
+        observedAt,
+        coverage  : 'complete',
+        reason    : null,
+        detail    : null,
+        unobserved: 0,
+        seats     : {
+            '@neo-opus-grace': {authored: [redHead], reviewing: [reviewDue]},
+            '@neo-opus-vega' : {authored: [], reviewing: [reviewDue]},
+            '@neo-gpt'       : {authored: [changes], reviewing: []}
+        },
+        awaitingMerge: [
+            {...row('neomjs/neo', 19499, 'green', {role: 'operator', ids: []}), mergeable: 'MERGEABLE'},
+            {...row('neomjs/neo-agent-brain', 799, 'green', {role: 'operator', ids: []}), mergeable: 'MERGEABLE'}
+        ]
+    }
+})();
+
+/**
  * @summary A dense, test-owned task answer for the visual width bands: a determinate run, a
  * starved waiter with its own cause and flags, a mixed-source queue, a completion, and the
  * scheduler lease line. The app never imports this envelope.

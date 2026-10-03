@@ -126,6 +126,7 @@ class FleetCockpit extends VesselContainer {
                 bind     : {
                     adapterState      : data => data.gridAdapterState,
                     daemonFault       : data => data.daemonFault,
+                    openWork          : data => data.openWork,
                     presenceCapability: data => data.presenceCapability,
                     store             : 'stores.fleetRoster'
                 },
@@ -892,6 +893,11 @@ class FleetCockpit extends VesselContainer {
             seeds      = null;
 
         switch (itemId) {
+            case 'fleet':
+                // the merge queue resolved imperatively, like the inspector's stores: a provider
+                // without it seats none, and the head's button stays hidden
+                seeds = {mergeQueueStore: me.resolveProviderStore('fleetAwaitingMerge')};
+                break;
             case 'stream':
                 seeds = {actorDirectory: controller.buildActivityActorDirectory()};
                 break;

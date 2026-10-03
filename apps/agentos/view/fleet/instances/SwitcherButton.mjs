@@ -1,4 +1,5 @@
 import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import FloatingMenuTheme from '../../../util/FloatingMenuTheme.mjs';
 import InstanceMenuList, {
     displayInstanceLabel,
     displayShellLabel
@@ -232,22 +233,12 @@ class InstanceSwitcher extends Button {
     }
 
     /**
-     * @summary Projects the owner viewport's current skin onto the body-level menu. A floating
-     * component is logically parented to this button but DOM-parented to body; component.Base
-     * therefore suppresses the "inherited" theme class even though DOM inheritance comes from the
-     * body's different skin. Keep the config plus concrete class aligned at that seam.
+     * @summary Projects the owner viewport's current skin onto the body-level menu
+     * ({@link AgentOS.util.FloatingMenuTheme#sync}).
      * @param {AgentOS.view.fleet.instances.MenuList} menu
      */
     syncMenuTheme(menu) {
-        let theme = this.getTheme(),
-            cls   = menu.cls.filter(value => !value.startsWith('neo-theme-'));
-
-        if (theme) {
-            menu.theme = theme;
-            cls.push(theme)
-        }
-
-        menu.cls = cls
+        FloatingMenuTheme.sync(this, menu)
     }
 
     /**

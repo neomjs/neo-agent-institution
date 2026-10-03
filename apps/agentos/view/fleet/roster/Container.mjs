@@ -1,3 +1,4 @@
+import AwaitingMerge    from './AwaitingMergeButton.mjs';
 import Button           from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import ClassSystemUtil  from '../../../../../node_modules/neo.mjs/src/util/ClassSystem.mjs';
 import Component        from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
@@ -27,8 +28,8 @@ import Store            from '../../../../../node_modules/neo.mjs/src/data/Store
  * truth pair and fires `agentSelect` for the detail path, and a lifecycle-control click is carved
  * out so operating an agent never re-targets the panes.
  *
- * The header (title · liveness marker · presence-capability chip · {@link HealthBar}) is a STABLE
- * sub-tree updated in place. On adapter loss it degrades honestly — a stale banner over the
+ * The header (title · liveness marker · presence-capability chip · {@link HealthBar} · the
+ * awaiting-merge button) is a STABLE sub-tree updated in place. On adapter loss it degrades honestly — a stale banner over the
  * last-known roster, never a blanked grid.
  *
  * @class AgentOS.view.fleet.roster.Container
@@ -107,6 +108,20 @@ class FleetGrid extends Container {
          */
         daemonFault_: false,
         /**
+         * The merge queue the head's awaiting-merge button lists — the provider's
+         * {@link AgentOS.store.FleetAwaitingMerge}, plumbed by the cockpit and handed on as given.
+         * @member {Neo.data.Store|null} mergeQueueStore_=null
+         * @reactive
+         */
+        mergeQueueStore_: null,
+        /**
+         * The open-work read's state (the provider's `openWork` block), plumbed by the cockpit and handed
+         * to the awaiting-merge button, which words a stale or unavailable queue from it.
+         * @member {Object|null} openWork_=null
+         * @reactive
+         */
+        openWork_: null,
+        /**
          * The stable chrome over the animated list: the header (title · liveness marker · flex
          * spacer · live {@link HealthBar}), the sort/filter cluster, the
          * {@link AgentOS.view.fleet.roster.List} (the scroll owner), and the bootstrap CTA (design
@@ -141,7 +156,9 @@ class FleetGrid extends Container {
                     role     : 'status'
                 },
                 {ntype: 'component', flex: 1},
-                {module: HealthBar, reference: 'fleet-health', flex: 'none'}
+                {module: HealthBar, reference: 'fleet-health', flex: 'none'},
+                // the operator's merge queue: approved, green, mergeable pull requests, after the bar
+                {module: AwaitingMerge, reference: 'awaiting-merge', flex: 'none'}
             ]
         }, {
             // the operator's ordering + visibility levers, roster-owned (the cockpit top toolbar
@@ -229,6 +246,7 @@ class FleetGrid extends Container {
         // copy); the list renders it; the controller seats ordering + view filters on it
         me.getReference('fleet-health').store = me.store;
         me.getReference('roster-list').store  = me.store;
+        me.getReference('awaiting-merge').set({openWork: me.openWork, store: me.mergeQueueStore});
         controller.seatViewOrdering(me.store);
 
         // a create-time capability envelope lands after the reference tree exists — explicitly,
@@ -319,6 +337,26 @@ class FleetGrid extends Container {
      */
     onStoreRecordChange(data) {
         this.isConstructed && this.getController()?.onRosterRecordChange(data)
+    }
+
+    /**
+     * Triggered after the mergeQueueStore config changed — hands the queue to the head's button.
+     * @param {Neo.data.Store|null} value
+     * @param {Neo.data.Store|null} oldValue
+     * @protected
+     */
+    afterSetMergeQueueStore(value, oldValue) {
+        this.isConstructed && (this.getReference('awaiting-merge').store = value)
+    }
+
+    /**
+     * Triggered after the openWork config changed — hands the read's state to the head's button.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetOpenWork(value, oldValue) {
+        this.isConstructed && (this.getReference('awaiting-merge').openWork = value)
     }
 
     /**

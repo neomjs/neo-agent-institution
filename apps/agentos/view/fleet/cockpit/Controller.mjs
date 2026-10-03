@@ -775,6 +775,18 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
+     * @summary A roster row as its record, carrying the seat's held open work, so a roster refresh never
+     * drops the card's open-work chip ({@link AgentOS.util.OpenWorkRead#seatOpenWork}).
+     * @param {Object} row One roster DTO row.
+     * @returns {Object}
+     */
+    mapRosterRow(row) {
+        const mapped = super.mapRosterRow(row);
+
+        return {...mapped, openWork: OpenWorkRead.seatOpenWork(this, mapped.githubUsername)}
+    }
+
+    /**
      * @summary WRITE: route one operator-composed message — one target, several (fan-out, one
      * authenticated call and one honest outcome per recipient), or the `AGENT:*` broadcast (a
      * single call; the server expands the sentinel). The sender is server-stamped at the

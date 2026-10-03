@@ -1,4 +1,5 @@
 import Base          from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import OpenWorkSeat  from './OpenWorkSeat.mjs';
 import TargetBinding from './TargetBinding.mjs';
 
 /**
@@ -12,7 +13,8 @@ import TargetBinding from './TargetBinding.mjs';
  * stands under another's name.
  *
  * The cockpit controller owns the state (`openWorkReadGeneration`, `openWorkReadInFlight`,
- * `openWorkSnapshot`, `openWorkProfileId`); this class reads and writes it.
+ * `openWorkSnapshot`, `openWorkProfileId`); this class reads and writes it. Every change of the held
+ * answer is projected onto the surfaces that show it ({@link #project}).
  * @class AgentOS.util.OpenWorkRead
  * @extends Neo.core.Base
  */
@@ -28,10 +30,73 @@ class OpenWorkRead extends Base {
     /**
      * @summary The envelope that stands for an answer the plane did not give.
      * @param {String} reason Why there is no answer.
+     * @param {String} [coverage='unavailable'] `not-wired` when the bridge has no open-work verb (an
+     * expected absence), `unanswered` when the read threw (the connection's story, which the spine
+     * banner tells): the surfaces stay silent about both, and name only a producer's own `unavailable`.
      * @returns {Object} `{state: 'unavailable', observedAt, coverage, reason, seats, awaitingMerge}`.
      */
-    static unavailable(reason) {
-        return {state: 'unavailable', observedAt: null, coverage: 'unavailable', reason, seats: {}, awaitingMerge: []}
+    static unavailable(reason, coverage = 'unavailable') {
+        return {state: 'unavailable', observedAt: null, coverage, reason, seats: {}, awaitingMerge: []}
+    }
+
+    /**
+     * @summary The merge queue's rows from one answer, keyed `<repo>#<number>`. An unavailable answer
+     * has none.
+     * @param {Object|null} snapshot One `fleetOpenWork` envelope, or `null` while unanswered.
+     * @returns {Object[]} Data for {@link AgentOS.store.FleetAwaitingMerge}.
+     */
+    static mergeRows(snapshot) {
+        if (!snapshot || snapshot.state === 'unavailable') return [];
+
+        return (snapshot.awaitingMerge ?? []).map(({ci, draft, mergeable, number, observedAt, repo, stale}) => (
+            {id: `${repo}#${number}`, ci, draft, mergeable, number, observedAt, repo, stale}
+        ))
+    }
+
+    /**
+     * @summary Project the held answer onto the surfaces that show it: the provider's `openWork` block
+     * (the read's state for the fleet head), the provider's merge queue Store, and each roster record's
+     * held open work ({@link AgentOS.util.OpenWorkSeat#summarize}). A bare mount without the provider's
+     * stores projects what it can.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
+     */
+    static project(owner) {
+        const
+            snapshot = owner.openWorkSnapshot,
+            provider = owner.component?.getStateProvider?.(),
+            store    = name => {
+                try {
+                    return provider?.getStore(name) ?? null
+                } catch {
+                    return null
+                }
+            },
+            queue    = store('fleetAwaitingMerge'),
+            roster   = store('fleetRoster');
+
+        provider?.setData('openWork', {
+            coverage  : snapshot?.coverage   ?? null,
+            observedAt: snapshot?.observedAt ?? null,
+            reason    : snapshot?.reason     ?? null,
+            state     : snapshot?.state      ?? null
+        });
+
+        queue && (queue.data = OpenWorkRead.mergeRows(snapshot));
+
+        roster?.forEach(record => {
+            record.set({openWork: OpenWorkRead.seatOpenWork(owner, record.githubUsername)})
+        })
+    }
+
+    /**
+     * @summary One seat's held open work from the owner's held answer ({@link AgentOS.util.OpenWorkSeat#summarize}),
+     * by the seat's GitHub login.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
+     * @param {String|null} githubUsername The seat's login; none claims nothing.
+     * @returns {Object|null}
+     */
+    static seatOpenWork(owner, githubUsername) {
+        return OpenWorkSeat.summarize(owner.openWorkSnapshot, githubUsername ? `@${githubUsername}` : null)
     }
 
     /**
@@ -49,17 +114,17 @@ class OpenWorkRead extends Base {
 
         let snapshot;
 
-        TargetBinding.retireOpenWork(owner, {profileId});
+        TargetBinding.retireOpenWork(owner, {profileId}) && OpenWorkRead.project(owner);
         owner.openWorkReadInFlight++;
 
         try {
             if (typeof bridge?.fleetOpenWork !== 'function') {
-                snapshot = OpenWorkRead.unavailable('fleet open-work verb not wired')
+                snapshot = OpenWorkRead.unavailable('fleet open-work verb not wired', 'not-wired')
             } else {
                 try {
                     snapshot = await bridge.fleetOpenWork(params)
                 } catch (error) {
-                    snapshot = OpenWorkRead.unavailable('fleet open-work read failed')
+                    snapshot = OpenWorkRead.unavailable('fleet open-work read failed', 'unanswered')
                 }
             }
         } finally {
@@ -83,7 +148,9 @@ class OpenWorkRead extends Base {
     static admit(owner, snapshot, profileId) {
         owner.openWorkReadGeneration++;
         owner.openWorkSnapshot  = snapshot;
-        owner.openWorkProfileId = profileId
+        owner.openWorkProfileId = profileId;
+
+        OpenWorkRead.project(owner)
     }
 }
 

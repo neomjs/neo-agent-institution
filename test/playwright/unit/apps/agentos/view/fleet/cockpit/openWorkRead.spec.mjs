@@ -24,8 +24,11 @@ import                     '../../../../../../../../node_modules/neo.mjs/src/man
 test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
     let FleetCockpitController, TargetBinding;
 
+    let OpenWorkRead;
+
     test.beforeAll(async () => {
         FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
+        OpenWorkRead           = (await import('../../../../../../../../apps/agentos/util/OpenWorkRead.mjs')).default;
         TargetBinding          = (await import('../../../../../../../../apps/agentos/util/TargetBinding.mjs')).default
     });
 
@@ -50,13 +53,13 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
         awaitingMerge: [{repo: 'neomjs/neo', number: 2, holder: {role: 'operator', ids: []}}]
     });
 
-    test('an unwired verb lands as a typed unavailable envelope, never as "no open work"', async () => {
+    test('an unwired verb lands as a typed unavailable envelope, never as "no open work", and says it is not wired', async () => {
         clearFleetBridge();
 
         const host     = makeHost(),
               snapshot = await host.loadOpenWork();
 
-        expect(snapshot).toEqual({state: 'unavailable', observedAt: null, coverage: 'unavailable', reason: 'fleet open-work verb not wired', seats: {}, awaitingMerge: []});
+        expect(snapshot).toEqual({state: 'unavailable', observedAt: null, coverage: 'not-wired', reason: 'fleet open-work verb not wired', seats: {}, awaitingMerge: []});
         expect(host.openWorkSnapshot).toBe(snapshot);
         expect(host.openWorkReadInFlight, 'released on settle').toBe(0)
     });
@@ -69,6 +72,7 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
                   snapshot = await host.loadOpenWork();
 
             expect(snapshot.state).toBe('unavailable');
+            expect(snapshot.coverage, 'the connection\'s story, not the producer\'s verdict').toBe('unanswered');
             expect(snapshot.reason).toBe('fleet open-work read failed');
             expect(snapshot.awaitingMerge).toEqual([]);
             expect(host.openWorkReadInFlight).toBe(0)
@@ -162,5 +166,76 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
         expect(TargetBinding.retireOpenWork(host, {profileId: 'instance-b'})).toBe(true);
         expect(host.openWorkSnapshot).toBeNull();
         expect(host.openWorkProfileId).toBeNull()
+    });
+
+    test('the merge queue\'s rows key each PR by repo and number; an unavailable or absent answer has none', () => {
+        expect(OpenWorkRead.mergeRows(answer())).toEqual([{id: 'neomjs/neo#2', number: 2, repo: 'neomjs/neo'}]);
+        expect(OpenWorkRead.mergeRows({...answer(), state: 'unavailable'}), 'a blind queue keeps no rows').toEqual([]);
+        expect(OpenWorkRead.mergeRows(null)).toEqual([])
+    });
+
+    test('every admitted answer reaches its three surfaces: the provider block, the merge queue Store, each roster record', async () => {
+        const
+            StateProvider      = (await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default,
+            FleetAwaitingMerge = (await import('../../../../../../../../apps/agentos/store/FleetAwaitingMerge.mjs')).default,
+            FleetRoster        = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default,
+            provider           = Neo.create(StateProvider, {
+                data  : {openWork: {coverage: null, observedAt: null, reason: null, state: null}},
+                stores: {
+                    fleetAwaitingMerge: {module: FleetAwaitingMerge},
+                    fleetRoster       : {module: FleetRoster, data: [
+                        {agentId: 'neo-opus-ada', githubUsername: 'neo-opus-ada'},
+                        {agentId: 'neo-gpt',      githubUsername: 'neo-gpt'}
+                    ]}
+                }
+            }),
+            host               = Object.assign(makeHost(), {component: {getStateProvider: () => provider}}),
+            queue              = provider.getStore('fleetAwaitingMerge'),
+            roster             = provider.getStore('fleetRoster'),
+            observedAt         = '2026-10-03T08:00:00.000Z',
+            redHead            = {repo: 'neomjs/neo', number: 1, ci: 'red', holder: {role: 'author', ids: ['@neo-opus-ada']}};
+
+        try {
+            host.admitOpenWork({
+                state        : 'ok',
+                observedAt,
+                coverage     : 'complete',
+                reason       : null,
+                seats        : {'@neo-opus-ada': {authored: [redHead], reviewing: []}, '@neo-gpt': {authored: [], reviewing: [redHead]}},
+                awaitingMerge: [{repo: 'neomjs/neo-agent-brain', number: 794, ci: 'green', mergeable: 'MERGEABLE', draft: false, observedAt, stale: false, holder: {role: 'operator', ids: []}}]
+            }, 'instance-a');
+
+            expect(provider.getData('openWork')).toEqual({coverage: 'complete', observedAt, reason: null, state: 'ok'});
+            expect(queue.count).toBe(1);
+            expect(queue.get('neomjs/neo-agent-brain#794').number).toBe(794);
+            expect(roster.get('neo-opus-ada').openWork).toEqual({count: 1, worst: 'red', stale: false, observedAt});
+            expect(roster.get('neo-gpt').openWork, 'a PR the seat reviews while its author holds it is not the reviewer\'s').toBeNull();
+
+            // another profile's read retires the answer, and with it everything the answer put on screen
+            setFleetBridge({profileId: 'instance-b', fleetOpenWork: () => new Promise(() => {})});
+            host.loadOpenWork();
+
+            expect(provider.getData('openWork')).toEqual({coverage: null, observedAt: null, reason: null, state: null});
+            expect(queue.count).toBe(0);
+            expect(roster.get('neo-opus-ada').openWork).toBeNull()
+        } finally {
+            clearFleetBridge();
+            provider.destroy()
+        }
+    });
+
+    test('a roster row maps with the seat\'s held open work, so a roster refresh keeps the chip', () => {
+        const host = makeHost();
+
+        host.admitOpenWork({
+            state     : 'ok',
+            observedAt: '2026-10-03T08:00:00.000Z',
+            seats     : {'@neo-gpt': {authored: [], reviewing: [{repo: 'neomjs/neo', number: 7, holder: {role: 'reviewer', ids: ['@neo-gpt']}}]}},
+            awaitingMerge: []
+        }, null);
+
+        expect(host.mapRosterRow({id: 'neo-gpt', githubUsername: 'neo-gpt'}).openWork).toEqual({count: 1, worst: 'review-due', stale: false, observedAt: '2026-10-03T08:00:00.000Z'});
+        expect(host.mapRosterRow({id: 'neo-opus-ada', githubUsername: 'neo-opus-ada'}).openWork).toBeNull();
+        expect(host.mapRosterRow({id: 'no-login'}).openWork, 'no identity, no claim').toBeNull()
     });
 });
