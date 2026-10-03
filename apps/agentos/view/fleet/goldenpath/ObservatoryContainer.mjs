@@ -201,7 +201,8 @@ class ObservatoryContainer extends Container {
         lensPeers_: [],
         /**
          * The side panel's open section (`team`, `nodes` or `selected`): it takes the panel's remaining height and
-         * the others collapse to their heads, each still naming its count. Selecting a node opens `selected`.
+         * the others collapse to their heads, each still naming its count. Selecting a node opens `selected`,
+         * unless the viewer is browsing `nodes`: the list stays, and the collapsed Selected head line names the node.
          * @member {String} openSection_='team'
          * @reactive
          */
@@ -266,6 +267,12 @@ class ObservatoryContainer extends Container {
      */
     scene = ObservatorySceneLayout.fromGraphScene(null)
     /**
+     * Whether the viewer has opened a section, by its head or a selection; until then a read opens Team only
+     * when it lists peers, and Nodes otherwise, so no default opens an empty section.
+     * @member {Boolean} sectionChosen=false
+     */
+    sectionChosen = false
+    /**
      * Why the selection last cleared itself, until the next selection or click.
      * @member {String|null} selectionNote=null
      */
@@ -311,9 +318,9 @@ class ObservatoryContainer extends Container {
         me.getReference('heat-toggle')        .set({handler: 'onHeatToggleClick',  handlerScope: me});
         me.getReference('mail-toggle')        .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle')       .set({handler: 'onRouteToggleClick', handlerScope: me});
-        me.getReference('observatory-nodes-title').set({handler: () => me.openSection = 'nodes', handlerScope: me});
-        me.getReference('observatory-team').on('sectionHeadClick', ({section}) => me.openSection = section);
-        me.getReference('observatory-selected').on('sectionHeadClick', ({section}) => me.openSection = section);
+        me.getReference('observatory-nodes-title').set({handler: () => me.chooseSection('nodes'), handlerScope: me});
+        me.getReference('observatory-team').on('sectionHeadClick', ({section}) => me.chooseSection(section));
+        me.getReference('observatory-selected').on('sectionHeadClick', ({section}) => me.chooseSection(section));
         me.syncSections();
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
@@ -481,7 +488,7 @@ class ObservatoryContainer extends Container {
         me.getReference('observatory-canvas')?.set({selectedId: value});
         me.syncLists();
         me.updateSelection();
-        value && (me.openSection = 'selected')
+        value && me.openSection !== 'nodes' && me.chooseSection('selected')
     }
 
     /**
@@ -858,6 +865,16 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary The viewer opened a section, by its head or a selection: from now on a new read keeps it open.
+     * @param {String} section One of {@link #sections}
+     * @protected
+     */
+    chooseSection(section) {
+        this.sectionChosen = true;
+        this.openSection   = section
+    }
+
+    /**
      * @summary Opens {@link #openSection} to the side panel's remaining height and collapses the others to their
      * heads; a head is pressed and `aria-expanded` while its section is open. The View section is not a section: it always shows.
      * @protected
@@ -870,7 +887,9 @@ class ObservatoryContainer extends Container {
          ['selected', 'observatory-selected', 'selected-section-head']].forEach(([section, body, head]) => {
             const isOpen = section === openSection, component = me.getReference(body), button = me.getReference(head);
 
-            component.flex = isOpen ? 1 : 'none';
+            // the layout copied flex into the style when it placed the section, so a change must reach the style
+            component.flex  = isOpen ? 1 : 'none';
+            component.style = {...component.style, flex: isOpen ? '1 1 0%' : 'none'};
             component.toggleCls('is-collapsed', !isOpen);
             button.pressed               = isOpen;
             button.vdom['aria-expanded'] = String(isOpen);
@@ -885,14 +904,16 @@ class ObservatoryContainer extends Container {
      * @protected
      */
     syncTeam(refill) {
-        const me = this;
+        const me = this, peers = ObservatorySceneLayout.peersOf(me.scene);
 
         me.getReference('observatory-team')?.sync({
             lensPeers: me.lensPeers,
             named    : me.scene.identities.length > 0,
-            peers    : ObservatorySceneLayout.peersOf(me.scene).map(peer => ({...peer, hue: me.hueOf(peer.id)})),
+            peers    : peers.map(peer => ({...peer, hue: me.hueOf(peer.id)})),
             refill
-        })
+        });
+
+        me.sectionChosen || (me.openSection = peers.length ? 'team' : 'nodes')
     }
 
     /**

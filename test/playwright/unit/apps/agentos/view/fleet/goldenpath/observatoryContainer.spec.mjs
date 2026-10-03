@@ -719,8 +719,15 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
             button.onClick({})
         };
 
+    test('a read with peers opens Team, a read without opens Nodes, so no default opens an empty section', () => {
+        const peerless = createPane({envelope: graphRead()});
+
+        expect(peerless.openSection).toBe('nodes');
+        peerless.destroy()
+    });
+
     test('Team opens first; a head opens its section and collapses the others to their heads; an unknown section changes nothing', () => {
-        const pane = createPane({envelope: graphRead()});
+        const pane = createPane({envelope: teamRead()});
 
         expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
 
@@ -740,7 +747,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
     });
 
     test('a collapsed head still names its count, and selecting a node opens the Selected section with its whole title', () => {
-        const pane = createPane({envelope: graphRead()});
+        const pane = createPane({envelope: teamRead()});
 
         expect(pane.getReference('observatory-nodes-title').text).toMatch(/^Nodes/);
         expect(pane.getReference('observatory-peers-title').text).toMatch(/^Team · /);
@@ -752,6 +759,12 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
         // clearing the selection leaves the open section where the viewer is
         pane.selectedId = null;
         expect(pane.openSection).toBe('selected');
+
+        // a viewer browsing the node list keeps it: the keys walk the rows while the Selected head line names the node
+        pane.openSection = 'nodes';
+        pane.selectedId  = q('issue-303');
+        expect(pane.openSection).toBe('nodes');
+        expect(headOf(pane)[0]).toBe('third route item');
 
         pane.destroy()
     });

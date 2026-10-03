@@ -1023,6 +1023,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             peers     = pane.locator('.fm-observatory-peer-list .neo-list-item'),
             node      = at => pane.locator('.fm-observatory-node-list .neo-list-item').nth(at),
             head      = pane.locator('.fm-observatory-peers-head'),
+            // one section opens to the panel's height at a time; its head opens it
+            teamHead  = pane.getByRole('button', {name: /^Team/}),
+            nodesHead = pane.getByRole('button', {name: /^Nodes/}),
             label     = pane.locator('.fm-observatory-selected-label'),
             currency  = pane.locator('.fm-observatory-currency'),
             top       = async selector => Math.round((await pane.locator(selector).boundingBox()).y),
@@ -1054,6 +1057,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(peers, 'unchecked, it leaves Team').toHaveCount(5);
 
         // a mouse click selects without an outline; the keys move the selection and outline the row they reach
+        await nodesHead.click();
         await node(1).click();
         await expect(label).toHaveText('Golden Path currency on the cockpit');
         expect(await outlineOf(node(1))).toBe('none');
@@ -1062,7 +1066,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(await outlineOf(node(2))).toBe('solid');
 
         // Escape backs out one step at a time: the selection first, then the lens
+        await teamHead.click();
         await peers.first().click();
+        await nodesHead.click();
         await node(1).click();
         await expect(currency).toHaveText(/ · lens · /);
         await page.keyboard.press('Escape');
@@ -1072,11 +1078,14 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(currency).not.toHaveText(/lens/);
 
         // and each has its own Clear
+        await teamHead.click();
         await peers.first().click();
         await head.getByRole('button', {name: 'Clear'}).click();
         await expect(currency).not.toHaveText(/lens/);
         await expect(head.getByRole('button', {name: 'Clear'}), 'no lens, nothing to clear').toBeHidden();
+        await nodesHead.click();
         await node(1).click();
+        await pane.getByRole('button', {name: /^Selected node/}).click();
         await pane.locator('.fm-observatory-selected-actions').getByRole('button', {name: 'Clear'}).click();
         await expect(label).toHaveText('No node selected')
     });

@@ -176,16 +176,45 @@
         border-top: none;
     }
 
-    /* a section's head is its title as a button: the open section's head is pressed, and a collapsed section
-       keeps only its head, which still names its count */
+    /* a section's head is its title as a button: it reads like the panel's other titles, a caret says whether it
+       is open, the open one is in full ink, and a collapsed section keeps only its head, which names its count */
     .fm-observatory-section-head {
+        --button-ghost-background-color      : transparent;
+        --button-ghost-background-color-hover: var(--fm-panel-2);
+        --button-ghost-border                : none;
+        --button-ghost-border-active         : none;
+        --button-ghost-border-pressed        : none;
+        --button-ghost-text-color            : var(--fm-ink-dim);
+        --button-ghost-text-color-active     : var(--fm-ink);
+
         border-radius  : 0;
         justify-content: flex-start;
         width          : 100%;
 
-        &.pressed {
-            color: var(--fm-ink);
+        .neo-button-text {
+            font          : inherit;
+            letter-spacing: inherit;
+            text-transform: inherit;
         }
+
+        &::after {
+            color      : var(--fm-ink-dim);
+            content    : '▸';
+            margin-left: var(--fm-space-1);
+        }
+
+        &[aria-expanded="true"] {
+            --button-ghost-text-color: var(--fm-ink);
+
+            &::after {
+                content: '▾';
+            }
+        }
+    }
+
+    /* the ghost button's own border rule would drop the line the panel's titles draw between sections */
+    .fm-observatory-section-head.neo-button {
+        border-top: thin solid var(--fm-line-soft);
     }
 
     .fm-observatory-team.is-collapsed .fm-observatory-peer-list,
