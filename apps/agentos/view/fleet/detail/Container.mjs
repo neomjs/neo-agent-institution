@@ -74,8 +74,30 @@ const paneConfig = pane => ({
         ntype    : 'component',
         cls      : ['fm-detail-pane-body'],
         reference: `pane-${pane.key}-body`
-    }]
+    }, ...(pane.key === 'repo' ? repoPathAction() : [])]
 });
+
+/**
+ * @summary The Repository pane's one action under its clone path: `Copy path`, and the unseen field
+ * it copies from. The action stays hidden until the roster row reports a path.
+ * @returns {Object[]}
+ * @private
+ */
+const repoPathAction = () => [{
+    module   : Button,
+    cls      : ['fm-detail-repo-copy'],
+    hidden   : true,
+    reference: 'detail-repo-copy',
+    text     : 'Copy path',
+    tooltip  : 'Copy the clone path',
+    ui       : 'ghost'
+}, {
+    // the copy source: an inert field the Copy action selects, unseen and unfocusable
+    ntype    : 'component',
+    cls      : ['fm-detail-repo-field'],
+    reference: 'detail-repo-field',
+    vdom     : {tag: 'input', 'aria-hidden': true, readonly: true, tabIndex: -1, type: 'text', value: ''}
+}];
 
 /**
  * The cockpit drill-in surface: one resident's detail — the identity header over the four SSOT
@@ -258,9 +280,9 @@ class AgentDetail extends Container {
                     cls      : ['fm-detail-id'],
                     reference: 'detail-id'
                 }, {
-                    // the seat's folder, read deliberately here and never on the roster card: the
-                    // harness family in words, the whole path, one copy action, and for a Claude
-                    // Desktop seat the one step its first launch needs
+                    // the seat, read deliberately here and never on the roster card: its harness
+                    // family in words, and for a Claude Desktop seat the one step its first launch
+                    // needs. The folder itself is the Repository pane's line, never repeated here
                     ntype    : 'container',
                     cls      : ['fm-detail-seat'],
                     hidden   : true,
@@ -268,40 +290,15 @@ class AgentDetail extends Container {
                     reference: 'detail-seat',
 
                     items: [{
-                        ntype : 'container',
-                        cls   : ['fm-detail-seat-row'],
-                        layout: {ntype: 'hbox', align: 'center'},
-
-                        items: [{
-                            ntype    : 'component',
-                            cls      : ['fm-detail-seat-family'],
-                            flex     : 'none',
-                            reference: 'detail-seat-family'
-                        }, {
-                            ntype    : 'component',
-                            cls      : ['fm-detail-seat-path'],
-                            flex     : 1,
-                            reference: 'detail-seat-path'
-                        }, {
-                            module   : Button,
-                            flex     : 'none',
-                            reference: 'detail-seat-copy',
-                            text     : 'Copy path',
-                            tooltip  : 'Copy the seat\'s folder',
-                            ui       : 'ghost'
-                        }]
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-family'],
+                        reference: 'detail-seat-family'
                     }, {
                         ntype    : 'component',
                         cls      : ['fm-detail-seat-launch'],
                         hidden   : true,
                         reference: 'detail-seat-launch',
-                        text     : 'Open this folder in Claude\'s Code tab, then start the seat from its card.'
-                    }, {
-                        // the copy source: an inert field the Copy action selects, unseen and unfocusable
-                        ntype    : 'component',
-                        cls      : ['fm-detail-seat-field'],
-                        reference: 'detail-seat-field',
-                        vdom     : {tag: 'input', 'aria-hidden': true, readonly: true, tabIndex: -1, type: 'text', value: ''}
+                        text     : 'Open the repository folder below in Claude\'s Code tab, then Start on the card.'
                     }]
                 }]
             }]
@@ -370,7 +367,7 @@ class AgentDetail extends Container {
         // the old identity-header placement floated the verb OVER the identity block at rail
         // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
-        this.getReference('detail-seat-copy').set({handler: 'onCopySeatPath', handlerScope: this});
+        this.getReference('detail-repo-copy').set({handler: 'onCopyRepoPath', handlerScope: this});
         const configPane = this.getReference('config-pane');
 
         if (configPane) {
@@ -523,38 +520,33 @@ class AgentDetail extends Container {
     }
 
     /**
-     * @summary The Seat row: the harness family in words, the whole clone path and its Copy action,
-     * only for a REPORTED path (none renders no row and no placeholder). A Claude Desktop seat adds
-     * the one step its first launch needs, since that Desktop cannot be launched into a folder.
-     * Every value is an inert `text` node: the path is adapter-supplied data.
+     * @summary The Seat row: the harness family in words, only for a REPORTED family (none renders no
+     * row and no placeholder). A Claude Desktop seat with a reported folder adds the one step its first
+     * launch needs, pointing at the Repository pane's path, since that Desktop cannot be launched into
+     * a folder. Every value is an inert `text` node.
      * @param {Object} record The drilled-in FleetAgent record.
      * @protected
      */
     applySeatRow(record) {
         const
-            me       = this,
-            field    = me.getReference('detail-seat-field'),
-            repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null;
+            me          = this,
+            harnessType = typeof record.harnessType === 'string' && record.harnessType ? record.harnessType : null;
 
-        me.getReference('detail-seat').hidden = repoPath === null;
+        me.getReference('detail-seat').hidden = harnessType === null;
 
-        if (repoPath === null) return;
+        if (harnessType === null) return;
 
-        me.getReference('detail-seat-family').text   = HarnessChoice.describe(record.harnessType) ?? record.harnessType ?? '';
-        me.getReference('detail-seat-path').text     = repoPath;
-        me.getReference('detail-seat-launch').hidden = record.harnessType !== 'claude-desktop';
-
-        field.vdom.value = repoPath;
-        field.update()
+        me.getReference('detail-seat-family').text   = HarnessChoice.describe(harnessType) ?? harnessType;
+        me.getReference('detail-seat-launch').hidden = !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath)
     }
 
     /**
-     * @summary The Copy path action: the seat's folder goes to the clipboard through the main thread's
+     * @summary The Copy path action: the clone path goes to the clipboard through the main thread's
      * selection of the unseen field, and the focus returns to the action.
      * @param {Object} data The click; `detail` is 0 where the keyboard pressed the action
      */
-    async onCopySeatPath(data) {
-        const me = this, copy = me.getReference('detail-seat-copy'), field = me.getReference('detail-seat-field'), {windowId} = me;
+    async onCopyRepoPath(data) {
+        const me = this, copy = me.getReference('detail-repo-copy'), field = me.getReference('detail-repo-field'), {windowId} = me;
 
         if (field.vdom.value) {
             await Neo.main.DomAccess.selectNode({id: field.id, windowId});
@@ -727,7 +719,8 @@ class AgentDetail extends Container {
      * @summary The honest body content for one pane from the record's known facts.
      *
      * The lane pane renders the lane line with its claim age when its source is wired, plus the
-     * independent open-lane count. The repository pane renders the roster row's slug and clone path.
+     * independent open-lane count. The repository pane renders the roster row's slug and its whole
+     * clone path, and shows the path's Copy action only while a path is reported.
      * The thought-stream and pull requests panes
      * render nothing until their producers land: each pill names what it waits for, and a body
      * line repeating it would tell the same fact twice per section.
@@ -739,11 +732,22 @@ class AgentDetail extends Container {
         const body = this.getReference(`pane-${key}-body`);
 
         if (key === 'repo') {
+            const
+                repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null,
+                field    = this.getReference('detail-repo-field');
+
             body.vdom.cn = [
                 {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},
-                ...(record.repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: record.repoPath}] : [])
+                ...(repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: repoPath}] : [])
             ];
             body.update();
+
+            this.getReference('detail-repo-copy').hidden = repoPath === null;
+
+            if (field.vdom.value !== (repoPath ?? '')) {
+                field.vdom.value = repoPath ?? '';
+                field.update()
+            }
             return
         }
 
