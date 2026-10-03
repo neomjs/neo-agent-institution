@@ -343,8 +343,40 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(line.layout.wrap).toBe('wrap');
         expect(line.flex).toBe('none');
         expect(line.items.map(item => item.reference)).toEqual([
-            'state-dot', 'card-state', 'card-telltale', 'card-presence', 'card-beacon', 'card-lane-count'
+            'state-dot', 'card-state', 'card-telltale', 'card-open-work', 'card-presence', 'card-beacon', 'card-lane-count'
         ]);
+
+        card.destroy()
+    });
+
+    test('the open-work chip counts the seat\'s held PRs with the worst named, and clears whole when nothing is held', () => {
+        const card = createCard({agentId: 'vega', state: 'ok', openWork: {count: 2, worst: 'red', stale: false, observedAt: null}}),
+              chip = () => card.down({reference: 'card-open-work'});
+
+        expect(chip().hidden).toBe(false);
+        expect(chip().text).toBe('2 PRs · red');
+        expect(chip().vdom['aria-label']).toBe('Open work: 2 pull requests waiting on this seat, worst red.');
+        expect(chip().vdom.title).toBe('2 pull requests waiting on this seat · worst: red');
+        expect(chip().cls).not.toContain('is-stale');
+
+        // nothing held, or a read that cannot say: no chip and no stale label on the hidden node
+        applySet(card, {openWork: null});
+
+        expect(chip().hidden).toBe(true);
+        expect(chip().text).toBe('');
+        expect(chip().vdom['aria-label']).toBeFalsy();
+        expect(chip().vdom.title).toBeFalsy();
+
+        card.destroy()
+    });
+
+    test('a stale open-work chip dims its plate and says so in its words', () => {
+        const card = createCard({agentId: 'vega', state: 'ok', openWork: {count: 1, worst: 'review-due', stale: true, observedAt: null}}),
+              chip = card.down({reference: 'card-open-work'});
+
+        expect(chip.cls).toContain('is-stale');
+        expect(chip.text).toBe('1 PR · review due');
+        expect(chip.vdom['aria-label']).toBe('Open work: 1 pull request waiting on this seat, worst review due, stale.');
 
         card.destroy()
     });

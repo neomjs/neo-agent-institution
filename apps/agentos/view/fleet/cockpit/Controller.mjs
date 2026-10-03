@@ -2,6 +2,7 @@ import ReadingSurfacesController   from './ReadingSurfacesController.mjs';
 import CockpitPerspectives         from '../../../util/CockpitPerspectives.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
+import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
 import TargetBinding               from '../../../util/TargetBinding.mjs';
 
@@ -131,6 +132,29 @@ class Controller extends ReadingSurfacesController {
      * @protected
      */
     tasksSnapshot = null
+    /**
+     * Read-fence + in-flight accounting + owner-held snapshot for the open-work read, with the
+     * profile that answered it: an instance switch retires the held answer
+     * ({@link AgentOS.util.TargetBinding#retireOpenWork}).
+     * @member {Number} openWorkReadGeneration=0
+     * @protected
+     */
+    openWorkReadGeneration = 0
+    /**
+     * @member {Number} openWorkReadInFlight=0
+     * @protected
+     */
+    openWorkReadInFlight = 0
+    /**
+     * @member {Object|null} openWorkSnapshot=null
+     * @protected
+     */
+    openWorkSnapshot = null
+    /**
+     * @member {String|null} openWorkProfileId=null
+     * @protected
+     */
+    openWorkProfileId = null
     /**
      * Read-fence + owner-held snapshot for the wake-routes surface.
      * @member {Number} wakeRoutesReadGeneration=0
@@ -729,6 +753,37 @@ class Controller extends ReadingSurfacesController {
         const livePane = me.component.getTasksPane();
 
         livePane && (livePane.snapshot = snapshot)
+    }
+
+    /**
+     * @summary READ-OBSERVE: each seat's open work and the PRs awaiting the operator's merge
+     * ({@link AgentOS.util.OpenWorkRead#load}).
+     * @param {Object} [params] `{seat}` narrows the answer to one seat.
+     * @returns {Promise<Object>} The envelope `{state, observedAt, coverage, reason, seats, awaitingMerge}`.
+     */
+    loadOpenWork(params = {}) {
+        return OpenWorkRead.load(this, params)
+    }
+
+    /**
+     * @summary Admit one open-work answer ({@link AgentOS.util.OpenWorkRead#admit}).
+     * @param {Object|null} snapshot One `fleetOpenWork` envelope or the unobserved state.
+     * @param {String|null} [profileId] The profile the answering bridge is bound to.
+     */
+    admitOpenWork(snapshot, profileId = this.bridge?.profileId ?? null) {
+        OpenWorkRead.admit(this, snapshot, profileId)
+    }
+
+    /**
+     * @summary A roster row as its record, carrying the seat's held open work, so a roster refresh never
+     * drops the card's open-work chip ({@link AgentOS.util.OpenWorkRead#seatOpenWork}).
+     * @param {Object} row One roster DTO row.
+     * @returns {Object}
+     */
+    mapRosterRow(row) {
+        const mapped = super.mapRosterRow(row);
+
+        return {...mapped, openWork: OpenWorkRead.seatOpenWork(this, mapped.githubUsername)}
     }
 
     /**

@@ -141,6 +141,13 @@ class FleetAgent extends Model {
             type        : 'Integer',
             defaultValue: null
         }, {
+            // the pull requests whose next action this seat holds, from the cockpit's open-work read
+            // (`AgentOS.util.OpenWorkSeat.summarize`: `{count, worst, stale, observedAt}`), stamped at
+            // roster admission and re-stamped on every open-work answer; typeless so `null` survives —
+            // null = nothing held or the read cannot say, and the card renders NO chip then
+            name        : 'openWork',
+            defaultValue: null
+        }, {
             // the newest attributable per-agent activity instant (ISO string), stamped Brain-side
             // by the cockpit DTO assembler (activity-event fold merged with the presence
             // producer's lastSeenAt) and passed through whole — the roster's recency sort axis.

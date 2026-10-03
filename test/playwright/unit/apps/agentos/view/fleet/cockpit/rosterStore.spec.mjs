@@ -303,6 +303,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             lastActivityAt: null,
             launchable    : null,
             openLaneCount : null,   // roster-DTO-owned tri-state: un-stamped → honest null (no badge)
+            openWork      : null,   // no open-work answer held, and no login to claim it by → no chip
             laneLine      : null,
             laneClaimedAt : null,
             // the authoritative participation fact: absent on the row → honest null, never guessed
@@ -487,6 +488,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             lastActivityAt     : null,
             launchable         : null,
             openLaneCount      : null,
+            openWork           : null,
             laneLine           : null,
             laneClaimedAt      : null,
             participationStatus: null,

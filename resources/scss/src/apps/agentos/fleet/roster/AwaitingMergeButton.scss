@@ -1,0 +1,79 @@
+/* AgentOS.view.fleet.roster.AwaitingMergeButton — the fleet head's merge queue.
+   The trigger and menu mechanics belong to Neo.button.Base + Neo.menu.List; this sheet is skin only,
+   on the --fm-* layer, matching the instance switcher's floating menu. */
+.fm-awaiting-merge.neo-button {
+    background   : transparent;
+    border       : 1px solid var(--fm-line);
+    border-radius: 6px;
+    color        : var(--fm-ink-dim);
+    height       : auto;
+    min-width    : 0;
+    padding      : var(--fm-space-1) var(--fm-space-2);
+
+    .neo-button-text {
+        color         : inherit;
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        white-space   : nowrap;
+    }
+
+    &:hover {
+        border-color: var(--fm-line-soft);
+        color       : var(--fm-ink);
+    }
+
+    /* stale: the queue may have moved; the words say so, the border marks it */
+    &.is-stale {
+        border-style: dashed;
+    }
+
+    /* unavailable: named, but nothing opens */
+    &.is-unavailable {
+        border-style: dashed;
+        cursor      : default;
+
+        &:hover {
+            border-color: var(--fm-line);
+            color       : var(--fm-ink-dim);
+        }
+    }
+}
+
+.fm-awaiting-merge-menu.neo-menu-list {
+    --menu-list-background-color              : var(--fm-panel-2);
+    --menu-list-border-color                  : var(--fm-line);
+    --menu-list-item-background-color         : transparent;
+    --menu-list-item-background-color-hover   : var(--fm-panel);
+    --menu-list-item-background-color-selected: var(--fm-panel);
+    --menu-list-item-color                    : var(--fm-ink-dim);
+    --menu-list-item-height                   : auto;
+    --menu-list-item-line-height              : normal;
+    --menu-list-item-outline-focus            : 1px solid var(--fm-signal);
+    --menu-list-item-padding                  : var(--fm-space-2);
+
+    border-radius: 6px;
+    box-shadow   : var(--fm-shadow-overlay);
+    min-width    : 240px;
+    padding      : var(--fm-space-1);
+
+    .neo-list-item.fm-awaiting-merge-row {
+        border       : 1px solid transparent;
+        border-radius: 4px;
+        gap          : var(--fm-space-2);
+        text-align   : left;
+    }
+
+    .fm-awaiting-merge-ref {
+        flex: 1;
+        font: var(--fm-text-body);
+    }
+
+    .fm-awaiting-merge-stale {
+        border       : 1px dashed var(--fm-line-soft);
+        border-radius: var(--fm-chip-radius);
+        color        : var(--fm-ink-dim);
+        flex         : none;
+        font         : var(--fm-text-micro);
+        padding      : var(--fm-chip-pad-y) var(--fm-chip-pad-x);
+    }
+}

@@ -3,6 +3,7 @@ import AgentDefinitions   from '../store/AgentDefinitions.mjs';
 import BaseViewport       from '../../../node_modules/neo.mjs/src/container/Viewport.mjs';
 import Dashboard          from '../../../node_modules/neo.mjs/src/dashboard/Container.mjs';
 import DeploymentStateRead from '../util/DeploymentStateRead.mjs';
+import FleetAwaitingMerge from '../store/FleetAwaitingMerge.mjs';
 import FleetCockpit       from './fleet/cockpit/Container.mjs';
 import FleetInstances     from '../store/FleetInstances.mjs';
 import FleetRoster        from '../store/FleetRoster.mjs';
@@ -97,6 +98,10 @@ class Viewport extends BaseViewport {
                 gridAdapterState  : 'cold',
                 gridConnection    : {state: null, reason: null},
                 gridDegradedReason: null,
+                // the open-work read's own state, written by the cockpit's read owner with each answer
+                // and bound by the fleet head's awaiting-merge button; leaf-complete by construction,
+                // every leaf null until the first answer lands
+                openWork: {coverage: null, observedAt: null, reason: null, state: null},
                 // the connected instance's deployment-state picture — the System keeper-view's plane
                 // truth, written by the cockpit's read owner through setData's closest-owner walk and
                 // declared HERE so a sibling keeper-view can bind it; leaf-complete by construction
@@ -127,6 +132,9 @@ class Viewport extends BaseViewport {
             stores: {
                 agentDefinitions: {
                     module: AgentDefinitions
+                },
+                fleetAwaitingMerge: {
+                    module: FleetAwaitingMerge
                 },
                 fleetInstances: {
                     module: FleetInstances
