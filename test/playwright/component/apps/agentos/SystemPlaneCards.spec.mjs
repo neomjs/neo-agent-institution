@@ -84,18 +84,34 @@ test.describe('AgentOS.view.system.List — plane cards read in full', () => {
                 return {
                     listWidth: list.getBoundingClientRect().width,
                     cards    : [...list.querySelectorAll('.fm-plane-card')].map(card => {
-                        const rect = card.getBoundingClientRect(),
-                              head = card.querySelector('.fm-plane-head'),
-                              diag = card.querySelector('.fm-plane-diag');
+                        const rect  = card.getBoundingClientRect(),
+                              head  = card.querySelector('.fm-plane-head'),
+                              facts = card.querySelector('.fm-plane-facts'),
+                              diag  = card.querySelector('.fm-plane-diag');
+
+                        const style    = getComputedStyle(card),
+                              children = [...card.children].map(el => el.getBoundingClientRect()),
+                              frame    = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
+                                  .reduce((sum, key) => sum + parseFloat(style[key]), 0);
 
                         return {
                             key     : card.querySelector('.fm-plane-key').textContent,
                             left    : Math.round(rect.left),
+                            top     : Math.round(rect.top),
+                            // the card's height beyond its content box; the row's tallest card has none
+                            cardSlack: Math.round(rect.height - frame -
+                                (Math.max(...children.map(r => r.bottom)) - Math.min(...children.map(r => r.top)))),
                             width   : rect.width,
                             card    : card.scrollWidth - card.clientWidth,
                             head    : head.scrollWidth - head.clientWidth,
                             diag    : diag.scrollWidth - diag.clientWidth,
                             diagText: diag.textContent.length,
+                            // a block taller than its own lines means the row was stretched over empty space
+                            slack   : Math.max(...[head, facts].map(block => {
+                                const lines = [...block.children].map(el => el.getBoundingClientRect());
+                                return Math.round(block.getBoundingClientRect().height -
+                                    (Math.max(...lines.map(r => r.bottom)) - Math.min(...lines.map(r => r.top))))
+                            })),
                             // every descendant stays inside its card (half a pixel for subpixel rounding)
                             escaped : [...card.querySelectorAll('*')]
                                 .filter(el => el.getBoundingClientRect().right > rect.right + 0.5)
@@ -122,7 +138,14 @@ test.describe('AgentOS.view.system.List — plane cards read in full', () => {
                 expect(card.card, `${card.key}: the card scrolls nothing sideways`).toBeLessThanOrEqual(0);
                 expect(card.head, `${card.key}: the head line wraps instead of overflowing`).toBeLessThanOrEqual(0);
                 expect(card.diag, `${card.key}: the diagnosis wraps instead of overflowing`).toBeLessThanOrEqual(0);
-                expect(card.escaped, `${card.key}: no descendant passes the card's right edge`).toEqual([])
+                expect(card.escaped, `${card.key}: no descendant passes the card's right edge`).toEqual([]);
+                expect(card.slack, `${card.key}: the card's height follows its content`).toBeLessThanOrEqual(4)
+            }
+
+            // a row is as tall as its tallest card's content, never stretched over the list's free height
+            for (const top of new Set(read.cards.map(card => card.top))) {
+                const row = read.cards.filter(card => card.top === top);
+                expect(Math.min(...row.map(card => card.cardSlack)), `the row at ${top} px is as tall as its content`).toBeLessThanOrEqual(4)
             }
 
             const columns = new Set(read.cards.map(card => card.left)).size;

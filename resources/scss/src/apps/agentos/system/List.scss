@@ -3,10 +3,12 @@
    custom property per folded state (the chip idiom); every color reads from the --fm-* token layer,
    every text node from a --fm-text-* role, every gap from the --fm-space-* rhythm. The 16px left pad
    clears the 3px mark — the roster card's recorded exception, reused. A column is at least 360px
-   and never wider than the list, so a narrow list is one column. */
+   and never wider than the list, so a narrow list is one column; rows and lines pack at the top,
+   so a card is as tall as its content, never stretched over the list's free height. */
 .fm-plane-list {
     display              : grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+    align-content        : start;
     gap                  : var(--fm-space-3);
     margin               : 0;
     padding              : 0;
@@ -18,6 +20,7 @@
     .fm-plane-card {
         --fm-plane   : var(--fm-state-unobserved);
         display      : grid;
+        align-content: start;
         gap          : var(--fm-space-2);
         padding      : var(--fm-space-3) var(--fm-space-3) var(--fm-space-3) var(--fm-space-4);
         background   : var(--fm-panel);

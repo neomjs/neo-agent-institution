@@ -630,7 +630,7 @@ resources/scss/src/apps/agentos/system/Container.scss
     6032f0c02a929b03721e70f4b053e7e97cde48bc
 
 resources/scss/src/apps/agentos/system/List.scss
-    b22cc1c6d6d1d13c65cdde5eff8bf8a3faac3460
+    2c884c4386b03edc287f2c6a996dd68a6ff509e7
 
 resources/scss/theme-neo-dark/apps/agentos/Viewport.scss
     60ed53504494b2b243d070e7a2fdabd47264a218
