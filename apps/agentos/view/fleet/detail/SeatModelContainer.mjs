@@ -178,6 +178,13 @@ class SeatModelContainer extends Container {
         ]
     }
 
+    /**
+     * What the chips on offer were built for, `[field, values, declared]` as JSON; `null` while closed.
+     * @member {String|null} offerKey=null
+     * @protected
+     */
+    offerKey = null
+
     /** @param {...*} args */
     onConstructed(...args) {
         super.onConstructed(...args);
@@ -289,15 +296,16 @@ class SeatModelContainer extends Container {
         }
 
         const
-            values = me.editing ? me.offered(me.editing) : null,
-            free   = me.editing === 'model' && seat?.harnessType === 'claude-code',
-            offer  = me.getReference('offer');
+            values   = me.editing ? me.offered(me.editing) : null,
+            free     = me.editing === 'model' && seat?.harnessType === 'claude-code',
+            offer    = me.getReference('offer'),
+            declared = me.editing ? seat?.[me.editing] ?? null : null,
+            // the chips are rebuilt only when what they offer changes: never under a click still being handled
+            offerKey = me.editing && !free ? JSON.stringify([me.editing, values, declared]) : null;
 
-        offer.hidden = !me.editing || free;
+        offer.hidden = !offerKey;
 
-        if (me.editing && !free) {
-            const declared = seat?.[me.editing] ?? null;
-
+        if (offerKey && offerKey !== me.offerKey) {
             offer.removeAll();
             // the declared value, or the harness default where nothing is declared, is the pressed chip
             offer.add([
@@ -315,6 +323,9 @@ class SeatModelContainer extends Container {
                 }
             ]).forEach(chip => chip.changeVdomRootKey('aria-pressed', String(chip.cls.includes('is-selected'))))
         }
+
+        me.offerKey = offerKey;
+        offer.items.forEach(chip => chip.disabled = pending);
 
         me.getReference('free').hidden = !free;
 

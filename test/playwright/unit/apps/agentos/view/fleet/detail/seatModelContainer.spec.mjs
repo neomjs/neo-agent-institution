@@ -105,6 +105,25 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
         group.destroy()
     });
 
+    test('a declaration in flight keeps the chips it was clicked on, disabled, and its answer closes them', () => {
+        const group = Neo.create(SeatModelContainer, {appName, seat: codex, catalog});
+
+        group.onActionClick({component: group.getReference('model-change')});
+
+        const chips = [...group.getReference('offer').items];
+
+        // the owner's pending answer arrives while the clicked chip's handler may still be running
+        group.status = {state: 'pending', reason: ''};
+        expect(group.getReference('offer').items.every((chip, index) => chip === chips[index]), 'not rebuilt').toBe(true);
+        expect(chips.every(chip => chip.disabled)).toBe(true);
+
+        // the accepted readback re-seats the definition
+        group.seat = {...codex, model: 'gpt-6-sol'};
+        expect([group.editing, group.getReference('offer').hidden]).toEqual([null, true]);
+
+        group.destroy()
+    });
+
     test('a catalog the Fleet could not read says why where the values would be, never an empty offer posing as complete', () => {
         const group = Neo.create(SeatModelContainer, {appName, seat: codex});
 
