@@ -399,10 +399,12 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
          * the one named effect in the recipe's order rules — the settle pass first, an earlier
          * effect that is not `ok` halts it, a refusal (the preset's env set, the credential
          * composition) writes nothing and answers in the orchestration's words — and the reply is
-         * the re-evaluated run. One serialized operation over the record as disk holds it, so an
-         * effect whose acknowledgement write was rejected is found `pending` by the next request and
-         * settled by observation, never run again; never a second implementation of the effects
-         * here.
+         * the re-evaluated run. An effect that ran answers the run whatever came of it: its receipt
+         * moved and its row carries the reason, so the card never shows a refusal over a stale row;
+         * only a report that moved nothing is a refusal. One serialized operation over the record as
+         * disk holds it, so an effect whose acknowledgement write was rejected is found `pending` by
+         * the next request and settled by observation, never run again; never a second
+         * implementation of the effects here.
          * @param {Electron.IpcMainInvokeEvent} event
          * @param {{effectId: String}} request
          * @returns {Promise<Object>} `{ok: true, evaluation}`, or `{ok: false, reason, effectId}`
@@ -439,7 +441,11 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                         report   : line => reported.push(String(line))
                     });
 
-                    if (reported.length > 0) {
+                    const
+                        receiptOf = from => JSON.stringify((from?.receipts ?? []).find(receipt => receipt.effectId === effectId) ?? null),
+                        moved     = receiptOf(performed) !== receiptOf(record);
+
+                    if (reported.length > 0 && !moved) {
                         return refuse(reported.join('; '), {effectId})
                     }
 
