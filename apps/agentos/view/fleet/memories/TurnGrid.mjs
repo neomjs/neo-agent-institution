@@ -3,7 +3,7 @@ import TurnRowComponent from './TurnRowComponent.mjs';
 
 /**
  * The drill register: one session's authored turn records through the buffered grid — the depth
- * below {@link AgentOS.view.fleet.memories.SummaryGrid}, same #40/#41 pattern (#44).
+ * below {@link AgentOS.view.fleet.memories.SummaryGrid}, on the same pattern.
  *
  * @summary A headerless single-component-column grid of pooled
  * {@link AgentOS.view.fleet.memories.TurnRowComponent} cells. Derives nothing (turn rows carry no
@@ -39,6 +39,17 @@ class TurnGrid extends RowsGrid {
          */
         rowHeight: 104
     }
+
+    /**
+     * = {@link #rowHeight}, the card lattice the rail returns to.
+     * @member {Number} cardRowHeight=104
+     */
+    cardRowHeight = 104
+    /**
+     * The rail's lattice — meta line and one line of prose (`.is-rail .fm-memories-turn-cell`).
+     * @member {Number} railRowHeight=64
+     */
+    railRowHeight = 64
 
     /**
      * @summary One headerless component column: the designed turn row IS the cell. The factory

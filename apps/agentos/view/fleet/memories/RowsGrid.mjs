@@ -1,4 +1,5 @@
 import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Container.mjs';
+import RowModel      from '../../../../../node_modules/neo.mjs/src/selection/grid/RowModel.mjs';
 
 /**
  * The memories pane's shared grid base — the view-layer conformance's law 0 ("mailbox surfaces,
@@ -20,6 +21,11 @@ import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Containe
  * `scrollEdge` when the visible window reaches the loaded end, this grid relays it as its own
  * event, and the pane requests the next window under its own gate.
  *
+ * A row is read by selecting it: the engine's `RowModel` owns the click toggle and the ↑/↓ keys,
+ * and this grid relays its `select` / `deselect` as `recordSelect` / `recordDeselect` for the
+ * pane's reading surface. While the pane reads, the register collapses to its {@link #rail}: the
+ * same cells at a smaller height norm, the clamped body hidden.
+ *
  * @class AgentOS.view.fleet.memories.RowsGrid
  * @extends Neo.grid.Container
  */
@@ -36,13 +42,31 @@ class RowsGrid extends GridContainer {
          */
         autoDestroyStore: false,
         /**
-         * A designed list selects nothing: a register's only act is a click inside a card. The
-         * engine's View owns the grid's selection model, and `null` instantiates none — no row is
-         * ever marked, no selection handler is installed, nothing to neutralize in the skin.
-         * @member {Object} viewConfig={selectionModel: null}
+         * The rail: the register shrinks to titles beside the pane's reading surface. Swaps the
+         * fixed row lattice between {@link #cardRowHeight} and {@link #railRowHeight}; the SCSS
+         * height-norms the cells under `.is-rail` to the same totals.
+         * @member {Boolean} rail_=false
+         * @reactive
          */
-        viewConfig: {selectionModel: null}
+        rail_: false,
+        /**
+         * Selecting a row is how it is read: the engine's View owns the selection model (click
+         * toggle, ↑/↓), and the grid relays its select / deselect to the pane.
+         * @member {Object} viewConfig={selectionModel: {module: RowModel}}
+         */
+        viewConfig: {selectionModel: {module: RowModel}}
     }
+
+    /**
+     * The full cards' row height — each register sets it equal to its `rowHeight`.
+     * @member {Number} cardRowHeight=32
+     */
+    cardRowHeight = 32
+    /**
+     * The rail's row height.
+     * @member {Number} railRowHeight=32
+     */
+    railRowHeight = 32
 
     /**
      * Field names of view-derived display facts (stamped by {@link #stampFacts}), stripped by
@@ -58,7 +82,53 @@ class RowsGrid extends GridContainer {
      */
     onConstructed(...args) {
         super.onConstructed(...args);
-        this.body.on('scrollEdge', this.onBodyScrollEdge, this)
+
+        const me = this;
+
+        me.body.on('scrollEdge', me.onBodyScrollEdge, me);
+        me.view.on({
+            deselect: me.onViewDeselect,
+            select  : me.onViewSelect,
+            scope   : me
+        })
+    }
+
+    /**
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     */
+    afterSetRail(value, oldValue) {
+        const me = this;
+
+        if (oldValue !== undefined) {
+            me.toggleCls('is-rail', value);
+            me.rowHeight = value ? me.railRowHeight : me.cardRowHeight
+        }
+    }
+
+    /**
+     * @summary Clear the row selection without relaying it: the pane decides what the reader shows.
+     */
+    clearSelection() {
+        this.view.selectionModel?.deselectAllRows()
+    }
+
+    /**
+     * @summary The View's `deselect` (a selected row clicked again), relayed.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onViewDeselect(data) {
+        this.fire('recordDeselect', {record: data.record})
+    }
+
+    /**
+     * @summary The View's `select` (a click or ↑/↓), relayed.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onViewSelect(data) {
+        this.fire('recordSelect', {record: data.record})
     }
 
     /**
@@ -87,19 +157,25 @@ class RowsGrid extends GridContainer {
      * @returns {Object[]}
      */
     extractBags() {
-        const
-            me         = this,
-            fieldNames = me.store.model.fields
-                .map(field => field.name)
-                .filter(name => !me.derivedFields.includes(name));
+        const me = this;
 
-        return (me.store.allItems?.items ?? me.store.items).map(record => {
-            const bag = {};
+        return (me.store.allItems?.items ?? me.store.items).map(record => me.recordBag(record))
+    }
 
-            fieldNames.forEach(name => bag[name] = record[name]);
+    /**
+     * @summary One record back as a plain bag, without the {@link #derivedFields} — what the
+     * pane's reading surface renders, never the live record.
+     * @param {Neo.data.Model} record
+     * @returns {Object}
+     */
+    recordBag(record) {
+        const bag = {};
 
-            return bag
-        })
+        this.store.model.fields.forEach(({name}) => {
+            this.derivedFields.includes(name) || (bag[name] = record[name])
+        });
+
+        return bag
     }
 
     /**
