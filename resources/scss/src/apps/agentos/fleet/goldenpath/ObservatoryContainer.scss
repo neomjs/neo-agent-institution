@@ -155,12 +155,30 @@
         position      : absolute;
     }
 
-    /* the side panel: the team, the view, the nodes and the selected node, a fixed column beside the surface
-       (or the whole body where no canvas worker draws) on the chrome scale, each list row one line */
+    /* the side panel: the view, the team, the nodes and the selected node, a column beside the surface (or the
+       whole body where no canvas worker draws) on the chrome scale. The splitter's drag clamps against its
+       min/max, so they are the panel's only bounds; the width itself starts here every session */
     .fm-observatory-side {
         border-left: thin solid var(--fm-line-soft);
         min-height : 0;
+        min-width  : 280px;
         width      : 320px;
+    }
+
+    /* the canvas | panel splitter speaks the dock splitter's flat language (cockpit/Container.scss): a soft
+       line at rest, the signal under the pointer, square, no margin; it is the panel's edge, so the panel
+       draws no second one */
+    .fm-observatory-splitter {
+        --splitter-background-color: color-mix(in srgb, var(--fm-line-soft) 55%, transparent);
+        --splitter-border-radius   : 0;
+        --splitter-hover-color     : color-mix(in srgb, var(--fm-signal) 45%, transparent);
+        --splitter-margin-vertical : 0;
+    }
+
+    /* beside the surface the panel stops at half the body; without one it is the whole body */
+    .fm-observatory-splitter + .fm-observatory-side {
+        border-left: none;
+        max-width  : 50%;
     }
 
     .fm-observatory-side-title {
