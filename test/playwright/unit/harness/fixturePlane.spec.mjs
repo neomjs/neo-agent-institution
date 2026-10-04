@@ -130,5 +130,24 @@ test.describe('harness fixture plane', () => {
         expect(await probePort({port}), 'the plane is back on its port').toBe(true);
 
         await plane.stop()
+    });
+
+    test('a stop resolves only once the plane\'s process group is gone: a forced stop that emptied it returns its report, a surviving group throws', async () => {
+        const
+            port       = await allocatePort(),
+            reports    = [{exited: true, forced: true, groupEmpty: false}, {exited: true, forced: true, groupEmpty: true}],
+            startChild = ({entry}) => Object.assign(new EventEmitter(), {entry, exitCode: null, neoHarnessIdentity: {pgid: 1}, server: net.createServer().listen(port, '127.0.0.1'), signalCode: null}),
+            stopChild  = async child => {
+                const report = reports.shift();
+
+                report.groupEmpty && await new Promise(resolve => child.server.close(resolve));
+                return report
+            },
+            plane      = createPlaneProcess({env: {}, port, registerChild: () => {}, repoRoot: '/brain', startChild, stopChild, timeoutMs: 5000});
+
+        await plane.start();
+        await expect(plane.stop(), 'a group that outlived the kill is no stop').rejects.toThrow('the fixture plane did not stop');
+        expect(await probePort({port}), 'the plane still listens').toBe(true);
+        expect(await plane.stop(), 'a forced stop that emptied the group is one').toEqual({exited: true, forced: true, groupEmpty: true})
     })
 });

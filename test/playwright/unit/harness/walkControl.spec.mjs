@@ -1,9 +1,17 @@
 import {expect, test} from '@playwright/test';
+import {EventEmitter} from 'node:events';
 import fs             from 'node:fs';
+import net            from 'node:net';
 import os             from 'node:os';
 import path           from 'node:path';
 import * as seats     from '../../../../node_modules/neo-agent-brain/ai/mcp/server/shared/helpers/seatToken.mjs';
-import {FIXTURE_IDENTITY, FIXTURE_PLANE_ID, FIXTURE_REMAP_IDENTITY} from '../../../../harness/fixturePlane.mjs';
+import {allocatePort} from '../../../../harness/brain.mjs';
+import {
+    createPlaneProcess,
+    FIXTURE_IDENTITY,
+    FIXTURE_PLANE_ID,
+    FIXTURE_REMAP_IDENTITY
+} from '../../../../harness/fixturePlane.mjs';
 import {
     assertWalkTarget,
     cleanupHeldRun,
@@ -74,6 +82,31 @@ test.describe('harness walk control', () => {
         expect(() => readWalkManifest({smokeRoot}), 'no held run').toThrow('no held smoke run under')
     });
 
+    test('a link inside the root cannot lead a write outside it; a link that stays inside is followed to the file it names', async () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'walk-outside-')),
+              escaped = path.join(outside, 'seat-tokens.json'),
+              run     = argv => runWalkControl({argv, env: {NEO_HARNESS_BRAIN_ROOT: smokeRoot}, importSeats: async () => seats});
+
+        try {
+            fs.copyFileSync(registryPath, escaped);
+            fs.symlinkSync(outside, path.join(smokeRoot, 'linked'));
+            manifestFor({registryPath: path.join(smokeRoot, 'linked', 'seat-tokens.json')});
+
+            await expect(run(['token', 'revoke'])).rejects.toThrow('resolved, it is not inside the smoke root');
+            expect(seats.readSeatTokenRegistry(escaped).generation, 'the outside registry is untouched').toBe(1);
+
+            fs.symlinkSync(path.join(smokeRoot, 'plane'), path.join(smokeRoot, 'alias'));
+
+            const accepted = assertWalkTarget({manifest: manifestFor({registryPath: path.join(smokeRoot, 'alias', 'auth', 'seat-tokens.json')}), smokeRoot});
+
+            expect(accepted.registryPath, 'the check hands on the file it accepted').toBe(fs.realpathSync(registryPath));
+            expect(await run(['token', 'revoke'])).toEqual({generation: 2, rows: 0});
+            expect(verify().reason).toBe('stale-generation')
+        } finally {
+            fs.rmSync(outside, {force: true, recursive: true})
+        }
+    });
+
     test('a revoke is what the plane reads next: the stored token is a stale generation', () => {
         expect(verify().ok).toBe(true);
         expect(revokeFixtureToken({manifest: manifestFor(), seats})).toEqual({generation: 2, rows: 0});
@@ -107,10 +140,81 @@ test.describe('harness walk control', () => {
             await new Promise(resolve => setTimeout(resolve, 100));
             expect(calls, 'each request runs once').toEqual(['stop'])
         } finally {
-            watcher.stop()
+            await watcher.close()
         }
 
         await expect(requestPlane({command: 'plane-reset', smokeRoot})).rejects.toThrow("knows no plane command 'plane-reset'")
+    });
+
+    test('a stop is answered by its result: the plane\'s report rides the answer, and a plane whose group survived answers not ok', async () => {
+        manifestFor();
+
+        const
+            port    = await allocatePort(),
+            reports = [{exited: true, forced: true, groupEmpty: false}, {exited: true, forced: true, groupEmpty: true}],
+            plane   = createPlaneProcess({
+                env          : {},
+                port,
+                registerChild: () => {},
+                repoRoot     : '/brain',
+                startChild   : ({entry}) => Object.assign(new EventEmitter(), {entry, exitCode: null, neoHarnessIdentity: {pgid: 1}, server: net.createServer().listen(port, '127.0.0.1'), signalCode: null}),
+                stopChild    : async child => {
+                    const report = reports.shift();
+
+                    report.groupEmpty && await new Promise(resolve => child.server.close(resolve));
+                    return report
+                },
+                timeoutMs    : 5000
+            }),
+            watcher = watchPlaneControl({handlers: {'plane-start': plane.start, 'plane-stop': plane.stop}, pollMs: 20, smokeRoot});
+
+        try {
+            expect(await requestPlane({command: 'plane-start', pollMs: 20, smokeRoot, timeoutMs: 5000})).toMatchObject({ok: true, result: null});
+            expect(await requestPlane({command: 'plane-stop', pollMs: 20, smokeRoot, timeoutMs: 5000}), 'a fulfilled stop that left the group alive')
+                .toMatchObject({error: expect.stringContaining('the fixture plane did not stop'), ok: false});
+            expect(await requestPlane({command: 'plane-stop', pollMs: 20, smokeRoot, timeoutMs: 5000}))
+                .toMatchObject({ok: true, result: {exited: true, forced: true, groupEmpty: true}})
+        } finally {
+            await watcher.close()
+        }
+    });
+
+    test('close stops admission and settles the request in flight, so a plane a late start launches is in the drain', async () => {
+        manifestFor();
+
+        let release;
+
+        const
+            calls    = [],
+            children = ['plane-old'],
+            listened = new Promise(resolve => {release = resolve}),
+            watcher  = watchPlaneControl({handlers: {
+                'plane-start': async () => {
+                    calls.push('start');
+                    await listened;
+                    children.push('plane-restarted')
+                },
+                'plane-stop' : async () => calls.push('stop')
+            }, pollMs: 20, smokeRoot}),
+            started  = requestPlane({command: 'plane-start', pollMs: 20, smokeRoot, timeoutMs: 5000});
+
+        await expect.poll(() => calls, {message: 'the start is in flight'}).toEqual(['start']);
+
+        // the teardown's order: close the control, then take the children it drains
+        let drained = null;
+
+        const closing = watcher.close().then(() => {drained = children.slice()});
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+        expect(drained, 'close waits for the start in flight').toBeNull();
+
+        release();
+        await closing;
+        expect(drained, 'the late start\'s child is in the drain').toEqual(['plane-old', 'plane-restarted']);
+        expect(await started).toMatchObject({command: 'plane-start', ok: true});
+
+        await expect(requestPlane({command: 'plane-stop', pollMs: 20, smokeRoot, timeoutMs: 300}), 'nothing is admitted after close').rejects.toThrow('did not answer');
+        expect(calls).toEqual(['start'])
     });
 
     test('a new manifest clears an earlier run\'s request, so a stale command never runs', async () => {
@@ -123,7 +227,7 @@ test.describe('harness walk control', () => {
               watcher = watchPlaneControl({handlers: {'plane-stop': async () => calls.push('stop')}, pollMs: 20, smokeRoot});
 
         await new Promise(resolve => setTimeout(resolve, 150));
-        watcher.stop();
+        await watcher.close();
         expect(calls).toEqual([])
     });
 

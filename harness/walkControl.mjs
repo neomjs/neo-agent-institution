@@ -1,10 +1,10 @@
-import crypto                        from 'node:crypto';
-import fs                            from 'node:fs';
-import os                            from 'node:os';
-import path                          from 'node:path';
-import {fileURLToPath, pathToFileURL} from 'node:url';
-import {probePort, resolveSmokeRoot}  from './brain.mjs';
-import {FIXTURE_PLANE_ID}             from './fixturePlane.mjs';
+import crypto                                         from 'node:crypto';
+import fs                                             from 'node:fs';
+import os                                             from 'node:os';
+import path                                           from 'node:path';
+import {fileURLToPath, pathToFileURL}                 from 'node:url';
+import {probePort, resolveRealPath, resolveSmokeRoot} from './brain.mjs';
+import {FIXTURE_PLANE_ID}                             from './fixturePlane.mjs';
 
 /**
  * @module harness/walkControl
@@ -19,8 +19,8 @@ import {FIXTURE_PLANE_ID}             from './fixturePlane.mjs';
  *   plane's verifier re-reads on its next request, with no restart;
  * - `cleanup`: after the walker closed the window, removes the smoke root and proves the plane gone.
  *
- * A manifest that names another plane id, another root, or a registry outside the root is refused, so
- * nothing here can reach the operator's live plane or profile.
+ * A manifest that names another plane id, another root, or a registry outside the root once its links
+ * are resolved is refused, so nothing here can reach the operator's live plane or profile.
  */
 
 /**
@@ -101,30 +101,33 @@ export function writeWalkManifest({smokeRoot, manifest}) {
 
 /**
  * @summary Accepts a manifest only for the smoke's own fixture plane under this root: its plane id, its
- * root, and a registry inside that root.
+ * root, and a registry inside that root. Both paths are compared after their links resolve, so a link
+ * inside the root cannot lead a write outside it.
  * @param {Object} options
  * @param {String} options.smokeRoot
  * @param {Object} options.manifest
- * @returns {Object} The manifest.
+ * @returns {Object} The manifest, its `registryPath` the resolved file the check accepted.
  * @throws {Error} Naming what does not match.
  */
 export function assertWalkTarget({smokeRoot, manifest}) {
-    const root     = path.resolve(smokeRoot),
-          relative = typeof manifest?.registryPath === 'string' ? path.relative(root, path.resolve(manifest.registryPath)) : '..';
-
     if (manifest?.planeId !== FIXTURE_PLANE_ID) {
         throw new Error(`walkControl refuses plane '${manifest?.planeId}': it acts only on the smoke's fixture plane, '${FIXTURE_PLANE_ID}'`)
     }
 
-    if (typeof manifest.smokeRoot !== 'string' || path.resolve(manifest.smokeRoot) !== root) {
+    const root = resolveRealPath(smokeRoot);
+
+    if (typeof manifest.smokeRoot !== 'string' || resolveRealPath(manifest.smokeRoot) !== root) {
         throw new Error(`walkControl refuses a manifest for root '${manifest.smokeRoot}': this walk's smoke root is '${root}'`)
     }
 
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-        throw new Error(`walkControl refuses registry '${manifest.registryPath}': it is not inside the smoke root '${root}'`)
+    const registry = typeof manifest.registryPath === 'string' ? resolveRealPath(manifest.registryPath) : null,
+          relative = registry ? path.relative(root, registry) : '..';
+
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        throw new Error(`walkControl refuses registry '${manifest.registryPath}': resolved, it is not inside the smoke root '${root}'`)
     }
 
-    return manifest
+    return {...manifest, registryPath: registry}
 }
 
 /**
@@ -228,24 +231,45 @@ export async function requestPlane({smokeRoot, command, timeoutMs = 60000, pollM
 
 /**
  * @summary The held run's side of the plane commands: polls the control file, runs each new request once,
- * one at a time, and answers it in the acknowledgement file.
+ * one at a time, and answers it in the acknowledgement file with what its handler returned. A handler
+ * that throws answers `ok: false`, so a handler must throw for any outcome that is not the one asked for.
  * @param {Object} options
  * @param {String} options.smokeRoot
- * @param {Object} options.handlers `{'plane-stop': async () => {}, 'plane-start': async () => {}}`
+ * @param {Object} options.handlers `{'plane-stop': async () => report, 'plane-start': async () => {}}`
  * @param {Function} [options.onLog]
  * @param {Number} [options.pollMs=300]
- * @returns {{stop: Function}}
+ * @returns {{close: Function}} `close()` stops admission and resolves once the request in flight has
+ *     settled; after it, no handler runs again. The run's teardown awaits it before it drains its children,
+ *     so a plane a late start launches is in the drain, not outside it.
  */
 export function watchPlaneControl({smokeRoot, handlers, onLog = () => {}, pollMs = 300}) {
     const paths = walkPaths(smokeRoot);
 
-    let busy   = false,
-        lastId = null;
+    let closed   = false,
+        inFlight = null,
+        lastId   = null;
 
-    const timer = setInterval(async () => {
+    async function answer(request) {
+        let ack;
+
+        try {
+            if (!Object.hasOwn(handlers, request.command)) {
+                throw new Error(`unknown plane command '${request.command}'`)
+            }
+
+            ack = {command: request.command, id: request.id, ok: true, result: await handlers[request.command]() ?? null}
+        } catch (error) {
+            ack = {command: request.command, error: error.message, id: request.id, ok: false}
+        }
+
+        onLog(`[walk] ${request.command} ${ack.ok ? 'done' : `failed: ${ack.error}`}`);
+        writeJsonAtomic(paths.ack, ack)
+    }
+
+    const timer = setInterval(() => {
         let request;
 
-        if (busy) return;
+        if (closed || inFlight) return;
 
         try {
             request = JSON.parse(fs.readFileSync(paths.control, 'utf8'))
@@ -255,30 +279,21 @@ export function watchPlaneControl({smokeRoot, handlers, onLog = () => {}, pollMs
 
         if (!request?.id || request.id === lastId) return;
 
-        busy   = true;
-        lastId = request.id;
-
-        let ack;
-
-        try {
-            if (!Object.hasOwn(handlers, request.command)) {
-                throw new Error(`unknown plane command '${request.command}'`)
-            }
-
-            await handlers[request.command]();
-            ack = {command: request.command, id: request.id, ok: true}
-        } catch (error) {
-            ack = {command: request.command, error: error.message, id: request.id, ok: false}
-        }
-
-        onLog(`[walk] ${request.command} ${ack.ok ? 'done' : `failed: ${ack.error}`}`);
-        writeJsonAtomic(paths.ack, ack);
-        busy = false
+        lastId   = request.id;
+        inFlight = answer(request)
+            .catch(error => onLog(`[walk] ${request.command} could not be answered: ${error.message}`))
+            .finally(() => {inFlight = null})
     }, pollMs);
 
     timer.unref?.();
 
-    return {stop: () => clearInterval(timer)}
+    return {
+        async close() {
+            closed = true;
+            clearInterval(timer);
+            await inFlight
+        }
+    }
 }
 
 /**

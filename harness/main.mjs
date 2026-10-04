@@ -904,7 +904,7 @@ process.on('unhandledRejection', async error => {
     }
 });
 
-const brainState = {children: [], isolationRoot: null, planeIngress: null};
+const brainState = {children: [], isolationRoot: null, planeIngress: null, walkControl: null};
 
 function brainLog(line) {
     if (carriesSecret(line, mainSecrets())) {
@@ -919,10 +919,14 @@ function brainLog(line) {
  * @summary Full-tree teardown of every child the harness started (and only those — §2.1.1 one
  * lifecycle owner), then clears the smoke run-state: a record surviving a CLEAN stop would make
  * a later sweep signal whatever now owns the recycled process-group ids. Callable from every
- * exit path: will-quit, smoke completion, the smoke nets.
+ * exit path: will-quit, smoke completion, the smoke nets. A held run's walk control closes first: no
+ * plane request starts after it and the one in flight settles, so a plane it started is in the drain.
  * @returns {Promise<Object|null>} per-child stop report, or null when nothing was supervised
  */
 async function teardownBrain() {
+    await brainState.walkControl?.close();
+    brainState.walkControl = null;
+
     if (!brainState.children.length) {
         return null
     }
@@ -1359,7 +1363,7 @@ async function holdForWalk() {
             runtimeRoot : agentosRuntimeRoot
         }});
 
-    watchPlaneControl({handlers: {'plane-start': plane.startPlane, 'plane-stop': plane.stopPlane}, onLog: brainLog, smokeRoot});
+    brainState.walkControl = watchPlaneControl({handlers: {'plane-start': plane.startPlane, 'plane-stop': plane.stopPlane}, onLog: brainLog, smokeRoot});
     console.log('HARNESS_SMOKE_HOLD ' + JSON.stringify({auth: manifest.auth, candidate: manifest.candidate, planeBase: manifest.planeBase, smokeRoot: manifest.smokeRoot}));
 
     return new Promise(() => {})

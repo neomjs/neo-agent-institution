@@ -226,7 +226,8 @@ function awaitChildListening({child, port, timeoutMs}) {
  * @param {Function} [options.onLog]
  * @param {Function} [options.stopChild=stopBrainChild]
  * @param {Number} [options.timeoutMs=30000]
- * @returns {{start: Function, stop: Function}}
+ * @returns {{start: Function, stop: Function}} `stop()` resolves the stop report once the plane's
+ *     process group is gone, a forced stop included, and throws while any of it survives.
  */
 export function createPlaneProcess({env, port, registerChild, repoRoot, startChild, onLog, stopChild = stopBrainChild, timeoutMs = 30000}) {
     let child = null;
@@ -241,7 +242,15 @@ export function createPlaneProcess({env, port, registerChild, repoRoot, startChi
             registerChild({child, ...child.neoHarnessIdentity, label: 'plane', observeBrain: false});
             await awaitChildListening({child, port, timeoutMs})
         },
-        stop: () => child ? stopChild(child) : Promise.resolve({exited: true, forced: false, groupEmpty: true})
+        async stop() {
+            const report = child ? await stopChild(child) : {exited: true, forced: false, groupEmpty: true};
+
+            if (report.groupEmpty !== true) {
+                throw new Error(`the fixture plane did not stop: its process group outlived the drain (${JSON.stringify(report)})`)
+            }
+
+            return report
+        }
     }
 }
 
