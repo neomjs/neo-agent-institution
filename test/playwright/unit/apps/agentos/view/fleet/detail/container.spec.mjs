@@ -749,6 +749,39 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }
     });
 
+    test('AC-3 (#524): a read that failed has one action in Detail, "Read again", which reads the seat again', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            answers    = [{state: 'unknown', reason: 'its forge account could not be read (HTTP 401)'}, {state: 'derived', name: 'Ada', email: 'ada@example.com'}];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {fleetSeatGitIdentity: async () => answers.shift()}};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row');
+
+            await expect.poll(() => row.identity?.state).toBe('unknown');
+            expect(row.getReference('identity-repair').hidden).toBe(true);
+            expect(row.getReference('identity-read').hidden).toBe(false);
+
+            row.onReadClick();
+            await expect.poll(() => row.identity?.state).toBe('derived');
+            expect(row.getReference('identity-read').hidden).toBe(true);
+            expect(row.getReference('identity-repair').text).toBe('Change identity');
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
     test('an external definition write (another owner\'s readback) refreshes the seated tab in place (#15242)', () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}

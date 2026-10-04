@@ -36,7 +36,7 @@ class Controller extends ComponentController {
             card = me.getReference('config-pane');
 
         card.on({configIntent: me.onConfigIntent, scope: me});
-        me.getReference('identity-row').on({declareGitIdentity: me.onDeclareGitIdentity, scope: me});
+        me.getReference('identity-row').on({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         // a roster refresh re-seats the same definition: only another seat is read again
         me.observeConfig(card, 'record', (value, oldValue) => {
             value?.id !== oldValue?.id && me.readGitIdentity()
@@ -57,7 +57,7 @@ class Controller extends ComponentController {
 
         me.component.agentDefinitions?.un(me.getDefinitionsStoreListeners());
         me.getReference('config-pane')?.un({configIntent: me.onConfigIntent, scope: me});
-        me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, scope: me});
+        me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         super.destroy(...args)
     }
 

@@ -94,9 +94,11 @@ test.describe('AgentOS.view.fleet.shared.GitIdentityContainer (#524)', () => {
         // a state the operator must act on names the action that does it
         row.identity = missing;
         expect(repair.text).toBe('Declare identity');
-        // Detail offers no second action, the retry included
-        row.identity = {state: 'unknown', reason: 'the fleet could not be reached'};
         expect(read.hidden).toBe(true);
+        // a read that failed has one action here too: read it again, never a declaration over it
+        row.identity = {state: 'unknown', reason: 'the fleet could not be reached'};
+        expect(read.hidden).toBe(false);
+        expect(repair.hidden).toBe(true);
 
         row.destroy()
     });

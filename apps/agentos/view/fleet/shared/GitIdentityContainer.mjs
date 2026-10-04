@@ -9,8 +9,8 @@ import SeatGitIdentity from '../../../util/SeatGitIdentity.mjs';
  *
  * @summary The one row that says which identity a seat's commits carry, and repairs it (Clio's placement
  * on #524). Add mounts it inline only when the derivation fails, with the declaration open at once.
- * Detail's Configuration keeps it for every state, behind one repair action. Start's identity refusal
- * points here.
+ * Detail's Configuration keeps it for every state, with one action per state: declare a failed
+ * derivation, read a failed read again, change a working identity. Start's identity refusal points here.
  *
  * Like the Repositories card it changes nothing itself. It fires `declareGitIdentity` with the typed
  * pair, or `readGitIdentity` to retry a read that failed, and its owner runs the round-trip and sets
@@ -52,8 +52,9 @@ class GitIdentityContainer extends Container {
          */
         identity_: null,
         /**
-         * Add's mode: the declaration shows at once for `missing` and `mismatch`, and `unknown` offers a
-         * retry. Detail's mode (`false`) puts every state behind the one repair action.
+         * Add's mode: the declaration shows at once for `missing` and `mismatch`. Detail's mode (`false`)
+         * keeps it behind the state's one action. In both, `unknown` offers only "Read again": declaring
+         * over a read that failed would mask a transient refusal.
          * @member {Boolean} inline_=false
          * @reactive
          */
@@ -238,15 +239,16 @@ class GitIdentityContainer extends Container {
             text: SeatGitIdentity.describe(identity)
         });
 
-        // the one repair action toggles the declaration, the way Edit connection toggles its options
+        // one action per state: a failed read is read again, everything else toggles the declaration,
+        // the way Edit connection toggles its options
         me.getReference('identity-repair').set({
-            hidden: me.inline,
+            hidden: me.inline || state === 'unknown',
             text  : me.editing ? 'Close' : SeatGitIdentity.needsRepair(identity) ? 'Declare identity' : 'Change identity'
         });
 
         me.getReference('identity-fields').hidden = !open;
         me.getReference('identity-save').disabled = pending;
-        me.getReference('identity-read').set({disabled: pending, hidden: !me.inline || state !== 'unknown'});
+        me.getReference('identity-read').set({disabled: pending, hidden: state !== 'unknown'});
 
         me.getReference('identity-status').set({
             cls : ['fm-git-identity-status', `is-${me.status?.state ?? 'idle'}`],
