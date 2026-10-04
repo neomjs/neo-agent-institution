@@ -202,8 +202,9 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#557)'
             title   : 'your merges: neomjs/devindex could not be read'
         });
         expect(line(stale, 0, known(0)).text, 'a stale zero is the all-clear of its time, never of now').toBe('nothing waits for you as of 12m ago');
-        expect(line(partial, 3, known(0)), 'a partial count keeps its number and its reason')
-            .toMatchObject({text: '3 merges wait for you', title: 'your merges: neomjs/devindex could not be read'});
+        expect(line(partial, 3, known(0)), 'a partial count is the least that waits, never hidden behind "could not all"')
+            .toMatchObject({text: 'at least 3 merges wait for you · some could not be read', title: 'your merges: neomjs/devindex could not be read'});
+        expect(line(partial, 1, known(2)).text).toBe('2 questions · at least 1 merge wait for you · some could not be read');
         expect(line(partial, 0, unsupported), 'beside the unlisted questions the partial reason still rides the title').toMatchObject({
             text : 'your questions are not listed yet · your merges could not all be read',
             title: 'your questions: questions are not listed yet · your merges: neomjs/devindex could not be read'

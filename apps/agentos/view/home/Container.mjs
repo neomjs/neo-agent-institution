@@ -291,11 +291,13 @@ class Container extends BaseContainer {
             complete   = openWork.coverage === 'complete' && (!stale || Number.isFinite(ageMs));
 
         return {
-            kind  : 'counted',
-            asOf  : Number.isFinite(ageMs) ? ` as of ${AgentFreshness.formatAge(ageMs)}` : '',
+            kind      : 'counted',
+            asOf      : Number.isFinite(ageMs) ? ` as of ${AgentFreshness.formatAge(ageMs)}` : '',
             complete,
-            count : mergeRows.length,
-            reason: complete ? null : openWork.reason
+            count     : mergeRows.length,
+            // a partial read's count is the least that waits
+            lowerBound: openWork.coverage !== 'complete',
+            reason    : complete ? null : openWork.reason
         }
     }
 
@@ -324,7 +326,8 @@ class Container extends BaseContainer {
      * that belongs to the operator alone. "nothing waits for you" is said only when both axes are complete
      * and observed zero, and a stale observation keeps its age. An axis without a number leads, and so does
      * a zero that is not complete, each with its reason in the title. The other axis keeps its number,
-     * never a 0. Any axis with something to say lights the line, so a silent one never hides a known count;
+     * never a 0, and a partial count reads as the least that waits ("at least 5 merges … · some could not
+     * be read"). Any axis with something to say lights the line, so a silent one never hides a known count;
      * with nothing to say, the line is hidden. The merge count is a link to the fleet head's merge queue.
      * @param {Object}      facts
      * @param {Object|null} facts.openWork  The provider's `openWork` block: the merge axis's state
@@ -355,10 +358,12 @@ class Container extends BaseContainer {
             runs.push([
                 ...waiting.flatMap((axis, index) => [
                     ...(index ? [{text: ' · '}] : []),
-                    {...(axis.noun === 'merge' ? {link: 'merges'} : {}), text: counted(axis.count, axis.noun) + axis.asOf}
+                    {...(axis.noun === 'merge' ? {link: 'merges'} : {}), text: (axis.lowerBound ? 'at least ' : '') + counted(axis.count, axis.noun) + axis.asOf}
                 ]),
                 {text: ` ${one ? 'waits' : 'wait'} for you`}
-            ])
+            ]);
+
+            waiting.some(axis => axis.lowerBound) && runs.push([{text: 'some could not be read'}])
         }
 
         return lineOf(runs.flatMap((run, index) => [...(index ? [{text: ' · '}] : []), ...run]), [...numberless, ...waiting])
