@@ -260,7 +260,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
                 appName       : 'AgentOSAccountsTest',
                 bridgeResolver: () => ({
                     defineAgent          : async () => canonical,
-                    // a host with no existing memory: the add records `memoryImport: 'none'` (#521)
+                    // a host with no existing memory: the add records `memoryImport: 'none'`
                     fleetMemoryCandidates: async () => ({capability: {state: 'wired'}, candidates: [], count: 0}),
                     setRepo              : async () => ({status: 'accepted', agent: canonical})
                 })

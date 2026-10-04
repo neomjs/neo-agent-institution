@@ -473,7 +473,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.flowStatus.state).toBe('readback-confirmed');
         expect(fired).toHaveLength(1);
         expect(fired[0].agent).toEqual(cleanReadback());
-        // nothing to import was found, so the seat records that it starts fresh (#521)
+        // nothing to import was found, so the seat records that it starts fresh
         expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: 'none'}]);
         expect(form.getReference('memory-frame').hidden).toBe(true);
         // the settle rule: no terminal state leaves credential bytes in the field
@@ -831,7 +831,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — the added seat\'s c
     };
 
     const fill = async form => {
-        // the existing-memory answer the form reads when shown (#521): none on this host
+        // the existing-memory answer the form reads when shown: none on this host
         await form.readMemory();
         (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
         (await form.getField('credential')).value     = CREDENTIAL;

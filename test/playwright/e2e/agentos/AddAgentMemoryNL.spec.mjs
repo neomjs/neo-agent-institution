@@ -144,7 +144,7 @@ async function fill(form) {
 }
 
 /**
- * @summary Add Agent offers an existing agent's memory only when one exists (#521), on the real mounted
+ * @summary Add Agent offers an existing agent's memory only when one exists, on the real mounted
  * cockpit over the authenticated bridge: an unknown is never recorded as "no memory", a candidate is never
  * guessed, the chosen memory reaches `defineAgent`, and a Start the import refuses says why on the card.
  * The captures are the design gate's evidence (AC-5).
