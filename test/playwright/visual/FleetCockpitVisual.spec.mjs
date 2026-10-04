@@ -1180,6 +1180,27 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(await widthOf(side)).toBe(320)
     });
 
+    test('without a canvas worker the side panel takes the whole body, and no splitter is drawn', async ({page}) => {
+        const
+            pane    = page.locator('.fm-observatory-pane'),
+            widthOf = async selector => (await pane.locator(selector).boundingBox()).width;
+
+        // a host without a canvas worker: the app boots from a neo-config that turns it off
+        await page.route('**/apps/agentos/neo-config.json', async route => {
+            const response = await route.fetch();
+
+            await route.fulfill({response, json: {...await response.json(), useCanvasWorker: false}})
+        });
+        await bootSettledCockpit(page);
+        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
+        await expect(pane).toBeVisible({timeout: 30000});
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete$/);
+
+        await expect(pane.locator('canvas')).toHaveCount(0);
+        await expect(pane.locator('.fm-observatory-splitter')).toHaveCount(0);
+        expect(Math.abs(await widthOf('.fm-observatory-side') - await widthOf('.fm-observatory-body'))).toBeLessThanOrEqual(1)
+    });
+
     /**
      * @summary Creates the packaged shell's plane-setup card in the viewport above the shell, the way
      * `ViewportController#mountPlaneSetup` inserts it on an unconfigured packaged boot. The harness

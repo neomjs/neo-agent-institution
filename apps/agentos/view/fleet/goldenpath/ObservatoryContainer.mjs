@@ -347,7 +347,10 @@ class ObservatoryContainer extends Container {
                 size        : 6
             }])
         } else {
-            me.getReference('observatory-side').flex = 1
+            const side = me.getReference('observatory-side');
+
+            // no surface: the panel is the whole body; the layout already copied its flex into the style
+            side.set({flex: 1, style: {...side.style, flex: '1 1 0%'}})
         }
 
         me.updateLine();

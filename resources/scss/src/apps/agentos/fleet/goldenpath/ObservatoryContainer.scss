@@ -156,11 +156,10 @@
     }
 
     /* the side panel: the view, the team, the nodes and the selected node, a column beside the surface (or the
-       whole body where no canvas worker draws) on the chrome scale. The splitter's drag clamps against this
+       whole body where no canvas worker draws) on the chrome scale. The splitter's drag clamps against its
        min/max, so they are the panel's only bounds; the width itself starts here every session */
     .fm-observatory-side {
         border-left: thin solid var(--fm-line-soft);
-        max-width  : 50%;
         min-height : 0;
         min-width  : 280px;
         width      : 320px;
@@ -176,8 +175,10 @@
         --splitter-margin-vertical : 0;
     }
 
+    /* beside the surface the panel stops at half the body; without one it is the whole body */
     .fm-observatory-splitter + .fm-observatory-side {
         border-left: none;
+        max-width  : 50%;
     }
 
     .fm-observatory-side-title {
