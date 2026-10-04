@@ -53,6 +53,8 @@ with one of its sources down while the others answer.
 | unreachable | Through the connection observation: `fleet unreachable` · `Roster connection unavailable — no fleet data yet` (cold grid) or `— showing last-known data` (stale grid); **no next step**. Through the plane probe: `plane unreachable` · `No plane answered at that address. Bring that plane back, or connect to another.` with `connect-plane` — complete. |
 | one source failing | Pill `feed partial`, sentence `Activity feed partial — some sources unavailable · <reason>`. A cold stream over a live grid: `feed pending` · `Activity feed pending — roster is live · <reason>`. **No next step.** |
 
+*Added 2026-10-04 (#533), after this read:* every non-live verdict also shows its **lead** beside the pill, on one line that ellipsizes. The lead is the sentence before its ` · <reason>`; for the plain-browser silence it is `Fleet server offline`, and for a plane refusal the whole sentence. The sentences above are unchanged and stay on the title (`SpineBanner` — the verdict's `lead`).
+
 ### Instance switcher — `apps/agentos/view/fleet/instances/SwitcherButton.mjs` (`updateSwitcher`, `INSTANCE_STATE_WORDS`)
 
 The word follows the spine banner's kind (`view/fleet/cockpit/StateProvider.mjs`, the

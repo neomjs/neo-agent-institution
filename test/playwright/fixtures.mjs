@@ -55,8 +55,8 @@ export async function readSetupRun(page) {
 /**
  * @summary Sets the landing's configs inside the App worker, then `Neo.worker.App.setConfigs` carries the payload.
  * @param {Object} page The Playwright page.
- * @param {Object} configs `{roster: {rows}}`, `{activity: {events}}`, `{tasks: {snapshot}}`, `{mailbox: {events}}`
- *     and/or `{definitions: {rows}}`.
+ * @param {Object} configs `{roster: {rows}}`, `{activity: {events}}`, `{tasks: {snapshot}}`, `{mailbox: {events}}`,
+ *     `{definitions: {rows}}` and/or `{brainHealth: {response}}`.
  * @returns {Promise<void>}
  */
 async function landFleet(page, configs) {
@@ -78,6 +78,17 @@ async function landFleet(page, configs) {
  */
 export async function serveFleetMailbox(page, events) {
     await landFleet(page, {mailbox: {events}})
+}
+
+/**
+ * @summary Lands one answer of the shell's Brain-health wire in the mounted cockpit, through the liveness
+ * owner's `applyBrainHealth`: a typed boot refusal reads `{state: 'degraded', cause: {source, detail}}`.
+ * @param {Object} page The Playwright page.
+ * @param {Object} response The lifecycle owner's `{state, cause}` payload.
+ * @returns {Promise<void>}
+ */
+export async function landBrainHealth(page, response) {
+    await landFleet(page, {brainHealth: {response}})
 }
 
 /**

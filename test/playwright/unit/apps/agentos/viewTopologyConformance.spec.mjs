@@ -30,6 +30,7 @@ const
         ['src/dashboard/Panel.mjs',     'Panel'],
         ['src/dashboard/dock/Workspace.mjs', 'Container'],
         ['src/container/Base.mjs',      'Container'],
+        ['src/toolbar/Base.mjs',        'Toolbar'],
         ['src/component/Chip.mjs',      'Chip'],
         ['src/component/Base.mjs',      'Component'],
         ['src/list/Chip.mjs',           'List'],

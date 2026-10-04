@@ -116,44 +116,33 @@ const PLANE_REFUSALS = Object.freeze({
  * keeps the classic copy: there, silence really does imply a server the operator must start.
  * @param {Object|null} transport The shell transport-boot fact
  *     `{phase: 'starting'|'settled', mode, up, fleetPort, reason, error}`, or `null` outside the shell.
- * @returns {{text: String, title: String}} The pill's status word plus the full honesty sentence.
+ * @returns {{text: String, lead: String, cause: String|null, title: ?String}} The pill's status word, the
+ *     visible lead and what the title adds to it; `title` only where the sentence predates the lead.
  * @private
  */
 function coldFallbackFor(transport) {
     if (!transport) {
-        return {
-            text : 'fleet offline',
-            title: 'Fleet server offline — start it from the neo-agent-brain checkout'
-        }
+        // a developer remedy, never chrome: it stays on the title, whose sentence is unchanged
+        return {cause: null, lead: 'Fleet server offline', text: 'fleet offline', title: 'Fleet server offline — start it from the neo-agent-brain checkout'}
     }
 
     if (transport.phase === 'starting') {
-        return {
-            text : 'fleet starting',
-            title: 'Fleet transport starting — the cockpit connects automatically'
-        }
+        return {cause: null, lead: 'Fleet transport starting — the cockpit connects automatically', text: 'fleet starting'}
     }
 
     if (transport.mode === 'foreign-listener') {
-        const port = transport.fleetPort ?? 'the fleet port';
-
         return {
-            text : 'fleet blocked',
-            title: `another fleet server holds port ${port} — quit it, then Reconnect · ${transport.reason || 'listener did not prove canonical Fleet identity'}`
+            cause: transport.reason || 'listener did not prove canonical Fleet identity',
+            lead : `another fleet server holds port ${transport.fleetPort ?? 'the fleet port'} — quit it, then Reconnect`,
+            text : 'fleet blocked'
         }
     }
 
     if (transport.up !== true) {
-        return {
-            text : 'fleet failed',
-            title: `Fleet transport failed to start${transport.error ? ` · ${transport.error}` : ''}`
-        }
+        return {cause: transport.error || null, lead: 'Fleet transport failed to start', text: 'fleet failed'}
     }
 
-    return {
-        text : 'fleet connecting',
-        title: 'Fleet transport ready — cockpit loading · use Reconnect if this persists'
-    }
+    return {cause: 'use Reconnect if this persists', lead: 'Fleet transport ready — cockpit loading', text: 'fleet connecting'}
 }
 
 /**
@@ -198,9 +187,10 @@ class SpineBanner extends Base {
 
         const [word, sentence] = copy[connection.state],
               reason = typeof connection.reason === 'string' ? connection.reason.trim() : '',
-              title = `${sentence} — ${detail}${reason ? ` · ${reason}` : ''}`;
+              lead   = `${sentence} — ${detail}`,
+              title  = `${lead}${reason ? ` · ${reason}` : ''}`;
 
-        return {action: null, hidden: false, kind, text: `${scope} ${word}`, title, ariaLabel: title}
+        return {action: null, hidden: false, kind, lead, text: `${scope} ${word}`, title, ariaLabel: title}
     }
 
     /**
@@ -218,36 +208,40 @@ class SpineBanner extends Base {
      * @param {Object|null} [options.transport] The shell transport-boot fact (see {@link coldFallbackFor}).
      *     Optional and `null`-safe — only the cold fallback consults it, so a retained surface reason
      *     still outranks any topology guess.
-     * @returns {{hidden: Boolean, kind: String, text: String, title: String, ariaLabel: String}}
+     * @returns {{hidden: Boolean, kind: String, lead: String, text: String, title: String, ariaLabel: String}}
      *     `kind` is `'live'|'cold'|'degraded'` — the class hook; `hidden` is `true` only for the
-     *     fully live spine. `text` is the pill's STATUS WORD (axis word + state word — chrome
-     *     labels are never sentences); `title` carries the full honesty sentence with the retained
-     *     cause (one hover away, T5); `ariaLabel` mirrors the sentence so the distinction the
-     *     sentence encodes stays reachable to a screen reader without the hover.
+     *     fully live spine. `text` is the pill's STATUS WORD (axis word + state word). `lead` is the
+     *     one sentence the banner SHOWS beside the pill, in product words: never a retained transport
+     *     string, an endpoint or a command, and never only on hover. `title` adds the retained cause to
+     *     the lead, and `ariaLabel` mirrors it for a screen reader.
      */
     static deriveSpineBanner({daemon, grid, plane, stream, transport = null}) {
         const surfaces = [grid, stream],
               states   = surfaces.map(surface => surface?.state),
-              verdict  = (kind, text, title, action = null) => ({action, hidden: false, kind, text, title, ariaLabel: title});
+              // `lead` is the one sentence the banner shows beside the pill: product words only, never a
+              // retained transport string, an endpoint or a command. `title` adds the retained cause.
+              verdict  = (kind, text, lead, cause = null, action = null, title = cause ? `${lead} · ${cause}` : lead) => ({
+                  action, hidden: false, kind, lead, text, title, ariaLabel: title
+              });
 
         // A packaged shell refuses to own an organism beside a plane that already runs here. The cold
         // roster and the refused fleet are consequences of that refusal, so its cause outranks them, and
         // the one useful action is attaching this shell to that plane.
         if (daemon?.cause === 'organism-beside-plane') {
-            return verdict('cold', 'plane here', `A plane already runs on this machine — connect this shell to it${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
+            return verdict('cold', 'plane here', 'A plane already runs on this machine — connect this shell to it', daemon.reason, 'connect-plane')
         }
 
         // The plane refused this shell's fleet child: the reason is the child's own last line. A stored
         // record reads as configured, so the card does not come back by itself; Connect brings it.
         if (daemon?.cause === 'plane-refused') {
-            return verdict('cold', 'plane refused', `The plane refused this shell — connect it again${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
+            return verdict('cold', 'plane refused', 'The plane refused this shell — connect it again', daemon.reason, 'connect-plane')
         }
 
         // A refusal the shell told apart by asking the plane speaks the card's words for that answer.
         if (Object.hasOwn(PLANE_REFUSALS, daemon?.cause ?? '')) {
             const {lead, text} = PLANE_REFUSALS[daemon.cause];
 
-            return verdict('cold', text, `${lead}${daemon.reason ? ` · ${daemon.reason}` : ''}`, 'connect-plane')
+            return verdict('cold', text, lead, daemon.reason, 'connect-plane')
         }
 
         // The same answers while the shell runs: a roster read failed, and the shell's probe named the
@@ -256,7 +250,7 @@ class SpineBanner extends Base {
         if (Object.hasOwn(PLANE_REFUSALS, plane?.cause ?? '')) {
             const {lead, text} = PLANE_REFUSALS[plane.cause];
 
-            return verdict(grid?.state === 'cold' ? 'cold' : 'degraded', text, lead, 'connect-plane')
+            return verdict(grid?.state === 'cold' ? 'cold' : 'degraded', text, lead, null, 'connect-plane')
         }
 
         // Only a cold GRID enters the cold family: its copy asserts server facts, and a cold sibling
@@ -273,7 +267,7 @@ class SpineBanner extends Base {
             // transport fact picks the honest word AND line, and only the plain-browser flow keeps
             // the classic "start the server" advice.
             if (reason) {
-                return verdict('cold', 'fleet offline', `Fleet data unavailable · ${reason}`)
+                return verdict('cold', 'fleet offline', 'Fleet data unavailable', reason)
             }
 
             const connection = SpineBanner.connectionVerdict(grid, 'cold', 'fleet', 'no fleet data yet');
@@ -282,7 +276,7 @@ class SpineBanner extends Base {
 
             const fallback = coldFallbackFor(transport);
 
-            return verdict('cold', fallback.text, fallback.title)
+            return verdict('cold', fallback.text, fallback.lead, fallback.cause, null, fallback.title)
         }
 
         // ABOVE `stale` deliberately: a dead daemon is usually what MADE the feed stale, so reporting the
@@ -301,9 +295,7 @@ class SpineBanner extends Base {
             // look rather than what to run: unlike the fleet server there is no single restart verb
             // that is right for every daemon, and printing a confident wrong command is worse than
             // pointing at the surface that knows which daemon died.
-            return verdict('degraded', `agent os ${label}`, reason
-                ? `Agent OS ${label} — showing the cockpit over a partial organism · ${reason}`
-                : `Agent OS ${label} — showing the cockpit over a partial organism · check the tray state and the daemon log`)
+            return verdict('degraded', `agent os ${label}`, `Agent OS ${label} — showing the cockpit over a partial organism`, reason || 'check the tray state and the daemon log')
         }
 
         if (states.includes('stale')) {
@@ -317,16 +309,12 @@ class SpineBanner extends Base {
 
             if (connection) return connection;
 
-            return verdict('degraded', 'fleet degraded', reason
-                ? `Fleet feed degraded — showing last-known data · ${reason}`
-                : 'Fleet feed degraded — showing last-known data')
+            return verdict('degraded', 'fleet degraded', 'Fleet feed degraded — showing last-known data', reason)
         }
 
         if (stream?.state === 'partial') {
             const reason = reasonFor([stream], 'partial');
-            return verdict('degraded', 'feed partial', reason
-                ? `Activity feed partial — some sources unavailable · ${reason}`
-                : 'Activity feed partial — some sources unavailable')
+            return verdict('degraded', 'feed partial', 'Activity feed partial — some sources unavailable', reason)
         }
 
         // The stream's own verdict: reachable here only with a LIVE grid (cold/stale grids returned
@@ -342,12 +330,10 @@ class SpineBanner extends Base {
                 if (connection) return connection
             }
 
-            return verdict('degraded', 'feed pending', reason
-                ? `Activity feed pending — roster is live · ${reason}`
-                : 'Activity feed pending — roster is live')
+            return verdict('degraded', 'feed pending', 'Activity feed pending — roster is live', reason)
         }
 
-        return {action: null, hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''}
+        return {action: null, hidden: true, kind: 'live', lead: '', text: '', title: '', ariaLabel: ''}
     }
 }
 

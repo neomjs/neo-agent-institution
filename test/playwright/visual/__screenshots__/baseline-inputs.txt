@@ -267,7 +267,7 @@ apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
 
 apps/agentos/util/SpineBanner.mjs
-    d4b27038e3515fc3e53c2c20bf6ec84cb372baea
+    5c8346c1813f76b88af81eb48f57147c2f9a917e
 
 apps/agentos/util/TargetBinding.mjs
     aaf37a9f17e958b9ca06f4fc3d50d681534242a1
@@ -312,7 +312,10 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    6e14343b5e3fcca73d4f9fcdc44ff5dabf858005
+    bacb4f684c0b1046f691b4673e8c7022bb98b242
+
+apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
+    3badbfebb7e80c296abf03bb23ce7354d23df2f3
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     537696eb3f856a5e02eaa241b46cb3a3d318403a
@@ -324,10 +327,10 @@ apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     3bc24c1b7d3498119de6210234cc74528fcfaa8f
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
-    23b1b61fa78fc26e11af1507360c296855038d7e
+    b3cc52bb3cf1a3a1935762dfee82ade6af47d501
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    38e3cc7725fac181baec560fb52122ec69861e89
+    0ee80eb6bfaf204aaa65fea9fb51660785fb0cf2
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     b28949c0df2378dd5b3c70855c733d37872c0bb2
@@ -510,7 +513,7 @@ apps/agentos/view/setup/StepList.mjs
     c25dcb9201983cac7385311c895291fc1f760543
 
 apps/agentos/view/system/Container.mjs
-    e5529e309b90d7f1db7b60b157b1188cc343f61c
+    565ebd3190d8aee8f68785d45558df651ad6567b
 
 apps/agentos/view/system/List.mjs
     2cf842add18dffc2f6267d981666c6153b9a71dd
@@ -540,10 +543,10 @@ resources/scss/src/apps/agentos/fleet/catchup/Container.scss
     a2bb58e723c846f130e6a1c3d942440cca6f4d0b
 
 resources/scss/src/apps/agentos/fleet/cockpit/Container.scss
-    c3c59e026afb14292b99bbae47db1addcf35c1cf
+    3f38b7a773b47f95a28f5507839e212567ba05a9
 
 resources/scss/src/apps/agentos/fleet/cockpit/SpineBannerComponent.scss
-    015c95a763f5a3a4642bf0bab0b21af71d8562a5
+    a76f2a2b6be68b4938b5625da00489fbb71a85f7
 
 resources/scss/src/apps/agentos/fleet/cockpit/ViewerWakeTelltaleComponent.scss
     c20dde34f57fc46edab4407001b4aab73a761067
@@ -702,7 +705,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    4871c7fd8642c5a04aee4bca358d5486a1aaed9e
+    189d3c9b606d984e3b74071ce859f115ae4b3e50
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -728,8 +731,26 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-conf
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/activity-stream-chips.png
     7f9563d60cfbeb6040b75b8a9f4b7882a237ac22
 
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-account-changed.png
+    a53ffcd58cb528068607f4269b0ac544c4797449
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-not-a-plane.png
+    73c1e8e0dd0508f3a21567150824b9a7aa3312f6
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused-light-720.png
+    eb7637761d98500b89248211bb828d9deca31377
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused-light.png
+    c59d7db048429ecf33952069567d5c1f9cf4d21c
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused.png
+    448f0fe66706a417ba281e50e44e864b5e86bc8d
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-plane-unreachable.png
+    7c580de943e19fe0ee40112fd9e3018dd6483703
+
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-cold.png
-    18d5eb5144491a9ea6a4b18a110f3f3567c487a9
+    184556f9f1a424ff22c42ffbadedc01513a6fb98
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-default-shell.png
     7f5a6fefb30b23c9aec679b21e3e521510bc24d0
@@ -741,7 +762,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-empty
     b1f619167bd343c3975042960844f895ded1f6e2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-intermediate-720.png
-    25006d38cf3b16d778ba0fb388cf76c6ad746299
+    f67aff772b8b9bc396617e37339b46d63f2b4624
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
     3938638c3f57b6136c26e35e0e3985088ab599e6
