@@ -1,9 +1,11 @@
-import Button        from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import FormContainer from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
-import PasswordField from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
-import TextField     from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
-import AddAgentFlow  from '../../../util/AddAgentFlow.mjs';
-import HarnessChoice from '../../../util/HarnessChoice.mjs';
+import Button               from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import FormContainer        from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
+import PasswordField        from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
+import TextField            from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import AddAgentFlow         from '../../../util/AddAgentFlow.mjs';
+import HarnessChoice        from '../../../util/HarnessChoice.mjs';
+import SeatGitIdentity      from '../../../util/SeatGitIdentity.mjs';
+import GitIdentityContainer from '../shared/GitIdentityContainer.mjs';
 import {displayBoundAgentOs} from './MenuList.mjs';
 
 /**
@@ -36,6 +38,11 @@ const FORGE_LABELS = Object.freeze({github: 'GitHub', gitlab: 'GitLab'});
  * `credentialIngress: 'shell'` removes that field before mount and sends public intent only; the
  * native shell owns credential entry. Without a bridge the submit control is disabled with its
  * reason (CARD-CONTRACT controls rule: never hidden), state `gated`.
+ *
+ * **The added seat's commit identity.** After the define stands, the form reads it
+ * ({@link AgentOS.util.SeatGitIdentity}) and mounts the shared identity row only when the derivation
+ * fails. A declaration goes through `configureAgent`, and the updated definition fires
+ * `agentDefinitionAccepted` again, so the owner's roster holds it.
  */
 class AddAgentForm extends FormContainer {
     static config = {
@@ -263,8 +270,22 @@ class AddAgentForm extends FormContainer {
             cls      : ['fm-add-status', 'is-idle'],
             flex     : 'none',
             reference: 'flow-status'
+        }, {
+            // the added seat's commit identity, mounted only when its derivation fails
+            module   : GitIdentityContainer,
+            flex     : 'none',
+            hidden   : true,
+            inline   : true,
+            reference: 'git-identity'
         }]
     }
+
+    /**
+     * The id of the seat this form added last, whose commit identity the inline row repairs.
+     * @member {String|null} addedAgentId=null
+     * @protected
+     */
+    addedAgentId = null
 
     /**
      * @summary Seat the first product's harness, drop the token field for shell ingress, and probe
@@ -292,6 +313,12 @@ class AddAgentForm extends FormContainer {
 
         me.updateDestinationLine();
         me.syncForge();
+
+        me.getReference('git-identity').on({
+            declareGitIdentity: me.onDeclareGitIdentity,
+            readGitIdentity   : me.readGitIdentity,
+            scope             : me
+        });
 
         if (!bridge?.defineAgent) {
             me.flowStatus = {state: 'gated', reason: AddAgentFlow.FLEET_OFFLINE_REASON}
@@ -537,7 +564,9 @@ class AddAgentForm extends FormContainer {
                 harnessType   : me.harnessType
             }, bridge);
 
-        me.flowStatus = {state: 'validating', reason: ''};
+        me.flowStatus   = {state: 'validating', reason: ''};
+        me.addedAgentId = null;
+        me.getReference('git-identity').set({hidden: true, identity: null});
 
         try {
             const validation = AddAgentFlow.validateDefinePayload(payload, {credentialRequired: !shellOwned});
@@ -558,10 +587,75 @@ class AddAgentForm extends FormContainer {
             me.flowStatus = {state: outcome.state, reason: outcome.reason};
 
             if (outcome.state === 'readback-confirmed') {
-                me.fire('agentDefinitionAccepted', {agent: outcome.definition})
+                me.fire('agentDefinitionAccepted', {agent: outcome.definition});
+                me.addedAgentId = outcome.definition.id
             }
         } finally {
             me.getReference('field-credential')?.reset('')
+        }
+
+        // the define stands before the identity is read, so the read never holds or fails it
+        me.addedAgentId && await me.readGitIdentity()
+    }
+
+    /**
+     * @summary Read the added seat's commit identity, and mount the row only when the operator has
+     * something to do: a derived or declared identity asks nothing new.
+     * @returns {Promise<Object|null>} The Fleet's answer, or `null` when a newer submission owns the row.
+     */
+    async readGitIdentity() {
+        const
+            me       = this,
+            agentId  = me.addedAgentId,
+            identity = await SeatGitIdentity.read(AddAgentFlow.resolveRegistryBridge(me.bridgeResolver), agentId);
+
+        if (agentId !== me.addedAgentId) {
+            return null
+        }
+
+        me.getReference('git-identity').set({hidden: !SeatGitIdentity.needsRepair(identity), identity});
+
+        return identity
+    }
+
+    /**
+     * @summary Declare the added seat's commit identity through `configureAgent`, then read it back: the
+     * Fleet's answer, not the typed pair, is what the row shows.
+     * @param {Object} data
+     * @param {String} data.gitEmail
+     * @param {String} data.gitName
+     * @returns {Promise<void>}
+     */
+    async onDeclareGitIdentity({gitEmail, gitName}={}) {
+        const
+            me      = this,
+            agentId = me.addedAgentId,
+            row     = me.getReference('git-identity');
+
+        if (!agentId) {
+            return
+        }
+
+        row.status = {state: 'pending', reason: ''};
+
+        const outcome = await SeatGitIdentity.declare(AddAgentFlow.resolveRegistryBridge(me.bridgeResolver), agentId, {gitEmail, gitName});
+
+        if (agentId !== me.addedAgentId) {
+            return
+        }
+
+        if (outcome.state === 'rejected') {
+            row.status = {state: 'rejected', reason: outcome.reason};
+            return
+        }
+
+        outcome.definition && me.fire('agentDefinitionAccepted', {agent: outcome.definition});
+
+        const identity = await me.readGitIdentity();
+
+        // the row closes on a usable answer, so the status line keeps what the seat commits as
+        if (identity && !SeatGitIdentity.needsRepair(identity)) {
+            me.flowStatus = {state: 'readback-confirmed', reason: `Agent added. ${SeatGitIdentity.describe(identity)}.`}
         }
     }
 

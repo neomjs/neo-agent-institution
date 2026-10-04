@@ -516,3 +516,167 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         form.destroy()
     });
 });
+
+test.describe('AgentOS.view.fleet.instances.AddAgentForm — the added seat\'s commit identity (#524)', () => {
+    const missing = {state: 'missing', name: 'Phoebe', reason: 'its forge account offers no email this PAT can read'};
+
+    /**
+     * @summary A form over a stub bridge whose identity reads answer from `answers` in turn.
+     * @param {Object[]} answers
+     * @param {Object}   [extra] More bridge verbs.
+     * @returns {{form: Object, accepted: Object[], reads: String[], intents: Object[]}}
+     */
+    const mountForm = (answers, extra={}) => {
+        const
+            accepted = [],
+            intents  = [],
+            reads    = [],
+            bridge   = {
+                defineAgent         : async () => cleanReadback(),
+                fleetSeatGitIdentity: async ({id}) => {
+                    reads.push(id);
+                    return answers.length > 1 ? answers.shift() : answers[0]
+                },
+                configureAgent      : async intent => {
+                    intents.push(intent);
+                    return {status: 'accepted', agent: {...cleanReadback(), gitName: intent.gitName, gitEmail: intent.gitEmail}}
+                },
+                ...extra
+            },
+            form     = Neo.create(AddAgentForm, {appName: 'AgentOSAddAgentFlowTest', bridgeResolver: () => bridge});
+
+        form.on('agentDefinitionAccepted', data => accepted.push(data.agent));
+
+        return {form, accepted, reads, intents}
+    };
+
+    const fill = async form => {
+        (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+        (await form.getField('credential')).value     = CREDENTIAL;
+        form.harnessType = 'opencode'
+    };
+
+    test('AC-1: a derived or declared identity asks nothing new', async () => {
+        for (const answer of [{state: 'derived', name: 'Phoebe', email: 'phoebe@example.com'}, {state: 'declared', name: 'Phoebe', email: 'phoebe@example.com'}]) {
+            const {form, reads} = mountForm([answer]);
+
+            await fill(form);
+            await form.onSubmitClick();
+
+            expect(form.flowStatus.state).toBe('readback-confirmed');
+            expect(reads).toEqual(['resident-7']);
+            expect(form.getReference('git-identity').hidden).toBe(true);
+
+            form.destroy()
+        }
+    });
+
+    test('AC-2: the define stands before the identity is read, and a failed derivation mounts the row inline', async () => {
+        let release;
+        const
+            held = new Promise(resolve => {release = resolve}),
+            {form, accepted, reads} = mountForm([missing], {fleetSeatGitIdentity: async ({id}) => {
+                reads.push(id);
+                return held
+            }});
+
+        await fill(form);
+        const submitted = form.onSubmitClick();
+
+        // the read is in flight, and the define already stands: confirmed and handed to the owner
+        await expect.poll(() => reads).toEqual(['resident-7']);
+        expect(form.flowStatus.state).toBe('readback-confirmed');
+        expect(accepted).toHaveLength(1);
+        expect(form.getReference('git-identity').hidden).toBe(true);
+
+        release(missing);
+        await submitted;
+
+        const row = form.getReference('git-identity');
+
+        expect(row.hidden).toBe(false);
+        expect(row.getReference('identity-line').text).toBe('No commit identity: its forge account offers no email this PAT can read.');
+        expect(row.getReference('identity-fields').hidden).toBe(false);
+
+        form.destroy()
+    });
+
+    test('AC-2: the declaration goes through configureAgent, and the Fleet\'s answer closes the row', async () => {
+        const {form, accepted, intents} = mountForm([missing, {state: 'declared', source: 'declaration', name: 'Phoebe', email: 'phoebe@example.com'}]);
+
+        await fill(form);
+        await form.onSubmitClick();
+
+        const row = form.getReference('git-identity');
+
+        row.getReference('field-git-email').value = 'phoebe@example.com';
+        await form.onDeclareGitIdentity({gitName: row.getReference('field-git-name').value, gitEmail: 'phoebe@example.com'});
+
+        expect(intents).toEqual([{id: 'resident-7', gitName: 'Phoebe', gitEmail: 'phoebe@example.com'}]);
+        expect(row.hidden).toBe(true);
+        expect(form.flowStatus).toEqual({state: 'readback-confirmed', reason: 'Agent added. Commits as Phoebe <phoebe@example.com> · declared.'});
+        // the updated definition reaches the owner's roster, as the define did
+        expect(accepted.map(agent => agent.gitEmail)).toEqual([undefined, 'phoebe@example.com']);
+
+        form.destroy()
+    });
+
+    test('AC-2: a refused declaration keeps the row open with the Fleet\'s reason; a half pair never crosses', async () => {
+        const {form, intents} = mountForm([missing], {configureAgent: async intent => {
+            intents.push(intent);
+            return {status: 'rejected', reason: 'gitEmail is not an email address'}
+        }});
+
+        await fill(form);
+        await form.onSubmitClick();
+
+        const row = form.getReference('git-identity');
+
+        await form.onDeclareGitIdentity({gitName: 'Phoebe', gitEmail: ''});
+        expect(intents).toEqual([]);
+        expect(row.status).toEqual({state: 'rejected', reason: 'Name and email are both required.'});
+
+        await form.onDeclareGitIdentity({gitName: 'Phoebe', gitEmail: 'phoebe'});
+        expect(row.hidden).toBe(false);
+        expect(row.status).toEqual({state: 'rejected', reason: 'gitEmail is not an email address'});
+
+        form.destroy()
+    });
+
+    test('AC-2: a read that failed shows "not yet read" with its reason, and the retry reads again', async () => {
+        const {form, reads} = mountForm([
+            {state: 'unknown', reason: 'the fleet could not be reached'},
+            {state: 'derived', name: 'Phoebe', email: 'phoebe@example.com'}
+        ]);
+
+        await fill(form);
+        await form.onSubmitClick();
+
+        const row = form.getReference('git-identity');
+
+        expect(row.hidden).toBe(false);
+        expect(row.getReference('identity-line').text).toBe('Identity not yet read: the fleet could not be reached.');
+        expect(row.getReference('identity-read').hidden).toBe(false);
+
+        await form.readGitIdentity();
+        expect(reads).toEqual(['resident-7', 'resident-7']);
+        expect(row.hidden).toBe(true);
+
+        form.destroy()
+    });
+
+    test('a bridge without the identity verb reads as not yet read, never as success', async () => {
+        const {form} = mountForm([missing], {fleetSeatGitIdentity: undefined});
+
+        await fill(form);
+        await form.onSubmitClick();
+
+        const row = form.getReference('git-identity');
+
+        expect(form.flowStatus.state).toBe('readback-confirmed');
+        expect(row.hidden).toBe(false);
+        expect(row.getReference('identity-line').text).toBe('Identity not yet read: this fleet does not report commit identities.');
+
+        form.destroy()
+    });
+});

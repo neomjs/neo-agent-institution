@@ -680,6 +680,30 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('AC-4 (#524): a start refused for the seat\'s commit identity names the row that repairs it; the title keeps the Fleet\'s words', () => {
+        const
+            card   = createCard({agentId: 'vega', state: 'off'}),
+            status = () => card.down({reference: 'control-status'}),
+            reason = "agent 'vega' has no Git identity to commit under: its forge account offers no email this PAT can read. Nothing was changed.";
+
+        applySet(card, {
+            controlReason: {action: 'start', kind: 'rejected', reason},
+            gitIdentity  : {state: 'missing', reason: 'its forge account offers no email this PAT can read'}
+        });
+        expect(status().text).toBe('⚠ start refused: its commit identity — repair it in Detail › Configuration');
+        expect(status().vdom.title).toBe(reason);
+
+        // a refusal while the identity resolved is about something else, and keeps its own words
+        applySet(card, {gitIdentity: {state: 'derived', name: 'Vega', email: 'vega@example.com'}});
+        expect(status().text).toBe(`⚠ rejected: ${reason}`);
+
+        // the roster row of a Brain that reports no identity changes nothing
+        applySet(card, {gitIdentity: null, controlReason: {action: 'start', kind: 'rejected', reason: 'harness offline'}});
+        expect(status().text).toBe('⚠ rejected: harness offline');
+
+        card.destroy()
+    });
+
     test('observe: a pending action renders the state dot as a distinct transitional state, never the stale resolved one (#14978)', () => {
         const card = createCard({agentId: 'vega', state: 'off'});
         const dot  = () => card.down({ntype: 'fm-state-dot'});

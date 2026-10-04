@@ -70,9 +70,10 @@ const LANE_AGE_REFRESH_MS = 30_000;
 import AgentFreshness from '../../../../util/AgentFreshness.mjs';
 import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
 import NameSlot       from '../../../../util/NameSlot.mjs';
-import OpenWorkSeat   from '../../../../util/OpenWorkSeat.mjs';
-import SourceHealth   from '../../../../util/SourceHealth.mjs';
-import Telltale       from '../../../../util/Telltale.mjs';
+import OpenWorkSeat    from '../../../../util/OpenWorkSeat.mjs';
+import SeatGitIdentity from '../../../../util/SeatGitIdentity.mjs';
+import SourceHealth    from '../../../../util/SourceHealth.mjs';
+import Telltale        from '../../../../util/Telltale.mjs';
 
 /**
  * The word boundaries a monogram reads initials across: whitespace, hyphens, underscores, dots.
@@ -569,7 +570,8 @@ class AgentCard extends Container {
      * across strip and aggregate. The state dot is gated so missing runtime
      * evidence cannot render as live; severity adds WEIGHT to the state word, never a hue. The B4/C2
      * control seam renders the honest round-trip: unauthorized disables the cluster, timeout reads as
-     * an unfinished "…" with retry open, rejected shows "⚠ reason".
+     * an unfinished "…" with retry open, rejected shows "⚠ reason", and a start refused for the seat's
+     * commit identity names the Detail row that repairs it.
      */
     applyRecord() {
         let me     = this,
@@ -819,6 +821,10 @@ class AgentCard extends Container {
         // controls + the source strip ("RUN not nominal"), so the status line never duplicates it
         const
             controlStatus     = me.getReference('control-status'),
+            // a start the Fleet refused while the seat's last resolved identity needs repair was refused
+            // for that identity: the line names the row that repairs it, the title keeps the Fleet's words
+            identityRefusal   = controlReason?.kind === 'rejected' && controlReason.action !== 'stop' &&
+                SeatGitIdentity.needsRepair(record.gitIdentity),
             // pending takes visual priority over a prior reason, so a new attempt never shows a stale
             // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠"
             controlStatusText = pendingAction
@@ -827,14 +833,16 @@ class AgentCard extends Container {
                     ? ''
                     : controlReason.kind === 'timeout'
                         ? `${controlReason.action}… stale — no response`
-                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
+                        : identityRefusal
+                            ? `⚠ ${controlReason.action} refused: its commit identity — repair it in Detail › Configuration`
+                            : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
 
         controlStatus.set({
             hidden: !pendingAction && !controlReason,
             text  : controlStatusText
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full reason
-        controlStatus.changeVdomRootKey('title', controlStatusText || null);
+        controlStatus.changeVdomRootKey('title', identityRefusal && !pendingAction ? controlReason.reason : controlStatusText || null);
 
         me.update()
     }

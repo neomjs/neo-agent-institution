@@ -1,0 +1,65 @@
+/* The one commit-identity row (Add inline, Detail's Configuration): the Repositories card's shell and
+   status vocabulary (AgentReposContainer.scss), its actions on the shared chip skin (Chips.scss). Every
+   color is a token read, and each state pairs its hue with a non-color carrier (weight or text). */
+.fm-git-identity {
+    background   : var(--fm-panel);
+    border       : 1px solid var(--fm-line);
+    border-radius: 8px;
+    color        : var(--fm-ink);
+    gap          : var(--fm-space-2);
+    padding      : var(--fm-space-3);
+
+    .fm-git-identity-heading {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+    }
+
+    .fm-git-identity-line {
+        font         : var(--fm-text-body);
+        overflow-wrap: anywhere;
+
+        &.is-missing,
+        &.is-mismatch {
+            color      : var(--fm-kind-alert);
+            font-weight: 600;
+        }
+
+        &.is-unknown,
+        &.is-unread {
+            color     : var(--fm-ink-dim);
+            font-style: italic;
+        }
+    }
+
+    .fm-git-identity-repair,
+    .fm-git-identity-read,
+    .fm-git-identity-save {
+        align-self: flex-start;
+    }
+
+    .fm-git-identity-fields {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-git-identity-status {
+        font      : var(--fm-text-detail);
+        min-height: 14px;
+
+        &.is-idle {
+            visibility: hidden;
+        }
+
+        &.is-pending,
+        &.is-superseded {
+            color     : var(--fm-ink-dim);
+            font-style: italic;
+        }
+
+        &.is-rejected {
+            color      : var(--fm-kind-alert);
+            font-weight: 600;
+        }
+    }
+}

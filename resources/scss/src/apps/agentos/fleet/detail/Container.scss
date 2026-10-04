@@ -130,7 +130,8 @@
     }
 
 
-    .fm-detail-panes {
+    .fm-detail-panes,
+    .fm-detail-config {
         gap     : var(--fm-space-2);
         overflow: auto;
     }
