@@ -1,5 +1,4 @@
 import {mkdtempSync}  from 'node:fs';
-import fsPromises     from 'node:fs/promises';
 import {tmpdir}       from 'node:os';
 import path           from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -29,6 +28,13 @@ export const BRAIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.ur
 export const TRUSTED = Object.freeze({sender: 'trusted'});
 
 /**
+ * The target the wizard's profile declares: the Brain's canonical local plane, its container-side data
+ * root and the loopback endpoint (the pinned Brain's `docker-compose.local-agent-os.yml` health checks).
+ * @type {Object}
+ */
+export const PROFILE_TARGET = Object.freeze({planeId: 'neo-local-canonical', dataRoot: '/app/.neo-ai-data', endpoint: 'http://127.0.0.1:3102'});
+
+/**
  * What a placement probe reads on two machines: one every local preset fits with headroom, and a
  * 32 GiB laptop under other use that fits none of them.
  * @type {Object}
@@ -50,7 +56,7 @@ const tempDir = () => mkdtempSync(path.join(tmpdir(), 'pinned-setup-'));
  * @param {String}       [options.configSourcePath] The config a preset's env set is checked against
  * @param {Object}       [options.machine=MACHINES.roomy] The placement probe's facts
  * @param {Boolean|null} [options.running=null] The compose project's state; `null` follows the recorded `up`
- * @param {Object|null}  [options.served=null] A plane that answers whatever the run did; `null` follows the run: nothing answers until the project is up, then the plane its env carrier declares
+ * @param {Object|null}  [options.served=null] A plane that answers whatever the run did; `null` follows the run: nothing answers until the project is up, then {@link PROFILE_TARGET}'s plane
  * @returns {Promise<{broker: Object, setupRoot: String, stateRoot: String, world: Object}>}
  */
 export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDir(), configSourcePath = path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), machine = MACHINES.roomy, running = null, served = null} = {}) {
@@ -81,14 +87,6 @@ export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDi
         layout  = real.cli.hostLayout({stateRoot}),
         isUp    = () => running ?? world.commands.some(command => command.startsWith('docker compose ') && command.includes(' up ')),
         probe   = async () => ({...machine, observed: {}, runningPlane: isUp() ? {project: layout.composeProject} : null}),
-        // the plane that comes up serves the identity its env carrier declares, as a real one does
-        carried = async () => {
-            const
-                text  = await fsPromises.readFile(layout.envFile, 'utf8').catch(() => ''),
-                entry = name => text.match(new RegExp(`^${name}=(.*)$`, 'm'))?.[1] ?? null;
-
-            return isUp() && entry('NEO_PLANE_ID') ? {id: entry('NEO_PLANE_ID'), dataRoot: entry('NEO_PLANE_DATA_ROOT')} : null
-        },
         modules = {
             ...real,
             hostEffects  : {...real.hostEffects, createHost: options => real.hostEffects.createHost({...options, run})},
@@ -98,7 +96,8 @@ export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDi
                 layout,
                 host,
                 healthcheck: async () => {
-                    const answering = served ?? await carried();
+                    // the profile pins its plane: what comes up is the canonical local plane, whatever the run named
+                    const answering = served ?? (isUp() ? {id: PROFILE_TARGET.planeId, dataRoot: PROFILE_TARGET.dataRoot} : null);
 
                     if (!answering) throw new Error('connect ECONNREFUSED 127.0.0.1:3102');
 

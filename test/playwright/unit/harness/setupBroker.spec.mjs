@@ -11,7 +11,7 @@ import {
     loadSetupModules,
     resolveSetupRoots
 } from '../../../../harness/setupBroker.mjs';
-import {BRAIN_ROOT, TRUSTED, pinnedSetupHost} from '../../fixture/pinnedSetupHost.mjs';
+import {BRAIN_ROOT, PROFILE_TARGET, TRUSTED, pinnedSetupHost} from '../../fixture/pinnedSetupHost.mjs';
 
 const tempDir = () => mkdtempSync(path.join(tmpdir(), 'setup-broker-'));
 
@@ -560,11 +560,13 @@ async function brainBacked({setupRoot = tempDir(), stateRoot = tempDir(), disk =
 }
 
 /**
- * Binds the run to {@link TARGET} and consents to the preset and the plane credential.
+ * Binds the run to a target and consents to the preset and the plane credential.
+ * @param {Object} run
+ * @param {Object} [target=TARGET]
  * @returns {Promise<String>} The run's record path
  */
-async function consented({broker}) {
-    const first = await broker.evaluate(trusted, {target: TARGET});
+async function consented({broker}, target = TARGET) {
+    const first = await broker.evaluate(trusted, {target});
 
     expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok).toBe(true);
     expect((await broker.credential(trusted, {stepId: 'plane-credential'})).ok).toBe(true);
@@ -695,7 +697,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
             run             = await pinnedSetupHost(),
             {broker, world} = run;
 
-        await consented(run);
+        await consented(run, PROFILE_TARGET);
 
         for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
             expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
@@ -728,7 +730,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
             run             = await pinnedSetupHost(),
             {broker, world} = run;
 
-        await consented(run);
+        await consented(run, PROFILE_TARGET);
 
         for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
             await broker.effect(trusted, {effectId})
@@ -789,5 +791,23 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         expect(readFileSync(envFile, 'utf8'), 'the env file is as it was').toBe('NEO_PLANE_ID=the-live-plane\n');
         expect(readFileSync(path.join(secretsDir, 'fleet-plane-token'), 'utf8'), 'so is the plane token').toBe('the live fleet-plane-token');
         expect(run.world.commands, 'no command reached the host').toEqual([])
+    });
+
+    test('the scripted host flatters no target: the plane that comes up is the profile\'s, the one command is recorded and never run, and every file lands under the run\'s temp roots', async () => {
+        const run = await pinnedSetupHost();
+
+        await consented(run);
+
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
+            expect((await run.broker.effect(trusted, {effectId})).ok, effectId).toBe(true)
+        }
+
+        // bound by hand to another id, the run reads the profile's plane as a different one
+        expect(rowOf(await run.broker.evaluate(trusted, {}), 'served-plane')).toMatchObject({status: 'failed', reason: "served plane id is 'neo-local-canonical', expected 'plane-a': a different plane is answering"});
+        expect(run.world.commands).toHaveLength(1);
+        expect(run.world.commands[0]).toMatch(/^docker compose -p neo-local-agent-os --env-file .+ up -d --wait$/);
+        expect(run.world.commands[0]).toContain(path.join(run.stateRoot, 'config', 'local-agent-os.env'));
+        expect(readdirSync(path.join(run.stateRoot, 'secrets')).length, 'the secret files are in the temp state root').toBeGreaterThan(0);
+        expect(readdirSync(run.setupRoot).some(name => name.endsWith('.json')), 'the record is in the temp setup root').toBe(true)
     })
 });
