@@ -264,7 +264,7 @@ apps/agentos/util/RosterRow.mjs
     f448e72bfe7d07808061c37cefbaa1ea2eb940ab
 
 apps/agentos/util/SeatSessionFolder.mjs
-    dcfc53491755d8c3b4695eae75f8508dfb8be7a7
+    3321bcf48d56484db5b53a593355c00814486c3c
 
 apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
@@ -348,7 +348,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    1512fabfa9c78bb33b050429e2cdc22d67be13a7
+    3ad4bae3b99caae073b5d69ff16da73ffb737a79
 
 apps/agentos/view/fleet/detail/Controller.mjs
     9c9d839fd9613ad24cccb7b9cdbdf4e520c0bafe
@@ -558,7 +558,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    66b6f1ab70d8cf5fbd5d63608a80ceb71ee5ffc5
+    ff54fca8e51837b263b4b1a02fc93a9d34dd7a47
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
