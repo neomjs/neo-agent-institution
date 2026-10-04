@@ -227,6 +227,33 @@ test.describe('AwaitingMergeButton — the fleet head\'s merge queue', () => {
         }
     });
 
+    test('a caller outside the head opens the list only when there is one, and never closes an open one', async () => {
+        const store          = Neo.create(FleetAwaitingMerge, {data: [pr(1)]}),
+              {head, button} = createButton({openWork: ok, store}),
+              toggles        = [];
+
+        try {
+            await expect.poll(() => Boolean(button.menuList)).toBe(true);
+
+            const menu = button.menuList;
+
+            // stand in for the framework's toggle without mounting the list
+            button.toggleMenu = async () => { toggles.push(true); menu._hidden = !menu._hidden };
+
+            expect(await button.openMenu()).toBe(true);
+            expect(await button.openMenu(), 'asking twice keeps it open').toBe(true);
+            expect(toggles, 'the first ask opened it, the second toggled nothing').toEqual([true]);
+
+            menu._hidden = true;
+            store.data   = [];
+            expect(await button.openMenu(), 'an empty queue has no list to open').toBe(false);
+            expect(toggles).toEqual([true])
+        } finally {
+            head.destroy();
+            store.destroy()
+        }
+    });
+
     test('a destroyed list leaves no subscriber on the provider Store, however often it is rebuilt', async () => {
         const
             store = Neo.create(FleetAwaitingMerge, {data: [pr(1)]}),

@@ -13,11 +13,10 @@ import {INSTANCE_STATE_WORDS} from '../fleet/instances/SwitcherButton.mjs';
 const PRODUCT_LINE = 'Mission control for a cross-model AI engineering team.';
 
 /**
- * @summary The questions axis until the Brain can list a person's open Tasks: not listed yet, with its reason,
- * so the operator's line never counts it as zero.
+ * @summary An axis of the operator's line with nothing to say: no answer yet, or an absence another surface tells.
  * @type {Object}
  */
-const QUESTIONS_UNLISTED = Object.freeze({state: 'unlisted', reason: 'this plane cannot list them yet'});
+const SILENT = Object.freeze({kind: 'silent'});
 
 /**
  * @summary A count and its noun: `1 merge`, `2 merges`.
@@ -26,6 +25,19 @@ const QUESTIONS_UNLISTED = Object.freeze({state: 'unlisted', reason: 'this plane
  * @returns {String}
  */
 const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+/**
+ * @summary The operator's line from its segments, with the reasons of the axes it names in the title.
+ * @param {Object[]} segments The line's runs, `{text}` or `{link, text}`
+ * @param {Object[]} axes     The axes the line names
+ * @returns {{hidden: Boolean, segments: Object[], text: String, title: String|null}}
+ */
+const lineOf = (segments, axes) => ({
+    hidden: segments.length === 0,
+    segments,
+    text  : segments.map(({text}) => text).join(''),
+    title : axes.filter(axis => axis.reason).map(axis => `your ${axis.noun}s: ${axis.reason}`).join(' · ') || null
+});
 
 /**
  * @summary One door per keeper view, named by the question the view answers.
@@ -51,11 +63,12 @@ const door = (iconCls, route, question) => ({
  * as fleet state. Behind both, a field on the canvas worker ({@link AgentOS.view.home.Canvas}) takes the
  * pointer from the whole view and draws one mark per rostered agent from the team line's own read.
  *
- * Above everything, the operator's own line says what waits for him: the merges that wait for his hand
- * and the questions that wait for his word ({@link #operatorLine}).
+ * Above everything, the operator's own line says what waits for the operator: the merges that wait for a
+ * hand and the questions that wait for a word ({@link #operatorLine}). Its merge count opens the fleet
+ * head's merge queue (`mergeQueueOpen`).
  *
  * @summary Binds the Viewport provider's roster store and the roster surface's truths (the cockpit's
- * liveness owner fills them), the merge queue store and the open-work read's state, `instanceState`
+ * liveness owner fills them), the merge queue store, the open-work read's state and its questions axis, `instanceState`
  * (the chrome switcher's verdict and vocabulary) and `shellPlaneConfigured`, which the
  * ViewportController publishes from the shell's plane status (`false` only for a packaged shell
  * without a plane).
@@ -88,6 +101,7 @@ class Container extends BaseContainer {
             gridDegradedReason  : data => data.gridDegradedReason,
             instanceState       : data => data.instanceState,
             openWork            : data => data.openWork,
+            questions           : data => data.questions,
             rosterStore         : 'stores.fleetRoster',
             shellPlaneConfigured: data => data.shellPlaneConfigured
         },
@@ -131,12 +145,13 @@ class Container extends BaseContainer {
          */
         openWork_: null,
         /**
-         * The questions axis of the operator's line: `{state: 'known', count}`, `{state: 'unavailable', reason}`
-         * or `{state: 'unlisted', reason}`. Unlisted until a producer lists a person's open Tasks.
-         * @member {Object} questions_=QUESTIONS_UNLISTED
+         * The questions axis of the operator's line, the provider's `questions` block `{count, reason, state}`
+         * as its source answers it ({@link AgentOS.util.OpenWorkRead#questions}): `ok` · `unsupported` ·
+         * `unavailable`, or every leaf `null` while unanswered.
+         * @member {Object|null} questions_=null
          * @reactive
          */
-        questions_: QUESTIONS_UNLISTED,
+        questions_: null,
         /**
          * The roster the cockpit's liveness owner fills; the team line counts it.
          * @member {AgentOS.store.FleetRoster|null} rosterStore_=null
@@ -175,8 +190,7 @@ class Container extends BaseContainer {
                 tag      : 'p',
                 cls      : ['fm-home-operator'],
                 hidden   : true,
-                reference: 'operator-line',
-                text     : ''
+                reference: 'operator-line'
             }, {
                 ntype    : 'component',
                 tag      : 'p',
@@ -251,53 +265,103 @@ class Container extends BaseContainer {
     }
 
     /**
-     * @summary The operator's own line: what waits for his hand (merges) and for his word (questions), one
-     * count that belongs to him alone. "nothing waits for you" is said only when both axes answered and
-     * both are zero. An axis that has no number leads, with its reason in the title: one not listed yet
-     * says so, one whose read failed says it could not be read. The other axis keeps its number, never a
-     * 0. A stale merge queue reads its count "as of" its oldest row. Until the merge read answers the line
-     * is hidden, and so it stays for a bridge without the open-work verb or a read that threw
-     * (`OpenWorkRead.unavailable`'s silent coverages): an answer nobody gave earns no pixels. Only the
-     * producer's own `unavailable` is named.
-     * @param {Object}      facts
-     * @param {Object|null} facts.openWork    The provider's `openWork` block: the merge axis's state
-     * @param {Object[]}    facts.mergeRows   The merge queue's rows (`{observedAt, stale}`)
-     * @param {Object}      facts.questions   `{state: 'known', count}`, `{state: 'unavailable', reason}` or `{state: 'unlisted', reason}`
-     * @param {Number}      [facts.now=Date.now()] The viewer's clock, for a stale queue's age
-     * @returns {{hidden: Boolean, text: String, title: String|null}}
+     * @summary The merge axis of the operator's line, read for what it can claim. A bridge without the
+     * open-work verb, or a read that threw, is the connection's story and stays silent; only the producer's
+     * own `unavailable` is named. A counted queue keeps its completeness and its age apart, so neither a
+     * partial nor a stale zero reads as a current one. A stale queue ages from its oldest row.
+     * @param {Object|null} openWork  The provider's `openWork` block
+     * @param {Object[]}    mergeRows The merge queue's rows (`{observedAt, stale}`)
+     * @param {Number}      now       The viewer's clock
+     * @returns {Object} `{kind: 'silent'}`, `{kind: 'numberless', phrase, reason}` or `{kind: 'counted', asOf, complete, count, reason}`
      */
-    static operatorLine({openWork, mergeRows = [], questions, now = Date.now()}) {
-        const
-            state      = openWork?.state ?? null,
-            unanswered = state === 'unavailable' && openWork.coverage !== 'unavailable';
+    static mergeAxis(openWork, mergeRows, now) {
+        const state = openWork?.state ?? null;
 
-        if (unanswered || (state !== 'ok' && state !== 'stale' && state !== 'unavailable')) {
-            return {hidden: true, text: '', title: null}
+        if (state === 'unavailable') {
+            return openWork.coverage === 'unavailable' ? {kind: 'numberless', phrase: 'could not be read', reason: openWork.reason} : SILENT
         }
+
+        if (state !== 'ok' && state !== 'stale') return SILENT;
 
         const
             stale      = state === 'stale' || mergeRows.some(row => row.stale === true),
             observedAt = OpenWorkSeat.oldestObservedAt(mergeRows) ?? openWork.observedAt,
             ageMs      = stale && observedAt ? now - Date.parse(observedAt) : NaN,
-            asOf       = Number.isFinite(ageMs) ? ` as of ${AgentFreshness.formatAge(ageMs)}` : '',
-            mergeAxis  = state === 'unavailable' ? {state, reason: openWork.reason} : {state: 'known', count: mergeRows.length, asOf},
-            axes       = [{noun: 'question', axis: questions}, {noun: 'merge', axis: mergeAxis}],
-            waiting    = axes.filter(({axis}) => axis.state === 'known' && axis.count > 0),
-            numberless = axes.filter(({axis}) => axis.state !== 'known'),
-            parts      = numberless.map(({noun, axis}) => `your ${noun}s ${axis.state === 'unlisted' ? 'are not listed yet' : 'could not be read'}`),
-            reasons    = numberless.filter(({axis}) => axis.reason).map(({noun, axis}) => `your ${noun}s: ${axis.reason}`);
+            // a stale read that cannot say when its count held is not a complete one
+            complete   = openWork.coverage === 'complete' && (!stale || Number.isFinite(ageMs));
 
-        if (parts.length === 0 && waiting.length === 0) {
-            return {hidden: false, text: 'nothing waits for you', title: null}
+        return {
+            kind  : 'counted',
+            asOf  : Number.isFinite(ageMs) ? ` as of ${AgentFreshness.formatAge(ageMs)}` : '',
+            complete,
+            count : mergeRows.length,
+            reason: complete ? null : openWork.reason
         }
+    }
+
+    /**
+     * @summary The questions axis of the operator's line, as its source answers it
+     * ({@link AgentOS.util.OpenWorkRead#questions}): `ok` counts, `unsupported` and `unavailable` name
+     * themselves with the source's reason, and no answer is silent.
+     * @param {Object|null} questions The provider's `questions` block `{count, reason, state}`
+     * @returns {Object} An axis, shaped as {@link #mergeAxis} returns one
+     */
+    static questionsAxis(questions) {
+        switch (questions?.state) {
+            case 'ok':
+                return Number.isInteger(questions.count) ? {kind: 'counted', asOf: '', complete: true, count: questions.count, reason: null} : SILENT;
+            case 'unsupported':
+                return {kind: 'numberless', phrase: 'are not listed yet', reason: questions.reason};
+            case 'unavailable':
+                return {kind: 'numberless', phrase: 'could not be read', reason: questions.reason};
+            default:
+                return SILENT
+        }
+    }
+
+    /**
+     * @summary The operator's own line: what waits for a hand (merges) and for a word (questions), one count
+     * that belongs to the operator alone. "nothing waits for you" is said only when both axes are complete
+     * and observed zero, and a stale observation keeps its age. An axis without a number leads, and so does
+     * a zero that is not complete, each with its reason in the title. The other axis keeps its number,
+     * never a 0. Any axis with something to say lights the line, so a silent one never hides a known count;
+     * with nothing to say, the line is hidden. The merge count is a link to the fleet head's merge queue.
+     * @param {Object}      facts
+     * @param {Object|null} facts.openWork  The provider's `openWork` block: the merge axis's state
+     * @param {Object[]}    facts.mergeRows The merge queue's rows (`{observedAt, stale}`)
+     * @param {Object|null} facts.questions The provider's `questions` block `{count, reason, state}`
+     * @param {Number}      [facts.now=Date.now()] The viewer's clock, for a stale queue's age
+     * @returns {{hidden: Boolean, segments: Object[], text: String, title: String|null}} `segments` are the
+     * line's runs: `{text}`, or `{link: 'merges', text}` for the merge count
+     */
+    static operatorLine({openWork, mergeRows = [], questions, now = Date.now()}) {
+        const axes = [
+            {noun: 'question', ...Container.questionsAxis(questions)},
+            {noun: 'merge',    ...Container.mergeAxis(openWork, mergeRows, now)}
+        ];
+
+        if (axes.every(axis => axis.kind === 'counted' && axis.complete && axis.count === 0)) {
+            return lineOf([{text: `nothing waits for you${axes.find(axis => axis.asOf)?.asOf ?? ''}`}], [])
+        }
+
+        const
+            numberless = axes.filter(axis => axis.kind === 'numberless' || (axis.kind === 'counted' && axis.count === 0 && !axis.complete)),
+            waiting    = axes.filter(axis => axis.kind === 'counted' && axis.count > 0),
+            runs       = numberless.map(axis => [{text: `your ${axis.noun}s ${axis.phrase ?? 'could not all be read'}`}]);
 
         if (waiting.length > 0) {
-            const one = waiting.length === 1 && waiting[0].axis.count === 1;
+            const one = waiting.length === 1 && waiting[0].count === 1;
 
-            parts.push(`${waiting.map(({noun, axis}) => counted(axis.count, noun) + (axis.asOf ?? '')).join(' · ')} ${one ? 'waits' : 'wait'} for you`)
+            runs.push([
+                ...waiting.flatMap((axis, index) => [
+                    ...(index ? [{text: ' · '}] : []),
+                    {...(axis.noun === 'merge' ? {link: 'merges'} : {}), text: counted(axis.count, axis.noun) + axis.asOf}
+                ]),
+                {text: ` ${one ? 'waits' : 'wait'} for you`}
+            ])
         }
 
-        return {hidden: false, text: parts.join(' · '), title: reasons.join(' · ') || null}
+        return lineOf(runs.flatMap((run, index) => [...(index ? [{text: ' · '}] : []), ...run]), [...numberless, ...waiting])
     }
 
     /**
@@ -409,15 +473,20 @@ class Container extends BaseContainer {
                 degradedReason: me.gridDegradedReason,
                 states        : me.rosterStore?.items.map(record => record.state) ?? []
             }),
-            operator = firstRun ? {hidden: true, text: '', title: null} : Container.operatorLine({
+            operator = firstRun ? {hidden: true, segments: [], title: null} : Container.operatorLine({
                 openWork : me.openWork,
                 mergeRows: me.awaitingMergeStore?.items ?? [],
                 questions: me.questions
             }),
             operatorLine = me.getReference('operator-line');
 
-        operatorLine.vdom.title = operator.title;
-        operatorLine.set({hidden: operator.hidden, text: operator.text});
+        Object.assign(operatorLine.vdom, {
+            cn: operator.segments.map(({link, text}) => link
+                ? {tag: 'button', type: 'button', cls: ['fm-home-operator-link'], text}
+                : {tag: 'span', text}),
+            title: operator.title
+        });
+        operatorLine.set({hidden: operator.hidden});
         operatorLine.update();
 
         me.getReference('lead').set({
@@ -436,10 +505,16 @@ class Container extends BaseContainer {
     }
 
     /**
-     * @summary Hands a click anywhere on Home to the field.
+     * @summary Hands a click anywhere on Home to the field. A click on the operator line's merge count
+     * asks for the fleet head's merge queue instead (`mergeQueueOpen`).
      * @param {Object} data
      */
     onFieldClick(data) {
+        if (data.path?.some(node => node.cls?.includes('fm-home-operator-link'))) {
+            this.fire('mergeQueueOpen');
+            return
+        }
+
         this.getReference('canvas')?.onClick(data)
     }
 

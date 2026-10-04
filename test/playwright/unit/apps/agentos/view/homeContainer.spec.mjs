@@ -167,18 +167,21 @@ test.describe('AgentOS.view.home.Container — Home answers its two readers (#24
     })
 });
 
-test.describe('AgentOS.view.home.Container — the operator\'s own count (#551)', () => {
+test.describe('AgentOS.view.home.Container — the operator\'s own count (#557)', () => {
     const
         ok          = {state: 'ok', coverage: 'complete', observedAt: '2026-10-04T18:00:00.000Z', reason: null},
-        unreadable  = reason => ({state: 'unavailable', reason}),
-        unlisted    = reason => ({state: 'unlisted', reason}),
-        known       = count => ({state: 'known', count}),
+        partial     = {...ok, coverage: 'partial', reason: 'neomjs/devindex could not be read'},
+        stale       = {...ok, state: 'stale'},
+        later       = Date.parse(ok.observedAt) + 12 * 60 * 1000,
+        unreadable  = reason => ({count: null, reason, state: 'unavailable'}),
+        unsupported = {count: null, reason: 'questions are not listed yet', state: 'unsupported'},
+        known       = count => ({count, reason: null, state: 'ok'}),
         rows        = (count, extra = {}) => Array.from({length: count}, () => ({observedAt: ok.observedAt, stale: false, ...extra})),
-        line        = (openWork, merges, questions) => HomeView.operatorLine({openWork, mergeRows: rows(merges), questions}),
+        line        = (openWork, merges, questions, now = later) => HomeView.operatorLine({openWork, mergeRows: rows(merges), questions, now}),
         readLine    = home => {
             const operator = home.getReference('operator-line');
 
-            return operator.hidden ? null : operator.text
+            return operator.hidden ? null : operator.vdom.cn.map(node => node.text).join('')
         },
         pr          = number => ({id: `neomjs/neo#${number}`, repo: 'neomjs/neo', number, ci: 'success', mergeable: true, draft: false, observedAt: ok.observedAt, stale: false});
 
@@ -188,72 +191,123 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#551)'
         expect(line(ok, 1, known(0)).text).toBe('1 merge waits for you');
         expect(line(ok, 0, known(1)).text).toBe('1 question waits for you');
         expect(line(ok, 1, known(1)).text).toBe('1 question · 1 merge wait for you');
-    });
-
-    test('an axis without a number leads, its reason in the title, and the other keeps its number — never a 0 and never "nothing"', () => {
-        expect(line(ok, 5, unlisted('this plane cannot list them yet'))).toEqual({
-            hidden: false,
-            text  : 'your questions are not listed yet · 5 merges wait for you',
-            title : 'your questions: this plane cannot list them yet'
-        });
-        expect(line(ok, 0, unlisted('this plane cannot list them yet')).text, 'a known zero beside an unlisted axis is not "nothing"')
-            .toBe('your questions are not listed yet');
-        // a read that failed says so, apart from one that is not listed yet
-        expect(line(ok, 5, unreadable('the mailbox read timed out')).text).toBe('your questions could not be read · 5 merges wait for you');
-        expect(line({state: 'unavailable', coverage: 'unavailable', reason: 'open-work verb missing'}, 0, known(2))).toEqual({
-            hidden: false,
-            text  : 'your merges could not be read · 2 questions wait for you',
-            title : 'your merges: open-work verb missing'
-        });
         expect(line(ok, 5, known(3)).title, 'every axis counted: no title').toBe(null);
     });
 
-    test('a stale merge queue reads its count as of its oldest row; looking never moves the count', () => {
-        const
-            now   = Date.parse(ok.observedAt) + 12 * 60 * 1000,
-            stale = {...ok, state: 'stale'};
+    test('a zero that is not complete never reads as one: a partial queue names itself and its reason, a stale one keeps its age', () => {
+        expect(line(partial, 0, known(0)), 'a partial read is not an empty queue').toEqual({
+            hidden  : false,
+            segments: [{text: 'your merges could not all be read'}],
+            text    : 'your merges could not all be read',
+            title   : 'your merges: neomjs/devindex could not be read'
+        });
+        expect(line(stale, 0, known(0)).text, 'a stale zero is the all-clear of its time, never of now').toBe('nothing waits for you as of 12m ago');
+        expect(line(partial, 3, known(0)), 'a partial count keeps its number and its reason')
+            .toMatchObject({text: '3 merges wait for you', title: 'your merges: neomjs/devindex could not be read'});
+        expect(line(partial, 0, unsupported), 'beside the unlisted questions the partial reason still rides the title').toMatchObject({
+            text : 'your questions are not listed yet · your merges could not all be read',
+            title: 'your questions: questions are not listed yet · your merges: neomjs/devindex could not be read'
+        });
+    });
 
-        expect(HomeView.operatorLine({openWork: stale, mergeRows: rows(5), questions: known(0), now}).text).toBe('5 merges as of 12m ago wait for you');
-        expect(HomeView.operatorLine({openWork: ok, mergeRows: rows(5, {stale: true}), questions: known(3), now}).text, 'one stale row makes the queue stale')
+    test('an axis without a number leads, the source\'s reason in the title, and the other keeps its number — never a 0 and never "nothing"', () => {
+        expect(line(ok, 5, unsupported)).toMatchObject({
+            text : 'your questions are not listed yet · 5 merges wait for you',
+            title: 'your questions: questions are not listed yet'
+        });
+        expect(line(ok, 0, unsupported).text, 'a known zero beside an unlisted axis is not "nothing"').toBe('your questions are not listed yet');
+        // a read that failed says so, apart from one that is not listed yet
+        expect(line(ok, 5, unreadable('the mailbox read timed out')).text).toBe('your questions could not be read · 5 merges wait for you');
+        expect(line({state: 'unavailable', coverage: 'unavailable', reason: 'open-work verb missing'}, 0, known(2))).toMatchObject({
+            text : 'your merges could not be read · 2 questions wait for you',
+            title: 'your merges: open-work verb missing'
+        });
+    });
+
+    test('a stale merge queue reads its count as of its oldest row; looking never moves the count', () => {
+        expect(line(stale, 5, known(0)).text).toBe('5 merges as of 12m ago wait for you');
+        expect(HomeView.operatorLine({openWork: ok, mergeRows: rows(5, {stale: true}), questions: known(3), now: later}).text, 'one stale row makes the queue stale')
             .toBe('3 questions · 5 merges as of 12m ago wait for you');
     });
 
-    test('before the merge read answers the line stays hidden: an answer nobody gave earns no pixels', () => {
-        expect(line({state: null, coverage: null, observedAt: null, reason: null}, 0, known(0)).hidden).toBe(true);
-        expect(line(null, 0, known(0)).hidden).toBe(true);
+    test('an answer nobody gave earns no pixels, and never hides an axis that has one', () => {
+        expect(line({state: null, coverage: null, observedAt: null, reason: null}, 0, known(0)).hidden, 'one zero cannot say "nothing" alone').toBe(true);
+        expect(line(null, 0, null).hidden, 'no answer on either axis').toBe(true);
         // a bridge without the open-work verb, and a read that threw: the plane's story, told elsewhere
-        expect(line({state: 'unavailable', coverage: 'not-wired', reason: 'fleet open-work verb not wired'}, 0, unreadable('x')).hidden).toBe(true);
-        expect(line({state: 'unavailable', coverage: 'unanswered', reason: 'fleet open-work read failed'}, 0, unreadable('x')).hidden).toBe(true);
-        expect(line(ok, 0, known(0)).hidden).toBe(false);
+        expect(line({state: 'unavailable', coverage: 'not-wired', reason: 'fleet open-work verb not wired'}, 0, null).hidden).toBe(true);
+        expect(line({state: 'unavailable', coverage: 'unanswered', reason: 'fleet open-work read failed'}, 0, known(2)), 'a silent merge axis keeps the known questions')
+            .toMatchObject({hidden: false, text: '2 questions wait for you', title: null});
+        expect(line(ok, 0, null).hidden, 'a zero queue beside unanswered questions').toBe(true);
     });
 
-    test('Home shows the line above everything, from the provider\'s merge queue and open-work read; the questions axis reads its reason until the Brain lists them', () => {
+    test('the merge count is the line\'s one link, to the merge queue; a question count is not', () => {
+        expect(line(ok, 5, known(3)).segments).toEqual([
+            {text: '3 questions'},
+            {text: ' · '},
+            {link: 'merges', text: '5 merges'},
+            {text: ' wait for you'}
+        ]);
+        expect(line(ok, 0, known(3)).segments.some(segment => segment.link), 'no merges, nothing to open').toBe(false);
+        expect(line({state: 'unavailable', coverage: 'unavailable', reason: 'x'}, 0, known(1)).segments.some(segment => segment.link)).toBe(false);
+    });
+
+    test('Home shows the line above everything from the provider: the merge queue, the open-work read and the questions axis its source answers', () => {
         const
             {host, home} = createHome({
                 stateProvider: {
                     module: StateProvider,
-                    data  : {gridAdapterState: 'live', gridDegradedReason: null, instanceState: 'ok', openWork: {coverage: null, observedAt: null, reason: null, state: null}, shellPlaneConfigured: null},
+                    data  : {
+                        gridAdapterState    : 'live',
+                        gridDegradedReason  : null,
+                        instanceState       : 'ok',
+                        openWork            : {coverage: null, observedAt: null, reason: null, state: null},
+                        questions           : {count: null, reason: null, state: null},
+                        shellPlaneConfigured: null
+                    },
                     stores: {fleetAwaitingMerge: {module: FleetAwaitingMerge}, fleetRoster: {module: FleetRoster}}
                 }
             }),
             provider = host.getStateProvider(),
-            merges   = provider.getStore('fleetAwaitingMerge');
+            merges   = provider.getStore('fleetAwaitingMerge'),
+            operator = home.getReference('operator-line');
 
         expect(readLine(home), 'no open-work answer yet').toBe(null);
-        expect(home.getReference('operator-line'), 'the line leads the hero block').toBe(home.getReference('operator-line').parent.items[0]);
+        expect(operator, 'the line leads the hero block').toBe(operator.parent.items[0]);
 
-        provider.setData({openWork: ok});
+        provider.setData({openWork: ok, questions: unsupported});
         merges.add([pr(1), pr(2)]);
         expect(readLine(home)).toBe('your questions are not listed yet · 2 merges wait for you');
-        expect(home.getReference('operator-line').vdom.title, 'the reason rides the title').toBe('your questions: this plane cannot list them yet');
+        expect(operator.vdom.title, 'the source\'s reason rides the title').toBe('your questions: questions are not listed yet');
+        expect(operator.vdom.cn[2], 'the merge count is a button').toMatchObject({tag: 'button', type: 'button', cls: ['fm-home-operator-link'], text: '2 merges'});
 
-        home.questions = {state: 'known', count: 0};
+        // the source changes its answer: the line follows without a word of it living in the view
+        provider.setData({questions: unreadable('Memory Core refused the read')});
+        expect(readLine(home)).toBe('your questions could not be read · 2 merges wait for you');
+        expect(operator.vdom.title).toBe('your questions: Memory Core refused the read');
+
+        provider.setData({questions: known(0)});
         merges.removeAt(0);
         merges.removeAt(0);
         expect(readLine(home), 'both axes answered zero').toBe('nothing waits for you');
 
         provider.setData({shellPlaneConfigured: false});
         expect(readLine(home), 'a packaged shell without a plane shows no fleet state').toBe(null);
+
+        host.destroy()
+    });
+
+    test('a click on the merge count asks for the merge queue; a click anywhere else stays the field\'s', () => {
+        const
+            {host, home} = createHome(),
+            asked        = [];
+
+        home.on('mergeQueueOpen', () => asked.push(true));
+
+        home.onFieldClick({path: [{cls: ['fm-home-operator-link']}, {cls: ['fm-home-operator']}]});
+        expect(asked.length).toBe(1);
+
+        home.onFieldClick({path: [{cls: ['fm-home-operator']}, {cls: ['fm-home-view']}]});
+        expect(asked.length, 'the line itself is not the link').toBe(1);
 
         host.destroy()
     })
