@@ -6,6 +6,8 @@ setup({
 });
 
 import {test, expect}  from '@playwright/test';
+import path            from 'node:path';
+import {pathToFileURL} from 'node:url';
 import Neo             from '../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core       from '../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import                      '../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
@@ -13,8 +15,53 @@ import BaseContainer   from '../../../../../../../node_modules/neo.mjs/src/conta
 import StateProvider   from '../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import CreateContainer, {CLI_COMMAND, countDensity, presetVerdict} from '../../../../../../../apps/agentos/view/setup/CreateContainer.mjs';
 import SetupSteps      from '../../../../../../../apps/agentos/store/SetupSteps.mjs';
-import {actionFor}     from '../../../../../../../apps/agentos/view/setup/StepList.mjs';
-import {MACHINES, TRUSTED, pinnedSetupHost} from '../../../../../fixture/pinnedSetupHost.mjs';
+import {EXIT_VERBS, actionsFor} from '../../../../../../../apps/agentos/view/setup/StepList.mjs';
+import {BRAIN_ROOT, MACHINES, TRUSTED, pinnedSetupHost} from '../../../../../fixture/pinnedSetupHost.mjs';
+
+/**
+ * The pinned recipe's own evaluation in each state of the witness row, on a scripted host: reached
+ * through the broker, never written here.
+ * @returns {Promise<Object>} `{waiting, ready, lost, searched, accepted, refused}`
+ */
+async function witnessStates() {
+    const
+        states   = {},
+        consents = async ({broker}) => {
+            await broker.evaluate(TRUSTED, {});
+            await broker.answer(TRUSTED, {stepId: 'preset', answer: 'local-small'});
+            await broker.credential(TRUSTED, {stepId: 'plane-credential'});
+
+            return (await broker.evaluate(TRUSTED, {})).evaluation
+        },
+        effects  = async ({broker}, request = {}) => {
+            let reply;
+
+            for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'verify']) {
+                reply = await broker.effect(TRUSTED, effectId === 'verify' ? {effectId, ...request} : {effectId})
+            }
+
+            return reply.evaluation
+        },
+        lostRun    = await pinnedSetupHost(),
+        refusedRun = await pinnedSetupHost();
+
+    states.waiting = await consents(lostRun);
+
+    // the acknowledgement never arrives and no row lands; the second request searches and finds none
+    lostRun.world.dropWrite = true;
+    states.lost     = await effects(lostRun);
+    states.searched = (await lostRun.broker.effect(TRUSTED, {effectId: 'verify'})).evaluation;
+
+    lostRun.world.dropWrite   = false;
+    lostRun.world.recallLands = true;
+    states.accepted = (await lostRun.broker.effect(TRUSTED, {effectId: 'verify', newAttempt: true})).evaluation;
+
+    await consents(refusedRun);
+    refusedRun.world.refuseWrite = true;
+    states.refused = await effects(refusedRun);
+
+    return states
+}
 
 // the pinned recipe's own answers on the scripted laptop host: a cold run, the preset table, the probe
 const
@@ -23,7 +70,10 @@ const
     PRESETS        = (await HOST.broker.presets(TRUSTED, {})).presets,
     PROBE          = (await HOST.broker.probe(TRUSTED, {})).probe,
     PLACEMENT      = COLD.steps.find(step => step.id === 'placement').placement,
+    WITNESS        = await witnessStates(),
     coldEvaluation = () => structuredClone(COLD),
+    // the questions answered: write-secrets is the row to run, every effect after it waits
+    consented      = () => structuredClone(WITNESS.waiting),
     // a row in the recipe's step shape, for the one state an arm constructs because no scripted host reaches it
     row            = (id, kind, status, reason, extra = {}) => ({id, kind, status, reason, summary: `${id} summary`, ...extra}),
     put            = (evaluation, replacement) => {
@@ -147,8 +197,9 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(cards[0].items[2].text, 'the plane\'s own footprint').toBe('plane 0.4–2.5 GiB · no local models · needs a provider key');
         expect(cards[1].items[2].text, 'the floor is a receipt with a date').toBe('models 15.2 GiB · floor recorded 2026-10-02');
         expect(door.getReference('placement-line').text).toBe('recommended: hosted');
-        // the provider key is asked only once the consented preset requires it
-        expect(actionFor(door.store.get('provider-key'))).toBe(null);
+        // the provider key is asked only once the consented preset requires it: until then the row waits, as data
+        expect(door.store.get('provider-key').waitsFor).toBe('preset');
+        expect(actionsFor(door.store.get('provider-key'))).toEqual([]);
 
         // the PAT step opens main's window; the renderer holds the kept file's path and never a value
         await door.onCredentialClick();
@@ -186,7 +237,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.store.get('preset').answer).toBe('hosted');
         expect(door.getReference('presets').items[0].items[4].text).toBe('chosen');
         expect(door.getReference('provider-key-line').text).toBe('unanswered');
-        expect(actionFor(door.store.get('provider-key')), 'the hosted preset requires a key: the row gets its window').toBe('open window');
+        expect(actionsFor(door.store.get('provider-key')), 'the hosted preset requires a key: the row gets its window').toEqual(['open window']);
         expect(run().preset).toBe('hosted');
         expect(progress()).toEqual({ok: 3, total: 12, next: 'plane-credential', blocking: null});
 
@@ -211,8 +262,8 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         await settle();
 
-        expect(actionFor(door.store.get('write-env'))).toBe('re-check');
-        expect(actionFor(door.store.get('write-secrets')), 'an ok effect offers no replay').toBe(null);
+        expect(actionsFor(door.store.get('write-env'))).toEqual(['re-check']);
+        expect(actionsFor(door.store.get('write-secrets')), 'an ok effect offers no replay').toEqual([]);
         expect(progress()).toEqual({ok: 3, total: 12, next: 'preset', blocking: 'write-env'});
         expect(run()).toMatchObject({planeId: 'outside-plane', dataRoot: '/Users/op/.neo-ai/plane'});
         expect(door.getReference('lede').text).toContain(`Resumed from the run record (${COLD.runId}, bound to outside-plane at /Users/op/.neo-ai/plane)`);
@@ -232,15 +283,15 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         let wired = false;
 
         const calls = stubShell({
-            setupEvaluate: {ok: true, evaluation: coldEvaluation()},
+            setupEvaluate: {ok: true, evaluation: consented()},
             setupProbe   : {ok: true, probe: PROBE},
             setupPresets : {ok: true, presets: PRESETS},
             setupEffect  : ({effectId}) => {
                 if (!wired) return {ok: false, reason: 'no-brain-root: the preset\'s env set has no config to be checked against', effectId};
 
-                const evaluation = coldEvaluation();
+                const evaluation = consented();
 
-                put(evaluation, row('write-env', 'effect', 'ok', 'observed; matches the accepted receipt', {effectId: 'write-env', receipt: 'accepted'}));
+                put(evaluation, row('write-secrets', 'effect', 'ok', 'observed; matches the accepted receipt', {effectId: 'write-secrets', receipt: 'accepted'}));
                 return {ok: true, evaluation}
             }
         });
@@ -248,17 +299,23 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         const {host, door} = createDoor();
 
         await settle();
-        await door.onStepClick({record: door.store.get('write-env')});
 
-        expect(calls.filter(([name]) => name === 'setupEffect')).toEqual([['setupEffect', {effectId: 'write-env', windowId: 7}]]);
-        expect(door.getReference('status-line').text).toBe(`write-env: no-brain-root: the preset's env set has no config to be checked against — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`);
+        // a row that waits for another step has no action: a click on it sends nothing
+        expect(door.store.get('write-env').waitsFor).toBe('write-secrets');
+        await door.onStepClick({record: door.store.get('write-env')});
+        expect(calls.filter(([name]) => name === 'setupEffect')).toEqual([]);
+
+        await door.onStepClick({record: door.store.get('write-secrets')});
+
+        expect(calls.filter(([name]) => name === 'setupEffect')).toEqual([['setupEffect', {effectId: 'write-secrets', windowId: 7}]]);
+        expect(door.getReference('status-line').text).toBe(`write-secrets: no-brain-root: the preset's env set has no config to be checked against — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`);
         expect(door.manualActions).toBe(1);
-        expect(door.store.get('write-env').status, 'nothing changed locally').toBe('pending');
+        expect(door.store.get('write-secrets').status, 'nothing changed locally').toBe('pending');
 
         wired = true;
-        await door.onStepClick({record: door.store.get('write-env')});
+        await door.onStepClick({record: door.store.get('write-secrets')});
 
-        expect(door.store.get('write-env').status).toBe('ok');
+        expect(door.store.get('write-secrets').status).toBe('ok');
         expect(door.getReference('status-line').text).toBe('');
 
         host.destroy()
@@ -266,7 +323,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
     test('run: a refusal from the orchestration is the shell\'s own word on the effect — the status line speaks, no manual action, the last observation stands', async () => {
         stubShell({
-            setupEvaluate: {ok: true, evaluation: coldEvaluation()},
+            setupEvaluate: {ok: true, evaluation: consented()},
             setupProbe   : {ok: true, probe: PROBE},
             setupPresets : {ok: true, presets: PRESETS},
             setupEffect  : ({effectId}) => ({ok: false, reason: 'the preset \'hosted\' declares an env key the profile does not consume', effectId})
@@ -280,7 +337,96 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.getReference('status-line').text).toBe('write-secrets could not run: the preset \'hosted\' declares an env key the profile does not consume');
         expect(door.manualActions).toBe(0);
         expect(door.store.get('write-secrets').status).toBe('pending');
-        expect(progress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
+        expect(progress()).toEqual({ok: 5, total: 12, next: 'write-secrets', blocking: null});
+
+        host.destroy()
+    });
+
+    test('the witness row offers what its data names: a wait, run, re-check, write again, both in the Brain\'s order, nothing once accepted; the verbs cover exactly the pinned Brain\'s exits', async () => {
+        const
+            {VERIFY_EXITS} = await import(pathToFileURL(path.join(BRAIN_ROOT, 'ai/services/fleet/verifyEffect.mjs')).href),
+            store          = Neo.create(SetupSteps, {}),
+            offered        = evaluation => { store.projectEvaluation(evaluation); return actionsFor(store.get('verify')) };
+
+        expect(Object.keys(EXIT_VERBS).sort(), 'one verb per exit the Brain can name').toEqual(Object.values(VERIFY_EXITS).sort());
+
+        expect(offered(WITNESS.waiting), 'it waits for write-secrets: no chip, whatever exit it names').toEqual([]);
+        expect(store.get('verify')).toMatchObject({waitsFor: 'write-secrets', exits: ['run']});
+        expect(offered(WITNESS.refused)).toEqual(['write again']);
+        expect(store.get('verify').duplicatePossible, 'a refused write minted no row').toBe(false);
+        expect(offered(WITNESS.lost)).toEqual(['re-check']);
+        expect(offered(WITNESS.searched)).toEqual(['re-check', 'write again']);
+        expect(store.get('verify').duplicatePossible).toBe(true);
+        expect(offered(WITNESS.accepted)).toEqual([]);
+
+        // constructed: the row before its first attempt once nothing is in its way, and wire values of another type
+        expect(actionsFor({id: 'verify', kind: 'effect', status: 'pending', waitsFor: null, exits: ['run']})).toEqual(['run']);
+        expect(actionsFor({id: 'verify', kind: 'effect', status: 'failed', exits: ['an-exit-of-tomorrow']}), 'an exit without a verb shows no chip').toEqual([]);
+        store.projectEvaluation({steps: [{id: 'verify', kind: 'effect', status: 'pending', waitsFor: 7, exits: 'run', duplicatePossible: 'yes'}]});
+        expect(store.get('verify')).toMatchObject({waitsFor: null, exits: null, duplicatePossible: false});
+
+        store.destroy()
+    });
+
+    test('the witness row\'s clicks: re-check is its effect without a new attempt; write again after a refused write sends at once; where a second row is possible the first press says so in the row and the second sends', async () => {
+        let evaluation = structuredClone(WITNESS.searched);
+
+        const calls = stubShell({
+            setupEvaluate: () => ({ok: true, evaluation: structuredClone(evaluation)}),
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS},
+            setupEffect  : () => ({ok: true, evaluation: structuredClone(evaluation)})
+        });
+
+        const
+            {host, door} = createDoor(),
+            list         = door.getReference('step-list'),
+            effects      = () => calls.filter(([name]) => name === 'setupEffect').map(([, request]) => request),
+            cells        = () => list.createItemContent(door.store.get('verify'));
+
+        await settle();
+
+        // two chips, the second the quieter one; the reason is the Brain's own warning
+        expect(cells()[4].cn.map(chip => [chip.text, chip.cls.includes('is-quiet')])).toEqual([['re-check', false], ['write again', true]]);
+        expect(cells()[3].text).toContain('consent to a new attempt writes a second row');
+
+        // a click beside the chips is the row's first action
+        await door.onStepClick({action: null, record: door.store.get('verify')});
+        expect(effects(), 're-check resumes the effect and names no new attempt').toEqual([{effectId: 'verify', windowId: 7}]);
+
+        await door.onStepClick({action: 'write again', record: door.store.get('verify')});
+        expect(effects().length, 'the first press sends nothing').toBe(1);
+        expect(list.confirmingId).toBe('verify');
+        expect(cells()[5]).toMatchObject({cls: ['fm-setup-step-confirm'], text: expect.stringContaining('a second row on the plane is possible')});
+
+        await door.onStepClick({action: 'write again', record: door.store.get('verify')});
+        expect(effects().at(-1), 'the second press is the consent').toEqual({effectId: 'verify', newAttempt: true, windowId: 7});
+        expect(list.confirmingId).toBe(null);
+        expect(cells().length).toBe(5);
+
+        // the first press is taken back by any other click, here a row whose click sends nothing
+        await door.onStepClick({action: 'write again', record: door.store.get('verify')});
+        await door.onStepClick({record: door.store.get('write-secrets')});
+        expect(list.confirmingId).toBe(null);
+
+        // and by any fresh evaluation, whichever control asked for it
+        await door.onStepClick({action: 'write again', record: door.store.get('verify')});
+        door.evaluation = structuredClone(evaluation);
+        expect(list.confirmingId).toBe(null);
+        expect(cells().length).toBe(5);
+        expect(effects().length, 'neither took the write').toBe(2);
+
+        // a refused write minted no row: nothing to confirm, one press sends it
+        evaluation = structuredClone(WITNESS.refused);
+        await door.reevaluate('unused');
+        await door.onStepClick({record: door.store.get('verify')});
+        expect(effects().slice(2)).toEqual([{effectId: 'verify', newAttempt: true, windowId: 7}]);
+        expect(list.confirmingId).toBe(null);
+
+        // a waiting row says which step it waits for, in place of a chip
+        evaluation = structuredClone(WITNESS.waiting);
+        await door.reevaluate('unused');
+        expect(cells()[4].cn).toEqual([{cls: ['fm-setup-step-wait'], text: 'waits for write-secrets'}]);
 
         host.destroy()
     });

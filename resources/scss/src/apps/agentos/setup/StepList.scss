@@ -1,7 +1,7 @@
-/* The recipe's step rows: [glyph] [status word] [step] [reason …] [action]. Two channels for every
+/* The recipe's step rows: [glyph] [status word] [step] [reason …] [actions]. Two channels for every
    status — the glyph and the word — never hue alone; `unknown` is an indicator, so it keeps the dim
    ink and never the faint one. A row without an action keeps an invisible chip so the column keeps
-   its rhythm (the exception-only rule). */
+   its rhythm (the exception-only rule); a row that waits names the step it waits for there. */
 .fm-setup-steps.neo-list {
     margin    : var(--fm-space-3) var(--fm-space-3) 0;
     padding   : 0;
@@ -60,6 +60,33 @@
         &.is-none {
             visibility: hidden;
         }
+
+        /* the second exit reads as a text link beside the chip, so the first one stays the row's answer */
+        &.is-quiet {
+            border-color         : transparent;
+            background           : transparent;
+            text-decoration      : underline;
+            text-underline-offset: 2px;
+        }
+    }
+
+    .fm-setup-step-actions {
+        display    : flex;
+        gap        : var(--fm-space-1);
+        align-items: baseline;
+    }
+
+    .fm-setup-step-wait {
+        font       : var(--fm-text-micro);
+        white-space: nowrap;
+    }
+
+    /* the line under a row whose write can cost a second row: it starts where the reason starts */
+    .fm-setup-step-confirm {
+        grid-column: 4 / -1;
+        padding-top: 2px;
+        font       : var(--fm-text-detail);
+        color      : var(--fm-state-limited);
     }
 
     .neo-list-item.is-ok .fm-setup-step-glyph {

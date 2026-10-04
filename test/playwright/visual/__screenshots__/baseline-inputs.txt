@@ -117,7 +117,7 @@ apps/agentos/model/SessionTurn.mjs
     fe47cbf0610931e60c7a36b2725a6692fe8b781b
 
 apps/agentos/model/SetupStep.mjs
-    46173b9822a9a2815258a03578de2efa3e216ed3
+    145811043dd61f26ce1645f27be57556a97388db
 
 apps/agentos/model/WakeRouteSeat.mjs
     02132c9f2c3a8f1d3885ed0b1ad7147e102881a5
@@ -522,13 +522,13 @@ apps/agentos/view/setup/ConnectContainer.mjs
     d942330ea4f2fe19c9e94091c641be38f6acebe7
 
 apps/agentos/view/setup/CreateContainer.mjs
-    d2c8c388bad1c018bf7768c8eabbf664a9786279
+    53a903adfe106544c856d6b4f9a9fd3f82520ad4
 
 apps/agentos/view/setup/Panel.mjs
     b05bdade7c7ba7f5b1378ab83cc6cbfd0ccf1916
 
 apps/agentos/view/setup/StepList.mjs
-    c25dcb9201983cac7385311c895291fc1f760543
+    435aa33e793097af5d7c7bfc5a34eba1d25b59c6
 
 apps/agentos/view/system/Container.mjs
     565ebd3190d8aee8f68785d45558df651ad6567b
@@ -669,7 +669,7 @@ resources/scss/src/apps/agentos/setup/Panel.scss
     4a972881273aff33833156e1028afd16f92b8d12
 
 resources/scss/src/apps/agentos/setup/StepList.scss
-    56aac4e6428aa1bfc493656fe6c3d6a862b49cb7
+    24fd59e9a8d31f9362ef5ce9212d9529ef395b79
 
 resources/scss/src/apps/agentos/system/Container.scss
     6032f0c02a929b03721e70f4b053e7e97cde48bc
@@ -729,7 +729,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    21b8c760c07eac0c5195cac7d44cae5bbbf57d33
+    ee6fdc3d37a37204ea5aed5808ade8950e2146d8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -931,6 +931,15 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-cr
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create.png
     4057e494ca9dfee764f82ffb0b06bceb97ed753a
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-confirming.png
+    150134452c086fa3585eecc66e0af0d2246a011a
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-light.png
+    81a427ef12a147be3b765205bc55e19e83018676
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits.png
+    e518e59a92421a0ff6b55666d09ed705f3e0e6c5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-240-light.png
     df1db7c66814a3102f5803069963ca9b06c5cef4

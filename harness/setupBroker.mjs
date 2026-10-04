@@ -40,7 +40,8 @@ export const SETUP_MODULE_PATHS = Object.freeze({
     presets      : 'ai/services/fleet/placementPresets.mjs',
     probe        : 'ai/services/fleet/probePlacement.mjs',
     recipe       : 'ai/services/fleet/firstRunRecipe.mjs',
-    record       : 'ai/services/fleet/setupRunRecord.mjs'
+    record       : 'ai/services/fleet/setupRunRecord.mjs',
+    verify       : 'ai/services/fleet/verifyEffect.mjs'
 });
 
 /**
@@ -406,9 +407,11 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
          * only a report that moved nothing is a refusal. One serialized operation over the record as
          * disk holds it, so an effect whose acknowledgement write was rejected is found `pending` by
          * the next request and settled by observation, never run again; never a second
-         * implementation of the effects here.
+         * implementation of the effects here. `newAttempt: true` is the operator's consent to write
+         * the witness again: it reaches the orchestration only when the effect's evaluated row lists
+         * a new attempt among its `exits`, and is refused by name anywhere else.
          * @param {Electron.IpcMainInvokeEvent} event
-         * @param {{effectId: String}} request
+         * @param {{effectId: String, newAttempt: Boolean}} request
          * @returns {Promise<Object>} `{ok: true, evaluation}`, or `{ok: false, reason, effectId}`
          */
         async effect(event, request = {}) {
@@ -417,8 +420,9 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             if (!admitted.modules) return admitted;
 
             const
-                {cli, orchestration} = admitted.modules,
-                effectId             = request?.effectId ?? null;
+                {cli, orchestration, verify} = admitted.modules,
+                effectId                     = request?.effectId ?? null,
+                newAttempt                   = request?.newAttempt === true;
 
             if (!orchestration.EFFECT_ORDER.includes(effectId)) {
                 return refuse(`'${effectId}' is not an effect of this recipe`, {effectId})
@@ -436,9 +440,14 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                         layout                             = cli.hostLayout({stateRoot}),
                         reported                           = [];
 
+                    if (newAttempt && !evaluation.steps.find(step => step.effectId === effectId)?.exits?.includes(verify.VERIFY_EXITS.newAttempt)) {
+                        return refuse(`new-attempt: '${effectId}' does not name a new attempt as its exit, so nothing runs`, {effectId})
+                    }
+
                     const performed = await orchestration.performEffects({
                         record, recordPath, host, layout, target, evaluation,
                         configSourcePath,
+                        newAttempt,
                         effectIds: [effectId],
                         report   : line => reported.push(String(line))
                     });

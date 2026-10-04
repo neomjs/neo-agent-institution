@@ -1,9 +1,9 @@
 import Button      from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container   from '../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import SetupSteps  from '../../store/SetupSteps.mjs';
-import StepList    from './StepList.mjs';
-import {actionFor} from './StepList.mjs';
-import TextArea    from '../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
+import StepList     from './StepList.mjs';
+import {actionsFor} from './StepList.mjs';
+import TextArea     from '../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
 
 const GiB = 1073741824;
 
@@ -415,6 +415,8 @@ class CreateContainer extends Container {
 
         if (!me.store) return;
 
+        // a fresh evaluation ends a pending confirmation; silent, the projection draws the rows once
+        me.getReference('step-list')._confirmingId = null;
         me.store.projectEvaluation(value);
         me.applyQuestionLines();
         me.applyLede();
@@ -638,22 +640,38 @@ class CreateContainer extends Container {
     }
 
     /**
-     * @summary A row's action is a request to main; the reply is a fresh evaluation.
+     * @summary A row's action is a request to main; the reply is a fresh evaluation. The witness row's
+     * exits are requests to its effect: `re-check` resumes it and writes nothing, `write again` is the
+     * new attempt. A new attempt that can leave a second row on the plane is said in the row first,
+     * and its second press sends it.
      * @param {Object} data
+     * @param {String|null} [data.action] The clicked chip's action; without one the row's first action
      * @param {Object} data.record The clicked step record
      * @returns {Promise<void>}
      */
-    async onStepClick({record}) {
+    async onStepClick({action, record}) {
         const
-            me     = this,
-            action = actionFor(record);
+            me   = this,
+            list = me.getReference('step-list');
+
+        action ??= actionsFor(record)[0];
+
+        if (action === 'write again' && record.duplicatePossible && list.confirmingId !== record.id) {
+            list.confirmingId = record.id;
+            return
+        }
+
+        list.confirmingId = null;
 
         switch (action) {
             case 'open window':
                 return me.onCredentialClick(record.id);
             case 'run':
                 return me.runEffect(record.effectId);
+            case 'write again':
+                return me.runEffect(record.effectId, true);
             case 're-check':
+                return record.exits ? me.runEffect(record.effectId) : me.reevaluate('The recipe could not be re-evaluated');
             case 're-read':
             case 'retry':
                 return me.reevaluate('The recipe could not be re-evaluated');
@@ -674,13 +692,14 @@ class CreateContainer extends Container {
      * @summary Consents to one effect. A shell that cannot run it answers why; the row's action then
      * becomes the operator's instruction, counted as a manual action.
      * @param {String} effectId
+     * @param {Boolean} [newAttempt=false] The operator's consent to write the witness again
      * @returns {Promise<void>}
      */
-    async runEffect(effectId) {
+    async runEffect(effectId, newAttempt = false) {
         const
             me     = this,
             ticket = me.takeTicket(),
-            reply  = await me.callShell('setupEffect', {effectId});
+            reply  = await me.callShell('setupEffect', newAttempt ? {effectId, newAttempt: true} : {effectId});
 
         if (me.isDestroyed) return;
 

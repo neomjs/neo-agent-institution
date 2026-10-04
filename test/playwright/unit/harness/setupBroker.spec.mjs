@@ -171,7 +171,8 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
             presets      : 'ai/services/fleet/placementPresets.mjs',
             probe        : 'ai/services/fleet/probePlacement.mjs',
             recipe       : 'ai/services/fleet/firstRunRecipe.mjs',
-            record       : 'ai/services/fleet/setupRunRecord.mjs'
+            record       : 'ai/services/fleet/setupRunRecord.mjs',
+            verify       : 'ai/services/fleet/verifyEffect.mjs'
         })
     });
 
@@ -691,6 +692,17 @@ test.describe('harness/setupBroker over the Brain\'s own modules — every opera
 
 const rowOf = (reply, id) => reply.evaluation?.steps.find(step => step.id === id) ?? null;
 
+/**
+ * Runs the three host effects, so the witness row is the next to act on.
+ * @param {Object} run
+ * @returns {Promise<void>}
+ */
+async function toTheWitness({broker}) {
+    for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
+        expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
+    }
+}
+
 test.describe('harness/setupBroker over the pinned recipe — the run to done, with nothing real behind it', () => {
     test('the card\'s own cold request names no target and binds the plane its profile declares; verify answers the run while its recall has not landed, and done is ok over one witness write', async () => {
         const
@@ -729,28 +741,86 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         expect(world.rows.length, 'one witness write').toBe(1)
     });
 
-    test('an effect that ran and failed answers the run with its row failed in the plane\'s words, and a plain run after it writes nothing', async () => {
+    test('a refused witness write: the row fails in the plane\'s words and names a new attempt; a plain run writes nothing, the new attempt writes once under its own marker and keeps the old one', async () => {
         const
             run             = await pinnedSetupHost(),
-            {broker, world} = run;
+            {broker, world} = run,
+            recordPath      = await consented(run, null),
+            section         = () => JSON.parse(readFileSync(recordPath, 'utf8')).verification;
 
-        await consented(run, null);
-
-        for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
-            await broker.effect(trusted, {effectId})
-        }
+        await toTheWitness(run);
 
         world.refuseWrite = true;
 
         const refused = await broker.effect(trusted, {effectId: 'verify'});
 
         expect(refused.ok, 'the effect ran: the run is the answer').toBe(true);
-        expect(rowOf(refused, 'verify')).toMatchObject({status: 'failed', reason: expect.stringContaining('the plane refused the witness write')});
+        expect(rowOf(refused, 'verify')).toMatchObject({status: 'failed', reason: expect.stringContaining('the plane refused the witness write'), exits: ['new-attempt'], duplicatePossible: false});
 
         world.refuseWrite = false;
         await broker.effect(trusted, {effectId: 'verify'});
 
-        expect(world.rows.length, 'a refused witness is never written again without the operator\'s new attempt').toBe(0)
+        expect(world.rows.length, 'a refused witness is never written again without the operator\'s new attempt').toBe(0);
+
+        const
+            refusedMarker = section().attempt.marker,
+            again         = await broker.effect(trusted, {effectId: 'verify', newAttempt: true});
+
+        expect(again.ok).toBe(true);
+        expect(world.rows.length, 'the new attempt wrote once').toBe(1);
+        expect(section().attempt.marker, 'under a marker of its own').not.toBe(refusedMarker);
+        expect(section().priorAttempts.map(attempt => attempt.marker), 'and the refused attempt is kept').toEqual([refusedMarker]);
+        expect(world.rows[0].prompt).toContain(section().attempt.marker)
+    });
+
+    test('a lost acknowledgement: re-check is the effect without a new attempt and writes nothing; once a search did not find the row the new attempt is named beside it, with the Brain\'s warning, and writes once', async () => {
+        const
+            run             = await pinnedSetupHost(),
+            {broker, world} = run;
+
+        await consented(run, null);
+        await toTheWitness(run);
+
+        world.dropWrite = true;
+
+        expect(rowOf(await broker.effect(trusted, {effectId: 'verify'}), 'verify')).toMatchObject({status: 'reconcile-required', exits: ['resume'], duplicatePossible: false});
+        // a plain evaluation never searches the plane: the row stays as it is
+        expect(rowOf(await broker.evaluate(trusted, {}), 'verify')).toMatchObject({exits: ['resume']});
+
+        const searched = rowOf(await broker.effect(trusted, {effectId: 'verify'}), 'verify');
+
+        expect(searched).toMatchObject({status: 'reconcile-required', exits: ['resume', 'new-attempt'], duplicatePossible: true, reason: expect.stringContaining('consent to a new attempt writes a second row')});
+        expect(world.rows.length, 're-check wrote nothing').toBe(0);
+
+        world.dropWrite   = false;
+        world.recallLands = true;
+
+        expect(rowOf(await broker.effect(trusted, {effectId: 'verify', newAttempt: true}), 'done')).toMatchObject({status: 'ok'});
+        expect(world.rows.length, 'one write').toBe(1)
+    });
+
+    test('newAttempt is refused by name wherever the evaluated row does not name it, and nothing runs: another effect, the witness before its first attempt, the accepted witness; a value that is not true is no new attempt', async () => {
+        const
+            run             = await pinnedSetupHost(),
+            {broker, world} = run,
+            recordPath      = await consented(run, null),
+            refusal         = effectId => ({ok: false, reason: `new-attempt: '${effectId}' does not name a new attempt as its exit, so nothing runs`, effectId});
+
+        expect(await broker.effect(trusted, {effectId: 'write-secrets', newAttempt: true})).toEqual(refusal('write-secrets'));
+        expect(receiptsOnDisk(recordPath), 'no receipt moved').toEqual([]);
+        expect(existsSync(path.join(run.stateRoot, 'secrets')), 'no secret file').toBe(false);
+
+        await toTheWitness(run);
+
+        expect(await broker.effect(trusted, {effectId: 'verify', newAttempt: true}), 'before a first attempt the row names run').toEqual(refusal('verify'));
+        expect(world.rows.length).toBe(0);
+
+        world.recallLands = true;
+
+        // not `true`: a plain run
+        expect(rowOf(await broker.effect(trusted, {effectId: 'verify', newAttempt: 'yes'}), 'verify')).toMatchObject({status: 'ok', exits: []});
+        expect(await broker.effect(trusted, {effectId: 'verify', newAttempt: true}), 'an accepted witness names no exit').toEqual(refusal('verify'));
+        expect(world.rows.length, 'one witness row, never a second').toBe(1)
     });
 
     test('a report that moved nothing stays a refusal in the orchestration\'s words: a preset the config does not carry writes no file and no receipt', async () => {

@@ -41,8 +41,9 @@ const tempDir = () => mkdtempSync(path.join(tmpdir(), 'pinned-setup-'));
 
 /**
  * @summary A broker over the pinned Brain on a scripted host. `world` is the script and the log:
- * `commands` (asked for, never run), `rows` (the plane's witness rows), and two switches the plane
- * reads at every call — `recallLands`, `refuseWrite`.
+ * `commands` (asked for, never run), `rows` (the plane's witness rows), and three switches the plane
+ * reads at every call — `recallLands`, `refuseWrite`, and `dropWrite` (the write's acknowledgement
+ * never arrives and no row lands).
  * @param {Object}       [options]
  * @param {String}       [options.setupRoot] The setup records' temp directory
  * @param {String}       [options.stateRoot] The host state root, a temp directory
@@ -55,11 +56,15 @@ const tempDir = () => mkdtempSync(path.join(tmpdir(), 'pinned-setup-'));
 export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDir(), configSourcePath = path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), machine = MACHINES.roomy, running = null, served = null} = {}) {
     const
         real    = await loadSetupModules({runtimeRoot: BRAIN_ROOT}),
-        world   = {commands: [], recallLands: false, refuseWrite: false, rows: []},
+        world   = {commands: [], dropWrite: false, recallLands: false, refuseWrite: false, rows: []},
         plane   = {
             addMemory  : async content => {
                 if (world.refuseWrite) {
                     throw Object.assign(new Error('403 the seat token is not admitted'), {refused: true})
+                }
+
+                if (world.dropWrite) {
+                    throw new Error('socket hang up')
                 }
 
                 const row = {id: `witness-${world.rows.length + 1}`, sessionId: 'pinned-host', timestamp: '2026-10-04T12:00:00.000Z', ...content};
