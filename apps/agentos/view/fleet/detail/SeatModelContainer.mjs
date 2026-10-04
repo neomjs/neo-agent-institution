@@ -10,7 +10,8 @@ import SeatModel from '../../../util/SeatModel.mjs';
 const FIELDS = [{field: 'model', label: 'model'}, {field: 'reasoningEffort', label: 'reasoning effort'}];
 
 /**
- * @summary One row: its label, its line, and the actions its state offers.
+ * @summary One row: its label beside the actions its state offers, and its line beneath at the group's whole width,
+ * so both values stay readable in the narrowest inspector.
  * @param {String} field
  * @param {String} label
  * @returns {Object}
@@ -19,21 +20,31 @@ const seatRow = (field, label) => ({
     ntype    : 'container',
     cls      : ['fm-seat-model-row'],
     flex     : 'none',
-    layout   : {ntype: 'hbox', align: 'center'},
+    layout   : {ntype: 'vbox', align: 'stretch'},
     reference: `${field}-row`,
-    items    : [
-        {ntype: 'component', cls: ['fm-seat-model-label'], flex: 'none', text: label},
-        {ntype: 'component', cls: ['fm-seat-model-line'],  flex: 1,      reference: `${field}-line`},
-        ...['change', 'reapply', 'adopt'].map(action => ({
-            module   : Button,
-            cls      : ['fm-chip', `fm-seat-model-${action}`],
-            flex     : 'none',
-            handler  : 'up.onActionClick',
-            hidden   : true,
-            reference: `${field}-${action}`,
-            text     : {change: 'Change', reapply: 'Re-apply', adopt: 'Adopt'}[action]
-        }))
-    ]
+    items    : [{
+        ntype : 'container',
+        cls   : ['fm-seat-model-row-head'],
+        flex  : 'none',
+        layout: {ntype: 'hbox', align: 'center'},
+        items : [
+            {ntype: 'component', cls: ['fm-seat-model-label'], flex: 1, text: label},
+            ...['change', 'reapply', 'adopt'].map(action => ({
+                module   : Button,
+                cls      : ['fm-chip', `fm-seat-model-${action}`],
+                flex     : 'none',
+                handler  : 'up.onActionClick',
+                hidden   : true,
+                reference: `${field}-${action}`,
+                text     : {change: 'Change', reapply: 'Re-apply', adopt: 'Adopt'}[action]
+            }))
+        ]
+    }, {
+        ntype    : 'component',
+        cls      : ['fm-seat-model-line'],
+        flex     : 'none',
+        reference: `${field}-line`
+    }]
 });
 
 /**

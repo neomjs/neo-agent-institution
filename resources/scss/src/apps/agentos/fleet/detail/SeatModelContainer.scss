@@ -1,6 +1,7 @@
 /* Configuration's Seat group: the identity row's shell and status vocabulary (GitIdentityContainer.scss),
-   the config card's label column (AgentConfigComponent.scss), and its actions and offered values on the
-   shared chip skin (Chips.scss), whose is-selected marks the declared value beside aria-pressed. */
+   and its actions and offered values on the shared chip skin (Chips.scss), whose is-selected marks the
+   declared value beside aria-pressed. A row's line runs beneath its label at the group's whole width:
+   in the narrowest inspector both values still read as words. */
 .fm-seat-model {
     background   : var(--fm-panel);
     border       : 1px solid var(--fm-line);
@@ -18,16 +19,18 @@
 
     .fm-seat-model-row {
         font: var(--fm-text-body);
-        gap : var(--fm-space-3);
+        gap : var(--fm-space-1);
+    }
+
+    .fm-seat-model-row-head {
+        gap: var(--fm-space-2);
     }
 
     .fm-seat-model-label {
         color: var(--fm-ink-dim);
-        width: 10rem;
     }
 
     .fm-seat-model-line {
-        min-width    : 0;
         overflow-wrap: anywhere;
     }
 

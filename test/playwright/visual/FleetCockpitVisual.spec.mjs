@@ -1,6 +1,6 @@
 import {test, expect} from '@playwright/test';
 import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
-import {sampleOpenWork, sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
+import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
 import {MACHINES, installPinnedSetupShell, pinnedSetupHost} from '../fixture/pinnedSetupHost.mjs';
 import {sampleShellInitScript} from '../fixture/setupRecipeSample.mjs';
 
@@ -246,6 +246,73 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(titled.scroll).toBeGreaterThan(titled.client);
         expect(Math.round(titled.client / untitled.client)).toBe(2);
         await expect(menu).toHaveScreenshot('fleet-head-merge-queue-open.png')
+    });
+
+    test('the Seat group reads derived, declared, the app\'s own, and a declaration against what the config reads, stopped and running; a start refused for its model reads on the card; both skins (#559)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            configured = {model: 'gpt-6-luna', reasoningEffort: 'high'},
+            // Sophie's seat, on its monogram: no live avatar joins the suite
+            roster     = facts => landFleetRoster(page, [...sampleRoster, {
+                ...sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, harnessSettings: configured, ...facts
+            }]),
+            define     = facts => landAgentDefinitions(page, sampleDefinitions.map(row => row.id === 'neo-gpt-sophie' ? {...row, ...facts} : row)),
+            card       = name => page.locator('.fm-agent-card', {hasText: name}),
+            detail     = page.locator('.fm-agent-detail:visible').first(),
+            group      = detail.locator('.fm-seat-model'),
+            modelLine  = group.locator('.fm-seat-model-line').first(),
+            settle     = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            },
+            open       = async name => {
+                await card(name).click();
+                await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
+                await expect(group).toBeVisible({timeout: 30000})
+            };
+
+        await roster({state: 'off'});
+        await define({});
+        await open('Sophie');
+
+        for (const [facts, line, golden] of [
+            [{},                                             'derived · reads gpt-6-luna (configured on disk)',                                    'seat-model-derived.png'],
+            [configured,                                     'declared gpt-6-luna',                                                                'seat-model-declared.png'],
+            [{model: 'gpt-6-sol', reasoningEffort: 'max'},   'declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start', 'seat-model-differs-stopped.png']
+        ]) {
+            await define(facts);
+            await expect(modelLine).toHaveText(line);
+            await settle();
+            await expect(group, line).toHaveScreenshot(golden)
+        }
+
+        // the same declaration once the seat runs on what its config reads: drift, with Re-apply and Adopt
+        await roster({state: 'ok'});
+        await expect(modelLine).toHaveText('declared gpt-6-sol · now reads gpt-6-luna (configured on disk)');
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-differs-running.png');
+
+        // a Claude app seat takes no declaration: what it reported, or not yet
+        await open('Ada');
+        await expect(modelLine).toHaveText('not read back yet');
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-app.png');
+
+        await roster({state: 'off', seatModel: {state: 'refused', model: 'gpt-6-astra', reasoningEffort: null, reason: 'model gpt-6-astra is not available'}});
+        await expect(card('Sophie').locator('.fm-card-control-status')).toHaveText('start refused: model gpt-6-astra is not available — change it in Detail › Configuration');
+        await settle();
+        await expect(card('Sophie')).toHaveScreenshot('fleet-card-model-refused.png');
+
+        await switchToLightSkin(page);
+        await settle();
+        await expect(card('Sophie')).toHaveScreenshot('fleet-card-model-refused-light.png');
+        await open('Sophie');
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-differs-stopped-light.png')
     });
 
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {
