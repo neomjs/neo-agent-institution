@@ -3,7 +3,6 @@ import {existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, s
 import fsPromises                from 'node:fs/promises';
 import {tmpdir}                  from 'node:os';
 import path                      from 'node:path';
-import {fileURLToPath}           from 'node:url';
 import {
     CONFIG_SOURCE_PATH,
     SETUP_CHANNELS,
@@ -12,6 +11,7 @@ import {
     loadSetupModules,
     resolveSetupRoots
 } from '../../../../harness/setupBroker.mjs';
+import {BRAIN_ROOT, TRUSTED, pinnedSetupHost} from '../../fixture/pinnedSetupHost.mjs';
 
 const tempDir = () => mkdtempSync(path.join(tmpdir(), 'setup-broker-'));
 
@@ -32,12 +32,6 @@ function arrivalGate() {
         hold   : () => new Promise(release => watchers.length > 0 ? watchers.shift()(release) : arrived.push(release))
     }
 }
-
-/**
- * The pinned Brain package: the runtime root the Brain-backed arms load the recipe's modules from.
- * @type {String}
- */
-const BRAIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../node_modules/neo-agent-brain');
 
 /**
  * The Brain modules the broker reaches, as fakes with the exported names it calls — the recipe's
@@ -146,7 +140,7 @@ function fakeModules({evaluations = []} = {}) {
     }
 }
 
-const trusted = {sender: 'trusted'};
+const trusted = TRUSTED;
 
 function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs', fsModule} = {}) {
     return {
@@ -693,67 +687,12 @@ test.describe('harness/setupBroker over the Brain\'s own modules — every opera
     })
 });
 
-/**
- * The broker over the pinned Brain with the world outside the host's files replaced: the command
- * runner records and runs nothing, the witness goes to an in-memory plane, and the CLI's own
- * production observers read the temp layout through a placement probe, a health check and a provider
- * validation that answer from here. Recipe, record, host effects, orchestration and the verify effect
- * are the pinned Brain's.
- * @param {Object}       [options]
- * @param {String}       [options.configSourcePath] The config the preset's env set is checked against
- * @param {Boolean|null} [options.running=null] The compose project's state; `null` follows the recorded `up`
- * @param {Object}       [options.served] The plane the health check names
- * @returns {Promise<Object>} `{broker, setupRoot, stateRoot, world}`
- */
-async function pinnedHost({setupRoot = tempDir(), stateRoot = tempDir(), configSourcePath = path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), running = null, served = {id: TARGET.planeId, dataRoot: TARGET.dataRoot}} = {}) {
-    const
-        real    = await loadSetupModules({runtimeRoot: BRAIN_ROOT}),
-        world   = {commands: [], recallLands: false, refuseWrite: false, rows: []},
-        plane   = {
-            addMemory  : async content => {
-                if (world.refuseWrite) {
-                    throw Object.assign(new Error('403 the seat token is not admitted'), {refused: true})
-                }
-
-                const row = {id: `witness-${world.rows.length + 1}`, sessionId: 'pinned-host', timestamp: '2026-10-04T12:00:00.000Z', ...content};
-
-                world.rows.push(row);
-
-                return row
-            },
-            close      : async () => {},
-            recall     : async () => ({results: world.recallLands ? world.rows : []}),
-            recentTurns: async () => ({turns: world.rows, count: world.rows.length, nextCursor: null})
-        },
-        run     = async (command, args = []) => {
-            world.commands.push([command, ...args].join(' '));
-
-            return {stdout: '', stderr: ''}
-        },
-        up      = () => world.commands.some(command => command.startsWith('docker compose ') && command.includes(' up ')),
-        modules = {
-            ...real,
-            hostEffects  : {...real.hostEffects, createHost: options => real.hostEffects.createHost({...options, run})},
-            orchestration: {...real.orchestration, performEffects: options => real.orchestration.performEffects({...options, createPlaneClient: () => plane})},
-            cli          : {...real.cli, productionObservers: ({layout, host}) => real.cli.productionObservers({
-                layout,
-                host,
-                healthcheck: async () => ({status: 'healthy', plane: served}),
-                probe      : async () => ({guest: null, host: {}, observed: {}, runningPlane: (running ?? up()) ? {project: layout.composeProject} : null}),
-                validate   : async ({preset}) => ({embedding: {dimension: preset.vectorDimension, ok: true}, provider: {ok: true}})
-            })}
-        },
-        {broker} = createBroker({modules, setupRoot, stateRoot, configSourcePath, prompt: async () => 'ghp_fixtureValueNeverReal0123456789'});
-
-    return {broker, setupRoot, stateRoot, world}
-}
-
 const rowOf = (reply, id) => reply.evaluation?.steps.find(step => step.id === id) ?? null;
 
 test.describe('harness/setupBroker over the pinned recipe — the run to done, with nothing real behind it', () => {
     test('verify answers the run while its recall has not landed, the row carrying the Brain\'s reason, and done is ok over one witness write', async () => {
         const
-            run             = await pinnedHost(),
+            run             = await pinnedSetupHost(),
             {broker, world} = run;
 
         await consented(run);
@@ -786,7 +725,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
 
     test('an effect that ran and failed answers the run with its row failed in the plane\'s words, and a plain run after it writes nothing', async () => {
         const
-            run             = await pinnedHost(),
+            run             = await pinnedSetupHost(),
             {broker, world} = run;
 
         await consented(run);
@@ -814,7 +753,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         writeFileSync(emptyConfig, 'export default {};\n');
 
         const
-            run        = await pinnedHost({configSourcePath: emptyConfig}),
+            run        = await pinnedSetupHost({configSourcePath: emptyConfig}),
             recordPath = await consented(run);
 
         expect(await run.broker.effect(trusted, {effectId: 'write-secrets'})).toEqual({ok: false, reason: expect.stringContaining('refused before any write'), effectId: 'write-secrets'});
@@ -838,7 +777,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
             writeFileSync(path.join(secretsDir, name), `the live ${name}`, {mode: 0o600})
         }
 
-        const run = await pinnedHost({setupRoot, stateRoot, running: true, served: {id: 'the-live-plane', dataRoot: '/srv/live'}});
+        const run = await pinnedSetupHost({setupRoot, stateRoot, running: true, served: {id: 'the-live-plane', dataRoot: '/srv/live'}});
 
         await consented(run);
 
