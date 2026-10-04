@@ -100,8 +100,8 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         expect(lineOf(pane)).toBe('Unobserved');
         expect(pane.items.map(item => item.reference), 'the head and the body, no strip').toEqual(['observatory-head', 'observatory-body']);
-        expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the team, the view, the nodes, then the selected node')
-            .toEqual(['observatory-team', 'observatory-view-section', 'observatory-nodes-title', 'observatory-nodes', 'observatory-selected']);
+        expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the view, the team, the nodes, then the selected node')
+            .toEqual(['observatory-view-section', 'observatory-team', 'observatory-nodes-title', 'observatory-nodes', 'observatory-selected']);
         expect(headOf(pane)).toEqual(['No node selected', null]);
         expect(labelClsOf(pane)).toContain('is-hint');
         expect(selectedOf(pane).getReference('selected-actions').hidden, 'no node, no action').toBe(true);
@@ -601,6 +601,35 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         pane.destroy()
     });
 
+    test('a read of 161 peers opens Team on the 13 it names; All lists every one, and the team scope returns to the 13', () => {
+        const
+            logins = Array.from({length: 161}, (_, i) => `@peer-${String(i).padStart(3, '0')}`),
+            pane   = createPane({envelope: graphRead({
+                route : [],
+                nodes : [
+                    ...logins.map((login, i) => ({id: q(`issue-${9000 + i}`), label: `issue ${i}`, kind: 'issue', authoredBy: login})),
+                    ...logins.slice(0, 13).map(login => ({id: q(login), label: login, kind: 'AgentIdentity'}))
+                ],
+                edges : [],
+                counts: {nodes: 174, edges: 0, seeds: 0},
+                budget: {maxNodes: 500, maxEdges: 300, maxBytes: 65536}
+            })}),
+            toggle = pane.getReference('peer-scope-toggle');
+
+        // the ripple measures the rendered button, which the unit harness has none of
+        toggle.useRippleEffect = false;
+
+        expect([pane.openSection, team(pane).peerStore.getCount(), pane.getReference('observatory-peers-title').text]).toEqual(['team', 13, 'Team · 13 of 161']);
+
+        toggle.onClick({});
+        expect(team(pane).peerStore.getCount(), 'All lists every peer').toBe(161);
+
+        toggle.onClick({});
+        expect(team(pane).peerStore.getCount(), 'the team scope returns to the team').toBe(13);
+
+        pane.destroy()
+    });
+
     test('an outsider Team holds only while it is checked: unchecking it or clearing the lens takes its row out, and a team member\'s check keeps the rows as they are', () => {
         const
             outside = {'issue-505': {authoredBy: '@Outsider'}},
@@ -700,6 +729,83 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         toggle.onClick({});
         expect(state()).toEqual([false, false, 'false', null]);
         expect(lineOf(pane)).not.toMatch(/heat/);
+
+        pane.destroy()
+    });
+});
+
+test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side panel opens one section to its height', () => {
+    const
+        // each section's flex and collapse, and whether its head reads expanded for assistive technology
+        sectionsOf = pane => Object.fromEntries([
+            ['team',     pane.getReference('observatory-team'),  pane.getReference('observatory-peers-title')],
+            ['nodes',    pane.getReference('observatory-nodes'), pane.getReference('observatory-nodes-title')],
+            ['selected', selectedOf(pane),                       selectedOf(pane).getReference('selected-section-head')]
+        ].map(([name, section, head]) => [name, [section.flex, section.cls.includes('is-collapsed'), head.vdom['aria-expanded']]])),
+        clickHead  = button => {
+            // the ripple measures the rendered button, which the unit harness has none of
+            button.useRippleEffect = false;
+            button.onClick({})
+        };
+
+    test('a read with peers opens Team, a read without opens Nodes, so no default opens an empty section', () => {
+        const peerless = createPane({envelope: graphRead()});
+
+        expect(peerless.openSection).toBe('nodes');
+        peerless.destroy()
+    });
+
+    test('Team opens first; a head opens its section and collapses the others to their heads; an unknown section changes nothing', () => {
+        const pane = createPane({envelope: teamRead()});
+
+        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
+
+        clickHead(pane.getReference('observatory-nodes-title'));
+        expect(sectionsOf(pane)).toEqual({team: ['none', true, 'false'], nodes: [1, false, 'true'], selected: ['none', true, 'false']});
+
+        clickHead(selectedOf(pane).getReference('selected-section-head'));
+        expect(pane.openSection).toBe('selected');
+
+        clickHead(pane.getReference('observatory-peers-title'));
+        expect(pane.openSection).toBe('team');
+
+        pane.openSection = 'view';
+        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
+
+        pane.destroy()
+    });
+
+    test('View is static: whichever section opens, it never collapses', () => {
+        const pane = createPane({envelope: teamRead()}),
+              view = pane.getReference('observatory-view-section');
+
+        ['nodes', 'selected', 'team'].forEach(section => {
+            pane.openSection = section;
+            expect(view.cls).not.toContain('is-collapsed')
+        });
+
+        pane.destroy()
+    });
+
+    test('a collapsed head still names its count, and selecting a node opens the Selected section with its whole title', () => {
+        const pane = createPane({envelope: teamRead()});
+
+        expect(pane.getReference('observatory-nodes-title').text).toMatch(/^Nodes/);
+        expect(pane.getReference('observatory-peers-title').text).toMatch(/^Team · /);
+
+        pane.selectedId = q('issue-202');
+        expect(pane.openSection).toBe('selected');
+        expect(headOf(pane)[0]).toBe('second route item');
+
+        // clearing the selection leaves the open section where the viewer is
+        pane.selectedId = null;
+        expect(pane.openSection).toBe('selected');
+
+        // a viewer browsing the node list keeps it: the keys walk the rows while the Selected head line names the node
+        pane.openSection = 'nodes';
+        pane.selectedId  = q('issue-303');
+        expect(pane.openSection).toBe('nodes');
+        expect(headOf(pane)[0]).toBe('third route item');
 
         pane.destroy()
     });
