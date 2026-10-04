@@ -66,6 +66,25 @@ class SeatModel extends Base {
     }
 
     /**
+     * @summary What a seat's harness offers to declare, read through the Fleet. A bridge without the verb, or a read
+     * that throws, answers its state and reason, never an empty catalog.
+     * @param {Object|null} bridge  The cockpit's Fleet bridge
+     * @param {String}      agentId
+     * @returns {Promise<Object>} `{state, models, efforts?, reason}`
+     */
+    static async readCatalog(bridge, agentId) {
+        if (typeof bridge?.fleetSeatModelCatalog !== 'function') {
+            return {state: 'unavailable', models: [], reason: 'this Fleet cannot list what the harness offers yet'}
+        }
+
+        try {
+            return await bridge.fleetSeatModelCatalog({id: agentId})
+        } catch (error) {
+            return {state: 'unavailable', models: [], reason: 'the Fleet could not read what the harness offers'}
+        }
+    }
+
+    /**
      * @summary The roster card's one line about a refused start, or `null`: it speaks only when Start refused the
      * declared model.
      * @param {Object|null} seatModel The roster record's `seatModel`
