@@ -130,7 +130,7 @@ export const sampleOpenWork = (() => {
             '@neo-gpt'       : {authored: [changes], reviewing: []}
         },
         awaitingMerge: [
-            {...row('neomjs/neo', 19499, 'green', {role: 'operator', ids: []}), mergeable: 'MERGEABLE'},
+            {...row('neomjs/neo', 19499, 'green', {role: 'operator', ids: []}), mergeable: 'MERGEABLE', title: 'feat(fleet): a seat records the principal that operates it, written only by a define or the plane host, and a recreated seat never inherits one'},
             {...row('neomjs/neo-agent-brain', 799, 'green', {role: 'operator', ids: []}), mergeable: 'MERGEABLE'}
         ]
     }

@@ -29,6 +29,10 @@ class OpenPullRequest extends Model {
             name: 'number',
             type: 'Integer'
         }, {
+            // the producer's title; null while its row carries none
+            name        : 'title',
+            defaultValue: null
+        }, {
             // the head's CI conclusion, e.g. `green`, `red`, `pending`; null = not observed
             name        : 'ci',
             defaultValue: null
