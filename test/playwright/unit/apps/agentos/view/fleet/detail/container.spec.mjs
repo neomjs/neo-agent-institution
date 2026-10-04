@@ -749,6 +749,64 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }
     });
 
+    test('AC-3 (#524): only the latest identity request paints the row: A → B → A, and a declaration over a read still on its way', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},
+            {id: 'eos', githubUsername: 'eos', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            reads      = {ada: [], eos: []},
+            missing    = {state: 'missing', reason: 'its forge account offers no email this PAT can read'},
+            declared   = {state: 'declared', name: 'Ada', email: 'ada@example.com'},
+            settle     = () => new Promise(resolve => setTimeout(resolve, 0));
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent      : async intent => ({status: 'accepted', agent: {id: intent.id, githubUsername: intent.id, harnessType: 'codex'}}),
+            fleetSeatGitIdentity: ({id}) => {
+                const reply = deferred();
+                reads[id].push(reply);
+                return reply.promise
+            }
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row');
+
+            // A, then B, then A again: the first read of A is still on its way
+            expect(reads.ada).toHaveLength(1);
+            expect(row.getReference('identity-status').text).toBe('Reading…');
+            detail.record = makeRecord({agentId: 'eos', displayName: 'Eos'});
+            reads.eos[0].resolve({state: 'derived', name: 'Eos', email: 'eos@example.com'});
+            await expect.poll(() => row.identity?.name).toBe('Eos');
+            detail.record = makeRecord({agentId: 'ada', displayName: 'Ada'});
+            reads.ada[1].resolve(declared);
+            await expect.poll(() => row.identity?.state).toBe('declared');
+
+            reads.ada[0].resolve(missing);
+            await settle();
+            expect(row.identity).toEqual(declared);
+
+            // a declaration is the latest request: the read it overtook paints nothing either
+            detail.controller.readGitIdentity();
+            await detail.controller.onDeclareGitIdentity({gitName: 'Ada', gitEmail: 'ada@example.com'});
+            expect(reads.ada).toHaveLength(4);
+            reads.ada[3].resolve(declared);
+            reads.ada[2].resolve(missing);
+            await settle();
+            expect(row.identity).toEqual(declared);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
     test('AC-3 (#524): a read that failed has one action in Detail, "Read again", which reads the seat again', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}

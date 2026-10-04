@@ -679,4 +679,47 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — the added seat\'s c
 
         form.destroy()
     });
+
+    test('AC-2: only the latest identity request paints the row: an older reply of the same seat is ignored, and Read again waits for its answer', async () => {
+        const
+            replies = [],
+            reply   = () => {
+                let resolve;
+                const promise = new Promise(res => {resolve = res});
+                replies.push({promise, resolve});
+                return promise
+            },
+            {form}  = mountForm([missing], {fleetSeatGitIdentity: () => reply()});
+
+        await fill(form);
+
+        const submitted = form.onSubmitClick();
+
+        await expect.poll(() => replies.length).toBe(1);
+        replies[0].resolve({state: 'unknown', reason: 'the fleet could not be reached'});
+        await submitted;
+
+        const row = form.getReference('git-identity');
+
+        expect(row.hidden).toBe(false);
+
+        // two retries: the second is the latest request, and Read again waits while one is in flight
+        const first = form.readGitIdentity();
+
+        expect(row.getReference('identity-read').disabled).toBe(true);
+        expect(row.getReference('identity-status').text).toBe('Reading…');
+
+        const second = form.readGitIdentity();
+
+        replies[2].resolve({state: 'derived', name: 'Phoebe', email: 'phoebe@example.com'});
+        await second;
+        expect(row.hidden).toBe(true);
+
+        replies[1].resolve({state: 'unknown', reason: 'the fleet could not be reached'});
+        expect(await first).toBeNull();
+        expect(row.hidden).toBe(true);
+        expect(row.identity.state).toBe('derived');
+
+        form.destroy()
+    });
 });

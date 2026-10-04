@@ -39,8 +39,11 @@
         align-self: flex-start;
     }
 
+    /* an inline field label floats about 5.4px above its box: the first field's gets room inside the
+       declaration, the way every later field's gets it from the gap */
     .fm-git-identity-fields {
-        gap: var(--fm-space-2);
+        gap        : var(--fm-space-2);
+        padding-top: var(--fm-space-2);
     }
 
     .fm-git-identity-status {

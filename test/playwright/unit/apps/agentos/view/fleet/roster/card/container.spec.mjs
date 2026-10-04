@@ -680,26 +680,31 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('AC-4 (#524): a start refused for the seat\'s commit identity names the row that repairs it; the title keeps the Fleet\'s words', () => {
+    test('AC-4 (#524): a refused start keeps the Fleet\'s own words; a last start\'s identity that needs repair rides the title as its own observation, never as the cause', () => {
         const
-            card   = createCard({agentId: 'vega', state: 'off'}),
-            status = () => card.down({reference: 'control-status'}),
-            reason = "agent 'vega' has no Git identity to commit under: its forge account offers no email this PAT can read. Nothing was changed.";
+            card     = createCard({agentId: 'vega', state: 'off'}),
+            status   = () => card.down({reference: 'control-status'}),
+            missing  = {state: 'missing', reason: 'its forge account offers no email this PAT can read'},
+            note     = " · The last start's commit identity: No commit identity: its forge account offers no email this PAT can read. Repair it in Detail › Configuration.",
+            identity = "agent 'vega' has no Git identity to commit under: its forge account offers no email this PAT can read. Nothing was changed. Declare the name and email its commits carry (gitName and gitEmail), then start it again.";
 
-        applySet(card, {
-            controlReason: {action: 'start', kind: 'rejected', reason},
-            gitIdentity  : {state: 'missing', reason: 'its forge account offers no email this PAT can read'}
-        });
-        expect(status().text).toBe('⚠ start refused: its commit identity — repair it in Detail › Configuration');
-        expect(status().vdom.title).toBe(reason);
+        // the identity refusal: the Fleet's words name the next step, the title names the row
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: identity}, gitIdentity: missing});
+        expect(status().text).toBe(`⚠ rejected: ${identity}`);
+        expect(status().vdom.title).toBe(`⚠ rejected: ${identity}${note}`);
 
-        // a refusal while the identity resolved is about something else, and keeps its own words
-        applySet(card, {gitIdentity: {state: 'derived', name: 'Vega', email: 'vega@example.com'}});
-        expect(status().text).toBe(`⚠ rejected: ${reason}`);
+        // an unrelated refusal while an older identity still needs repair: its own words stay the
+        // line, and the identity is not claimed as the cause
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: "the seat's home could not be prepared"}});
+        expect(status().text).toBe("⚠ rejected: the seat's home could not be prepared");
+        expect(status().text).not.toContain('identity');
+        expect(status().vdom.title).toBe(`⚠ rejected: the seat's home could not be prepared${note}`);
 
-        // the roster row of a Brain that reports no identity changes nothing
-        applySet(card, {gitIdentity: null, controlReason: {action: 'start', kind: 'rejected', reason: 'harness offline'}});
-        expect(status().text).toBe('⚠ rejected: harness offline');
+        // a resolved identity, or a Brain that reports none, adds nothing
+        for (const gitIdentity of [{state: 'derived', name: 'Vega', email: 'vega@example.com'}, null]) {
+            applySet(card, {gitIdentity});
+            expect(status().vdom.title).toBe("⚠ rejected: the seat's home could not be prepared")
+        }
 
         card.destroy()
     });

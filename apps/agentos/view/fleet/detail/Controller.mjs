@@ -19,11 +19,18 @@ class Controller extends ComponentController {
     }
 
     /**
-     * The seat whose commit identity the row shows, so a late read for an earlier seat paints nothing.
+     * The seat whose commit identity the row shows.
      * @member {String|null} identityAgentId=null
      * @protected
      */
     identityAgentId = null
+    /**
+     * The latest identity request, a read or a declaration. Only its answer may paint the row, so an
+     * older reply, of the same seat or of a seat shown again since (A → B → A), paints nothing.
+     * @member {Number} identityRequest=0
+     * @protected
+     */
+    identityRequest = 0
 
     /**
      * @summary Wire the completed inspector's config card, identity row and shared Store, then
@@ -58,28 +65,32 @@ class Controller extends ComponentController {
         me.component.agentDefinitions?.un(me.getDefinitionsStoreListeners());
         me.getReference('config-pane')?.un({configIntent: me.onConfigIntent, scope: me});
         me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
+        // a reply still on its way finds no request of its own
+        me.identityRequest++;
         super.destroy(...args)
     }
 
     /**
-     * @summary Read the shown seat's commit identity into the row, which says "not yet read" until
-     * the answer lands. No definition shown, no row.
+     * @summary Read the shown seat's commit identity into the row, which says "not yet read" and
+     * "Reading…" until the answer lands. No definition shown, no row.
      * @returns {Promise<void>}
      */
     async readGitIdentity() {
         const
             me      = this,
             row     = me.getReference('identity-row'),
-            agentId = me.getReference('config-pane').record?.id ?? null;
+            agentId = me.getReference('config-pane').record?.id ?? null,
+            request = ++me.identityRequest;
 
         me.identityAgentId = agentId;
         row.set({hidden: !agentId, identity: null});
 
         if (agentId) {
+            row.status = {state: 'pending', reason: 'Reading…'};
+
             const identity = await SeatGitIdentity.read(globalThis.AgentOS?.fleet?.registryBridge ?? null, agentId);
 
-            // a newer selection, or a torn-down inspector, owns the row now
-            if (!me.isDestroyed && !row.isDestroyed && me.identityAgentId === agentId) {
+            if (request === me.identityRequest && !me.isDestroyed && !row.isDestroyed) {
                 row.identity = identity
             }
         }
@@ -111,12 +122,15 @@ class Controller extends ComponentController {
             return Promise.resolve()
         }
 
+        // the declaration is the latest request now: a read still on its way paints nothing
+        const request = ++me.identityRequest;
+
         return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
             intent: {id: agentId, ...pair},
             owner : row,
             store : me.component.agentDefinitions,
             setSaveStatus: (id, state, reason) => {
-                if (me.isDestroyed || row.isDestroyed || id !== me.identityAgentId) {
+                if (request !== me.identityRequest || me.isDestroyed || row.isDestroyed) {
                     return
                 }
 

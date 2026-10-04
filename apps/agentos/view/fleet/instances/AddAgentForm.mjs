@@ -286,6 +286,13 @@ class AddAgentForm extends FormContainer {
      * @protected
      */
     addedAgentId = null
+    /**
+     * The latest identity request, a read or a declaration. Only its answer may paint the row, so an
+     * older reply of the same seat paints nothing.
+     * @member {Number} identityRequest=0
+     * @protected
+     */
+    identityRequest = 0
 
     /**
      * @summary Seat the first product's harness, drop the token field for shell ingress, and probe
@@ -566,6 +573,7 @@ class AddAgentForm extends FormContainer {
 
         me.flowStatus   = {state: 'validating', reason: ''};
         me.addedAgentId = null;
+        me.identityRequest++;
         me.getReference('git-identity').set({hidden: true, identity: null});
 
         try {
@@ -601,19 +609,25 @@ class AddAgentForm extends FormContainer {
     /**
      * @summary Read the added seat's commit identity, and mount the row only when the operator has
      * something to do: a derived or declared identity asks nothing new.
-     * @returns {Promise<Object|null>} The Fleet's answer, or `null` when a newer submission owns the row.
+     * @returns {Promise<Object|null>} The Fleet's answer, or `null` when a newer request owns the row.
      */
     async readGitIdentity() {
         const
-            me       = this,
-            agentId  = me.addedAgentId,
-            identity = await SeatGitIdentity.read(AddAgentFlow.resolveRegistryBridge(me.bridgeResolver), agentId);
+            me      = this,
+            agentId = me.addedAgentId,
+            request = ++me.identityRequest,
+            row     = me.getReference('git-identity');
 
-        if (agentId !== me.addedAgentId) {
+        // a retry shows it is reading, and Read again waits for the answer
+        row.hidden || (row.status = {state: 'pending', reason: 'Reading…'});
+
+        const identity = await SeatGitIdentity.read(AddAgentFlow.resolveRegistryBridge(me.bridgeResolver), agentId);
+
+        if (request !== me.identityRequest || me.isDestroyed) {
             return null
         }
 
-        me.getReference('git-identity').set({hidden: !SeatGitIdentity.needsRepair(identity), identity});
+        row.set({hidden: !SeatGitIdentity.needsRepair(identity), identity});
 
         return identity
     }
@@ -636,11 +650,14 @@ class AddAgentForm extends FormContainer {
             return
         }
 
+        // the declaration is the latest request now: a read still on its way paints nothing
+        const request = ++me.identityRequest;
+
         row.status = {state: 'pending', reason: ''};
 
         const outcome = await SeatGitIdentity.declare(AddAgentFlow.resolveRegistryBridge(me.bridgeResolver), agentId, {gitEmail, gitName});
 
-        if (agentId !== me.addedAgentId) {
+        if (request !== me.identityRequest || me.isDestroyed) {
             return
         }
 

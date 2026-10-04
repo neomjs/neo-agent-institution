@@ -65,8 +65,9 @@ class GitIdentityContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * Ephemeral round-trip feedback, `{state: 'idle'|'pending'|'rejected', reason}`: component
-         * state, never definition data.
+         * Ephemeral round-trip feedback, `{state: 'idle'|'pending'|'rejected'|'superseded', reason}`:
+         * component state, never definition data. A pending reason names what is in flight
+         * ("Reading…"); without one it reads "Saving…".
          * @member {Object} status_={state:'idle',reason:''}
          * @reactive
          */
@@ -252,7 +253,7 @@ class GitIdentityContainer extends Container {
 
         me.getReference('identity-status').set({
             cls : ['fm-git-identity-status', `is-${me.status?.state ?? 'idle'}`],
-            text: pending ? 'Saving…' : me.status?.reason ?? ''
+            text: pending ? me.status.reason || 'Saving…' : me.status?.reason ?? ''
         })
     }
 
