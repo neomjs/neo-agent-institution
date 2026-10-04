@@ -13,7 +13,7 @@ import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_exp
 import SeatGitIdentity from '../../../../../../apps/agentos/util/SeatGitIdentity.mjs';
 
 /**
- * @summary The cockpit's one reading of a seat's commit identity (#524): the Fleet's answer read, worded,
+ * @summary The cockpit's one reading of a seat's commit identity: the Fleet's answer read, worded,
  * and repaired by a declaration, never with a caught message on the way.
  */
 test.describe('AgentOS.util.SeatGitIdentity (#524)', () => {

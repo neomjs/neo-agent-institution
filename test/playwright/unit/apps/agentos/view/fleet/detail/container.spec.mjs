@@ -646,7 +646,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         globalThis.AgentOS.fleet = priorFleet
     });
 
-    test('AC-3 (#524): Configuration keeps the seat\'s commit identity with its one repair action, read once per seat', async () => {
+    test('AC-3 (#524): Configuration keeps the seat\'s commit identity, read once per seat, and declares it through the runner', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
         ]});

@@ -7,8 +7,8 @@ import SeatGitIdentity from '../../../util/SeatGitIdentity.mjs';
  * @class AgentOS.view.fleet.shared.GitIdentityContainer
  * @extends Neo.container.Base
  *
- * @summary The one row that says which identity a seat's commits carry, and repairs it (Clio's placement
- * on #524). Add mounts it inline only when the derivation fails, with the declaration open at once.
+ * @summary The one row that says which identity a seat's commits carry, and repairs it. Add mounts it
+ * inline only when the derivation fails, with the declaration open at once.
  * Detail's Configuration keeps it for every state, with one action per state: declare a failed
  * derivation, read a failed read again, change a working identity. Start's identity refusal points here.
  *

@@ -139,7 +139,7 @@ test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neu
         await expect(page.locator('.fm-add-status.is-readback-confirmed')).toBeVisible({timeout: 15000});
 
         // its account offers no email, so the identity row opens inline and the operator declares one;
-        // Start would refuse a seat with no identity to commit under (#524)
+        // Start would refuse a seat with no identity to commit under
         const identity = page.locator('.fm-add-agent-form .fm-git-identity');
 
         await expect(identity.locator('.fm-git-identity-line')).toHaveText('No commit identity: its forge account offers no email this PAT can read.', {timeout: 15000});

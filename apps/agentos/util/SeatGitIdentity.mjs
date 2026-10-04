@@ -1,7 +1,7 @@
 import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
- * The states the Fleet answers for a seat's commit identity (`fleetSeatGitIdentity`, Brain #829).
+ * The states the Fleet's `fleetSeatGitIdentity` answers for a seat's commit identity.
  * @member {String[]} STATES
  */
 const STATES = ['declared', 'derived', 'missing', 'mismatch', 'unknown'];

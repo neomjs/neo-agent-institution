@@ -19,7 +19,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 import Instance       from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 
 /**
- * @summary The one commit-identity row (#524, Clio's placement): inline in Add the declaration opens at
+ * @summary The one commit-identity row: inline in Add the declaration opens at
  * once for a failed derivation; in Detail every state sits behind one repair action. The row changes
  * nothing itself; it fires the typed pair or a retry, and shows the answer its owner sets back.
  */
