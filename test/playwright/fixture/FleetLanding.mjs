@@ -82,7 +82,7 @@ class FleetLanding extends Base {
     get setupRun() {
         const provider = Neo.manager.Component.findFirst('className', 'AgentOS.view.Viewport')?.getStateProvider();
 
-        return provider ? Object.fromEntries(['decisions', 'manualActions', 'preset', 'runId'].map(key => [key, provider.getData(`setupRun.${key}`)])) : null
+        return provider ? Object.fromEntries(['dataRoot', 'decisions', 'manualActions', 'planeId', 'preset', 'runId'].map(key => [key, provider.getData(`setupRun.${key}`)])) : null
     }
 
     /**

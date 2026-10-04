@@ -97,8 +97,10 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.store.items.map(step => `${step.id}:${step.status}`)).toEqual(expect.arrayContaining(['placement:ok', 'preset:pending', 'advanced:ok', 'compose-up:pending', 'verify:pending', 'done:unknown']));
         expect(door.store.get('served-plane').reason, 'the reason is the recipe\'s text verbatim').toBe('connect ECONNREFUSED 127.0.0.1:3102');
         expect(progress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
-        // nothing decided yet: the advanced fold is a default, never a decision
-        expect(run()).toEqual({runId: COLD.runId, recipeVersion: 1, preset: null, planeId: null, dataRoot: null, decisions: 0, manualActions: 0});
+        // nothing decided yet: the advanced fold is a default, never a decision; the plane is the run's own
+        // binding, there from the first evaluation because the broker binds the profile's
+        expect(COLD.target.planeId, 'the cold run names its plane').toBeTruthy();
+        expect(run()).toEqual({runId: COLD.runId, recipeVersion: 1, preset: null, planeId: COLD.target.planeId, dataRoot: COLD.target.dataRoot, decisions: 0, manualActions: 0});
         expect(door.getReference('quiet-line').hidden).toBe(true);
         expect(door.getReference('served').hidden, 'a shell answered: the served path stays hidden').toBe(true);
 
