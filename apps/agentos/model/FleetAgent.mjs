@@ -132,6 +132,12 @@ class FleetAgent extends Model {
             name        : 'repoOutcomes',
             defaultValue: null
         }, {
+            // the commit identity the last start resolved, a refused start's included
+            // (`{state, name?, email?, reason?}`, the roster DTO's `gitIdentity`), so the card can say a
+            // refused start was about the identity. Null = no start yet, or a Brain that does not report it
+            name        : 'gitIdentity',
+            defaultValue: null
+        }, {
             // open assigned lanes for the resident (measured density evidence: 7–17 per active
             // agent — one lane line cannot carry that truth, the count badge can). Owned by the
             // roster DTO end-to-end (assembler stamp → mapRosterRow → this record → the badge);

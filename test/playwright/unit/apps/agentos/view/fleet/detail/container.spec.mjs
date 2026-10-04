@@ -646,6 +646,200 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         globalThis.AgentOS.fleet = priorFleet
     });
 
+    test('AC-3 (#524): Configuration keeps the seat\'s commit identity, read once per seat, and declares it through the runner', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            intents    = [],
+            reads      = [];
+        let answer = {state: 'missing', name: 'Ada', reason: 'its forge account offers no email this PAT can read'};
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent: async intent => {
+                intents.push(intent);
+                return {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}}
+            },
+            fleetSeatGitIdentity: async ({id}) => {
+                reads.push(id);
+                return answer
+            }
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row'),
+                fields = row.getReference('identity-fields');
+
+            await expect.poll(() => row.identity?.state).toBe('missing');
+            expect(row.hidden).toBe(false);
+            expect(row.getReference('identity-line').text).toBe('No commit identity: its forge account offers no email this PAT can read.');
+            expect(row.getReference('identity-repair').text).toBe('Declare identity');
+            expect(fields.hidden).toBe(true);
+
+            // a roster refresh re-seats the same seat: no second read
+            applySet(detail, {displayName: 'Ada (renamed)'});
+            expect(reads).toEqual(['ada']);
+
+            // a half pair is refused before the wire
+            row.onRepairClick();
+            row.getReference('field-git-email').value = '';
+            await detail.controller.onDeclareGitIdentity({gitName: 'Ada', gitEmail: ''});
+            expect(intents).toEqual([]);
+            expect(row.status).toEqual({state: 'rejected', reason: 'Name and email are both required.'});
+
+            answer = {state: 'declared', source: 'declaration', name: 'Ada', email: 'ada@example.com'};
+            await detail.controller.onDeclareGitIdentity({gitName: 'Ada', gitEmail: 'ada@example.com'});
+
+            // only the pair crosses, and the Fleet's read-back answer is what the row shows
+            expect(intents).toEqual([{id: 'ada', gitName: 'Ada', gitEmail: 'ada@example.com'}]);
+            await expect.poll(() => row.identity?.state).toBe('declared');
+            expect(reads).toEqual(['ada', 'ada']);
+            expect(row.getReference('identity-line').text).toBe('Commits as Ada <ada@example.com> · declared');
+            expect(row.getReference('identity-repair').text).toBe('Change identity');
+            expect(fields.hidden).toBe(true);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('AC-3 (#524): a late answer for a seat no longer shown paints nothing; a seat without a definition shows no row', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},
+            {id: 'eos', githubUsername: 'eos', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            held       = deferred();
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            fleetSeatGitIdentity: ({id}) => id === 'ada' ? held.promise : Promise.resolve({state: 'derived', name: 'Eos', email: 'eos@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row');
+
+            expect(row.getReference('identity-line').text).toBe('Identity not yet read.');
+
+            detail.record = makeRecord({agentId: 'eos', displayName: 'Eos'});
+            await expect.poll(() => row.identity?.state).toBe('derived');
+
+            held.resolve({state: 'missing', reason: 'its forge account offers no email this PAT can read'});
+            await held.promise;
+            expect(row.identity.name).toBe('Eos');
+
+            detail.record = makeRecord({agentId: 'nobody', displayName: 'Nobody'});
+            expect(row.hidden).toBe(true);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('AC-3 (#524): only the latest identity request paints the row: A → B → A, and a declaration over a read still on its way', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},
+            {id: 'eos', githubUsername: 'eos', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            reads      = {ada: [], eos: []},
+            missing    = {state: 'missing', reason: 'its forge account offers no email this PAT can read'},
+            declared   = {state: 'declared', name: 'Ada', email: 'ada@example.com'},
+            settle     = () => new Promise(resolve => setTimeout(resolve, 0));
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent      : async intent => ({status: 'accepted', agent: {id: intent.id, githubUsername: intent.id, harnessType: 'codex'}}),
+            fleetSeatGitIdentity: ({id}) => {
+                const reply = deferred();
+                reads[id].push(reply);
+                return reply.promise
+            }
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row');
+
+            // A, then B, then A again: the first read of A is still on its way
+            expect(reads.ada).toHaveLength(1);
+            expect(row.getReference('identity-status').text).toBe('Reading…');
+            detail.record = makeRecord({agentId: 'eos', displayName: 'Eos'});
+            reads.eos[0].resolve({state: 'derived', name: 'Eos', email: 'eos@example.com'});
+            await expect.poll(() => row.identity?.name).toBe('Eos');
+            detail.record = makeRecord({agentId: 'ada', displayName: 'Ada'});
+            reads.ada[1].resolve(declared);
+            await expect.poll(() => row.identity?.state).toBe('declared');
+
+            reads.ada[0].resolve(missing);
+            await settle();
+            expect(row.identity).toEqual(declared);
+
+            // a declaration is the latest request: the read it overtook paints nothing either
+            detail.controller.readGitIdentity();
+            await detail.controller.onDeclareGitIdentity({gitName: 'Ada', gitEmail: 'ada@example.com'});
+            expect(reads.ada).toHaveLength(4);
+            reads.ada[3].resolve(declared);
+            reads.ada[2].resolve(missing);
+            await settle();
+            expect(row.identity).toEqual(declared);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('AC-3 (#524): a read that failed has one action in Detail, "Read again", which reads the seat again', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            answers    = [{state: 'unknown', reason: 'its forge account could not be read (HTTP 401)'}, {state: 'derived', name: 'Ada', email: 'ada@example.com'}];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {fleetSeatGitIdentity: async () => answers.shift()}};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row');
+
+            await expect.poll(() => row.identity?.state).toBe('unknown');
+            expect(row.getReference('identity-repair').hidden).toBe(true);
+            expect(row.getReference('identity-read').hidden).toBe(false);
+
+            row.onReadClick();
+            await expect.poll(() => row.identity?.state).toBe('derived');
+            expect(row.getReference('identity-read').hidden).toBe(true);
+            expect(row.getReference('identity-repair').text).toBe('Change identity');
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
     test('an external definition write (another owner\'s readback) refreshes the seated tab in place (#15242)', () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
