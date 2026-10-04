@@ -149,7 +149,8 @@ test.describe('harness pack stage', () => {
             'planeConfig.mjs',
             'seatRootRecord.mjs',
             'setupBroker.mjs',
-            'wakeReceiver.mjs'
+            'wakeReceiver.mjs',
+            'walkControl.mjs'
         ]);
         expect(() => assertPackagedMainModulesDeclared({builderConfig, modules})).not.toThrow();
         expect(mainSource).toContain('loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot})');

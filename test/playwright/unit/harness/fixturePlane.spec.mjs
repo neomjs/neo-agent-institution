@@ -1,7 +1,11 @@
-import {expect, test} from '@playwright/test';
-import http           from 'node:http';
-import path           from 'node:path';
+import {expect, test}            from '@playwright/test';
+import {EventEmitter}            from 'node:events';
+import http                      from 'node:http';
+import net                       from 'node:net';
+import path                      from 'node:path';
+import {allocatePort, probePort} from '../../../../harness/brain.mjs';
 import {
+    createPlaneProcess,
     createSmokeSafeStorage,
     resolvePlaneMemberEnv,
     startFixtureIngress
@@ -87,5 +91,44 @@ test.describe('harness fixture plane', () => {
             await ingress.close();
             await new Promise(resolve => target.close(resolve))
         }
+    });
+
+    test('a held run stops and restarts the plane child: one at a time, drain-owned, never a Brain claim', async () => {
+        const
+            port       = await allocatePort(),
+            registered = [],
+            stopped    = [],
+            // a stand-in Memory Core: listens on the plane's port until it is stopped
+            startChild = ({entry}) => {
+                const child = Object.assign(new EventEmitter(), {entry, exitCode: null, neoHarnessIdentity: {pgid: registered.length + 1}, signalCode: null});
+
+                child.server = net.createServer().listen(port, '127.0.0.1');
+                return child
+            },
+            stopChild  = async child => {
+                stopped.push(child);
+                await new Promise(resolve => child.server.close(resolve));
+                child.exitCode = 0;
+                child.emit('exit', 0, null);
+                return {exited: true, forced: false, groupEmpty: true}
+            },
+            plane      = createPlaneProcess({env: {}, port, registerChild: entry => registered.push(entry), repoRoot: '/brain', startChild, stopChild, timeoutMs: 5000});
+
+        expect(await plane.stop(), 'nothing to stop before a start').toEqual({exited: true, forced: false, groupEmpty: true});
+        expect(stopped).toEqual([]);
+
+        await plane.start();
+        expect(registered.map(entry => ({entry: entry.child.entry, label: entry.label, observeBrain: entry.observeBrain}))).toEqual([{entry: 'ai/mcp/server/memory-core/mcp-server.mjs', label: 'plane', observeBrain: false}]);
+        await expect(plane.start(), 'one child at a time').rejects.toThrow('the fixture plane already runs');
+
+        await plane.stop();
+        expect(stopped).toEqual([registered[0].child]);
+        expect(await probePort({port}), 'the plane is down').toBe(false);
+
+        await plane.start();
+        expect(registered.length, 'a restart registers its new child for teardown').toBe(2);
+        expect(await probePort({port}), 'the plane is back on its port').toBe(true);
+
+        await plane.stop()
     })
 });
