@@ -14,15 +14,23 @@ import StateProvider   from '../../../../../../../node_modules/neo.mjs/src/state
 import CreateContainer, {CLI_COMMAND, countDensity, presetVerdict} from '../../../../../../../apps/agentos/view/setup/CreateContainer.mjs';
 import SetupSteps      from '../../../../../../../apps/agentos/store/SetupSteps.mjs';
 import {actionFor}     from '../../../../../../../apps/agentos/view/setup/StepList.mjs';
-import {sampleColdEvaluation, samplePlacement, samplePresets, sampleProbe, sampleStep} from '../../../../../fixture/setupRecipeSample.mjs';
+import {MACHINES, TRUSTED, pinnedSetupHost} from '../../../../../fixture/pinnedSetupHost.mjs';
 
-// the recipe's sample answers for the fixture host (shared with the e2e and visual tiers)
+// the pinned recipe's own answers on the scripted laptop host: a cold run, the preset table, the probe
 const
-    PRESETS        = samplePresets,
-    PROBE          = sampleProbe,
-    PLACEMENT      = samplePlacement,
-    row            = sampleStep,
-    coldEvaluation = sampleColdEvaluation;
+    HOST           = await pinnedSetupHost({machine: MACHINES.laptop}),
+    COLD           = (await HOST.broker.evaluate(TRUSTED, {})).evaluation,
+    PRESETS        = (await HOST.broker.presets(TRUSTED, {})).presets,
+    PROBE          = (await HOST.broker.probe(TRUSTED, {})).probe,
+    PLACEMENT      = COLD.steps.find(step => step.id === 'placement').placement,
+    coldEvaluation = () => structuredClone(COLD),
+    // a row in the recipe's step shape, for the one state an arm constructs because no scripted host reaches it
+    row            = (id, kind, status, reason, extra = {}) => ({id, kind, status, reason, summary: `${id} summary`, ...extra}),
+    put            = (evaluation, replacement) => {
+        evaluation.steps[evaluation.steps.findIndex(step => step.id === replacement.id)] = replacement;
+
+        return evaluation
+    };
 
 /**
  * Installs a stand-in for the `WS/ShellPlane` main addon's setup remotes, recording every request.
@@ -83,15 +91,14 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         await settle();
 
-        expect(door.store.getCount()).toBe(11);
-        expect(door.store.items.map(step => `${step.id}:${step.status}`)).toEqual([
-            'placement:ok', 'preset:pending', 'plane-credential:pending', 'provider-key:pending', 'advanced:ok',
-            'write-env:pending', 'write-secrets:pending', 'compose-up:pending', 'served-plane:unknown', 'validation:unknown', 'done:unknown'
-        ]);
-        expect(door.store.get('served-plane').reason, 'the reason is the recipe\'s text verbatim').toBe('connection refused');
-        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+        expect(door.store.getCount()).toBe(12);
+        // the store is the evaluation, row for row and in its order; the order itself is the recipe's to state
+        expect(door.store.items.map(step => `${step.id}:${step.status}`)).toEqual(COLD.steps.map(step => `${step.id}:${step.status}`));
+        expect(door.store.items.map(step => `${step.id}:${step.status}`)).toEqual(expect.arrayContaining(['placement:ok', 'preset:pending', 'advanced:ok', 'compose-up:pending', 'verify:pending', 'done:unknown']));
+        expect(door.store.get('served-plane').reason, 'the reason is the recipe\'s text verbatim').toBe('connect ECONNREFUSED 127.0.0.1:3102');
+        expect(progress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
         // nothing decided yet: the advanced fold is a default, never a decision
-        expect(run()).toEqual({runId: '11111111-1111-4111-8111-111111111111', recipeVersion: 1, preset: null, planeId: null, dataRoot: null, decisions: 0, manualActions: 0});
+        expect(run()).toEqual({runId: COLD.runId, recipeVersion: 1, preset: null, planeId: null, dataRoot: null, decisions: 0, manualActions: 0});
         expect(door.getReference('quiet-line').hidden).toBe(true);
         expect(door.getReference('served').hidden, 'a shell answered: the served path stays hidden').toBe(true);
 
@@ -99,12 +106,12 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         // unknown renders unknown, and the progress does not count it
         const stale = coldEvaluation();
 
-        stale.steps[5] = row('write-env', 'effect', 'unknown', 'the carrier could not be read', {effectId: 'write-env', receipt: 'accepted'});
+        put(stale, row('write-env', 'effect', 'unknown', 'the carrier could not be read', {effectId: 'write-env', receipt: 'accepted'}));
         door.evaluation = stale;
 
         expect(door.store.get('write-env').status).toBe('unknown');
         expect(door.store.get('write-env').receipt).toBe('accepted');
-        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+        expect(progress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
 
         host.destroy()
     });
@@ -117,8 +124,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
             setupCredential: () => {
                 const evaluation = coldEvaluation();
 
-                evaluation.steps[2] = row('plane-credential', 'question', 'ok', 'consented', {answer: '/Users/op/.neo-ai/setup/credentials/plane-credential', consentedAt: '2026-10-02T10:22:00.000Z'});
-
+                put(evaluation, row('plane-credential', 'question', 'ok', 'consented', {answer: '/Users/op/.neo-ai/setup/credentials/plane-credential', consentedAt: '2026-10-02T10:22:00.000Z'}));
                 return {ok: true, evaluation, path: '/Users/op/.neo-ai/setup/credentials/plane-credential'}
             }
         });
@@ -134,11 +140,11 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(cards.map(card => card.presetId)).toEqual(['hosted', 'local-small', 'local-full']);
         expect(cards.map(card => card.items[4].disabled), 'refused presets stay visible and disabled').toEqual([false, true, true]);
         expect(cards[1].items[3].text, 'a refused card names the shortfall, never a negative margin').toBe('refused — the host budget falls 2.2 GiB short');
-        expect(cards[0].items[3].text, 'a possible card carries its host margin').toBe('possible — no recorded quality floor: a candidate, never recommended by default · 13.0 GiB host margin');
-        expect(cards[0].items[1].text).toBe('chat gemini-3.5-flash · embed gemini-embedding-001 · 3072 dims');
+        expect(cards[0].items[3].text, 'a recommended card carries its host margin').toBe('recommended — fits with 13.0 GiB host margin (headroom 4.0 GiB) · 13.0 GiB host margin');
+        expect(cards[0].items[1].text, 'the table row, whatever the pin names').toBe(`chat ${PRESETS[0].chatModel} · embed ${PRESETS[0].embedder} · ${PRESETS[0].vectorDimension} dims`);
         expect(cards[0].items[2].text, 'the plane\'s own footprint').toBe('plane 0.4–2.5 GiB · no local models · needs a provider key');
         expect(cards[1].items[2].text, 'the floor is a receipt with a date').toBe('models 15.2 GiB · floor recorded 2026-10-02');
-        expect(door.getReference('placement-line').text).toBe('nothing recommended — each preset says why');
+        expect(door.getReference('placement-line').text).toBe('recommended: hosted');
         // the provider key is asked only once the consented preset requires it
         expect(actionFor(door.store.get('provider-key'))).toBe(null);
 
@@ -163,9 +169,8 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
                 const evaluation = coldEvaluation();
 
-                evaluation.steps[1] = row('preset', 'question', 'ok', 'consented', {answer: 'hosted', consentedAt: '2026-10-02T10:22:00.000Z'});
-                evaluation.steps[3] = row('provider-key', 'question', 'pending', 'unanswered', {answer: null});
-
+                put(evaluation, row('preset', 'question', 'ok', 'consented', {answer: 'hosted', consentedAt: '2026-10-02T10:22:00.000Z'}));
+                put(evaluation, row('provider-key', 'question', 'pending', 'unanswered', {answer: null}));
                 return {ok: true, evaluation}
             }
         });
@@ -181,7 +186,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.getReference('provider-key-line').text).toBe('unanswered');
         expect(actionFor(door.store.get('provider-key')), 'the hosted preset requires a key: the row gets its window').toBe('open window');
         expect(run().preset).toBe('hosted');
-        expect(progress()).toEqual({ok: 3, total: 11, next: 'plane-credential', blocking: null});
+        expect(progress()).toEqual({ok: 3, total: 12, next: 'plane-credential', blocking: null});
 
         await door.onPresetClick({component: {presetId: 'nope'}});
 
@@ -194,9 +199,9 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
     test('resume: an interrupted effect renders reconcile-required with re-check as its action and no replay; a served mismatch asks which plane', async () => {
         const evaluation = coldEvaluation();
 
-        evaluation.steps[5]  = row('write-env',    'effect',      'reconcile-required', 'the effect may have run before its receipt was written; a fresh matching observation settles it', {effectId: 'write-env', receipt: 'pending', observed: {present: true, digest: 'abc'}});
-        evaluation.steps[6]  = row('write-secrets', 'effect',     'ok', 'observed; matches the accepted receipt', {effectId: 'write-secrets', receipt: 'accepted'});
-        evaluation.steps[8]  = row('served-plane', 'observation', 'failed', 'served plane id is \'other-plane\', expected \'outside-plane\': a different plane is answering', {served: {planeId: 'other-plane', dataRoot: '/srv/other'}});
+        put(evaluation, row('write-env',    'effect',      'reconcile-required', 'the effect may have run before its receipt was written; a fresh matching observation settles it', {effectId: 'write-env', receipt: 'pending', observed: {present: true, digest: 'abc'}}));
+        put(evaluation, row('write-secrets', 'effect',     'ok', 'observed; matches the accepted receipt', {effectId: 'write-secrets', receipt: 'accepted'}));
+        put(evaluation, row('served-plane', 'observation', 'failed', 'served plane id is \'other-plane\', expected \'outside-plane\': a different plane is answering', {served: {planeId: 'other-plane', dataRoot: '/srv/other'}}));
         evaluation.target    = {planeId: 'outside-plane', dataRoot: '/Users/op/.neo-ai/plane', endpoint: 'http://127.0.0.1:3102'};
 
         const calls = stubShell({setupEvaluate: {ok: true, evaluation}, setupProbe: {ok: true, probe: PROBE}, setupPresets: {ok: true, presets: PRESETS}});
@@ -206,9 +211,9 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         expect(actionFor(door.store.get('write-env'))).toBe('re-check');
         expect(actionFor(door.store.get('write-secrets')), 'an ok effect offers no replay').toBe(null);
-        expect(progress()).toEqual({ok: 3, total: 11, next: 'preset', blocking: 'write-env'});
+        expect(progress()).toEqual({ok: 3, total: 12, next: 'preset', blocking: 'write-env'});
         expect(run()).toMatchObject({planeId: 'outside-plane', dataRoot: '/Users/op/.neo-ai/plane'});
-        expect(door.getReference('lede').text).toContain('Resumed from the run record (11111111-1111-4111-8111-111111111111, bound to outside-plane at /Users/op/.neo-ai/plane)');
+        expect(door.getReference('lede').text).toContain(`Resumed from the run record (${COLD.runId}, bound to outside-plane at /Users/op/.neo-ai/plane)`);
 
         // re-check is a fresh evaluation, never an effect call
         await door.onStepClick({record: door.store.get('write-env')});
@@ -233,8 +238,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
                 const evaluation = coldEvaluation();
 
-                evaluation.steps[5] = row('write-env', 'effect', 'ok', 'observed; matches the accepted receipt', {effectId: 'write-env', receipt: 'accepted'});
-
+                put(evaluation, row('write-env', 'effect', 'ok', 'observed; matches the accepted receipt', {effectId: 'write-env', receipt: 'accepted'}));
                 return {ok: true, evaluation}
             }
         });
@@ -274,7 +278,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.getReference('status-line').text).toBe('write-secrets could not run: the preset \'hosted\' declares an env key the profile does not consume');
         expect(door.manualActions).toBe(0);
         expect(door.store.get('write-secrets').status).toBe('pending');
-        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+        expect(progress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
 
         host.destroy()
     });
@@ -287,7 +291,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
             : step.kind === 'effect'
                 ? row(step.id, 'effect', 'ok', 'observed; matches the accepted receipt', {effectId: step.effectId, receipt: 'accepted'})
                 : row(step.id, 'observation', 'ok', step.id === 'done' ? 'a query was answered and a first memory persisted' : 'observed'));
-        finished.terminal = finished.steps[10];
+        finished.terminal = finished.steps.find(step => step.id === 'done');
 
         stubShell({setupEvaluate: {ok: true, evaluation: finished}, setupProbe: {ok: true, probe: PROBE}, setupPresets: {ok: true, presets: PRESETS}});
 
@@ -299,15 +303,15 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         expect(door.getReference('quiet-line').hidden).toBe(false);
         expect(door.getReference('quiet-line').text).toBe('a query was answered and a first memory persisted · local-small · 1024-dim · the set-up card stays in the rail');
-        expect(progress()).toEqual({ok: 11, total: 11, next: null, blocking: null});
-        expect(run()).toMatchObject({preset: 'local-small', decisions: 6, manualActions: 0});
+        expect(progress()).toEqual({ok: 12, total: 12, next: null, blocking: null});
+        expect(run()).toMatchObject({preset: 'local-small', decisions: 7, manualActions: 0});
 
-        // the counting definition: three answered questions (the fold stays a default) + three
-        // consented effects = 6 decisions, 0 manual actions on a host where every effect ran
-        expect(countDensity(finished)).toEqual({decisions: 6, manualActions: 0});
+        // the counting definition: three answered questions (the fold stays a default) + four
+        // consented effects = 7 decisions, 0 manual actions on a host where every effect ran
+        expect(countDensity(finished)).toEqual({decisions: 7, manualActions: 0});
 
         door.evaluation = {...finished};
-        expect(fired, 'fired once, with the count').toEqual([{density: {decisions: 6, manualActions: 0}, evaluation: expect.any(Object), source: door.id}]);
+        expect(fired, 'fired once, with the count').toEqual([{density: {decisions: 7, manualActions: 0}, evaluation: expect.any(Object), source: door.id}]);
 
         host.destroy()
     });
@@ -329,7 +333,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         door.getReference('pasted-json').value = JSON.stringify(coldEvaluation());
         door.onProjectPastedClick();
-        expect(door.store.getCount()).toBe(11);
+        expect(door.store.getCount()).toBe(12);
         expect(door.getReference('status-line').text).toBe('');
 
         host.destroy()
@@ -348,13 +352,13 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         const {host, door, progress} = createDoor();
 
         await settle();
-        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+        expect(progress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
 
         // an ACTION refusal: the status line speaks, the observation stands
         await door.onPresetClick({component: {presetId: 'hosted'}});
         expect(door.getReference('status-line').text).toBe('The preset \'hosted\' was refused: refused by the fixture');
         expect(door.store.get('placement').status).toBe('ok');
-        expect(progress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+        expect(progress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
 
         // an OBSERVATION failure: no row stays green from the previous read
         evaluateFails = true;
@@ -363,7 +367,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.getReference('status-line').text).toBe('The recipe could not be re-evaluated: the recipe modules did not load: ENOENT');
         expect(door.store.items.every(step => step.status === 'unknown')).toBe(true);
         expect(door.store.get('placement').reason).toBe('The recipe could not be re-evaluated: the recipe modules did not load: ENOENT');
-        expect(progress()).toEqual({ok: 0, total: 11, next: 'placement', blocking: null});
+        expect(progress()).toEqual({ok: 0, total: 12, next: 'placement', blocking: null});
         expect(door.getReference('quiet-line').hidden).toBe(true);
 
         host.destroy()
@@ -374,8 +378,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
             releases = [],
             answered = coldEvaluation();
 
-        answered.steps[1] = row('preset', 'question', 'ok', 'consented', {answer: 'hosted', consentedAt: '2026-10-02T10:22:00.000Z'});
-
+        put(answered, row('preset', 'question', 'ok', 'consented', {answer: 'hosted', consentedAt: '2026-10-02T10:22:00.000Z'}));
         let evaluations = 0;
 
         stubShell({
@@ -400,7 +403,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         await slowRead;
 
         expect(door.store.get('preset').answer, 'the older read does not win').toBe('hosted');
-        expect(progress()).toEqual({ok: 3, total: 11, next: 'plane-credential', blocking: null});
+        expect(progress()).toEqual({ok: 3, total: 12, next: 'plane-credential', blocking: null});
 
         host.destroy()
     });
@@ -408,12 +411,15 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
     test('the store\'s progress and the preset verdict helper read the rows alone', () => {
         const store = Neo.create(SetupSteps, {});
 
-        expect(store.projectEvaluation(coldEvaluation())).toBe(11);
-        expect(store.describeProgress()).toEqual({ok: 2, total: 11, next: 'preset', blocking: null});
+        expect(store.projectEvaluation(coldEvaluation())).toBe(12);
+        expect(store.describeProgress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
         expect(store.projectEvaluation(null), 'no steps clears the list').toBe(0);
         expect(store.describeProgress()).toEqual({ok: 0, total: 0, next: null, blocking: null});
         expect(presetVerdict(PLACEMENT, 'local-full')).toMatchObject({verdict: 'refused', reason: 'the host budget falls 5.9 GiB short'});
-        expect(presetVerdict(PLACEMENT, 'hosted').margins).toEqual(PLACEMENT.possible[0].margins);
+        expect(presetVerdict(PLACEMENT, 'hosted')).toMatchObject({verdict: 'recommended', margins: PLACEMENT.recommended[0].margins});
+        // an adverse placement, constructed: a candidate without a recorded floor reads possible, with its reason
+        expect(presetVerdict({recommended: [], possible: [{id: 'hosted', margins: {host: 1, guest: 1}, reason: 'no recorded quality floor: a candidate, never recommended by default'}], refused: []}, 'hosted'))
+            .toMatchObject({verdict: 'possible', reason: 'no recorded quality floor: a candidate, never recommended by default'});
         expect(presetVerdict(null, 'hosted')).toEqual({verdict: 'unknown', reason: 'the placement step has not answered', margins: null});
 
         store.destroy()
