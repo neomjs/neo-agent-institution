@@ -212,14 +212,16 @@ class AddAgentFlow extends Base {
 
     /**
      * @summary Ask the Fleet which existing agents' memory an added seat could continue, as one typed
-     * outcome. Only a wired read with no candidates says no memory exists. An unwired source, a refused,
-     * degraded or failed read, a transport failure or a shapeless answer is `unavailable`: unknown, never
-     * empty.
+     * outcome. Only a wired read with no candidates says no memory exists. A fleet that answers without
+     * a list (an unwired source, a refused, degraded or failed read, a shapeless answer) is
+     * `unavailable`: unknown, never empty. A fleet that cannot be reached is `offline`: nothing can be
+     * added then, so there is no memory question to ask.
      *
      * Outcome shapes:
      * - `{state: 'none'}` — the host holds no memory to import; the seat records `memoryImport: 'none'`.
      * - `{state: 'candidates', candidates}` — one or more `{family, source, name, notes, lastChanged}`.
      * - `{state: 'unavailable', reason}` — discovery could not answer; the operator retries or starts fresh.
+     * - `{state: 'offline', reason}` — no fleet answered; the form asks again on submit.
      * @param {Object}        [config]
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
      * @returns {Promise<Object>} One outcome — this function never throws.
@@ -228,7 +230,7 @@ class AddAgentFlow extends Base {
         const bridge = AddAgentFlow.resolveRegistryBridge(bridgeResolver);
 
         if (!bridge) {
-            return {state: 'unavailable', reason: FLEET_OFFLINE_REASON}
+            return {state: 'offline', reason: FLEET_OFFLINE_REASON}
         }
 
         if (!bridge.fleetMemoryCandidates) {
@@ -240,8 +242,10 @@ class AddAgentFlow extends Base {
         try {
             answer = await bridge.fleetMemoryCandidates()
         } catch (error) {
-            // the wire's own refusal or failure words; a transport failure has no answer to quote
-            return {state: 'unavailable', reason: error?.fleetWireState && error.message ? error.message : 'Could not reach the fleet.'}
+            // the wire's own refusal or failure words; a transport failure is no answer at all
+            return error?.fleetWireState && error.message
+                ? {state: 'unavailable', reason: error.message}
+                : {state: 'offline', reason: 'Could not reach the fleet.'}
         }
 
         if (answer?.capability?.state !== 'wired') {
@@ -259,7 +263,7 @@ class AddAgentFlow extends Base {
      * @summary The `memoryImport` a submission sends, from the discovery outcome and the operator's choice.
      * Only a wired read with no candidates records `'none'` by itself. With candidates the operator picks
      * one or starts fresh, and an unavailable discovery needs *Start fresh* chosen explicitly: an unknown
-     * is never recorded as "no memory".
+     * is never recorded as "no memory". An offline fleet adds nothing, so it answers with its reason.
      * @param {Object}      options
      * @param {Object}      options.discovery The {@link readMemoryCandidates} outcome, or `{state: 'reading'}`.
      * @param {String|null} options.choice    A candidate's `source`, `'none'` for *Start fresh*, or null.
@@ -273,6 +277,8 @@ class AddAgentFlow extends Base {
                 return choice ? {valid: true, memoryImport: choice} : {valid: false, reason: 'Choose the agent whose memory this seat continues, or Start fresh.'};
             case 'unavailable':
                 return choice === MEMORY_IMPORT_NONE ? {valid: true, memoryImport: MEMORY_IMPORT_NONE} : {valid: false, reason: 'Existing memory could not be checked. Retry, or choose Start fresh.'};
+            case 'offline':
+                return {valid: false, reason: discovery.reason};
             default:
                 return {valid: false, reason: 'Still checking whether existing memory exists.'}
         }

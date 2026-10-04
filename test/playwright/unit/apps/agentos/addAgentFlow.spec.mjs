@@ -292,14 +292,15 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(await read({fleetMemoryCandidates: async () => { throw wireError('operation-failed', "fleet: 'fleetMemoryCandidates' failed") }}))
             .toEqual({state: 'unavailable', reason: "fleet: 'fleetMemoryCandidates' failed"});
 
-        // a transport failure has no answer to quote, and a shapeless answer is no list
-        expect(await read({fleetMemoryCandidates: async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8083') }}))
-            .toEqual({state: 'unavailable', reason: 'Could not reach the fleet.'});
+        // a shapeless answer is no list
         expect((await read({fleetMemoryCandidates: memoryRead([{name: 'no source'}])})).state).toBe('unavailable');
         expect((await read({fleetMemoryCandidates: async () => ({capability: {state: 'wired'}})})).state).toBe('unavailable');
+        expect(await read({defineAgent: async () => cleanReadback()})).toEqual({state: 'unavailable', reason: 'This fleet cannot check for existing memory.'});
 
-        expect(await read(null)).toEqual({state: 'unavailable', reason: AddAgentFlow.FLEET_OFFLINE_REASON});
-        expect(await read({defineAgent: async () => cleanReadback()})).toEqual({state: 'unavailable', reason: 'This fleet cannot check for existing memory.'})
+        // no fleet answered at all: nothing can be added, so there is no memory question
+        expect(await read({fleetMemoryCandidates: async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8083') }}))
+            .toEqual({state: 'offline', reason: 'Could not reach the fleet.'});
+        expect(await read(null)).toEqual({state: 'offline', reason: AddAgentFlow.FLEET_OFFLINE_REASON})
     });
 
     test('the memoryImport a submission sends: none only when nothing exists or Start fresh is chosen, a candidate only when chosen (#521 AC-3)', () => {
@@ -315,6 +316,8 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(AddAgentFlow.memoryImportFor({discovery: unavailable, choice: null}).valid).toBe(false);
         expect(AddAgentFlow.memoryImportFor({discovery: unavailable, choice: 'none'})).toEqual({valid: true, memoryImport: 'none'});
         expect(AddAgentFlow.memoryImportFor({discovery: {state: 'reading'}, choice: 'none'}).valid).toBe(false);
+        expect(AddAgentFlow.memoryImportFor({discovery: {state: 'offline', reason: 'Could not reach the fleet.'}, choice: 'none'}))
+            .toEqual({valid: false, reason: 'Could not reach the fleet.'});
 
         // one candidate is preselected; several wait for the operator
         expect(AddAgentFlow.preselectedMemory({state: 'candidates', candidates: [CANDIDATES[0]]})).toBe(CANDIDATES[0].source);
@@ -617,6 +620,45 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         await expect.poll(() => form.memoryDiscovery).toEqual({state: 'none'});
         expect(reads).toBe(1);
+
+        form.destroy()
+    });
+
+    test('a fleet that could not be reached shows no memory frame, and submit asks it again (#521)', async () => {
+        const
+            calls   = [],
+            answers = [async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8083') }, async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8083') }, NO_MEMORY],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async payload => { calls.push(payload); return cleanReadback() },
+                    fleetMemoryCandidates: () => answers.shift()()
+                })
+            }),
+            fill    = async () => {
+                (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+                (await form.getField('credential')).value     = CREDENTIAL;
+                form.harnessType                              = 'opencode'
+            };
+
+        await form.readMemory();
+
+        expect(form.memoryDiscovery).toEqual({state: 'offline', reason: 'Could not reach the fleet.'});
+        expect(form.getReference('memory-frame').hidden).toBe(true);
+
+        // still unreachable on submit: nothing is sent
+        await fill();
+        await form.onSubmitClick();
+
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Could not reach the fleet.'});
+        expect(calls).toHaveLength(0);
+
+        // the fleet started meanwhile, and the host holds no memory: the add goes through as a fresh seat
+        await fill();
+        await form.onSubmitClick();
+
+        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: 'none'}]);
+        expect(form.getReference('memory-frame').hidden).toBe(true);
 
         form.destroy()
     });

@@ -32,7 +32,8 @@ const FORGE_LABELS = Object.freeze({github: 'GitHub', gitlab: 'GitLab'});
  * agents' memory the seat could continue (`AddAgentFlow.readMemoryCandidates`). Nothing found records
  * `memoryImport: 'none'` with no frame shown. Candidates show a frame after the token: one is
  * preselected, several wait for a choice, and *Start fresh* sends `'none'`. A check that could not
- * answer shows its reason with *Retry*, and only an explicit *Start fresh* adds the seat then.
+ * answer shows its reason with *Retry*, and only an explicit *Start fresh* adds the seat then. A fleet
+ * that cannot be reached shows no frame; submit asks it again.
  *
  * **Mount-independent by design.** The form ends at the `agentDefinitionAccepted` event carrying the
  * validated public definition; the mounting owner writes the roster. It reads the injected instance
@@ -738,8 +739,12 @@ class AddAgentForm extends FormContainer {
      * @returns {Promise<void>}
      */
     async onSubmitClick() {
+        const me = this;
+
+        // a fleet that could not be reached when the form was shown may have started since
+        me.memoryDiscovery.state === 'offline' && await me.readMemory();
+
         const
-            me         = this,
             values     = await me.getSubmitValues(),
             bridge     = AddAgentFlow.resolveRegistryBridge(me.bridgeResolver),
             shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
