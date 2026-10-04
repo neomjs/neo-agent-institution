@@ -66,6 +66,16 @@ class AgentDefinition extends Model {
             type        : 'Object',
             defaultValue: null
         }, {
+            // the model and reasoning effort declared for the seat's harness, applied at its next Start;
+            // null = none declared, so the harness keeps its own configuration
+            name        : 'model',
+            type        : 'String',
+            defaultValue: null
+        }, {
+            name        : 'reasoningEffort',
+            type        : 'String',
+            defaultValue: null
+        }, {
             // the repositories the registry declares for the seat: `repo` is the working one
             // ({repoSlug, cloneUrl}), `repos` the others. Nested fields, not a `mapping`: a mapping
             // only reads initial values, and the configure readback must refresh both.

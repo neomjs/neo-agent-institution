@@ -138,6 +138,18 @@ class FleetAgent extends Model {
             name        : 'gitIdentity',
             defaultValue: null
         }, {
+            // what the last start found of the seat's declared model in its harness's catalog
+            // (`{state, model, reasoningEffort, reason}`, the roster DTO's `seatModel`), so the card can say a
+            // refused start was about the model. Null = no start read a catalog, or a Brain that does not report it
+            name        : 'seatModel',
+            defaultValue: null
+        }, {
+            // the model and effort a Codex seat's config is set to now (`{model, reasoningEffort}`, the
+            // roster DTO's `harnessSettings`): configured state, never what a chat runs on. Null for every
+            // other family, and from a Brain that does not report it
+            name        : 'harnessSettings',
+            defaultValue: null
+        }, {
             // where a running Claude Desktop seat's session opened, against its checkout
             // (`{state, expected, observed?, reason?}`, the roster DTO's `sessionFolder`; see
             // AgentOS.util.SeatSessionFolder). Null for every other row, and from a Brain that does not report it
