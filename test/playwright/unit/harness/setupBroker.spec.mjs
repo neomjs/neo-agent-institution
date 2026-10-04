@@ -809,5 +809,27 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         expect(run.world.commands[0]).toContain(path.join(run.stateRoot, 'config', 'local-agent-os.env'));
         expect(readdirSync(path.join(run.stateRoot, 'secrets')).length, 'the secret files are in the temp state root').toBeGreaterThan(0);
         expect(readdirSync(run.setupRoot).some(name => name.endsWith('.json')), 'the record is in the temp setup root').toBe(true)
+    });
+
+    test('the card\'s own cold request, with no target bound by hand, reaches done ok', async () => {
+        // expected to fail today: a run the card starts names no target, and write-env cannot render one. When a
+        // Create run binds the target its profile declares, this arm passes and the annotation is removed with it.
+        test.fail();
+
+        const
+            run             = await pinnedSetupHost(),
+            {broker, world} = run;
+
+        expect((await broker.evaluate(trusted, {target: null})).ok).toBe(true);
+        expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok).toBe(true);
+        expect((await broker.credential(trusted, {stepId: 'plane-credential'})).ok).toBe(true);
+
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
+            expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
+        }
+
+        world.recallLands = true;
+
+        expect(rowOf(await broker.effect(trusted, {effectId: 'verify'}), 'done')).toMatchObject({status: 'ok'})
     })
 });
