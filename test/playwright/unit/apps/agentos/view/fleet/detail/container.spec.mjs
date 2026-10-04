@@ -197,36 +197,48 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
-    test('after a Start, the Seat row says on one line where the session opened when that is not the seat\'s folder, pointing at the Repository pane for the expected one (#522)', () => {
+    test('after a Start, a session outside the seat\'s folder reads as a state word in the Seat row, and in full under the Repository pane\'s path (#522)', () => {
         const
             repoPath = '/Users/x/agents/vega/neomjs/neo',
+            observed = '/Users/x/Desktop/scratch',
             detail   = createDetail({
                 agentId: 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok',
-                sessionFolder: {state: 'wrong', expected: repoPath, observed: '/Users/x/Desktop/scratch'}
+                sessionFolder: {state: 'wrong', expected: repoPath, observed}
             }),
             part     = reference => detail.down({reference}),
-            words    = () => part('detail-seat-folder').vdom.cn.map(node => node.text).join('');
+            words    = () => part('detail-seat-folder').vdom.cn.map(node => node.text).join(''),
+            session  = () => part('pane-repo-body').vdom.cn.find(node => node.cls?.includes('fm-detail-repo-session')) ?? null;
 
-        // AC-1: the state word, where it opened (shortened) and the next step; the expected folder is
-        // the Repository pane's, never repeated here
+        // AC-1: the Seat row stays one short line with no path; the pane says where and what to do
         expect(part('detail-seat-folder').hidden).toBe(false);
-        expect(words()).toBe('wrong folder · opened in …/Desktop/scratch · expected the repository below · reopen it there');
+        expect(words()).toBe('wrong folder · see Repository');
         expect(part('detail-seat-folder').vdom.cn[0].cls).toContain('is-wrong');
-        expect(part('detail-seat-folder').vdom.title).toBe("Opened in /Users/x/Desktop/scratch; expected the repository below. Reopen it there in Claude's Code tab and continue.");
-        expect(words()).not.toContain(repoPath);
+        expect(part('detail-seat-folder').vdom.title).toBeUndefined();
+        expect(session().cls).toContain('is-wrong');
+        expect(session().text).toBe(`The session opened in ${observed}, so it loads none of the seat's servers, memory or hooks. Reopen this folder in Claude's Code tab.`);
         // the first-launch step gives way to what happened
         expect(part('detail-seat-launch').hidden).toBe(true);
 
         // AC-2: pending and unknown read as themselves, with their reasons
         applySet(detail, {sessionFolder: {state: 'pending', expected: repoPath}});
-        expect(words()).toBe("not opened yet · expected the repository below · open it in Claude's Code tab");
+        expect(words()).toBe('not opened yet · see Repository');
+        expect(session().text).toBe("No session has opened since the launch. Open this folder in Claude's Code tab.");
         applySet(detail, {sessionFolder: {state: 'unknown', expected: repoPath, reason: 'the session records could not be read'}});
-        expect(words()).toBe('folder unknown · the session records could not be read · expected the repository below');
+        expect(words()).toBe('folder unknown · see Repository');
+        expect(session().text).toBe("Where the session opened is unknown: the session records could not be read. Check that Claude's Code tab has this folder open.");
+
+        // the launch's folder is the verdict's authority: the repository changed or cleared since the
+        // launch is not where the session should be, so the pane names the launch's folder
+        applySet(detail, {repoPath: '/Users/x/agents/vega/neomjs/other', sessionFolder: {state: 'wrong', expected: repoPath, observed}});
+        expect(session().text).toBe(`The session opened in ${observed}, so it loads none of the seat's servers, memory or hooks. This launch expected ${repoPath}. Reopen that folder in Claude's Code tab, or Restart it on the card to launch in this repository.`);
+        applySet(detail, {repoPath: null});
+        expect(session().text).toBe(`The session opened in ${observed}, so it loads none of the seat's servers, memory or hooks. This launch expected ${repoPath}. Reopen that folder in Claude's Code tab.`);
 
         // ok adds no line, and AC-3: a Brain that reports no folder state renders nothing new
         for (const sessionFolder of [{state: 'ok', expected: repoPath}, null]) {
-            applySet(detail, {sessionFolder});
-            expect(part('detail-seat-folder').hidden).toBe(true)
+            applySet(detail, {repoPath, sessionFolder});
+            expect(part('detail-seat-folder').hidden).toBe(true);
+            expect(session()).toBeNull()
         }
 
         detail.destroy()

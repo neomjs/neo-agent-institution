@@ -107,8 +107,9 @@
         color: var(--fm-ink);
     }
 
-    /* where the session opened: ONE line that ellipsizes (the title holds the whole words), only its
-       state word coloured, the attention token for the wrong folder the operator acts on */
+    /* the session's folder verdict: a short line that still ellipsizes at the narrowest width (the
+       Repository pane holds the whole words), only its state word coloured, the attention token for
+       the wrong folder the operator acts on */
     .fm-detail-seat-folder {
         color        : var(--fm-ink);
         font         : var(--fm-text-micro);
@@ -209,6 +210,20 @@
     .fm-detail-repo-path {
         min-width : 0;
         word-break: break-all;
+    }
+
+    /* a desktop session outside the launch's folder: the whole words, wrapping, folders broken
+       anywhere rather than elided; the wrong folder the operator acts on takes the attention token */
+    .fm-detail-repo-session {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+        padding-top  : var(--fm-space-1);
+
+        &.is-wrong {
+            color: var(--fm-state-wedged);
+        }
     }
 
     .fm-detail-repo-copy {

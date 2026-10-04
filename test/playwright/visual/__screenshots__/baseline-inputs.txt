@@ -267,7 +267,7 @@ apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
 
 apps/agentos/util/SeatSessionFolder.mjs
-    3321bcf48d56484db5b53a593355c00814486c3c
+    5c407e6a03f2b440af221d6a6e314aa7f89f6f53
 
 apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
@@ -351,7 +351,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    218dc2c47efcf07b4c5422a59ba30179f88f6ef4
+    92c384e0864faf4dd0c15f8e7f7baf3c4ceacfb4
 
 apps/agentos/view/fleet/detail/Controller.mjs
     69c833d9f1804d6f1643fcbbcfcc4b45ca171268
@@ -564,7 +564,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    8b7ad0cb4be8435f46a63f3b4eec4e49bb5c56b4
+    99e0cbc11f87c1aca819129f35697e7dda159d9b
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a

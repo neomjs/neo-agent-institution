@@ -323,8 +323,8 @@ class AgentDetail extends Container {
                         reference: 'detail-seat-launch',
                         text     : 'Open the repository folder below in Claude\'s Code tab, then Start on the card.'
                     }, {
-                        // after a Start: where the session opened when that is not the seat's own
-                        // folder, on one line; the expected folder is the Repository pane's
+                        // after a Start, a session outside the seat's folder: its state word only;
+                        // the Repository pane says where it opened and what to do
                         ntype    : 'component',
                         cls      : ['fm-detail-seat-folder'],
                         hidden   : true,
@@ -589,9 +589,9 @@ class AgentDetail extends Container {
      * @summary The Seat row: the harness family in words, only for a REPORTED family (none renders no
      * row and no placeholder). A Claude Desktop seat with a reported folder adds the one step its first
      * launch needs, pointing at the Repository pane's path, since that Desktop cannot be launched into
-     * a folder. After a Start, a session that is not in that folder replaces the step with one line:
-     * its state word, where it opened and the next step, pointing at the Repository pane for the
-     * expected folder ({@link AgentOS.util.SeatSessionFolder}). Every value is an inert `text` node.
+     * a folder. After a Start, a session that is not in that folder replaces the step with its state
+     * word, pointing at the Repository pane, which says where it opened and the next step
+     * ({@link AgentOS.util.SeatSessionFolder}). Every value is an inert `text` node.
      * @param {Object} record The drilled-in FleetAgent record.
      * @protected
      */
@@ -599,7 +599,7 @@ class AgentDetail extends Container {
         const
             me          = this,
             harnessType = typeof record.harnessType === 'string' && record.harnessType ? record.harnessType : null,
-            folder      = SeatSessionFolder.detailLine(record.sessionFolder),
+            state       = SeatSessionFolder.stateWord(record.sessionFolder),
             line        = me.getReference('detail-seat-folder');
 
         me.getReference('detail-seat').hidden = harnessType === null;
@@ -607,15 +607,13 @@ class AgentDetail extends Container {
         if (harnessType === null) return;
 
         me.getReference('detail-seat-family').text   = HarnessChoice.describe(harnessType) ?? harnessType;
-        me.getReference('detail-seat-launch').hidden = folder !== null || !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath);
+        me.getReference('detail-seat-launch').hidden = state !== null || !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath);
 
-        line.hidden = folder === null;
-        line.vdom.cn = folder ? [
-            {tag: 'span', cls: ['fm-detail-seat-folder-state', `is-${record.sessionFolder.state}`], text: folder.state},
-            {tag: 'span', text: ` · ${folder.text}`}
+        line.hidden = state === null;
+        line.vdom.cn = state ? [
+            {tag: 'span', cls: ['fm-detail-seat-folder-state', `is-${record.sessionFolder.state}`], text: state},
+            {tag: 'span', text: ' · see Repository'}
         ] : [];
-        // the line is one row that ellipsizes; its title carries the whole words
-        line.changeVdomRootKey('title', folder?.title ?? null);
         line.update()
     }
 
@@ -809,7 +807,8 @@ class AgentDetail extends Container {
      *
      * The lane pane renders the lane line with its claim age when its source is wired, plus the
      * independent open-lane count. The repository pane renders the roster row's slug and its whole
-     * clone path, and shows the path's Copy action only while a path is reported.
+     * clone path, and shows the path's Copy action only while a path is reported. Under the path, a
+     * desktop session outside the launch's folder says where it opened and what to do, wrapped whole.
      * The pull requests pane loads the seat's held pull requests, worst first, into its list's Store,
      * or says it holds none; without an answer it renders nothing, since its pill says so. The
      * list re-words its rows' ages at the pane's clock. The thought-stream pane renders
@@ -825,11 +824,13 @@ class AgentDetail extends Container {
         if (key === 'repo') {
             const
                 repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null,
+                session  = SeatSessionFolder.paneText(record.sessionFolder, repoPath),
                 field    = this.getReference('detail-repo-field');
 
             body.vdom.cn = [
                 {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},
-                ...(repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: repoPath}] : [])
+                ...(repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: repoPath}] : []),
+                ...(session  ? [{tag: 'span', cls: ['fm-detail-repo-session', `is-${record.sessionFolder.state}`], text: session}] : [])
             ];
             body.update();
 

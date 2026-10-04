@@ -10,9 +10,10 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * green, and that session loads none of the seat's servers, memory or hooks. These words are where the
  * operator learns it. `ok`, and a row that reports no fact, say nothing.
  *
- * The card names no path, not even in its title: a path is Detail's, where the Repository pane shows
- * the expected folder whole with Copy path. Detail's Seat row adds only where the session opened,
- * shortened to one line.
+ * The card names no path, not even in its title. Paths are Detail's, and Detail says each one once:
+ * its Seat row carries only the state word, and the Repository pane carries the full words under its
+ * clone path. The launch's `expected` folder is the verdict's authority, because the repository can
+ * change or be cleared while that launch runs.
  * @class AgentOS.util.SeatSessionFolder
  * @extends Neo.core.Base
  */
@@ -50,42 +51,44 @@ class SeatSessionFolder extends Base {
     }
 
     /**
-     * @summary The Detail Seat row's one line: the state word, the rest, and its full words as the title.
-     * The expected folder is the Repository pane's, so the line points at it rather than repeating it.
+     * @summary The Detail Seat row's state word. The row stays compact; the Repository pane says the rest.
      * @param {Object|null} sessionFolder
-     * @returns {{state: String, text: String, title: String}|null} `null` when there is nothing to say.
+     * @returns {String|null} `null` when there is nothing to say.
      */
-    static detailLine(sessionFolder) {
-        const {observed, reason, state} = sessionFolder || {};
-
-        return {
-            pending: {
-                state: 'not opened yet',
-                text : 'expected the repository below · open it in Claude\'s Code tab',
-                title: 'No session has opened since the launch. Open the repository below in Claude\'s Code tab.'
-            },
-            unknown: {
-                state: 'folder unknown',
-                text : `${reason} · expected the repository below`,
-                title: `Where the session opened is unknown: ${reason}. Check which folder Claude's Code tab opened.`
-            },
-            wrong: {
-                state: 'wrong folder',
-                text : `opened in ${SeatSessionFolder.shortPath(observed)} · expected the repository below · reopen it there`,
-                title: `Opened in ${observed}; expected the repository below. Reopen it there in Claude's Code tab and continue.`
-            }
-        }[state] ?? null
+    static stateWord(sessionFolder) {
+        return {pending: 'not opened yet', unknown: 'folder unknown', wrong: 'wrong folder'}[sessionFolder?.state] ?? null
     }
 
     /**
-     * @summary A folder short enough for one line: its last two segments after an ellipsis.
-     * @param {String} path
-     * @returns {String}
+     * @summary The Repository pane's words under its clone path: what happened, every folder whole, and
+     * the next step. The pane's path stands for the launch's folder only while the two are the same.
+     * Otherwise the words name the launch's folder, and offer a Restart into the repository the pane
+     * shows, since a Restart provisions from the current repository.
+     * @param {Object|null} sessionFolder
+     * @param {String|null} repoPath The clone path the pane shows, or `null` when none is declared.
+     * @returns {String|null} `null` when there is nothing to say.
      */
-    static shortPath(path) {
-        const parts = String(path ?? '').split('/').filter(Boolean);
+    static paneText(sessionFolder, repoPath) {
+        if (!SeatSessionFolder.stateWord(sessionFolder)) return null;
 
-        return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : String(path ?? '')
+        const
+            {expected, observed, reason, state} = sessionFolder,
+            here   = repoPath === expected,
+            folder = here ? 'this folder' : 'that folder',
+            what   = {
+                pending: 'No session has opened since the launch.',
+                unknown: `Where the session opened is unknown: ${reason}.`,
+                wrong  : `The session opened in ${observed}, so it loads none of the seat's servers, memory or hooks.`
+            }[state],
+            step   = {
+                pending: `Open ${folder} in Claude's Code tab`,
+                unknown: `Check that Claude's Code tab has ${folder} open`,
+                wrong  : `Reopen ${folder} in Claude's Code tab`
+            }[state];
+
+        return here
+            ? `${what} ${step}.`
+            : `${what} This launch expected ${expected}. ${step}${repoPath ? ', or Restart it on the card to launch in this repository' : ''}.`
     }
 }
 
