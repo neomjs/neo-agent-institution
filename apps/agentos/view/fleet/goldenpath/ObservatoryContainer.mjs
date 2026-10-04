@@ -889,8 +889,10 @@ class ObservatoryContainer extends Container {
             const isOpen = section === openSection, component = me.getReference(body), button = me.getReference(head);
 
             // the layout copied flex into the style when it placed the section, so a change must reach the style
-            component.flex  = isOpen ? 1 : 'none';
-            component.style = {...component.style, flex: isOpen ? '1 1 0%' : 'none'};
+            component.set({
+                flex : isOpen ? 1 : 'none',
+                style: {...component.style, flex: isOpen ? '1 1 0%' : 'none'}
+            });
             component.toggleCls('is-collapsed', !isOpen);
             button.pressed               = isOpen;
             button.vdom['aria-expanded'] = String(isOpen);

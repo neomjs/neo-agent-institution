@@ -231,6 +231,11 @@
         white-space  : nowrap;
     }
 
+    /* open, the Team section is as tall as the panel leaves it, never as its peers: the list scrolls inside it */
+    .fm-observatory-team {
+        min-height: 0;
+    }
+
     /* the team lens: the engine's check list, as tall as its open section, each peer in its own hue */
     .fm-observatory-peer-list {
         .fm-observatory-peer-swatch {

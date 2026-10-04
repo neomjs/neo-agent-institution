@@ -1066,23 +1066,6 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await nodesHead.click();
         await expect(node(0)).toBeVisible();
         expect(await top('.fm-observatory-view-row >> nth=0')).toBe(viewTop);
-
-        // a node's title wraps whole: a 90-character title on a detached copy of a row is cut nowhere
-        const wrap = await node(0).evaluate(row => {
-            const copy  = row.cloneNode(true),
-                  label = copy.querySelector('.fm-observatory-row-label');
-
-            [copy, ...copy.querySelectorAll('[id]')].forEach(el => el.removeAttribute('id'));
-            row.parentNode.append(copy);
-            label.textContent = 'one line';
-            const line = label.clientHeight;
-            label.textContent = 'A ninety-character node title reads whole in this list, however many lines it has to take.';
-            const result = {cut: label.scrollHeight > label.clientHeight, lines: Math.round(label.clientHeight / line)};
-            copy.remove();
-            return result
-        });
-        expect(wrap.cut, 'a long title is never clipped').toBe(false);
-        expect(wrap.lines, 'it takes the lines it needs').toBeGreaterThan(2);
         await node(1).click();
         await expect(label).toHaveText('Golden Path currency on the cockpit');
         expect(await outlineOf(node(1))).toBe('none');
@@ -1113,6 +1096,45 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await pane.getByRole('button', {name: /^Selected node/}).click();
         await pane.locator('.fm-observatory-selected-actions').getByRole('button', {name: 'Clear'}).click();
         await expect(label).toHaveText('No node selected')
+    });
+
+    test('the side panel reads a crowded read in full — All lists 161 peers and Nodes 500 rows, the last of each reachable by scrolling, while View holds its place and the other sections stay at their heads; a 90-character title wraps whole on its own row', async ({page}) => {
+        const
+            pane     = page.locator('.fm-observatory-pane'),
+            head     = pane.locator('.fm-observatory-peers-head'),
+            peers    = pane.locator('.fm-observatory-peer-list .neo-list-item'),
+            nodes    = pane.locator('.fm-observatory-node-list .neo-list-item'),
+            viewTop  = async () => Math.round((await pane.locator('.fm-observatory-view-row').first().boundingBox()).y),
+            heightOf = locator => locator.locator('.fm-observatory-row-label').evaluate(label => label.clientHeight);
+
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        await feedObservatory(page, 'crowded', /^Current · captured .+ · complete$/);
+
+        const top = await viewTop();
+
+        await expect(head.locator('.fm-observatory-side-title')).toHaveText('Team · 13 of 161');
+        await head.getByRole('button', {name: 'All'}).click();
+        await expect(peers).toHaveCount(161);
+        await peers.last().scrollIntoViewIfNeeded();
+        await expect(peers.last(), 'the last peer scrolls into the open section').toBeInViewport();
+        await expect(nodes.first(), 'Nodes stays at its head').toBeHidden();
+        expect(await viewTop()).toBe(top);
+
+        await pane.getByRole('button', {name: /^Nodes/}).click();
+        await expect(nodes).toHaveCount(500);
+        await expect(peers.first(), 'Team folds to its head').toBeHidden();
+        await nodes.last().scrollIntoViewIfNeeded();
+        await expect(nodes.last(), 'the last row scrolls into the open section').toBeInViewport();
+        expect(await viewTop()).toBe(top);
+
+        const
+            long  = nodes.filter({hasText: 'A ninety-character node title'}),
+            short = nodes.filter({has: page.locator('.fm-observatory-row-label', {hasText: /^crowded issue 1$/})});
+
+        await long.scrollIntoViewIfNeeded();
+        expect(await long.locator('.fm-observatory-row-label').evaluate(label => label.scrollHeight > label.clientHeight || label.scrollWidth > label.clientWidth), 'a long title is never clipped').toBe(false);
+        expect(Math.round(await heightOf(long) / await heightOf(short)), 'it takes the lines it needs').toBeGreaterThan(1)
     });
 
     /**
