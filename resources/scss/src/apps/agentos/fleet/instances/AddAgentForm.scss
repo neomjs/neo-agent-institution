@@ -36,6 +36,12 @@
         text-transform : uppercase;
     }
 
+    .fm-add-destination,
+    .fm-add-credential-help {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-detail);
+    }
+
     .fm-add-forge-row,
     .fm-add-harness-row {
         gap: 6px;

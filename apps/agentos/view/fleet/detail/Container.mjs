@@ -189,6 +189,14 @@ class AgentDetail extends Container {
          * @reactive
          */
         fleetTenants_: null,
+        /** The shell's current profile identity, mirrored from the bound bridge. @member {String|null} boundProfileId_=null @reactive */
+        boundProfileId_: null,
+        /** The provider-hosted instance roster used to resolve the bound plane endpoint. @member {Neo.data.Store|null} instanceStore_=null @reactive */
+        instanceStore_: null,
+        /** Whether the installed shell owns the current plane binding. @member {Boolean} shellCustody_=false @reactive */
+        shellCustody_: false,
+        /** The plane endpoint attached by the installed shell, or null for this machine. @member {String|null} shellPlaneBase_=null @reactive */
+        shellPlaneBase_: null,
         /**
          * The drilled-in resident: an {@link AgentOS.model.FleetAgent} record (store-backed, live)
          * or a plain field bag with the same keys. `null` renders the honest "no agent selected"
@@ -383,9 +391,14 @@ class AgentDetail extends Container {
         this.getReference('detail-repo-copy').set({handler: 'onCopyRepoPath', handlerScope: this});
         const configPane = this.getReference('config-pane');
 
-        if (configPane) {
-            configPane.tenantStore = this.fleetTenants
-        }
+        configPane?.set({
+            agentDefinitionsStore: this.agentDefinitions,
+            boundProfileId      : this.boundProfileId,
+            instanceStore       : this.instanceStore,
+            shellCustody        : this.shellCustody,
+            shellPlaneBase      : this.shellPlaneBase,
+            tenantStore         : this.fleetTenants
+        });
         this.applyRecord()
     }
 
@@ -396,9 +409,24 @@ class AgentDetail extends Container {
      * @protected
      */
     afterSetFleetTenants(value, oldValue) {
-        const card = this.getReference?.('config-pane');
+        this.getReference?.('config-pane')?.set({tenantStore: value})
+    }
 
-        if (card) card.tenantStore = value
+    /** @summary Forward the current bound profile to the configuration card. @protected */
+    afterSetBoundProfileId(value) {
+        this.getReference?.('config-pane')?.set({boundProfileId: value})
+    }
+    /** @summary Forward instance roster changes to the configuration card. @protected */
+    afterSetInstanceStore(value) {
+        this.getReference?.('config-pane')?.set({instanceStore: value})
+    }
+    /** @summary Forward shell custody changes to the configuration card. @protected */
+    afterSetShellCustody(value) {
+        this.getReference?.('config-pane')?.set({shellCustody: value})
+    }
+    /** @summary Forward bound plane endpoint changes to the configuration card. @protected */
+    afterSetShellPlaneBase(value) {
+        this.getReference?.('config-pane')?.set({shellPlaneBase: value})
     }
 
     /**
@@ -453,6 +481,7 @@ class AgentDetail extends Container {
      * @protected
      */
     afterSetAgentDefinitions(value, oldValue) {
+        this.getReference?.('config-pane')?.set({agentDefinitionsStore: value});
         this.isConstructed && this.controller.onDefinitionsStoreChange(value, oldValue)
     }
 

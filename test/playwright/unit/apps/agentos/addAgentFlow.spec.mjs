@@ -11,6 +11,7 @@ import Neo            from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import Instance       from '../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import AddAgentForm   from '../../../../../apps/agentos/view/fleet/instances/AddAgentForm.mjs';
+import FleetInstances from '../../../../../apps/agentos/store/FleetInstances.mjs';
 
 import AddAgentFlow from '../../../../../apps/agentos/util/AddAgentFlow.mjs';
 
@@ -286,6 +287,56 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         form.destroy()
     });
 
+    test('the destination line follows the injected plane facts and the PAT explains its one-token purpose (#503)', () => {
+        const
+            instanceStore = Neo.create(FleetInstances, {data: [{
+                profileId        : 'bound-profile',
+                label            : 'Shared Agent OS',
+                canonicalEndpoint: 'https://shared.example.test'
+            }, {
+                profileId        : 'other-profile',
+                label            : 'Other Agent OS',
+                canonicalEndpoint: 'https://other.example.test'
+            }]}),
+            form = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                boundProfileId: 'bound-profile',
+                instanceStore
+            });
+
+        expect(form.getReference('destination-line').text).toBe('Agent OS: Shared Agent OS');
+        expect(form.items.find(item => item.cls?.includes('fm-add-credential-help')).text)
+            .toBe('This token gives the agent access to its repositories and the connected Agent OS.');
+
+        instanceStore.get('bound-profile').set({label: 'Updated Agent OS'});
+        expect(form.getReference('destination-line').text).toBe('Agent OS: Updated Agent OS');
+
+        form.boundProfileId = 'other-profile';
+        expect(form.getReference('destination-line').text).toBe('Agent OS: Other Agent OS');
+
+        instanceStore.remove('other-profile');
+        expect(form.getReference('destination-line').text).toBe('Agent OS: no instance');
+        form.boundProfileId = 'bound-profile';
+        expect(form.getReference('destination-line').text).toBe('Agent OS: Updated Agent OS');
+
+        form.shellCustody  = true;
+        form.shellPlaneBase = 'https://agent-os.example.test';
+
+        expect(form.getReference('destination-line').text).toBe('Agent OS: agent-os.example.test');
+        form.shellCustody = false;
+
+        const destination = form.getReference('destination-line');
+
+        expect(destination.text).toBe('Agent OS: Updated Agent OS');
+
+        form.destroy();
+        instanceStore.get('bound-profile').set({label: 'After destroy'});
+
+        expect(destination.text).toBe('Agent OS: Updated Agent OS');
+
+        instanceStore.destroy()
+    });
+
     test('the harness choice is one chip per product, with App / Command line only where a product ships both (#245)', () => {
         const
             form     = Neo.create(AddAgentForm, {appName: 'AgentOSAddAgentFlowTest'}),
@@ -407,7 +458,9 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         });
 
         expect(form.items.some(item => item.name === 'credential')).toBe(false);
-        // the setup journey carries no credential-ownership prose: an idle form says nothing
+        // the help line no longer describes a field the form does not show: it names the next step
+        expect(form.getReference('credential-help').text).toBe('On Add, the app asks once for this agent\'s token.');
+        // shell ingress removes the inline PAT control; its submit remains an idle, valid state
         expect(form.flowStatus).toEqual({state: 'idle', reason: ''});
 
         const usernameField = await form.getField('githubUsername');

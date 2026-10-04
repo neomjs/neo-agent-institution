@@ -11,6 +11,7 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; // defines Neo.get — the container child-add path resolves parents through it
 import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
+import Store                from '../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs';
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
@@ -559,6 +560,59 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         // docked again: the SAME live instance — the declared pane is parked, never re-created
         lifecycle.connections.clear();
         expect(cockpit.resolvePane('detail', item)).toBe(detailPane)
+    });
+
+    test('detail destination bindings follow the root Provider while the same inspector remains mounted', async () => {
+        const
+            localShell = createShellProvider({
+                boundProfileId: 'profile-a',
+                shellCustody  : true,
+                shellPlaneBase: 'http://127.0.0.1:3102'
+            }),
+            stores = [
+                Neo.create(Store, {keyProperty: 'id', data: []}),
+                Neo.create(Store, {data: []}),
+                Neo.create(Store, {keyProperty: 'profileId', data: [{profileId: 'profile-a', canonicalEndpoint: 'http://127.0.0.1:3102'}]})
+            ],
+            localCockpit = Neo.create(FleetCockpit, {
+                stateProvider: {
+                    module: CockpitStateProvider,
+                    parent: localShell,
+                    stores: {
+                        fleetActivityEvents: {module: FleetActivityEvents},
+                        viewerWakeFeed     : {module: ViewerWakeFeed},
+                        agentDefinitions   : stores[0],
+                        fleetTenants       : stores[1],
+                        fleetInstances     : stores[2]
+                    }
+                }
+            });
+
+        try {
+            await localCockpit.refreshPromise;
+            const reveal = localCockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden: false});
+            localCockpit.onDockZoneDocumentChange(reveal.document);
+            await localCockpit.refreshPromise;
+
+            const detail = localCockpit.getReference('agent-detail'),
+                  card   = detail.getReference('config-pane'),
+                  detailId = detail.id;
+
+            expect(detail.boundProfileId).toBe('profile-a');
+            expect(detail.shellPlaneBase).toBe('http://127.0.0.1:3102');
+            expect(card.getDestinationText({})).toBe('Agent OS · 127.0.0.1:3102');
+
+            localShell.setData({boundProfileId: 'profile-b', shellPlaneBase: 'http://127.0.0.1:4102'});
+
+            expect(localCockpit.getReference('agent-detail')).toBe(detail);
+            expect(detail.id).toBe(detailId);
+            expect(card.boundProfileId).toBe('profile-b');
+            expect(card.getDestinationText({})).toBe('Agent OS · 127.0.0.1:4102')
+        } finally {
+            localCockpit.destroy();
+            localShell.destroy();
+            stores.forEach(store => store.destroy())
+        }
     });
 
     test('the observation hooks re-sync the chrome after the engine acts, and the return stays observable on the engine\'s channel', () => {

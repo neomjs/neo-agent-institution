@@ -30,7 +30,8 @@ const [
 test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
     test.setTimeout(120000);
 
-    test('cold-loads, saves config, adds an emergent resident, and freshly rehydrates over the real Fleet wire', async ({page, neuralLink}) => {
+    test('cold-loads, saves config, adds an emergent resident, and freshly rehydrates over the real Fleet wire', async ({page, neuralLink}, testInfo) => {
+        await page.setViewportSize({width: 1400, height: 900});
         const
             priorDataDir    = FleetRegistryService.dataDir,
             tmpDir          = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-config-e2e-')),
@@ -98,6 +99,35 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
 
             const memoryCore = page.locator('.fm-config-toggle').filter({hasText: 'Memory Core'});
             await expect(memoryCore).toHaveClass(/is-enabled/);
+
+            const
+                configView   = accountsView.locator('.fm-agent-config-card'),
+                [configCard] = await appHandle.queryComponent({id: await configView.getAttribute('id')}, ['id']),
+                edit         = configView.locator('.fm-config-connection-edit');
+
+            await expect(configView.locator('.fm-config-plane-credential')).toHaveCount(0);
+            await expect(configView.locator('.fm-target-choice')).toHaveCount(0);
+            await expect(edit).toHaveText('Edit connection');
+            await edit.click();
+            await expect(edit).toBeFocused();
+
+            const target = configView.getByRole('button', {name: /^This fleet ·/});
+            await target.click();
+
+            const focusedId = await target.getAttribute('id');
+            expect(await page.evaluate(() => document.activeElement?.id)).toBe(focusedId);
+
+            // Drive the same card method the real round-trip calls, while the browser owns focus.
+            for (const state of ['pending', 'rejected', 'accepted']) {
+                await appHandle.callMethod(configCard.properties.id, 'setSaveStatus', [agentId, state, `Focus witness: ${state}`]);
+                await expect(configView.locator('.fm-config-save-status')).toContainText(`Focus witness: ${state}`);
+                expect(await page.evaluate(() => document.activeElement?.id), state).toBe(focusedId)
+            }
+
+            await appHandle.callMethod(configCard.properties.id, 'setSaveStatus', [agentId, 'idle', '']);
+            await target.press('Enter');
+            await expect(target).toBeFocused();
+            await configView.getByRole('button', {name: 'Close connection options', exact: true}).click();
             // Docked keeper views may render beyond the browser viewport while remaining the live
             // mounted surface. Dispatch through the real DOM listener instead of weakening the
             // component path with a direct method call.
@@ -120,6 +150,9 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
 
             await addAction.click();
             await expect(form).toBeVisible();
+            await expect(form.locator('.fm-add-destination')).toContainText('Agent OS:');
+            await expect(form.locator('.fm-add-credential-help')).toHaveText('This token gives the agent access to its repositories and the connected Agent OS.');
+            await page.screenshot({path: testInfo.outputPath('add-agent-and-configuration.png'), fullPage: true});
             await usernameField.fill(createdAgentId);
             await credentialField.fill(createdSecret);
             await productChip.click();

@@ -28,6 +28,35 @@ export function displayShellLabel(planeBase) {
 }
 
 /**
+ * @summary The bound Agent OS facts a view follows live from the root state.Provider, normalized
+ * once for every surface that names the destination ({@link displayBoundAgentOs}). Consumers
+ * spread it into their own `bind`, so no two views share one mutable object.
+ * @type {Object<String,Function>}
+ */
+export const boundAgentOsBind = {
+    boundProfileId: data => data.boundProfileId ?? null,
+    shellCustody  : data => data.shellCustody === true,
+    shellPlaneBase: data => data.shellPlaneBase ?? null
+};
+
+/**
+ * @summary The one name of the bound Agent OS, on every surface that names it: the shell's own
+ * binding while the shell holds custody, otherwise the bound instance's label or host.
+ * @param {Object} options
+ * @param {Boolean} options.shellCustody
+ * @param {String|null} options.shellPlaneBase
+ * @param {AgentOS.model.FleetInstance|null} options.record The bound instance, if any.
+ * @returns {String|null} `null` when nothing is bound.
+ */
+export function displayBoundAgentOs({shellCustody, shellPlaneBase, record}) {
+    if (shellCustody) {
+        return displayShellLabel(shellPlaneBase)
+    }
+
+    return record ? displayInstanceLabel(record) : null
+}
+
+/**
  * @class AgentOS.view.fleet.instances.MenuList
  * @extends Neo.menu.List
  *
