@@ -197,42 +197,37 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
-    test('after a Start, the Seat row says where the session opened when that is not the seat\'s folder, against the expected one with Copy path (#522)', () => {
+    test('after a Start, the Seat row says on one line where the session opened when that is not the seat\'s folder, pointing at the Repository pane for the expected one (#522)', () => {
         const
             repoPath = '/Users/x/agents/vega/neomjs/neo',
             detail   = createDetail({
                 agentId: 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok',
-                sessionFolder: {state: 'wrong', expected: repoPath, observed: '/Users/x/elsewhere'}
+                sessionFolder: {state: 'wrong', expected: repoPath, observed: '/Users/x/Desktop/scratch'}
             }),
-            part     = reference => detail.down({reference});
+            part     = reference => detail.down({reference}),
+            words    = () => part('detail-seat-folder').vdom.cn.map(node => node.text).join('');
 
-        // AC-1: the folder against the expected one, the next action spelled out, and Copy path
+        // AC-1: the state word, where it opened (shortened) and the next step; the expected folder is
+        // the Repository pane's, never repeated here
         expect(part('detail-seat-folder').hidden).toBe(false);
-        expect(part('detail-seat-folder').text).toBe(`opened in /Users/x/elsewhere · expected ${repoPath}. Open the expected folder in Claude's Code tab and continue there.`);
-        expect(part('detail-seat-folder').cls).toContain('is-wrong');
-        expect(part('detail-seat-folder-copy').hidden).toBe(false);
+        expect(words()).toBe('wrong folder · opened in …/Desktop/scratch · expected the repository below · reopen it there');
+        expect(part('detail-seat-folder').vdom.cn[0].cls).toContain('is-wrong');
+        expect(part('detail-seat-folder').vdom.title).toBe("Opened in /Users/x/Desktop/scratch; expected the repository below. Reopen it there in Claude's Code tab and continue.");
+        expect(words()).not.toContain(repoPath);
         // the first-launch step gives way to what happened
         expect(part('detail-seat-launch').hidden).toBe(true);
 
         // AC-2: pending and unknown read as themselves, with their reasons
         applySet(detail, {sessionFolder: {state: 'pending', expected: repoPath}});
-        expect(part('detail-seat-folder').text).toBe(`no session has opened since the launch · expected ${repoPath}. Open the expected folder in Claude's Code tab.`);
+        expect(words()).toBe("not opened yet · expected the repository below · open it in Claude's Code tab");
         applySet(detail, {sessionFolder: {state: 'unknown', expected: repoPath, reason: 'the session records could not be read'}});
-        expect(part('detail-seat-folder').text).toBe(`the session's folder is unknown: the session records could not be read · expected ${repoPath}. Check which folder Claude's Code tab opened.`);
+        expect(words()).toBe('folder unknown · the session records could not be read · expected the repository below');
 
-        // ok adds no line
-        applySet(detail, {sessionFolder: {state: 'ok', expected: repoPath}});
-        expect(part('detail-seat-folder').hidden).toBe(true);
-        expect(part('detail-seat-folder-copy').hidden).toBe(true);
-
-        // AC-3: a Brain that reports no folder state renders nothing new
-        applySet(detail, {sessionFolder: null});
-        expect(part('detail-seat-folder').hidden).toBe(true);
-
-        // Copy path copies the Repository pane's path, so it shows only where that is the expected folder
-        applySet(detail, {sessionFolder: {state: 'wrong', expected: '/somewhere/else', observed: '/Users/x/elsewhere'}});
-        expect(part('detail-seat-folder').hidden).toBe(false);
-        expect(part('detail-seat-folder-copy').hidden).toBe(true);
+        // ok adds no line, and AC-3: a Brain that reports no folder state renders nothing new
+        for (const sessionFolder of [{state: 'ok', expected: repoPath}, null]) {
+            applySet(detail, {sessionFolder});
+            expect(part('detail-seat-folder').hidden).toBe(true)
+        }
 
         detail.destroy()
     });

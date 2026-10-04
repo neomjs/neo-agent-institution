@@ -13,33 +13,40 @@ import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_exp
 import SeatSessionFolder from '../../../../../../apps/agentos/util/SeatSessionFolder.mjs';
 
 /**
- * @summary Where a desktop seat's session opened, worded once at two densities: the card's short line
- * with its full words as the title, and the Detail Seat row's line with its next action.
+ * @summary Where a desktop seat's session opened, worded once at two densities: the card names no path,
+ * not even in its title; Detail's one line shortens where the session opened and points at the
+ * Repository pane for the expected folder.
  */
 test.describe('AgentOS.util.SeatSessionFolder', () => {
-    const expected = '/seats/vega/neomjs/neo';
+    const
+        expected = '/Users/vega/agents/vega/neomjs/neo',
+        observed = '/Users/vega/Desktop/scratch';
 
-    test('a session in another folder names both folders in Detail, and the card says it short with one next-action word', () => {
-        const folder = {state: 'wrong', expected, observed: '/Users/vega/elsewhere'};
+    test('the card says a wrong folder short, with one next-action word, and no path in its text or title', () => {
+        const line = SeatSessionFolder.cardLine({state: 'wrong', expected, observed});
 
-        expect(SeatSessionFolder.detailLine(folder)).toEqual({
-            text  : `opened in /Users/vega/elsewhere · expected ${expected}`,
-            action: 'Open the expected folder in Claude\'s Code tab and continue there.'
-        });
-        expect(SeatSessionFolder.cardLine(folder)).toEqual({
-            text : 'session opened in the wrong folder · reopen',
-            title: `opened in /Users/vega/elsewhere · expected ${expected}. Open the expected folder in Claude's Code tab and continue there.`
-        })
+        expect(line.text).toBe('session opened in the wrong folder · reopen');
+        expect(`${line.text} ${line.title}`).not.toContain('/Users')
+    });
+
+    test('Detail shortens where the session opened and never repeats the expected folder', () => {
+        const line = SeatSessionFolder.detailLine({state: 'wrong', expected, observed});
+
+        expect(line.state).toBe('wrong folder');
+        expect(line.text).toBe('opened in …/Desktop/scratch · expected the repository below · reopen it there');
+        expect(`${line.text} ${line.title}`).not.toContain(expected);
+        expect(SeatSessionFolder.shortPath('/a/b')).toBe('/a/b');
+        expect(SeatSessionFolder.shortPath('/a/b/c/d')).toBe('…/c/d')
     });
 
     test('pending and unknown read as themselves with their reasons, never as ready', () => {
         expect(SeatSessionFolder.cardLine({state: 'pending', expected}).text).toBe('session not opened yet · open the folder');
-        expect(SeatSessionFolder.detailLine({state: 'pending', expected}).text).toBe(`no session has opened since the launch · expected ${expected}`);
+        expect(SeatSessionFolder.detailLine({state: 'pending', expected}).state).toBe('not opened yet');
 
         const unknown = {state: 'unknown', expected, reason: 'the session records could not be read'};
 
         expect(SeatSessionFolder.cardLine(unknown).text).toBe('session folder unknown: the session records could not be read');
-        expect(SeatSessionFolder.detailLine(unknown).text).toBe(`the session's folder is unknown: the session records could not be read · expected ${expected}`)
+        expect(SeatSessionFolder.detailLine(unknown).text).toBe('the session records could not be read · expected the repository below')
     });
 
     test('ok, a missing fact and an unrecognised state say nothing', () => {

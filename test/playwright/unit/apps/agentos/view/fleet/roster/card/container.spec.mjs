@@ -686,12 +686,12 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             card     = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop'}),
             status   = () => card.down({reference: 'control-status'});
 
-        // AC-1: one line with one next-action word; the folders ride the title, never the card
+        // AC-1: one line with one next-action word; the card names no path, not even in its title
         applySet(card, {sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}});
         expect(status().hidden).toBe(false);
         expect(status().text).toBe('session opened in the wrong folder · reopen');
         expect(status().cls).toContain('is-session-wrong');
-        expect(status().vdom.title).toBe(`opened in /Users/vega/elsewhere · expected ${expected}. Open the expected folder in Claude's Code tab and continue there.`);
+        expect(status().vdom.title).not.toContain('/');
         expect(card.cls).toContain('fm-control-live');
 
         // AC-2: pending and unknown read as themselves

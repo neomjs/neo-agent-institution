@@ -102,19 +102,27 @@
         color: var(--fm-ink-dim);
     }
 
-    .fm-detail-seat-launch,
-    .fm-detail-seat-folder {
+    .fm-detail-seat-launch {
         font : var(--fm-text-micro);
         color: var(--fm-ink);
     }
 
-    /* a session in another folder is the state the operator acts on: the attention token, never a weight */
-    .fm-detail-seat-folder.is-wrong {
-        color: var(--fm-state-wedged);
-    }
+    /* where the session opened: ONE line that ellipsizes (the title holds the whole words), only its
+       state word coloured, the attention token for the wrong folder the operator acts on */
+    .fm-detail-seat-folder {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
 
-    .fm-detail-seat-folder-copy {
-        align-self: flex-start;
+        .fm-detail-seat-folder-state {
+            color: var(--fm-ink-dim);
+
+            &.is-wrong {
+                color: var(--fm-state-wedged);
+            }
+        }
     }
 
     /* THE ONE STATE LEDGER (#23): every liveness/wiring axis once, `axis · pill` per row, in the
