@@ -631,6 +631,28 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         form.destroy()
     });
 
+    test('a form with no memory to offer carries no list; the first answer with rows builds it (#521)', async () => {
+        const
+            answers = [NO_MEMORY, memoryRead([CANDIDATES[0]])],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({defineAgent: async () => cleanReadback(), fleetMemoryCandidates: () => answers.shift()()})
+            });
+
+        expect(form.getReference('memory-list')).toBeNull();
+
+        await form.readMemory();
+
+        expect(form.memoryDiscovery).toEqual({state: 'none'});
+        expect(form.getReference('memory-list')).toBeNull();
+
+        await form.readMemory();
+
+        expect(form.getReference('memory-list').store.getRange().map(row => row.source)).toEqual([CANDIDATES[0].source, 'none']);
+
+        form.destroy()
+    });
+
     test('a fleet that could not be reached shows no memory frame, and submit asks it again (#521)', async () => {
         const
             calls   = [],
@@ -727,14 +749,14 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
     });
 
     test('one candidate is preselected, name first, its folder only under Details (#521 AC-2)', async () => {
-        const
-            form = Neo.create(AddAgentForm, {
-                appName       : 'AgentOSAddAgentFlowTest',
-                bridgeResolver: () => ({defineAgent: async () => cleanReadback(), fleetMemoryCandidates: memoryRead([CANDIDATES[0]])})
-            }),
-            list = form.getReference('memory-list');
+        const form = Neo.create(AddAgentForm, {
+            appName       : 'AgentOSAddAgentFlowTest',
+            bridgeResolver: () => ({defineAgent: async () => cleanReadback(), fleetMemoryCandidates: memoryRead([CANDIDATES[0]])})
+        });
 
         await form.readMemory();
+
+        const list = form.getReference('memory-list');
 
         expect(form.getReference('memory-frame').hidden).toBe(false);
         expect(form.getReference('memory-lead').text).toBe('Continue this agent\'s memory?');
@@ -768,7 +790,6 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
                     fleetMemoryCandidates: memoryRead(CANDIDATES)
                 })
             }),
-            list  = form.getReference('memory-list'),
             fill  = async () => {
                 (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
                 (await form.getField('credential')).value     = CREDENTIAL;
@@ -776,6 +797,8 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
             };
 
         await form.readMemory();
+
+        const list = form.getReference('memory-list');
 
         // a wrong memory is an identity error: several candidates preselect none
         expect(form.getReference('memory-lead').text).toBe('Continue one of these agents\' memory?');

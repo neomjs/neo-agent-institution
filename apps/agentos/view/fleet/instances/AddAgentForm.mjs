@@ -248,12 +248,6 @@ class AddAgentForm extends FormContainer {
                 flex     : 'none',
                 reference: 'memory-lead'
             }, {
-                module   : MemoryCandidateList,
-                flex     : 'none',
-                hidden   : true,
-                listeners: {itemClick: 'up.onMemoryCandidateClick'},
-                reference: 'memory-list'
-            }, {
                 ntype    : 'component',
                 cls      : ['fm-add-memory-note'],
                 flex     : 'none',
@@ -691,11 +685,17 @@ class AddAgentForm extends FormContainer {
             rows        = AddAgentFlow.memoryChoices(discovery),
             candidates  = discovery.state === 'candidates' ? discovery.candidates : [],
             frame       = me.getReference('memory-frame'),
-            list        = me.getReference('memory-list'),
-            unavailable = discovery.state === 'unavailable';
+            unavailable = discovery.state === 'unavailable',
+            // built for the first answer with rows, so a form with no memory to offer carries no list
+            list        = me.getReference('memory-list') ?? (rows.length > 0 ? frame.insert(2, {
+                module   : MemoryCandidateList,
+                flex     : 'none',
+                listeners: {itemClick: 'up.onMemoryCandidateClick'},
+                reference: 'memory-list'
+            }) : null);
 
         me.memoryChoice = null;
-        list.store.data = rows;
+        list && (list.store.data = rows);
         me.memoryChoice = AddAgentFlow.preselectedMemory(discovery);
 
         frame.hidden = rows.length === 0;
@@ -705,7 +705,6 @@ class AddAgentForm extends FormContainer {
             ? `Could not check for existing memory — ${discovery.reason}.`
             : candidates.length === 1 ? 'Continue this agent\'s memory?' : 'Continue one of these agents\' memory?';
 
-        list.hidden                              = rows.length === 0;
         me.getReference('memory-note').hidden    = candidates.length === 0;
         me.getReference('memory-actions').hidden = !unavailable;
 

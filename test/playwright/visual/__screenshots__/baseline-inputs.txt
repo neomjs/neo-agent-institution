@@ -402,7 +402,7 @@ apps/agentos/view/fleet/health/SwatchComponent.mjs
     a2d3e1d8509ca2e06f4f024959aae9005a73dd13
 
 apps/agentos/view/fleet/instances/AddAgentForm.mjs
-    50bb3c20993094b898aa45e608877a64f87e56b9
+    85c3ff243cecbc8c79fbd3d4787275c3647766ba
 
 apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f
