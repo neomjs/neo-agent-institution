@@ -13,11 +13,11 @@ import {INSTANCE_STATE_WORDS} from '../fleet/instances/SwitcherButton.mjs';
 const PRODUCT_LINE = 'Mission control for a cross-model AI engineering team.';
 
 /**
- * @summary The questions axis until the Brain can list a person's open Tasks: unreadable, with its reason,
+ * @summary The questions axis until the Brain can list a person's open Tasks: not listed yet, with its reason,
  * so the operator's line never counts it as zero.
  * @type {Object}
  */
-const QUESTIONS_UNREADABLE = Object.freeze({state: 'unavailable', reason: 'this plane cannot list them yet'});
+const QUESTIONS_UNLISTED = Object.freeze({state: 'unlisted', reason: 'this plane cannot list them yet'});
 
 /**
  * @summary A count and its noun: `1 merge`, `2 merges`.
@@ -131,12 +131,12 @@ class Container extends BaseContainer {
          */
         openWork_: null,
         /**
-         * The questions axis of the operator's line: `{state: 'known', count}` or `{state: 'unavailable',
-         * reason}`. Unreadable until a producer lists a person's open Tasks.
-         * @member {Object} questions_=QUESTIONS_UNREADABLE
+         * The questions axis of the operator's line: `{state: 'known', count}`, `{state: 'unavailable', reason}`
+         * or `{state: 'unlisted', reason}`. Unlisted until a producer lists a person's open Tasks.
+         * @member {Object} questions_=QUESTIONS_UNLISTED
          * @reactive
          */
-        questions_: QUESTIONS_UNREADABLE,
+        questions_: QUESTIONS_UNLISTED,
         /**
          * The roster the cockpit's liveness owner fills; the team line counts it.
          * @member {AgentOS.store.FleetRoster|null} rosterStore_=null
@@ -253,17 +253,18 @@ class Container extends BaseContainer {
     /**
      * @summary The operator's own line: what waits for his hand (merges) and for his word (questions), one
      * count that belongs to him alone. "nothing waits for you" is said only when both axes answered and
-     * both are zero. An axis that cannot be read leads with its reason, and the other keeps its number,
-     * never a 0. A stale merge queue reads its count "as of" its oldest row. Until the merge read answers
-     * the line is hidden, and so it stays for a bridge without the open-work verb or a read that threw
+     * both are zero. An axis that has no number leads, with its reason in the title: one not listed yet
+     * says so, one whose read failed says it could not be read. The other axis keeps its number, never a
+     * 0. A stale merge queue reads its count "as of" its oldest row. Until the merge read answers the line
+     * is hidden, and so it stays for a bridge without the open-work verb or a read that threw
      * (`OpenWorkRead.unavailable`'s silent coverages): an answer nobody gave earns no pixels. Only the
      * producer's own `unavailable` is named.
      * @param {Object}      facts
      * @param {Object|null} facts.openWork    The provider's `openWork` block: the merge axis's state
      * @param {Object[]}    facts.mergeRows   The merge queue's rows (`{observedAt, stale}`)
-     * @param {Object}      facts.questions   `{state: 'known', count}` or `{state: 'unavailable', reason}`
+     * @param {Object}      facts.questions   `{state: 'known', count}`, `{state: 'unavailable', reason}` or `{state: 'unlisted', reason}`
      * @param {Number}      [facts.now=Date.now()] The viewer's clock, for a stale queue's age
-     * @returns {{hidden: Boolean, text: String}}
+     * @returns {{hidden: Boolean, text: String, title: String|null}}
      */
     static operatorLine({openWork, mergeRows = [], questions, now = Date.now()}) {
         const
@@ -271,7 +272,7 @@ class Container extends BaseContainer {
             unanswered = state === 'unavailable' && openWork.coverage !== 'unavailable';
 
         if (unanswered || (state !== 'ok' && state !== 'stale' && state !== 'unavailable')) {
-            return {hidden: true, text: ''}
+            return {hidden: true, text: '', title: null}
         }
 
         const
@@ -282,12 +283,12 @@ class Container extends BaseContainer {
             mergeAxis  = state === 'unavailable' ? {state, reason: openWork.reason} : {state: 'known', count: mergeRows.length, asOf},
             axes       = [{noun: 'question', axis: questions}, {noun: 'merge', axis: mergeAxis}],
             waiting    = axes.filter(({axis}) => axis.state === 'known' && axis.count > 0),
-            parts      = axes
-                .filter(({axis}) => axis.state !== 'known')
-                .map(({noun, axis}) => `your ${noun}s could not be read${axis.reason ? ` · ${axis.reason}` : ''}`);
+            numberless = axes.filter(({axis}) => axis.state !== 'known'),
+            parts      = numberless.map(({noun, axis}) => `your ${noun}s ${axis.state === 'unlisted' ? 'are not listed yet' : 'could not be read'}`),
+            reasons    = numberless.filter(({axis}) => axis.reason).map(({noun, axis}) => `your ${noun}s: ${axis.reason}`);
 
         if (parts.length === 0 && waiting.length === 0) {
-            return {hidden: false, text: 'nothing waits for you'}
+            return {hidden: false, text: 'nothing waits for you', title: null}
         }
 
         if (waiting.length > 0) {
@@ -296,7 +297,7 @@ class Container extends BaseContainer {
             parts.push(`${waiting.map(({noun, axis}) => counted(axis.count, noun) + (axis.asOf ?? '')).join(' · ')} ${one ? 'waits' : 'wait'} for you`)
         }
 
-        return {hidden: false, text: parts.join(' · ')}
+        return {hidden: false, text: parts.join(' · '), title: reasons.join(' · ') || null}
     }
 
     /**
@@ -408,13 +409,16 @@ class Container extends BaseContainer {
                 degradedReason: me.gridDegradedReason,
                 states        : me.rosterStore?.items.map(record => record.state) ?? []
             }),
-            operator = firstRun ? {hidden: true, text: ''} : Container.operatorLine({
+            operator = firstRun ? {hidden: true, text: '', title: null} : Container.operatorLine({
                 openWork : me.openWork,
                 mergeRows: me.awaitingMergeStore?.items ?? [],
                 questions: me.questions
-            });
+            }),
+            operatorLine = me.getReference('operator-line');
 
-        me.getReference('operator-line').set({hidden: operator.hidden, text: operator.text});
+        operatorLine.vdom.title = operator.title;
+        operatorLine.set({hidden: operator.hidden, text: operator.text});
+        operatorLine.update();
 
         me.getReference('lead').set({
             cls : line && !line.answered ? ['fm-home-h1', 'is-quiet'] : ['fm-home-h1'],

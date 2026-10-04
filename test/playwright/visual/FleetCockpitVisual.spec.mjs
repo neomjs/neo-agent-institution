@@ -1648,7 +1648,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             };
 
         await land('merges=5');
-        await expect(operator).toHaveText('your questions could not be read · this plane cannot list them yet · 5 merges wait for you');
+        await expect(operator).toHaveText('your questions are not listed yet · 5 merges wait for you');
+        await expect(operator).toHaveAttribute('title', 'your questions: this plane cannot list them yet');
         await settleField(page, '11');
         await expect(home).toHaveScreenshot('home-operator-unreadable.png');
 

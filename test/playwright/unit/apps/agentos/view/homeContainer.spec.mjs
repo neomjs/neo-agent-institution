@@ -171,6 +171,7 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#551)'
     const
         ok          = {state: 'ok', coverage: 'complete', observedAt: '2026-10-04T18:00:00.000Z', reason: null},
         unreadable  = reason => ({state: 'unavailable', reason}),
+        unlisted    = reason => ({state: 'unlisted', reason}),
         known       = count => ({state: 'known', count}),
         rows        = (count, extra = {}) => Array.from({length: count}, () => ({observedAt: ok.observedAt, stale: false, ...extra})),
         line        = (openWork, merges, questions) => HomeView.operatorLine({openWork, mergeRows: rows(merges), questions}),
@@ -189,13 +190,22 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#551)'
         expect(line(ok, 1, known(1)).text).toBe('1 question · 1 merge wait for you');
     });
 
-    test('an axis that cannot be read leads with its reason, and the other keeps its number — never a 0 and never "nothing"', () => {
-        expect(line(ok, 5, unreadable('this plane cannot list them yet')).text)
-            .toBe('your questions could not be read · this plane cannot list them yet · 5 merges wait for you');
-        expect(line(ok, 0, unreadable('this plane cannot list them yet')).text, 'a known zero beside an unread axis is not "nothing"')
-            .toBe('your questions could not be read · this plane cannot list them yet');
-        expect(line({state: 'unavailable', coverage: 'unavailable', reason: 'open-work verb missing'}, 0, known(2)).text)
-            .toBe('your merges could not be read · open-work verb missing · 2 questions wait for you');
+    test('an axis without a number leads, its reason in the title, and the other keeps its number — never a 0 and never "nothing"', () => {
+        expect(line(ok, 5, unlisted('this plane cannot list them yet'))).toEqual({
+            hidden: false,
+            text  : 'your questions are not listed yet · 5 merges wait for you',
+            title : 'your questions: this plane cannot list them yet'
+        });
+        expect(line(ok, 0, unlisted('this plane cannot list them yet')).text, 'a known zero beside an unlisted axis is not "nothing"')
+            .toBe('your questions are not listed yet');
+        // a read that failed says so, apart from one that is not listed yet
+        expect(line(ok, 5, unreadable('the mailbox read timed out')).text).toBe('your questions could not be read · 5 merges wait for you');
+        expect(line({state: 'unavailable', coverage: 'unavailable', reason: 'open-work verb missing'}, 0, known(2))).toEqual({
+            hidden: false,
+            text  : 'your merges could not be read · 2 questions wait for you',
+            title : 'your merges: open-work verb missing'
+        });
+        expect(line(ok, 5, known(3)).title, 'every axis counted: no title').toBe(null);
     });
 
     test('a stale merge queue reads its count as of its oldest row; looking never moves the count', () => {
@@ -234,7 +244,8 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#551)'
 
         provider.setData({openWork: ok});
         merges.add([pr(1), pr(2)]);
-        expect(readLine(home)).toBe('your questions could not be read · this plane cannot list them yet · 2 merges wait for you');
+        expect(readLine(home)).toBe('your questions are not listed yet · 2 merges wait for you');
+        expect(home.getReference('operator-line').vdom.title, 'the reason rides the title').toBe('your questions: this plane cannot list them yet');
 
         home.questions = {state: 'known', count: 0};
         merges.removeAt(0);
