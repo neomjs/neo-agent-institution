@@ -680,6 +680,25 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a Start refused by a memory import that did not converge names its source and its step in the card (#521 AC-4)', () => {
+        const
+            card   = createCard({agentId: 'mnemosyne', state: 'off'}),
+            status = () => card.down({reference: 'control-status'}),
+            source = '/home/operator/.claude/projects/-work/memory',
+            reason = `agent 'mnemosyne' consented to import its memory from '${source}', but the source holds no memory to copy. The memory-import step did not converge, so the seat does not start.`;
+
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason}, pendingAction: null});
+
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe(`⚠ rejected: ${reason}`);
+        expect(status().text).toContain(source);
+        expect(status().text).toContain('memory-import step');
+        // the one-line status ellipsizes; its title keeps the whole refusal
+        expect(status().vdom.title).toBe(`⚠ rejected: ${reason}`);
+
+        card.destroy()
+    });
+
     test('observe: a pending action renders the state dot as a distinct transitional state, never the stale resolved one (#14978)', () => {
         const card = createCard({agentId: 'vega', state: 'off'});
         const dot  = () => card.down({ntype: 'fm-state-dot'});

@@ -43,8 +43,39 @@
     }
 
     .fm-add-forge-row,
-    .fm-add-harness-row {
+    .fm-add-harness-row,
+    .fm-add-memory-actions {
         gap: 6px;
+    }
+
+    /* the existing-memory frame: the question, the candidate rows (MemoryCandidateList.scss), the
+       reassurance, the chosen folder under Details, then Start fresh — or, when the check could not
+       answer, its reason in the limited hue beside its words, with Retry */
+    .fm-add-memory {
+        gap: var(--fm-space-1);
+
+        &.is-unavailable .fm-add-memory-lead {
+            color      : var(--fm-state-limited);
+            font-weight: 600;
+        }
+    }
+
+    .fm-add-memory-lead,
+    .fm-add-memory-note,
+    .fm-add-memory-details {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-detail);
+    }
+
+    .fm-add-memory-details summary {
+        cursor: pointer;
+        width : fit-content;
+    }
+
+    .fm-add-memory-source {
+        font-family  : var(--fm-font-mono);
+        overflow-wrap: anywhere;
+        padding-top  : 2px;
     }
 
     /* the form's one primary action carries the signal — the fm-fleet-start idiom, never the

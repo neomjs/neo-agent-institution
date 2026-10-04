@@ -258,7 +258,12 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
             store      = makeAgentStore([]),
             form       = Neo.create(AddAgentForm, {
                 appName       : 'AgentOSAccountsTest',
-                bridgeResolver: () => ({defineAgent: async () => canonical, setRepo: async () => ({status: 'accepted', agent: canonical})})
+                bridgeResolver: () => ({
+                    defineAgent          : async () => canonical,
+                    // a host with no existing memory: the add records `memoryImport: 'none'` (#521)
+                    fleetMemoryCandidates: async () => ({capability: {state: 'wired'}, candidates: [], count: 0}),
+                    setRepo              : async () => ({status: 'accepted', agent: canonical})
+                })
             }),
             // Proxy-backed, not a plain object: `storage[key] = value` is a REAL persistent write in
             // Chromium and reaches no method, so a method-only recorder watches it happen in silence.
@@ -289,6 +294,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
         view = await createAccounts({agentDefinitionsStore: store});
         view.on('agentDefinitionAccepted', data => fired.push(['agentDefinitionAccepted', data]));
         form.on('agentDefinitionAccepted', data => view.getController().onAddAgentAccepted(data));
+        await form.readMemory();
         (await form.getField('githubUsername')).value = 'submitted-login';
         (await form.getField('credential')).value     = pat;
 

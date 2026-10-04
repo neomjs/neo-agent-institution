@@ -1,9 +1,10 @@
-import Button        from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import FormContainer from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
-import PasswordField from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
-import TextField     from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
-import AddAgentFlow  from '../../../util/AddAgentFlow.mjs';
-import HarnessChoice from '../../../util/HarnessChoice.mjs';
+import Button              from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import FormContainer       from '../../../../../node_modules/neo.mjs/src/form/Container.mjs';
+import PasswordField       from '../../../../../node_modules/neo.mjs/src/form/field/Password.mjs';
+import TextField           from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import AddAgentFlow        from '../../../util/AddAgentFlow.mjs';
+import HarnessChoice       from '../../../util/HarnessChoice.mjs';
+import MemoryCandidateList from './MemoryCandidateList.mjs';
 import {displayBoundAgentOs} from './MenuList.mjs';
 
 /**
@@ -26,6 +27,12 @@ const FORGE_LABELS = Object.freeze({github: 'GitHub', gitlab: 'GitLab'});
  * **The harness choice is a product first.** One chip per product (`HarnessChoice.products()`, read
  * from the Brain's catalog). *App* and *Command line* appear only for a product that ships both. The
  * stored value stays the catalog's harness type (`harnessType`), which the Fleet launches.
+ *
+ * **Existing memory is offered, never guessed.** Each time the form is shown, it asks the Fleet which
+ * agents' memory the seat could continue (`AddAgentFlow.readMemoryCandidates`). Nothing found records
+ * `memoryImport: 'none'` with no frame shown. Candidates show a frame after the token: one is
+ * preselected, several wait for a choice, and *Start fresh* sends `'none'`. A check that could not
+ * answer shows its reason with *Retry*, and only an explicit *Start fresh* adds the seat then.
  *
  * **Mount-independent by design.** The form ends at the `agentDefinitionAccepted` event carrying the
  * validated public definition; the mounting owner writes the roster. It reads the injected instance
@@ -114,15 +121,28 @@ class AddAgentForm extends FormContainer {
          */
         harnessType_: null,
         /**
+         * The operator's memory choice: a candidate's `source`, `'none'` for *Start fresh*, or null.
+         * @member {String|null} memoryChoice_=null
+         * @reactive
+         */
+        memoryChoice_: null,
+        /**
+         * The Fleet's answer on existing memory, an {@link AgentOS.util.AddAgentFlow#readMemoryCandidates}
+         * outcome; `{state:'reading'}` until it arrives.
+         * @member {Object} memoryDiscovery_={state:'reading'}
+         * @reactive
+         */
+        memoryDiscovery_: {state: 'reading'},
+        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
          * The form anatomy: pane head · the account (forge chips, the GitLab instance, username,
-         * token) · working repository · harness (product chips, then App / Command line when the
-         * product has both) · the action slot · status line. Geometry + skin in `AddAgentForm.scss`,
-         * colors token-only.
+         * token) · existing memory, only when there is one to offer or the check failed · working
+         * repository · harness (product chips, then App / Command line when the product has both) ·
+         * the action slot · status line. Geometry + skin in `AddAgentForm.scss`, colors token-only.
          * @member {Object[]} items
          */
         // every row is flex:'none': the vbox default (grow 1) would distribute a stretched host's
@@ -198,6 +218,68 @@ class AddAgentForm extends FormContainer {
             flex     : 'none',
             reference: 'credential-help',
             text     : 'This token gives the agent access to its repositories and the connected Agent OS.'
+        }, {
+            // a first-time operator never sees this frame: it shows only with a memory to offer, or
+            // when the check could not answer
+            ntype    : 'container',
+            cls      : ['fm-add-memory'],
+            flex     : 'none',
+            hidden   : true,
+            layout   : {ntype: 'vbox', align: 'stretch'},
+            reference: 'memory-frame',
+
+            items: [{
+                ntype: 'component',
+                cls  : ['fm-add-section'],
+                flex : 'none',
+                text : 'Existing memory'
+            }, {
+                ntype    : 'component',
+                cls      : ['fm-add-memory-lead'],
+                flex     : 'none',
+                reference: 'memory-lead'
+            }, {
+                module   : MemoryCandidateList,
+                flex     : 'none',
+                hidden   : true,
+                listeners: {itemClick: 'up.onMemoryCandidateClick'},
+                reference: 'memory-list'
+            }, {
+                ntype    : 'component',
+                cls      : ['fm-add-memory-note'],
+                flex     : 'none',
+                hidden   : true,
+                reference: 'memory-note',
+                text     : 'Its notes are copied, never moved; the original stays where it is.'
+            }, {
+                // the chosen candidate's folder: under Details, never on its row
+                ntype    : 'component',
+                cls      : ['fm-add-memory-details'],
+                flex     : 'none',
+                hidden   : true,
+                reference: 'memory-details',
+                vdom     : {tag: 'details', cn: [{tag: 'summary', text: 'Details'}, {cls: ['fm-add-memory-source']}]}
+            }, {
+                ntype : 'container',
+                cls   : ['fm-add-memory-actions'],
+                flex  : 'none',
+                layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+
+                items: [{
+                    module   : Button,
+                    cls      : ['fm-chip'],
+                    handler  : 'up.onMemoryFreshClick',
+                    reference: 'memory-fresh',
+                    text     : 'Start fresh'
+                }, {
+                    module   : Button,
+                    cls      : ['fm-chip'],
+                    handler  : 'up.onMemoryRetryClick',
+                    hidden   : true,
+                    reference: 'memory-retry',
+                    text     : 'Retry'
+                }]
+            }]
         }, {
             // the repo the seat's first Start clones and runs in
             module         : TextField,
@@ -299,6 +381,21 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
+     * @summary Ask the Fleet for existing memory each time the form is shown. The form can be built at
+     * shell boot, before the Fleet's bridge is wired, so an answer read at construction would be stale.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetMounted(value, oldValue) {
+        super.afterSetMounted(value, oldValue);
+
+        if (value && AddAgentFlow.resolveRegistryBridge(this.bridgeResolver)?.defineAgent) {
+            this.readMemory()
+        }
+    }
+
+    /**
      * Triggered after the flowStatus config got changed — render the status line and the submit
      * affordance from the new state. Disabled-with-reason on `gated` and while `submitting`;
      * the reason text IS the status line (never a hidden control, never a tooltip-only fact).
@@ -343,6 +440,26 @@ class AddAgentForm extends FormContainer {
      */
     afterSetHarnessType(value, oldValue) {
         oldValue !== undefined && this.syncHarnessChips()
+    }
+
+    /**
+     * Triggered after the memoryChoice config got changed — mark the chosen candidate or Start fresh.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetMemoryChoice(value, oldValue) {
+        oldValue !== undefined && this.syncMemoryChoice()
+    }
+
+    /**
+     * Triggered after the memoryDiscovery config got changed — render the memory frame for the answer.
+     * @param {Object} value
+     * @param {Object} oldValue
+     * @protected
+     */
+    afterSetMemoryDiscovery(value, oldValue) {
+        oldValue !== undefined && this.syncMemoryFrame()
     }
 
     /**
@@ -486,6 +603,102 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
+     * @summary Ask the Fleet which agents' memory this seat could continue. The frame stays as it is
+     * while a retry is in flight.
+     * @returns {Promise<void>}
+     */
+    async readMemory() {
+        const
+            me    = this,
+            retry = me.getReference('memory-retry');
+
+        retry.disabled = true;
+
+        const discovery = await me.trap(AddAgentFlow.readMemoryCandidates({bridgeResolver: me.bridgeResolver}));
+
+        // an answer that lands as the form is destroyed resumes after trap() could reject it
+        if (!me.isDestroyed) {
+            me.memoryDiscovery = discovery;
+            retry.disabled     = false
+        }
+    }
+
+    /**
+     * @summary Render the memory frame for the Fleet's answer. It stays hidden while the read runs and
+     * when no memory exists; it lists the candidates, or names why the check could not answer with
+     * *Retry*. A new answer starts a new choice (`AddAgentFlow.preselectedMemory`).
+     */
+    syncMemoryFrame() {
+        const
+            me          = this,
+            discovery   = me.memoryDiscovery,
+            candidates  = discovery.state === 'candidates' ? discovery.candidates : [],
+            frame       = me.getReference('memory-frame'),
+            list        = me.getReference('memory-list'),
+            available   = candidates.length > 0,
+            unavailable = discovery.state === 'unavailable';
+
+        me.memoryChoice = null;
+        list.store.data = candidates;
+        me.memoryChoice = AddAgentFlow.preselectedMemory(discovery);
+
+        frame.hidden = !available && !unavailable;
+        frame[unavailable ? 'addCls' : 'removeCls']('is-unavailable');
+
+        me.getReference('memory-lead').text = available
+            ? candidates.length === 1 ? 'Continue this agent\'s memory?' : 'Continue one of these agents\' memory?'
+            : `Could not check for existing memory: ${discovery.reason}`;
+
+        list.hidden                            = !available;
+        me.getReference('memory-note').hidden  = !available;
+        me.getReference('memory-retry').hidden = !unavailable
+    }
+
+    /**
+     * @summary Mark the operator's memory choice: the chosen candidate's row is selected and its folder
+     * shows under Details; *Start fresh* is marked when chosen.
+     */
+    syncMemoryChoice() {
+        const
+            me      = this,
+            choice  = me.memoryChoice,
+            fresh   = choice === AddAgentFlow.MEMORY_IMPORT_NONE,
+            list    = me.getReference('memory-list'),
+            record  = choice && !fresh ? list.store.get(choice) : null,
+            details = me.getReference('memory-details');
+
+        record ? list.selectItem(record) : list.selectionModel.deselectAll();
+        me.getReference('memory-fresh')[fresh ? 'addCls' : 'removeCls']('is-selected');
+
+        details.vdom.cn[1].text = record?.source ?? '';
+        details.hidden          = !record;
+        details.update()
+    }
+
+    /**
+     * @summary A candidate row is the operator's choice of the memory this seat continues.
+     * @param {Object} data
+     * @param {Object} data.record
+     */
+    onMemoryCandidateClick({record}) {
+        this.memoryChoice = record.source
+    }
+
+    /**
+     * @summary *Start fresh*: the seat starts with no existing memory.
+     */
+    onMemoryFreshClick() {
+        this.memoryChoice = AddAgentFlow.MEMORY_IMPORT_NONE
+    }
+
+    /**
+     * @summary *Retry* asks the Fleet again after a check that could not answer.
+     */
+    onMemoryRetryClick() {
+        this.readMemory()
+    }
+
+    /**
      * @summary A forge chip selects the forge the seat's account lives on.
      * @param {Object} data
      */
@@ -520,7 +733,8 @@ class AddAgentForm extends FormContainer {
     /**
      * @summary Drive one full flow round-trip: validate → submit → render the terminal outcome —
      * and clear the token field on EVERY settle path — the credential outlives no attempt.
-     * An accepted readback fires `agentDefinitionAccepted` for the mounting owner's roster write.
+     * An accepted readback fires `agentDefinitionAccepted` for the mounting owner's roster write, and
+     * the next agent starts from a fresh memory choice.
      * @returns {Promise<void>}
      */
     async onSubmitClick() {
@@ -529,12 +743,14 @@ class AddAgentForm extends FormContainer {
             values     = await me.getSubmitValues(),
             bridge     = AddAgentFlow.resolveRegistryBridge(me.bridgeResolver),
             shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
+            memory     = AddAgentFlow.memoryImportFor({discovery: me.memoryDiscovery, choice: me.memoryChoice}),
             payload    = AddAgentFlow.createDefineAgentIntent({
                 credential    : values.credential,
                 forge         : me.forge,
                 forgeHost     : values.forgeHost,
                 githubUsername: values.githubUsername,
-                harnessType   : me.harnessType
+                harnessType   : me.harnessType,
+                memoryImport  : memory.memoryImport
             }, bridge);
 
         me.flowStatus = {state: 'validating', reason: ''};
@@ -543,8 +759,8 @@ class AddAgentForm extends FormContainer {
             const validation = AddAgentFlow.validateDefinePayload(payload, {credentialRequired: !shellOwned});
 
             // an incomplete definition never renders `submitting` — nothing is in flight
-            if (!validation.valid) {
-                me.flowStatus = {state: 'rejected', reason: validation.reason};
+            if (!validation.valid || !memory.valid) {
+                me.flowStatus = {state: 'rejected', reason: validation.valid ? memory.reason : validation.reason};
                 return
             }
 
@@ -558,6 +774,8 @@ class AddAgentForm extends FormContainer {
             me.flowStatus = {state: outcome.state, reason: outcome.reason};
 
             if (outcome.state === 'readback-confirmed') {
+                // one agent's memory choice never carries over to the next agent
+                me.syncMemoryFrame();
                 me.fire('agentDefinitionAccepted', {agent: outcome.definition})
             }
         } finally {
