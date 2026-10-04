@@ -680,6 +680,22 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a Start refused by a memory import that did not converge shows the Brain\'s own words, never parsed (#521 AC-4)', () => {
+        const
+            card   = createCard({agentId: 'mnemosyne', state: 'off'}),
+            status = () => card.down({reference: 'control-status'}),
+            reason = 'the memory import did not converge: the source holds no memory to copy. The seat does not start.';
+
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason}, pendingAction: null});
+
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe(`⚠ rejected: ${reason}`);
+        // the one-line status ellipsizes; its title repeats the whole refusal
+        expect(status().vdom.title).toBe(`⚠ rejected: ${reason}`);
+
+        card.destroy()
+    });
+
     test('the status row ends a Start with where its session opened: the wrong folder, not yet, or unknown; never the path (#522)', () => {
         const
             expected = '/seats/vega/neomjs/neo',

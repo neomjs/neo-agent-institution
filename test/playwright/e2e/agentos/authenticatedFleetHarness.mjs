@@ -7,19 +7,24 @@ import {fileURLToPath}       from 'node:url';
 const [
     {generateLocalBearerToken},
     {default: RequestContextService},
+    {default: FleetControlBridge},
     {default: FleetManager},
     {default: FleetRegistryService},
+    {detectMemoryCandidates},
     {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES}
 ] = await Promise.all([
     loadAgentOsModule('ai/mcp/server/shared/helpers/localBearer.mjs'),
     loadAgentOsModule('ai/mcp/server/shared/services/RequestContextService.mjs'),
+    loadAgentOsModule('ai/services/fleet/FleetControlBridge.mjs'),
     loadAgentOsModule('ai/services/fleet/FleetManager.mjs'),
     loadAgentOsModule('ai/services/fleet/FleetRegistryService.mjs'),
+    loadAgentOsModule('ai/services/fleet/seatMemoryImport.mjs'),
     import('neo-agent-brain/fleet-contract')
 ]);
 
 const
     E2E_MANAGED_ROOT   = fs.mkdtempSync(path.join(os.tmpdir(), 'institution-fleet-e2e-')),
+    E2E_HOME           = fs.mkdtempSync(path.join(os.tmpdir(), 'institution-fleet-e2e-home-')),
     // the synced issue tree the PR/lane slot reads in every real-producer spec
     FIXTURE_ISSUES_DIR = fileURLToPath(new URL('../../fixtures/issues', import.meta.url));
 
@@ -28,7 +33,21 @@ const
 // records each new seat's home under that same root, or the start refuses a "moved" seat.
 FleetManager.managedRoot        = E2E_MANAGED_ROOT;
 FleetRegistryService.agentsRoot = E2E_MANAGED_ROOT;
-process.once('exit', () => fs.rmSync(E2E_MANAGED_ROOT, {force: true, recursive: true}));
+
+// The memory source devFleetServer composes, read over a disposable home: no real agent's memory
+// reaches a spec, and the host holds none, as a first-time operator's does.
+FleetControlBridge.memoryCandidatesSource = {
+    async readMemoryCandidates() {
+        const candidates = await detectMemoryCandidates({homeDir: E2E_HOME});
+
+        return {capability: {state: 'wired'}, candidates, count: candidates.length}
+    }
+};
+
+process.once('exit', () => {
+    fs.rmSync(E2E_MANAGED_ROOT, {force: true, recursive: true});
+    fs.rmSync(E2E_HOME, {force: true, recursive: true})
+});
 
 /**
  * @summary The authenticated Fleet e2e harness — the test-side composition of the ingress trust

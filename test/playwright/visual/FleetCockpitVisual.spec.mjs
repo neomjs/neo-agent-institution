@@ -830,6 +830,12 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      */
     const GOLDEN_PATH_DRIVER = '../../../../test/playwright/visual/goldenPathEnvelope.driver.mjs';
 
+    /**
+     * The Add agent memory driver, resolved the way {@link GOLDEN_PATH_DRIVER} is.
+     * @type {String}
+     */
+    const ADD_AGENT_MEMORY_DRIVER = '../../../../test/playwright/visual/addAgentMemory.driver.mjs';
+
     let driverTick = 0;
 
     /**
@@ -1544,5 +1550,29 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForFunction(() => [...document.querySelectorAll('.fm-agent-detail img')].every(img => img.complete), null, {timeout: 10000});
         await settle();
         await expect(detail, 'Agent detail').toHaveScreenshot('pane-agent-detail.png')
+    });
+
+    test('the Add agent memory frame at 1280 — candidates with the empty row closing their group, and a check that could not answer, in the operator\'s words', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            tab  = page.locator('.neo-dashboard-dock-rail-tab', {hasText: /^\s*Add agent\s*$/i}).first(),
+            form = page.locator('.fm-add-agent-form:visible').first();
+
+        await tab.click();
+        await expect(tab).toHaveClass(/\bpressed\b/, {timeout: 10000});
+        await expect(form).toBeVisible({timeout: 30000});
+
+        for (const [state, golden] of [['candidates', 'add-agent-memory-candidates.png'], ['unavailable', 'add-agent-memory-unavailable.png']]) {
+            const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${ADD_AGENT_MEMORY_DRIVER}?state=${state}&t=${++driverTick}`);
+
+            expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+            await expect(form.locator('.fm-add-memory')).toBeVisible();
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+            await page.mouse.move(0, 0);
+            await page.waitForTimeout(400);
+            await expect(form, `Add agent, memory ${state}`).toHaveScreenshot(golden)
+        }
     });
 });
