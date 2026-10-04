@@ -1,11 +1,13 @@
 import ComponentController   from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import ConfigIntentRoundTrip from '../../../util/ConfigIntentRoundTrip.mjs';
+import SeatGitIdentity       from '../../../util/SeatGitIdentity.mjs';
 
 /**
  * @class AgentOS.view.fleet.detail.Controller
  * @extends Neo.controller.Component
  * @summary Owns the inspector's configuration and freshness lifecycle. The component renders
- * shared records; ConfigIntentRoundTrip retains cross-surface canonical write arbitration.
+ * shared records; ConfigIntentRoundTrip retains cross-surface canonical write arbitration. The
+ * commit-identity row is read once per shown seat, and its declaration rides the same runner.
  */
 class Controller extends ComponentController {
     static config = {
@@ -17,14 +19,38 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary Wire the completed inspector's config card and shared Store, then start its
-     * existing freshness cadence. The component may have received its Store during construction.
+     * The seat whose commit identity the row shows.
+     * @member {String|null} identityAgentId=null
+     * @protected
+     */
+    identityAgentId = null
+    /**
+     * The latest identity request, a read or a declaration. Only its answer may paint the row, so an
+     * older reply, of the same seat or of a seat shown again since (A → B → A), paints nothing.
+     * @member {Number} identityRequest=0
+     * @protected
+     */
+    identityRequest = 0
+
+    /**
+     * @summary Wire the completed inspector's config card, identity row and shared Store, then
+     * start its existing freshness cadence. The component may have received its Store during
+     * construction.
      */
     onComponentConstructed() {
-        const me = this;
+        const
+            me   = this,
+            card = me.getReference('config-pane');
 
-        me.getReference('config-pane').on({configIntent: me.onConfigIntent, scope: me});
+        card.on({configIntent: me.onConfigIntent, scope: me});
+        me.getReference('identity-row').on({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
+        // a roster refresh re-seats the same definition: only another seat is read again
+        me.observeConfig(card, 'record', (value, oldValue) => {
+            value?.id !== oldValue?.id && me.readGitIdentity()
+        });
         me.onDefinitionsStoreChange(me.component.agentDefinitions, null);
+        // a seat the card showed before this subscription existed is read once here
+        (card.record?.id ?? null) !== me.identityAgentId && me.readGitIdentity();
         me.startFreshnessAging()
     }
 
@@ -38,7 +64,80 @@ class Controller extends ComponentController {
 
         me.component.agentDefinitions?.un(me.getDefinitionsStoreListeners());
         me.getReference('config-pane')?.un({configIntent: me.onConfigIntent, scope: me});
+        me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
+        // a reply still on its way finds no request of its own
+        me.identityRequest++;
         super.destroy(...args)
+    }
+
+    /**
+     * @summary Read the shown seat's commit identity into the row, which says "not yet read" and
+     * "Reading…" until the answer lands. No definition shown, no row.
+     * @returns {Promise<void>}
+     */
+    async readGitIdentity() {
+        const
+            me      = this,
+            row     = me.getReference('identity-row'),
+            agentId = me.getReference('config-pane').record?.id ?? null,
+            request = ++me.identityRequest;
+
+        me.identityAgentId = agentId;
+        row.set({hidden: !agentId, identity: null});
+
+        if (agentId) {
+            row.status = {state: 'pending', reason: 'Reading…'};
+
+            const identity = await SeatGitIdentity.read(globalThis.AgentOS?.fleet?.registryBridge ?? null, agentId);
+
+            if (request === me.identityRequest && !me.isDestroyed && !row.isDestroyed) {
+                row.identity = identity
+            }
+        }
+    }
+
+    /**
+     * @summary Declare the shown seat's commit identity through the shared runner, with the row as
+     * its own owner token, like the Repositories card: a configuration change and a declaration on
+     * the same seat never silence each other. An accepted declaration is read back, so the row shows
+     * the Fleet's answer rather than the typed pair.
+     * @param {Object} data
+     * @param {String} data.gitEmail
+     * @param {String} data.gitName
+     * @returns {Promise<void>}
+     */
+    onDeclareGitIdentity(data={}) {
+        const
+            me      = this,
+            row     = me.getReference('identity-row'),
+            agentId = me.identityAgentId,
+            pair    = SeatGitIdentity.pairOf(data);
+
+        if (!agentId) {
+            return Promise.resolve()
+        }
+
+        if (!pair) {
+            row.status = {state: 'rejected', reason: SeatGitIdentity.PAIR_REQUIRED};
+            return Promise.resolve()
+        }
+
+        // the declaration is the latest request now: a read still on its way paints nothing
+        const request = ++me.identityRequest;
+
+        return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            intent: {id: agentId, ...pair},
+            owner : row,
+            store : me.component.agentDefinitions,
+            setSaveStatus: (id, state, reason) => {
+                if (request !== me.identityRequest || me.isDestroyed || row.isDestroyed) {
+                    return
+                }
+
+                // pending paints its own word; rejected and superseded keep the runner's reason
+                state === 'accepted' ? me.readGitIdentity() : row.status = {state, reason: state === 'pending' ? '' : reason}
+            }
+        })
     }
 
     /**

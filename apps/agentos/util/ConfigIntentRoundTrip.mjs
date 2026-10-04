@@ -88,7 +88,7 @@ class ConfigIntentRoundTrip extends Base {
      * @summary Run one configuration round-trip and render its truth through the caller's sink.
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam) — the DI discipline shared with `addAgentFlow`.
-     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?}`, `{id, launchOwner: 'fleet'}`, `{id, repos}` or `{id, planeCredential: true}` ({@link runPlaneCredentialIntent}) (+ event envelope noise, stripped here).
+     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?, gitName?, gitEmail?}`, `{id, launchOwner: 'fleet'}`, `{id, repos}` or `{id, planeCredential: true}` ({@link runPlaneCredentialIntent}) (+ event envelope noise, stripped here).
      * @param {Object|null}   [config.owner]          The calling view — an opaque identity token for cross-owner supersede honesty. Omitting it degrades stale drops to silent.
      * @param {Function}      config.setSaveStatus    `(agentId, state, reason)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch).
      * @param {Neo.data.Store|null} config.store      The shared definitions store — record resolution, the arbitration keys, and the write-generation bump all derive from it.
@@ -123,7 +123,10 @@ class ConfigIntentRoundTrip extends Base {
         } else {
             if (Object.hasOwn(intent, 'harnessType')) wireIntent.harnessType = intent.harnessType;
             if (Object.hasOwn(intent, 'mcpServers'))  wireIntent.mcpServers  = intent.mcpServers;
-            if (Object.hasOwn(intent, 'mcpTarget'))   wireIntent.mcpTarget   = intent.mcpTarget
+            if (Object.hasOwn(intent, 'mcpTarget'))   wireIntent.mcpTarget   = intent.mcpTarget;
+            // the commit identity travels as its pair, which the Brain validates as one
+            if (Object.hasOwn(intent, 'gitName'))     wireIntent.gitName     = intent.gitName;
+            if (Object.hasOwn(intent, 'gitEmail'))    wireIntent.gitEmail    = intent.gitEmail
         }
 
         // supersede-correct ACROSS owners: the arbitration key is the shared record instance, so a
