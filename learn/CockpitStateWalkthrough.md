@@ -40,9 +40,10 @@ each state it reads every census surface on the cockpit page:
 - the roster's title, marker and empty-state button;
 - the activity feed's head, sources line and empty note.
 
-The words must equal the state's census cell, so a word that changes on either side fails the
-spec until the census and the spec move together. Each state's words are attached to the run as
-`receipt-<state>.json`.
+The words must equal the state's cell in the spec's own `CENSUS`, which is copied by hand from the
+census page. A rendered word that changes fails the spec. The spec never reads the census page, so a
+cell changed on either side is copied to the other by hand. Each state's words are attached to the
+run as `receipt-<state>.json`.
 
 ```bash
 NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-e2e -- agentos/CockpitStateWalkthroughNL --workers=1
