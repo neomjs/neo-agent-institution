@@ -867,7 +867,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up
     2ba41477f2f7e9959f085805877952ea79e12110
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-golden-path.png
-    e6731410077f02e152453268bfa97128da486319
+    f5dc23b1febf9063488454223d52ae4d8e2c1350
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox.png
     8249a32fd767e68ac0cd0f96a12a8ef868033825
