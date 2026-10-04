@@ -17,7 +17,7 @@
 //   §2.1.5   one retained cockpit + tray; explicit quit owns exact-once Brain teardown
 
 import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell, Tray} from 'electron';
-import {createReadStream}                                                        from 'node:fs';
+import {createReadStream, readFileSync}                                          from 'node:fs';
 import {fileURLToPath}                                                           from 'node:url';
 import path                                                                      from 'node:path';
 import {
@@ -68,7 +68,8 @@ import {
     typePlaneRefusal,
     writeRunState
 } from './brain.mjs';
-import {createSmokeSafeStorage, startFixturePlane}            from './fixturePlane.mjs';
+import {createSmokeSafeStorage, FIXTURE_PLANE_ID, startFixturePlane} from './fixturePlane.mjs';
+import {resolveSmokeHold, watchPlaneControl, writeWalkManifest} from './walkControl.mjs';
 import {carriesSecret, createMainLog}                         from './mainLog.mjs';
 import {
     createPlaneBroker,
@@ -105,6 +106,8 @@ const
     // The fixture-plane arm: the Brain smoke attaches to a plane of its own, through a record whose
     // bearer only this run can decrypt, so the OS keychain is never touched.
     smokePlaneMode        = smokeMode && brainMode && process.env.NEO_HARNESS_SMOKE_PLANE === '1',
+    // A walker's held run (`NEO_HARNESS_SMOKE_HOLD=1`): the fixture-plane arm only, refused anywhere else.
+    smokeHold             = resolveSmokeHold({env: process.env, smokePlaneMode}),
     planeSafeStorage      = smokePlaneMode ? createSmokeSafeStorage() : safeStorage,
     // Brain executables resolve through their own explicit runtime root in checkout mode; the
     // packaged artifact supplies one assembled organism root; a checkout with the Brain leg OFF and
@@ -129,6 +132,12 @@ const
     // A diagnostic run owns its whole profile: Electron's `userData` moves under the smoke root
     // before anything reads it, so neither a stored plane record nor the smoke shot is the installed app's.
     smokeRoot         = diagnosticMode ? resolveSmokeRoot({env: process.env, harnessDir, packaged: packagedMode, tempDir: app.getPath('temp')}) : null;
+
+// A hold outside the fixture-plane arm would attach to or own this machine's organism: stop before any of it.
+if (smokeHold.refusal) {
+    console.log('HARNESS_SMOKE_HOLD_REFUSED ' + smokeHold.refusal);
+    app.exit(2)
+}
 
 smokeRoot && app.setPath('userData', path.join(smokeRoot, 'userData'));
 
@@ -895,7 +904,7 @@ process.on('unhandledRejection', async error => {
     }
 });
 
-const brainState = {children: [], isolationRoot: null, planeIngress: null};
+const brainState = {children: [], isolationRoot: null, planeIngress: null, walkControl: null};
 
 function brainLog(line) {
     if (carriesSecret(line, mainSecrets())) {
@@ -910,10 +919,14 @@ function brainLog(line) {
  * @summary Full-tree teardown of every child the harness started (and only those — §2.1.1 one
  * lifecycle owner), then clears the smoke run-state: a record surviving a CLEAN stop would make
  * a later sweep signal whatever now owns the recycled process-group ids. Callable from every
- * exit path: will-quit, smoke completion, the smoke nets.
+ * exit path: will-quit, smoke completion, the smoke nets. A held run's walk control closes first: no
+ * plane request starts after it and the one in flight settles, so a plane it started is in the drain.
  * @returns {Promise<Object|null>} per-child stop report, or null when nothing was supervised
  */
 async function teardownBrain() {
+    await brainState.walkControl?.close();
+    brainState.walkControl = null;
+
     if (!brainState.children.length) {
         return null
     }
@@ -1277,6 +1290,7 @@ async function bootSmokeBrain() {
  */
 async function attachSmokePlane({isolationRoot, runtimeEnv}) {
     brainState.planeIngress = await startFixturePlane({
+        holdMode     : smokeHold.hold,
         isolationRoot,
         onLog        : brainLog,
         recordDir    : app.getPath('userData'),
@@ -1309,7 +1323,55 @@ async function attachSmokePlane({isolationRoot, runtimeEnv}) {
     }
 }
 
+/**
+ * @summary The held run's candidate: a packaged run's build receipt, or the checkout's runtime root.
+ * @returns {Object}
+ */
+function readHeldCandidate() {
+    if (!packagedMode) {
+        return {runtimeRoot: agentosRuntimeRoot, source: 'checkout'}
+    }
+
+    try {
+        return {source: 'packaged', ...JSON.parse(readFileSync(path.join(packagedOrganismRoot, 'organism-build-info.json'), 'utf8'))}
+    } catch (error) {
+        return {error: `organism-build-info.json unreadable (${error.code ?? error.message})`, source: 'packaged'}
+    }
+}
+
+/**
+ * @summary A held run (`NEO_HARNESS_SMOKE_HOLD=1`): the organism stays attached to its fixture plane and
+ * the window stays open for a walker, instead of the teardown and the verdict. It names its candidate and
+ * auth mode, writes the walk manifest `walkControl.mjs` acts on, and answers plane stop/start through the
+ * fixture plane's own handles. Closing the window quits through `window-all-closed` → `will-quit`, which
+ * runs the same owned-Brain teardown `exitTerminal` runs, so the organism and the plane stop with it.
+ * @returns {Promise<never>}
+ */
+async function holdForWalk() {
+    const
+        plane    = brainState.planeIngress,
+        manifest = writeWalkManifest({smokeRoot, manifest: {
+            auth        : 'seat-token: the fixture plane\'s own seat, never a forge PAT',
+            candidate   : readHeldCandidate(),
+            identities  : plane.identities,
+            ingressPort : plane.ingressPort,
+            pid         : process.pid,
+            planeBase   : plane.planeBase,
+            planeId     : FIXTURE_PLANE_ID,
+            planePort   : plane.planePort,
+            registryPath: plane.registryPath,
+            runtimeRoot : agentosRuntimeRoot
+        }});
+
+    brainState.walkControl = watchPlaneControl({handlers: {'plane-start': plane.startPlane, 'plane-stop': plane.stopPlane}, onLog: brainLog, smokeRoot});
+    console.log('HARNESS_SMOKE_HOLD ' + JSON.stringify({auth: manifest.auth, candidate: manifest.candidate, planeBase: manifest.planeBase, smokeRoot: manifest.smokeRoot}));
+
+    return new Promise(() => {})
+}
+
 app.whenReady().then(async () => {
+    if (smokeHold.refusal) return;
+
     resolveHarnessAsset = await createHarnessAssetResolver(productRoot);
     await protocol.handle('app', serveHarnessContent);
 
@@ -1584,6 +1646,13 @@ app.whenReady().then(async () => {
             }
         }
 
+        // A held run stops here with the organism attached; a boot that never attached has nothing to hold.
+        if (smokeHold.hold) {
+            plane?.status?.attached === true
+                ? await holdForWalk()
+                : console.log('HARNESS_SMOKE_HOLD_UNAVAILABLE the organism did not attach to its fixture plane; the run reports its verdict instead')
+        }
+
         const
             stop          = await appLifecycle.teardown(),
             stopReports   = Object.values(stop ?? {}),
@@ -1689,7 +1758,8 @@ app.whenReady().then(async () => {
 });
 
 // Smoke safety net — on timeout, capture compositor state before exiting.
-(smokeMode || lifecycleWitnessMode) && setTimeout(async () => {
+// A held run has no deadline: the walker's window close ends it.
+(smokeMode || lifecycleWitnessMode) && !smokeHold.hold && setTimeout(async () => {
     console.log('HARNESS_SMOKE_TIMEOUT');
 
     try {

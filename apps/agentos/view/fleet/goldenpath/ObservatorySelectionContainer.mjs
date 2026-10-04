@@ -64,10 +64,12 @@ class ObservatorySelectionContainer extends Container {
          * @member {Object[]} items
          */
         items: [{
-            ntype: 'component',
-            cls  : ['fm-observatory-side-title'],
-            flex : 'none',
-            text : 'Selected node'
+            module   : Button,
+            cls      : ['fm-observatory-side-title', 'fm-observatory-section-head'],
+            flex     : 'none',
+            reference: 'selected-section-head',
+            text     : 'Selected node',
+            ui       : 'ghost'
         }, {
             ntype    : 'component',
             cls      : ['fm-observatory-selected-head'],
@@ -148,7 +150,16 @@ class ObservatorySelectionContainer extends Container {
         me.getReference('selected-clear').set({handler: 'onClearClick', handlerScope: me});
         me.getReference('selected-copy') .set({handler: 'onCopyClick',  handlerScope: me});
         me.getReference('selected-open') .set({handler: 'onOpenClick',  handlerScope: me});
+        me.getReference('selected-section-head').set({handler: 'onSectionHeadClick', handlerScope: me});
         me.render()
+    }
+
+    /**
+     * @summary The section's head was clicked: `sectionHeadClick` asks the pane to open this section, which
+     * collapses the others to their heads.
+     */
+    onSectionHeadClick() {
+        this.fire('sectionHeadClick', {section: 'selected'})
     }
 
     /**

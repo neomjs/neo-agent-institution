@@ -1023,6 +1023,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             peers     = pane.locator('.fm-observatory-peer-list .neo-list-item'),
             node      = at => pane.locator('.fm-observatory-node-list .neo-list-item').nth(at),
             head      = pane.locator('.fm-observatory-peers-head'),
+            // one section opens to the panel's height at a time; its head opens it
+            teamHead  = pane.getByRole('button', {name: /^Team/}),
+            nodesHead = pane.getByRole('button', {name: /^Nodes/}),
             label     = pane.locator('.fm-observatory-selected-label'),
             currency  = pane.locator('.fm-observatory-currency'),
             top       = async selector => Math.round((await pane.locator(selector).boundingBox()).y),
@@ -1053,7 +1056,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await peers.filter({hasText: '@a-contributor'}).click();
         await expect(peers, 'unchecked, it leaves Team').toHaveCount(5);
 
+        // View sits first: opening a section never moves the lens controls
+        const viewTop = await top('.fm-observatory-view-row >> nth=0');
+
+        // no box holds the open Team list to a height of its own
+        expect(await pane.locator('.fm-observatory-peer-list').evaluate(el => getComputedStyle(el).maxHeight)).toBe('none');
+
         // a mouse click selects without an outline; the keys move the selection and outline the row they reach
+        await nodesHead.click();
+        await expect(node(0)).toBeVisible();
+        expect(await top('.fm-observatory-view-row >> nth=0')).toBe(viewTop);
         await node(1).click();
         await expect(label).toHaveText('Golden Path currency on the cockpit');
         expect(await outlineOf(node(1))).toBe('none');
@@ -1062,7 +1074,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(await outlineOf(node(2))).toBe('solid');
 
         // Escape backs out one step at a time: the selection first, then the lens
+        await teamHead.click();
         await peers.first().click();
+        await nodesHead.click();
         await node(1).click();
         await expect(currency).toHaveText(/ · lens · /);
         await page.keyboard.press('Escape');
@@ -1072,13 +1086,55 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(currency).not.toHaveText(/lens/);
 
         // and each has its own Clear
+        await teamHead.click();
         await peers.first().click();
         await head.getByRole('button', {name: 'Clear'}).click();
         await expect(currency).not.toHaveText(/lens/);
         await expect(head.getByRole('button', {name: 'Clear'}), 'no lens, nothing to clear').toBeHidden();
+        await nodesHead.click();
         await node(1).click();
+        await pane.getByRole('button', {name: /^Selected node/}).click();
         await pane.locator('.fm-observatory-selected-actions').getByRole('button', {name: 'Clear'}).click();
         await expect(label).toHaveText('No node selected')
+    });
+
+    test('the side panel reads a crowded read in full — All lists 161 peers and Nodes 500 rows, the last of each reachable by scrolling, while View holds its place and the other sections stay at their heads; a 90-character title wraps whole on its own row', async ({page}) => {
+        const
+            pane     = page.locator('.fm-observatory-pane'),
+            head     = pane.locator('.fm-observatory-peers-head'),
+            peers    = pane.locator('.fm-observatory-peer-list .neo-list-item'),
+            nodes    = pane.locator('.fm-observatory-node-list .neo-list-item'),
+            viewTop  = async () => Math.round((await pane.locator('.fm-observatory-view-row').first().boundingBox()).y),
+            heightOf = locator => locator.locator('.fm-observatory-row-label').evaluate(label => label.clientHeight);
+
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        await feedObservatory(page, 'crowded', /^Current · captured .+ · complete$/);
+
+        const top = await viewTop();
+
+        await expect(head.locator('.fm-observatory-side-title')).toHaveText('Team · 13 of 161');
+        await head.getByRole('button', {name: 'All'}).click();
+        await expect(peers).toHaveCount(161);
+        await peers.last().scrollIntoViewIfNeeded();
+        await expect(peers.last(), 'the last peer scrolls into the open section').toBeInViewport();
+        await expect(nodes.first(), 'Nodes stays at its head').toBeHidden();
+        expect(await viewTop()).toBe(top);
+
+        await pane.getByRole('button', {name: /^Nodes/}).click();
+        await expect(nodes).toHaveCount(500);
+        await expect(peers.first(), 'Team folds to its head').toBeHidden();
+        await nodes.last().scrollIntoViewIfNeeded();
+        await expect(nodes.last(), 'the last row scrolls into the open section').toBeInViewport();
+        expect(await viewTop()).toBe(top);
+
+        const
+            long  = nodes.filter({hasText: 'A ninety-character node title'}),
+            short = nodes.filter({has: page.locator('.fm-observatory-row-label', {hasText: /^crowded issue 1$/})});
+
+        await long.scrollIntoViewIfNeeded();
+        expect(await long.locator('.fm-observatory-row-label').evaluate(label => label.scrollHeight > label.clientHeight || label.scrollWidth > label.clientWidth), 'a long title is never clipped').toBe(false);
+        expect(Math.round(await heightOf(long) / await heightOf(short)), 'it takes the lines it needs').toBeGreaterThan(1)
     });
 
     /**

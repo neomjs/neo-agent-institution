@@ -1,3 +1,4 @@
+import Button                        from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container                     from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import GoldenPathEnvelope            from '../../../util/GoldenPathEnvelope.mjs';
 import GraphNodeSource               from '../../../util/GraphNodeSource.mjs';
@@ -32,8 +33,8 @@ const HOVER_HINT = 'drag orbits · wheel zooms · click selects';
  * Golden Path leaf only qualifies the line and the route's control: its route's admission is not the graph
  * read's to report, so a withheld route is named beside the graph read's own words.
  *
- * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, at the top of the
- * side panel ({@link AgentOS.view.fleet.goldenpath.ObservatoryTeamContainer}), offers the team the read names,
+ * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, below the View
+ * section ({@link AgentOS.view.fleet.goldenpath.ObservatoryTeamContainer}), offers the team the read names,
  * busiest first, each peer in its own hue; checking peers draws their nodes in their hues, the union of them,
  * fades the rest, and names in the node list what each node is to its peer
  * ({@link AgentOS.util.ObservatorySceneLayout#roleOf}). Attention brightens what drew attention within the stated
@@ -69,6 +70,12 @@ class ObservatoryContainer extends Container {
      * @static
      */
     static geographies = ['communities', 'density', 'strategic']
+    /**
+     * The side panel's sections that open to its remaining height; the View section always shows.
+     * @member {String[]} sections=['nodes','selected','team']
+     * @static
+     */
+    static sections = ['nodes', 'selected', 'team']
 
     static config = {
         /**
@@ -124,9 +131,10 @@ class ObservatoryContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The head (title, the read's line, the hovered node) and the body: the side panel with the team lens's
-         * peers, the View section, the node list and the selected node's section, which the canvas joins in
-         * {@link #onConstructed} where a canvas worker exists. A selection never resizes the canvas.
+         * The head (title, the read's line, the hovered node) and the body: the side panel with the View section
+         * on top, where the lens controls never move, then the team lens's peers, the node list and the selected
+         * node's section, which the canvas joins in {@link #onConstructed} where a canvas worker exists. A
+         * selection never resizes the canvas.
          * @member {Object[]} items
          */
         items: [{
@@ -152,19 +160,20 @@ class ObservatoryContainer extends Container {
                 layout   : {ntype: 'vbox', align: 'stretch'},
                 reference: 'observatory-side',
                 items    : [{
-                    module   : ObservatoryTeamContainer,
-                    flex     : 'none',
-                    reference: 'observatory-team'
-                }, {
                     module   : ObservatoryViewContainer,
                     flex     : 'none',
                     reference: 'observatory-view-section'
                 }, {
-                    ntype    : 'component',
-                    cls      : ['fm-observatory-side-title'],
+                    module   : ObservatoryTeamContainer,
+                    flex     : 'none',
+                    reference: 'observatory-team'
+                }, {
+                    module   : Button,
+                    cls      : ['fm-observatory-side-title', 'fm-observatory-section-head'],
                     flex     : 'none',
                     reference: 'observatory-nodes-title',
-                    text     : 'Nodes'
+                    text     : 'Nodes',
+                    ui       : 'ghost'
                 }, {
                     module   : ObservatoryNodeList,
                     flex     : 1,
@@ -191,6 +200,14 @@ class ObservatoryContainer extends Container {
          * @reactive
          */
         lensPeers_: [],
+        /**
+         * The side panel's open section (`team`, `nodes` or `selected`): it takes the panel's remaining height and
+         * the others collapse to their heads, each still naming its count. Selecting a node opens `selected`,
+         * unless the viewer is browsing `nodes`: the list stays, and the collapsed Selected head line names the node.
+         * @member {String} openSection_='team'
+         * @reactive
+         */
+        openSection_: 'team',
         /**
          * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf. Only its
          * currency is read: a withheld route qualifies the line and reads unavailable in its control.
@@ -251,6 +268,12 @@ class ObservatoryContainer extends Container {
      */
     scene = ObservatorySceneLayout.fromGraphScene(null)
     /**
+     * Whether the viewer has opened a section, by its head or a selection; until then a read opens Team only
+     * when it lists peers, and Nodes otherwise, so no default opens an empty section.
+     * @member {Boolean} sectionChosen=false
+     */
+    sectionChosen = false
+    /**
      * Why the selection last cleared itself, until the next selection or click.
      * @member {String|null} selectionNote=null
      */
@@ -296,6 +319,10 @@ class ObservatoryContainer extends Container {
         me.getReference('heat-toggle')        .set({handler: 'onHeatToggleClick',  handlerScope: me});
         me.getReference('mail-toggle')        .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle')       .set({handler: 'onRouteToggleClick', handlerScope: me});
+        me.getReference('observatory-nodes-title').set({handler: () => me.chooseSection('nodes'), handlerScope: me});
+        me.getReference('observatory-team').on('sectionHeadClick', ({section}) => me.chooseSection(section));
+        me.getReference('observatory-selected').on('sectionHeadClick', ({section}) => me.chooseSection(section));
+        me.syncSections();
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
             me.getReference('observatory-body').insert(0, {
@@ -461,7 +488,18 @@ class ObservatoryContainer extends Container {
 
         me.getReference('observatory-canvas')?.set({selectedId: value});
         me.syncLists();
-        me.updateSelection()
+        me.updateSelection();
+        value && me.openSection !== 'nodes' && me.chooseSection('selected')
+    }
+
+    /**
+     * Triggered after the openSection config got changed: the side panel opens that section.
+     * @param {String} value
+     * @param {String|undefined} oldValue
+     * @protected
+     */
+    afterSetOpenSection(value, oldValue) {
+        oldValue !== undefined && this.syncSections()
     }
 
     /**
@@ -503,6 +541,17 @@ class ObservatoryContainer extends Container {
      */
     beforeSetGeography(value, oldValue) {
         return this.beforeSetEnumValue(value, oldValue, 'geography', ObservatoryContainer.geographies)
+    }
+
+    /**
+     * Triggered before the openSection config gets changed: only a known section opens.
+     * @param {String} value
+     * @param {String} oldValue
+     * @returns {String|undefined}
+     * @protected
+     */
+    beforeSetOpenSection(value, oldValue) {
+        return this.beforeSetEnumValue(value, oldValue, 'openSection', ObservatoryContainer.sections)
     }
 
     /**
@@ -817,20 +866,57 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary The viewer opened a section, by its head or a selection: from now on a new read keeps it open.
+     * @param {String} section One of {@link #sections}
+     * @protected
+     */
+    chooseSection(section) {
+        this.sectionChosen = true;
+        this.openSection   = section
+    }
+
+    /**
+     * @summary Opens {@link #openSection} to the side panel's remaining height and collapses the others to their
+     * heads; a head is pressed and `aria-expanded` while its section is open. The View section is not a section: it always shows.
+     * @protected
+     */
+    syncSections() {
+        const me = this, {openSection} = me;
+
+        [['team', 'observatory-team', 'observatory-peers-title'],
+         ['nodes', 'observatory-nodes', 'observatory-nodes-title'],
+         ['selected', 'observatory-selected', 'selected-section-head']].forEach(([section, body, head]) => {
+            const isOpen = section === openSection, component = me.getReference(body), button = me.getReference(head);
+
+            // the layout copied flex into the style when it placed the section, so a change must reach the style
+            component.set({
+                flex : isOpen ? 1 : 'none',
+                style: {...component.style, flex: isOpen ? '1 1 0%' : 'none'}
+            });
+            component.toggleCls('is-collapsed', !isOpen);
+            button.pressed               = isOpen;
+            button.vdom['aria-expanded'] = String(isOpen);
+            button.update()
+        })
+    }
+
+    /**
      * @summary Hands the Team section the scene's peers, each in the hue it is drawn in, and the lens: a new
      * scene refills the list, a changed lens only recolours it and puts its checks back.
      * @param {Boolean} refill `true` for a new scene
      * @protected
      */
     syncTeam(refill) {
-        const me = this;
+        const me = this, peers = ObservatorySceneLayout.peersOf(me.scene);
 
         me.getReference('observatory-team')?.sync({
             lensPeers: me.lensPeers,
             named    : me.scene.identities.length > 0,
-            peers    : ObservatorySceneLayout.peersOf(me.scene).map(peer => ({...peer, hue: me.hueOf(peer.id)})),
+            peers    : peers.map(peer => ({...peer, hue: me.hueOf(peer.id)})),
             refill
-        })
+        });
+
+        me.sectionChosen || (me.openSection = peers.length ? 'team' : 'nodes')
     }
 
     /**
