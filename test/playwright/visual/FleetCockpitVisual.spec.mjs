@@ -482,7 +482,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             lead     : globalThis.__fmMeasureBannerLead(),
             pillCut  : cut(banner),
             title    : banner.getAttribute('title') || '',
-            wakeCut  : cut(wake)
+            wakeCut  : cut(wake),
+            wakeFont : wake ? getComputedStyle(wake).fontSize : null,
+            wakeLive : wake ? wake.classList.contains('fm-viewer-wake-live') : null
         }
     });
 
@@ -531,7 +533,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForTimeout(400);
         await expect(bar).toHaveScreenshot('banner-pat-refused-light.png');
 
-        // the mark regime: the word retracts to its mark, the lead keeps one truncated line
+        // the mark regime: the fleet pill retracts to its mark and its lead keeps one truncated line;
+        // no non-live state is a bare mark, so a degraded wake chip, which has no lead, keeps its word
         await page.setViewportSize({width: 720, height: 900});
         await expect.poll(() => readRefusal(page).then(read => read.fontSize), {message: 'the pill drops to its mark', timeout: 10000}).toBe('0px');
 
@@ -540,6 +543,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(narrow.lead?.width, 'the reason keeps a visible line beside the mark').toBeGreaterThan(0);
         expect(narrow.lead.oneLine, 'the narrow lead never wraps').toBe(true);
         expect(narrow.title, 'the title still carries the whole sentence').toContain(narrow.lead.text);
+        expect(narrow.wakeLive, 'the fixture wake is degraded').toBe(false);
+        expect(narrow.wakeFont, 'a degraded wake keeps its word in the mark regime').not.toBe('0px');
+        expect(narrow.wakeCut, 'and the word reads whole').toBe(false);
 
         await expect(bar).toHaveScreenshot('banner-pat-refused-light-720.png')
     });

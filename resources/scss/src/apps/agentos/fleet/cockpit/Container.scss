@@ -293,8 +293,9 @@
     /* ── the declared collapse order — two designed forms, no pill or button ever cut mid-word:
        (1) wide (default rules above): the two state pills in one row, right-aligned, the lead
            between them on what the row leaves;
-       (2) narrow: the pills' words drop to marks, the lead keeps one truncated line, action
-           labels drop to icons.
+       (2) narrow: the fleet pill's word drops to its mark while the lead keeps its reason on one
+           truncated line; the wake chip drops to its mark only while live, since a degraded wake
+           has no lead and a bare mark would hide its state; action labels drop to icons.
        Every step is a designed form: the lead's ellipsis is its form, and the T5 titles repeat
        the whole sentence at every width.
 
@@ -308,9 +309,11 @@
     @container fm-cockpit (max-width: 760px) {
         .fm-cockpit-bar {
             /* state drops its words, keeps its marks: the chip's left-mark geometry IS the dot
-               form of the family — the word retracts; the mark, the lead and the T5 title stay. */
+               form of the family — the word retracts; the mark, the lead and the T5 title stay.
+               No non-live state becomes a bare mark: the fleet pill's lead carries its reason,
+               and a degraded wake chip, which has no lead, keeps its word. */
             .fm-spine-banner,
-            .fm-viewer-wake {
+            .fm-viewer-wake-live {
                 font-size: 0;
                 min-width: 0;
                 width    : 14px;

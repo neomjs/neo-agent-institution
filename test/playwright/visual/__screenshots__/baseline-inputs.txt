@@ -543,7 +543,7 @@ resources/scss/src/apps/agentos/fleet/catchup/Container.scss
     a2bb58e723c846f130e6a1c3d942440cca6f4d0b
 
 resources/scss/src/apps/agentos/fleet/cockpit/Container.scss
-    3f38b7a773b47f95a28f5507839e212567ba05a9
+    f61ac21d5f0ec990b0d74bc93b1722db188c6abd
 
 resources/scss/src/apps/agentos/fleet/cockpit/SpineBannerComponent.scss
     a76f2a2b6be68b4938b5625da00489fbb71a85f7
@@ -705,7 +705,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    189d3c9b606d984e3b74071ce859f115ae4b3e50
+    7753ac8b2cdbd93ae4c53158ee5a42a16b1b5082
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -738,7 +738,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-not-a-
     73c1e8e0dd0508f3a21567150824b9a7aa3312f6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused-light-720.png
-    eb7637761d98500b89248211bb828d9deca31377
+    b2e54f262fb1a4a06dd0961e2d9b767f4e2903a6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused-light.png
     c59d7db048429ecf33952069567d5c1f9cf4d21c
@@ -762,7 +762,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-empty
     b1f619167bd343c3975042960844f895ded1f6e2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-intermediate-720.png
-    f67aff772b8b9bc396617e37339b46d63f2b4624
+    b96303e4bf8941214bad189b16e2d2b47e57b64e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
     3938638c3f57b6136c26e35e0e3985088ab599e6

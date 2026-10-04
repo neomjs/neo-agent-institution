@@ -121,19 +121,19 @@
   </div>
   <p class="barw">wide — the pills keep their row, right-aligned, before the actions. The first cut stacked them here on the operator's observation that the 50px band had the vertical space; that space was the engine's 48px buttons, and on the chrome scale a stack would grow the bar by 9px exactly where it has the most width to spare</p>
 
-  <div class="col-label">narrow (≤ 760px container): the pill drops to its mark; the lead keeps one truncated line, so the reason is never hover-only</div>
+  <div class="col-label">narrow (≤ 760px container): the fleet pill drops to its mark and its lead keeps one truncated line; a degraded wake keeps its word, so no non-live state is a bare mark</div>
   <div class="bar" style="max-width:560px">
     <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
     <span class="spacer"></span>
     <span class="statebox h">
       <span class="pill" title="Fleet server offline · 127.0.0.1:8083/fleet; showing the static roster"><span class="dot dot-bad"></span></span>
       <span style="font:var(--t-micro);color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:96px">Fleet server offline</span>
-      <span class="pill" title="wake off — stream disconnected (connect refused)"><span class="dot dot-off"></span></span>
+      <span class="pill" title="wake off — stream disconnected (connect refused)"><span class="dot dot-off"></span>wake off</span>
     </span>
     <span class="btn">⟳</span>
     <span class="btn primary">▶</span>
   </div>
-  <p class="note"><b>Declared collapse order</b> (container query on the cockpit bar, the mechanism the roster/card/activity surfaces already use): (1) the pill's word drops to its mark, while the lead keeps its truncated line; (2) action labels drop → icon buttons; (3) view labels never drop — they are the navigation. Nothing clips mid-word except the lead's ellipsis, which is its designed form: the lead is the row's slack, so it shortens before a pill or a button loses a pixel. The T5 title repeats the whole sentence at every width. Reconnect renders only while the fleet pill is not hidden (the existing bind), so the narrow bar in a healthy fleet is just views + start + two quiet dots.</p>
+  <p class="note"><b>Declared collapse order</b> (container query on the cockpit bar, the mechanism the roster/card/activity surfaces already use): (1) the fleet pill's word drops to its mark while its lead keeps the reason on a truncated line; a live wake drops to its mark too, but a degraded wake has no lead and keeps its word, because no non-live state may be a bare mark (Clio, 2026-10-04); (2) action labels drop → icon buttons; (3) view labels never drop — they are the navigation. Nothing clips mid-word except the lead's ellipsis, which is its designed form: the lead is the row's slack, so it shortens before a pill or a button loses a pixel. The T5 title repeats the whole sentence at every width. Reconnect renders only while the fleet pill is not hidden (the existing bind), so the narrow bar in a healthy fleet is just views + start + two quiet dots.</p>
   <p class="falsifier">header falsifiers: no label carries an endpoint or shell command inline (grep the chrome vdom for "npm run" / host:port = empty) · no mid-word clipping at 1280/1024/900/730 (computed receipts: scrollWidth ≤ clientWidth on every chrome label but the lead) · the lead renders a visible line at every width and is the only chrome label that ellipsizes (amended 2026-10-04) · state block sits right of the last view button and left of the first action button at every width · the axis word renders exactly once per pill.</p>
 
   <div class="divider"></div>
