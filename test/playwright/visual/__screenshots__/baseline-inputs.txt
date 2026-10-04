@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    baf2236e12d2677741e0611bde6eb2dee72330f2
+    8500de94ae90ece9194fb27a7da667d1ba9e35ba
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -267,10 +267,13 @@ apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
 
 apps/agentos/util/RosterRow.mjs
-    fa3738f97a9f56dd04d9e7dbfe808ef9d9a5a5ed
+    9c26d2cb17b78e356251df16e35c5ac752dff664
 
 apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
+
+apps/agentos/util/SeatSessionFolder.mjs
+    5c407e6a03f2b440af221d6a6e314aa7f89f6f53
 
 apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
@@ -354,7 +357,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    cfd06c8367cd96504dbcaa3ea01a410b764cf1ae
+    92c384e0864faf4dd0c15f8e7f7baf3c4ceacfb4
 
 apps/agentos/view/fleet/detail/Controller.mjs
     69c833d9f1804d6f1643fcbbcfcc4b45ca171268
@@ -480,7 +483,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    e8098507a2e9ebf95d26213b686f4e022015c067
+    8618c54467f820006cb9ac6b6981208141206ec0
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     64238dd4bac922bbfd33878431f3b9a21f9d8dfb
@@ -570,7 +573,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    177da5f4a75ba63340191397c9f2a229bbdfced8
+    99e0cbc11f87c1aca819129f35697e7dda159d9b
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
@@ -630,7 +633,7 @@ resources/scss/src/apps/agentos/fleet/roster/Container.scss
     6d2873b22214c71368ae1e7352e1023eede8cc08
 
 resources/scss/src/apps/agentos/fleet/roster/card/Container.scss
-    3f134908ca4f7e93a8367525f0cace88215b9d34
+    c43c12f1a73a4bb8654b3a9bbfeccf5267b8edd7
 
 resources/scss/src/apps/agentos/fleet/shared/FamilyRailComponent.scss
     a44934170253161f3d0067031116e88e141223b3

@@ -107,6 +107,25 @@
         color: var(--fm-ink);
     }
 
+    /* the session's folder verdict: a short line that still ellipsizes at the narrowest width (the
+       Repository pane holds the whole words), only its state word coloured, the attention token for
+       the wrong folder the operator acts on */
+    .fm-detail-seat-folder {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+
+        .fm-detail-seat-folder-state {
+            color: var(--fm-ink-dim);
+
+            &.is-wrong {
+                color: var(--fm-state-wedged);
+            }
+        }
+    }
+
     /* THE ONE STATE LEDGER (#23): every liveness/wiring axis once, `axis · pill` per row, in the
        pane's own freshness-pill vocabulary — the three prior languages (italic telltale prose,
        coloured source lines, a dangling producer suffix) collapsed into it. Grid-locked columns:
@@ -191,6 +210,20 @@
     .fm-detail-repo-path {
         min-width : 0;
         word-break: break-all;
+    }
+
+    /* a desktop session outside the launch's folder: the whole words, wrapping, folders broken
+       anywhere rather than elided; the wrong folder the operator acts on takes the attention token */
+    .fm-detail-repo-session {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+        padding-top  : var(--fm-space-1);
+
+        &.is-wrong {
+            color: var(--fm-state-wedged);
+        }
     }
 
     .fm-detail-repo-copy {
