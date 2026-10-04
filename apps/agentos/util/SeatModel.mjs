@@ -85,13 +85,17 @@ class SeatModel extends Base {
     }
 
     /**
-     * @summary The roster card's one line about a refused start, or `null`: it speaks only when Start refused the
-     * declared model.
-     * @param {Object|null} seatModel The roster record's `seatModel`
+     * @summary The roster card's one line about a start refused for the declared model, or `null`. It speaks only when
+     * the Fleet recorded that refusal and this cockpit's own latest outcome, if it has one, is the same refusal: a newer
+     * local rejection for another cause keeps its own words until the roster reads the seat again.
+     * @param {Object|null} seatModel       The roster record's `seatModel`
+     * @param {Object|null} [controlReason] The card's `{action, kind, reason}` from this cockpit's last control
      * @returns {String|null}
      */
-    static refusal(seatModel) {
-        return seatModel?.state === 'refused' ? `start refused: ${seatModel.reason} — change it in Detail › Configuration` : null
+    static refusal(seatModel, controlReason = null) {
+        const agrees = !controlReason || (controlReason.kind === 'rejected' && controlReason.reason?.includes(seatModel?.reason));
+
+        return seatModel?.state === 'refused' && agrees ? `start refused: ${seatModel.reason} — change it in Detail › Configuration` : null
     }
 }
 

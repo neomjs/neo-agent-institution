@@ -256,19 +256,17 @@ class SeatModelContainer extends Container {
             pending = me.status?.state === 'pending';
 
         for (const {field} of FIELDS) {
-            const
-                acknowledged = me.acknowledged.includes(field),
-                row          = SeatModel.row({
-                    field,
-                    harnessType: seat?.harnessType ?? null,
-                    declared   : seat?.[field] ?? null,
-                    configured : me.configured,
-                    observed   : me.observed?.[field] ?? null,
-                    running    : me.running && !acknowledged
-                }),
-                text = acknowledged && row.actions.includes('change') && seat?.[field] ? `declared ${seat[field]} · applies at next start` : row.text;
+            // a re-applied drift reads as the stopped seat's: both values, and what the next Start applies
+            const row = SeatModel.row({
+                field,
+                harnessType: seat?.harnessType ?? null,
+                declared   : seat?.[field] ?? null,
+                configured : me.configured,
+                observed   : me.observed?.[field] ?? null,
+                running    : me.running && !me.acknowledged.includes(field)
+            });
 
-            me.getReference(`${field}-line`).text = text;
+            me.getReference(`${field}-line`).text = row.text;
 
             for (const action of ['change', 'reapply', 'adopt']) {
                 me.getReference(`${field}-${action}`).set({
@@ -287,28 +285,34 @@ class SeatModelContainer extends Container {
         offer.hidden = !me.editing || free;
 
         if (me.editing && !free) {
+            const declared = seat?.[me.editing] ?? null;
+
             offer.removeAll();
+            // the declared value, or the harness default where nothing is declared, is the pressed chip
             offer.add([
                 ...(values ?? []).map(value => ({
                     module : Button,
-                    cls    : ['fm-chip', 'fm-seat-model-value', ...(seat?.[me.editing] === value ? ['is-declared'] : [])],
+                    cls    : ['fm-chip', 'fm-seat-model-value', declared === value ? 'is-selected' : 'is-selectable'],
                     handler: () => me.declare(me.editing, value),
                     text   : value
                 })),
                 {
                     module : Button,
-                    cls    : ['fm-chip', 'fm-seat-model-default'],
+                    cls    : ['fm-chip', 'fm-seat-model-default', declared ? 'is-selectable' : 'is-selected'],
                     handler: () => me.declare(me.editing, null),
                     text   : 'Use the harness default'
                 }
-            ])
+            ]).forEach(chip => chip.changeVdomRootKey('aria-pressed', String(chip.cls.includes('is-selected'))))
         }
 
         me.getReference('free').hidden = !free;
 
+        // open values the harness has not answered with: the line says why, in the read's own state
+        const reading = me.editing && !values && !free;
+
         me.getReference('status-line').set({
-            cls : ['fm-seat-model-status', `is-${me.status?.state ?? 'idle'}`],
-            text: me.editing && !values && !free ? me.catalog?.reason ?? 'Reading what the harness offers…' : pending ? me.status.reason || 'Saving…' : me.status?.reason ?? ''
+            cls : ['fm-seat-model-status', `is-${reading ? me.catalog ? 'unavailable' : 'pending' : me.status?.state ?? 'idle'}`],
+            text: reading ? me.catalog?.reason ?? 'Reading what the harness offers…' : pending ? me.status.reason || 'Saving…' : me.status?.reason ?? ''
         })
     }
 

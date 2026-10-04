@@ -766,6 +766,42 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('AC-2 (#559): a Start refused for the declared model reads in the design read\'s words, and the card says nothing about the model otherwise', () => {
+        const
+            card     = createCard({agentId: 'vega', state: 'off'}),
+            status   = () => card.down({reference: 'control-status'}),
+            refused  = {state: 'refused', model: 'gpt-6-astra', reasoningEffort: null, reason: 'model gpt-6-astra is not available'},
+            line     = 'start refused: model gpt-6-astra is not available — change it in Detail › Configuration',
+            brain    = "agent 'vega' cannot start: model gpt-6-astra is not available. Nothing was changed. Change it in Detail › Configuration, then start it again.";
+
+        // a read that could not say, or nothing read, puts nothing on the card
+        for (const seatModel of [{state: 'partial', reason: 'rate limited'}, {state: 'complete', reason: null}, null]) {
+            applySet(card, {seatModel});
+            expect(status().hidden, JSON.stringify(seatModel)).toBe(true)
+        }
+
+        // this cockpit's own Start, refused for the model: the design words replace the Fleet's sentence
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: brain}, seatModel: refused});
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe(line);
+        expect(status().cls).toContain('is-model-refused');
+        expect(card.cls).toContain('fm-control-live');
+
+        // another cockpit's Start, or this one reloaded: the recorded refusal stands alone
+        applySet(card, {controlReason: null});
+        expect(status().text).toBe(line);
+
+        // a new attempt is pending, then refused for another cause before the roster reads the seat again: the
+        // earlier model refusal is never claimed as the cause
+        applySet(card, {pendingAction: 'start'});
+        expect(status().text).toBe('start…');
+        applySet(card, {pendingAction: null, controlReason: {action: 'start', kind: 'rejected', reason: 'harness offline'}});
+        expect(status().text).toBe('⚠ rejected: harness offline');
+        expect(status().cls).not.toContain('is-model-refused');
+
+        card.destroy()
+    });
+
     test('observe: a pending action renders the state dot as a distinct transitional state, never the stale resolved one (#14978)', () => {
         const card = createCard({agentId: 'vega', state: 'off'});
         const dot  = () => card.down({ntype: 'fm-state-dot'});

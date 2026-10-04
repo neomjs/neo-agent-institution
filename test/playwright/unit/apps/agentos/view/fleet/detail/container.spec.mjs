@@ -757,6 +757,73 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }
     });
 
+    test('#559: the Seat group reads the declaration beside the config, asks the Fleet what to offer, and declares one field through the runner', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', model: 'gpt-6-sol'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            intents    = [],
+            reads      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent: async intent => {
+                intents.push(intent);
+                // the Fleet answers the whole definition, and a withdrawn field is absent from it
+                return {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', ...(intent.model ? {model: intent.model} : {})}}
+            },
+            fleetSeatModelCatalog: async ({id}) => {
+                reads.push(id);
+                return {state: 'complete', reason: null, models: [{id: 'gpt-6-luna', efforts: ['high']}, {id: 'gpt-6-sol', efforts: ['max']}]}
+            },
+            fleetSeatGitIdentity: async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off', harnessSettings: {model: 'gpt-6-luna', reasoningEffort: null}}, {agentDefinitions: definitions}),
+                group  = detail.getReference('seat-model'),
+                line   = () => group.getReference('model-line').text;
+
+            expect(group.hidden).toBe(false);
+            expect(line()).toBe('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
+
+            // a running seat on another value is drift
+            applySet(detail, {state: 'ok'});
+            expect(line()).toBe('declared gpt-6-sol · now reads gpt-6-luna (configured on disk)');
+
+            applySet(detail, {state: 'off'});
+            group.onActionClick({component: group.getReference('model-change')});
+            await expect.poll(() => group.catalog?.state).toBe('complete');
+            expect(reads).toEqual(['ada']);
+
+            await detail.controller.onDeclareSeatModel({field: 'model', value: 'gpt-6-luna'});
+
+            // only the one field crosses; the accepted readback re-seats the group and closes the offer
+            expect(intents).toEqual([{id: 'ada', model: 'gpt-6-luna'}]);
+            expect(definitions.get('ada').model).toBe('gpt-6-luna');
+            expect(line()).toBe('declared gpt-6-luna');
+            expect([group.editing, group.status.state]).toEqual([null, 'idle']);
+
+            // withdrawn: the readback carries no model, and the row reads what the config is set to
+            await detail.controller.onDeclareSeatModel({field: 'model', value: null});
+            expect(intents.at(-1)).toEqual({id: 'ada', model: null});
+            expect(definitions.get('ada').model).toBeNull();
+            expect(line()).toBe('derived · reads gpt-6-luna (configured on disk)');
+
+            // a field the group does not own never reaches the wire
+            await detail.controller.onDeclareSeatModel({field: 'harnessType', value: 'codex'});
+            expect(intents).toHaveLength(2);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
     test('AC-3 (#524): a late answer for a seat no longer shown paints nothing; a seat without a definition shows no row', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},
