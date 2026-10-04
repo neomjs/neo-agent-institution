@@ -28,11 +28,22 @@
     /* the clearing hugs the letters: the ground glows behind each line's glyphs, so the field stays off
        the words without a box edge, and never dims a team mark beside them; the tight layers compound
        at the stroke */
+    .fm-home-operator,
     .fm-home-eyebrow,
     .fm-home-h1,
     .fm-home-lede,
     .fm-home-plane {
         text-shadow: 0 0 2px var(--fm-ground), 0 0 4px var(--fm-ground), 0 0 10px var(--fm-ground), 0 0 22px var(--fm-ground);
+    }
+
+    /* the operator's own line, above everything: what waits for his hand and his word, in the prose role
+       at full ink, so it reads as his and never as an error band */
+    .fm-home-operator {
+        font-family: var(--fm-font-sans);
+        font-size  : 17px;   /* §04 recorded exception: prose above the ladder (the welcome lede) */
+        line-height: 1.6;
+        color      : var(--fm-ink);
+        margin     : 0 0 18px;
     }
 
     .fm-home-eyebrow {

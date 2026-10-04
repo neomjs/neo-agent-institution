@@ -1,7 +1,9 @@
+import AgentFreshness         from '../../util/AgentFreshness.mjs';
 import BaseContainer          from '../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import Button                 from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import FleetAgent             from '../../model/FleetAgent.mjs';
 import HomeCanvas             from './Canvas.mjs';
+import OpenWorkSeat           from '../../util/OpenWorkSeat.mjs';
 import {INSTANCE_STATE_WORDS} from '../fleet/instances/SwitcherButton.mjs';
 
 /**
@@ -9,6 +11,21 @@ import {INSTANCE_STATE_WORDS} from '../fleet/instances/SwitcherButton.mjs';
  * @type {String}
  */
 const PRODUCT_LINE = 'Mission control for a cross-model AI engineering team.';
+
+/**
+ * @summary The questions axis until the Brain can list a person's open Tasks: unreadable, with its reason,
+ * so the operator's line never counts it as zero.
+ * @type {Object}
+ */
+const QUESTIONS_UNREADABLE = Object.freeze({state: 'unavailable', reason: 'this plane cannot list them yet'});
+
+/**
+ * @summary A count and its noun: `1 merge`, `2 merges`.
+ * @param {Number} count
+ * @param {String} noun The singular
+ * @returns {String}
+ */
+const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 
 /**
  * @summary One door per keeper view, named by the question the view answers.
@@ -34,10 +51,14 @@ const door = (iconCls, route, question) => ({
  * as fleet state. Behind both, a field on the canvas worker ({@link AgentOS.view.home.Canvas}) takes the
  * pointer from the whole view and draws one mark per rostered agent from the team line's own read.
  *
+ * Above everything, the operator's own line says what waits for him: the merges that wait for his hand
+ * and the questions that wait for his word ({@link #operatorLine}).
+ *
  * @summary Binds the Viewport provider's roster store and the roster surface's truths (the cockpit's
- * liveness owner fills them), `instanceState` (the chrome switcher's verdict and vocabulary) and
- * `shellPlaneConfigured`, which the ViewportController publishes from the shell's plane status
- * (`false` only for a packaged shell without a plane).
+ * liveness owner fills them), the merge queue store and the open-work read's state, `instanceState`
+ * (the chrome switcher's verdict and vocabulary) and `shellPlaneConfigured`, which the
+ * ViewportController publishes from the shell's plane status (`false` only for a packaged shell
+ * without a plane).
  *
  * @class AgentOS.view.home.Container
  * @extends Neo.container.Base
@@ -62,9 +83,11 @@ class Container extends BaseContainer {
          * @member {Object} bind
          */
         bind: {
+            awaitingMergeStore  : 'stores.fleetAwaitingMerge',
             gridAdapterState    : data => data.gridAdapterState,
             gridDegradedReason  : data => data.gridDegradedReason,
             instanceState       : data => data.instanceState,
+            openWork            : data => data.openWork,
             rosterStore         : 'stores.fleetRoster',
             shellPlaneConfigured: data => data.shellPlaneConfigured
         },
@@ -77,6 +100,12 @@ class Container extends BaseContainer {
             mouseleave: 'onFieldLeave',
             mousemove : {fn: 'onFieldMove', local: true}
         },
+        /**
+         * The merge queue the cockpit's open-work read fills; the operator's line counts it.
+         * @member {AgentOS.store.FleetAwaitingMerge|null} awaitingMergeStore_=null
+         * @reactive
+         */
+        awaitingMergeStore_: null,
         /**
          * The roster surface's adapter state: `cold` until the read answers, then `live` or `stale`.
          * @member {String} gridAdapterState_='cold'
@@ -95,6 +124,19 @@ class Container extends BaseContainer {
          * @reactive
          */
         instanceState_: 'off',
+        /**
+         * The open-work read's state, the provider's `openWork` block `{coverage, observedAt, reason, state}`.
+         * @member {Object|null} openWork_=null
+         * @reactive
+         */
+        openWork_: null,
+        /**
+         * The questions axis of the operator's line: `{state: 'known', count}` or `{state: 'unavailable',
+         * reason}`. Unreadable until a producer lists a person's open Tasks.
+         * @member {Object} questions_=QUESTIONS_UNREADABLE
+         * @reactive
+         */
+        questions_: QUESTIONS_UNREADABLE,
         /**
          * The roster the cockpit's liveness owner fills; the team line counts it.
          * @member {AgentOS.store.FleetRoster|null} rosterStore_=null
@@ -129,6 +171,13 @@ class Container extends BaseContainer {
             flex  : 'none',
             layout: {ntype: 'vbox', align: 'start'},
             items : [{
+                ntype    : 'component',
+                tag      : 'p',
+                cls      : ['fm-home-operator'],
+                hidden   : true,
+                reference: 'operator-line',
+                text     : ''
+            }, {
                 ntype    : 'component',
                 tag      : 'p',
                 cls      : ['fm-home-eyebrow'],
@@ -202,6 +251,55 @@ class Container extends BaseContainer {
     }
 
     /**
+     * @summary The operator's own line: what waits for his hand (merges) and for his word (questions), one
+     * count that belongs to him alone. "nothing waits for you" is said only when both axes answered and
+     * both are zero. An axis that cannot be read leads with its reason, and the other keeps its number,
+     * never a 0. A stale merge queue reads its count "as of" its oldest row. Until the merge read answers
+     * the line is hidden, and so it stays for a bridge without the open-work verb or a read that threw
+     * (`OpenWorkRead.unavailable`'s silent coverages): an answer nobody gave earns no pixels. Only the
+     * producer's own `unavailable` is named.
+     * @param {Object}      facts
+     * @param {Object|null} facts.openWork    The provider's `openWork` block: the merge axis's state
+     * @param {Object[]}    facts.mergeRows   The merge queue's rows (`{observedAt, stale}`)
+     * @param {Object}      facts.questions   `{state: 'known', count}` or `{state: 'unavailable', reason}`
+     * @param {Number}      [facts.now=Date.now()] The viewer's clock, for a stale queue's age
+     * @returns {{hidden: Boolean, text: String}}
+     */
+    static operatorLine({openWork, mergeRows = [], questions, now = Date.now()}) {
+        const
+            state      = openWork?.state ?? null,
+            unanswered = state === 'unavailable' && openWork.coverage !== 'unavailable';
+
+        if (unanswered || (state !== 'ok' && state !== 'stale' && state !== 'unavailable')) {
+            return {hidden: true, text: ''}
+        }
+
+        const
+            stale      = state === 'stale' || mergeRows.some(row => row.stale === true),
+            observedAt = OpenWorkSeat.oldestObservedAt(mergeRows) ?? openWork.observedAt,
+            ageMs      = stale && observedAt ? now - Date.parse(observedAt) : NaN,
+            asOf       = Number.isFinite(ageMs) ? ` as of ${AgentFreshness.formatAge(ageMs)}` : '',
+            mergeAxis  = state === 'unavailable' ? {state, reason: openWork.reason} : {state: 'known', count: mergeRows.length, asOf},
+            axes       = [{noun: 'question', axis: questions}, {noun: 'merge', axis: mergeAxis}],
+            waiting    = axes.filter(({axis}) => axis.state === 'known' && axis.count > 0),
+            parts      = axes
+                .filter(({axis}) => axis.state !== 'known')
+                .map(({noun, axis}) => `your ${noun}s could not be read${axis.reason ? ` · ${axis.reason}` : ''}`);
+
+        if (parts.length === 0 && waiting.length === 0) {
+            return {hidden: false, text: 'nothing waits for you'}
+        }
+
+        if (waiting.length > 0) {
+            const one = waiting.length === 1 && waiting[0].axis.count === 1;
+
+            parts.push(`${waiting.map(({noun, axis}) => counted(axis.count, noun) + (axis.asOf ?? '')).join(' · ')} ${one ? 'waits' : 'wait'} for you`)
+        }
+
+        return {hidden: false, text: parts.join(' · ')}
+    }
+
+    /**
      * @summary Renders whatever the provider already holds: Home is built before the first read lands. The
      * field joins behind the hero wherever a canvas worker runs.
      * @param {...*} args
@@ -214,7 +312,7 @@ class Container extends BaseContainer {
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
             me.insert(0, {
                 module   : HomeCanvas,
-                quietIds : ['eyebrow', 'lead', 'lede', 'plane-line'].map(reference => me.getReference(reference).id),
+                quietIds : ['operator-line', 'eyebrow', 'lead', 'lede', 'plane-line'].map(reference => me.getReference(reference).id),
                 reference: 'canvas',
                 team     : me.team
             })
@@ -225,8 +323,20 @@ class Container extends BaseContainer {
 
     /** @param {...*} args */
     destroy(...args) {
+        this.awaitingMergeStore?.un({load: this.applyState, recordChange: this.applyState, scope: this});
         this.rosterStore?.un({load: this.applyState, recordChange: this.applyState, scope: this});
         super.destroy(...args)
+    }
+
+    /**
+     * @summary Follows the merge queue: each open-work answer replaces its rows, and the operator's line recounts.
+     * @param {AgentOS.store.FleetAwaitingMerge|null} value
+     * @param {AgentOS.store.FleetAwaitingMerge|null} oldValue
+     */
+    afterSetAwaitingMergeStore(value, oldValue) {
+        oldValue?.un({load: this.applyState, recordChange: this.applyState, scope: this});
+        value   ?.on({load: this.applyState, recordChange: this.applyState, scope: this});
+        this.isConstructed && this.applyState()
     }
 
     /** @param {String} value @param {String} oldValue */
@@ -241,6 +351,16 @@ class Container extends BaseContainer {
 
     /** @param {String} value @param {String} oldValue */
     afterSetInstanceState(value, oldValue) {
+        this.isConstructed && this.applyState()
+    }
+
+    /** @param {Object|null} value @param {Object|null} oldValue */
+    afterSetOpenWork(value, oldValue) {
+        this.isConstructed && this.applyState()
+    }
+
+    /** @param {Object} value @param {Object} oldValue */
+    afterSetQuestions(value, oldValue) {
         this.isConstructed && this.applyState()
     }
 
@@ -273,8 +393,9 @@ class Container extends BaseContainer {
 
     /**
      * @summary Picks the reader. A packaged shell without a plane gets the product line, the lede and
-     * *Connect a plane*. Everyone else gets the team line in the display slot, the plane line whenever
-     * the chrome's verdict is not `ok`, and the doors. The field's team comes from the team line's read.
+     * *Connect a plane*. Everyone else gets the operator's line above everything, the team line in the
+     * display slot, the plane line whenever the chrome's verdict is not `ok`, and the doors. The field's
+     * team comes from the team line's read.
      */
     applyState() {
         const
@@ -286,7 +407,14 @@ class Container extends BaseContainer {
                 adapterState  : me.gridAdapterState,
                 degradedReason: me.gridDegradedReason,
                 states        : me.rosterStore?.items.map(record => record.state) ?? []
+            }),
+            operator = firstRun ? {hidden: true, text: ''} : Container.operatorLine({
+                openWork : me.openWork,
+                mergeRows: me.awaitingMergeStore?.items ?? [],
+                questions: me.questions
             });
+
+        me.getReference('operator-line').set({hidden: operator.hidden, text: operator.text});
 
         me.getReference('lead').set({
             cls : line && !line.answered ? ['fm-home-h1', 'is-quiet'] : ['fm-home-h1'],
