@@ -31,11 +31,12 @@ const FORGE_LABELS = Object.freeze({github: 'GitHub', gitlab: 'GitLab'});
  * stored value stays the catalog's harness type (`harnessType`), which the Fleet launches.
  *
  * **Existing memory is offered, never guessed.** Each time the form is shown, it asks the Fleet which
- * agents' memory the seat could continue (`AddAgentFlow.readMemoryCandidates`). Nothing found records
- * `memoryImport: 'none'` with no frame shown. Candidates show a frame after the token: one is
- * preselected, several wait for a choice, and *Start fresh* sends `'none'`. A check that could not
- * answer shows its reason with *Retry*, and only an explicit *Start fresh* adds the seat then. A fleet
- * that cannot be reached shows no frame; submit asks it again.
+ * agents' memory the seat could continue (`AddAgentFlow.readMemoryCandidates`). Only the latest read
+ * owns the answer, and a submission waits for the read in flight. Nothing found records
+ * `memoryImport: 'none'` with no frame shown. Candidates show a frame after the token, one row each and
+ * *Start with empty memory* as the last row: one candidate is preselected, several wait for a choice. A
+ * check that could not answer says why in the operator's words, with *Retry*, and only the empty row,
+ * chosen, adds the seat then. A fleet that cannot be reached shows no frame; submit asks it again.
  *
  * **Mount-independent by design.** The form ends at the `agentDefinitionAccepted` event carrying the
  * validated public definition; the mounting owner writes the roster. It reads the injected instance
@@ -129,7 +130,7 @@ class AddAgentForm extends FormContainer {
          */
         harnessType_: null,
         /**
-         * The operator's memory choice: a candidate's `source`, `'none'` for *Start fresh*, or null.
+         * The operator's memory choice: a row's `source` (`'none'` for the empty row), or null.
          * @member {String|null} memoryChoice_=null
          * @reactive
          */
@@ -260,7 +261,8 @@ class AddAgentForm extends FormContainer {
                 reference: 'memory-note',
                 text     : 'Its notes are copied, never moved; the original stays where it is.'
             }, {
-                // the chosen candidate's folder: under Details, never on its row
+                // the technical facts, never on a row or in the lead: the chosen candidate's folder, or
+                // the producer's own words when the check could not answer
                 ntype    : 'component',
                 cls      : ['fm-add-memory-details'],
                 flex     : 'none',
@@ -268,22 +270,17 @@ class AddAgentForm extends FormContainer {
                 reference: 'memory-details',
                 vdom     : {tag: 'details', cn: [{tag: 'summary', text: 'Details'}, {cls: ['fm-add-memory-source']}]}
             }, {
-                ntype : 'container',
-                cls   : ['fm-add-memory-actions'],
-                flex  : 'none',
-                layout: {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+                ntype    : 'container',
+                cls      : ['fm-add-memory-actions'],
+                flex     : 'none',
+                hidden   : true,
+                layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+                reference: 'memory-actions',
 
                 items: [{
                     module   : Button,
                     cls      : ['fm-chip'],
-                    handler  : 'up.onMemoryFreshClick',
-                    reference: 'memory-fresh',
-                    text     : 'Start fresh'
-                }, {
-                    module   : Button,
-                    cls      : ['fm-chip'],
                     handler  : 'up.onMemoryRetryClick',
-                    hidden   : true,
                     reference: 'memory-retry',
                     text     : 'Retry'
                 }]
@@ -376,6 +373,20 @@ class AddAgentForm extends FormContainer {
      * @protected
      */
     identityRequest = 0
+    /**
+     * The read that owns the next memory answer while it is in flight, or null. A submission waits for
+     * it, so a choice never rests on an answer a newer read is about to replace.
+     * @member {Promise|null} memoryRead=null
+     * @protected
+     */
+    memoryRead = null
+    /**
+     * The latest memory request. Only its answer may land, so a reply to an earlier read paints nothing
+     * and consents to nothing.
+     * @member {Number} memoryRequest=0
+     * @protected
+     */
+    memoryRequest = 0
 
     /**
      * @summary Seat the first product's harness, drop the token field for shell ingress, and probe
@@ -418,6 +429,7 @@ class AddAgentForm extends FormContainer {
     /**
      * @summary Ask the Fleet for existing memory each time the form is shown. The form can be built at
      * shell boot, before the Fleet's bridge is wired, so an answer read at construction would be stale.
+     * A form that leaves the screen gives up its read: an answer landing while it is away paints nothing.
      * @param {Boolean} value
      * @param {Boolean} oldValue
      * @protected
@@ -425,8 +437,13 @@ class AddAgentForm extends FormContainer {
     afterSetMounted(value, oldValue) {
         super.afterSetMounted(value, oldValue);
 
-        if (value && AddAgentFlow.resolveRegistryBridge(this.bridgeResolver)?.defineAgent) {
-            this.readMemory()
+        const me = this;
+
+        if (value) {
+            AddAgentFlow.resolveRegistryBridge(me.bridgeResolver)?.defineAgent && me.readMemory()
+        } else if (oldValue) {
+            me.memoryRequest++;
+            me.memoryRead = null
         }
     }
 
@@ -478,7 +495,7 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
-     * Triggered after the memoryChoice config got changed — mark the chosen candidate or Start fresh.
+     * Triggered after the memoryChoice config got changed — mark the chosen row.
      * @param {String|null} value
      * @param {String|null} oldValue
      * @protected
@@ -638,92 +655,100 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
-     * @summary Ask the Fleet which agents' memory this seat could continue. The frame stays as it is
-     * while a retry is in flight.
-     * @returns {Promise<void>}
+     * @summary Ask the Fleet which agents' memory this seat could continue. Only the latest request owns
+     * the answer: a reply to an earlier read that lands late paints nothing and consents to nothing. The
+     * frame stays as it is while a retry is in flight, and a submission waits for it (`memoryRead`).
+     * @returns {Promise<void>} Settles once this request's answer has landed or been superseded.
      */
-    async readMemory() {
+    readMemory() {
         const
-            me    = this,
-            retry = me.getReference('memory-retry');
+            me      = this,
+            request = ++me.memoryRequest,
+            retry   = me.getReference('memory-retry');
 
         retry.disabled = true;
 
-        const discovery = await me.trap(AddAgentFlow.readMemoryCandidates({bridgeResolver: me.bridgeResolver}));
-
         // an answer that lands as the form is destroyed resumes after trap() could reject it
-        if (!me.isDestroyed) {
-            me.memoryDiscovery = discovery;
-            retry.disabled     = false
-        }
+        return me.memoryRead = me.trap(AddAgentFlow.readMemoryCandidates({bridgeResolver: me.bridgeResolver})).then(discovery => {
+            if (request === me.memoryRequest && !me.isDestroyed) {
+                me.memoryRead      = null;
+                me.memoryDiscovery = discovery;
+                retry.disabled     = false
+            }
+        })
     }
 
     /**
-     * @summary Render the memory frame for the Fleet's answer. It stays hidden while the read runs and
-     * when no memory exists; it lists the candidates, or names why the check could not answer with
-     * *Retry*. A new answer starts a new choice (`AddAgentFlow.preselectedMemory`).
+     * @summary Render the memory frame for the Fleet's answer. It stays hidden while the first read runs
+     * and when no memory exists. Otherwise it offers the answer's rows (`AddAgentFlow.memoryChoices`): the
+     * candidates and the empty row, or, when the check could not answer, its reason with the empty row
+     * and *Retry*. A new answer starts a new choice (`AddAgentFlow.preselectedMemory`).
      */
     syncMemoryFrame() {
         const
             me          = this,
             discovery   = me.memoryDiscovery,
+            rows        = AddAgentFlow.memoryChoices(discovery),
             candidates  = discovery.state === 'candidates' ? discovery.candidates : [],
             frame       = me.getReference('memory-frame'),
             list        = me.getReference('memory-list'),
-            available   = candidates.length > 0,
             unavailable = discovery.state === 'unavailable';
 
         me.memoryChoice = null;
-        list.store.data = candidates;
+        list.store.data = rows;
         me.memoryChoice = AddAgentFlow.preselectedMemory(discovery);
 
-        frame.hidden = !available && !unavailable;
+        frame.hidden = rows.length === 0;
         frame[unavailable ? 'addCls' : 'removeCls']('is-unavailable');
 
-        me.getReference('memory-lead').text = available
-            ? candidates.length === 1 ? 'Continue this agent\'s memory?' : 'Continue one of these agents\' memory?'
-            : `Could not check for existing memory: ${discovery.reason}`;
+        me.getReference('memory-lead').text = unavailable
+            ? `Could not check for existing memory — ${discovery.reason}.`
+            : candidates.length === 1 ? 'Continue this agent\'s memory?' : 'Continue one of these agents\' memory?';
 
-        list.hidden                            = !available;
-        me.getReference('memory-note').hidden  = !available;
-        me.getReference('memory-retry').hidden = !unavailable
+        list.hidden                              = rows.length === 0;
+        me.getReference('memory-note').hidden    = candidates.length === 0;
+        me.getReference('memory-actions').hidden = !unavailable;
+
+        me.syncMemoryDetails()
     }
 
     /**
-     * @summary Mark the operator's memory choice: the chosen candidate's row is selected and its folder
-     * shows under Details; *Start fresh* is marked when chosen.
+     * @summary Mark the operator's memory choice: the chosen row is selected, and Details follows it.
      */
     syncMemoryChoice() {
         const
-            me      = this,
-            choice  = me.memoryChoice,
-            fresh   = choice === AddAgentFlow.MEMORY_IMPORT_NONE,
-            list    = me.getReference('memory-list'),
-            record  = choice && !fresh ? list.store.get(choice) : null,
-            details = me.getReference('memory-details');
+            me     = this,
+            list   = me.getReference('memory-list'),
+            record = me.memoryChoice ? list.store.get(me.memoryChoice) : null;
 
         record ? list.selectItem(record) : list.selectionModel.deselectAll();
-        me.getReference('memory-fresh')[fresh ? 'addCls' : 'removeCls']('is-selected');
+        me.syncMemoryDetails()
+    }
 
-        details.vdom.cn[1].text = record?.source ?? '';
-        details.hidden          = !record;
+    /**
+     * @summary Details holds the technical facts the rows and the lead leave out: the chosen candidate's
+     * folder, or the producer's own words when the check could not answer. With neither, it hides.
+     */
+    syncMemoryDetails() {
+        const
+            me        = this,
+            discovery = me.memoryDiscovery,
+            details   = me.getReference('memory-details'),
+            chosen    = me.memoryChoice !== AddAgentFlow.MEMORY_IMPORT_NONE && me.memoryChoice,
+            text      = discovery.state === 'unavailable' ? discovery.detail : discovery.state === 'candidates' && chosen ? chosen : null;
+
+        details.vdom.cn[1].text = text ?? '';
+        details.hidden          = !text;
         details.update()
     }
 
     /**
-     * @summary A candidate row is the operator's choice of the memory this seat continues.
+     * @summary A row is the operator's choice: an agent's memory to continue, or the empty row.
      * @param {Object} data
      * @param {Object} data.record
      */
     onMemoryCandidateClick({record}) {
         this.memoryChoice = record.source
-    }
-
-    /**
-     * @summary *Start fresh*: the seat starts with no existing memory.
-     */
-    onMemoryFreshClick() {
-        this.memoryChoice = AddAgentFlow.MEMORY_IMPORT_NONE
     }
 
     /**
@@ -775,8 +800,13 @@ class AddAgentForm extends FormContainer {
     async onSubmitClick() {
         const me = this;
 
-        // a fleet that could not be reached when the form was shown may have started since
-        me.memoryDiscovery.state === 'offline' && await me.readMemory();
+        // the memory choice rests on the current answer: a fleet that could not be reached is asked
+        // again, and a read in flight is awaited, even one a newer read replaces meanwhile
+        me.memoryDiscovery.state === 'offline' && !me.memoryRead && me.readMemory();
+
+        while (me.memoryRead) {
+            await me.memoryRead
+        }
 
         const
             values     = await me.getSubmitValues(),

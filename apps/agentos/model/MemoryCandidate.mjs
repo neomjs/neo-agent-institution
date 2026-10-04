@@ -4,9 +4,10 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  * @class AgentOS.model.MemoryCandidate
  * @extends Neo.data.Model
  *
- * @summary One existing agent's memory an added seat could continue, as the Fleet's `fleetMemoryCandidates`
- * read names it: the family that wrote it, the `source` a `memoryImport` consent names, the agent's name,
- * its note count and its newest change. Never a file's contents.
+ * @summary One row of an added seat's memory choice. Usually an existing agent's memory, as the Fleet's
+ * `fleetMemoryCandidates` read names it: the family that wrote it, the `source` a `memoryImport` consent
+ * names, the agent's name, its note count and its newest change. Never a file's contents. The last row
+ * is *Start with empty memory*, whose `source` is `'none'`.
  */
 class MemoryCandidate extends Model {
     static config = {

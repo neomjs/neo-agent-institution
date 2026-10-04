@@ -102,7 +102,7 @@ apps/agentos/model/MailboxMessage.mjs
     2e999ccc7fd23d46519363cdf8f42814204e7857
 
 apps/agentos/model/MemoryCandidate.mjs
-    59c47742a76131e5a2b39cd2b57cc44819a5bbb3
+    10804ad0e3a067958c961f1a7025acf9577683a8
 
 apps/agentos/model/OpenPullRequest.mjs
     149dacb874a7ab27c11f41d071550be1b75969df
@@ -183,7 +183,7 @@ apps/agentos/store/HeldPullRequests.mjs
     7d9a7dabdb44b5ab58c114027e535c5862d58f8c
 
 apps/agentos/store/MemoryCandidates.mjs
-    912ead9a52fba050549ee2c24c5be79fb5bc6336
+    83edf1e2e691c0269d88cbc4acde7f4e5cae8b84
 
 apps/agentos/store/SeatRepositories.mjs
     3bb2013ec2e8d4c58cf28b490d7a7dd1702bb4d3
@@ -195,7 +195,7 @@ apps/agentos/store/ViewerWakeFeed.mjs
     2416a3352de08dc4fa72d503913c6450a6f8dab6
 
 apps/agentos/util/AddAgentFlow.mjs
-    3561836a6a56c2431b90e7175d597a8cf6794ad7
+    1fa5ecf5b413a1eaf48296d1eabbe972f64eb833
 
 apps/agentos/util/AgentFreshness.mjs
     82ac3c17912b1cb8b6fcae46662b0701f238e87e
@@ -399,13 +399,13 @@ apps/agentos/view/fleet/health/SwatchComponent.mjs
     a2d3e1d8509ca2e06f4f024959aae9005a73dd13
 
 apps/agentos/view/fleet/instances/AddAgentForm.mjs
-    69a5e160ed45d87c8bf147ca51933287f7213788
+    50bb3c20993094b898aa45e608877a64f87e56b9
 
 apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f
 
 apps/agentos/view/fleet/instances/MemoryCandidateList.mjs
-    862709b6110a007f206510c93a55a14f684ef8a1
+    df15465f68dba54c841fa30fbf15bdcf84f6fcef
 
 apps/agentos/view/fleet/instances/MenuList.mjs
     01f70510fc5587b1be5f5f27fb9dc11554c73936
@@ -588,13 +588,13 @@ resources/scss/src/apps/agentos/fleet/health/SwatchComponent.scss
     6250d529db45caf4e535d8279d9f5b3cc738c538
 
 resources/scss/src/apps/agentos/fleet/instances/AddAgentForm.scss
-    cc86dcdf5c7d92dd754cb80df9174a148a061f23
+    baca43b3f5e23788b2cbab76bc65b4c296f7fcb8
 
 resources/scss/src/apps/agentos/fleet/instances/ManagerContainer.scss
     536374ecba673b0de06f733ddcf731238f746494
 
 resources/scss/src/apps/agentos/fleet/instances/MemoryCandidateList.scss
-    42ee5854d74613d9f0b7f867379a0b11b9c37541
+    41004d70d970906c694b0bdd76bc708007a06138
 
 resources/scss/src/apps/agentos/fleet/instances/SwitcherButton.scss
     15743959d3ab65e1e5732c333be9db3432667dc4
@@ -723,7 +723,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    65d440fcdf472e5b62312d9046bc964b6bc0e727
+    5b97c583dd64ff70fb516b3e67358d07b6b69d09
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -748,6 +748,12 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-conf
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/activity-stream-chips.png
     7f9563d60cfbeb6040b75b8a9f4b7882a237ac22
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/add-agent-memory-candidates.png
+    c9d1c4a5495bab9c08a889fa524c9d21744d0fe8
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/add-agent-memory-unavailable.png
+    378520056a6f6f680bd8cbb3895c003f0a3b39a0
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-cold.png
     18d5eb5144491a9ea6a4b18a110f3f3567c487a9

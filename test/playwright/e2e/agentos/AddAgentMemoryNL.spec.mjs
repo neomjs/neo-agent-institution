@@ -153,7 +153,7 @@ test.describe('AgentOS Add agent — existing memory (#521)', () => {
     test.setTimeout(120000);
     test.use({viewport: {width: 1280, height: 800}});
 
-    test('a check that could not answer shows its reason with Retry, only Start fresh records none, and a wired empty read shows nothing (AC-1)', async ({page, neuralLink}) => {
+    test('a check that could not answer says why in the operator\'s words with Retry, only the empty row chosen records none, and a wired empty read shows nothing (AC-1)', async ({page, neuralLink}) => {
         const fleet = await startMemoryFleetBridge(MEMORY_ANSWERS.failed);
 
         try {
@@ -161,33 +161,40 @@ test.describe('AgentOS Add agent — existing memory (#521)', () => {
                 form    = await openAddAgent({fleet, neuralLink, page}),
                 frame   = form.locator('.fm-add-memory'),
                 lead    = frame.locator('.fm-add-memory-lead'),
+                source  = frame.locator('.fm-add-memory-details .fm-add-memory-source'),
                 retry   = frame.locator('.neo-button', {hasText: 'Retry'}),
+                rows    = frame.locator('.fm-memory-candidates .neo-list-item'),
                 submit  = form.locator('.fm-add-submit'),
                 defines = () => fleet.requests.filter(request => request.method === 'defineAgent');
 
-            // a failed read (operation-failed) is unknown, never empty
-            await expect(lead).toHaveText("Could not check for existing memory: fleet: 'fleetMemoryCandidates' failed");
+            // a failed read (operation-failed) is unknown, never empty: the operator's words in the lead, the
+            // wire's words under Details, and the empty row the only choice
+            await expect(lead).toHaveText('Could not check for existing memory — the Agent OS did not answer.');
+            await expect(source).toHaveText("fleet: 'fleetMemoryCandidates' failed");
             await expect(retry).toBeVisible();
-            await expect(frame.locator('.fm-memory-candidates')).toHaveCount(0);
+            await expect(rows).toHaveText(['Start with empty memory']);
             await test.info().attach('discovery unavailable', {body: await form.screenshot(), contentType: 'image/png'});
 
             await fill(form);
             await submit.click();
 
-            await expect(form.locator('.fm-add-status.is-rejected')).toHaveText('Existing memory could not be checked. Retry, or choose Start fresh.');
+            await expect(form.locator('.fm-add-status.is-rejected')).toHaveText('Existing memory could not be checked. Retry, or choose Start with empty memory.');
             expect(defines()).toHaveLength(0);
 
             // the composed service's degraded answer, then an unwired source
             fleet.memory = MEMORY_ANSWERS.degraded;
             await retry.click();
-            await expect(lead).toHaveText("Could not check for existing memory: fleet: 'fleetMemoryCandidates' awaits a later slice");
+            await expect(source).toHaveText("fleet: 'fleetMemoryCandidates' awaits a later slice");
+            await expect(lead).toHaveText('Could not check for existing memory — the Agent OS did not answer.');
 
             fleet.memory = MEMORY_ANSWERS.unwired;
             await retry.click();
-            await expect(lead).toHaveText('Could not check for existing memory: memory discovery is not wired on this plane');
+            await expect(lead).toHaveText('Could not check for existing memory — this Agent OS cannot look for it yet.');
+            await expect(source).toHaveText('memory discovery is not wired on this plane');
 
-            // only the operator's own Start fresh records "none"
-            await frame.locator('.neo-button', {hasText: 'Start fresh'}).click();
+            // only the operator's own choice of the empty row records "none"
+            await rows.filter({hasText: 'Start with empty memory'}).click();
+            await expect(rows.first()).toHaveClass(/\bneo-selected\b/);
             await fill(form);
             await submit.click();
 
@@ -215,7 +222,9 @@ test.describe('AgentOS Add agent — existing memory (#521)', () => {
                 details = frame.locator('.fm-add-memory-details');
 
             await expect(frame.locator('.fm-add-memory-lead')).toHaveText('Continue one of these agents\' memory?');
-            await expect(rows).toHaveCount(2);
+            // the two agents, then the empty row closing the same group
+            await expect(rows).toHaveCount(3);
+            await expect(rows.nth(2)).toHaveText('Start with empty memory');
             await expect(rows.nth(0).locator('.fm-memory-candidate-name')).toHaveText('Mnemosyne');
             await expect(rows.nth(0).locator('.fm-memory-candidate-meta')).toContainText('12 notes · last changed');
             await expect(frame.locator('.fm-add-memory-note')).toHaveText('Its notes are copied, never moved; the original stays where it is.');
@@ -267,6 +276,7 @@ test.describe('AgentOS Add agent — existing memory (#521)', () => {
                 details = frame.locator('.fm-add-memory-details');
 
             await expect(frame.locator('.fm-add-memory-lead')).toHaveText('Continue this agent\'s memory?');
+            await expect(frame.locator('.fm-memory-candidates .neo-list-item')).toHaveCount(2);
             await expect(frame.locator('.neo-list-item.neo-selected .fm-memory-candidate-name')).toHaveText('Mnemosyne');
             await expect(details).toBeVisible();
 

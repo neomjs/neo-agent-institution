@@ -5,9 +5,9 @@ import Store                from '../../../node_modules/neo.mjs/src/data/Store.m
  * @class AgentOS.store.MemoryCandidates
  * @extends Neo.data.Store
  *
- * @summary The existing agents' memory the Add Agent form offers, one record per candidate the Fleet's
- * `fleetMemoryCandidates` read answered. The form replaces the records on every read; an answer that is not
- * a wired list leaves the store empty, and the form names that state instead.
+ * @summary The memory choice the Add Agent form offers: one record per candidate the Fleet's
+ * `fleetMemoryCandidates` read answered, then the empty-memory row (`AddAgentFlow.memoryChoices`). The
+ * form replaces the records on every answer.
  */
 class MemoryCandidates extends Store {
     static config = {

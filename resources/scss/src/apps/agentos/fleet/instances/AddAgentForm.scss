@@ -48,9 +48,9 @@
         gap: 6px;
     }
 
-    /* the existing-memory frame: the question, the candidate rows (MemoryCandidateList.scss), the
-       reassurance, the chosen folder under Details, then Start fresh — or, when the check could not
-       answer, its reason in the limited hue beside its words, with Retry */
+    /* the existing-memory frame: the question, the choice rows ending in the empty one
+       (MemoryCandidateList.scss), the reassurance, the chosen folder under Details — or, when the check
+       could not answer, its reason in the limited hue beside its words, the empty row and Retry */
     .fm-add-memory {
         gap: var(--fm-space-1);
 

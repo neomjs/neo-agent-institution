@@ -284,18 +284,19 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(await read({fleetMemoryCandidates: NO_MEMORY})).toEqual({state: 'none'});
         expect(await read({fleetMemoryCandidates: memoryRead(CANDIDATES)})).toEqual({state: 'candidates', candidates: CANDIDATES});
 
-        // an unwired source, the composed service's degraded answer and a failed read are unknown
+        // an unwired source, the composed service's degraded answer and a failed read are unknown: the
+        // reason in the operator's words, the producer's own words kept as detail
         expect(await read({fleetMemoryCandidates: async () => ({capability: {state: 'unavailable', reason: 'memory discovery is not wired'}, candidates: [], count: 0})}))
-            .toEqual({state: 'unavailable', reason: 'memory discovery is not wired'});
+            .toEqual({state: 'unavailable', reason: 'this Agent OS cannot look for it yet', detail: 'memory discovery is not wired'});
         expect(await read({fleetMemoryCandidates: async () => { throw wireError('degraded', "fleet: 'fleetMemoryCandidates' awaits a later slice") }}))
-            .toEqual({state: 'unavailable', reason: "fleet: 'fleetMemoryCandidates' awaits a later slice"});
+            .toEqual({state: 'unavailable', reason: 'the Agent OS did not answer', detail: "fleet: 'fleetMemoryCandidates' awaits a later slice"});
         expect(await read({fleetMemoryCandidates: async () => { throw wireError('operation-failed', "fleet: 'fleetMemoryCandidates' failed") }}))
-            .toEqual({state: 'unavailable', reason: "fleet: 'fleetMemoryCandidates' failed"});
+            .toEqual({state: 'unavailable', reason: 'the Agent OS did not answer', detail: "fleet: 'fleetMemoryCandidates' failed"});
 
         // a shapeless answer is no list
-        expect((await read({fleetMemoryCandidates: memoryRead([{name: 'no source'}])})).state).toBe('unavailable');
+        expect(await read({fleetMemoryCandidates: memoryRead([{name: 'no source'}])})).toEqual({state: 'unavailable', reason: 'the Agent OS answered without a list', detail: null});
         expect((await read({fleetMemoryCandidates: async () => ({capability: {state: 'wired'}})})).state).toBe('unavailable');
-        expect(await read({defineAgent: async () => cleanReadback()})).toEqual({state: 'unavailable', reason: 'This fleet cannot check for existing memory.'});
+        expect(await read({defineAgent: async () => cleanReadback()})).toEqual({state: 'unavailable', reason: 'this Fleet cannot look for it', detail: null});
 
         // no fleet answered at all: nothing can be added, so there is no memory question
         expect(await read({fleetMemoryCandidates: async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8083') }}))
@@ -303,11 +304,17 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(await read(null)).toEqual({state: 'offline', reason: AddAgentFlow.FLEET_OFFLINE_REASON})
     });
 
-    test('the memoryImport a submission sends: none only when nothing exists or Start fresh is chosen, a candidate only when chosen (#521 AC-3)', () => {
+    test('the memoryImport a submission sends: none only when nothing exists or the empty row is chosen, a candidate only when chosen (#521 AC-3)', () => {
         const
             none        = {state: 'none'},
             candidates  = {state: 'candidates', candidates: CANDIDATES},
-            unavailable = {state: 'unavailable', reason: 'down'};
+            unavailable = {state: 'unavailable', reason: 'the Agent OS did not answer', detail: null};
+
+        // the rows the choice offers: the candidates and the empty row last, or the empty row alone
+        expect(AddAgentFlow.memoryChoices(candidates).map(row => row.source)).toEqual([...CANDIDATES.map(candidate => candidate.source), 'none']);
+        expect(AddAgentFlow.memoryChoices(unavailable)).toEqual([{family: null, source: 'none', name: 'Start with empty memory', notes: 0, lastChanged: null}]);
+        expect(AddAgentFlow.memoryChoices(none)).toEqual([]);
+        expect(AddAgentFlow.memoryChoices({state: 'offline', reason: 'Could not reach the fleet.'})).toEqual([]);
 
         expect(AddAgentFlow.memoryImportFor({discovery: none, choice: null})).toEqual({valid: true, memoryImport: 'none'});
         expect(AddAgentFlow.memoryImportFor({discovery: candidates, choice: CANDIDATES[1].source})).toEqual({valid: true, memoryImport: CANDIDATES[1].source});
@@ -663,7 +670,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         form.destroy()
     });
 
-    test('a memory check that could not answer shows its reason with Retry, and only Start fresh adds the seat (#521 AC-1)', async () => {
+    test('a memory check that could not answer says why in the operator\'s words with Retry, and only the empty row, chosen, adds the seat (#521 AC-1)', async () => {
         const
             calls   = [],
             answers = [async () => { throw wireError('operation-failed', "fleet: 'fleetMemoryCandidates' failed") }, NO_MEMORY],
@@ -683,21 +690,27 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         await form.readMemory();
 
+        const list = form.getReference('memory-list');
+
         expect(frame.hidden).toBe(false);
         expect(frame.cls).toContain('is-unavailable');
-        expect(form.getReference('memory-lead').text).toBe("Could not check for existing memory: fleet: 'fleetMemoryCandidates' failed");
-        expect(form.getReference('memory-retry').hidden).toBe(false);
-        expect(form.getReference('memory-list').hidden).toBe(true);
+        // the operator's words in the lead; the producer's own words only under Details
+        expect(form.getReference('memory-lead').text).toBe('Could not check for existing memory — the Agent OS did not answer.');
+        expect(form.getReference('memory-details').hidden).toBe(false);
+        expect(form.getReference('memory-details').vdom.cn[1].text).toBe("fleet: 'fleetMemoryCandidates' failed");
+        expect(form.getReference('memory-actions').hidden).toBe(false);
+        expect(form.getReference('memory-note').hidden).toBe(true);
+        expect(list.store.getRange().map(row => row.name)).toEqual(['Start with empty memory']);
 
         // an unknown is never recorded as "no memory"
         await fill();
         await form.onSubmitClick();
 
-        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Existing memory could not be checked. Retry, or choose Start fresh.'});
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Existing memory could not be checked. Retry, or choose Start with empty memory.'});
         expect(calls).toHaveLength(0);
 
-        form.onMemoryFreshClick();
-        expect(form.getReference('memory-fresh').cls).toContain('is-selected');
+        form.onMemoryCandidateClick({record: list.store.get('none')});
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true]);
 
         await fill();
         await form.onSubmitClick();
@@ -733,15 +746,19 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(row[1].text).toMatch(/^12 notes · last changed /);
         expect(JSON.stringify(row)).not.toContain(CANDIDATES[0].source);
 
+        // the empty row closes the same group, its name alone
+        expect(list.createItemContent(list.store.getAt(1))).toEqual([{cls: ['fm-memory-candidate-name', 'is-empty-memory'], text: 'Start with empty memory'}]);
+
         expect(form.memoryChoice).toBe(CANDIDATES[0].source);
-        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true]);
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true, false]);
         expect(form.getReference('memory-details').hidden).toBe(false);
         expect(form.getReference('memory-details').vdom.cn[1].text).toBe(CANDIDATES[0].source);
+        expect(form.getReference('memory-actions').hidden).toBe(true);
 
         form.destroy()
     });
 
-    test('several candidates wait for a choice; the chosen source reaches defineAgent, and Start fresh sends none (#521 AC-2, AC-3)', async () => {
+    test('several candidates wait for a choice; the chosen source reaches defineAgent, and the empty row sends none (#521 AC-2, AC-3)', async () => {
         const
             calls = [],
             form  = Neo.create(AddAgentForm, {
@@ -769,12 +786,12 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         await fill();
         await form.onSubmitClick();
 
-        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Choose the agent whose memory this seat continues, or Start fresh.'});
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Choose the agent whose memory this seat continues, or Start with empty memory.'});
         expect(calls).toHaveLength(0);
 
         form.onMemoryCandidateClick({record: list.store.getAt(1)});
 
-        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, true]);
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, true, false]);
         expect(form.getReference('memory-details').vdom.cn[1].text).toBe(CANDIDATES[1].source);
 
         await fill();
@@ -784,13 +801,128 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         // the next agent starts from a fresh choice, never the previous agent's memory
         expect(form.memoryChoice).toBeNull();
-        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, false]);
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, false, false]);
 
-        form.onMemoryFreshClick();
+        // the empty row is a choice like the others, with nothing under Details
+        form.onMemoryCandidateClick({record: list.store.get('none')});
+        expect(form.getReference('memory-details').hidden).toBe(true);
+
         await fill();
         await form.onSubmitClick();
 
         expect(calls[1].memoryImport).toBe('none');
+
+        form.destroy()
+    });
+
+    test('only the latest memory read owns the answer: an earlier empty reply landing last neither hides newer candidates nor consents to none (#521)', async () => {
+        const
+            pending = [],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async () => cleanReadback(),
+                    fleetMemoryCandidates: () => new Promise(resolve => pending.push(resolve))
+                })
+            }),
+            older   = form.readMemory(),
+            newer   = form.readMemory();
+
+        // the newer read answers first with a memory, then the older one with none
+        pending[1](await memoryRead(CANDIDATES)());
+        await newer;
+        pending[0](await NO_MEMORY());
+        await older;
+
+        expect(form.memoryDiscovery).toEqual({state: 'candidates', candidates: CANDIDATES});
+        expect(form.getReference('memory-frame').hidden).toBe(false);
+        expect(AddAgentFlow.memoryImportFor({discovery: form.memoryDiscovery, choice: form.memoryChoice}).valid).toBe(false);
+
+        // the ordered control: the latest answer lands last and is the one that stands
+        const answerInOrder = form.readMemory();
+
+        pending[2](await NO_MEMORY());
+        await answerInOrder;
+
+        expect(form.memoryDiscovery).toEqual({state: 'none'});
+
+        form.destroy()
+    });
+
+    test('a submission waits for the read in flight: a refresh that finds a memory stops an automatic none (#521)', async () => {
+        const
+            calls   = [],
+            pending = [],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async payload => { calls.push(payload); return cleanReadback() },
+                    fleetMemoryCandidates: () => new Promise(resolve => pending.push(resolve))
+                })
+            }),
+            fill    = async () => {
+                (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+                (await form.getField('credential')).value     = CREDENTIAL;
+                form.harnessType                              = 'opencode'
+            };
+
+        const first = form.readMemory();
+
+        pending[0](await NO_MEMORY());
+        await first;
+        expect(form.memoryDiscovery).toEqual({state: 'none'});
+
+        // the form is shown again, and the refresh finds a memory while the operator presses Add
+        form.readMemory();
+        await fill();
+
+        const submitting = form.onSubmitClick();
+
+        pending[1](await memoryRead(CANDIDATES)());
+        await submitting;
+
+        expect(calls).toHaveLength(0);
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Choose the agent whose memory this seat continues, or Start with empty memory.'});
+
+        // the control: a refresh that again finds nothing lets the automatic none through
+        form.readMemory();
+        await fill();
+
+        const again = form.onSubmitClick();
+
+        pending[2](await NO_MEMORY());
+        await again;
+
+        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: 'none'}]);
+
+        form.destroy()
+    });
+
+    test('a form that leaves the screen gives up its read: an answer landing while it is away paints nothing (#521)', async () => {
+        const
+            pending = [],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async () => cleanReadback(),
+                    fleetMemoryCandidates: () => new Promise(resolve => pending.push(resolve))
+                })
+            });
+
+        form.mounted = true;
+        await expect.poll(() => pending.length).toBe(1);
+
+        const read = form.memoryRead;
+
+        form.mounted = false;
+        expect(form.memoryRead).toBeNull();
+
+        // the answer lands in full while the form is away
+        pending[0](await memoryRead(CANDIDATES)());
+        await read;
+
+        expect(form.memoryDiscovery).toEqual({state: 'reading'});
+        expect(form.getReference('memory-frame').hidden).toBe(true);
 
         form.destroy()
     });

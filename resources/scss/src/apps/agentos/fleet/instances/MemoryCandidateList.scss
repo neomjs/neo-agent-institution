@@ -1,6 +1,6 @@
-/* The existing agents' memory the add-agent form offers: one quiet row per candidate, the name over
-   its notes line, on no stock surface. Selection pairs the signal tint with the name's weight, so a
-   chosen memory never reads by colour alone. */
+/* The add-agent form's memory choice: one quiet row per candidate, the name over its notes line, then
+   the empty-memory row, its name alone and dim until chosen, on no stock surface. Selection pairs the
+   signal tint with the name's weight, so a choice never reads by colour alone. */
 .fm-memory-candidates.neo-list {
     --list-item-background-color       : transparent;
     --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
@@ -33,10 +33,15 @@
             font: var(--fm-text-detail);
         }
 
+        .fm-memory-candidate-name.is-empty-memory {
+            color: var(--fm-ink-dim);
+        }
+
         &.neo-selected {
             background: color-mix(in srgb, var(--fm-signal) 16%, transparent);
 
             .fm-memory-candidate-name {
+                color      : var(--fm-ink);
                 font-weight: 600;
             }
         }
