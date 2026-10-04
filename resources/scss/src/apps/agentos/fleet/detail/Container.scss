@@ -102,9 +102,19 @@
         color: var(--fm-ink-dim);
     }
 
-    .fm-detail-seat-launch {
+    .fm-detail-seat-launch,
+    .fm-detail-seat-folder {
         font : var(--fm-text-micro);
         color: var(--fm-ink);
+    }
+
+    /* a session in another folder is the state the operator acts on: the attention token, never a weight */
+    .fm-detail-seat-folder.is-wrong {
+        color: var(--fm-state-wedged);
+    }
+
+    .fm-detail-seat-folder-copy {
+        align-self: flex-start;
     }
 
     /* THE ONE STATE LEDGER (#23): every liveness/wiring axis once, `axis · pill` per row, in the

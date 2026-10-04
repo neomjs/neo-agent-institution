@@ -11,6 +11,7 @@ import Controller                           from './Controller.mjs';
 import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
 import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
 import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
+import SeatSessionFolder                    from '../../../util/SeatSessionFolder.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
 
@@ -320,6 +321,21 @@ class AgentDetail extends Container {
                         hidden   : true,
                         reference: 'detail-seat-launch',
                         text     : 'Open the repository folder below in Claude\'s Code tab, then Start on the card.'
+                    }, {
+                        // after a Start: where the session opened when that is not the seat's own
+                        // folder, against the expected one, with the next action spelled out
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-folder'],
+                        hidden   : true,
+                        reference: 'detail-seat-folder'
+                    }, {
+                        module   : Button,
+                        cls      : ['fm-detail-seat-folder-copy'],
+                        hidden   : true,
+                        reference: 'detail-seat-folder-copy',
+                        text     : 'Copy path',
+                        tooltip  : 'Copy the expected folder',
+                        ui       : 'ghost'
                     }]
                 }]
             }]
@@ -389,6 +405,7 @@ class AgentDetail extends Container {
         // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
         this.getReference('detail-repo-copy').set({handler: 'onCopyRepoPath', handlerScope: this});
+        this.getReference('detail-seat-folder-copy').set({handler: 'onCopyRepoPath', handlerScope: this});
         const configPane = this.getReference('config-pane');
 
         configPane?.set({
@@ -565,21 +582,31 @@ class AgentDetail extends Container {
      * @summary The Seat row: the harness family in words, only for a REPORTED family (none renders no
      * row and no placeholder). A Claude Desktop seat with a reported folder adds the one step its first
      * launch needs, pointing at the Repository pane's path, since that Desktop cannot be launched into
-     * a folder. Every value is an inert `text` node.
+     * a folder. After a Start, a session that is not in that folder replaces the step with where it
+     * opened, the expected folder and its Copy path, and the next action
+     * ({@link AgentOS.util.SeatSessionFolder}). Every value is an inert `text` node.
      * @param {Object} record The drilled-in FleetAgent record.
      * @protected
      */
     applySeatRow(record) {
         const
             me          = this,
-            harnessType = typeof record.harnessType === 'string' && record.harnessType ? record.harnessType : null;
+            harnessType = typeof record.harnessType === 'string' && record.harnessType ? record.harnessType : null,
+            folder      = SeatSessionFolder.detailLine(record.sessionFolder);
 
         me.getReference('detail-seat').hidden = harnessType === null;
 
         if (harnessType === null) return;
 
         me.getReference('detail-seat-family').text   = HarnessChoice.describe(harnessType) ?? harnessType;
-        me.getReference('detail-seat-launch').hidden = !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath)
+        me.getReference('detail-seat-launch').hidden = folder !== null || !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath);
+        me.getReference('detail-seat-folder').set({
+            cls   : ['fm-detail-seat-folder', `is-${record.sessionFolder?.state}`],
+            hidden: folder === null,
+            text  : folder ? `${folder.text}. ${folder.action}` : ''
+        });
+        // the copy source is the Repository pane's path, so the action shows only where that is the expected folder
+        me.getReference('detail-seat-folder-copy').hidden = folder === null || record.sessionFolder.expected !== record.repoPath
     }
 
     /**

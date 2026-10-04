@@ -311,8 +311,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             participationStatus: null,
             // the presence axis rides the same passthrough contract as wake/throttle below
             presence: null,
-            // no start has reported its other repositories' outcome
-            repoOutcomes: null,
+            // no start has reported its other repositories' outcome, nor where its session opened
+            repoOutcomes : null,
+            sessionFolder: null,
             repoPath: null,
             repoSlug: null,
             sources : liveSources(),
@@ -379,6 +380,13 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', repoOutcomes, sources: liveSources()}).repoOutcomes).toEqual(repoOutcomes);
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).repoOutcomes).toBeNull()
+    });
+
+    test('mapRosterRow passes where a desktop seat\'s session opened through whole — null on every other row (#522)', () => {
+        const sessionFolder = {state: 'wrong', expected: '/seats/ada/neomjs/neo', observed: '/Users/ada/elsewhere'};
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', sessionFolder, sources: liveSources()}).sessionFolder).toEqual(sessionFolder);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).sessionFolder).toBeNull()
     });
 
     test('mapRosterRow passes the S2 axes through WHOLE — the view never re-derives a produced fact', () => {
@@ -496,6 +504,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             participationStatus: null,
             presence           : null,
             repoOutcomes       : null,
+            sessionFolder      : null,
             repoPath           : null,
             repoSlug           : null,
             sources            : liveSources(),

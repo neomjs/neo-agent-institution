@@ -132,6 +132,12 @@ class FleetAgent extends Model {
             name        : 'repoOutcomes',
             defaultValue: null
         }, {
+            // where a running Claude Desktop seat's session opened, against its checkout
+            // (`{state, expected, observed?, reason?}`, the roster DTO's `sessionFolder`; see
+            // AgentOS.util.SeatSessionFolder). Null for every other row, and from a Brain that does not report it
+            name        : 'sessionFolder',
+            defaultValue: null
+        }, {
             // open assigned lanes for the resident (measured density evidence: 7–17 per active
             // agent — one lane line cannot carry that truth, the count badge can). Owned by the
             // roster DTO end-to-end (assembler stamp → mapRosterRow → this record → the badge);
