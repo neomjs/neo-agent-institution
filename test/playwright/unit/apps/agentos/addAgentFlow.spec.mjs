@@ -278,7 +278,7 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(contacted).toBe(false)
     });
 
-    test('only a wired read with no candidates says no memory exists; every other answer is unavailable, never empty (#521 AC-1)', async () => {
+    test('only a wired read with no candidates says no memory exists; a fleet that answers without a list is unavailable, and one that cannot be reached is offline (#521 AC-1)', async () => {
         const read = bridge => AddAgentFlow.readMemoryCandidates({bridgeResolver: () => bridge});
 
         expect(await read({fleetMemoryCandidates: NO_MEMORY})).toEqual({state: 'none'});
