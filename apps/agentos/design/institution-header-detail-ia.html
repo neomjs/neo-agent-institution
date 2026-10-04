@@ -87,14 +87,15 @@
   <p class="eyebrow">agent institution · fleet manager</p>
   <h1>Header + agent detail — the information architecture cut</h1>
   <p class="lede">The operator's brief, verbatim: <b>"it is not 'make chips smaller' — which items should be in there? in which order?"</b> This sketch answers exactly that for the two chrome surfaces, against live captures (2026-08-30): the cockpit bar renders a five-fact prose sentence <i>between action buttons</i> while the wake chip clips mid-word beside it; the detail rail clips the agent's NAME to three characters while spelling out the model tag beside it — inverted importance — six state lines wrap mid-phrase, a tool button floats OVER content, and three state vocabularies coexist in one stack. The fix is declared item sets, one pill vocabulary, and a declared collapse order — content decisions first, geometry second.</p>
+  <p class="note"><b>Current state (updated 2026-10-04):</b> this page now records the chrome as shipped. Since the 2026-08-30 cut: the product bar gained the shell title (09-04, #107) and the first-run setup line (10-02, #441); the view buttons left the cockpit bar (09-12, #133 — perspectives are applied from the Perspectives drawer); the banner gained its visible lead (#533); the detail rail became a Status / Configuration tab body under a ledger of up to seven rows. The captures above remain the problem this page answered.</p>
 
-  <div class="col-label">the two chrome tiers, named (today: implicit and interleaved)</div>
+  <div class="col-label">the two chrome tiers, named</div>
   <table>
     <tr><th>tier</th><th>owns</th><th>item classes (complete, in order)</th></tr>
-    <tr><td><b>product bar</b> (viewport top toolbar)</td><td>which product, which instance</td><td class="mono">logo · instance switcher ·(spacer)· theme switch</td></tr>
-    <tr><td><b>cockpit bar</b> (control strip)</td><td>which view, what state, what next</td><td class="mono">views (Overview/Focus/Review) ·(spacer)· STATE (fleet · wake, right-aligned block) · ACTIONS (Reconnect when offline · Start fleet)</td></tr>
+    <tr><td><b>product bar</b> (viewport top toolbar)</td><td>which product, which instance</td><td class="mono">logo · "Agent OS" title · instance switcher · setup line (a packaged first run only) ·(spacer)· theme switch</td></tr>
+    <tr><td><b>cockpit bar</b> (<span class="mono">ControlToolbar</span>)</td><td>what state, what next</td><td class="mono">(spacer)· STATE (fleet pill + its lead · wake, one right-aligned block) · ACTIONS (Reconnect, or Connect for a plane answer, while the fleet pill shows · the start summary after a start · Return memories / Reattach detail while that pane is away · Start fleet)</td></tr>
   </table>
-  <p class="note"><b>The one structural law:</b> state never sits between action buttons. Today's bar interleaves them (views → banner prose → Reconnect → wake chip → Start fleet); the declared order groups state as ONE right-aligned block BEFORE the action group, so every pixel between the view switcher and the state block is honest whitespace, not accidental slack. Exactly four item classes exist — anything that is not identity/view/state/action does not ride the chrome.</p>
+  <p class="note"><b>The one structural law:</b> state never sits between action buttons. The 2026-08-30 bar interleaved them (views → banner prose → Reconnect → wake chip → Start fleet); the declared order groups state as ONE right-aligned block BEFORE the action group, so the space left of the state block is honest whitespace, not accidental slack. Only state and action ride the cockpit bar: identity rides the product bar, and the views (Overview · Focus · Review) are perspectives, applied from their drawer since #133.</p>
 
   <div class="col-label">label content: the rewrite (facts move to their tiers — nothing is lost, everything is re-homed)</div>
   <table>
@@ -107,9 +108,8 @@
   </table>
   <p class="note"><b>Label-language law:</b> a chrome label is one status word or word pair from the existing pill vocabulary — the axis word (<span class="mono">fleet</span>, <span class="mono">wake</span>) plus a state word. The live capture's <span class="mono">"wake: wake stream disconnected (connec…"</span> shows the failure mode of prose-in-chrome twice at once: the axis word duplicates itself, and the sentence clips mid-word. The typed connection-state vocabulary (its own ticket) slots into the pill TEXT when it lands; this sketch fixes the container the vocabulary renders into.</p>
 
-  <div class="col-label">the cockpit bar, declared — wide (> 760px container): the two state pills in one row</div>
+  <div class="col-label">the cockpit bar as shipped — wide (> 760px container): fleet pill, its lead, the wake pill, then the actions</div>
   <div class="bar">
-    <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
     <span class="spacer"></span>
     <span class="statebox h">
       <span class="pill" title="Fleet server offline · 127.0.0.1:8083/fleet; showing the static roster"><span class="dot dot-bad"></span>fleet offline</span>
@@ -119,11 +119,10 @@
     <span class="btn">⟳ Reconnect</span>
     <span class="btn primary">▶ Start fleet</span>
   </div>
-  <p class="barw">wide — the pills keep their row, right-aligned, before the actions. The first cut stacked them here on the operator's observation that the 50px band had the vertical space; that space was the engine's 48px buttons, and on the chrome scale a stack would grow the bar by 9px exactly where it has the most width to spare</p>
+  <p class="barw">wide — the state block keeps one row, right-aligned, before the actions; the lead takes what the row leaves. (An early cut stacked the pills on the 50px band; that space was the engine's 48px buttons, and a stack would grow the bar where it has the most width to spare.)</p>
 
   <div class="col-label">narrow (≤ 760px container): the fleet pill drops to its mark and its lead keeps one truncated line; a degraded wake keeps its word, so no non-live state is a bare mark</div>
   <div class="bar" style="max-width:560px">
-    <span class="views"><span class="btn active">Overview</span><span class="btn">Focus</span><span class="btn">Review</span></span>
     <span class="spacer"></span>
     <span class="statebox h">
       <span class="pill" title="Fleet server offline · 127.0.0.1:8083/fleet; showing the static roster"><span class="dot dot-bad"></span></span>
@@ -133,8 +132,8 @@
     <span class="btn">⟳</span>
     <span class="btn primary">▶</span>
   </div>
-  <p class="note"><b>Declared collapse order</b> (container query on the cockpit bar, the mechanism the roster/card/activity surfaces already use): (1) the fleet pill's word drops to its mark while its lead keeps the reason on a truncated line; a live wake drops to its mark too, but a degraded wake has no lead and keeps its word, because no non-live state may be a bare mark (Clio, 2026-10-04); (2) action labels drop → icon buttons; (3) view labels never drop — they are the navigation. Nothing clips mid-word except the lead's ellipsis, which is its designed form: the lead is the row's slack, so it shortens before a pill or a button loses a pixel. The T5 title repeats the whole sentence at every width. Reconnect renders only while the fleet pill is not hidden (the existing bind), so the narrow bar in a healthy fleet is just views + start + two quiet dots.</p>
-  <p class="falsifier">header falsifiers: no label carries an endpoint or shell command inline (grep the chrome vdom for "npm run" / host:port = empty) · no mid-word clipping at 1280/1024/900/730 (computed receipts: scrollWidth ≤ clientWidth on every chrome label but the lead) · the lead renders a visible line at every width and is the only chrome label that ellipsizes (amended 2026-10-04) · state block sits right of the last view button and left of the first action button at every width · the axis word renders exactly once per pill.</p>
+  <p class="note"><b>Declared collapse order</b> (container query on the cockpit bar, the mechanism the roster/card/activity surfaces already use): (1) the fleet pill's word drops to its mark while its lead keeps the reason on a truncated line; a live wake drops to its mark too, but a degraded wake has no lead and keeps its word, because no non-live state may be a bare mark (Clio, 2026-10-04); (2) action labels drop → icon buttons. Nothing clips mid-word except the lead's ellipsis, which is its designed form: the lead is the row's slack, so it shortens before a pill or a button loses a pixel. The T5 title repeats the whole sentence at every width. Reconnect and the lead render only while the fleet pill is not hidden, so the narrow bar in a healthy fleet is just a quiet wake mark and the start icon.</p>
+  <p class="falsifier">header falsifiers: no label carries an endpoint or shell command inline (grep the chrome vdom for "npm run" / host:port = empty) · no mid-word clipping at 1280/1024/900/730 (computed receipts: scrollWidth ≤ clientWidth on every chrome label but the lead) · the lead renders a visible line at every width and is the only chrome label that ellipsizes · the state block sits left of the first action button at every width · the axis word renders exactly once per pill.</p>
 
   <div class="divider"></div>
 
@@ -147,22 +146,27 @@
       <span class="id-handle mono">@neo-gpt-emmy</span>
     </div>
     <div class="ledger">
-      <span class="axis">presence</span><span><span class="pill" title="who_is_online band — fleet:listAgents"><span class="dot dot-ok"></span>online</span></span>
+      <span class="axis">session</span><span><span class="pill" title="the seat's session state, with its meaning on the title"><span class="dot dot-ok"></span>online</span></span>
+      <span class="axis">status</span><span><span class="pill" title="the seat's participation"><span class="dot dot-ok"></span>active</span></span>
       <span class="axis">wake</span><span><span class="pill" title="not reported by the wake-route probe"><span class="dot dot-off"></span>not reported</span></span>
       <span class="axis">runtime</span><span><span class="pill" title="source not wired — fleet:listAgents"><span class="dot dot-off"></span>not wired</span></span>
       <span class="axis">repository</span><span><span class="pill" title="source not wired — fleet:listAgents"><span class="dot dot-off"></span>not wired</span></span>
       <span class="axis">roster</span><span><span class="pill" title="source not wired — fleet:listAgents"><span class="dot dot-off"></span>not wired</span></span>
     </div>
-    <div class="sect"><div class="sect-head"><span class="sect-title">Thought stream</span><span class="pill" title="awaiting live feed — source not wired"><span class="dot dot-off"></span>unwired</span></div></div>
-    <div class="sect"><div class="sect-head"><span class="sect-title">Current lane</span><span class="pill" title="awaiting live feed — source not wired"><span class="dot dot-off"></span>unwired</span></div></div>
+    <div class="sect"><div class="sect-head"><span class="sect-title">Status · Configuration</span></div></div>
+    <div class="sect"><div class="sect-head"><span class="sect-title">Thought stream</span><span class="pill" title="awaiting a read the plane's sharing policy admits"><span class="dot dot-off"></span>unwired</span></div></div>
+    <div class="sect"><div class="sect-head"><span class="sect-title">Current lane</span><span class="pill" title="awaiting the roster row's lane stamp"><span class="dot dot-off"></span>unwired</span></div></div>
+    <div class="sect"><div class="sect-head"><span class="sect-title">Repository</span><span class="pill" title="awaiting the roster read"><span class="dot dot-off"></span>unwired</span></div></div>
+    <div class="sect"><div class="sect-head"><span class="sect-title">Pull requests</span><span class="pill" title="the seat's open work"><span class="dot dot-off"></span>unwired</span></div></div>
   </div>
+  <p class="note"><b>As shipped:</b> the identity header sits over one ledger: <span class="mono">session · status · wake · capacity · runtime · repository · roster</span>. <span class="mono">capacity</span> renders only once a producer reported it, and <span class="mono">status</span> only once the seat has a participation. Below it, a <b>Status</b> tab holds the four panes and a <b>Configuration</b> tab holds the seat's card. Docked, the dock header owns pop-out.</p>
   <p class="note"><b>Identity row law (the live capture showed "E…" beside a fully spelled model tag):</b> the NAME is the only display-tier text and the only line allowed to ellipsize — at 240px rail width "Emmy" and even "Mnemosyne" render whole before the model chip would wrap; the model tag is a micro chip, the handle a micro line beneath. Avatar is 32px, grid-locked: it can never squeeze the text column below readability, because the text column owns <span class="mono">1fr</span>. The pop-out control rides the <b>tab header bar's action icons</b> (the engine's header-toolbar seam, right-pinned — the operator's direction): one icon with a T5 title, OUTSIDE the card entirely — the live capture's floating button drained a third of the card width and overlapped the runtime line; that whole control class leaves the content flow.</p>
   <p class="note"><b>One state language (three today):</b> every liveness and wiring axis renders exactly once, as an <span class="mono">axis · pill</span> ledger row in the freshness vocabulary that already exists in this pane's own SCSS — axis labels <span class="mono">nowrap</span>, state words short enough that NO row wraps at 240–360px rail widths. Provenance (<span class="mono">fleet:listAgents</span>) rides the pill title, not a dangling prose line. The drawer sections below stop re-stating axes: each keeps its title plus ONE provenance pill — the live capture's three-line "not observed — source not wired · awaiting live feed" boilerplate per section collapses into it.</p>
 
   <div class="col-label">axis vocabulary — every word earns its meaning (the operator's "what does throttled even MEAN?")</div>
   <table>
     <tr><th>axis word</th><th>what it actually measures</th><th>source today</th><th>verdict</th></tr>
-    <tr><td class="mono">presence</td><td>the plane's who-is-online band (<span class="mono">online · idle · dark · benched</span>)</td><td>roster passthrough — live</td><td><b>keeps</b> — replaces the bare "Active" word with the band vocabulary</td></tr>
+    <tr><td class="mono">presence</td><td>the plane's who-is-online band (<span class="mono">online · idle · dark · benched</span>)</td><td>roster passthrough — live</td><td><b>shipped as two rows:</b> <span class="mono">session</span> (the seat's session state) and <span class="mono">status</span> (its participation), replacing the bare "Active" word</td></tr>
     <tr><td class="mono">wake</td><td>can the wake channel reach this seat</td><td>wake-route probe</td><td><b>keeps</b> — "wake" is established platform language (wake routes pane)</td></tr>
     <tr><td class="mono strike">throttle</td><td>seat capacity: session overage or a provider rate limit (<span class="mono">none · overage · rate-limited</span>) — NOT a speed mode; harness fast modes are a different, unrelated concept</td><td><b>none exists</b> — the adapter is a documented contract-and-seam; every row answers "not reported", permanently</td><td><b>renamed <span class="mono">capacity</span>, and the row WAITS for its producer</b> — per the register honesty rule the pane contracts established: a register without a source renders nothing (no placeholder chrome). The seam stays; the row returns with the truth source, wearing a word that means what it measures.</td></tr>
     <tr><td class="mono">runtime / repository / roster</td><td>wiring state of the three data surfaces this pane renders from</td><td>fleet sources (offline today, wired when the fleet server runs)</td><td><b>keep</b> — real sources with a real off/on lifecycle; "not wired" is their honest cold state</td></tr>
@@ -172,8 +176,8 @@
 
   <div class="divider"></div>
 
-  <div class="col-label">implementation coordinates (the later cut, not this sketch)</div>
-  <p class="note">The cockpit bar items live in the cockpit container's declared chrome (banner slot, wake telltale slot, action buttons — already bound to the provider verdicts); the re-form is a re-ORDER plus pill re-skin of those slots, no new state. The detail identity/ledger lives in the detail container's header vdom; the pop-out button already exists as vessel chrome and moves onto the tab header bar's action-icon seam (the engine's header toolbar, icons right-pinned). The throttle→capacity rename touches the model field's rendered LABEL and the ledger row's source-gated presence — the model field, its enum and the adapter seam stay as shipped. Container queries follow the roster/card pattern. The typed connection-state vocabulary and the boot-truth fix stay their own coordinates; this cut consumes their words when they land.</p>
+  <div class="col-label">implementation coordinates (as shipped)</div>
+  <p class="note">The cockpit bar is its own class, <span class="mono">view/fleet/cockpit/ControlToolbar.mjs</span>: the state block (banner, lead, wake telltale) and the actions, bound to the cockpit provider's verdicts (<span class="mono">util/SpineBanner.mjs</span>, <span class="mono">util/ViewerWakeTelltale.mjs</span>). Its collapse order is a container query in <span class="mono">fleet/cockpit/Container.scss</span>. The product bar is the viewport's top toolbar (<span class="mono">view/Viewport.mjs</span>). The detail identity header, ledger and tab body live in <span class="mono">view/fleet/detail/Container.mjs</span>. The throttle→capacity rename changed only the rendered label and the row's source gate; the model field, its enum and the adapter seam stay as they were.</p>
 </div>
 </body>
 </html>
