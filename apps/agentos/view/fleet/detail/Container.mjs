@@ -2,6 +2,7 @@ import AgentConfigCard                      from './AgentConfigComponent.mjs';
 import Button                               from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container                            from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import FamilyRail                           from '../shared/FamilyRailComponent.mjs';
+import GitIdentityContainer                 from '../shared/GitIdentityContainer.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
@@ -11,6 +12,7 @@ import Controller                           from './Controller.mjs';
 import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
 import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
 import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
+import SeatSessionFolder                    from '../../../util/SeatSessionFolder.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
 
@@ -320,6 +322,13 @@ class AgentDetail extends Container {
                         hidden   : true,
                         reference: 'detail-seat-launch',
                         text     : 'Open the repository folder below in Claude\'s Code tab, then Start on the card.'
+                    }, {
+                        // after a Start, a session outside the seat's folder: its state word only;
+                        // the Repository pane says where it opened and what to do
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-folder'],
+                        hidden   : true,
+                        reference: 'detail-seat-folder'
                     }]
                 }]
             }]
@@ -363,10 +372,25 @@ class AgentDetail extends Container {
                 // agent object, so it rides the detail as a tab. The card fires `configIntent`; THIS view owns the bridge
                 // round-trip through the shared runner (which arbitrates supersession per shared
                 // record, across every owner), with the card as this owner's status sink.
-                module   : AgentConfigCard,
-                emptyText: 'This agent has no stored definition yet — add it via the rail\'s Add agent zone.',
+                ntype    : 'container',
+                cls      : ['fm-detail-config'],
                 header   : {text: 'Configuration'},
-                reference: 'config-pane'
+                layout   : {ntype: 'vbox', align: 'stretch'},
+                reference: 'config-tab',
+
+                items: [{
+                    module   : AgentConfigCard,
+                    emptyText: 'This agent has no stored definition yet — add it via the rail\'s Add agent zone.',
+                    flex     : 'none',
+                    reference: 'config-pane'
+                }, {
+                    // the seat's commit identity with its one repair action, where Start's identity
+                    // refusal points
+                    module   : GitIdentityContainer,
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'identity-row'
+                }]
             }]
         }]
     }
@@ -565,21 +589,32 @@ class AgentDetail extends Container {
      * @summary The Seat row: the harness family in words, only for a REPORTED family (none renders no
      * row and no placeholder). A Claude Desktop seat with a reported folder adds the one step its first
      * launch needs, pointing at the Repository pane's path, since that Desktop cannot be launched into
-     * a folder. Every value is an inert `text` node.
+     * a folder. After a Start, a session that is not in that folder replaces the step with its state
+     * word, pointing at the Repository pane, which says where it opened and the next step
+     * ({@link AgentOS.util.SeatSessionFolder}). Every value is an inert `text` node.
      * @param {Object} record The drilled-in FleetAgent record.
      * @protected
      */
     applySeatRow(record) {
         const
             me          = this,
-            harnessType = typeof record.harnessType === 'string' && record.harnessType ? record.harnessType : null;
+            harnessType = typeof record.harnessType === 'string' && record.harnessType ? record.harnessType : null,
+            state       = SeatSessionFolder.stateWord(record.sessionFolder),
+            line        = me.getReference('detail-seat-folder');
 
         me.getReference('detail-seat').hidden = harnessType === null;
 
         if (harnessType === null) return;
 
         me.getReference('detail-seat-family').text   = HarnessChoice.describe(harnessType) ?? harnessType;
-        me.getReference('detail-seat-launch').hidden = !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath)
+        me.getReference('detail-seat-launch').hidden = state !== null || !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath);
+
+        line.hidden = state === null;
+        line.vdom.cn = state ? [
+            {tag: 'span', cls: ['fm-detail-seat-folder-state', `is-${record.sessionFolder.state}`], text: state},
+            {tag: 'span', text: ' · see Repository'}
+        ] : [];
+        line.update()
     }
 
     /**
@@ -772,7 +807,8 @@ class AgentDetail extends Container {
      *
      * The lane pane renders the lane line with its claim age when its source is wired, plus the
      * independent open-lane count. The repository pane renders the roster row's slug and its whole
-     * clone path, and shows the path's Copy action only while a path is reported.
+     * clone path, and shows the path's Copy action only while a path is reported. Under the path, a
+     * desktop session outside the launch's folder says where it opened and what to do, wrapped whole.
      * The pull requests pane loads the seat's held pull requests, worst first, into its list's Store,
      * or says it holds none; without an answer it renders nothing, since its pill says so. The
      * list re-words its rows' ages at the pane's clock. The thought-stream pane renders
@@ -788,11 +824,13 @@ class AgentDetail extends Container {
         if (key === 'repo') {
             const
                 repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null,
+                session  = SeatSessionFolder.paneText(record.sessionFolder, repoPath),
                 field    = this.getReference('detail-repo-field');
 
             body.vdom.cn = [
                 {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},
-                ...(repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: repoPath}] : [])
+                ...(repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: repoPath}] : []),
+                ...(session  ? [{tag: 'span', cls: ['fm-detail-repo-session', `is-${record.sessionFolder.state}`], text: session}] : [])
             ];
             body.update();
 

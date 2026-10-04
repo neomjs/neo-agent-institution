@@ -680,6 +680,92 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a Start refused by a memory import that did not converge shows the Brain\'s own words, never parsed (#521 AC-4)', () => {
+        const
+            card   = createCard({agentId: 'mnemosyne', state: 'off'}),
+            status = () => card.down({reference: 'control-status'}),
+            reason = 'the memory import did not converge: the source holds no memory to copy. The seat does not start.';
+
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason}, pendingAction: null});
+
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe(`⚠ rejected: ${reason}`);
+        // the one-line status ellipsizes; its title repeats the whole refusal
+        expect(status().vdom.title).toBe(`⚠ rejected: ${reason}`);
+
+        card.destroy()
+    });
+
+    test('the status row ends a Start with where its session opened: the wrong folder, not yet, or unknown; never the path (#522)', () => {
+        const
+            expected = '/seats/vega/neomjs/neo',
+            card     = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop'}),
+            status   = () => card.down({reference: 'control-status'});
+
+        // AC-1: one line with one next-action word; the card names no path, not even in its title
+        applySet(card, {sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}});
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe('session opened in the wrong folder · reopen');
+        expect(status().cls).toContain('is-session-wrong');
+        expect(status().vdom.title).not.toContain('/');
+        expect(card.cls).toContain('fm-control-live');
+
+        // AC-2: pending and unknown read as themselves
+        applySet(card, {sessionFolder: {state: 'pending', expected}});
+        expect(status().text).toBe('session not opened yet · open the folder');
+        applySet(card, {sessionFolder: {state: 'unknown', expected, reason: 'the session records could not be read'}});
+        expect(status().text).toBe('session folder unknown: the session records could not be read');
+
+        // a live round-trip outranks "not yet" and "unknown", which a live seat contradicts...
+        applySet(card, {pendingAction: 'restart'});
+        expect(status().text).toBe('restart…');
+        applySet(card, {pendingAction: null, controlReason: {action: 'start', kind: 'rejected', reason: 'harness offline'}});
+        expect(status().text).toBe('⚠ rejected: harness offline');
+
+        // ...but never a confirmed wrong folder: a live seat in the wrong folder is the failure itself
+        applySet(card, {controlReason: null, pendingAction: 'restart', sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}});
+        expect(status().text).toBe('session opened in the wrong folder · reopen');
+        expect(status().cls).toContain('is-session-wrong');
+
+        // ok adds no line, and AC-3: a row without the fact renders nothing new
+        for (const sessionFolder of [{state: 'ok', expected}, null]) {
+            applySet(card, {pendingAction: null, sessionFolder});
+            expect(status().hidden).toBe(true);
+            expect(card.cls).not.toContain('fm-control-live')
+        }
+
+        card.destroy()
+    });
+
+    test('AC-4 (#524): a refused start keeps the Fleet\'s own words; a last start\'s identity that needs repair rides the title as its own observation, never as the cause', () => {
+        const
+            card     = createCard({agentId: 'vega', state: 'off'}),
+            status   = () => card.down({reference: 'control-status'}),
+            missing  = {state: 'missing', reason: 'its forge account offers no email this PAT can read'},
+            note     = " · The last start's commit identity: No commit identity: its forge account offers no email this PAT can read. Repair it in Detail › Configuration.",
+            identity = "agent 'vega' has no Git identity to commit under: its forge account offers no email this PAT can read. Nothing was changed. Declare the name and email its commits carry (gitName and gitEmail), then start it again.";
+
+        // the identity refusal: the Fleet's words name the next step, the title names the row
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: identity}, gitIdentity: missing});
+        expect(status().text).toBe(`⚠ rejected: ${identity}`);
+        expect(status().vdom.title).toBe(`⚠ rejected: ${identity}${note}`);
+
+        // an unrelated refusal while an older identity still needs repair: its own words stay the
+        // line, and the identity is not claimed as the cause
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: "the seat's home could not be prepared"}});
+        expect(status().text).toBe("⚠ rejected: the seat's home could not be prepared");
+        expect(status().text).not.toContain('identity');
+        expect(status().vdom.title).toBe(`⚠ rejected: the seat's home could not be prepared${note}`);
+
+        // a resolved identity, or a Brain that reports none, adds nothing
+        for (const gitIdentity of [{state: 'derived', name: 'Vega', email: 'vega@example.com'}, null]) {
+            applySet(card, {gitIdentity});
+            expect(status().vdom.title).toBe("⚠ rejected: the seat's home could not be prepared")
+        }
+
+        card.destroy()
+    });
+
     test('observe: a pending action renders the state dot as a distinct transitional state, never the stale resolved one (#14978)', () => {
         const card = createCard({agentId: 'vega', state: 'off'});
         const dot  = () => card.down({ntype: 'fm-state-dot'});

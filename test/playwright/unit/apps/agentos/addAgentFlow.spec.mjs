@@ -30,6 +30,28 @@ const cleanReadback = () => ({
     updatedAt     : '2026-07-18T00:00:00.000Z'
 });
 
+// the existing agents' memory a host could hold, in the Fleet's `fleetMemoryCandidates` shape
+const CANDIDATES = [{
+    family     : 'claude',
+    source     : '/home/operator/.claude/projects/-work/memory',
+    name       : 'Mnemosyne',
+    notes      : 12,
+    lastChanged: '2026-10-03T18:00:00.000Z'
+}, {
+    family     : 'codex',
+    source     : '/home/operator/.codex/memories',
+    name       : null,
+    notes      : 1,
+    lastChanged: '2026-10-02T09:30:00.000Z'
+}];
+
+const memoryRead = candidates => async () => ({capability: {state: 'wired'}, candidates, count: candidates.length});
+
+// a first-time operator's host: the Fleet checked, and no existing memory is there
+const NO_MEMORY = memoryRead([]);
+
+const wireError = (fleetWireState, message) => Object.assign(new Error(message), {fleetWireState});
+
 test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)', () => {
     test('payload validation names every missing ingredient and passes a complete one', () => {
         expect(AddAgentFlow.validateDefinePayload({}).valid).toBe(false);
@@ -255,6 +277,64 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(blank).toEqual({state: 'rejected', reason: 'The working repository reads group/project, e.g. group/sub/project.'});
         expect(contacted).toBe(false)
     });
+
+    test('only a wired read with no candidates says no memory exists; a fleet that answers without a list is unavailable, and one that cannot be reached is offline (#521 AC-1)', async () => {
+        const read = bridge => AddAgentFlow.readMemoryCandidates({bridgeResolver: () => bridge});
+
+        expect(await read({fleetMemoryCandidates: NO_MEMORY})).toEqual({state: 'none'});
+        expect(await read({fleetMemoryCandidates: memoryRead(CANDIDATES)})).toEqual({state: 'candidates', candidates: CANDIDATES});
+
+        // an unwired source, the composed service's degraded answer and a failed read are unknown: the
+        // reason in the operator's words, the producer's own words kept as detail
+        expect(await read({fleetMemoryCandidates: async () => ({capability: {state: 'unavailable', reason: 'memory discovery is not wired'}, candidates: [], count: 0})}))
+            .toEqual({state: 'unavailable', reason: 'this Agent OS cannot look for it yet', detail: 'memory discovery is not wired'});
+        expect(await read({fleetMemoryCandidates: async () => { throw wireError('degraded', "fleet: 'fleetMemoryCandidates' awaits a later slice") }}))
+            .toEqual({state: 'unavailable', reason: 'the Agent OS did not answer', detail: "fleet: 'fleetMemoryCandidates' awaits a later slice"});
+        expect(await read({fleetMemoryCandidates: async () => { throw wireError('operation-failed', "fleet: 'fleetMemoryCandidates' failed") }}))
+            .toEqual({state: 'unavailable', reason: 'the Agent OS did not answer', detail: "fleet: 'fleetMemoryCandidates' failed"});
+
+        // a shapeless answer is no list
+        expect(await read({fleetMemoryCandidates: memoryRead([{name: 'no source'}])})).toEqual({state: 'unavailable', reason: 'the Agent OS answered without a list', detail: null});
+        expect((await read({fleetMemoryCandidates: async () => ({capability: {state: 'wired'}})})).state).toBe('unavailable');
+        expect(await read({defineAgent: async () => cleanReadback()})).toEqual({state: 'unavailable', reason: 'this Fleet cannot look for it', detail: null});
+
+        // no fleet answered at all: nothing can be added, so there is no memory question
+        expect(await read({fleetMemoryCandidates: async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8083') }}))
+            .toEqual({state: 'offline', reason: 'Could not reach the fleet.'});
+        expect(await read(null)).toEqual({state: 'offline', reason: AddAgentFlow.FLEET_OFFLINE_REASON})
+    });
+
+    test('the memoryImport a submission sends: none only when nothing exists or the empty row is chosen, a candidate only when chosen (#521 AC-3)', () => {
+        const
+            none        = {state: 'none'},
+            candidates  = {state: 'candidates', candidates: CANDIDATES},
+            unavailable = {state: 'unavailable', reason: 'the Agent OS did not answer', detail: null};
+
+        // the rows the choice offers: the candidates and the empty row last, or the empty row alone
+        expect(AddAgentFlow.memoryChoices(candidates).map(row => row.source)).toEqual([...CANDIDATES.map(candidate => candidate.source), 'none']);
+        expect(AddAgentFlow.memoryChoices(unavailable)).toEqual([{family: null, source: 'none', name: 'Start with empty memory', notes: 0, lastChanged: null}]);
+        expect(AddAgentFlow.memoryChoices(none)).toEqual([]);
+        expect(AddAgentFlow.memoryChoices({state: 'offline', reason: 'Could not reach the fleet.'})).toEqual([]);
+
+        expect(AddAgentFlow.memoryImportFor({discovery: none, choice: null})).toEqual({valid: true, memoryImport: 'none'});
+        expect(AddAgentFlow.memoryImportFor({discovery: candidates, choice: CANDIDATES[1].source})).toEqual({valid: true, memoryImport: CANDIDATES[1].source});
+        expect(AddAgentFlow.memoryImportFor({discovery: candidates, choice: 'none'})).toEqual({valid: true, memoryImport: 'none'});
+        expect(AddAgentFlow.memoryImportFor({discovery: candidates, choice: null}).valid).toBe(false);
+        expect(AddAgentFlow.memoryImportFor({discovery: unavailable, choice: null}).valid).toBe(false);
+        expect(AddAgentFlow.memoryImportFor({discovery: unavailable, choice: 'none'})).toEqual({valid: true, memoryImport: 'none'});
+        expect(AddAgentFlow.memoryImportFor({discovery: {state: 'reading'}, choice: 'none'}).valid).toBe(false);
+        expect(AddAgentFlow.memoryImportFor({discovery: {state: 'offline', reason: 'Could not reach the fleet.'}, choice: 'none'}))
+            .toEqual({valid: false, reason: 'Could not reach the fleet.'});
+
+        // one candidate is preselected; several wait for the operator
+        expect(AddAgentFlow.preselectedMemory({state: 'candidates', candidates: [CANDIDATES[0]]})).toBe(CANDIDATES[0].source);
+        expect(AddAgentFlow.preselectedMemory(candidates)).toBeNull();
+        expect(AddAgentFlow.preselectedMemory(unavailable)).toBeNull();
+
+        // the intent carries the choice; no choice, no field
+        expect(AddAgentFlow.createDefineAgentIntent({...cleanPayload(), memoryImport: CANDIDATES[0].source}).memoryImport).toBe(CANDIDATES[0].source);
+        expect(AddAgentFlow.createDefineAgentIntent({...cleanPayload(), memoryImport: undefined})).not.toHaveProperty('memoryImport')
+    });
 });
 
 test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the credential-settle rule (#15242)', () => {
@@ -376,13 +456,17 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
             calls = [],
             form  = Neo.create(AddAgentForm, {
                 appName       : 'AgentOSAddAgentFlowTest',
-                bridgeResolver: () => ({defineAgent: async payload => {
-                    calls.push(payload);
-                    return cleanReadback()
-                }})
+                bridgeResolver: () => ({
+                    defineAgent: async payload => {
+                        calls.push(payload);
+                        return cleanReadback()
+                    },
+                    fleetMemoryCandidates: NO_MEMORY
+                })
             });
 
         form.on('agentDefinitionAccepted', data => fired.push(data));
+        await form.readMemory();
 
         const credentialField = await form.getField('credential');
         const usernameField   = await form.getField('githubUsername');
@@ -396,7 +480,9 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.flowStatus.state).toBe('readback-confirmed');
         expect(fired).toHaveLength(1);
         expect(fired[0].agent).toEqual(cleanReadback());
-        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet'}]);
+        // nothing to import was found, so the seat records that it starts fresh
+        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: 'none'}]);
+        expect(form.getReference('memory-frame').hidden).toBe(true);
         // the settle rule: no terminal state leaves credential bytes in the field
         expect(credentialField.value ?? '').toBe('');
 
@@ -408,12 +494,16 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
             calls = [],
             form  = Neo.create(AddAgentForm, {
                 appName       : 'AgentOSAddAgentFlowTest',
-                bridgeResolver: () => ({defineAgent: async payload => { calls.push(payload); return cleanReadback() }})
+                bridgeResolver: () => ({
+                    defineAgent          : async payload => { calls.push(payload); return cleanReadback() },
+                    fleetMemoryCandidates: NO_MEMORY
+                })
             }),
             chip  = forge => form.getReference('forge-row').items.find(item => item.forge === forge),
             host  = form.getReference('field-forge-host'),
             repo  = form.getReference('field-repo');
 
+        await form.readMemory();
         form.onForgeChipClick({component: chip('gitlab')});
 
         expect(chip('gitlab').cls).toContain('is-selected');
@@ -431,7 +521,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         await form.onSubmitClick();
 
-        expect(calls).toEqual([{...cleanPayload(), forge: 'gitlab', forgeHost: 'https://gitlab.example.com', launchOwner: 'fleet'}]);
+        expect(calls).toEqual([{...cleanPayload(), forge: 'gitlab', forgeHost: 'https://gitlab.example.com', launchOwner: 'fleet', memoryImport: 'none'}]);
 
         // back on GitHub, the instance hides, and an emptied repository field gets the default back
         repo.value = '';
@@ -449,14 +539,16 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         const form = Neo.create(AddAgentForm, {
             appName       : 'AgentOSAddAgentFlowTest',
             bridgeResolver: () => ({
-                credentialIngress: 'shell',
-                defineAgent      : async payload => {
+                credentialIngress    : 'shell',
+                defineAgent          : async payload => {
                     received = payload;
                     return cleanReadback()
-                }
+                },
+                fleetMemoryCandidates: NO_MEMORY
             })
         });
 
+        await form.readMemory();
         expect(form.items.some(item => item.name === 'credential')).toBe(false);
         // the help line no longer describes a field the form does not show: it names the next step
         expect(form.getReference('credential-help').text).toBe('On Add, the app asks once for this agent\'s token.');
@@ -473,7 +565,8 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(received).toEqual({
             githubUsername: 'neo-kimi-phoebe',
             harnessType   : 'opencode',
-            launchOwner   : 'fleet'
+            launchOwner   : 'fleet',
+            memoryImport  : 'none'
         });
         expect(form.flowStatus.state).toBe('readback-confirmed');
 
@@ -483,8 +576,10 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
     test('a rejected round-trip still clears the PAT field — the settle rule is terminal-state-independent', async () => {
         const form = Neo.create(AddAgentForm, {
             appName       : 'AgentOSAddAgentFlowTest',
-            bridgeResolver: () => ({defineAgent: async () => ({status: 'rejected', reason: 'nope'})})
+            bridgeResolver: () => ({defineAgent: async () => ({status: 'rejected', reason: 'nope'}), fleetMemoryCandidates: NO_MEMORY})
         });
+
+        await form.readMemory();
 
         const credentialField = await form.getField('credential');
         const usernameField   = await form.getField('githubUsername');
@@ -512,6 +607,555 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         expect(form.flowStatus.state).toBe('rejected');
         expect(bridgeCalls).toHaveLength(0);
+
+        form.destroy()
+    });
+
+    test('the form asks for existing memory when it is shown, never when it is built: a shell wires its bridge after boot (#521)', async () => {
+        let reads = 0;
+
+        const form = Neo.create(AddAgentForm, {
+            appName       : 'AgentOSAddAgentFlowTest',
+            bridgeResolver: () => ({defineAgent: async () => cleanReadback(), fleetMemoryCandidates: async () => { reads++; return NO_MEMORY() }})
+        });
+
+        await Promise.resolve();
+        expect(reads).toBe(0);
+        expect(form.memoryDiscovery).toEqual({state: 'reading'});
+
+        form.mounted = true;
+
+        await expect.poll(() => form.memoryDiscovery).toEqual({state: 'none'});
+        expect(reads).toBe(1);
+
+        form.destroy()
+    });
+
+    test('a form with no memory to offer carries no list; the first answer with rows builds it (#521)', async () => {
+        const
+            answers = [NO_MEMORY, memoryRead([CANDIDATES[0]])],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({defineAgent: async () => cleanReadback(), fleetMemoryCandidates: () => answers.shift()()})
+            });
+
+        expect(form.getReference('memory-list')).toBeNull();
+
+        await form.readMemory();
+
+        expect(form.memoryDiscovery).toEqual({state: 'none'});
+        expect(form.getReference('memory-list')).toBeNull();
+
+        await form.readMemory();
+
+        expect(form.getReference('memory-list').store.getRange().map(row => row.source)).toEqual([CANDIDATES[0].source, 'none']);
+
+        form.destroy()
+    });
+
+    test('a fleet that could not be reached shows no memory frame, and submit asks it again (#521)', async () => {
+        const
+            calls   = [],
+            answers = [async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8083') }, async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8083') }, NO_MEMORY],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async payload => { calls.push(payload); return cleanReadback() },
+                    fleetMemoryCandidates: () => answers.shift()()
+                })
+            }),
+            fill    = async () => {
+                (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+                (await form.getField('credential')).value     = CREDENTIAL;
+                form.harnessType                              = 'opencode'
+            };
+
+        await form.readMemory();
+
+        expect(form.memoryDiscovery).toEqual({state: 'offline', reason: 'Could not reach the fleet.'});
+        expect(form.getReference('memory-frame').hidden).toBe(true);
+
+        // still unreachable on submit: nothing is sent
+        await fill();
+        await form.onSubmitClick();
+
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Could not reach the fleet.'});
+        expect(calls).toHaveLength(0);
+
+        // the fleet started meanwhile, and the host holds no memory: the add goes through as a fresh seat
+        await fill();
+        await form.onSubmitClick();
+
+        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: 'none'}]);
+        expect(form.getReference('memory-frame').hidden).toBe(true);
+
+        form.destroy()
+    });
+
+    test('a memory check that could not answer says why in the operator\'s words with Retry, and only the empty row, chosen, adds the seat (#521 AC-1)', async () => {
+        const
+            calls   = [],
+            answers = [async () => { throw wireError('operation-failed', "fleet: 'fleetMemoryCandidates' failed") }, NO_MEMORY],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async payload => { calls.push(payload); return cleanReadback() },
+                    fleetMemoryCandidates: () => answers.shift()()
+                })
+            }),
+            frame   = form.getReference('memory-frame'),
+            fill    = async () => {
+                (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+                (await form.getField('credential')).value     = CREDENTIAL;
+                form.harnessType                              = 'opencode'
+            };
+
+        await form.readMemory();
+
+        const list = form.getReference('memory-list');
+
+        expect(frame.hidden).toBe(false);
+        expect(frame.cls).toContain('is-unavailable');
+        // the operator's words in the lead; the producer's own words only under Details
+        expect(form.getReference('memory-lead').text).toBe('Could not check for existing memory — the Agent OS did not answer.');
+        expect(form.getReference('memory-details').hidden).toBe(false);
+        expect(form.getReference('memory-details').vdom.cn[1].text).toBe("fleet: 'fleetMemoryCandidates' failed");
+        expect(form.getReference('memory-actions').hidden).toBe(false);
+        expect(form.getReference('memory-note').hidden).toBe(true);
+        expect(list.store.getRange().map(row => row.name)).toEqual(['Start with empty memory']);
+
+        // an unknown is never recorded as "no memory"
+        await fill();
+        await form.onSubmitClick();
+
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Existing memory could not be checked. Retry, or choose Start with empty memory.'});
+        expect(calls).toHaveLength(0);
+
+        form.onMemoryCandidateClick({record: list.store.get('none')});
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true]);
+
+        await fill();
+        await form.onSubmitClick();
+
+        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: 'none'}]);
+
+        // Retry asks again: a wired read that finds nothing hides the frame
+        form.onMemoryRetryClick();
+
+        await expect.poll(() => frame.hidden).toBe(true);
+        expect(form.memoryDiscovery).toEqual({state: 'none'});
+
+        form.destroy()
+    });
+
+    test('one candidate is preselected, name first, its folder only under Details (#521 AC-2)', async () => {
+        const form = Neo.create(AddAgentForm, {
+            appName       : 'AgentOSAddAgentFlowTest',
+            bridgeResolver: () => ({defineAgent: async () => cleanReadback(), fleetMemoryCandidates: memoryRead([CANDIDATES[0]])})
+        });
+
+        await form.readMemory();
+
+        const list = form.getReference('memory-list');
+
+        expect(form.getReference('memory-frame').hidden).toBe(false);
+        expect(form.getReference('memory-lead').text).toBe('Continue this agent\'s memory?');
+        expect(form.getReference('memory-note').text).toBe('Its notes are copied, never moved; the original stays where it is.');
+
+        const row = list.createItemContent(list.store.getAt(0));
+
+        expect(row[0].text).toBe('Mnemosyne');
+        expect(row[1].text).toMatch(/^12 notes · last changed /);
+        expect(JSON.stringify(row)).not.toContain(CANDIDATES[0].source);
+
+        // the empty row closes the same group, its name alone
+        expect(list.createItemContent(list.store.getAt(1))).toEqual([{cls: ['fm-memory-candidate-name', 'is-empty-memory'], text: 'Start with empty memory'}]);
+
+        expect(form.memoryChoice).toBe(CANDIDATES[0].source);
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true, false]);
+        expect(form.getReference('memory-details').hidden).toBe(false);
+        expect(form.getReference('memory-details').vdom.cn[1].text).toBe(CANDIDATES[0].source);
+        expect(form.getReference('memory-actions').hidden).toBe(true);
+
+        form.destroy()
+    });
+
+    test('several candidates wait for a choice; the chosen source reaches defineAgent, and the empty row sends none (#521 AC-2, AC-3)', async () => {
+        const
+            calls = [],
+            form  = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async payload => { calls.push(payload); return cleanReadback() },
+                    fleetMemoryCandidates: memoryRead(CANDIDATES)
+                })
+            }),
+            fill  = async () => {
+                (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+                (await form.getField('credential')).value     = CREDENTIAL;
+                form.harnessType                              = 'opencode'
+            };
+
+        await form.readMemory();
+
+        const list = form.getReference('memory-list');
+
+        // a wrong memory is an identity error: several candidates preselect none
+        expect(form.getReference('memory-lead').text).toBe('Continue one of these agents\' memory?');
+        expect(form.memoryChoice).toBeNull();
+        expect(form.getReference('memory-details').hidden).toBe(true);
+        expect(list.createItemContent(list.store.getAt(1))[0].text).toBe('An unnamed agent');
+
+        await fill();
+        await form.onSubmitClick();
+
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Choose the agent whose memory this seat continues, or Start with empty memory.'});
+        expect(calls).toHaveLength(0);
+
+        form.onMemoryCandidateClick({record: list.store.getAt(1)});
+
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, true, false]);
+        expect(form.getReference('memory-details').vdom.cn[1].text).toBe(CANDIDATES[1].source);
+
+        await fill();
+        await form.onSubmitClick();
+
+        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: CANDIDATES[1].source}]);
+
+        // the next agent starts from a fresh choice, never the previous agent's memory
+        expect(form.memoryChoice).toBeNull();
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, false, false]);
+
+        // the empty row is a choice like the others, with nothing under Details
+        form.onMemoryCandidateClick({record: list.store.get('none')});
+        expect(form.getReference('memory-details').hidden).toBe(true);
+
+        await fill();
+        await form.onSubmitClick();
+
+        expect(calls[1].memoryImport).toBe('none');
+
+        form.destroy()
+    });
+
+    test('only the latest memory read owns the answer: an earlier empty reply landing last neither hides newer candidates nor consents to none (#521)', async () => {
+        const
+            pending = [],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async () => cleanReadback(),
+                    fleetMemoryCandidates: () => new Promise(resolve => pending.push(resolve))
+                })
+            }),
+            older   = form.readMemory(),
+            newer   = form.readMemory();
+
+        // the newer read answers first with a memory, then the older one with none
+        pending[1](await memoryRead(CANDIDATES)());
+        await newer;
+        pending[0](await NO_MEMORY());
+        await older;
+
+        expect(form.memoryDiscovery).toEqual({state: 'candidates', candidates: CANDIDATES});
+        expect(form.getReference('memory-frame').hidden).toBe(false);
+        expect(AddAgentFlow.memoryImportFor({discovery: form.memoryDiscovery, choice: form.memoryChoice}).valid).toBe(false);
+
+        // the ordered control: the latest answer lands last and is the one that stands
+        const answerInOrder = form.readMemory();
+
+        pending[2](await NO_MEMORY());
+        await answerInOrder;
+
+        expect(form.memoryDiscovery).toEqual({state: 'none'});
+
+        form.destroy()
+    });
+
+    test('a submission waits for the read in flight: a refresh that finds a memory stops an automatic none (#521)', async () => {
+        const
+            calls   = [],
+            pending = [],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async payload => { calls.push(payload); return cleanReadback() },
+                    fleetMemoryCandidates: () => new Promise(resolve => pending.push(resolve))
+                })
+            }),
+            fill    = async () => {
+                (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+                (await form.getField('credential')).value     = CREDENTIAL;
+                form.harnessType                              = 'opencode'
+            };
+
+        const first = form.readMemory();
+
+        pending[0](await NO_MEMORY());
+        await first;
+        expect(form.memoryDiscovery).toEqual({state: 'none'});
+
+        // the form is shown again, and the refresh finds a memory while the operator presses Add
+        form.readMemory();
+        await fill();
+
+        const submitting = form.onSubmitClick();
+
+        pending[1](await memoryRead(CANDIDATES)());
+        await submitting;
+
+        expect(calls).toHaveLength(0);
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Choose the agent whose memory this seat continues, or Start with empty memory.'});
+
+        // the control: a refresh that again finds nothing lets the automatic none through
+        form.readMemory();
+        await fill();
+
+        const again = form.onSubmitClick();
+
+        pending[2](await NO_MEMORY());
+        await again;
+
+        expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: 'none'}]);
+
+        form.destroy()
+    });
+
+    test('a form that leaves the screen gives up its read: an answer landing while it is away paints nothing (#521)', async () => {
+        const
+            pending = [],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async () => cleanReadback(),
+                    fleetMemoryCandidates: () => new Promise(resolve => pending.push(resolve))
+                })
+            });
+
+        form.mounted = true;
+        await expect.poll(() => pending.length).toBe(1);
+
+        const read = form.memoryRead;
+
+        form.mounted = false;
+        expect(form.memoryRead).toBeNull();
+
+        // the answer lands in full while the form is away
+        pending[0](await memoryRead(CANDIDATES)());
+        await read;
+
+        expect(form.memoryDiscovery).toEqual({state: 'reading'});
+        expect(form.getReference('memory-frame').hidden).toBe(true);
+
+        form.destroy()
+    });
+});
+
+test.describe('AgentOS.view.fleet.instances.AddAgentForm — the added seat\'s commit identity (#524)', () => {
+    const missing = {state: 'missing', name: 'Phoebe', reason: 'its forge account offers no email this PAT can read'};
+
+    /**
+     * @summary A form over a stub bridge whose identity reads answer from `answers` in turn.
+     * @param {Object[]} answers
+     * @param {Object}   [extra] More bridge verbs.
+     * @returns {{form: Object, accepted: Object[], reads: String[], intents: Object[]}}
+     */
+    const mountForm = (answers, extra={}) => {
+        const
+            accepted = [],
+            intents  = [],
+            reads    = [],
+            bridge   = {
+                defineAgent          : async () => cleanReadback(),
+                fleetMemoryCandidates: NO_MEMORY,
+                fleetSeatGitIdentity : async ({id}) => {
+                    reads.push(id);
+                    return answers.length > 1 ? answers.shift() : answers[0]
+                },
+                configureAgent       : async intent => {
+                    intents.push(intent);
+                    return {status: 'accepted', agent: {...cleanReadback(), gitName: intent.gitName, gitEmail: intent.gitEmail}}
+                },
+                ...extra
+            },
+            form     = Neo.create(AddAgentForm, {appName: 'AgentOSAddAgentFlowTest', bridgeResolver: () => bridge});
+
+        form.on('agentDefinitionAccepted', data => accepted.push(data.agent));
+
+        return {form, accepted, reads, intents}
+    };
+
+    const fill = async form => {
+        // the existing-memory answer the form reads when shown: none on this host
+        await form.readMemory();
+        (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+        (await form.getField('credential')).value     = CREDENTIAL;
+        form.harnessType = 'opencode'
+    };
+
+    test('AC-1: a derived or declared identity asks nothing new', async () => {
+        for (const answer of [{state: 'derived', name: 'Phoebe', email: 'phoebe@example.com'}, {state: 'declared', name: 'Phoebe', email: 'phoebe@example.com'}]) {
+            const {form, reads} = mountForm([answer]);
+
+            await fill(form);
+            await form.onSubmitClick();
+
+            expect(form.flowStatus.state).toBe('readback-confirmed');
+            expect(reads).toEqual(['resident-7']);
+            expect(form.getReference('git-identity').hidden).toBe(true);
+
+            form.destroy()
+        }
+    });
+
+    test('AC-2: the define stands before the identity is read, and a failed derivation mounts the row inline', async () => {
+        let release;
+        const
+            held = new Promise(resolve => {release = resolve}),
+            {form, accepted, reads} = mountForm([missing], {fleetSeatGitIdentity: async ({id}) => {
+                reads.push(id);
+                return held
+            }});
+
+        await fill(form);
+        const submitted = form.onSubmitClick();
+
+        // the read is in flight, and the define already stands: confirmed and handed to the owner
+        await expect.poll(() => reads).toEqual(['resident-7']);
+        expect(form.flowStatus.state).toBe('readback-confirmed');
+        expect(accepted).toHaveLength(1);
+        expect(form.getReference('git-identity').hidden).toBe(true);
+
+        release(missing);
+        await submitted;
+
+        const row = form.getReference('git-identity');
+
+        expect(row.hidden).toBe(false);
+        expect(row.getReference('identity-line').text).toBe('No commit identity: its forge account offers no email this PAT can read.');
+        expect(row.getReference('identity-fields').hidden).toBe(false);
+
+        form.destroy()
+    });
+
+    test('AC-2: the declaration goes through configureAgent, and the Fleet\'s answer closes the row', async () => {
+        const {form, accepted, intents} = mountForm([missing, {state: 'declared', source: 'declaration', name: 'Phoebe', email: 'phoebe@example.com'}]);
+
+        await fill(form);
+        await form.onSubmitClick();
+
+        const row = form.getReference('git-identity');
+
+        row.getReference('field-git-email').value = 'phoebe@example.com';
+        await form.onDeclareGitIdentity({gitName: row.getReference('field-git-name').value, gitEmail: 'phoebe@example.com'});
+
+        expect(intents).toEqual([{id: 'resident-7', gitName: 'Phoebe', gitEmail: 'phoebe@example.com'}]);
+        expect(row.hidden).toBe(true);
+        expect(form.flowStatus).toEqual({state: 'readback-confirmed', reason: 'Agent added. Commits as Phoebe <phoebe@example.com> · declared.'});
+        // the updated definition reaches the owner's roster, as the define did
+        expect(accepted.map(agent => agent.gitEmail)).toEqual([undefined, 'phoebe@example.com']);
+
+        form.destroy()
+    });
+
+    test('AC-2: a refused declaration keeps the row open with the Fleet\'s reason; a half pair never crosses', async () => {
+        const {form, intents} = mountForm([missing], {configureAgent: async intent => {
+            intents.push(intent);
+            return {status: 'rejected', reason: 'gitEmail is not an email address'}
+        }});
+
+        await fill(form);
+        await form.onSubmitClick();
+
+        const row = form.getReference('git-identity');
+
+        await form.onDeclareGitIdentity({gitName: 'Phoebe', gitEmail: ''});
+        expect(intents).toEqual([]);
+        expect(row.status).toEqual({state: 'rejected', reason: 'Name and email are both required.'});
+
+        await form.onDeclareGitIdentity({gitName: 'Phoebe', gitEmail: 'phoebe'});
+        expect(row.hidden).toBe(false);
+        expect(row.status).toEqual({state: 'rejected', reason: 'gitEmail is not an email address'});
+
+        form.destroy()
+    });
+
+    test('AC-2: a read that failed shows "not yet read" with its reason, and the retry reads again', async () => {
+        const {form, reads} = mountForm([
+            {state: 'unknown', reason: 'the fleet could not be reached'},
+            {state: 'derived', name: 'Phoebe', email: 'phoebe@example.com'}
+        ]);
+
+        await fill(form);
+        await form.onSubmitClick();
+
+        const row = form.getReference('git-identity');
+
+        expect(row.hidden).toBe(false);
+        expect(row.getReference('identity-line').text).toBe('Identity not yet read: the fleet could not be reached.');
+        expect(row.getReference('identity-read').hidden).toBe(false);
+
+        await form.readGitIdentity();
+        expect(reads).toEqual(['resident-7', 'resident-7']);
+        expect(row.hidden).toBe(true);
+
+        form.destroy()
+    });
+
+    test('a bridge without the identity verb reads as not yet read, never as success', async () => {
+        const {form} = mountForm([missing], {fleetSeatGitIdentity: undefined});
+
+        await fill(form);
+        await form.onSubmitClick();
+
+        const row = form.getReference('git-identity');
+
+        expect(form.flowStatus.state).toBe('readback-confirmed');
+        expect(row.hidden).toBe(false);
+        expect(row.getReference('identity-line').text).toBe('Identity not yet read: this fleet does not report commit identities.');
+
+        form.destroy()
+    });
+
+    test('AC-2: only the latest identity request paints the row: an older reply of the same seat is ignored, and Read again waits for its answer', async () => {
+        const
+            replies = [],
+            reply   = () => {
+                let resolve;
+                const promise = new Promise(res => {resolve = res});
+                replies.push({promise, resolve});
+                return promise
+            },
+            {form}  = mountForm([missing], {fleetSeatGitIdentity: () => reply()});
+
+        await fill(form);
+
+        const submitted = form.onSubmitClick();
+
+        await expect.poll(() => replies.length).toBe(1);
+        replies[0].resolve({state: 'unknown', reason: 'the fleet could not be reached'});
+        await submitted;
+
+        const row = form.getReference('git-identity');
+
+        expect(row.hidden).toBe(false);
+
+        // two retries: the second is the latest request, and Read again waits while one is in flight
+        const first = form.readGitIdentity();
+
+        expect(row.getReference('identity-read').disabled).toBe(true);
+        expect(row.getReference('identity-status').text).toBe('Reading…');
+
+        const second = form.readGitIdentity();
+
+        replies[2].resolve({state: 'derived', name: 'Phoebe', email: 'phoebe@example.com'});
+        await second;
+        expect(row.hidden).toBe(true);
+
+        replies[1].resolve({state: 'unknown', reason: 'the fleet could not be reached'});
+        expect(await first).toBeNull();
+        expect(row.hidden).toBe(true);
+        expect(row.identity.state).toBe('derived');
 
         form.destroy()
     });

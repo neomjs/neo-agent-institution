@@ -59,6 +59,12 @@ const REPO_SLUG_SHAPES = Object.freeze({
 const FLEET_OFFLINE_REASON = 'The fleet is not running. Start it, then add the agent.';
 
 /**
+ * The `memoryImport` of a seat that starts with no existing memory, the Fleet's own word.
+ * @member {String} MEMORY_IMPORT_NONE
+ */
+const MEMORY_IMPORT_NONE = 'none';
+
+/**
  * Static validation and bridge-round-trip utilities for defining an AgentOS resident.
  * @class AgentOS.util.AddAgentFlow
  * @extends Neo.core.Base
@@ -67,6 +73,7 @@ class AddAgentFlow extends Base {
     static ADD_AGENT_STATES     = ADD_AGENT_STATES
     static DEFAULT_REPO_SLUG    = DEFAULT_REPO_SLUG
     static FLEET_OFFLINE_REASON = FLEET_OFFLINE_REASON
+    static MEMORY_IMPORT_NONE   = MEMORY_IMPORT_NONE
 
     static config = {
         /**
@@ -191,7 +198,9 @@ class AddAgentFlow extends Base {
             githubUsername: payload.githubUsername?.trim(),
             harnessType   : payload.harnessType,
             launchOwner   : 'fleet',
-            ...(payload.forge === 'gitlab' ? {forge: 'gitlab', forgeHost: payload.forgeHost?.trim()} : {})
+            ...(payload.forge === 'gitlab' ? {forge: 'gitlab', forgeHost: payload.forgeHost?.trim()} : {}),
+            // the operator's memory choice: a candidate's `source`, or 'none' for a fresh seat
+            ...(typeof payload.memoryImport === 'string' && payload.memoryImport ? {memoryImport: payload.memoryImport} : {})
         };
 
         if (!AddAgentFlow.isShellCredentialIngress(bridge)) {
@@ -199,6 +208,112 @@ class AddAgentFlow extends Base {
         }
 
         return intent
+    }
+
+    /**
+     * @summary Ask the Fleet which existing agents' memory an added seat could continue, as one typed
+     * outcome. Only a wired read with no candidates says no memory exists. A fleet that answers without
+     * a list (an unwired source, a refused, degraded or failed read, a shapeless answer) is
+     * `unavailable`: unknown, never empty. A fleet that cannot be reached is `offline`: nothing can be
+     * added then, so there is no memory question to ask.
+     *
+     * Outcome shapes:
+     * - `{state: 'none'}` — the host holds no memory to import; the seat records `memoryImport: 'none'`.
+     * - `{state: 'candidates', candidates}` — one or more `{family, source, name, notes, lastChanged}`.
+     * - `{state: 'unavailable', reason, detail}` — discovery could not answer. `reason` says why in the
+     *   operator's words; `detail` is the producer's own words, or null.
+     * - `{state: 'offline', reason}` — no fleet answered; the form asks again on submit.
+     * @param {Object}        [config]
+     * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
+     * @returns {Promise<Object>} One outcome — this function never throws.
+     */
+    static async readMemoryCandidates({bridgeResolver=null}={}) {
+        const bridge = AddAgentFlow.resolveRegistryBridge(bridgeResolver);
+
+        if (!bridge) {
+            return {state: 'offline', reason: FLEET_OFFLINE_REASON}
+        }
+
+        if (!bridge.fleetMemoryCandidates) {
+            return {state: 'unavailable', reason: 'this Fleet cannot look for it', detail: null}
+        }
+
+        let answer;
+
+        try {
+            answer = await bridge.fleetMemoryCandidates()
+        } catch (error) {
+            // a refused or failed answer keeps the wire's words as detail; a transport failure is no answer
+            return error?.fleetWireState && error.message
+                ? {state: 'unavailable', reason: 'the Agent OS did not answer', detail: error.message}
+                : {state: 'offline', reason: 'Could not reach the fleet.'}
+        }
+
+        if (answer?.capability?.state !== 'wired') {
+            return {state: 'unavailable', reason: 'this Agent OS cannot look for it yet', detail: answer?.capability?.reason || null}
+        }
+
+        if (!Array.isArray(answer.candidates) || answer.candidates.some(candidate => typeof candidate?.source !== 'string' || !candidate.source)) {
+            return {state: 'unavailable', reason: 'the Agent OS answered without a list', detail: null}
+        }
+
+        return answer.candidates.length ? {state: 'candidates', candidates: answer.candidates} : {state: 'none'}
+    }
+
+    /**
+     * @summary The rows the memory choice offers for a discovery answer: each candidate, then *Start with
+     * empty memory* as the last row of the same group. An unavailable answer offers that row alone, so
+     * starting empty is still an explicit choice. Every other answer offers no rows.
+     * @param {Object} discovery The {@link readMemoryCandidates} outcome.
+     * @returns {Object[]} `{family, source, name, notes, lastChanged}` rows; the empty row's `source` is `'none'`.
+     */
+    static memoryChoices(discovery) {
+        const empty = {family: null, source: MEMORY_IMPORT_NONE, name: 'Start with empty memory', notes: 0, lastChanged: null};
+
+        switch (discovery?.state) {
+            case 'candidates':
+                return [...discovery.candidates, empty];
+            case 'unavailable':
+                return [empty];
+            default:
+                return []
+        }
+    }
+
+    /**
+     * @summary The `memoryImport` a submission sends, from the discovery outcome and the operator's choice.
+     * Only a wired read with no candidates records `'none'` by itself. With candidates the operator picks
+     * one or starts with empty memory, and an unavailable discovery needs that empty row chosen
+     * explicitly: an unknown is never recorded as "no memory". An offline fleet adds nothing, so it
+     * answers with its reason.
+     * @param {Object}      options
+     * @param {Object}      options.discovery The {@link readMemoryCandidates} outcome, or `{state: 'reading'}`.
+     * @param {String|null} options.choice    A row's `source` (`'none'` for the empty row), or null.
+     * @returns {{valid: true, memoryImport: String}|{valid: false, reason: String}}
+     */
+    static memoryImportFor({discovery, choice}) {
+        switch (discovery?.state) {
+            case 'none':
+                return {valid: true, memoryImport: MEMORY_IMPORT_NONE};
+            case 'candidates':
+                return choice ? {valid: true, memoryImport: choice} : {valid: false, reason: 'Choose the agent whose memory this seat continues, or Start with empty memory.'};
+            case 'unavailable':
+                return choice === MEMORY_IMPORT_NONE ? {valid: true, memoryImport: MEMORY_IMPORT_NONE} : {valid: false, reason: 'Existing memory could not be checked. Retry, or choose Start with empty memory.'};
+            case 'offline':
+                return {valid: false, reason: discovery.reason};
+            default:
+                return {valid: false, reason: 'Still checking whether existing memory exists.'}
+        }
+    }
+
+    /**
+     * @summary The choice a fresh discovery answer starts from: its one candidate, or none. Several
+     * candidates wait for the operator, because a wrong memory is an identity error and is never guessed.
+     * @param {Object} discovery The {@link readMemoryCandidates} outcome.
+     * @returns {String|null} The preselected candidate's `source`, or null.
+     */
+    static preselectedMemory(discovery) {
+        return discovery?.state === 'candidates' && discovery.candidates.length === 1 ? discovery.candidates[0].source : null
     }
 
     /**
@@ -215,7 +330,7 @@ class AddAgentFlow extends Base {
      *
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
-     * @param {Object}        config.payload          `{credential, forge, forgeHost, githubUsername, harnessType, repoSlug}`.
+     * @param {Object}        config.payload          `{credential, forge, forgeHost, githubUsername, harnessType, memoryImport, repoSlug}`.
      * @returns {Promise<Object>} One terminal outcome — this function never throws.
      */
     static async submitDefineAgent({bridgeResolver=null, payload}) {

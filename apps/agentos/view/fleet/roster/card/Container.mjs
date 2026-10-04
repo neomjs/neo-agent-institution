@@ -70,9 +70,11 @@ const LANE_AGE_REFRESH_MS = 30_000;
 import AgentFreshness from '../../../../util/AgentFreshness.mjs';
 import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
 import NameSlot       from '../../../../util/NameSlot.mjs';
-import OpenWorkSeat   from '../../../../util/OpenWorkSeat.mjs';
-import SourceHealth   from '../../../../util/SourceHealth.mjs';
-import Telltale       from '../../../../util/Telltale.mjs';
+import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
+import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
+import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
+import SourceHealth      from '../../../../util/SourceHealth.mjs';
+import Telltale          from '../../../../util/Telltale.mjs';
 
 /**
  * The word boundaries a monogram reads initials across: whitespace, hyphens, underscores, dots.
@@ -569,7 +571,8 @@ class AgentCard extends Container {
      * across strip and aggregate. The state dot is gated so missing runtime
      * evidence cannot render as live; severity adds WEIGHT to the state word, never a hue. The B4/C2
      * control seam renders the honest round-trip: unauthorized disables the cluster, timeout reads as
-     * an unfinished "…" with retry open, rejected shows "⚠ reason".
+     * an unfinished "…" with retry open, rejected shows "⚠ reason" in the Fleet's own words, and its
+     * title adds the last start's commit identity when that needs repair, as its own observation.
      */
     applyRecord() {
         let me     = this,
@@ -809,32 +812,49 @@ class AgentCard extends Container {
         // producer's words: a seat outside fleet supervision, or a fleet-launched seat that never ran
         toggle.changeVdomRootKey('title', !runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null);
 
-        // While a control round-trip is live, the second work line belongs to the status row: the
-        // lane clamps to ONE line (SCSS keys off this root cls), so a reason-carrying card still
-        // fits the roster's uniform row height at every card width — the lane stays reachable via
-        // line one, its middle elision and the title.
-        me[(pendingAction || controlReason) ? 'addCls' : 'removeCls']('fm-control-live');
+        // The status row narrates the Start: the round-trip while it is live or refused, then whether
+        // the session it launched opened in the seat's own folder (a desktop seat cannot be launched
+        // into one). A confirmed wrong folder outranks even a live round-trip, because a live seat in
+        // the wrong folder is the failure itself; "not opened yet" and "unknown" sit below one, which
+        // a live seat contradicts.
+        const
+            wrongFolder = record.sessionFolder?.state === 'wrong',
+            sessionLine = wrongFolder || !(pendingAction || controlReason) ? SeatSessionFolder.cardLine(record.sessionFolder) : null;
 
-        // the control round-trip only — the runtime-source gating is already shown by the disabled
-        // controls + the source strip ("RUN not nominal"), so the status line never duplicates it
+        // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
+        // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
+        // row height at every card width — the lane stays reachable via line one, its middle elision
+        // and the title.
+        me[(pendingAction || controlReason || sessionLine) ? 'addCls' : 'removeCls']('fm-control-live');
+
+        // the runtime-source gating is already shown by the disabled controls + the source strip
+        // ("RUN not nominal"), so the status line never duplicates it
         const
             controlStatus     = me.getReference('control-status'),
             // pending takes visual priority over a prior reason, so a new attempt never shows a stale
             // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠"
-            controlStatusText = pendingAction
-                ? `${pendingAction}…`
-                : !controlReason
-                    ? ''
-                    : controlReason.kind === 'timeout'
-                        ? `${controlReason.action}… stale — no response`
-                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
+            controlStatusText = wrongFolder
+                ? sessionLine.text
+                : pendingAction
+                    ? `${pendingAction}…`
+                    : !controlReason
+                        ? sessionLine?.text ?? ''
+                        : controlReason.kind === 'timeout'
+                            ? `${controlReason.action}… stale — no response`
+                            : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
+            // the last start's commit identity, when it needs repair, rides beside a refusal as its own
+            // observation: the wire carries no refusal code, so it never stands in as the cause
+            identityNote      = controlReason && !pendingAction && SeatGitIdentity.needsRepair(record.gitIdentity)
+                ? ` · The last start's commit identity: ${SeatGitIdentity.describe(record.gitIdentity)} Repair it in Detail › Configuration.`
+                : '';
 
         controlStatus.set({
-            hidden: !pendingAction && !controlReason,
+            cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : [])],
+            hidden: !pendingAction && !controlReason && !sessionLine,
             text  : controlStatusText
         });
-        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full reason
-        controlStatus.changeVdomRootKey('title', controlStatusText || null);
+        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
+        controlStatus.changeVdomRootKey('title', sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
 
         me.update()
     }

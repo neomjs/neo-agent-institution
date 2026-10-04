@@ -11,6 +11,7 @@ import ObservatorySceneLayout        from '../../../util/ObservatorySceneLayout.
 import ObservatorySelectionContainer from './ObservatorySelectionContainer.mjs';
 import ObservatoryTeamContainer      from './ObservatoryTeamContainer.mjs';
 import ObservatoryViewContainer      from './ObservatoryViewContainer.mjs';
+import Splitter                      from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
 import ViewerTime                    from '../../../util/ViewerTime.mjs';
 import {peerHues}                    from '../../../canvas/fmPalette.mjs';
 
@@ -298,6 +299,10 @@ class ObservatoryContainer extends Container {
      * canvas worker exists — without one (a config without it; the unit harness, whose stubs resolve the worker's
      * readiness but never define `Neo.worker.Canvas`) the engine's canvas boot throws, so the side panel takes
      * the whole body — and an envelope in the config reaches the head and the panel.
+     *
+     * Beside the canvas, the engine's splitter resizes the side panel for the session. Its bounds are the panel's
+     * CSS `min-width` and `max-width`, which the engine's drag clamps against. Nothing stores the width, so a
+     * new pane starts at the default.
      */
     onConstructed() {
         super.onConstructed();
@@ -325,7 +330,7 @@ class ObservatoryContainer extends Container {
         me.syncSections();
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
-            me.getReference('observatory-body').insert(0, {
+            me.getReference('observatory-body').insert(0, [{
                 module      : ObservatoryCanvas,
                 flex        : 1,
                 reference   : 'observatory-canvas',
@@ -334,9 +339,18 @@ class ObservatoryContainer extends Container {
                 selectedId  : me.selectedId,
                 ...me.channels(),
                 listeners   : {nodeHover: me.onNodeHover, nodeSelect: me.onNodeSelect, scope: me}
-            })
+            }, {
+                module      : Splitter,
+                cls         : ['fm-observatory-splitter'],
+                reference   : 'observatory-splitter',
+                resizeTarget: 'next',
+                size        : 6
+            }])
         } else {
-            me.getReference('observatory-side').flex = 1
+            const side = me.getReference('observatory-side');
+
+            // no surface: the panel is the whole body; the layout already copied its flex into the style
+            side.set({flex: 1, style: {...side.style, flex: '1 1 0%'}})
         }
 
         me.updateLine();

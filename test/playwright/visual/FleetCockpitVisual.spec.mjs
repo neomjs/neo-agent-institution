@@ -966,6 +966,12 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      */
     const GOLDEN_PATH_DRIVER = '../../../../test/playwright/visual/goldenPathEnvelope.driver.mjs';
 
+    /**
+     * The Add agent memory driver, resolved the way {@link GOLDEN_PATH_DRIVER} is.
+     * @type {String}
+     */
+    const ADD_AGENT_MEMORY_DRIVER = '../../../../test/playwright/visual/addAgentMemory.driver.mjs';
+
     let driverTick = 0;
 
     /**
@@ -1271,6 +1277,70 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await long.scrollIntoViewIfNeeded();
         expect(await long.locator('.fm-observatory-row-label').evaluate(label => label.scrollHeight > label.clientHeight || label.scrollWidth > label.clientWidth), 'a long title is never clipped').toBe(false);
         expect(Math.round(await heightOf(long) / await heightOf(short)), 'it takes the lines it needs').toBeGreaterThan(1)
+    });
+
+    test('the side panel is as wide as the operator drags it, between 280 px and half the body, for the session only', async ({page}) => {
+        const
+            pane     = page.locator('.fm-observatory-pane'),
+            side     = pane.locator('.fm-observatory-side'),
+            splitter = pane.locator('.fm-observatory-splitter'),
+            widthOf  = async locator => (await locator.boundingBox()).width,
+            drag     = async dx => {
+                const box = await splitter.boundingBox(),
+                      x   = box.x + box.width / 2,
+                      y   = box.y + box.height / 2;
+
+                await page.mouse.move(x, y);
+                await page.mouse.down();
+                await page.mouse.move(x + dx, y, {steps: 8});
+                await page.mouse.up()
+            };
+
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete$/);
+
+        expect(await widthOf(side), 'a pane starts at the default').toBe(320);
+
+        await drag(-200);
+        await expect.poll(() => widthOf(side)).toBe(520);
+        await page.mouse.move(0, 0);
+        await expect(pane).toHaveScreenshot('observatory-pane-widened.png');
+        await switchToLightSkin(page);
+        await expect(pane).toHaveScreenshot('observatory-pane-widened-light.png');
+
+        await drag(-2000);
+        const half = (await widthOf(pane.locator('.fm-observatory-body'))) / 2;
+        await expect.poll(async () => Math.abs(await widthOf(side) - half), 'never wider than half the body').toBeLessThanOrEqual(1);
+
+        await drag(2000);
+        await expect.poll(() => widthOf(side), 'never narrower than 280 px').toBe(280);
+
+        // nothing keeps the width: a reload is a new session
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        expect(await widthOf(side)).toBe(320)
+    });
+
+    test('without a canvas worker the side panel takes the whole body, and no splitter is drawn', async ({page}) => {
+        const
+            pane    = page.locator('.fm-observatory-pane'),
+            widthOf = async selector => (await pane.locator(selector).boundingBox()).width;
+
+        // a host without a canvas worker: the app boots from a neo-config that turns it off
+        await page.route('**/apps/agentos/neo-config.json', async route => {
+            const response = await route.fetch();
+
+            await route.fulfill({response, json: {...await response.json(), useCanvasWorker: false}})
+        });
+        await bootSettledCockpit(page);
+        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
+        await expect(pane).toBeVisible({timeout: 30000});
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete$/);
+
+        await expect(pane.locator('canvas')).toHaveCount(0);
+        await expect(pane.locator('.fm-observatory-splitter')).toHaveCount(0);
+        expect(Math.abs(await widthOf('.fm-observatory-side') - await widthOf('.fm-observatory-body'))).toBeLessThanOrEqual(1)
     });
 
     /**
@@ -1616,5 +1686,29 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForFunction(() => [...document.querySelectorAll('.fm-agent-detail img')].every(img => img.complete), null, {timeout: 10000});
         await settle();
         await expect(detail, 'Agent detail').toHaveScreenshot('pane-agent-detail.png')
+    });
+
+    test('the Add agent memory frame at 1280 — candidates with the empty row closing their group, and a check that could not answer, in the operator\'s words', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            tab  = page.locator('.neo-dashboard-dock-rail-tab', {hasText: /^\s*Add agent\s*$/i}).first(),
+            form = page.locator('.fm-add-agent-form:visible').first();
+
+        await tab.click();
+        await expect(tab).toHaveClass(/\bpressed\b/, {timeout: 10000});
+        await expect(form).toBeVisible({timeout: 30000});
+
+        for (const [state, golden] of [['candidates', 'add-agent-memory-candidates.png'], ['unavailable', 'add-agent-memory-unavailable.png']]) {
+            const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${ADD_AGENT_MEMORY_DRIVER}?state=${state}&t=${++driverTick}`);
+
+            expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+            await expect(form.locator('.fm-add-memory')).toBeVisible();
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+            await page.mouse.move(0, 0);
+            await page.waitForTimeout(400);
+            await expect(form, `Add agent, memory ${state}`).toHaveScreenshot(golden)
+        }
     });
 });

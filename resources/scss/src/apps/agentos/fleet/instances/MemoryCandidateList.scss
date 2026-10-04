@@ -1,0 +1,49 @@
+/* The add-agent form's memory choice: one quiet row per candidate, the name over its notes line, then
+   the empty-memory row, its name alone and dim until chosen, on no stock surface. Selection pairs the
+   signal tint with the name's weight, so a choice never reads by colour alone. */
+.fm-memory-candidates.neo-list {
+    --list-item-background-color       : transparent;
+    --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+    --list-item-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+
+    background   : transparent;
+    border       : 1px solid var(--fm-line-soft);
+    border-radius: 6px;
+    gap          : 2px;
+    padding      : 2px;
+
+    .neo-list-item {
+        border-radius : 4px;
+        color         : var(--fm-ink-dim);
+        cursor        : pointer;
+        display       : flex;
+        flex-direction: column;
+        gap           : 2px;
+        padding       : var(--fm-space-1) var(--fm-space-2);
+
+        .fm-memory-candidate-name {
+            color        : var(--fm-ink);
+            font         : var(--fm-text-body);
+            overflow     : hidden;
+            text-overflow: ellipsis;
+            white-space  : nowrap;
+        }
+
+        .fm-memory-candidate-meta {
+            font: var(--fm-text-detail);
+        }
+
+        .fm-memory-candidate-name.is-empty-memory {
+            color: var(--fm-ink-dim);
+        }
+
+        &.neo-selected {
+            background: color-mix(in srgb, var(--fm-signal) 16%, transparent);
+
+            .fm-memory-candidate-name {
+                color      : var(--fm-ink);
+                font-weight: 600;
+            }
+        }
+    }
+}

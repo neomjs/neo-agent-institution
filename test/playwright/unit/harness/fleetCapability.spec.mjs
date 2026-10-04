@@ -335,6 +335,29 @@ test.describe('harness Fleet capability', () => {
         expect(projectPublicAgentIntent({...intent, forgeHost: null})).toBeNull()
     });
 
+    test('native Add carries the operator\'s memory choice to the Brain, never a blank or shaped one', async () => {
+        const
+            source     = '/Users/operator/.claude/projects/-work/memory',
+            intent     = {githubUsername: 'adopted-seat', harnessType: 'claude-code', memoryImport: source},
+            calls      = [],
+            capability = createCapability({
+                isTrustedSender   : () => true,
+                getBrain          : async () => ({up: true, fleetPort: 8083}),
+                credentialProvider: async () => 'main-owned-token',
+                fetchImpl         : async (url, options) => {
+                    calls.push(JSON.parse(options.body));
+                    return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {id: 'adopted-seat'}})}
+                }
+            });
+
+        await capability.request({}, {method: 'defineAgent', params: intent});
+
+        expect(calls[0].params).toEqual({...intent, credential: 'main-owned-token'});
+        expect(projectPublicAgentIntent({...intent, memoryImport: 'none'})).toEqual({...intent, memoryImport: 'none'});
+        expect(projectPublicAgentIntent({...intent, memoryImport: '  '})).toBeNull();
+        expect(projectPublicAgentIntent({...intent, memoryImport: {source}})).toBeNull()
+    });
+
     test('a seat\'s plane credential projects to the seat id alone: no credential, plane or identity rides in from the renderer', () => {
         expect(projectPublicCredentialIntent('setPlaneCredential', {
             id        : ' neo-gpt-sophie ',

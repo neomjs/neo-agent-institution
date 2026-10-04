@@ -171,6 +171,18 @@ test.describe('fleetLifecycleIntentAdapter — lifecycleIntent → registry brid
         expect(result).toMatchObject({accepted: true, ok: false, status: 'rejected'})
     });
 
+    test('a memory import that did not converge refuses Start with its source and its step intact (#521 AC-4)', async () => {
+        // the Brain's refusal (seatMemoryImport.mjs), after the bridge drops its caller prefix
+        const
+            reason = "agent 'mnemosyne' consented to import its memory from '/home/operator/.claude/projects/-work/memory', but the source holds no memory to copy. The memory-import step did not converge, so the seat does not start.",
+            record = createRecord(),
+            bridge = {startAgent: async () => ({status: 'rejected', reason})};
+
+        await FleetLifecycleIntentAdapter.handleFleetLifecycleIntent({action: 'start', agentId: 'mnemosyne'}, record, {bridge});
+
+        expect(record.controlReason).toEqual({action: 'start', kind: 'rejected', reason})
+    });
+
     test('a refusal\'s bare words survive the redaction, a labelled value does not (#443)', () => {
         const reason = "agent 'vega' has no GitHub PAT stored; store one before starting it.";
 
