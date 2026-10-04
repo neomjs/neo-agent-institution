@@ -264,7 +264,7 @@ apps/agentos/util/RosterRow.mjs
     fa3738f97a9f56dd04d9e7dbfe808ef9d9a5a5ed
 
 apps/agentos/util/SeatGitIdentity.mjs
-    e33db43590af6ca3a4e39236b6e4a8eafc5a05e0
+    ededf7cb62f12a7f26dfd6ebb66360a2563cd627
 
 apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
@@ -480,7 +480,7 @@ apps/agentos/view/fleet/shared/FamilyRailComponent.mjs
     4024c3de9411fa763dc93e8669a016bcf31f7de0
 
 apps/agentos/view/fleet/shared/GitIdentityContainer.mjs
-    c88ddc3d300338581f9ef83fdb4426f0435626c6
+    92467de57170f26439782e51dc8c6603b182fa29
 
 apps/agentos/view/fleet/shared/StateDotComponent.mjs
     d9d5f461704e55aa8061cf1f8a93afa47a3a9271
@@ -624,7 +624,7 @@ resources/scss/src/apps/agentos/fleet/shared/FamilyRailComponent.scss
     a44934170253161f3d0067031116e88e141223b3
 
 resources/scss/src/apps/agentos/fleet/shared/GitIdentityContainer.scss
-    e7a53a6e06416947faa8795f04920b392c8e8827
+    24985567493b2ed7fafb03edf7cc76401f801fb0
 
 resources/scss/src/apps/agentos/fleet/shared/StateDotComponent.scss
     7b1a39e5721d51f045a2332840bea1b5a23a5fea
