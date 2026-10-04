@@ -305,11 +305,12 @@ export function describeReceipt(receipt) {
 
     const
         {owners = {}, stagedAt = '?'} = receipt,
-        brain   = owners.brain?.revision?.slice(0, 7)                ?? '?',
-        engine  = owners.engine?.pin?.split('#').pop()?.slice(0, 7)  ?? '?',
-        product = owners.product?.version                            ?? '?';
+        brain    = owners.brain?.revision?.slice(0, 7)                ?? '?',
+        engine   = owners.engine?.pin?.split('#').pop()?.slice(0, 7)   ?? '?',
+        product  = owners.product?.version                           ?? '?',
+        revision = owners.product?.revision?.slice(0, 7)              ?? '?';
 
-    return `staged ${stagedAt} · Brain ${brain} · Engine ${engine} · product ${product}`
+    return `staged ${stagedAt} · Brain ${brain} · Engine ${engine} · product ${product} @ ${revision}`
 }
 
 /**

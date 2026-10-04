@@ -716,17 +716,48 @@ test.describe('harness pack stage', () => {
                 brainPackageJson  : {name: 'neo-agent-brain', version: '0.0.0'},
                 enginePackageJson : {name: 'neo.mjs', version: '13.1.0'},
                 productPackageJson: {dependencies: {'neo.mjs': 'github:neomjs/neo#205bc52f'}, name: 'neo-agent-institution', version: '0.1.0'},
-                revisionOf        : root => root === roots.brainRoot ? 'abc123' : null,
+                revisionOf        : root => root === roots.brainRoot ? 'abc123' : root === roots.productRoot ? 'def456' : null,
                 roots
             });
 
-        expect(info).toEqual({
+        expect(JSON.parse(JSON.stringify(info))).toEqual({
             brain  : {name: 'neo-agent-brain', revision: 'abc123', version: '0.0.0'},
             engine : {name: 'neo.mjs', pin: 'github:neomjs/neo#205bc52f', version: '13.1.0'},
-            product: {name: 'neo-agent-institution', version: '0.1.0'}
+            product: {name: 'neo-agent-institution', revision: 'def456', version: '0.1.0'}
         });
         expect(JSON.stringify(info)).not.toContain('/Users/');
         expect(JSON.stringify(info)).not.toContain('checkouts')
+    });
+
+    test('describeOwners keeps an unreadable product revision null without borrowing the Brain revision', () => {
+        const roots = {brainRoot: '/build/brain', productRoot: '/build/product'};
+        const info = describeOwners({
+            brainPackageJson  : {},
+            enginePackageJson : {},
+            productPackageJson: {},
+            revisionOf        : root => root === roots.brainRoot ? 'abc123' : null,
+            roots
+        });
+
+        expect(JSON.parse(JSON.stringify(info))).toMatchObject({
+            brain  : {revision: 'abc123'},
+            product: {revision: null}
+        })
+    });
+
+    test('describeOwners reports unknown revisions for a source directory without Git metadata', async () => {
+        const root = await mkdtemp(path.join(tmpdir(), 'neo-pack-revision-'));
+
+        try {
+            expect(describeOwners({
+                brainPackageJson  : {},
+                enginePackageJson : {},
+                productPackageJson: {},
+                roots             : {brainRoot: root, productRoot: root}
+            })).toMatchObject({brain: {revision: null}, product: {revision: null}})
+        } finally {
+            await rm(root, {recursive: true, force: true})
+        }
     });
 
     test('the node shim fails loud without the runtime binary and execs it in node mode', () => {

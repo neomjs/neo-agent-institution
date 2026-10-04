@@ -189,10 +189,18 @@ test.describe('harness/install.mjs — the plan', () => {
         expect(planInstall({...baseInput(), parked: slot(PARKED, NEW), rollback: slot(ROLLBACK, PREVIOUS)}).reason).toBe('interrupted-restore-ambiguous')
     });
 
-    test('describeReceipt tells two builds apart by stagedAt, Brain and Engine — the version label cannot', () => {
-        expect(describeReceipt(OLD)).toBe('staged 2026-10-01T14:21:46.232Z · Brain aaaaaaa · Engine bbbbbbb · product 0.1.0');
+    test('describeReceipt keeps older receipts readable when the product revision is missing', () => {
+        expect(describeReceipt(OLD)).toBe('staged 2026-10-01T14:21:46.232Z · Brain aaaaaaa · Engine bbbbbbb · product 0.1.0 @ ?');
         expect(describeReceipt(NEW)).toContain('Brain ccccccc');
         expect(describeReceipt(null)).toBe('no receipt')
+    });
+
+    test('describeReceipt distinguishes builds differing only in product revision and preserves unknown', () => {
+        for (const [revision, expected] of [['eeeeeee5555555', 'eeeeeee'], ['fffffff6666666', 'fffffff'], [null, '?']]) {
+            const build = {...OLD, owners: {...OLD.owners, product: {...OLD.owners.product, revision}}};
+
+            expect(describeReceipt(build)).toBe(`staged 2026-10-01T14:21:46.232Z · Brain aaaaaaa · Engine bbbbbbb · product 0.1.0 @ ${expected}`)
+        }
     })
 });
 
