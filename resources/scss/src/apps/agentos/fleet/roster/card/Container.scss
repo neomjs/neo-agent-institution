@@ -459,6 +459,11 @@
         white-space  : nowrap;
         overflow     : hidden;
         text-overflow: ellipsis;
+
+        /* a session in another folder is the state the operator acts on: the attention token */
+        &.is-session-wrong {
+            color: var(--fm-state-wedged);
+        }
     }
 
     /* While a control round-trip is live (root cls from the card component), the second work line

@@ -680,6 +680,41 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('the status row ends a Start with where its session opened: the wrong folder, not yet, or unknown; never the path, and never over a live round-trip (#522)', () => {
+        const
+            expected = '/seats/vega/neomjs/neo',
+            card     = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop'}),
+            status   = () => card.down({reference: 'control-status'});
+
+        // AC-1: one line with one next-action word; the folders ride the title, never the card
+        applySet(card, {sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}});
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe('session opened in the wrong folder · reopen');
+        expect(status().cls).toContain('is-session-wrong');
+        expect(status().vdom.title).toBe(`opened in /Users/vega/elsewhere · expected ${expected}. Open the expected folder in Claude's Code tab and continue there.`);
+        expect(card.cls).toContain('fm-control-live');
+
+        // AC-2: pending and unknown read as themselves
+        applySet(card, {sessionFolder: {state: 'pending', expected}});
+        expect(status().text).toBe('session not opened yet · open the folder');
+        applySet(card, {sessionFolder: {state: 'unknown', expected, reason: 'the session records could not be read'}});
+        expect(status().text).toBe('session folder unknown: the session records could not be read');
+
+        // a live round-trip outranks it
+        applySet(card, {sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}, pendingAction: 'restart'});
+        expect(status().text).toBe('restart…');
+        expect(status().cls).not.toContain('is-session-wrong');
+
+        // ok adds no line, and AC-3: a row without the fact renders nothing new
+        for (const sessionFolder of [{state: 'ok', expected}, null]) {
+            applySet(card, {pendingAction: null, sessionFolder});
+            expect(status().hidden).toBe(true);
+            expect(card.cls).not.toContain('fm-control-live')
+        }
+
+        card.destroy()
+    });
+
     test('observe: a pending action renders the state dot as a distinct transitional state, never the stale resolved one (#14978)', () => {
         const card = createCard({agentId: 'vega', state: 'off'});
         const dot  = () => card.down({ntype: 'fm-state-dot'});

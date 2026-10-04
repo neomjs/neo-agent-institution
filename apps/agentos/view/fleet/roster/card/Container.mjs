@@ -70,9 +70,10 @@ const LANE_AGE_REFRESH_MS = 30_000;
 import AgentFreshness from '../../../../util/AgentFreshness.mjs';
 import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
 import NameSlot       from '../../../../util/NameSlot.mjs';
-import OpenWorkSeat   from '../../../../util/OpenWorkSeat.mjs';
-import SourceHealth   from '../../../../util/SourceHealth.mjs';
-import Telltale       from '../../../../util/Telltale.mjs';
+import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
+import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
+import SourceHealth      from '../../../../util/SourceHealth.mjs';
+import Telltale          from '../../../../util/Telltale.mjs';
 
 /**
  * The word boundaries a monogram reads initials across: whitespace, hyphens, underscores, dots.
@@ -809,14 +810,19 @@ class AgentCard extends Container {
         // producer's words: a seat outside fleet supervision, or a fleet-launched seat that never ran
         toggle.changeVdomRootKey('title', !runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null);
 
-        // While a control round-trip is live, the second work line belongs to the status row: the
-        // lane clamps to ONE line (SCSS keys off this root cls), so a reason-carrying card still
-        // fits the roster's uniform row height at every card width — the lane stays reachable via
-        // line one, its middle elision and the title.
-        me[(pendingAction || controlReason) ? 'addCls' : 'removeCls']('fm-control-live');
+        // The status row narrates the Start: the round-trip while it is live or refused, then whether
+        // the session it launched opened in the seat's own folder. A desktop seat cannot be launched
+        // into a folder, so that verdict is the Start's last word, and it never outranks a live round-trip.
+        const sessionLine = pendingAction || controlReason ? null : SeatSessionFolder.cardLine(record.sessionFolder);
 
-        // the control round-trip only — the runtime-source gating is already shown by the disabled
-        // controls + the source strip ("RUN not nominal"), so the status line never duplicates it
+        // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
+        // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
+        // row height at every card width — the lane stays reachable via line one, its middle elision
+        // and the title.
+        me[(pendingAction || controlReason || sessionLine) ? 'addCls' : 'removeCls']('fm-control-live');
+
+        // the runtime-source gating is already shown by the disabled controls + the source strip
+        // ("RUN not nominal"), so the status line never duplicates it
         const
             controlStatus     = me.getReference('control-status'),
             // pending takes visual priority over a prior reason, so a new attempt never shows a stale
@@ -824,17 +830,18 @@ class AgentCard extends Container {
             controlStatusText = pendingAction
                 ? `${pendingAction}…`
                 : !controlReason
-                    ? ''
+                    ? sessionLine?.text ?? ''
                     : controlReason.kind === 'timeout'
                         ? `${controlReason.action}… stale — no response`
                         : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
 
         controlStatus.set({
-            hidden: !pendingAction && !controlReason,
+            cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : [])],
+            hidden: !pendingAction && !controlReason && !sessionLine,
             text  : controlStatusText
         });
-        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full reason
-        controlStatus.changeVdomRootKey('title', controlStatusText || null);
+        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
+        controlStatus.changeVdomRootKey('title', sessionLine?.title ?? (controlStatusText || null));
 
         me.update()
     }
