@@ -4,6 +4,7 @@
     {"name": "Introduction", "parentId": null, "id": "Introduction"},
     {"name": "Tour the cockpit", "parentId": null, "id": "CockpitTour"},
     {"name": "The state census", "parentId": null, "id": "CockpitStateCensus"},
+    {"name": "The state walkthrough", "parentId": null, "id": "CockpitStateWalkthrough"},
     {"name": "Run the Institution", "parentId": null, "id": "RunningTheInstitution"},
     {"name": "The native vessel", "parentId": null, "id": "TheNativeVessel"}
   ]
