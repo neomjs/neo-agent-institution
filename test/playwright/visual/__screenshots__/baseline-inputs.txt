@@ -432,7 +432,7 @@ apps/agentos/view/fleet/mailbox/RecipientChip.mjs
     eb2c5727a9a2dc3af3183d0b218b0be686607e5a
 
 apps/agentos/view/fleet/mailbox/RecipientChipList.mjs
-    5173d31566d0c6f5950b39400bbf89eb4ea05ef1
+    e278b61cfdc5156094119a92e9f2b0041eb20c4f
 
 apps/agentos/view/fleet/mailbox/RowComponent.mjs
     157543a0c4855aedb34520c38ee6ff66b710be9a

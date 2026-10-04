@@ -19,6 +19,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 // afterSetSourceId calls it; without this the spec crashes in isolation (green only when a sibling
 // in the shared worker imported it first). Mirrors fleetCockpit.spec's robust import.
 import Instance       from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
+import VNode          from '../../../../../../../../node_modules/neo.mjs/src/util/VNode.mjs';
 
 /**
  * @summary The operator compose surface's load-bearing contract: the wake semantics and the intent
@@ -270,6 +271,37 @@ test.describe('AgentOS OperatorComposeForm — operator write surface (#15377, D
         expect(list.selectionModel.items).toHaveLength(1);
         expect(chips.items.length).toBe(1);
         expect(chips.items[0].text).toBe('Vega');
+
+        form.destroy()
+    });
+
+    test('a removed chip leaves the chip row\'s stored vnode as it is destroyed, so no later walk names it', () => {
+        const form  = createForm(),
+              list  = form.getReference('compose-recipients'),
+              chips = form.getReference('compose-recipient-chips');
+
+        form.recipientOptions = [
+            {id: '@neo-opus-ada',  name: 'Ada'},
+            {id: '@neo-opus-vega', name: 'Vega'}
+        ];
+
+        list.selectionModel.select([list.store.get('@neo-opus-ada'), list.store.get('@neo-opus-vega')]);
+
+        const [kept, trimmed] = chips.items.map(chip => chip.id);
+
+        // what the row last rendered: one list item per chip, each naming its chip component
+        chips.vnode = {
+            id        : chips.id,
+            nodeName  : 'ul',
+            childNodes: [kept, trimmed].map((id, index) => ({id: `${chips.id}__${index}`, nodeName: 'li', childNodes: [{componentId: id}]}))
+        };
+
+        form.onRecipientChipRemove({recipientId: '@neo-opus-vega'});
+
+        expect(Neo.getComponent(trimmed), 'the trimmed chip left the registry').toBeFalsy();
+        expect(chips.vnode.childNodes[1].childNodes[0], 'its node stays, unnamed, until the row\'s own update removes it').toEqual({id: trimmed});
+        expect(chips.vnode.childNodes[0].childNodes[0], 'a live chip stays a reference').toMatchObject({componentId: kept});
+        expect(() => VNode.createMap(chips.vnode)).not.toThrow();
 
         form.destroy()
     });
