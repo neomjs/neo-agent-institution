@@ -680,7 +680,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('the status row ends a Start with where its session opened: the wrong folder, not yet, or unknown; never the path, and never over a live round-trip (#522)', () => {
+    test('the status row ends a Start with where its session opened: the wrong folder, not yet, or unknown; never the path (#522)', () => {
         const
             expected = '/seats/vega/neomjs/neo',
             card     = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop'}),
@@ -700,10 +700,16 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         applySet(card, {sessionFolder: {state: 'unknown', expected, reason: 'the session records could not be read'}});
         expect(status().text).toBe('session folder unknown: the session records could not be read');
 
-        // a live round-trip outranks it
-        applySet(card, {sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}, pendingAction: 'restart'});
+        // a live round-trip outranks "not yet" and "unknown", which a live seat contradicts...
+        applySet(card, {pendingAction: 'restart'});
         expect(status().text).toBe('restart…');
-        expect(status().cls).not.toContain('is-session-wrong');
+        applySet(card, {pendingAction: null, controlReason: {action: 'start', kind: 'rejected', reason: 'harness offline'}});
+        expect(status().text).toBe('⚠ rejected: harness offline');
+
+        // ...but never a confirmed wrong folder: a live seat in the wrong folder is the failure itself
+        applySet(card, {controlReason: null, pendingAction: 'restart', sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}});
+        expect(status().text).toBe('session opened in the wrong folder · reopen');
+        expect(status().cls).toContain('is-session-wrong');
 
         // ok adds no line, and AC-3: a row without the fact renders nothing new
         for (const sessionFolder of [{state: 'ok', expected}, null]) {

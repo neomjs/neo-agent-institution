@@ -811,9 +811,13 @@ class AgentCard extends Container {
         toggle.changeVdomRootKey('title', !runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null);
 
         // The status row narrates the Start: the round-trip while it is live or refused, then whether
-        // the session it launched opened in the seat's own folder. A desktop seat cannot be launched
-        // into a folder, so that verdict is the Start's last word, and it never outranks a live round-trip.
-        const sessionLine = pendingAction || controlReason ? null : SeatSessionFolder.cardLine(record.sessionFolder);
+        // the session it launched opened in the seat's own folder (a desktop seat cannot be launched
+        // into one). A confirmed wrong folder outranks even a live round-trip, because a live seat in
+        // the wrong folder is the failure itself; "not opened yet" and "unknown" sit below one, which
+        // a live seat contradicts.
+        const
+            wrongFolder = record.sessionFolder?.state === 'wrong',
+            sessionLine = wrongFolder || !(pendingAction || controlReason) ? SeatSessionFolder.cardLine(record.sessionFolder) : null;
 
         // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
         // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
@@ -827,13 +831,15 @@ class AgentCard extends Container {
             controlStatus     = me.getReference('control-status'),
             // pending takes visual priority over a prior reason, so a new attempt never shows a stale
             // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠"
-            controlStatusText = pendingAction
-                ? `${pendingAction}…`
-                : !controlReason
-                    ? sessionLine?.text ?? ''
-                    : controlReason.kind === 'timeout'
-                        ? `${controlReason.action}… stale — no response`
-                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
+            controlStatusText = wrongFolder
+                ? sessionLine.text
+                : pendingAction
+                    ? `${pendingAction}…`
+                    : !controlReason
+                        ? sessionLine?.text ?? ''
+                        : controlReason.kind === 'timeout'
+                            ? `${controlReason.action}… stale — no response`
+                            : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
 
         controlStatus.set({
             cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : [])],
