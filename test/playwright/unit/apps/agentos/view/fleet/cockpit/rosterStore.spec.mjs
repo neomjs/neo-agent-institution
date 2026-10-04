@@ -311,8 +311,10 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             participationStatus: null,
             // the presence axis rides the same passthrough contract as wake/throttle below
             presence: null,
-            // no start has reported its other repositories' outcome, nor where its session opened
+            // no start has reported its other repositories' outcome, the identity it resolved, nor
+            // where its session opened
             repoOutcomes : null,
+            gitIdentity  : null,
             sessionFolder: null,
             repoPath: null,
             repoSlug: null,
@@ -387,6 +389,13 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', sessionFolder, sources: liveSources()}).sessionFolder).toEqual(sessionFolder);
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).sessionFolder).toBeNull()
+    });
+
+    test('mapRosterRow passes the commit identity the last start resolved through whole — null before a start (#524)', () => {
+        const gitIdentity = {state: 'mismatch', found: 'other', reason: "its PAT belongs to the forge account 'other', not to the seat's 'ada'"};
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', gitIdentity, sources: liveSources()}).gitIdentity).toEqual(gitIdentity);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).gitIdentity).toBeNull()
     });
 
     test('mapRosterRow passes the S2 axes through WHOLE — the view never re-derives a produced fact', () => {
@@ -504,6 +513,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             participationStatus: null,
             presence           : null,
             repoOutcomes       : null,
+            gitIdentity        : null,
             sessionFolder      : null,
             repoPath           : null,
             repoSlug           : null,

@@ -50,9 +50,11 @@ class RosterRow extends Base {
             repoPath           : row.repoStatus?.repoPath ?? null,
             // the last start's outcome per other repository, from the Fleet's launch record
             repoOutcomes       : row.repoOutcomes ?? null,
+            // the commit identity the last start resolved, from the same record
+            gitIdentity        : row.gitIdentity ?? null,
             // where a running desktop seat's session opened, from the same record
             sessionFolder      : row.sessionFolder ?? null,
-            launchable         : row.launchable ?? null,
+            launchable        : row.launchable ?? null,
             openLaneCount      : row.openLaneCount ?? null,
             laneLine           : row.laneLine ?? null,
             laneClaimedAt      : row.laneClaimedAt ?? null,

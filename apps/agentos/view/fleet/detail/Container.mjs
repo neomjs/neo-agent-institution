@@ -2,6 +2,7 @@ import AgentConfigCard                      from './AgentConfigComponent.mjs';
 import Button                               from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container                            from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import FamilyRail                           from '../shared/FamilyRailComponent.mjs';
+import GitIdentityContainer                 from '../shared/GitIdentityContainer.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
@@ -371,10 +372,25 @@ class AgentDetail extends Container {
                 // agent object, so it rides the detail as a tab. The card fires `configIntent`; THIS view owns the bridge
                 // round-trip through the shared runner (which arbitrates supersession per shared
                 // record, across every owner), with the card as this owner's status sink.
-                module   : AgentConfigCard,
-                emptyText: 'This agent has no stored definition yet — add it via the rail\'s Add agent zone.',
+                ntype    : 'container',
+                cls      : ['fm-detail-config'],
                 header   : {text: 'Configuration'},
-                reference: 'config-pane'
+                layout   : {ntype: 'vbox', align: 'stretch'},
+                reference: 'config-tab',
+
+                items: [{
+                    module   : AgentConfigCard,
+                    emptyText: 'This agent has no stored definition yet — add it via the rail\'s Add agent zone.',
+                    flex     : 'none',
+                    reference: 'config-pane'
+                }, {
+                    // the seat's commit identity with its one repair action, where Start's identity
+                    // refusal points
+                    module   : GitIdentityContainer,
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'identity-row'
+                }]
             }]
         }]
     }

@@ -248,6 +248,9 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveText([/authored\s*from\s*1/]);
         await expect(relations).toHaveText([/Grace\s*agent/]);
 
+        // relations are read in the Selected section, which browsing the node list leaves at its head
+        await pane.getByRole('button', {name: /^Selected node/}).click();
+
         const held = await stats();
 
         await relations.nth(0).click();
@@ -490,14 +493,24 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         }));
         await settle();
 
+        // the read names peers, so Team opens first: the rows live under Nodes, a node's facts and actions under Selected
+        const
+            nodesHead    = pane.getByRole('button', {name: /^Nodes/}),
+            selectedHead = pane.getByRole('button', {name: /^Selected node/});
+
+        await nodesHead.click();
         await rows.first().click();
         await expect(selection).toHaveText('first route item');
         await expect(head, 'the qualified id stays out of the head').not.toContainText('neomjs/neo#');
+        await selectedHead.click();
         await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText(/^open, as last ingested · authored by @tobiu · assigned to @neo-opus-vega · last activity .+ · Golden Path rank 1$/);
         await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/101');
         await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveText([/authored\s*from\s*1/, /mentions\s*to\s*1/]);
 
+        await nodesHead.click();
+        await rows.nth(1).click();
         await walkTo('a session');
+        await selectedHead.click();
         await pane.getByRole('button', {name: 'Open in Memories'}).press('Enter');
         await expect(page.locator('.fm-fleet-cockpit'), 'the route moves to the cockpit').toBeVisible();
         await expect(page.locator('.fm-memories-drill-title'), 'whose Memories pane drills into the session').toHaveText('a session');
@@ -505,9 +518,11 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
         await expect(selection, 'the Observatory kept its selection').toHaveText('a session');
         await settle();
+        await nodesHead.click();
         await rows.first().click();
         await expect(selection).toHaveText('first route item');
         await walkTo('Dock');
+        await selectedHead.click();
         await expect(pane.locator('.fm-observatory-selected-no-source')).toHaveText('No source view for concept');
         await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveCount(0)
     });

@@ -721,6 +721,35 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('AC-4 (#524): a refused start keeps the Fleet\'s own words; a last start\'s identity that needs repair rides the title as its own observation, never as the cause', () => {
+        const
+            card     = createCard({agentId: 'vega', state: 'off'}),
+            status   = () => card.down({reference: 'control-status'}),
+            missing  = {state: 'missing', reason: 'its forge account offers no email this PAT can read'},
+            note     = " · The last start's commit identity: No commit identity: its forge account offers no email this PAT can read. Repair it in Detail › Configuration.",
+            identity = "agent 'vega' has no Git identity to commit under: its forge account offers no email this PAT can read. Nothing was changed. Declare the name and email its commits carry (gitName and gitEmail), then start it again.";
+
+        // the identity refusal: the Fleet's words name the next step, the title names the row
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: identity}, gitIdentity: missing});
+        expect(status().text).toBe(`⚠ rejected: ${identity}`);
+        expect(status().vdom.title).toBe(`⚠ rejected: ${identity}${note}`);
+
+        // an unrelated refusal while an older identity still needs repair: its own words stay the
+        // line, and the identity is not claimed as the cause
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: "the seat's home could not be prepared"}});
+        expect(status().text).toBe("⚠ rejected: the seat's home could not be prepared");
+        expect(status().text).not.toContain('identity');
+        expect(status().vdom.title).toBe(`⚠ rejected: the seat's home could not be prepared${note}`);
+
+        // a resolved identity, or a Brain that reports none, adds nothing
+        for (const gitIdentity of [{state: 'derived', name: 'Vega', email: 'vega@example.com'}, null]) {
+            applySet(card, {gitIdentity});
+            expect(status().vdom.title).toBe("⚠ rejected: the seat's home could not be prepared")
+        }
+
+        card.destroy()
+    });
+
     test('observe: a pending action renders the state dot as a distinct transitional state, never the stale resolved one (#14978)', () => {
         const card = createCard({agentId: 'vega', state: 'off'});
         const dot  = () => card.down({ntype: 'fm-state-dot'});

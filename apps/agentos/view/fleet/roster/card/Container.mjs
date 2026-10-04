@@ -71,6 +71,7 @@ import AgentFreshness from '../../../../util/AgentFreshness.mjs';
 import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
 import NameSlot       from '../../../../util/NameSlot.mjs';
 import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
+import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
 import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
 import SourceHealth      from '../../../../util/SourceHealth.mjs';
 import Telltale          from '../../../../util/Telltale.mjs';
@@ -570,7 +571,8 @@ class AgentCard extends Container {
      * across strip and aggregate. The state dot is gated so missing runtime
      * evidence cannot render as live; severity adds WEIGHT to the state word, never a hue. The B4/C2
      * control seam renders the honest round-trip: unauthorized disables the cluster, timeout reads as
-     * an unfinished "…" with retry open, rejected shows "⚠ reason".
+     * an unfinished "…" with retry open, rejected shows "⚠ reason" in the Fleet's own words, and its
+     * title adds the last start's commit identity when that needs repair, as its own observation.
      */
     applyRecord() {
         let me     = this,
@@ -839,7 +841,12 @@ class AgentCard extends Container {
                         ? sessionLine?.text ?? ''
                         : controlReason.kind === 'timeout'
                             ? `${controlReason.action}… stale — no response`
-                            : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
+                            : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
+            // the last start's commit identity, when it needs repair, rides beside a refusal as its own
+            // observation: the wire carries no refusal code, so it never stands in as the cause
+            identityNote      = controlReason && !pendingAction && SeatGitIdentity.needsRepair(record.gitIdentity)
+                ? ` · The last start's commit identity: ${SeatGitIdentity.describe(record.gitIdentity)} Repair it in Detail › Configuration.`
+                : '';
 
         controlStatus.set({
             cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : [])],
@@ -847,7 +854,7 @@ class AgentCard extends Container {
             text  : controlStatusText
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
-        controlStatus.changeVdomRootKey('title', sessionLine?.title ?? (controlStatusText || null));
+        controlStatus.changeVdomRootKey('title', sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
 
         me.update()
     }

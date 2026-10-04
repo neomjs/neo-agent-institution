@@ -132,6 +132,12 @@ class FleetAgent extends Model {
             name        : 'repoOutcomes',
             defaultValue: null
         }, {
+            // the commit identity the last start resolved, a refused start's included
+            // (`{state, name?, email?, reason?}`, the roster DTO's `gitIdentity`), so the card can say a
+            // refused start was about the identity. Null = no start yet, or a Brain that does not report it
+            name        : 'gitIdentity',
+            defaultValue: null
+        }, {
             // where a running Claude Desktop seat's session opened, against its checkout
             // (`{state, expected, observed?, reason?}`, the roster DTO's `sessionFolder`; see
             // AgentOS.util.SeatSessionFolder). Null for every other row, and from a Brain that does not report it
