@@ -25,6 +25,7 @@ files:
     - seatRootRecord.mjs
     - setupBroker.mjs
     - wakeReceiver.mjs
+    - walkControl.mjs
     - package.json
     - assets/tray/**
 

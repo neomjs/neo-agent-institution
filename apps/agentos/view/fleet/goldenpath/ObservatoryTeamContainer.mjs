@@ -53,11 +53,12 @@ class ObservatoryTeamContainer extends Container {
             layout   : {ntype: 'hbox', align: 'center'},
             reference: 'observatory-peers-head',
             items    : [{
-                ntype    : 'component',
-                cls      : ['fm-observatory-side-title'],
+                module   : Button,
+                cls      : ['fm-observatory-side-title', 'fm-observatory-section-head'],
                 flex     : 1,
                 reference: 'observatory-peers-title',
-                text     : 'Team'
+                text     : 'Team',
+                ui       : 'ghost'
             }, {
                 module   : Button,
                 flex     : 'none',
@@ -75,7 +76,7 @@ class ObservatoryTeamContainer extends Container {
             }]
         }, {
             module   : ObservatoryPeerList,
-            flex     : 'none',
+            flex     : 1,
             reference: 'observatory-peers'
         }],
         /**
@@ -134,7 +135,16 @@ class ObservatoryTeamContainer extends Container {
         list.selectionModel.on('selectionChange', me.onPeerSelectionChange, me);
         me.getReference('lens-clear')       .set({handler: 'onClearClick', handlerScope: me});
         me.getReference('peer-scope-toggle').set({handler: 'onAllClick',   handlerScope: me});
+        me.getReference('observatory-peers-title').set({handler: 'onSectionHeadClick', handlerScope: me});
         me.syncHead()
+    }
+
+    /**
+     * @summary The title was clicked: `sectionHeadClick` asks the pane to open the Team section, which collapses
+     * the others to their heads.
+     */
+    onSectionHeadClick() {
+        this.fire('sectionHeadClick', {section: 'team'})
     }
 
     /**
