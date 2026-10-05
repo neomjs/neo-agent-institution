@@ -1,5 +1,5 @@
 import {test, expect} from '@playwright/test';
-import {landAgentDefinitions, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
+import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
 import {sampleOpenWork, sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
 import {sampleShellInitScript} from '../fixture/setupRecipeSample.mjs';
 
@@ -70,7 +70,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 }))
         ));
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await installFleetHeadMeasure(page)
+        await installBarMeasures(page)
     };
 
     /**
@@ -87,17 +87,34 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.fm-stream-head')).toHaveClass(/is-cold/);
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await installFleetHeadMeasure(page)
+        await installBarMeasures(page)
     };
 
     /**
-     * Installs the fleet head's shared no-clip measure — its geometry, read by the narrow arms below:
-     * a legend that hides its last states says those states do not exist, so every band asserts
-     * scrollWidth inside clientWidth and the last swatch inside the row.
+     * Installs the bar's shared measures, read by the narrow arms below. The fleet head's no-clip
+     * geometry: a legend that hides its last states says those states do not exist, so every band
+     * asserts scrollWidth inside clientWidth and the last swatch inside the row. The banner's lead:
+     * its text, its line, and whether its ellipsis is cutting it (`null` while no lead renders).
      * @param {Object} page
      */
-    const installFleetHeadMeasure = async page => {
+    const installBarMeasures = async page => {
         await page.evaluate(() => {
+            globalThis.__fmMeasureBannerLead = () => {
+                const lead = document.querySelector('.fm-spine-banner-lead');
+
+                if (!lead) return null;
+
+                const style = getComputedStyle(lead),
+                      line  = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+
+                return {
+                    clipped: lead.scrollWidth > lead.clientWidth,
+                    oneLine: style.whiteSpace === 'nowrap' && lead.getBoundingClientRect().height <= line + 1,
+                    text   : lead.textContent,
+                    width  : Math.round(lead.clientWidth)
+                }
+            };
+
             globalThis.__fmMeasureFleetHead = () => {
                 const head     = document.querySelector('.fm-fleet-head'),
                       title    = head.querySelector('.fm-fleet-title'),
@@ -387,6 +404,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                     title      : banner.getAttribute('title') || '',
                     ariaLabel  : banner.getAttribute('aria-label') || ''
                 } : null,
+                lead          : globalThis.__fmMeasureBannerLead(),
                 startTextShown: startText ? getComputedStyle(startText).display : null,
                 startRight    : start ? Math.round(start.getBoundingClientRect().right) : null,
                 head          : globalThis.__fmMeasureFleetHead()
@@ -402,16 +420,134 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(geometry.barWrap, 'the vessel-narrow wrap rule stays silent above the 570px threshold').toBe('nowrap');
         expect(geometry.banner, 'the spine banner is rendered').not.toBeNull();
         // the designed narrow form: the word retracts (font-size 0 — never mid-word clipping),
-        // the mark stays, and the FULL truth stays one hover away on title + aria
+        // the mark stays, the lead keeps the reason on one visible line, and title + aria repeat it
         expect(geometry.banner.fontSize, 'the state word retracts in the mark regime').toBe('0px');
         expect(geometry.banner.scrollWidth, 'no hidden pressure: the mark never overflows its box').toBeLessThanOrEqual(geometry.banner.clientWidth);
-        expect(geometry.banner.title, 'the full honesty sentence rides the title').toContain('Fleet');
-        expect(geometry.banner.ariaLabel, 'the aria mirror carries the sentence').toContain('Fleet');
+        expect(geometry.lead?.text, 'the reason stays visible beside the mark').toBe('Fleet server offline');
+        expect(geometry.lead.width, 'the lead keeps a line to read').toBeGreaterThan(0);
+        expect(geometry.lead.oneLine, 'the lead never wraps').toBe(true);
+        expect(geometry.banner.title, 'the title repeats the lead').toContain('Fleet server offline');
+        expect(geometry.banner.ariaLabel, 'the aria mirror carries the sentence').toContain('Fleet server offline');
         // the collapse order's last clause: action labels drop to glyphs
         expect(geometry.startTextShown, 'action labels drop to their glyphs').toBe('none');
         expect(geometry.startRight, 'Start fleet stays inside the band').toBeLessThanOrEqual(geometry.viewport);
 
         await expect(page).toHaveScreenshot('cockpit-intermediate-720.png')
+    });
+
+    /**
+     * The four answers a plane gives a shell it refuses, as the shell's lifecycle owner reports a typed
+     * boot refusal: the cause and, as its detail, the plane's address. They are the row 5 walk's provocations.
+     * @type {Object[]}
+     */
+    const PLANE_REFUSAL_FRAMES = [
+        {golden: 'banner-plane-unreachable.png', source: 'plane-unreachable',        word: 'plane unreachable'},
+        {golden: 'banner-pat-refused.png',       source: 'plane-credential-refused', word: 'pat refused'},
+        {golden: 'banner-account-changed.png',   source: 'plane-identity-changed',   word: 'account changed'},
+        {golden: 'banner-not-a-plane.png',       source: 'plane-not-a-plane',        word: 'not a plane'}
+    ];
+
+    /**
+     * The refused plane's address, which only the title may carry.
+     * @type {String}
+     */
+    const REFUSING_PLANE = 'https://plane.neo.test:8443';
+
+    /**
+     * @summary Lands one typed boot refusal and waits for the bar to read it: the pill's word and Connect.
+     * @param {Object} page
+     * @param {String} source The refusal's cause code
+     * @param {String} word The pill's status word for it
+     */
+    const landPlaneRefusal = async (page, source, word) => {
+        await landBrainHealth(page, {cause: {detail: REFUSING_PLANE, observedAt: 0, source}, state: 'degraded'});
+        await expect(page.locator('.fm-spine-banner')).toHaveText(word);
+        await expect(page.locator('.fm-reconnect-button')).toHaveText('Connect')
+    };
+
+    /**
+     * @summary Reads the bar's state block for a refusal: the lead's line and the title and aria that repeat it.
+     * @param {Object} page
+     * @returns {Promise<Object>}
+     */
+    const readRefusal = page => page.evaluate(() => {
+        const banner = document.querySelector('.fm-spine-banner'),
+              wake   = document.querySelector('.fm-viewer-wake'),
+              cut    = el => el ? el.scrollWidth > el.clientWidth : null;
+
+        return {
+            ariaLabel: banner.getAttribute('aria-label') || '',
+            buttons  : [...document.querySelectorAll('.fm-cockpit-bar > .neo-button')].map(el => Math.round(el.getBoundingClientRect().width)),
+            fontSize : getComputedStyle(banner).fontSize,
+            lead     : globalThis.__fmMeasureBannerLead(),
+            pillCut  : cut(banner),
+            title    : banner.getAttribute('title') || '',
+            wakeCut  : cut(wake),
+            wakeFont : wake ? getComputedStyle(wake).fontSize : null,
+            wakeLive : wake ? wake.classList.contains('fm-viewer-wake-live') : null
+        }
+    });
+
+    test('the four plane refusals — the pill names the state, the lead beside it says why and what Connect fixes, the title repeats it with the address; wide, light, and the mark regime (#533)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootColdCockpit(page);
+
+        const bar   = page.locator('.fm-cockpit-bar'),
+              wides = {};
+
+        for (const {golden, source, word} of PLANE_REFUSAL_FRAMES) {
+            await landPlaneRefusal(page, source, word);
+
+            const read = await readRefusal(page);
+
+            expect(read.lead?.text, `${word}: the lead says why, and what connecting fixes`).toMatch(/\bconnect\b/i);
+            expect(read.lead.text, `${word}: the lead carries no address and no code`).not.toMatch(/plane\.neo\.test|plane-[a-z]/);
+            expect(read.lead.oneLine, `${word}: the lead is one line`).toBe(true);
+            expect(read.lead.clipped, `${word}: at the design width the lead reads whole`).toBe(false);
+            expect(read.pillCut, `${word}: the pill keeps its word`).toBe(false);
+            expect(read.title, `${word}: the title repeats the lead`).toContain(read.lead.text);
+            expect(read.title, `${word}: the address rides the title only`).toContain(REFUSING_PLANE);
+            expect(read.ariaLabel, `${word}: the aria mirror is the title`).toBe(read.title);
+
+            wides[source] = read;
+            await expect(bar).toHaveScreenshot(golden)
+        }
+
+        // just above the marks step the lead is the row's slack: it ellipsizes, while the longest pill
+        // word, the wake pill and every button keep their width
+        await page.setViewportSize({width: 821, height: 800});
+        await landPlaneRefusal(page, 'plane-unreachable', 'plane unreachable');
+        await expect.poll(() => readRefusal(page).then(read => read.lead?.clipped), {message: 'the lead ellipsizes first', timeout: 10000}).toBe(true);
+
+        const squeezed = await readRefusal(page);
+
+        expect(squeezed.lead.width, 'the lead keeps a line to read').toBeGreaterThan(0);
+        expect(squeezed.pillCut, 'the pill keeps its word').toBe(false);
+        expect(squeezed.wakeCut, 'the wake pill keeps its word').toBe(false);
+        expect(squeezed.buttons, 'every button keeps its width').toEqual(wides['plane-unreachable'].buttons);
+
+        await page.setViewportSize({width: 1280, height: 800});
+        await landPlaneRefusal(page, 'plane-credential-refused', 'pat refused');
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(bar).toHaveScreenshot('banner-pat-refused-light.png');
+
+        // the mark regime: the fleet pill retracts to its mark and its lead keeps one truncated line;
+        // no non-live state is a bare mark, so a degraded wake chip, which has no lead, keeps its word
+        await page.setViewportSize({width: 720, height: 900});
+        await expect.poll(() => readRefusal(page).then(read => read.fontSize), {message: 'the pill drops to its mark', timeout: 10000}).toBe('0px');
+
+        const narrow = await readRefusal(page);
+
+        expect(narrow.lead?.width, 'the reason keeps a visible line beside the mark').toBeGreaterThan(0);
+        expect(narrow.lead.oneLine, 'the narrow lead never wraps').toBe(true);
+        expect(narrow.title, 'the title still carries the whole sentence').toContain(narrow.lead.text);
+        expect(narrow.wakeLive, 'the fixture wake is degraded').toBe(false);
+        expect(narrow.wakeFont, 'a degraded wake keeps its word in the mark regime').not.toBe('0px');
+        expect(narrow.wakeCut, 'and the word reads whole').toBe(false);
+
+        await expect(bar).toHaveScreenshot('banner-pat-refused-light-720.png')
     });
 
     test('the Review preset at 1280×720 — the fleet head keeps its whole legend when the inspector docks beside it (geometry asserted)', async ({page}) => {
