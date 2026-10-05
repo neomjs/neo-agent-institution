@@ -1635,6 +1635,58 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(home).toHaveScreenshot('home-returning-light.png')
     });
 
+    test('Home\'s operator line — one axis unreadable (the steady state until the Brain lists the operator\'s questions), stale merges, nothing waits, and both axes counted; both skins for the last; the merge count opens the fleet head\'s merge queue (#557)', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        const
+            home     = await openHome(page),
+            operator = home.locator('.fm-home-operator'),
+            land     = async query => {
+                const result = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${HOME_DRIVER}?shellPlaneConfigured=null&${query}&t=${++driverTick}`);
+
+                expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true)
+            };
+
+        await land('merges=5');
+        await expect(operator).toHaveText('your questions are not listed yet · 5 merges wait for you');
+        await expect(operator).toHaveAttribute('title', 'your questions: questions are not listed yet');
+        await settleField(page, '11');
+        await expect(home).toHaveScreenshot('home-operator-unreadable.png');
+
+        await land('merges=5&staleMinutes=12&questions=3');
+        await expect(operator).toHaveText('3 questions · 5 merges as of 12m ago wait for you');
+        await expect(home).toHaveScreenshot('home-operator-stale.png');
+
+        await land('merges=0&questions=0');
+        await expect(operator).toHaveText('nothing waits for you');
+        await expect(home).toHaveScreenshot('home-operator-nothing.png');
+
+        await land('merges=5&questions=3');
+        await expect(operator).toHaveText('3 questions · 5 merges wait for you');
+        await expect(home).toHaveScreenshot('home-operator-both.png');
+
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await settleField(page, '11', 'light');
+        await expect(home).toHaveScreenshot('home-operator-both-light.png');
+
+        // the merge count is marked as a way in, in the line's own type
+        const link = operator.getByRole('button', {name: '5 merges'});
+
+        expect(await link.evaluate(el => {
+            const style = getComputedStyle(el);
+
+            return {decoration: style.textDecorationStyle, family: style.fontFamily === getComputedStyle(el.parentElement).fontFamily}
+        })).toEqual({decoration: 'dotted', family: true});
+
+        // one click on the merge count: the Fleet view, its head's merge queue open on the same five rows
+        await link.click();
+        await expect(page.locator('.fm-awaiting-merge-menu')).toBeVisible();
+        await expect(page.locator('.fm-awaiting-merge-row')).toHaveCount(5);
+        expect(new URL(page.url()).hash).toBe('#/fleet')
+    });
+
     test('the cockpit before any answer and after an empty one — cold says "not answered yet", an empty answer offers the first agent; both skins', async ({page}) => {
         // the cold boot: nothing is landed — nothing is seeded, no source has answered
         await bootColdCockpit(page);

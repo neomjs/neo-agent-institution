@@ -634,6 +634,19 @@ class ViewportController extends Controller {
     }
 
     /**
+     * @summary Home's merge count opens the merge queue: the route moves to the Fleet cockpit, whose head
+     * opens its list of the pull requests awaiting the operator's merge.
+     * @returns {Promise<Object>} The cockpit's `{opened}`
+     */
+    async onHomeMergeQueueOpen() {
+        const me = this;
+
+        await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
+
+        return me.getReference('fleet-cockpit').getController().openMergeQueue()
+    }
+
+    /**
      * @summary Activates the Home keeper-view from the route.
      */
     onHomeRoute() {

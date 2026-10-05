@@ -173,6 +173,24 @@ class AwaitingMergeButton extends Button {
     }
 
     /**
+     * @summary Opens the list for a caller outside the fleet head (Home's merge count): only when there is
+     * one, and never closes an open one, so asking twice keeps it open.
+     * @returns {Promise<Boolean>} Whether the list is open
+     */
+    async openMenu() {
+        const me = this;
+
+        if (!describeMergeQueue(me.openWork, me.store?.items ?? []).interactive) return false;
+
+        me.ensureMergeMenu();
+        await me.trap(me.menuListReady);
+
+        me.menuList?.hidden && await me.toggleMenu();
+
+        return me.menuList?.hidden === false
+    }
+
+    /**
      * @summary Opens the list only when there is one, re-theming it at every open and moving focus into
      * it, so arrows, Escape and focus-leave work.
      * @returns {Promise<void>}
