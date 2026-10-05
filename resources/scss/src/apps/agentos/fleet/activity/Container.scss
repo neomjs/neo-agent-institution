@@ -81,14 +81,16 @@
     }
 
     /* The shell's ghost skin on an opaque surface: the pill floats over rows, so it keeps a field
-       and a hairline where an in-line ghost verb has none. */
+       and a hairline in every state, pressed included, where an in-line ghost verb has none. */
     .fm-stream-new-events {
-        --button-ghost-background-color      : var(--fm-panel-2);
-        --button-ghost-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, var(--fm-panel-2));
-        --button-ghost-border                : 1px solid var(--fm-line);
-        --button-ghost-border-hover          : 1px solid var(--fm-line);
-        --button-ghost-glyph-color           : var(--fm-ink);
-        --button-ghost-text-color            : var(--fm-ink);
+        --button-ghost-background-color       : var(--fm-panel-2);
+        --button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, var(--fm-panel-2));
+        --button-ghost-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, var(--fm-panel-2));
+        --button-ghost-border                 : 1px solid var(--fm-line);
+        --button-ghost-border-active          : 1px solid var(--fm-line);
+        --button-ghost-border-hover           : 1px solid var(--fm-line);
+        --button-ghost-glyph-color            : var(--fm-ink);
+        --button-ghost-text-color             : var(--fm-ink);
 
         bottom    : var(--fm-space-3);
         box-shadow: var(--fm-shadow-overlay);

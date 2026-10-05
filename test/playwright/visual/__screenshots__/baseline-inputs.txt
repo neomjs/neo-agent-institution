@@ -549,7 +549,7 @@ resources/scss/src/apps/agentos/fleet/activity/ActorChipComponent.scss
     5e6f2c481596221cca5b1227ffa42406fbcb65a7
 
 resources/scss/src/apps/agentos/fleet/activity/Container.scss
-    bdb75614e8eeeda81740f9f365886d21c7dbc2c2
+    daf94dd537854e41179ee61212cf2aca538f4f34
 
 resources/scss/src/apps/agentos/fleet/activity/EventChipComponent.scss
     32a9f3a84da7c788e06377188ab78644d9cf0b62
