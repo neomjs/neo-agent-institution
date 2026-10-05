@@ -170,6 +170,8 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
 
     test('the merge queue\'s rows key each PR by repo and number; an unavailable or absent answer has none', () => {
         expect(OpenWorkRead.mergeRows(answer())).toEqual([{id: 'neomjs/neo#2', number: 2, repo: 'neomjs/neo'}]);
+        expect(OpenWorkRead.mergeRows({...answer(), awaitingMerge: [{repo: 'neomjs/neo', number: 3, title: 'The queue names its rows'}]}), 'a row keeps its producer\'s title')
+            .toEqual([{id: 'neomjs/neo#3', number: 3, repo: 'neomjs/neo', title: 'The queue names its rows'}]);
         expect(OpenWorkRead.mergeRows({...answer(), state: 'unavailable'}), 'a blind queue keeps no rows').toEqual([]);
         expect(OpenWorkRead.mergeRows(null)).toEqual([])
     });
