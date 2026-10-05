@@ -149,15 +149,22 @@ let
     // `null` = no transport story this run (plain UI-only smoke spawns nothing by isolation
     // contract); `{phase: 'starting'}` while a boot is in flight; the normalized settle after.
     uiTransportFact = null,
-    // The plane record's bearer once a boot has read it (the product's, or the smoke's fixture plane);
-    // the log redacts it with the others.
-    storedPlaneBearer = null,
+    // The plane record's bearer and fleet credential once a boot has read them (the product's, or the
+    // smoke's fixture plane); the log redacts them with the others.
+    storedPlaneBearer          = null,
+    storedPlaneFleetCredential = null,
     // The stored record this boot launched its fleet child with (`launchedPlaneRecord`), or `null` when
     // the plane came from elsewhere: the one record `verifyPlane()` may probe while the shell runs.
     launchedPlane = null;
 
 // Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
-const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer];
+const mainSecrets = () => [
+    fleetBearerToken,
+    process.env.NEO_FLEET_PLANE_BEARER,
+    process.env.NEO_FLEET_PLANE_ADMISSION_BEARER,
+    storedPlaneBearer,
+    storedPlaneFleetCredential
+];
 
 // A Finder launch has no terminal: every line main prints also lands in `main.log` in the platform's logs
 // folder, with each secret main holds redacted at the file boundary. A diagnostic run logs under its own
@@ -1023,7 +1030,8 @@ async function bootProductBrain() {
     // user attached from the cockpit joins as the env the launcher would export; set env still wins.
     const storedPlane = packagedMode ? readPlaneConfig({dir: app.getPath('userData'), safeStorage}) : null;
 
-    storedPlaneBearer = storedPlane?.bearer ?? null;
+    storedPlaneBearer          = storedPlane?.bearer ?? null;
+    storedPlaneFleetCredential = storedPlane?.fleetCredential ?? null;
 
     // Where the seats live is the installation's record, never this launch's environment
     // (seatRootRecord.mjs); a fresh installation records the root the Brain resolves below.
@@ -1308,7 +1316,8 @@ async function attachSmokePlane({isolationRoot, runtimeEnv}) {
         storedPlane = readPlaneConfig({dir: app.getPath('userData'), safeStorage: planeSafeStorage}),
         fragment    = planeEnvFragment({env: {}, planeConfig: storedPlane});
 
-    storedPlaneBearer = storedPlane.bearer;
+    storedPlaneBearer          = storedPlane.bearer;
+    storedPlaneFleetCredential = storedPlane.fleetCredential;
 
     if (!fragment.NEO_FLEET_PLANE_BASE) {
         throw new Error('the fixture plane record did not read back as an attachable plane')

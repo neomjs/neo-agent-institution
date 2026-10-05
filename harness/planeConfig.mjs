@@ -14,6 +14,11 @@ import path from 'node:path';
  * a unit: its bearer never travels to a plane base that came from somewhere else, and its identity
  * travels with its bearer, because the plane admits the fleet child only when the claimed identity is
  * the bearer's subject.
+ *
+ * The record may also hold the plane's fleet credential, encrypted beside the bearer. It is a different
+ * credential class from the bearer: the plane-MCP bearer reaches the Memory Core, while the fleet
+ * credential is what the fleet child presents to the plane's `/fleet` surface to define a seat there
+ * (`NEO_FLEET_PLANE_ADMISSION_BEARER`). It travels only with its own record.
  */
 
 /**
@@ -25,6 +30,11 @@ export const PLANE_CONFIG_FILE = 'plane.json';
  * @type {String}
  */
 export const PLANE_BEARER_FILE = 'plane-bearer.bin';
+
+/**
+ * @type {String}
+ */
+export const PLANE_FLEET_CREDENTIAL_FILE = 'plane-fleet-credential.bin';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
@@ -74,17 +84,34 @@ export function canonicalIdentity(value) {
 }
 
 /**
+ * @summary Decrypts one stored credential, or `null`: an absent file, or one that no longer decrypts
+ * (a reset keychain, another user), reads as no credential instead of failing the boot.
+ * @param {Object} options
+ * @param {String} options.file
+ * @param {Object} options.safeStorage
+ * @param {Object} options.fsModule
+ * @returns {String|null}
+ */
+function readCredential({file, safeStorage, fsModule}) {
+    try {
+        return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(fsModule.readFileSync(file)) || null : null
+    } catch {
+        return null
+    }
+}
+
+/**
  * @summary Reads the configured plane. A missing or unreadable record reads as unconfigured, and a
- * bearer that no longer decrypts (a reset keychain, another user) reads as absent instead of failing
- * the boot. A record stored before the identity was recorded reads `identity: null`.
+ * credential that no longer decrypts reads as absent. A record stored before the identity was recorded
+ * reads `identity: null`; one stored without a fleet credential reads `fleetCredential: null`.
  * @param {Object} options
  * @param {String} options.dir Directory holding the record (Electron `userData`).
  * @param {Object} options.safeStorage Electron `safeStorage`.
  * @param {Object} [options.fsModule=fs]
- * @returns {{planeBase: String|null, bearer: String|null, identity: String|null}}
+ * @returns {{planeBase: String|null, bearer: String|null, identity: String|null, fleetCredential: String|null}}
  */
 export function readPlaneConfig({dir, safeStorage, fsModule = fs}) {
-    let planeBase, identity, bearer = null;
+    let planeBase, identity;
 
     try {
         const record = JSON.parse(fsModule.readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'));
@@ -92,37 +119,40 @@ export function readPlaneConfig({dir, safeStorage, fsModule = fs}) {
         planeBase = normalizePlaneBase(record.planeBase);
         identity  = canonicalIdentity(record.identity)
     } catch {
-        return {planeBase: null, bearer: null, identity: null}
+        return {planeBase: null, bearer: null, identity: null, fleetCredential: null}
     }
 
-    try {
-        if (safeStorage.isEncryptionAvailable()) {
-            bearer = safeStorage.decryptString(fsModule.readFileSync(path.join(dir, PLANE_BEARER_FILE))) || null
-        }
-    } catch {
-        bearer = null
+    return {
+        planeBase,
+        bearer         : readCredential({file: path.join(dir, PLANE_BEARER_FILE), safeStorage, fsModule}),
+        identity,
+        fleetCredential: readCredential({file: path.join(dir, PLANE_FLEET_CREDENTIAL_FILE), safeStorage, fsModule})
     }
-
-    return {planeBase, bearer, identity}
 }
 
 /**
  * @summary Stores the plane record. Refuses when the OS cannot encrypt: a plain-text PAT under
- * `userData` is the launcher's stopgap, not the product. The bearer is written first, so `plane.json`
- * — the file that marks the shell as configured — never points at a credential that is missing. The
- * identity is the one the plane named for this bearer; it is not a secret, so it sits in `plane.json`.
+ * `userData` is the launcher's stopgap, not the product. The credentials are written first, so
+ * `plane.json` — the file that marks the shell as configured — never points at a credential that is
+ * missing. The identity is the one the plane named for this bearer; it is not a secret, so it sits in
+ * `plane.json`.
+ *
+ * The fleet credential is optional. A record stored without one removes any earlier one, because a
+ * fleet credential belongs to the record it was stored with. It never equals the bearer: the Brain
+ * refuses to present the plane-MCP bearer to the fleet surface, so this refuses it before it is stored.
  * @param {Object} options
  * @param {String} options.dir
  * @param {Object} options.safeStorage
  * @param {String} options.planeBase
  * @param {String} options.bearer
  * @param {String} options.identity The bearer's canonical `@login`, from {@link probePlaneCredential}.
+ * @param {String|null} [options.fleetCredential=null] The credential for the plane's `/fleet` surface.
  * @param {Object} [options.fsModule=fs]
  * @returns {{planeBase: String, identity: String}}
- * @throws {Error} When encryption is unavailable, or on an invalid plane base, an empty bearer, or an
- * identity that names no viewer.
+ * @throws {Error} When encryption is unavailable, or on an invalid plane base, an empty bearer, an
+ * identity that names no viewer, an empty fleet credential, or a fleet credential equal to the bearer.
  */
-export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity, fsModule = fs}) {
+export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity, fleetCredential = null, fsModule = fs}) {
     const
         base   = normalizePlaneBase(planeBase),
         viewer = canonicalIdentity(identity);
@@ -135,26 +165,42 @@ export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity,
         throw new TypeError('plane identity must be a canonical @login')
     }
 
+    if (fleetCredential !== null && (typeof fleetCredential !== 'string' || !fleetCredential.trim())) {
+        throw new TypeError('the fleet credential must be a non-empty string')
+    }
+
+    if (fleetCredential !== null && fleetCredential.trim() === bearer.trim()) {
+        throw new TypeError('the fleet credential must be a different credential from the plane bearer')
+    }
+
     if (!safeStorage.isEncryptionAvailable()) {
         throw new Error('the OS cannot encrypt credentials for this user, so the plane credential was not stored')
     }
 
     fsModule.mkdirSync(dir, {recursive: true});
     fsModule.writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString(bearer.trim()), {mode: 0o600});
+
+    if (fleetCredential === null) {
+        fsModule.rmSync(path.join(dir, PLANE_FLEET_CREDENTIAL_FILE), {force: true})
+    } else {
+        fsModule.writeFileSync(path.join(dir, PLANE_FLEET_CREDENTIAL_FILE), safeStorage.encryptString(fleetCredential.trim()), {mode: 0o600})
+    }
+
     fsModule.writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({identity: viewer, planeBase: base}, null, 4) + '\n', {mode: 0o600});
 
     return {identity: viewer, planeBase: base}
 }
 
 /**
- * @summary Removes the plane record, bearer included. Absent files are not an error.
+ * @summary Removes the plane record, both credentials included. Absent files are not an error.
  * @param {Object} options
  * @param {String} options.dir
  * @param {Object} [options.fsModule=fs]
  */
 export function forgetPlaneConfig({dir, fsModule = fs}) {
     fsModule.rmSync(path.join(dir, PLANE_CONFIG_FILE), {force: true});
-    fsModule.rmSync(path.join(dir, PLANE_BEARER_FILE), {force: true})
+    fsModule.rmSync(path.join(dir, PLANE_BEARER_FILE), {force: true});
+    fsModule.rmSync(path.join(dir, PLANE_FLEET_CREDENTIAL_FILE), {force: true})
 }
 
 /**
@@ -170,8 +216,12 @@ export function forgetPlaneConfig({dir, fsModule = fs}) {
  * refused. A stored bearer without its identity (a record from before the identity was recorded) is
  * therefore no record either: the shell boots on its own, and the plane card offers to attach again.
  * An env bearer keeps the env's identity.
+ *
+ * The stored record brings its fleet credential the same way, and none when it holds none: both
+ * admission variables are set, the file variable always empty, so a fleet credential the launch left
+ * behind cannot reach the record's plane.
  * @param {Object} options
- * @param {{planeBase: String|null, bearer: String|null, identity: String|null}} options.planeConfig
+ * @param {{planeBase: String|null, bearer: String|null, identity: String|null, fleetCredential: String|null}} options.planeConfig
  * @param {Object} options.env The process env.
  * @returns {Object}
  */
@@ -185,9 +235,11 @@ export function planeEnvFragment({planeConfig, env}) {
     }
 
     return planeConfig.bearer && planeConfig.identity ? {
-        NEO_AGENT_IDENTITY    : planeConfig.identity,
-        NEO_FLEET_PLANE_BASE  : planeConfig.planeBase,
-        NEO_FLEET_PLANE_BEARER: planeConfig.bearer
+        NEO_AGENT_IDENTITY                   : planeConfig.identity,
+        NEO_FLEET_PLANE_ADMISSION_BEARER     : planeConfig.fleetCredential ?? '',
+        NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
+        NEO_FLEET_PLANE_BASE                 : planeConfig.planeBase,
+        NEO_FLEET_PLANE_BEARER               : planeConfig.bearer
     } : {}
 }
 

@@ -1,5 +1,5 @@
 import {expect, test}                          from '@playwright/test';
-import {mkdtempSync, readFileSync, statSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdtempSync, readFileSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir}                                from 'node:os';
 import path                                    from 'node:path';
 import {
@@ -9,6 +9,7 @@ import {
     normalizePlaneBase,
     PLANE_BEARER_FILE,
     PLANE_CONFIG_FILE,
+    PLANE_FLEET_CREDENTIAL_FILE,
     PLANE_MCP_SERVER_NAME,
     planeEnvFragment,
     probePlaneCredential,
@@ -17,8 +18,9 @@ import {
 } from '../../../../harness/planeConfig.mjs';
 import {runtimePlaneCause} from '../../../../harness/brain.mjs';
 
-const BEARER   = 'ghp_fixtureBearerNeverReal0000000000',
-      IDENTITY = '@fixture-viewer';
+const BEARER           = 'ghp_fixtureBearerNeverReal0000000000',
+      FLEET_CREDENTIAL = 'ghp_fixtureFleetCredentialNeverReal00',
+      IDENTITY         = '@fixture-viewer';
 
 /**
  * A reversible stand-in for Electron's `safeStorage`: the stored bytes must not contain the plain
@@ -106,7 +108,7 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
 
         writePlaneConfig({dir, safeStorage, planeBase: 'http://127.0.0.1:3102/', bearer: BEARER, identity: IDENTITY});
 
-        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY});
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY, fleetCredential: null});
         expect(JSON.parse(readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'))).toEqual({identity: IDENTITY, planeBase: 'http://127.0.0.1:3102'});
         expect(readFileSync(path.join(dir, PLANE_BEARER_FILE)).toString()).not.toContain(BEARER);
         expect(statSync(path.join(dir, PLANE_BEARER_FILE)).mode & 0o777).toBe(0o600)
@@ -123,30 +125,64 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
                 .toThrow('identity')
         }
 
-        expect(readPlaneConfig({dir, safeStorage: fakeSafeStorage()})).toEqual({planeBase: null, bearer: null, identity: null})
+        expect(readPlaneConfig({dir, safeStorage: fakeSafeStorage()})).toEqual({planeBase: null, bearer: null, identity: null, fleetCredential: null})
     });
 
     test('a missing record is unconfigured, a bearer that no longer decrypts reads as absent, and a record from before the identity reads it as null', () => {
         const dir = tempDir();
 
-        expect(readPlaneConfig({dir, safeStorage: fakeSafeStorage()})).toEqual({planeBase: null, bearer: null, identity: null});
+        expect(readPlaneConfig({dir, safeStorage: fakeSafeStorage()})).toEqual({planeBase: null, bearer: null, identity: null, fleetCredential: null});
 
         writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({planeBase: 'https://plane.example'}));
         writeFileSync(path.join(dir, PLANE_BEARER_FILE), 'not a blob this keychain wrote');
+        writeFileSync(path.join(dir, PLANE_FLEET_CREDENTIAL_FILE), 'not a blob this keychain wrote either');
 
         const broken = {...fakeSafeStorage(), decryptString: () => { throw new Error('decrypt failed') }};
 
-        expect(readPlaneConfig({dir, safeStorage: broken})).toEqual({planeBase: 'https://plane.example', bearer: null, identity: null})
+        expect(readPlaneConfig({dir, safeStorage: broken})).toEqual({planeBase: 'https://plane.example', bearer: null, identity: null, fleetCredential: null})
     });
 
-    test('forgetting removes both files and tolerates their absence', () => {
+    test('forgetting removes every file of the record, both credentials included, and tolerates their absence', () => {
         const dir = tempDir(), safeStorage = fakeSafeStorage();
 
-        writePlaneConfig({dir, safeStorage, planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY});
+        writePlaneConfig({dir, safeStorage, planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY, fleetCredential: FLEET_CREDENTIAL});
         forgetPlaneConfig({dir});
         forgetPlaneConfig({dir});
 
-        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: null, bearer: null, identity: null})
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: null, bearer: null, identity: null, fleetCredential: null});
+        expect(existsSync(path.join(dir, PLANE_FLEET_CREDENTIAL_FILE))).toBe(false)
+    });
+
+    test('a fleet credential is stored encrypted beside the bearer and reads back with the record', () => {
+        const dir = tempDir(), safeStorage = fakeSafeStorage();
+
+        writePlaneConfig({dir, safeStorage, planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY, fleetCredential: ` ${FLEET_CREDENTIAL} `});
+
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY, fleetCredential: FLEET_CREDENTIAL});
+        expect(readFileSync(path.join(dir, PLANE_FLEET_CREDENTIAL_FILE)).toString()).not.toContain(FLEET_CREDENTIAL);
+        expect(readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8')).not.toContain(FLEET_CREDENTIAL);
+        expect(statSync(path.join(dir, PLANE_FLEET_CREDENTIAL_FILE)).mode & 0o777).toBe(0o600)
+    });
+
+    test('a fleet credential that is empty or the bearer itself is refused, and nothing is written', () => {
+        const dir = tempDir(), safeStorage = fakeSafeStorage();
+
+        for (const fleetCredential of ['', '   ', 42, BEARER, ` ${BEARER} `]) {
+            expect(() => writePlaneConfig({dir, safeStorage, planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY, fleetCredential}), String(fleetCredential))
+                .toThrow('fleet credential')
+        }
+
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: null, bearer: null, identity: null, fleetCredential: null})
+    });
+
+    test('a record stored again without a fleet credential drops the earlier one, which belonged to that record', () => {
+        const dir = tempDir(), safeStorage = fakeSafeStorage();
+
+        writePlaneConfig({dir, safeStorage, planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY, fleetCredential: FLEET_CREDENTIAL});
+        writePlaneConfig({dir, safeStorage, planeBase: 'https://other-plane.example', bearer: BEARER, identity: IDENTITY});
+
+        expect(readPlaneConfig({dir, safeStorage}).fleetCredential).toBeNull();
+        expect(existsSync(path.join(dir, PLANE_FLEET_CREDENTIAL_FILE))).toBe(false)
     });
 
     test('a plane base is https, or plain http on loopback only, and never carries credentials', () => {
@@ -164,9 +200,11 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         const planeConfig = {planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY};
 
         expect(planeEnvFragment({planeConfig, env: {}}), 'a Finder launch: nothing inherited').toEqual({
-            NEO_AGENT_IDENTITY    : IDENTITY,
-            NEO_FLEET_PLANE_BASE  : 'https://plane.example',
-            NEO_FLEET_PLANE_BEARER: BEARER
+            NEO_AGENT_IDENTITY                   : IDENTITY,
+            NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
+            NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
+            NEO_FLEET_PLANE_BASE                 : 'https://plane.example',
+            NEO_FLEET_PLANE_BEARER               : BEARER
         });
         expect(planeEnvFragment({planeConfig, env: {NEO_AGENT_IDENTITY: 'neo-fable-clio'}}).NEO_AGENT_IDENTITY, 'a shell another session launched')
             .toBe(IDENTITY);
@@ -179,13 +217,41 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
     test('the env fragment: a set plane base keeps the stored bearer away from it; a set bearer wins', () => {
         const planeConfig = {planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY};
 
-        expect(planeEnvFragment({planeConfig, env: {}})).toEqual({NEO_AGENT_IDENTITY: IDENTITY, NEO_FLEET_PLANE_BASE: 'https://plane.example', NEO_FLEET_PLANE_BEARER: BEARER});
+        expect(planeEnvFragment({planeConfig, env: {}})).toEqual({
+            NEO_AGENT_IDENTITY                   : IDENTITY,
+            NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
+            NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
+            NEO_FLEET_PLANE_BASE                 : 'https://plane.example',
+            NEO_FLEET_PLANE_BEARER               : BEARER
+        });
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: 'http://127.0.0.1:3102'}}), 'the launcher and checkout env win whole').toEqual({});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: ''}}), 'an explicitly empty base still wins').toEqual({});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'});
         expect(planeEnvFragment({planeConfig: {planeBase: null, bearer: null}, env: {}})).toEqual({});
         expect(planeEnvFragment({planeConfig: {planeBase: 'https://plane.example', bearer: null}, env: {}}), 'a bearer that no longer decrypts is no record').toEqual({});
         expect(planeEnvFragment({planeConfig: {planeBase: 'https://plane.example', bearer: null}, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'})
+    });
+
+    test('the env fragment: the record brings its fleet credential, or explicitly none, over one the launch left behind', () => {
+        const
+            planeConfig = {planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY, fleetCredential: FLEET_CREDENTIAL},
+            inherited   = {NEO_FLEET_PLANE_ADMISSION_BEARER: 'inherited-fleet-credential', NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '/elsewhere/fleet.token'},
+            // the fleet child's env as the launch composes it: the inherited env, then the fragment
+            child       = (env, record = planeConfig) => ({...env, ...planeEnvFragment({env, planeConfig: record})});
+
+        expect(child({}).NEO_FLEET_PLANE_ADMISSION_BEARER, 'a Finder launch').toBe(FLEET_CREDENTIAL);
+        expect(child(inherited).NEO_FLEET_PLANE_ADMISSION_BEARER, 'the record\'s credential wins over an inherited one').toBe(FLEET_CREDENTIAL);
+        expect(child(inherited).NEO_FLEET_PLANE_ADMISSION_BEARER_FILE, 'and an inherited file variable is emptied').toBe('');
+
+        const withoutCredential = child(inherited, {...planeConfig, fleetCredential: null});
+
+        expect(withoutCredential.NEO_FLEET_PLANE_ADMISSION_BEARER, 'a record without one sends none to its plane').toBe('');
+        expect(withoutCredential.NEO_FLEET_PLANE_ADMISSION_BEARER_FILE).toBe('');
+
+        expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}}), 'an env bearer brings its own fleet credential, or none')
+            .toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'});
+        expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: 'http://127.0.0.1:3102'}}), 'another plane never sees the stored one')
+            .toEqual({})
     });
 
     test('a launch is the stored record\'s only when the record supplied both its plane and its credential', () => {
@@ -298,7 +364,7 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
         expect(reply).toEqual({ok: true, reason: null, relaunching: true});
         expect(JSON.stringify(reply)).not.toContain(BEARER);
         expect(calls).toEqual({prompts: ['plane-attach'], relaunches: 1});
-        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY});
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY, fleetCredential: null});
         expect(broker.status({})).toEqual({attached: false, configured: true, packaged: true, planeBase: 'http://127.0.0.1:3102'})
     });
 
@@ -318,7 +384,7 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
 
             expect(await broker.attach({}, request), reason).toEqual({ok: false, reason, relaunching: false});
             expect(calls.relaunches, reason).toBe(0);
-            expect(readPlaneConfig({dir, safeStorage: fakeSafeStorage()}), reason).toEqual({planeBase: null, bearer: null, identity: null})
+            expect(readPlaneConfig({dir, safeStorage: fakeSafeStorage()}), reason).toEqual({planeBase: null, bearer: null, identity: null, fleetCredential: null})
         }
     });
 
@@ -343,7 +409,7 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
         writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({planeBase: 'https://plane.example'}));
         writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString(BEARER));
 
-        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'https://plane.example', bearer: BEARER, identity: null});
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'https://plane.example', bearer: BEARER, identity: null, fleetCredential: null});
         expect(broker.status({})).toEqual({attached: false, configured: false, packaged: true, planeBase: 'https://plane.example'})
     });
 
