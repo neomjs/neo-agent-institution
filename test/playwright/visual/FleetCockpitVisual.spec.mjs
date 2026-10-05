@@ -229,6 +229,24 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(card('Grace')).toHaveScreenshot('fleet-card-open-work-light.png')
     });
 
+    test('the merge queue opens to rows named by their titles, two lines at most', async ({page}) => {
+        await bootSettledCockpit(page);
+        await landFleetOpenWork(page, sampleOpenWork);
+
+        const menu = page.locator('.fm-awaiting-merge-menu'),
+              refs = menu.locator('.fm-awaiting-merge-ref');
+
+        await page.locator('.fm-fleet-head .fm-awaiting-merge').click();
+        await expect(refs).toHaveText([/^#19499 · feat\(fleet\): a seat records/, 'neomjs/neo-agent-brain #799']);
+
+        // the fixture title needs more than two lines; the row shows two, the height of two untitled rows
+        const [titled, untitled] = await refs.evaluateAll(nodes => nodes.map(node => ({client: node.clientHeight, scroll: node.scrollHeight})));
+
+        expect(titled.scroll).toBeGreaterThan(titled.client);
+        expect(Math.round(titled.client / untitled.client)).toBe(2);
+        await expect(menu).toHaveScreenshot('fleet-head-merge-queue-open.png')
+    });
+
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {
         await bootSettledCockpit(page);
 

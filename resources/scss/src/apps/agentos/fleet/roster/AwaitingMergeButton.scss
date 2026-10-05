@@ -53,6 +53,7 @@
 
     border-radius: 6px;
     box-shadow   : var(--fm-shadow-overlay);
+    max-width    : 360px;
     min-width    : 240px;
     padding      : var(--fm-space-1);
 
@@ -61,11 +62,18 @@
         border-radius: 4px;
         gap          : var(--fm-space-2);
         text-align   : left;
+        white-space  : normal;
     }
 
+    // a title wraps to two lines at most; the row's tooltip carries the whole of it
     .fm-awaiting-merge-ref {
-        flex: 1;
-        font: var(--fm-text-body);
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        display           : -webkit-box;
+        flex              : 1;
+        font              : var(--fm-text-body);
+        overflow          : hidden;
+        overflow-wrap     : anywhere;
     }
 
     .fm-awaiting-merge-stale {

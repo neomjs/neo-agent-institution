@@ -173,6 +173,34 @@ test.describe('AwaitingMergeButton — the fleet head\'s merge queue', () => {
         store.destroy()
     });
 
+    test('a titled row reads #N · title with the repository and the whole title in its tooltip; an untitled row keeps its reference and its link', async () => {
+        const
+            title          = 'feat(agentos): the awaiting-merge list names each pull request by its title',
+            store          = Neo.create(FleetAwaitingMerge, {data: [pr(19499, {title}), pr(799, {repo: 'neomjs/neo-agent-brain', id: 'neomjs/neo-agent-brain#799', stale: true})]}),
+            {head, button} = createButton({openWork: ok, store});
+
+        try {
+            await expect.poll(() => Boolean(button.menuList)).toBe(true);
+
+            const
+                titled   = button.menuList.createItemContent(store.getAt(0)),
+                untitled = button.menuList.createItemContent(store.getAt(1));
+
+            expect(titled.cn[0].text).toBe(`#19499 · ${title}`);
+            expect(titled.title).toBe(`neomjs/neo #19499 · ${title}`);
+            expect(titled.cn[0].href, 'the row stays a link to the PR').toBe('https://github.com/neomjs/neo/pull/19499');
+
+            expect(store.getAt(1).title, 'a row without one reads null').toBeNull();
+            expect(untitled.cn[0].text).toBe('neomjs/neo-agent-brain #799');
+            expect(untitled.title).toBe('https://github.com/neomjs/neo-agent-brain/pull/799');
+            expect(untitled.cn.map(node => node.text), 'the stale chip is unchanged').toEqual(['neomjs/neo-agent-brain #799', 'stale'])
+        } finally {
+            head.destroy()
+        }
+
+        store.destroy()
+    });
+
     test('an open list closes when the queue stops being one', async () => {
         const store          = Neo.create(FleetAwaitingMerge, {data: [pr(1)]}),
               {head, button} = createButton({openWork: ok, store});

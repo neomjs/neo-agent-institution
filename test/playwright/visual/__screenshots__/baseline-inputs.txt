@@ -105,7 +105,7 @@ apps/agentos/model/MemoryCandidate.mjs
     10804ad0e3a067958c961f1a7025acf9577683a8
 
 apps/agentos/model/OpenPullRequest.mjs
-    149dacb874a7ab27c11f41d071550be1b75969df
+    36f7ef5c9f2e57fd74d75f80203bd6e83b3eeff4
 
 apps/agentos/model/SeatRepository.mjs
     403f001ea89e9c9f8ab035a05908aaa300047521
@@ -255,7 +255,7 @@ apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
 
 apps/agentos/util/OpenWorkRead.mjs
-    fdaa7d572a845e4c6689a00762abf5fc9bf20a1b
+    8e50813ade120bedfa2ba03409466dee6acf3187
 
 apps/agentos/util/OpenWorkSeat.mjs
     9cdbd64f758822ab9ed015e8f28790bcbe5600a4
@@ -471,7 +471,7 @@ apps/agentos/view/fleet/roster/AwaitingMergeButton.mjs
     5209afe46d946b9b9a56b224b2afe59e947c870c
 
 apps/agentos/view/fleet/roster/AwaitingMergeMenuList.mjs
-    13ff844cf5d0303aef565b344da9837af134096c
+    f966017522bfd5a977c0561f72293032d8c6692c
 
 apps/agentos/view/fleet/roster/Container.mjs
     a6f6f8a61427612cba00b5245e4b99de7c5ffeac
@@ -630,7 +630,7 @@ resources/scss/src/apps/agentos/fleet/perspectives/Container.scss
     ebd226f7f44bd6bca6a78ab5a361d051c093a660
 
 resources/scss/src/apps/agentos/fleet/roster/AwaitingMergeButton.scss
-    f1a1d6a6c03c6715975542e4bb355121fb2398cc
+    55ec6b2585cefdd96f8b805fa808723b56fce3fb
 
 resources/scss/src/apps/agentos/fleet/roster/Container.scss
     6d2873b22214c71368ae1e7352e1023eede8cc08
@@ -729,7 +729,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    21b8c760c07eac0c5195cac7d44cae5bbbf57d33
+    8a3f471c874c43a1fff48fa78bf89e4bdf1e9dec
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -820,6 +820,9 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-aw
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-awaiting-merge.png
     2f3e17b74f4c4fa42f837e6b437b000efad4077c
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-open.png
+    11b7728e5f7996be2db181b181e314e94752b654
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
     0facff4dc71f0aac3e6c09d21336642ad02279c2

@@ -40,16 +40,16 @@ class OpenWorkRead extends Base {
     }
 
     /**
-     * @summary The merge queue's rows from one answer, keyed `<repo>#<number>`. An unavailable answer
-     * has none.
+     * @summary The merge queue's rows from one answer, keyed `<repo>#<number>`, each with its producer's
+     * title when the row carries one. An unavailable answer has none.
      * @param {Object|null} snapshot One `fleetOpenWork` envelope, or `null` while unanswered.
      * @returns {Object[]} Data for {@link AgentOS.store.FleetAwaitingMerge}.
      */
     static mergeRows(snapshot) {
         if (!snapshot || snapshot.state === 'unavailable') return [];
 
-        return (snapshot.awaitingMerge ?? []).map(({ci, draft, mergeable, number, observedAt, repo, stale}) => (
-            {id: `${repo}#${number}`, ci, draft, mergeable, number, observedAt, repo, stale}
+        return (snapshot.awaitingMerge ?? []).map(({ci, draft, mergeable, number, observedAt, repo, stale, title}) => (
+            {id: `${repo}#${number}`, ci, draft, mergeable, number, observedAt, repo, stale, title}
         ))
     }
 
