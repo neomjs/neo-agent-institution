@@ -882,6 +882,46 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }
     });
 
+    test('#559: another definitions Store is another binding, even holding the same seat on the same harness', async () => {
+        const
+            makeStore = () => Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop'}]}),
+            first     = makeStore(),
+            second    = makeStore();
+        stores.push(first, second);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            saves      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent      : () => { const held = deferred(); saves.push(held); return held.promise },
+            fleetSeatGitIdentity: async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: first}),
+                group  = detail.getReference('seat-model');
+
+            group.catalog = {state: 'complete', reason: null, models: [{id: 'gpt-6-sol', efforts: ['low']}]};
+            const save = detail.controller.onDeclareSeatModel({field: 'reasoningEffort', value: 'low'});
+            expect(group.status.state).toBe('pending');
+
+            detail.agentDefinitions = second;
+            expect([group.catalog, group.status.state]).toEqual([null, 'idle']);
+
+            // the first Store's answer still lands on its own Store, and paints nothing here
+            saves[0].resolve({status: 'rejected', reason: "effort 'low' is not available"});
+            await save;
+            expect(group.status).toEqual({state: 'idle', reason: ''});
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
     test('AC-3 (#524): a late answer for a seat no longer shown paints nothing; a seat without a definition shows no row', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},

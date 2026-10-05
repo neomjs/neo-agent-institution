@@ -163,6 +163,12 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
         expect(status(group)).toEqual(['this Fleet cannot list what the harness offers yet', 'is-unavailable']);
         expect(offered(group).map(([text]) => text)).toEqual(['Use the harness default']);
 
+        // a partial catalog offers the entries it did read
+        group.onActionClick({component: group.getReference('model-change')});
+        group.catalog = {state: 'partial', models: [{id: 'gpt-6-luna', efforts: ['high']}], reason: 'the second page failed'};
+        group.onActionClick({component: group.getReference('model-change')});
+        expect(offered(group).map(([text]) => text)).toEqual(['gpt-6-luna', 'Use the harness default']);
+
         group.destroy()
     });
 

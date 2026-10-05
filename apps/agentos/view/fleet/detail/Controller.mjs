@@ -176,6 +176,14 @@ class Controller extends ComponentController {
 
         oldValue?.un(me.getDefinitionsStoreListeners());
         value?.on(me.getDefinitionsStoreListeners());
+
+        // another Store is another binding: the Seat group's catalog and feedback belonged to the last one, even
+        // where the new Store holds the same seat on the same harness
+        if (oldValue && value !== oldValue) {
+            me.seatRequest++;
+            me.getReference('seat-model')?.set({catalog: null, editing: null, status: {state: 'idle', reason: ''}})
+        }
+
         me.component.applyConfigRecord()
     }
 
