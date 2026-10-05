@@ -10,9 +10,10 @@ import {isDescriptor} from '../../../node_modules/neo.mjs/src/core/ConfigSymbols
  * invalidates an older in-flight read, and open work follows `Controller.admitOpenWork` the same way. Every set lands — the configs compare nothing — so a spec
  * re-lands the same facts at will. Loading the module again (a fresh `t`) finds the instance. A set
  * mailbox is served as the bridge's `fleetActivity`, so the cockpit's own reads page it. Landed
- * definitions replace the Viewport provider's `agentDefinitions` Store, the Accounts view's source.
+ * definitions replace the Viewport provider's `agentDefinitions` Store, the Accounts view's source. A
+ * landed Brain-health answer reaches the owner's `applyBrainHealth`, where the shell's lifecycle answer lands.
  *
- * @see apps/agentos/view/fleet/cockpit/LivenessController.mjs (`admitRoster`, `admitActivity`)
+ * @see apps/agentos/view/fleet/cockpit/LivenessController.mjs (`admitRoster`, `admitActivity`, `applyBrainHealth`)
  * @see apps/agentos/view/fleet/cockpit/Controller.mjs (`admitTasks`)
  */
 class FleetLanding extends Base {
@@ -32,6 +33,11 @@ class FleetLanding extends Base {
          * @member {Object|null} activity_=null
          */
         activity_: {[isDescriptor]: true, value: null, isEqual: () => false},
+        /**
+         * The shell's Brain-health answer to land, `{response}`: `{state, cause: {source, detail}}`.
+         * @member {Object|null} brainHealth_=null
+         */
+        brainHealth_: {[isDescriptor]: true, value: null, isEqual: () => false},
         /**
          * One `fleetTasks` envelope to land as the owner's answer.
          * @member {Object|null} tasks_=null
@@ -82,7 +88,7 @@ class FleetLanding extends Base {
     get setupRun() {
         const provider = Neo.manager.Component.findFirst('className', 'AgentOS.view.Viewport')?.getStateProvider();
 
-        return provider ? Object.fromEntries(['decisions', 'manualActions', 'preset', 'runId'].map(key => [key, provider.getData(`setupRun.${key}`)])) : null
+        return provider ? Object.fromEntries(['dataRoot', 'decisions', 'manualActions', 'planeId', 'preset', 'runId'].map(key => [key, provider.getData(`setupRun.${key}`)])) : null
     }
 
     /**
@@ -90,6 +96,13 @@ class FleetLanding extends Base {
      */
     afterSetActivity(value) {
         value && this.landActivity(value.events)
+    }
+
+    /**
+     * @param {Object|null} value
+     */
+    afterSetBrainHealth(value) {
+        value && this.owner.applyBrainHealth(value.response)
     }
 
     /**

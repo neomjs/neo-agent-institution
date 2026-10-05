@@ -162,8 +162,9 @@ class RecipientChipList extends ChipList {
             listItem && vdom.cn.push(listItem)
         });
 
+        // out of the stored vnode now, so no walk before this list's update names a dead chip
         while (me.items?.length > records.length) {
-            me.items.pop().destroy()
+            me.items.pop().destroy(true, true)
         }
 
         !silent && me.promiseUpdate().then(() => {

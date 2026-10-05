@@ -453,14 +453,21 @@ class Container extends BaseContainer {
 
     /**
      * @summary The read owner's own observation, shown only while it has one — connecting, refused,
-     * unreachable, timeout, failed-upstream — with the sanitized reason the owner retained.
+     * unreachable, timeout, failed-upstream — with the sanitized reason the owner retained and the one
+     * step that can end it: the detail density of the cockpit banner's lead.
      */
     applyConnection() {
         const
             me          = this,
             observation = me.systemConnection,
             state       = observation?.state ?? null,
-            connection  = me.getReference('connection');
+            connection  = me.getReference('connection'),
+            nextStep    = {
+                'failed-upstream': 'the next read tries again',
+                refused          : 'connect again from the bar',
+                timeout          : 'the next read tries again',
+                unreachable      : 'bring the plane back, or connect to another'
+            }[state];
 
         if (!connection) return;
 
@@ -469,7 +476,7 @@ class Container extends BaseContainer {
             ? ''
             : state === 'connecting'
                 ? 'fleet read connecting'
-                : `fleet read ${state}${observation.reason ? ` · ${observation.reason}` : ''}`
+                : `fleet read ${state}${observation.reason ? ` · ${observation.reason}` : ''}${nextStep ? ` — ${nextStep}` : ''}`
     }
 
     /**

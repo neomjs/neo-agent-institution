@@ -39,7 +39,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'stale'}, stream: {state: 'partial'}}).text).toBe('fleet degraded');
     });
 
-    const HIDDEN_LIVE = {action: null, hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''};
+    const HIDDEN_LIVE = {action: null, hidden: true, kind: 'live', lead: '', text: '', title: '', ariaLabel: ''};
 
     test.describe('connection observations belong to the deciding read', () => {
         const cases = [
@@ -113,6 +113,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
                 ariaLabel: 'The plane refused this shell — connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch',
                 hidden   : false,
                 kind     : 'cold',
+                lead     : 'The plane refused this shell — connect it again',
                 text     : 'plane refused',
                 title    : 'The plane refused this shell — connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch'
             })
@@ -204,6 +205,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
                 ariaLabel: 'A plane already runs on this machine — connect this shell to it · Chroma holds localhost:8000',
                 hidden   : false,
                 kind     : 'cold',
+                lead     : 'A plane already runs on this machine — connect this shell to it',
                 text     : 'plane here',
                 title    : 'A plane already runs on this machine — connect this shell to it · Chroma holds localhost:8000'
             })
@@ -297,7 +299,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             });
 
             expect(Array.isArray(episode)).toBe(false);
-            expect(Object.keys(episode).sort()).toEqual(['action', 'ariaLabel', 'hidden', 'kind', 'text', 'title']);
+            expect(Object.keys(episode).sort()).toEqual(['action', 'ariaLabel', 'hidden', 'kind', 'lead', 'text', 'title']);
             expect(episode.title.match(/Agent OS/g)).toHaveLength(1);
 
             // And it is IDEMPOTENT across re-derivation: a polling consumer re-deriving the same
@@ -527,6 +529,58 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'live'}, daemon: {state: 'stopped'}, transport}).title).toContain('Agent OS stopped');
             expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'cold'}, transport}).title).toBe('Activity feed pending — roster is live');
             expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'live'}, transport})).toEqual(HIDDEN_LIVE)
+        })
+    });
+
+    test.describe('the lead — the reason the bar shows beside the pill, never only on hover', () => {
+        // a retained cause that must stay on title and aria: an endpoint, an error class, a config leaf
+        const CAUSE     = '[fleet] plane mode refused (http://127.0.0.1:3102): TypeError — fix fleet.planeBase',
+              FORBIDDEN = /\d{1,3}(\.\d{1,3}){3}:\d+|localhost:\d+|npm run|TypeError|fleet\.planeBase/;
+
+        const branches = {
+            'organism beside a plane': {daemon: {cause: 'organism-beside-plane', reason: CAUSE}, grid: {state: 'cold'}, stream: {state: 'cold'}},
+            'plane refused the shell': {daemon: {cause: 'plane-refused', reason: CAUSE}, grid: {state: 'cold'}, stream: {state: 'cold'}},
+            'boot refusal'           : {daemon: {cause: 'plane-credential-refused', reason: CAUSE}, grid: {state: 'cold'}, stream: {state: 'cold'}},
+            'runtime refusal'        : {grid: {state: 'stale', reason: CAUSE}, plane: {cause: 'plane-identity-changed'}, stream: {state: 'live'}},
+            'cold with a cause'      : {grid: {state: 'cold', reason: CAUSE}, stream: {state: 'cold'}},
+            'cold read refused'      : {grid: {state: 'cold', connection: {state: 'refused', reason: CAUSE}}, stream: {state: 'cold'}},
+            'cold, transport failed' : {grid: {state: 'cold'}, stream: {state: 'cold'}, transport: {phase: 'settled', up: false, error: CAUSE}},
+            'daemon down'            : {daemon: {state: 'stopped', reason: CAUSE}, grid: {state: 'live'}, stream: {state: 'live'}},
+            'stale feed'             : {grid: {state: 'stale', reason: CAUSE}, stream: {state: 'live'}},
+            'partial feed'           : {grid: {state: 'live'}, stream: {state: 'partial', reason: CAUSE}},
+            'pending feed'           : {grid: {state: 'live'}, stream: {state: 'cold', reason: CAUSE}}
+        };
+
+        for (const [name, input] of Object.entries(branches)) {
+            test(`${name}: the lead is product words, and the title adds the cause to it`, () => {
+                const verdict = SpineBanner.deriveSpineBanner(input);
+
+                expect(verdict.hidden).toBe(false);
+                expect(verdict.lead.length, 'a non-live state always has a lead').toBeGreaterThan(0);
+                expect(verdict.lead, 'no endpoint, error class, config leaf or command reaches the visible line').not.toMatch(FORBIDDEN);
+                expect(verdict.title.startsWith(verdict.lead)).toBe(true);
+                expect(verdict.ariaLabel).toBe(verdict.title)
+            })
+        }
+
+        test('every refusal leads with the connect card\'s own words, at boot and while the shell runs', () => {
+            const words = {
+                'plane-credential-refused': PlaneVerdict.sentences.rejected,
+                'plane-not-a-plane'       : PlaneVerdict.sentences['not-a-plane'],
+                'plane-unreachable'       : PlaneVerdict.sentences.unreachable
+            };
+
+            for (const [cause, sentence] of Object.entries(words)) {
+                expect(SpineBanner.deriveSpineBanner({daemon: {cause, reason: CAUSE}, grid: {state: 'cold'}, stream: {state: 'cold'}}).lead.startsWith(sentence), cause).toBe(true);
+                expect(SpineBanner.deriveSpineBanner({grid: {state: 'cold'}, plane: {cause}, stream: {state: 'cold'}}).lead.startsWith(sentence), `${cause} at runtime`).toBe(true)
+            }
+
+            expect(SpineBanner.deriveSpineBanner({daemon: {cause: 'plane-identity-changed'}, grid: {state: 'cold'}, stream: {state: 'cold'}}).lead)
+                .toBe('The plane now names that PAT as another account. Connect again to confirm it.')
+        });
+
+        test('a live spine has no lead', () => {
+            expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'live'}}).lead).toBe('')
         })
     })
 });

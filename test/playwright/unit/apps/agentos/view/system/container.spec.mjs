@@ -187,7 +187,15 @@ test.describe('AgentOS.view.system.Container — the engine room reads the provi
             expect(view.getReference('connection').text).toBe('fleet read connecting');
 
             provider.setData({systemConnection: {state: 'refused', reason: 'request denied'}});
-            expect(view.getReference('connection').text).toBe('fleet read refused · request denied');
+            expect(view.getReference('connection').text).toBe('fleet read refused · request denied — connect again from the bar');
+
+            // every state but connecting names the one step that can end it
+            provider.setData({systemConnection: {state: 'unreachable', reason: null}});
+            expect(view.getReference('connection').text).toBe('fleet read unreachable — bring the plane back, or connect to another');
+            provider.setData({systemConnection: {state: 'timeout', reason: null}});
+            expect(view.getReference('connection').text).toBe('fleet read timeout — the next read tries again');
+            provider.setData({systemConnection: {state: 'failed-upstream', reason: 'upstream 502'}});
+            expect(view.getReference('connection').text).toBe('fleet read failed-upstream · upstream 502 — the next read tries again');
 
             provider.setData({systemConnection: {state: null, reason: null}});
             expect(view.getReference('connection').hidden).toBe(true)

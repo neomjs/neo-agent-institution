@@ -28,13 +28,6 @@ export const BRAIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.ur
 export const TRUSTED = Object.freeze({sender: 'trusted'});
 
 /**
- * The target the wizard's profile declares: the Brain's canonical local plane, its container-side data
- * root and the loopback endpoint (the pinned Brain's `docker-compose.local-agent-os.yml` health checks).
- * @type {Object}
- */
-export const PROFILE_TARGET = Object.freeze({planeId: 'neo-local-canonical', dataRoot: '/app/.neo-ai-data', endpoint: 'http://127.0.0.1:3102'});
-
-/**
  * What a placement probe reads on two machines: one every local preset fits with headroom, and a
  * 32 GiB laptop under other use that fits none of them.
  * @type {Object}
@@ -56,8 +49,8 @@ const tempDir = () => mkdtempSync(path.join(tmpdir(), 'pinned-setup-'));
  * @param {String}       [options.configSourcePath] The config a preset's env set is checked against
  * @param {Object}       [options.machine=MACHINES.roomy] The placement probe's facts
  * @param {Boolean|null} [options.running=null] The compose project's state; `null` follows the recorded `up`
- * @param {Object|null}  [options.served=null] A plane that answers whatever the run did; `null` follows the run: nothing answers until the project is up, then {@link PROFILE_TARGET}'s plane
- * @returns {Promise<{broker: Object, setupRoot: String, stateRoot: String, world: Object}>}
+ * @param {Object|null}  [options.served=null] A plane that answers whatever the run did; `null` follows the run: nothing answers until the project is up, then the profile's plane
+ * @returns {Promise<{broker: Object, profile: Object, setupRoot: String, stateRoot: String, world: Object}>} `profile` is the target the pinned Brain's layout declares
  */
 export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDir(), configSourcePath = path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), machine = MACHINES.roomy, running = null, served = null} = {}) {
     const
@@ -96,10 +89,10 @@ export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDi
                 layout,
                 host,
                 healthcheck: async () => {
-                    // the profile pins its plane: what comes up is the canonical local plane, whatever the run named
-                    const answering = served ?? (isUp() ? {id: PROFILE_TARGET.planeId, dataRoot: PROFILE_TARGET.dataRoot} : null);
+                    // the profile pins its plane: what comes up is the one its layout declares, whatever the run named
+                    const answering = served ?? (isUp() ? {id: layout.target.planeId, dataRoot: layout.target.dataRoot} : null);
 
-                    if (!answering) throw new Error('connect ECONNREFUSED 127.0.0.1:3102');
+                    if (!answering) throw new Error(`connect ECONNREFUSED ${new URL(layout.target.endpoint).host}`);
 
                     return {status: 'healthy', plane: answering}
                 },
@@ -118,7 +111,7 @@ export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDi
             now             : () => 1_700_000_000_000
         });
 
-    return {broker, setupRoot, stateRoot, world}
+    return {broker, profile: layout.target, setupRoot, stateRoot, world}
 }
 
 /**

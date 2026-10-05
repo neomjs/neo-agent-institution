@@ -44,16 +44,20 @@ test('the declared chrome binds the derived truths — banner revealed with the 
 
     const
         banner    = cockpit.getReference('fleet-spine-banner'),
+        lead      = cockpit.getReference('fleet-spine-banner-lead'),
         reconnect = cockpit.getReference('fleet-reconnect-button'),
         telltale  = cockpit.getReference('viewer-wake-telltale');
 
     expect(banner).toBeTruthy();
     expect(banner.hidden, 'the cold verdict reveals the banner').toBe(false);
-    // The visible label is the status word; the full sentence rides title + aria.
+    // The pill is the status word; the lead shows the reason beside it; title + aria add the cause.
     expect(banner.text).toBe('fleet offline');
+    expect(lead.hidden, 'the reason is visible, never hover-only').toBe(false);
+    expect(lead.text).toBe('Fleet server offline');
     expect(banner.cls).toContain('fm-spine-banner-cold');
-    expect(banner.vdom.title).toContain('Fleet server offline');
-    expect(banner.vdom['aria-label']).toContain('Fleet server offline');
+    // the title keeps row 2's sentence word for word (CockpitStateWalkthrough reads it)
+    expect(banner.vdom.title).toBe('Fleet server offline — start it from the neo-agent-brain checkout');
+    expect(banner.vdom['aria-label']).toBe(banner.vdom.title);
 
     // the reconnect affordance binds the SAME derived leaf — visible on any spoken verdict
     expect(reconnect.hidden).toBe(false);
@@ -97,6 +101,8 @@ test('typed wire refusal and recovery drive the real read owner, reactive banner
         expect(banner.vdom.title).toContain('request denied');
         expect(banner.vdom.title).not.toContain('private-token');
         expect(banner.vdom['aria-label']).toBe(banner.vdom.title);
+        // the visible lead names the state in product words; the retained cause stays on the title
+        expect(cockpit.getReference('fleet-spine-banner-lead').text).toBe('Activity request refused — roster is live · no activity data yet');
         expect(parent.getData('instanceState')).toBe('limited');
 
         installFleetBridge({send: async () => createFleetWireResponse('ok', {
@@ -105,6 +111,7 @@ test('typed wire refusal and recovery drive the real read owner, reactive banner
         await cockpit.getController().loadActivity();
         expect(provider.getData('streamConnection.state')).toBeNull();
         expect(banner.hidden).toBe(true);
+        expect(cockpit.getReference('fleet-spine-banner-lead').hidden, 'a live spine shows no lead').toBe(true);
         expect(parent.getData('instanceState')).toBe('ok')
     } finally {
         cockpit.destroy();
