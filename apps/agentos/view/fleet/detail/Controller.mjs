@@ -202,6 +202,29 @@ class Controller extends ComponentController {
     }
 
     /**
+     * @summary What the Seat group is bound to now: the shown definition's id and harness, and the Store it came from.
+     * A catalog read or a declaration answers the group only while its binding still holds.
+     * @returns {{id: String, harnessType: String|null, store: Object}|null}
+     * @protected
+     */
+    seatBinding() {
+        const seat = this.getReference('seat-model')?.seat;
+
+        return seat?.id ? {id: seat.id, harnessType: seat.harnessType ?? null, store: this.component.agentDefinitions} : null
+    }
+
+    /**
+     * @param {Object|null} binding A {@link seatBinding} taken when a read or a declaration started
+     * @returns {Boolean} Whether the group still shows that seat, on that harness, from that Store
+     * @protected
+     */
+    holdsSeatBinding(binding) {
+        const current = this.seatBinding();
+
+        return !!binding && !!current && binding.id === current.id && binding.harnessType === current.harnessType && binding.store === current.store
+    }
+
+    /**
      * @summary Read what the shown seat's harness offers into the Seat group, for its Change.
      * @returns {Promise<void>}
      */
@@ -209,14 +232,14 @@ class Controller extends ComponentController {
         const
             me      = this,
             row     = me.getReference('seat-model'),
-            agentId = row.seat?.id ?? null,
+            binding = me.seatBinding(),
             request = ++me.seatRequest;
 
-        if (!agentId) return;
+        if (!binding) return;
 
-        const catalog = await SeatModel.readCatalog(globalThis.AgentOS?.fleet?.registryBridge ?? null, agentId);
+        const catalog = await SeatModel.readCatalog(globalThis.AgentOS?.fleet?.registryBridge ?? null, binding.id);
 
-        if (request === me.seatRequest && !me.isDestroyed && !row.isDestroyed && row.seat?.id === agentId) {
+        if (request === me.seatRequest && !me.isDestroyed && !row.isDestroyed && me.holdsSeatBinding(binding)) {
             row.catalog = catalog
         }
     }
@@ -234,20 +257,21 @@ class Controller extends ComponentController {
         const
             me      = this,
             row     = me.getReference('seat-model'),
-            agentId = row.seat?.id ?? null;
+            binding = me.seatBinding();
 
-        if (!agentId || (field !== 'model' && field !== 'reasoningEffort')) {
+        if (!binding || (field !== 'model' && field !== 'reasoningEffort')) {
             return Promise.resolve()
         }
 
         const request = ++me.seatRequest;
 
+        // the write lands on its Store whatever is shown by then; only its feedback is bound to the group
         return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-            intent: {id: agentId, [field]: value},
+            intent: {id: binding.id, [field]: value},
             owner : row,
-            store : me.component.agentDefinitions,
+            store : binding.store,
             setSaveStatus: (id, state, reason) => {
-                if (request !== me.seatRequest || me.isDestroyed || row.isDestroyed) {
+                if (request !== me.seatRequest || me.isDestroyed || row.isDestroyed || !me.holdsSeatBinding(binding)) {
                     return
                 }
 

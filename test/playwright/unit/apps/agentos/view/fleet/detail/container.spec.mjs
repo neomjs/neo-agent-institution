@@ -828,6 +828,60 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }
     });
 
+    test('#559: a catalog read or a declaration answers only the seat and harness it started for', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', model: 'gpt-6-sol'},
+            {id: 'eos', githubUsername: 'eos', harnessType: 'codex-desktop'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            catalogs   = [],
+            saves      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            fleetSeatModelCatalog: () => { const held = deferred(); catalogs.push(held); return held.promise },
+            configureAgent       : () => { const held = deferred(); saves.push(held); return held.promise },
+            fleetSeatGitIdentity : async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail   = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: definitions}),
+                group    = detail.getReference('seat-model'),
+                codexSet = {state: 'complete', reason: null, models: [{id: 'gpt-6-sol', efforts: ['low', 'max']}]};
+
+            // control: the same binding's answer lands
+            const read = detail.controller.readSeatCatalog();
+            catalogs[0].resolve(codexSet);
+            await read;
+            expect(group.catalog).toEqual(codexSet);
+
+            // the same seat moves to another harness: its catalog goes, and a Codex answer still on its way stays out
+            const late = detail.controller.readSeatCatalog();
+            definitions.get('ada').set({harnessType: 'claude-code'});
+            expect(group.catalog).toBeNull();
+            catalogs[1].resolve(codexSet);
+            await late;
+            expect(group.catalog, 'a reply from the prior binding').toBeNull();
+
+            // a declaration for Ada, refused after the group shows Eos, paints nothing on Eos
+            const save = detail.controller.onDeclareSeatModel({field: 'reasoningEffort', value: 'max'});
+            expect(group.status.state).toBe('pending');
+            detail.record = makeRecord({agentId: 'eos', displayName: 'Eos', state: 'off'});
+            expect(group.seat.id).toBe('eos');
+            saves[0].resolve({status: 'rejected', reason: "effort 'max' is not available"});
+            await save;
+            expect(group.status).toEqual({state: 'idle', reason: ''});
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
     test('AC-3 (#524): a late answer for a seat no longer shown paints nothing; a seat without a definition shows no row', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},

@@ -57,6 +57,14 @@ test.describe('AgentOS.util.SeatModel — the Seat group\'s words for a seat\'s 
         expect(SeatModel.refusal(null)).toBeNull();
     });
 
+    test('a model value names its catalog entry by id or slug, as the Brain reads a declaration', () => {
+        const catalog = {models: [{id: 'gpt-6-luna-2026-09', slug: 'gpt-6-luna'}, {id: 'gpt-6-sol'}]};
+
+        expect([SeatModel.findModel(catalog, 'gpt-6-luna')?.id, SeatModel.findModel(catalog, 'gpt-6-luna-2026-09')?.id, SeatModel.findModel(catalog, 'gpt-6-sol')?.id])
+            .toEqual(['gpt-6-luna-2026-09', 'gpt-6-luna-2026-09', 'gpt-6-sol']);
+        expect([SeatModel.findModel(catalog, 'gpt-x'), SeatModel.findModel(catalog, null), SeatModel.findModel(null, 'gpt-6-sol')]).toEqual([null, null, null]);
+    });
+
     test('a refusal speaks for the declaration it was given, never for one changed since', () => {
         const refused = {state: 'refused', model: 'gpt-6-astra', reasoningEffort: null, reason: 'model gpt-6-astra is not available'};
 

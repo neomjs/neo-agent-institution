@@ -213,13 +213,16 @@ class SeatModelContainer extends Container {
     }
 
     /**
-     * A new definition closes the values on offer and clears what belonged to the last one.
+     * A new definition closes the values on offer and clears what belonged to the last one. A catalog belongs to a
+     * seat's harness, so another seat or another harness on the same seat drops it.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      */
     afterSetSeat(value, oldValue) {
         if (oldValue !== undefined) {
-            this.set({catalog: value?.id !== oldValue?.id ? null : this.catalog, editing: null, status: {state: 'idle', reason: ''}});
+            const rebound = value?.id !== oldValue?.id || value?.harnessType !== oldValue?.harnessType;
+
+            this.set({catalog: rebound ? null : this.catalog, editing: null, status: {state: 'idle', reason: ''}});
             this.syncSeat()
         }
     }
@@ -231,7 +234,8 @@ class SeatModelContainer extends Container {
 
     /**
      * @summary The values a field offers, from the catalog the harness answered: a Codex model's efforts belong to the
-     * declared model, else to the configured one, else to the catalog's default.
+     * declared model, else to the configured one, else to the catalog's default. A model value names its entry by id
+     * or slug ({@link AgentOS.util.SeatModel.findModel}).
      * @param {String} field
      * @returns {String[]|null} `null` where the harness names none (a `claude-code` model), or before a read
      */
@@ -244,11 +248,11 @@ class SeatModelContainer extends Container {
             return field === 'reasoningEffort' ? catalog.efforts : null
         }
 
-        const visible = catalog.models.filter(model => !model.hidden || model.id === seat?.model);
+        const declared = SeatModel.findModel(catalog, seat?.model);
 
-        if (field === 'model') return visible.map(model => model.id);
+        if (field === 'model') return catalog.models.filter(model => !model.hidden || model === declared).map(model => model.id);
 
-        const model = catalog.models.find(entry => entry.id === (seat?.model ?? configured?.model)) ?? catalog.models.find(entry => entry.isDefault);
+        const model = (seat?.model ? declared : SeatModel.findModel(catalog, configured?.model)) ?? catalog.models.find(entry => entry.isDefault);
 
         return model?.efforts ?? null
     }
@@ -289,7 +293,8 @@ class SeatModelContainer extends Container {
             values   = me.editing ? me.offered(me.editing) : null,
             free     = me.editing === 'model' && seat?.harnessType === 'claude-code',
             offer    = me.getReference('offer'),
-            declared = me.editing ? seat?.[me.editing] ?? null : null,
+            // a model declared by its slug presses the chip of the entry it names
+            declared = me.editing === 'model' ? SeatModel.findModel(me.catalog, seat?.model)?.id ?? seat?.model ?? null : me.editing ? seat?.[me.editing] ?? null : null,
             // the chips are rebuilt only when what they offer changes: never under a click still being handled
             offerKey = me.editing && !free ? JSON.stringify([me.editing, values, declared]) : null;
 

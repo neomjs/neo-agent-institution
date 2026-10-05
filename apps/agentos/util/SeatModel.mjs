@@ -84,6 +84,17 @@ class SeatModel extends Base {
     }
 
     /**
+     * @summary The catalog entry a model value names, by its `id` or its `slug`, the way the Brain's own refusal check
+     * reads a declaration.
+     * @param {Object|null} catalog A `fleetSeatModelCatalog` answer
+     * @param {String|null} value   A declared or configured model
+     * @returns {Object|null}
+     */
+    static findModel(catalog, value) {
+        return value ? catalog?.models?.find(entry => entry.id === value || entry.slug === value) ?? null : null
+    }
+
+    /**
      * @summary What a seat's harness offers to declare, read through the Fleet. A bridge without the verb, or a read
      * that throws, answers its state and reason, never an empty catalog.
      * @param {Object|null} bridge  The cockpit's Fleet bridge

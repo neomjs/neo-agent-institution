@@ -124,6 +124,36 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
         group.destroy()
     });
 
+    test('a model declared by its slug offers that model\'s efforts and keeps it on offer though hidden', () => {
+        const
+            bySlug = {state: 'complete', reason: null, models: [
+                {id: 'gpt-6-luna-2026-09', slug: 'gpt-6-luna', hidden: true, efforts: ['high']},
+                {id: 'gpt-6-sol', isDefault: true, efforts: ['low']}
+            ]},
+            group  = Neo.create(SeatModelContainer, {appName, seat: {...codex, model: 'gpt-6-luna'}, catalog: bySlug});
+
+        group.onActionClick({component: group.getReference('model-change')});
+        expect(offered(group)).toEqual([['gpt-6-luna-2026-09', true, 'true'], ['gpt-6-sol', false, 'false'], ['Use the harness default', false, 'false']]);
+
+        group.onActionClick({component: group.getReference('model-change')});
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        expect(offered(group).map(([text]) => text), 'never the default model\'s').toEqual(['high', 'Use the harness default']);
+
+        group.destroy()
+    });
+
+    test('another harness on the same seat drops the catalog read for the last one', () => {
+        const group = Neo.create(SeatModelContainer, {appName, seat: codex, catalog});
+
+        group.seat = {...codex, model: 'gpt-6-sol'};
+        expect(group.catalog, 'the same seat and harness keep it').toEqual(catalog);
+
+        group.seat = {...codex, harnessType: 'claude-code'};
+        expect(group.catalog).toBeNull();
+
+        group.destroy()
+    });
+
     test('a catalog the Fleet could not read says why where the values would be, never an empty offer posing as complete', () => {
         const group = Neo.create(SeatModelContainer, {appName, seat: codex});
 
