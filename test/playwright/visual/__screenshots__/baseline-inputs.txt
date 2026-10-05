@@ -366,7 +366,7 @@ apps/agentos/view/fleet/detail/Container.mjs
     ccebb4a14b9a2fc9b637f364f202e1da91b60474
 
 apps/agentos/view/fleet/detail/Controller.mjs
-    d0eaccae744a0c5b85902d11b9f0f599f3c62dc3
+    743368693e2ff3b2d2c4cf92d26db4ad1d10b13c
 
 apps/agentos/view/fleet/detail/PullRequestList.mjs
     e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
