@@ -80,6 +80,23 @@ test.describe('AgentOS Fleet cockpit — dock projection commit loop (Neural Lin
         expect(doc0.nodes['cockpit-root'].zones.center).toEqual({nodeId: 'primary-split'});
         expect(doc0.nodes['cockpit-root'].zones.right).toEqual({nodeId: 'secondary-rail', extent: 0.25, resizable: true});
 
+        const fleetTabs = page.locator('.neo-dashboard-dock-tabs').filter({has: page.locator('[class*="dock-flip-item-fleet"]')}),
+              streamTabs = page.locator('.neo-dashboard-dock-tabs').filter({has: page.locator('[class*="dock-flip-item-stream"]')});
+
+        expect(doc0.items.fleet.closable).toBe(false);
+        await fleetTabs.focus();
+        await expect(fleetTabs.locator('.neo-tab-header-toolbar .fa-times'), 'Fleet has no Close action').toBeHidden();
+        await streamTabs.focus();
+        await expect(streamTabs.locator('.neo-tab-header-toolbar .fa-times'), 'the optional pane still offers Close').toBeVisible();
+
+        const refusedClose = await app.executeDockOperation(holderId, {operation: 'closeItem', itemId: 'fleet'});
+
+        expect(refusedClose).toMatchObject({applied: false, errors: ['item "fleet" is not closable']});
+        const afterRefusal = await app.getDockTopology(holderId);
+        expect(afterRefusal?.document ?? afterRefusal).toEqual(doc0);
+        await fleetTabs.focus();
+        await fleetTabs.locator('.neo-tab-header-toolbar').screenshot({path: test.info().outputPath('protected-fleet-header.png')});
+
         const fleetGrids = await app.findInstances({className: 'AgentOS.view.fleet.roster.Container'}, ['id']),
               streams    = await app.findInstances({className: 'AgentOS.view.fleet.activity.Container'}, ['id']),
               identity   = {

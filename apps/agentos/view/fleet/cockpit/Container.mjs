@@ -120,6 +120,7 @@ class FleetCockpit extends VesselContainer {
         panes: {
             fleet: {
                 module   : FleetGrid,
+                closable : false,
                 header   : {text: 'Fleet'},
                 reference: 'fleet-grid',
                 bind     : {
@@ -475,7 +476,8 @@ class FleetCockpit extends VesselContainer {
      * instead: validate everything before mutating anything, so a refused restore leaves the live
      * layout byte-untouched. An unknown name is a refusal too, and so is a projection that
      * rejects: on both paths the verdict settles with the commit's projection and never claims a
-     * switch the shell did not make.
+     * switch the shell did not make. Stored layouts must retain the Fleet roster; their saved
+     * close flag cannot override the current pane's non-closable policy.
      *
      * Pane continuity across a switch preserves component identity — a declared pane the switch
      * un-trees is parked, one it re-trees returns as the same instance; a surface created now
@@ -500,7 +502,15 @@ class FleetCockpit extends VesselContainer {
             }
 
             // a host without a pane catalog has nothing to retire against, so it keeps every item
-            me.panes && (document = CockpitPerspectives.retireUndeclaredItems(document, Object.keys(me.panes)))
+            me.panes && (document = CockpitPerspectives.retireUndeclaredItems(document, Object.keys(me.panes)));
+
+            if (me.panes?.fleet) {
+                if (!document.items.fleet) {
+                    return me.refusePerspective(name, ['This layout has no Fleet roster. Choose Overview, Focus or Review.'])
+                }
+
+                document.items.fleet.closable = me.panes.fleet.closable
+            }
         }
 
         me.presetError = null;
