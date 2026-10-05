@@ -324,7 +324,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    bacb4f684c0b1046f691b4673e8c7022bb98b242
+    932f050f04aaab0e0d4ca780a9229286068dcde0
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     3badbfebb7e80c296abf03bb23ce7354d23df2f3

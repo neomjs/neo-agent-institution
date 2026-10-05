@@ -23,6 +23,8 @@ import {shippedDockDocument} from './shippedDockDocument.mjs';
 
 const SHIPPED = shippedDockDocument();
 
+// Out of scope: missing awaiting-merge fixture store warning (defect-note MESSAGE:e5dcc130-ea69-40ea-b5e3-da55c32fbfe2).
+
 /**
  * Contract specs for the cockpit's dock DECLARATION — `panes` + `zones` on the class, lowered by
  * the engine (`Authoring.fromZones`) instead of a hand-built document:
@@ -73,6 +75,19 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
 
     test('the live cockpit\'s document is the shipped document', () => {
         expect(cockpit.dockModel).toEqual(SHIPPED)
+    });
+
+    test('every declared perspective protects Fleet from close without locking it or the optional panes', () => {
+        for (const zones of Object.values(cockpit.perspectives)) {
+            const {document, errors} = Authoring.fromZones(cockpit.panes, zones);
+
+            expect(errors).toEqual([]);
+            expect(document.items.fleet.closable).toBe(false);
+            expect(document.items.fleet.locked).not.toBe(true);
+            expect(Operations.closeItem(document, {itemId: 'fleet'}).errors).toEqual(['item "fleet" is not closable']);
+            expect(Operations.closeItem(document, {itemId: 'stream'}).errors).toEqual([]);
+            expect(Operations.detachItem(document, {itemId: 'fleet'}).errors, 'non-closable does not prevent tear-out').toEqual([])
+        }
     });
 
     test('every declared pane carries the record\'s own reference and the keeper-view module it renders', () => {

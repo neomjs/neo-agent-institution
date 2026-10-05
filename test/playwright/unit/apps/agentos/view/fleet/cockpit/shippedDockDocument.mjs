@@ -2,7 +2,8 @@
  * The document the Fleet Cockpit shipped before it declared itself — `neo.dock.zone.v1`, authored
  * by hand as `CockpitDockDocument.create()` up to engine pin 7. The cockpit's `panes` + `zones`
  * declaration must lower to it node-for-node (`declaration.spec.mjs` pins that): the perspective
- * presets and every persisted perspective key these node ids.
+ * presets and every persisted perspective key these node ids. Fleet carries the current
+ * essential-pane policy: it cannot be closed.
  *
  * A factory returning a FRESH object per call — never a shared mutable singleton — so a spec that
  * mutates its copy (a preset variant, a committed operation) never aliases another arm's input.
@@ -13,7 +14,7 @@ export function shippedDockDocument() {
         schema: 'neo.dock.zone.v1',
         root  : 'cockpit-root',
         items : {
-            fleet       : {reference: 'fleet-grid',       title: 'Fleet'},
+            fleet       : {reference: 'fleet-grid',       title: 'Fleet', closable: false},
             stream      : {reference: 'activity-stream',  title: 'Activity'},
             memories    : {reference: 'memories',         title: 'Memories'},
             tasks       : {reference: 'tasks',            title: 'Tasks'},
