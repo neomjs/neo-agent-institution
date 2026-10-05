@@ -249,7 +249,8 @@ class ActivityStream extends Container {
             cls      : ['fm-stream-new-events'],
             handler  : me.onNewEventsClick.bind(me),
             hidden   : true,
-            reference: 'new-events'
+            reference: 'new-events',
+            ui       : 'ghost'
         }, {
             module   : Component,
             cls      : ['fm-stream-announcer'],

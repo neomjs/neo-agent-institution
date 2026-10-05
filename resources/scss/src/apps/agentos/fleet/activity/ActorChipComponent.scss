@@ -12,6 +12,12 @@
     max-width  : 148px;
     flex       : none;
 
+    .fm-actor-chip-lead {
+        color: var(--fm-ink-dim);
+        flex : none;
+        font : var(--fm-text-micro);
+    }
+
     .fm-actor-chip-avatar {
         width        : 14px;
         height       : 14px;
