@@ -1,9 +1,10 @@
-import Button      from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Container   from '../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import SetupSteps  from '../../store/SetupSteps.mjs';
-import StepList     from './StepList.mjs';
-import {actionsFor} from './StepList.mjs';
-import TextArea     from '../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
+import Button         from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container      from '../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import {isDescriptor} from '../../../../node_modules/neo.mjs/src/core/ConfigSymbols.mjs';
+import SetupSteps     from '../../store/SetupSteps.mjs';
+import StepList       from './StepList.mjs';
+import {actionsFor}   from './StepList.mjs';
+import TextArea       from '../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
 
 const GiB = 1073741824;
 
@@ -92,11 +93,16 @@ class CreateContainer extends Container {
         layout: {ntype: 'vbox'},
         /**
          * The last evaluation main answered (`{runId, recordPath, recipeVersion, target, binding,
-         * bindingReason, steps, terminal}`), or the pasted one in a served cockpit.
+         * bindingReason, steps, terminal}`), or the pasted one in a served cockpit. An answer is an
+         * observation, so one equal to the held answer is fresh too: the config never reports equality.
          * @member {Object|null} evaluation_=null
          * @reactive
          */
-        evaluation_: null,
+        evaluation_: {
+            [isDescriptor]: true,
+            isEqual       : () => false,
+            value         : null
+        },
         /**
          * The placement probe's JSON for this machine.
          * @member {Object|null} probe_=null

@@ -409,12 +409,22 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         await door.onStepClick({record: door.store.get('write-secrets')});
         expect(list.confirmingId).toBe(null);
 
-        // and by any fresh evaluation, whichever control asked for it
+        // and by any fresh evaluation, whichever control asked for it: an answer equal to the held one
         await door.onStepClick({action: 'write again', record: door.store.get('verify')});
-        door.evaluation = structuredClone(evaluation);
-        expect(list.confirmingId).toBe(null);
+        const equal = structuredClone(door.evaluation);
+        expect(Neo.isEqual(equal, door.evaluation), 'the control is an equal answer').toBe(true);
+        door.evaluation = equal;
+        expect(list.confirmingId, 'an equal answer is an observation too').toBe(null);
         expect(cells().length).toBe(5);
-        expect(effects().length, 'neither took the write').toBe(2);
+
+        // and a changed one
+        await door.onStepClick({action: 'write again', record: door.store.get('verify')});
+        const changed = structuredClone(door.evaluation);
+        changed.steps[0].reason = 'another reason';
+        expect(Neo.isEqual(changed, door.evaluation), 'the control is a changed answer').toBe(false);
+        door.evaluation = changed;
+        expect(list.confirmingId).toBe(null);
+        expect(effects().length, 'none of the three took the write').toBe(2);
 
         // a refused write minted no row: nothing to confirm, one press sends it
         evaluation = structuredClone(WITNESS.refused);
