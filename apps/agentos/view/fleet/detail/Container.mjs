@@ -5,6 +5,7 @@ import FamilyRail                           from '../shared/FamilyRailComponent.
 import GitIdentityContainer                 from '../shared/GitIdentityContainer.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
+import SeatModelContainer                   from './SeatModelContainer.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
@@ -12,6 +13,7 @@ import Controller                           from './Controller.mjs';
 import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
 import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
 import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
+import SeatModel                            from '../../../util/SeatModel.mjs';
 import SeatSessionFolder                    from '../../../util/SeatSessionFolder.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
@@ -390,6 +392,13 @@ class AgentDetail extends Container {
                     flex     : 'none',
                     hidden   : true,
                     reference: 'identity-row'
+                }, {
+                    // the model and reasoning effort declared for the seat's harness, beside what its
+                    // config is set to, where Start's model refusal points
+                    module   : SeatModelContainer,
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'seat-model'
                 }]
             }]
         }]
@@ -522,6 +531,34 @@ class AgentDetail extends Container {
         if (card) {
             card.record = (me.record?.agentId && me.agentDefinitions?.get(me.record.agentId)) || null
         }
+
+        me.applySeatModel()
+    }
+
+    /**
+     * @summary Seat the Seat group from the joined definition (what is declared) and the roster record (what the
+     * harness's config is set to, and why the Fleet refused its latest start, if it did). No definition, no group.
+     */
+    applySeatModel() {
+        const
+            me         = this,
+            row        = me.getReference('seat-model'),
+            definition = me.getReference('config-pane')?.record ?? null,
+            record     = me.record;
+
+        if (!row) return;
+
+        row.set({
+            configured: record?.harnessSettings ?? null,
+            hidden    : !definition,
+            refusal   : SeatModel.refusedReason(record?.seatModel ?? null, definition),
+            seat      : definition && {
+                harnessType    : definition.harnessType,
+                id             : definition.id,
+                model          : definition.model ?? null,
+                reasoningEffort: definition.reasoningEffort ?? null
+            }
+        })
     }
 
     /**

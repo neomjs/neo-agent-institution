@@ -52,6 +52,10 @@ class RosterRow extends Base {
             repoOutcomes       : row.repoOutcomes ?? null,
             // the commit identity the last start resolved, from the same record
             gitIdentity        : row.gitIdentity ?? null,
+            // what the last start found of the declared model in the harness's catalog, from the same record
+            seatModel          : row.seatModel ?? null,
+            // the model and effort a Codex seat's config is set to now
+            harnessSettings    : row.harnessSettings ?? null,
             // where a running desktop seat's session opened, from the same record
             sessionFolder      : row.sessionFolder ?? null,
             launchable        : row.launchable ?? null,

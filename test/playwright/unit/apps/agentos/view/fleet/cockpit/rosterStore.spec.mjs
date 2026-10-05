@@ -313,9 +313,12 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             presence: null,
             // no start has reported its other repositories' outcome, the identity it resolved, nor
             // where its session opened
-            repoOutcomes : null,
-            gitIdentity  : null,
-            sessionFolder: null,
+            repoOutcomes   : null,
+            gitIdentity    : null,
+            // nor what it found of a declared model, nor what a Codex config is set to
+            seatModel      : null,
+            harnessSettings: null,
+            sessionFolder  : null,
             repoPath: null,
             repoSlug: null,
             sources : liveSources(),
@@ -514,6 +517,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             presence           : null,
             repoOutcomes       : null,
             gitIdentity        : null,
+            seatModel          : null,
+            harnessSettings    : null,
             sessionFolder      : null,
             repoPath           : null,
             repoSlug           : null,

@@ -757,6 +757,171 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }
     });
 
+    test('#559: the Seat group reads the declaration beside the config, asks the Fleet what to offer, and declares one field through the runner', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', model: 'gpt-6-sol'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            intents    = [],
+            reads      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent: async intent => {
+                intents.push(intent);
+                // the Fleet answers the whole definition, and a withdrawn field is absent from it
+                return {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', ...(intent.model ? {model: intent.model} : {})}}
+            },
+            fleetSeatModelCatalog: async ({id}) => {
+                reads.push(id);
+                return {state: 'complete', reason: null, models: [{id: 'gpt-6-luna', efforts: ['high']}, {id: 'gpt-6-sol', efforts: ['max']}]}
+            },
+            fleetSeatGitIdentity: async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off', harnessSettings: {model: 'gpt-6-luna', reasoningEffort: null}}, {agentDefinitions: definitions}),
+                group  = detail.getReference('seat-model'),
+                line   = () => group.getReference('model-line').text;
+
+            expect(group.hidden).toBe(false);
+            expect(line()).toBe('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
+
+            // running reads the same: the harness reads its config when it launches
+            applySet(detail, {state: 'ok'});
+            expect(line()).toBe('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
+
+            // a start the Fleet refused for the declaration: the row says so in the Fleet's words
+            applySet(detail, {state: 'off', seatModel: {state: 'refused', model: 'gpt-6-sol', reasoningEffort: null, reason: 'model gpt-6-sol is not available'}});
+            expect(line()).toBe('declared gpt-6-sol · start refused: model gpt-6-sol is not available');
+
+            applySet(detail, {seatModel: null});
+            group.onActionClick({component: group.getReference('model-change')});
+            await expect.poll(() => group.catalog?.state).toBe('complete');
+            expect(reads).toEqual(['ada']);
+
+            await detail.controller.onDeclareSeatModel({field: 'model', value: 'gpt-6-luna'});
+
+            // only the one field crosses; the accepted readback re-seats the group and closes the offer
+            expect(intents).toEqual([{id: 'ada', model: 'gpt-6-luna'}]);
+            expect(definitions.get('ada').model).toBe('gpt-6-luna');
+            expect(line()).toBe('declared gpt-6-luna');
+            expect([group.editing, group.status.state]).toEqual([null, 'idle']);
+
+            // withdrawn: the readback carries no model, and the row reads what the config is set to
+            await detail.controller.onDeclareSeatModel({field: 'model', value: null});
+            expect(intents.at(-1)).toEqual({id: 'ada', model: null});
+            expect(definitions.get('ada').model).toBeNull();
+            expect(line()).toBe('derived · reads gpt-6-luna (configured on disk)');
+
+            // a field the group does not own never reaches the wire
+            await detail.controller.onDeclareSeatModel({field: 'harnessType', value: 'codex'});
+            expect(intents).toHaveLength(2);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('#559: a catalog read or a declaration answers only the seat and harness it started for', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', model: 'gpt-6-sol'},
+            {id: 'eos', githubUsername: 'eos', harnessType: 'codex-desktop'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            catalogs   = [],
+            saves      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            fleetSeatModelCatalog: () => { const held = deferred(); catalogs.push(held); return held.promise },
+            configureAgent       : () => { const held = deferred(); saves.push(held); return held.promise },
+            fleetSeatGitIdentity : async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail   = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: definitions}),
+                group    = detail.getReference('seat-model'),
+                codexSet = {state: 'complete', reason: null, models: [{id: 'gpt-6-sol', efforts: ['low', 'max']}]};
+
+            // control: the same binding's answer lands
+            const read = detail.controller.readSeatCatalog();
+            catalogs[0].resolve(codexSet);
+            await read;
+            expect(group.catalog).toEqual(codexSet);
+
+            // the same seat moves to another harness: its catalog goes, and a Codex answer still on its way stays out
+            const late = detail.controller.readSeatCatalog();
+            definitions.get('ada').set({harnessType: 'claude-code'});
+            expect(group.catalog).toBeNull();
+            catalogs[1].resolve(codexSet);
+            await late;
+            expect(group.catalog, 'a reply from the prior binding').toBeNull();
+
+            // a declaration for Ada, refused after the group shows Eos, paints nothing on Eos
+            const save = detail.controller.onDeclareSeatModel({field: 'reasoningEffort', value: 'max'});
+            expect(group.status.state).toBe('pending');
+            detail.record = makeRecord({agentId: 'eos', displayName: 'Eos', state: 'off'});
+            expect(group.seat.id).toBe('eos');
+            saves[0].resolve({status: 'rejected', reason: "effort 'max' is not available"});
+            await save;
+            expect(group.status).toEqual({state: 'idle', reason: ''});
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('#559: another definitions Store is another binding, even holding the same seat on the same harness', async () => {
+        const
+            makeStore = () => Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop'}]}),
+            first     = makeStore(),
+            second    = makeStore();
+        stores.push(first, second);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            saves      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent      : () => { const held = deferred(); saves.push(held); return held.promise },
+            fleetSeatGitIdentity: async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: first}),
+                group  = detail.getReference('seat-model');
+
+            group.catalog = {state: 'complete', reason: null, models: [{id: 'gpt-6-sol', efforts: ['low']}]};
+            const save = detail.controller.onDeclareSeatModel({field: 'reasoningEffort', value: 'low'});
+            expect(group.status.state).toBe('pending');
+
+            detail.agentDefinitions = second;
+            expect([group.catalog, group.status.state]).toEqual([null, 'idle']);
+
+            // the first Store's answer still lands on its own Store, and paints nothing here
+            saves[0].resolve({status: 'rejected', reason: "effort 'low' is not available"});
+            await save;
+            expect(group.status).toEqual({state: 'idle', reason: ''});
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
     test('AC-3 (#524): a late answer for a seat no longer shown paints nothing; a seat without a definition shows no row', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},

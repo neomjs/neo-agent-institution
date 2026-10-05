@@ -197,7 +197,7 @@ class Controller extends ReadingSurfacesController {
         const card = Neo.getComponent(data.source);
 
         return card && this.refreshRosterOnSettle(
-            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent(data, card.record).then(result => Boolean(result?.ok))
+            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent(data, card.record).then(FleetLifecycleIntentAdapter.rosterMayRead)
         )
     }
 
@@ -469,7 +469,7 @@ class Controller extends ReadingSurfacesController {
      * @summary Execute the STAGED fleet bring-up: partition the full roster truth through the
      * pure eligibility rules (every fact from the wire, every exclusion named), drive each
      * eligible record's own honest round-trip, render the outcome summary, then re-poll the
-     * roster once when anything genuinely started.
+     * roster once when anything started or the Fleet refused a start.
      * @returns {Promise<Object>} The outcome summary.
      * @protected
      */
@@ -489,7 +489,7 @@ class Controller extends ReadingSurfacesController {
 
         me.renderStartSummary(summary);
 
-        await me.refreshRosterOnSettle(Promise.resolve(results.some(result => result?.ok)));
+        await me.refreshRosterOnSettle(Promise.resolve(results.some(FleetLifecycleIntentAdapter.rosterMayRead)));
 
         return summary
     }

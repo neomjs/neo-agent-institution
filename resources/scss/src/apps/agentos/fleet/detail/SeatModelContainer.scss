@@ -1,0 +1,99 @@
+/* Configuration's Seat group: the identity row's shell and status vocabulary (GitIdentityContainer.scss),
+   and its actions and offered values on the shared chip skin (Chips.scss), whose is-selected marks the
+   declared value beside aria-pressed. A row's line runs beneath its label at the group's whole width:
+   in the narrowest inspector both values still read as words. */
+.fm-seat-model {
+    background   : var(--fm-panel);
+    border       : 1px solid var(--fm-line);
+    border-radius: 8px;
+    color        : var(--fm-ink);
+    gap          : var(--fm-space-2);
+    padding      : var(--fm-space-3);
+
+    .fm-seat-model-heading {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+    }
+
+    .fm-seat-model-row {
+        font: var(--fm-text-body);
+        gap : var(--fm-space-1);
+    }
+
+    .fm-seat-model-row-head {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-seat-model-label {
+        color: var(--fm-ink-dim);
+    }
+
+    /* the quieter second action: a text link beside Change, named by the value it declares; the doubled
+       selector out-cascades the stock .neo-button skin, as Chips.scss does */
+    .fm-seat-model-adopt,
+    .neo-button.fm-seat-model-adopt {
+        background : none;
+        border     : none;
+        box-shadow : none;
+        color      : var(--fm-signal);
+        cursor     : pointer;
+        font       : var(--fm-text-detail);
+        font-family: inherit;
+        height     : auto;
+        margin     : 0;
+        min-height : 0;
+        min-width  : 0;
+        padding    : 0;
+
+        &:hover,
+        &:focus-visible {
+            text-decoration: underline;
+        }
+
+        /* the engine sizes the text span itself, so it inherits the link's ink and metrics */
+        .neo-button-text {
+            color: inherit;
+            font : inherit;
+        }
+    }
+
+    .fm-seat-model-line {
+        overflow-wrap: anywhere;
+    }
+
+    .fm-seat-model-offer {
+        gap: var(--fm-space-2);
+    }
+
+    /* an inline field label floats about 5.4px above its box, as in the identity row's declaration */
+    .fm-seat-model-free {
+        gap        : var(--fm-space-2);
+        padding-top: var(--fm-space-2);
+    }
+
+    .fm-seat-model-status {
+        font      : var(--fm-text-detail);
+        min-height: 14px;
+
+        &.is-idle {
+            visibility: hidden;
+        }
+
+        &.is-pending,
+        &.is-superseded {
+            color     : var(--fm-ink-dim);
+            font-style: italic;
+        }
+
+        &.is-unavailable {
+            color: var(--fm-ink-dim);
+        }
+
+        &.is-rejected {
+            color      : var(--fm-kind-alert);
+            font-weight: 600;
+        }
+    }
+}

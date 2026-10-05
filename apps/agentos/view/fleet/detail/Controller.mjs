@@ -1,6 +1,7 @@
 import ComponentController   from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import ConfigIntentRoundTrip from '../../../util/ConfigIntentRoundTrip.mjs';
 import SeatGitIdentity       from '../../../util/SeatGitIdentity.mjs';
+import SeatModel             from '../../../util/SeatModel.mjs';
 
 /**
  * @class AgentOS.view.fleet.detail.Controller
@@ -31,6 +32,12 @@ class Controller extends ComponentController {
      * @protected
      */
     identityRequest = 0
+    /**
+     * The latest Seat-group request, a catalog read or a declaration: only its answer may paint the group.
+     * @member {Number} seatRequest=0
+     * @protected
+     */
+    seatRequest = 0
 
     /**
      * @summary Wire the completed inspector's config card, identity row and shared Store, then
@@ -44,6 +51,7 @@ class Controller extends ComponentController {
 
         card.on({configIntent: me.onConfigIntent, scope: me});
         me.getReference('identity-row').on({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
+        me.getReference('seat-model').on({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
         // a roster refresh re-seats the same definition: only another seat is read again
         me.observeConfig(card, 'record', (value, oldValue) => {
             value?.id !== oldValue?.id && me.readGitIdentity()
@@ -65,8 +73,10 @@ class Controller extends ComponentController {
         me.component.agentDefinitions?.un(me.getDefinitionsStoreListeners());
         me.getReference('config-pane')?.un({configIntent: me.onConfigIntent, scope: me});
         me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
+        me.getReference('seat-model')?.un({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
         // a reply still on its way finds no request of its own
         me.identityRequest++;
+        me.seatRequest++;
         super.destroy(...args)
     }
 
@@ -166,6 +176,14 @@ class Controller extends ComponentController {
 
         oldValue?.un(me.getDefinitionsStoreListeners());
         value?.on(me.getDefinitionsStoreListeners());
+
+        // another Store is another binding: the Seat group's catalog and feedback belonged to the last one, even
+        // where the new Store holds the same seat on the same harness
+        if (oldValue && value !== oldValue) {
+            me.seatRequest++;
+            me.getReference('seat-model')?.set({catalog: null, editing: null, status: {state: 'idle', reason: ''}})
+        }
+
         me.component.applyConfigRecord()
     }
 
@@ -185,7 +203,91 @@ class Controller extends ComponentController {
     onDefinitionRecordChange(data) {
         const card = this.getReference('config-pane');
 
-        card.record && data.record?.id === card.record.id && card.refresh()
+        if (card.record && data.record?.id === card.record.id) {
+            card.refresh();
+            this.component.applySeatModel()
+        }
+    }
+
+    /**
+     * @summary What the Seat group is bound to now: the shown definition's id and harness, and the Store it came from.
+     * A catalog read or a declaration answers the group only while its binding still holds.
+     * @returns {{id: String, harnessType: String|null, store: Object}|null}
+     * @protected
+     */
+    seatBinding() {
+        const seat = this.getReference('seat-model')?.seat;
+
+        return seat?.id ? {id: seat.id, harnessType: seat.harnessType ?? null, store: this.component.agentDefinitions} : null
+    }
+
+    /**
+     * @param {Object|null} binding A {@link seatBinding} taken when a read or a declaration started
+     * @returns {Boolean} Whether the group still shows that seat, on that harness, from that Store
+     * @protected
+     */
+    holdsSeatBinding(binding) {
+        const current = this.seatBinding();
+
+        return !!binding && !!current && binding.id === current.id && binding.harnessType === current.harnessType && binding.store === current.store
+    }
+
+    /**
+     * @summary Read what the shown seat's harness offers into the Seat group, for its Change.
+     * @returns {Promise<void>}
+     */
+    async readSeatCatalog() {
+        const
+            me      = this,
+            row     = me.getReference('seat-model'),
+            binding = me.seatBinding(),
+            request = ++me.seatRequest;
+
+        if (!binding) return;
+
+        const catalog = await SeatModel.readCatalog(globalThis.AgentOS?.fleet?.registryBridge ?? null, binding.id);
+
+        if (request === me.seatRequest && !me.isDestroyed && !row.isDestroyed && me.holdsSeatBinding(binding)) {
+            row.catalog = catalog
+        }
+    }
+
+    /**
+     * @summary Declare the shown seat's model or effort through the shared runner, with the group as its own owner
+     * token, so a configuration change and a declaration on the same seat never silence each other. The accepted
+     * readback lands on the definition, and the group re-seats from it.
+     * @param {Object}      data
+     * @param {String}      data.field `model` or `reasoningEffort`
+     * @param {String|null} data.value `null` hands the field back to the harness
+     * @returns {Promise<void>}
+     */
+    onDeclareSeatModel({field, value} = {}) {
+        const
+            me      = this,
+            row     = me.getReference('seat-model'),
+            binding = me.seatBinding();
+
+        if (!binding || (field !== 'model' && field !== 'reasoningEffort')) {
+            return Promise.resolve()
+        }
+
+        const request = ++me.seatRequest;
+
+        // the write lands on its Store whatever is shown by then; only its feedback is bound to the group
+        return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            intent: {id: binding.id, [field]: value},
+            owner : row,
+            store : binding.store,
+            setSaveStatus: (id, state, reason) => {
+                if (request !== me.seatRequest || me.isDestroyed || row.isDestroyed || !me.holdsSeatBinding(binding)) {
+                    return
+                }
+
+                state === 'accepted'
+                    ? row.set({editing: null, status: {state: 'idle', reason: ''}})
+                    : row.status = {state, reason: state === 'pending' ? '' : reason}
+            }
+        })
     }
 
     /**

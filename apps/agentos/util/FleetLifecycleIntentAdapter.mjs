@@ -85,6 +85,17 @@ class FleetLifecycleIntentAdapter extends Base {
     }
 
     /**
+     * @summary Whether a settled round-trip can have changed what the roster reads: a lifecycle change, or a refusal
+     * the Fleet answered, which may record its cause on the seat. Never a timeout, whose outcome is unknown, nor a
+     * rejection that never left this cockpit. A re-poll keeps the card's own reason: the roster rows carry none.
+     * @param {Object|null} result A {@link handleFleetLifecycleIntent} answer
+     * @returns {Boolean}
+     */
+    static rosterMayRead(result) {
+        return Boolean(result?.ok || (result?.accepted && result.status === 'rejected'))
+    }
+
+    /**
      * @summary Write one or more lifecycle-control fields onto a card's record.
      * @param {Object} record An AgentOS.model.FleetAgent record (or any record-like exposing `set()`),
      *     or a plain field bag (dock-blueprint snapshot / test double) mutated in place.

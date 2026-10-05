@@ -72,6 +72,7 @@ import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
 import NameSlot       from '../../../../util/NameSlot.mjs';
 import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
 import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
+import SeatModel         from '../../../../util/SeatModel.mjs';
 import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
 import SourceHealth      from '../../../../util/SourceHealth.mjs';
 import Telltale          from '../../../../util/Telltale.mjs';
@@ -818,14 +819,17 @@ class AgentCard extends Container {
         // the wrong folder is the failure itself; "not opened yet" and "unknown" sit below one, which
         // a live seat contradicts.
         const
-            wrongFolder = record.sessionFolder?.state === 'wrong',
-            sessionLine = wrongFolder || !(pendingAction || controlReason) ? SeatSessionFolder.cardLine(record.sessionFolder) : null;
+            wrongFolder  = record.sessionFolder?.state === 'wrong',
+            sessionLine  = wrongFolder || !(pendingAction || controlReason) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
+            // a start the Fleet refused for the declared model says so in the design read's words: the
+            // recorded cause, shown only while this cockpit's own last outcome is that same refusal
+            modelRefusal = !pendingAction && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null;
 
         // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
         // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
         // row height at every card width — the lane stays reachable via line one, its middle elision
         // and the title.
-        me[(pendingAction || controlReason || sessionLine) ? 'addCls' : 'removeCls']('fm-control-live');
+        me[(pendingAction || controlReason || sessionLine || modelRefusal) ? 'addCls' : 'removeCls']('fm-control-live');
 
         // the runtime-source gating is already shown by the disabled controls + the source strip
         // ("RUN not nominal"), so the status line never duplicates it
@@ -837,11 +841,13 @@ class AgentCard extends Container {
                 ? sessionLine.text
                 : pendingAction
                     ? `${pendingAction}…`
-                    : !controlReason
-                        ? sessionLine?.text ?? ''
-                        : controlReason.kind === 'timeout'
-                            ? `${controlReason.action}… stale — no response`
-                            : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
+                    : modelRefusal
+                        ? modelRefusal.text
+                        : !controlReason
+                            ? sessionLine?.text ?? ''
+                            : controlReason.kind === 'timeout'
+                                ? `${controlReason.action}… stale — no response`
+                                : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
             // the last start's commit identity, when it needs repair, rides beside a refusal as its own
             // observation: the wire carries no refusal code, so it never stands in as the cause
             identityNote      = controlReason && !pendingAction && SeatGitIdentity.needsRepair(record.gitIdentity)
@@ -849,12 +855,14 @@ class AgentCard extends Container {
                 : '';
 
         controlStatus.set({
-            cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : [])],
-            hidden: !pendingAction && !controlReason && !sessionLine,
+            cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : []), ...(modelRefusal ? ['is-model-refused'] : [])],
+            hidden: !pendingAction && !controlReason && !sessionLine && !modelRefusal,
             text  : controlStatusText
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
-        controlStatus.changeVdomRootKey('title', sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
+        controlStatus.changeVdomRootKey('title', modelRefusal
+            ? modelRefusal.title + identityNote
+            : sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
 
         me.update()
     }

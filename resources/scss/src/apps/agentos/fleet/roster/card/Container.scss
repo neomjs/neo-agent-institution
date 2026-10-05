@@ -460,8 +460,10 @@
         overflow     : hidden;
         text-overflow: ellipsis;
 
-        /* a session in another folder is the state the operator acts on: the attention token */
-        &.is-session-wrong {
+        /* a session in another folder, or a start refused for the declared model, is the state the
+           operator acts on: the attention token */
+        &.is-session-wrong,
+        &.is-model-refused {
             color: var(--fm-state-wedged);
         }
     }
