@@ -248,16 +248,17 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(menu).toHaveScreenshot('fleet-head-merge-queue-open.png')
     });
 
-    test('the Seat group reads derived, declared, the app\'s own, and a declaration against what the config reads, stopped and running; a start refused for its model reads on the card; both skins (#559)', async ({page}) => {
+    test('the Seat group reads derived, declared, the app\'s own, a declaration against what the config reads, and a refused start; the card reads that refusal as its reason; both skins (#559)', async ({page}) => {
         await page.setViewportSize({width: 1280, height: 800});
         await bootSettledCockpit(page);
 
         const
             configured = {model: 'gpt-6-luna', reasoningEffort: 'high'},
-            // Sophie's seat, on its monogram: no live avatar joins the suite
+            // Sophie's seat, on its monogram: no live avatar joins the suite; no engine tag either, which no
+            // production roster row carries yet, so the refused card names one model
             roster     = facts => landFleetRoster(page, [...sampleRoster, {
                 ...sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
-                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, harnessSettings: configured, ...facts
+                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null, harnessSettings: configured, ...facts
             }]),
             define     = facts => landAgentDefinitions(page, sampleDefinitions.map(row => row.id === 'neo-gpt-sophie' ? {...row, ...facts} : row)),
             card       = name => page.locator('.fm-agent-card', {hasText: name}),
@@ -290,27 +291,35 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await expect(group, line).toHaveScreenshot(golden)
         }
 
-        // the same declaration once the seat runs on what its config reads: drift, with Re-apply and Adopt
+        // a running seat reads the same sentence: the harness reads its config when it launches
         await roster({state: 'ok'});
-        await expect(modelLine).toHaveText('declared gpt-6-sol · now reads gpt-6-luna (configured on disk)');
-        await settle();
-        await expect(group).toHaveScreenshot('seat-model-differs-running.png');
+        await expect(modelLine).toHaveText('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
 
-        // a Claude app seat takes no declaration: what it reported, or not yet
+        // a Claude app seat takes no declaration, and says so before it reported anything
         await open('Ada');
-        await expect(modelLine).toHaveText('not read back yet');
+        await expect(modelLine).toHaveText('set per session in the app · not read back yet');
         await settle();
         await expect(group).toHaveScreenshot('seat-model-app.png');
 
+        // a start refused for the declared model: the card's line is the reason, and the row it sends the operator to
+        await define({model: 'gpt-6-astra', reasoningEffort: null});
         await roster({state: 'off', seatModel: {state: 'refused', model: 'gpt-6-astra', reasoningEffort: null, reason: 'model gpt-6-astra is not available'}});
-        await expect(card('Sophie').locator('.fm-card-control-status')).toHaveText('start refused: model gpt-6-astra is not available — change it in Detail › Configuration');
+        await expect(card('Sophie').locator('.fm-card-control-status')).toHaveText('start refused: model gpt-6-astra is not available');
         await settle();
         await expect(card('Sophie')).toHaveScreenshot('fleet-card-model-refused.png');
+
+        await open('Sophie');
+        await expect(modelLine).toHaveText('declared gpt-6-astra · start refused: model gpt-6-astra is not available');
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-refused.png');
 
         await switchToLightSkin(page);
         await settle();
         await expect(card('Sophie')).toHaveScreenshot('fleet-card-model-refused-light.png');
-        await open('Sophie');
+
+        await define({model: 'gpt-6-sol', reasoningEffort: 'max'});
+        await roster({state: 'off'});
+        await expect(modelLine).toHaveText('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
         await settle();
         await expect(group).toHaveScreenshot('seat-model-differs-stopped-light.png')
     });

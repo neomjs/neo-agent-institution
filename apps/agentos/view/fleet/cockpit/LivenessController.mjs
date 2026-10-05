@@ -182,14 +182,15 @@ class LivenessController extends ViewerWakeController {
      */
     activityProfileId = null
     /**
-     * @summary Re-poll the roster once a lifecycle intent genuinely changed runtime state — and
-     * never on a rejected/timeout outcome, whose honest reason render must stand.
-     * @param {Promise<Boolean>} settledOk
+     * @summary Re-poll the roster once a lifecycle intent settled in a way the roster can read
+     * ({@link AgentOS.util.FleetLifecycleIntentAdapter.rosterMayRead}): a runtime change, or a
+     * refusal whose recorded cause the card then words. Never on a timeout, whose outcome is unknown.
+     * @param {Promise<Boolean>} settled
      * @returns {Promise<*>}
      * @protected
      */
-    async refreshRosterOnSettle(settledOk) {
-        if (await settledOk) {
+    async refreshRosterOnSettle(settled) {
+        if (await settled) {
             return this.loadRoster()
         }
     }

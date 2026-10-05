@@ -155,12 +155,13 @@ test.describe('AgentOS Detail › Configuration — the Seat group over the Flee
         }
     };
 
-    test('a seat started on its defaults: the group reads its config, Change offers what the harness lists, a declaration crosses as one field and keeps both values, and a refused Start reads on the card in the design read\'s words', async ({page, neuralLink}) => {
+    test('a seat started on its defaults: the group reads its config, Change offers what the harness lists, a declaration crosses as one field and keeps both values, and a refused Start reads its reason on the card and on the row', async ({page, neuralLink}) => {
         const fleet = await startSeatFleet();
 
         try {
+            await bootWiredCockpit(page, neuralLink, fleet);
+
             const
-                app                                      = await bootWiredCockpit(page, neuralLink, fleet),
                 {card, group, model, offer, open, status} = parts(page),
                 sent                                     = method => fleet.requests.filter(request => request.method === method).map(request => request.params);
 
@@ -181,13 +182,15 @@ test.describe('AgentOS Detail › Configuration — the Seat group over the Flee
             await expect(offer).toBeHidden();
             expect(sent('configureAgent')).toEqual([{id: SEAT, model: 'gpt-6-astra'}]);
 
-            // the refusal answers with the Fleet's sentence; the seat's recorded cause, read by the next roster
-            // poll, puts the design read's words on the line
+            // the refusal re-polls the roster, so the seat's recorded cause puts its reason on the line without a
+            // second press or the 60 s poll; the title says where to change it
             await card.locator('.fm-card-control-verbs button').first().click();
-            await expect(status).toContainText(`⚠ rejected: agent '${SEAT}' cannot start: model gpt-6-astra is not available`, {timeout: 15000});
-            await reloadRoster(app);
-            await expect(status).toHaveText('start refused: model gpt-6-astra is not available — change it in Detail › Configuration');
+            await expect(status).toHaveText('start refused: model gpt-6-astra is not available', {timeout: 15000});
+            await expect(status).toHaveAttribute('title', 'start refused: model gpt-6-astra is not available — change it in Detail › Configuration');
             await expect(status).toHaveClass(/is-model-refused/);
+
+            // the row the card sends the operator to says the same
+            await expect(model).toHaveText('declared gpt-6-astra · start refused: model gpt-6-astra is not available');
 
             expect(JSON.stringify(fleet.requests)).not.toMatch(/credential|github_pat|bearer/i)
         } finally {
@@ -195,7 +198,7 @@ test.describe('AgentOS Detail › Configuration — the Seat group over the Flee
         }
     });
 
-    test('a running seat on other values: both show, Re-apply keeps the declaration for the next Start, and Adopt declares what the config reads', async ({page, neuralLink}) => {
+    test('a running seat on other values: both show with when the declaration applies, and Adopt declares what the config reads', async ({page, neuralLink}) => {
         const fleet = await startSeatFleet({declared: {model: 'gpt-6-astra', reasoningEffort: 'max'}, state: 'running'});
 
         try {
@@ -204,17 +207,14 @@ test.describe('AgentOS Detail › Configuration — the Seat group over the Flee
             const {effort, group, model, open} = parts(page);
 
             await open();
-            await expect(model).toHaveText('declared gpt-6-astra · now reads gpt-6-luna (configured on disk)');
-            await expect(effort).toHaveText('declared max · now reads high (configured on disk)');
-
-            // Re-apply is the operator's acknowledgement: nothing crosses, and the next Start writes the declaration
-            await group.locator('.fm-seat-model-reapply').first().click();
             await expect(model).toHaveText('declared gpt-6-astra · reads gpt-6-luna (configured on disk) · applies at next start');
-            await expect(group.locator('.fm-seat-model-change').first()).toBeVisible();
-            expect(fleet.requests.filter(request => request.method === 'configureAgent')).toEqual([]);
+            await expect(effort).toHaveText('declared max · reads high (configured on disk) · applies at next start');
 
-            // a hidden action leaves the DOM, so the row, not an index across rows, names the button
-            await group.locator('.fm-seat-model-row').nth(1).locator('.fm-seat-model-adopt').click();
+            // a hidden action leaves the DOM, so the row, not an index across rows, names the link
+            const adopt = group.locator('.fm-seat-model-row').nth(1).locator('.fm-seat-model-adopt');
+
+            await expect(adopt).toHaveText('Adopt high');
+            await adopt.click();
             await expect(effort).toHaveText('declared high');
             expect(fleet.requests.filter(request => request.method === 'configureAgent').map(request => request.params)).toEqual([{id: SEAT, reasoningEffort: 'high'}])
         } finally {

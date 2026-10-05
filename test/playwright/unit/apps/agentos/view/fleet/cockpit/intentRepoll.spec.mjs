@@ -49,15 +49,15 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
 
     test.afterEach(() => clearBridge());
 
-    test('refreshRosterOnSettle re-polls only when the settle reports a real change', async () => {
+    test('refreshRosterOnSettle re-polls only when the settle says the roster can read something new', async () => {
         const calls      = [],
               controller = makeController(calls);
 
         await controller.refreshRosterOnSettle(Promise.resolve(true));
-        expect(calls.length).toBe(1);   // a real change → one re-poll
+        expect(calls.length).toBe(1);   // a change, or a Fleet-answered refusal → one re-poll
 
         await controller.refreshRosterOnSettle(Promise.resolve(false));
-        expect(calls.length).toBe(1)    // nothing changed (rejected/timeout) → no re-poll, honest reason stands
+        expect(calls.length).toBe(1)    // a timeout or a local rejection → no re-poll
     });
 
     test('onAgentLifecycleIntent re-polls the roster once a start settles successfully', async () => {
@@ -79,7 +79,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         expect(calls.length).toBe(1)
     });
 
-    test('a rejected intent does NOT re-poll — the honest failure render is preserved', async () => {
+    test('a refusal the Fleet answered re-polls, since it may have recorded its cause on the seat; a rejection that never left the cockpit does not', async () => {
         setBridge(rejectingBridge());
 
         const calls      = [],
@@ -90,12 +90,28 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         Neo.getComponent = id => id === 'fm-card-x' ? card : null;
 
         try {
-            await controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'fm-card-x'})
+            await controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'fm-card-x'});
+            expect(calls.length).toBe(1);
+
+            // no agent id: refused locally, nothing reached the Fleet, nothing to read
+            await controller.onAgentLifecycleIntent({action: 'start', source: 'fm-card-x'});
+            expect(calls.length).toBe(1)
         } finally {
             Neo.getComponent = origGet
         }
+    });
 
-        expect(calls.length).toBe(0)
+    test('the re-poll rule: a change or a Fleet-answered refusal, never a timeout or an unauthorized bridge', async () => {
+        const {default: Adapter} = await import('../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs');
+
+        expect([
+            {accepted: true, ok: true, status: 'settled'},
+            {accepted: true, ok: false, status: 'rejected'},
+            {accepted: false, ok: false, status: 'rejected'},
+            {accepted: true, ok: false, status: 'timeout'},
+            {accepted: false, ok: false, status: 'unauthorized'},
+            null
+        ].map(Adapter.rosterMayRead)).toEqual([true, true, false, false, false, false])
     });
 
     test('onStartFleet fans out N starts but re-polls the roster EXACTLY ONCE after the batch settles', async () => {

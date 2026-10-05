@@ -766,12 +766,12 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('AC-2 (#559): a Start refused for the declared model reads in the design read\'s words, and the card says nothing about the model otherwise', () => {
+    test('AC-2 (#559): a Start refused for the declared model reads as its reason, the title says where to change it, and the card says nothing about the model otherwise', () => {
         const
             card     = createCard({agentId: 'vega', state: 'off'}),
             status   = () => card.down({reference: 'control-status'}),
             refused  = {state: 'refused', model: 'gpt-6-astra', reasoningEffort: null, reason: 'model gpt-6-astra is not available'},
-            line     = 'start refused: model gpt-6-astra is not available — change it in Detail › Configuration',
+            line     = 'start refused: model gpt-6-astra is not available',
             brain    = "agent 'vega' cannot start: model gpt-6-astra is not available. Nothing was changed. Change it in Detail › Configuration, then start it again.";
 
         // a read that could not say, or nothing read, puts nothing on the card
@@ -784,6 +784,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: brain}, seatModel: refused});
         expect(status().hidden).toBe(false);
         expect(status().text).toBe(line);
+        expect(status().vdom.title).toBe(`${line} — change it in Detail › Configuration`);
         expect(status().cls).toContain('is-model-refused');
         expect(card.cls).toContain('fm-control-live');
 

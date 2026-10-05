@@ -34,7 +34,7 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
             {id: 'gpt-6-sol', isDefault: true, efforts: ['low', 'max']}
         ]},
         line    = (group, field) => group.getReference(`${field}-line`).text,
-        shown   = (group, field) => ['change', 'reapply', 'adopt'].filter(action => !group.getReference(`${field}-${action}`).hidden),
+        shown   = (group, field) => ['change', 'adopt'].filter(action => !group.getReference(`${field}-${action}`).hidden),
         offered = group => group.getReference('offer').items.map(chip => [chip.text, chip.cls.includes('is-selected'), chip.vdom['aria-pressed']]),
         status  = group => {
             const component = group.getReference('status-line');
@@ -136,41 +136,46 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
         group.destroy()
     });
 
-    test('AC-5: a declaration that differs from the config shows both values, before and after a Start', () => {
+    test('AC-5: a declaration that differs from the config shows both values and when it applies, running or not', () => {
         const
             group  = Neo.create(SeatModelContainer, {appName, seat: {...codex, reasoningEffort: 'max'}, configured: {model: null, reasoningEffort: 'ultra'}}),
             events = fired(group);
 
         expect(line(group, 'reasoningEffort')).toBe('declared max · reads ultra (configured on disk) · applies at next start');
-        expect(shown(group, 'reasoningEffort')).toEqual(['change']);
-
-        // drift on a running seat: Re-apply and Adopt
-        group.running = true;
-        expect(line(group, 'reasoningEffort')).toBe('declared max · now reads ultra (configured on disk)');
-        expect(shown(group, 'reasoningEffort')).toEqual(['reapply', 'adopt']);
-
-        // Re-apply keeps the declaration for the next Start, and the row still shows both values
-        group.onActionClick({component: group.getReference('reasoningEffort-reapply')});
-        expect(line(group, 'reasoningEffort')).toBe('declared max · reads ultra (configured on disk) · applies at next start');
-        expect(shown(group, 'reasoningEffort')).toEqual(['change']);
-        expect(events).toEqual([]);
+        expect(shown(group, 'reasoningEffort')).toEqual(['change', 'adopt']);
+        expect(group.getReference('reasoningEffort-adopt').text, 'named by the value it declares').toBe('Adopt ultra');
 
         // Adopt declares what the config is set to
-        group.acknowledged = [];
         group.onActionClick({component: group.getReference('reasoningEffort-adopt')});
         expect(events).toEqual([['declare', 'reasoningEffort', 'ultra']]);
 
         // the same declaration read back from the config is one value
         group.configured = {model: null, reasoningEffort: 'max'};
         expect(line(group, 'reasoningEffort')).toBe('declared max');
+        expect(shown(group, 'reasoningEffort')).toEqual(['change']);
 
         group.destroy()
     });
 
-    test('AC-1: a claude-desktop seat reads what it reported, set per session in the app, and offers nothing', () => {
+    test('the row the card sends the operator to says why the Fleet refused the start, once, on the declared model', () => {
+        const group = Neo.create(SeatModelContainer, {appName, seat: {...codex, model: 'gpt-6-astra', reasoningEffort: 'low'}, configured: {model: 'gpt-6-luna', reasoningEffort: 'low'}});
+
+        group.refusal = 'model gpt-6-astra is not available';
+        expect([line(group, 'model'), line(group, 'reasoningEffort')]).toEqual(['declared gpt-6-astra · start refused: model gpt-6-astra is not available', 'declared low']);
+        expect(shown(group, 'model')).toEqual(['change']);
+
+        // an effort declared alone carries the refusal on its own row
+        group.seat = {...codex, reasoningEffort: 'ultra'};
+        group.refusal = 'reasoning effort ultra is not available';
+        expect(line(group, 'reasoningEffort')).toBe('declared ultra · start refused: reasoning effort ultra is not available');
+
+        group.destroy()
+    });
+
+    test('AC-1: a claude-desktop seat says its harness sets both per session, reads what it reported, and offers nothing', () => {
         const group = Neo.create(SeatModelContainer, {appName, seat: {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: null}});
 
-        expect([line(group, 'model'), line(group, 'reasoningEffort')]).toEqual(['not read back yet', 'not read back yet']);
+        expect([line(group, 'model'), line(group, 'reasoningEffort')]).toEqual(['set per session in the app · not read back yet', 'set per session in the app · not read back yet']);
 
         group.observed = {model: 'claude-opus-5-5', reasoningEffort: null};
         expect(line(group, 'model')).toBe('claude-opus-5-5 · set per session in the app');

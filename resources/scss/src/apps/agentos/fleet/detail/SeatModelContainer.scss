@@ -30,6 +30,35 @@
         color: var(--fm-ink-dim);
     }
 
+    /* the quieter second action: a text link beside Change, named by the value it declares; the doubled
+       selector out-cascades the stock .neo-button skin, as Chips.scss does */
+    .fm-seat-model-adopt,
+    .neo-button.fm-seat-model-adopt {
+        background : none;
+        border     : none;
+        box-shadow : none;
+        color      : var(--fm-signal);
+        cursor     : pointer;
+        font       : var(--fm-text-detail);
+        font-family: inherit;
+        height     : auto;
+        margin     : 0;
+        min-height : 0;
+        min-width  : 0;
+        padding    : 0;
+
+        &:hover,
+        &:focus-visible {
+            text-decoration: underline;
+        }
+
+        /* the engine sizes the text span itself, so it inherits the link's ink and metrics */
+        .neo-button-text {
+            color: inherit;
+            font : inherit;
+        }
+    }
+
     .fm-seat-model-line {
         overflow-wrap: anywhere;
     }

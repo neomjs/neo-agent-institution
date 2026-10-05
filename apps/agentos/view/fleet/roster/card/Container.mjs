@@ -842,7 +842,7 @@ class AgentCard extends Container {
                 : pendingAction
                     ? `${pendingAction}…`
                     : modelRefusal
-                        ? modelRefusal
+                        ? modelRefusal.text
                         : !controlReason
                             ? sessionLine?.text ?? ''
                             : controlReason.kind === 'timeout'
@@ -860,7 +860,9 @@ class AgentCard extends Container {
             text  : controlStatusText
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
-        controlStatus.changeVdomRootKey('title', sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
+        controlStatus.changeVdomRootKey('title', modelRefusal
+            ? modelRefusal.title + identityNote
+            : sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
 
         me.update()
     }

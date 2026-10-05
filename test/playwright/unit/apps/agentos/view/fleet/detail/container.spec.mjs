@@ -791,11 +791,15 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             expect(group.hidden).toBe(false);
             expect(line()).toBe('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
 
-            // a running seat on another value is drift
+            // running reads the same: the harness reads its config when it launches
             applySet(detail, {state: 'ok'});
-            expect(line()).toBe('declared gpt-6-sol · now reads gpt-6-luna (configured on disk)');
+            expect(line()).toBe('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
 
-            applySet(detail, {state: 'off'});
+            // a start the Fleet refused for the declaration: the row says so in the Fleet's words
+            applySet(detail, {state: 'off', seatModel: {state: 'refused', model: 'gpt-6-sol', reasoningEffort: null, reason: 'model gpt-6-sol is not available'}});
+            expect(line()).toBe('declared gpt-6-sol · start refused: model gpt-6-sol is not available');
+
+            applySet(detail, {seatModel: null});
             group.onActionClick({component: group.getReference('model-change')});
             await expect.poll(() => group.catalog?.state).toBe('complete');
             expect(reads).toEqual(['ada']);

@@ -29,14 +29,15 @@ const seatRow = (field, label) => ({
         layout: {ntype: 'hbox', align: 'center'},
         items : [
             {ntype: 'component', cls: ['fm-seat-model-label'], flex: 1, text: label},
-            ...['change', 'reapply', 'adopt'].map(action => ({
+            // Adopt is the quieter second action, a text link named by the value it declares
+            ...['change', 'adopt'].map(action => ({
                 module   : Button,
-                cls      : ['fm-chip', `fm-seat-model-${action}`],
+                cls      : action === 'change' ? ['fm-chip', 'fm-seat-model-change'] : ['fm-seat-model-adopt'],
                 flex     : 'none',
                 handler  : 'up.onActionClick',
                 hidden   : true,
                 reference: `${field}-${action}`,
-                text     : {change: 'Change', reapply: 'Re-apply', adopt: 'Adopt'}[action]
+                text     : action === 'change' ? 'Change' : 'Adopt'
             }))
         ]
     }, {
@@ -82,12 +83,6 @@ class SeatModelContainer extends Container {
          */
         additionalThemeFiles: ['AgentOS.view.fleet.mailbox.Chips'],
         /**
-         * The fields whose drift the operator chose to keep the declaration for: the next Start writes it again.
-         * @member {String[]} acknowledged_=[]
-         * @reactive
-         */
-        acknowledged_: [],
-        /**
          * What the seat's harness offers, the Fleet's `fleetSeatModelCatalog` answer; `null` before a read.
          * @member {Object|null} catalog_=null
          * @reactive
@@ -112,11 +107,12 @@ class SeatModelContainer extends Container {
          */
         observed_: null,
         /**
-         * Whether the seat's harness is running, so a difference reads as drift rather than as what Start applies.
-         * @member {Boolean} running_=false
+         * Why the Fleet refused the seat's latest start for its declaration, in the Fleet's words; `null` otherwise.
+         * The row the card sends the operator to says it.
+         * @member {String|null} refusal_=null
          * @reactive
          */
-        running_: false,
+        refusal_: null,
         /**
          * The seat's definition, `{id, harnessType, model, reasoningEffort}`; `null` without one.
          * @member {Object|null} seat_=null
@@ -191,11 +187,6 @@ class SeatModelContainer extends Container {
         this.syncSeat()
     }
 
-    /** @param {String[]} value @param {String[]} oldValue */
-    afterSetAcknowledged(value, oldValue) {
-        oldValue !== undefined && this.syncSeat()
-    }
-
     /** @param {Object|null} value @param {Object|null} oldValue */
     afterSetCatalog(value, oldValue) {
         oldValue !== undefined && this.syncSeat()
@@ -216,8 +207,8 @@ class SeatModelContainer extends Container {
         oldValue !== undefined && this.syncSeat()
     }
 
-    /** @param {Boolean} value @param {Boolean} oldValue */
-    afterSetRunning(value, oldValue) {
+    /** @param {String|null} value @param {String|null} oldValue */
+    afterSetRefusal(value, oldValue) {
         oldValue !== undefined && this.syncSeat()
     }
 
@@ -228,9 +219,7 @@ class SeatModelContainer extends Container {
      */
     afterSetSeat(value, oldValue) {
         if (oldValue !== undefined) {
-            const another = value?.id !== oldValue?.id;
-
-            this.set({acknowledged: another ? [] : this.acknowledged, catalog: another ? null : this.catalog, editing: null, status: {state: 'idle', reason: ''}});
+            this.set({catalog: value?.id !== oldValue?.id ? null : this.catalog, editing: null, status: {state: 'idle', reason: ''}});
             this.syncSeat()
         }
     }
@@ -273,26 +262,27 @@ class SeatModelContainer extends Container {
             seat    = me.seat,
             pending = me.status?.state === 'pending';
 
+        // a refusal names the whole declaration, so it reads once: on the model row, or on the effort row alone
+        const refusedField = seat?.model ? 'model' : 'reasoningEffort';
+
         for (const {field} of FIELDS) {
-            // a re-applied drift reads as the stopped seat's: both values, and what the next Start applies
             const row = SeatModel.row({
                 field,
                 harnessType: seat?.harnessType ?? null,
                 declared   : seat?.[field] ?? null,
                 configured : me.configured,
                 observed   : me.observed?.[field] ?? null,
-                running    : me.running && !me.acknowledged.includes(field)
+                refused    : field === refusedField ? me.refusal : null
             });
 
             me.getReference(`${field}-line`).text = row.text;
 
-            for (const action of ['change', 'reapply', 'adopt']) {
-                me.getReference(`${field}-${action}`).set({
-                    disabled: pending,
-                    hidden  : !row.actions.includes(action),
-                    text    : action === 'change' && me.editing === field ? 'Close' : {change: 'Change', reapply: 'Re-apply', adopt: 'Adopt'}[action]
-                })
-            }
+            const adopts = row.actions.includes('adopt');
+
+            me.getReference(`${field}-change`).set({disabled: pending, hidden: !row.actions.includes('change'), text: me.editing === field ? 'Close' : 'Change'});
+            // a hidden link keeps its last words: renaming it while the row's other action leaves the DOM would race
+            // that removal's update
+            me.getReference(`${field}-adopt`).set({disabled: pending, hidden: !adopts, ...(adopts ? {text: `Adopt ${me.configured[field]}`} : {})})
         }
 
         const
@@ -349,7 +339,7 @@ class SeatModelContainer extends Container {
 
     /**
      * @summary One click on a row's action: Change opens or closes its values, asking the owner for the catalog the
-     * first time; Re-apply keeps the declaration for the next Start; Adopt declares what the config is set to.
+     * first time; Adopt declares what the config is set to.
      * @param {Object} data
      */
     onActionClick(data) {
@@ -360,8 +350,6 @@ class SeatModelContainer extends Container {
         if (action === 'change') {
             me.editing = me.editing === field ? null : field;
             me.editing && !me.catalog && me.fire('readSeatCatalog')
-        } else if (action === 'reapply') {
-            me.acknowledged = [...me.acknowledged, field]
         } else {
             me.declare(field, me.configured?.[field] ?? null)
         }

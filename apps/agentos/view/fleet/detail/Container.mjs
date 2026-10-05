@@ -13,6 +13,7 @@ import Controller                           from './Controller.mjs';
 import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
 import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
 import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
+import SeatModel                            from '../../../util/SeatModel.mjs';
 import SeatSessionFolder                    from '../../../util/SeatSessionFolder.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
@@ -536,7 +537,7 @@ class AgentDetail extends Container {
 
     /**
      * @summary Seat the Seat group from the joined definition (what is declared) and the roster record (what the
-     * harness's config is set to, and whether it runs). No definition, no group.
+     * harness's config is set to, and why the Fleet refused its latest start, if it did). No definition, no group.
      */
     applySeatModel() {
         const
@@ -550,8 +551,7 @@ class AgentDetail extends Container {
         row.set({
             configured: record?.harnessSettings ?? null,
             hidden    : !definition,
-            // the session vocabulary: every state but `off` is a harness that runs
-            running   : !!record && record.state !== 'off',
+            refusal   : SeatModel.refusedReason(record?.seatModel ?? null, definition),
             seat      : definition && {
                 harnessType    : definition.harnessType,
                 id             : definition.id,
