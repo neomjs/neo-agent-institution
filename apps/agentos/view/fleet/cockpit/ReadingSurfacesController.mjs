@@ -267,6 +267,21 @@ class ReadingSurfacesController extends LivenessController {
     }
 
     /**
+     * @summary Open the fleet head's merge queue for a view outside the cockpit (Home's merge count): the
+     * roster's tab comes forward and its awaiting-merge button opens its list, when there is one.
+     * @returns {Promise<{opened: Boolean}>}
+     */
+    async openMergeQueue() {
+        const me = this;
+
+        await me.revealResidentTab('fleet');
+
+        const button = me.getReference('fleet-grid')?.getReference('awaiting-merge');
+
+        return {opened: button ? await button.openMenu() : false}
+    }
+
+    /**
      * @summary Bring a resident tab forward in whichever dock node holds it under the current perspective. A
      * pane that left the dock (a vessel window) or a node that already shows it needs nothing.
      * @param {String} itemId The dock item, e.g. `stream` or `memories`

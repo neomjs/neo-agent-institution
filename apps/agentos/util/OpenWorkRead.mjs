@@ -54,8 +54,27 @@ class OpenWorkRead extends Base {
     }
 
     /**
+     * @summary The operator's questions axis from one answer, leaf-complete like the `openWork` block: the
+     * wire's own `questions` block when it carries one, else `unsupported`, because this read lists no
+     * one's open Tasks yet. An answer nobody gave (none yet, `not-wired`, `unanswered`) leaves every leaf
+     * `null`, the silence the merge axis keeps for the same answers.
+     * @param {Object|null} snapshot One `fleetOpenWork` envelope, or `null` while unanswered.
+     * @returns {{count: Number|null, reason: String|null, state: String|null}}
+     */
+    static questions(snapshot) {
+        if (!snapshot || (snapshot.state === 'unavailable' && snapshot.coverage !== 'unavailable')) {
+            return {count: null, reason: null, state: null}
+        }
+
+        const {count = null, reason = null, state = null} = snapshot.questions ?? {reason: 'questions are not listed yet', state: 'unsupported'};
+
+        return {count, reason, state}
+    }
+
+    /**
      * @summary Project the held answer onto the surfaces that show it: the provider's `openWork` block
-     * (the read's state for the fleet head), the provider's merge queue Store, and each roster record's
+     * (the read's state for the fleet head) and `questions` block (the operator line's second axis,
+     * {@link #questions}), the provider's merge queue Store, and each roster record's
      * held open work ({@link AgentOS.util.OpenWorkSeat#summarize}). Every record, the ones a view filter
      * hides included, so a card that reappears never shows an older answer. The roster's last live
      * snapshot is re-stamped too, so a source-precedence re-apply carries this answer and not the one
@@ -76,11 +95,14 @@ class OpenWorkRead extends Base {
             queue    = store('fleetAwaitingMerge'),
             roster   = store('fleetRoster');
 
-        provider?.setData('openWork', {
-            coverage  : snapshot?.coverage   ?? null,
-            observedAt: snapshot?.observedAt ?? null,
-            reason    : snapshot?.reason     ?? null,
-            state     : snapshot?.state      ?? null
+        provider?.setData({
+            openWork: {
+                coverage  : snapshot?.coverage   ?? null,
+                observedAt: snapshot?.observedAt ?? null,
+                reason    : snapshot?.reason     ?? null,
+                state     : snapshot?.state      ?? null
+            },
+            questions: OpenWorkRead.questions(snapshot)
         });
 
         queue && (queue.data = OpenWorkRead.mergeRows(snapshot));
