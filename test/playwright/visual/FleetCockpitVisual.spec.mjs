@@ -1,6 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
 import {sampleOpenWork, sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
+import {MACHINES, installPinnedSetupShell, pinnedSetupHost} from '../fixture/pinnedSetupHost.mjs';
 import {sampleShellInitScript} from '../fixture/setupRecipeSample.mjs';
 
 /**
@@ -1488,6 +1489,66 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
         await expect(card).toHaveScreenshot('setup-card-create-light.png')
+    });
+
+    test('the witness row with two exits — re-check is the chip and write again a text link beside it; the first press of write again adds its line under the reason; both skins', async ({page}) => {
+        // the same seam with the real broker behind it: the row's data is the pinned recipe's own
+        const run = await pinnedSetupHost({machine: MACHINES.laptop});
+
+        await installPinnedSetupShell(page, run);
+        await bootSettledCockpit(page);
+
+        const
+            card   = page.locator('.agent-plane-setup'),
+            rows   = card.locator('.fm-setup-steps .neo-list-item'),
+            row    = id => rows.filter({has: page.locator(`.fm-setup-step-id:text-is("${id}")`)}),
+            chip   = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
+            settle = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
+
+        await expect(card.locator('.fm-setup-preset')).toHaveCount(3, {timeout: 15000});
+        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
+        await expect(row('preset')).toHaveClass(/is-ok/);
+        await card.locator('.fm-setup-credential-button').click();
+        await expect(row('plane-credential')).toHaveClass(/is-ok/);
+        await chip('provider-key', 'open window').click();
+        await expect(row('provider-key')).toHaveClass(/is-ok/);
+
+        for (const id of ['write-secrets', 'write-env', 'compose-up']) {
+            await chip(id, 'run').click();
+            await expect(row(id)).toHaveClass(/is-ok/)
+        }
+
+        // the acknowledgement never arrives and the search finds no row: the Brain names both exits
+        run.world.dropWrite = true;
+        await chip('verify', 'run').click();
+        await chip('verify', 're-check').click();
+        await expect(row('verify').locator('.fm-setup-step-action')).toHaveText(['re-check', 'write again']);
+        await page.evaluate(() => document.fonts.ready);
+
+        // the Brain's order reads as a hierarchy: the first exit keeps the chip's fill and border, the second has neither
+        const paint = await page.evaluate(() => [...document.querySelectorAll('.fm-setup-steps .is-reconcile-required .fm-setup-step-action')].map(el => {
+            const cs = getComputedStyle(el);
+
+            return {filled: cs.backgroundColor !== 'rgba(0, 0, 0, 0)', bordered: cs.borderTopColor !== 'rgba(0, 0, 0, 0)', underlined: cs.textDecorationLine === 'underline'}
+        }));
+
+        expect(paint).toEqual([{filled: true, bordered: true, underlined: false}, {filled: false, bordered: false, underlined: true}]);
+
+        await settle();
+        await expect(row('verify')).toHaveScreenshot('setup-row-two-exits.png');
+
+        await chip('verify', 'write again').click();
+        await expect(row('verify').locator('.fm-setup-step-confirm')).toBeVisible();
+        await settle();
+        await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-confirming.png');
+
+        // another row's click takes the first press back
+        await chip('placement', 're-read').click();
+        await expect(row('verify').locator('.fm-setup-step-confirm')).toHaveCount(0);
+
+        await switchToLightSkin(page);
+        await settle();
+        await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-light.png')
     });
 
     test('the keeper nav is an icon rail — each tab keeps its label as its accessible name and speaks it as a tooltip to its right, clear of the rail', async ({page}) => {

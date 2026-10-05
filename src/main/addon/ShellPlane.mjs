@@ -104,10 +104,11 @@ class ShellPlane extends Base {
      * the re-evaluated steps.
      * @param {Object} data
      * @param {String} data.effectId
+     * @param {Boolean} [data.newAttempt] `true` consents to writing the witness again; it crosses only as `true`
      * @returns {Promise<Object>}
      */
-    setupEffect({effectId}) {
-        return forwardSetup('setupEffect', {effectId})
+    setupEffect({effectId, newAttempt}) {
+        return forwardSetup('setupEffect', newAttempt === true ? {effectId, newAttempt: true} : {effectId})
     }
 
     /**

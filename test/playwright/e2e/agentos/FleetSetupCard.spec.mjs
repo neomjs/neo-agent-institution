@@ -142,5 +142,71 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         // the completed run's density on the mounted provider: three answered questions and four consented
         // effects, no instruction handed to the operator, and the plane it is bound to
         expect(await readSetupRun(page)).toMatchObject({decisions: 7, manualActions: 0, preset: 'hosted', planeId: run.profile.planeId, dataRoot: run.profile.dataRoot})
+    });
+
+    test('a witness that does not land has a way out through the card: a waiting row says what it waits for, re-check searches and writes nothing, write again asks once where a second row is possible, and the run reaches done over one row', async ({page}) => {
+        await page.goto('/apps/agentos/index.html');
+
+        const
+            card     = page.locator('.agent-plane-setup'),
+            rows     = card.locator('.fm-setup-steps .neo-list-item'),
+            row      = id => rows.filter({has: page.locator(`.fm-setup-step-id:text-is("${id}")`)}),
+            chip     = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
+            progress = page.locator('.agent-setup-progress');
+
+        await expect(card.locator('.fm-setup-preset')).toHaveCount(3, {timeout: 60000});
+        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
+        await expect(row('preset')).toHaveClass(/is-ok/);
+        await card.locator('.fm-setup-credential-button').click();
+        await expect(row('plane-credential')).toHaveClass(/is-ok/);
+        await chip('provider-key', 'open window').click();
+        await expect(row('provider-key')).toHaveClass(/is-ok/);
+
+        // every effect behind the next one waits, and says for which step, in place of a chip
+        await expect(row('write-env').locator('.fm-setup-step-wait')).toHaveText('waits for write-secrets');
+        await expect(row('verify').locator('.fm-setup-step-wait')).toHaveText('waits for write-secrets');
+        await expect(row('verify').locator('.fm-setup-step-action')).toHaveCount(0);
+
+        for (const id of ['write-secrets', 'write-env', 'compose-up']) {
+            await chip(id, 'run').click();
+            await expect(row(id), `${id} re-reads ok`).toHaveClass(/is-ok/)
+        }
+
+        // the witness is dispatched and its acknowledgement never arrives; no row lands
+        run.world.dropWrite = true;
+        await chip('verify', 'run').click();
+        await expect(row('verify')).toHaveClass(/is-reconcile-required/);
+        await expect(row('verify').locator('.fm-setup-step-action')).toHaveText(['re-check']);
+
+        // re-check searches the plane for the attempt and writes nothing; the Brain then names the new attempt
+        await chip('verify', 're-check').click();
+        await expect(row('verify').locator('.fm-setup-step-action')).toHaveText(['re-check', 'write again']);
+        await expect(chip('verify', 'write again')).toHaveClass(/is-quiet/);
+        await expect(row('verify').locator('.fm-setup-step-reason')).toContainText('consent to a new attempt writes a second row');
+        expect(run.world.rows, 'nothing was written').toEqual([]);
+
+        // the first press says what the write can cost; the second sends it — to a plane that refuses it
+        run.world.dropWrite   = false;
+        run.world.refuseWrite = true;
+        await chip('verify', 'write again').click();
+        await expect(row('verify').locator('.fm-setup-step-confirm')).toContainText('a second row on the plane is possible');
+        expect((await page.evaluate(() => window.__neoShellCalls)).filter(([name, request]) => name === 'setupEffect' && request.newAttempt), 'not sent yet').toEqual([]);
+
+        await chip('verify', 'write again').click();
+        await expect(row('verify')).toHaveClass(/is-failed/);
+        await expect(row('verify').locator('.fm-setup-step-confirm')).toHaveCount(0);
+        await expect(row('verify').locator('.fm-setup-step-action'), 'a refused write minted no row: one exit').toHaveText(['write again']);
+
+        // the plane admits the write again: one press, no confirmation, and the run completes
+        run.world.refuseWrite = false;
+        run.world.recallLands = true;
+        await chip('verify', 'write again').click();
+        await expect(card).toBeHidden();
+        await expect(progress).toHaveText('12 of 12 observed ok · complete');
+
+        const verifyRequests = (await page.evaluate(() => window.__neoShellCalls)).filter(([name, request]) => name === 'setupEffect' && request.effectId === 'verify').map(([, request]) => request);
+
+        expect(verifyRequests, 'run, the re-check, and the two consented new attempts').toEqual([{effectId: 'verify'}, {effectId: 'verify'}, {effectId: 'verify', newAttempt: true}, {effectId: 'verify', newAttempt: true}]);
+        expect(run.world.rows, 'one witness row on the plane').toHaveLength(1)
     })
 });

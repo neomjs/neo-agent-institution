@@ -53,15 +53,19 @@ test.describe('Neo.main.addon.ShellPlane — the cockpit\'s reach into the shell
         expect(await setupAnswer({stepId: 'preset', answer: 'hosted', windowId: 7})).toEqual({ok: true, name: 'setupAnswer'});
         await setupCredential({stepId: 'plane-credential', windowId: 7});
         await setupEffect({effectId: 'write-env', windowId: 7});
+        await setupEffect({effectId: 'verify', newAttempt: true, windowId: 7});
+        await setupEffect({effectId: 'verify', newAttempt: 'yes', windowId: 7});
         await setupEvaluate({target: {planeId: 'p'}, windowId: 7});
         await setupEvaluate({windowId: 7});
         await setupPresets({windowId: 7});
         await setupProbe({windowId: 7});
 
-        expect(calls, 'only the named fields cross; the window id stays in the App worker\'s envelope').toEqual([
+        expect(calls, 'only the named fields cross; the window id stays in the App worker\'s envelope; a new attempt crosses only as true').toEqual([
             ['setupAnswer',     {answer: 'hosted', stepId: 'preset'}],
             ['setupCredential', {stepId: 'plane-credential'}],
             ['setupEffect',     {effectId: 'write-env'}],
+            ['setupEffect',     {effectId: 'verify', newAttempt: true}],
+            ['setupEffect',     {effectId: 'verify'}],
             ['setupEvaluate',   {target: {planeId: 'p'}}],
             ['setupEvaluate',   {target: null}],
             ['setupPresets',    {}],
