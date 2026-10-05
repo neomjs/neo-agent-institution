@@ -11,7 +11,7 @@ import {
     loadSetupModules,
     resolveSetupRoots
 } from '../../../../harness/setupBroker.mjs';
-import {BRAIN_ROOT, PROFILE_TARGET, TRUSTED, pinnedSetupHost} from '../../fixture/pinnedSetupHost.mjs';
+import {BRAIN_ROOT, TRUSTED, pinnedSetupHost} from '../../fixture/pinnedSetupHost.mjs';
 
 const tempDir = () => mkdtempSync(path.join(tmpdir(), 'setup-broker-'));
 
@@ -77,7 +77,7 @@ function fakeModules({evaluations = []} = {}) {
                 createSetupRecord: ({runId, target, recipeVersion}) => ({runId, target, recipeVersion, consents: [], receipts: []}),
                 setupRecordPath  : (root, runId) => path.join(root, `${runId}.json`),
                 readSetupRecord  : async filePath => { try { return {record: JSON.parse(readFileSync(filePath, 'utf8')), problem: null} } catch { return {record: null, problem: 'unreadable'} } },
-                resumeTarget     : (record, invocation) => ({...record.target, ...Object.fromEntries(Object.entries(invocation).filter(([, value]) => value != null))}),
+                runTarget        : ({record = null, named = {}, profile = {}}) => ({...profile, ...record?.target, ...Object.fromEntries(Object.entries(named).filter(([, value]) => value != null))}),
                 describeBinding  : (record, {recipeVersion, target}) => record.recipeVersion !== recipeVersion ? 'version-mismatch' : JSON.stringify(record.target) !== JSON.stringify(target) ? 'target-mismatch' : 'bound',
                 // the real module re-binds the record to the new target and retires the old proof into history
                 retireCurrentProof: (record, {reason, target}) => ({...record, target, consents: [], receipts: [], retired: reason})
@@ -560,9 +560,9 @@ async function brainBacked({setupRoot = tempDir(), stateRoot = tempDir(), disk =
 }
 
 /**
- * Binds the run to a target and consents to the preset and the plane credential.
+ * Starts the run and consents to the preset and the plane credential.
  * @param {Object} run
- * @param {Object} [target=TARGET]
+ * @param {Object|null} [target=TARGET] The target bound by hand; `null` is the card's own request, which names none
  * @returns {Promise<String>} The run's record path
  */
 async function consented({broker}, target = TARGET) {
@@ -692,12 +692,16 @@ test.describe('harness/setupBroker over the Brain\'s own modules — every opera
 const rowOf = (reply, id) => reply.evaluation?.steps.find(step => step.id === id) ?? null;
 
 test.describe('harness/setupBroker over the pinned recipe — the run to done, with nothing real behind it', () => {
-    test('verify answers the run while its recall has not landed, the row carrying the Brain\'s reason, and done is ok over one witness write', async () => {
+    test('the card\'s own cold request names no target and binds the plane its profile declares; verify answers the run while its recall has not landed, and done is ok over one witness write', async () => {
         const
-            run             = await pinnedSetupHost(),
-            {broker, world} = run;
+            run                      = await pinnedSetupHost(),
+            {broker, profile, world} = run,
+            recordPath               = await consented(run, null),
+            record                   = JSON.parse(readFileSync(recordPath, 'utf8'));
 
-        await consented(run, PROFILE_TARGET);
+        expect(profile.planeId, 'the pinned layout declares a plane').toBeTruthy();
+        expect(record.target, 'the run is bound to it, with nothing bound by hand').toEqual(profile);
+        expect(record.history, 'bound when it was created: a first run retires nothing').toEqual([]);
 
         for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
             expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
@@ -730,7 +734,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
             run             = await pinnedSetupHost(),
             {broker, world} = run;
 
-        await consented(run, PROFILE_TARGET);
+        await consented(run, null);
 
         for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
             await broker.effect(trusted, {effectId})
@@ -808,28 +812,11 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         expect(run.world.commands[0]).toMatch(/^docker compose -p neo-local-agent-os --env-file .+ up -d --wait$/);
         expect(run.world.commands[0]).toContain(path.join(run.stateRoot, 'config', 'local-agent-os.env'));
         expect(readdirSync(path.join(run.stateRoot, 'secrets')).length, 'the secret files are in the temp state root').toBeGreaterThan(0);
-        expect(readdirSync(run.setupRoot).some(name => name.endsWith('.json')), 'the record is in the temp setup root').toBe(true)
-    });
+        expect(readdirSync(run.setupRoot).some(name => name.endsWith('.json')), 'the record is in the temp setup root').toBe(true);
 
-    test('the card\'s own cold request, with no target bound by hand, reaches done ok', async () => {
-        // expected to fail today: a run the card starts names no target, and write-env cannot render one. When a
-        // Create run binds the target its profile declares, this arm passes and the annotation is removed with it.
-        test.fail();
+        // a later boot resumes that record: a request that names nothing keeps its binding, never the profile's
+        const resumed = await pinnedSetupHost({setupRoot: run.setupRoot, stateRoot: run.stateRoot});
 
-        const
-            run             = await pinnedSetupHost(),
-            {broker, world} = run;
-
-        expect((await broker.evaluate(trusted, {target: null})).ok).toBe(true);
-        expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok).toBe(true);
-        expect((await broker.credential(trusted, {stepId: 'plane-credential'})).ok).toBe(true);
-
-        for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
-            expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
-        }
-
-        world.recallLands = true;
-
-        expect(rowOf(await broker.effect(trusted, {effectId: 'verify'}), 'done')).toMatchObject({status: 'ok'})
+        expect((await resumed.broker.evaluate(trusted, {target: null})).evaluation.target).toEqual(TARGET)
     })
 });

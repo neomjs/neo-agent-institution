@@ -201,13 +201,16 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
      * a record that was not read, and no fresh run takes its place. A record bound to another
      * target or recipe version retires its proof the way the CLI does.
      * @param {Object} modules
-     * @param {Object|null} requested A target the renderer named (`{planeId, dataRoot, endpoint}`)
+     * @param {Object|null} requested A target the renderer named (`{planeId, dataRoot, endpoint}`). The card
+     *     names none: the run then keeps its record's binding, and a new run binds the plane the profile's
+     *     layout declares (the Brain's `runTarget` decides, as it does for the CLI)
      * @returns {Promise<{host: Object, record: Object, recordPath: String, target: Object}>}
      */
     async function resolveRun(modules, requested) {
         const
-            {hostEffects, record: recordModule, recipe} = modules,
-            host                                        = hostEffects.createHost({fsModule, now});
+            {cli, hostEffects, record: recordModule, recipe} = modules,
+            host                                             = hostEffects.createHost({fsModule, now}),
+            targetOf                                         = record => recordModule.runTarget({record, named: requested ?? {}, profile: cli.hostLayout({stateRoot}).target});
 
         let record, recordPath = boundRecordPath;
 
@@ -227,7 +230,7 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             } else {
                 const runId = randomUUID();
 
-                record     = recordModule.createSetupRecord({runId, target: requested ?? {}, recipeVersion: recipe.RECIPE_VERSION, now});
+                record     = recordModule.createSetupRecord({runId, target: targetOf(null), recipeVersion: recipe.RECIPE_VERSION, now});
                 recordPath = recordModule.setupRecordPath(setupRoot, runId);
                 await hostEffects.persistSetupRecord(recordPath, record, host)
             }
@@ -236,9 +239,8 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             boundRecordPath = recordPath
         }
 
-        // a resume names what it names; the record's bound target fills the rest
         const
-            target  = recordModule.resumeTarget(record, requested ?? {}),
+            target  = targetOf(record),
             binding = recordModule.describeBinding(record, {target, recipeVersion: recipe.RECIPE_VERSION});
 
         if (binding !== 'bound') {

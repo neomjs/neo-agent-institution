@@ -1,7 +1,6 @@
 import path                                              from 'node:path';
 import {expect, readSetupRun, test}                       from '../../fixtures.mjs';
 import {MACHINES, installPinnedSetupShell, pinnedSetupHost} from '../../fixture/pinnedSetupHost.mjs';
-import {sampleShellInitScript}                            from '../../fixture/setupRecipeSample.mjs';
 
 /**
  * @summary The shell spec's first-run witness on the served cockpit: before the app boots, the page
@@ -79,12 +78,14 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         expect(calls.filter(name => ['setupAnswer', 'setupEffect', 'setupCredential', 'attachPlane'].includes(name))).toEqual([])
     });
 
-    test('the consents and the first effect are the pinned recipe\'s own answers: one consent per choice, the credentials kept as paths under the run\'s root, the secret files written, no command asked for', async ({page}) => {
+    test('a run the card starts reaches done on the real broker: one consent per choice, the credentials kept as paths, each effect in the recipe\'s order, one command and one witness row, and the card retires', async ({page}) => {
         await page.goto('/apps/agentos/index.html');
 
         const
-            card = page.locator('.agent-plane-setup'),
-            rows = card.locator('.fm-setup-steps .neo-list-item');
+            card     = page.locator('.agent-plane-setup'),
+            rows     = card.locator('.fm-setup-steps .neo-list-item'),
+            row      = id => rows.filter({has: page.locator(`.fm-setup-step-id:text-is("${id}")`)}),
+            progress = page.locator('.agent-setup-progress');
 
         await expect(card.locator('.fm-setup-preset')).toHaveCount(3, {timeout: 60000});
         await expect(card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-verdict')).toContainText('recommended — fits with 13.0 GiB host margin');
@@ -92,98 +93,54 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
 
         await expect(card.locator('.fm-setup-preset').first()).toHaveClass(/is-chosen/);
-        await expect(rows.nth(1)).toHaveClass(/is-ok/);
+        await expect(row('preset')).toHaveClass(/is-ok/);
         // the hosted preset requires a provider key: the recipe turns that row into a question of its own
-        await expect(rows.nth(3).locator('.fm-setup-step-reason')).toHaveText('unanswered');
-        await expect(page.locator('.agent-setup-progress')).toHaveText('3 of 12 observed ok · next: plane-credential');
+        await expect(row('provider-key').locator('.fm-setup-step-reason')).toHaveText('unanswered');
+        await expect(progress).toHaveText('3 of 12 observed ok · next: plane-credential');
 
         await card.locator('.fm-setup-credential-button').click();
 
         await expect(card.locator('.fm-setup-q-note').first()).toContainText(`consented · ${path.join(run.setupRoot, 'credentials', 'plane-credential')}`);
-        await expect(rows.nth(2)).toHaveClass(/is-ok/);
+        await expect(row('plane-credential')).toHaveClass(/is-ok/);
 
-        await rows.nth(3).locator('.fm-setup-step-action').click();
-        await expect(rows.nth(3), 'the provider key consented').toHaveClass(/is-ok/);
-        await expect(page.locator('.agent-setup-progress')).toHaveText('5 of 12 observed ok · next: write-env');
+        await row('provider-key').locator('.fm-setup-step-action').click();
+        await expect(row('provider-key'), 'the provider key consented').toHaveClass(/is-ok/);
+        await expect(progress).toHaveText('5 of 12 observed ok · next: write-secrets');
 
-        // the first effect in the order that runs: the secret files land under the run's state root
-        await rows.nth(6).locator('.fm-setup-step-action').click();
-        await expect(rows.nth(6), 'write-secrets re-reads ok').toHaveClass(/is-ok/);
-        await expect(rows.nth(6).locator('.fm-setup-step-reason')).toHaveText('observed; matches the accepted receipt');
+        // the first effect: the secret files land under the run's state root, and nothing has left the host's files
+        await row('write-secrets').locator('.fm-setup-step-action').click();
+        await expect(row('write-secrets'), 'write-secrets re-reads ok').toHaveClass(/is-ok/);
+        await expect(row('write-secrets').locator('.fm-setup-step-reason')).toHaveText('observed; matches the accepted receipt');
+
+        expect(await page.evaluate(() => document.body.innerHTML.includes('ghp_') || document.body.innerHTML.includes('glpat-')), 'no credential string in the DOM').toBe(false);
+        expect(run.world.commands, 'nothing was asked of the host yet').toEqual([]);
+
+        // the env file names the plane the profile declares: the card sent no target, the broker bound it
+        await row('write-env').locator('.fm-setup-step-action').click();
+        await expect(row('write-env'), 'write-env re-reads ok').toHaveClass(/is-ok/);
+
+        await row('compose-up').locator('.fm-setup-step-action').click();
+        await expect(row('served-plane'), 'the plane that came up is the run\'s own').toHaveClass(/is-ok/);
+        await expect(progress).toHaveText('10 of 12 observed ok · next: verify');
+
+        // the witness: written once, read back and recalled; the card retires in the same tick, so the
+        // quiet confirmation is witnessed by the retirement and the chrome, not by a row
+        run.world.recallLands = true;
+        await row('verify').locator('.fm-setup-step-action').click();
+        await expect(card).toBeHidden();
+        await expect(progress).toHaveText('12 of 12 observed ok · complete');
 
         const calls = await page.evaluate(() => window.__neoShellCalls);
 
         expect(calls.filter(([name]) => name === 'setupAnswer')).toEqual([['setupAnswer', {stepId: 'preset', answer: 'hosted'}]]);
         expect(calls.filter(([name]) => name === 'setupCredential')).toEqual([['setupCredential', {stepId: 'plane-credential'}], ['setupCredential', {stepId: 'provider-key'}]]);
-        expect(await page.evaluate(() => document.body.innerHTML.includes('ghp_') || document.body.innerHTML.includes('glpat-')), 'no credential string in the DOM').toBe(false);
-        expect(run.world.commands, 'nothing was asked of the host').toEqual([]);
-        expect(run.world.rows, 'nothing was written to a plane').toEqual([])
-    })
-});
+        expect(calls.filter(([name]) => name === 'setupEffect').map(([, request]) => request.effectId), 'one consent per effect, in the recipe\'s order').toEqual(['write-secrets', 'write-env', 'compose-up', 'verify']);
+        expect(calls.filter(([name]) => name === 'setupEvaluate').every(([, request]) => !request?.target), 'the card never names a target').toBe(true);
+        expect(run.world.commands, 'one command reached the host').toHaveLength(1);
+        expect(run.world.rows, 'one witness row').toHaveLength(1);
 
-/**
- * @summary The completed run's chrome on the hand-written sample shell (`setupRecipeSample`): the card's
- * retirement, the progress line's `complete`, the run's density. It stays on the sample until a run the
- * card starts can reach `done` on the real broker; then it joins the arms above and the sample goes.
- */
-test.describe('AgentOS first run — the completed run\'s chrome, on the recorded sample shell', () => {
-    test.setTimeout(120000);
-
-    test.beforeEach(async ({page}) => {
-        await page.addInitScript(sampleShellInitScript())
-    });
-
-    test('a preset choice is one consent re-evaluated by the shell; the credential step keeps a path and the page never holds a value', async ({page}) => {
-        await page.goto('/apps/agentos/index.html');
-
-        const card = page.locator('.agent-plane-setup');
-
-        await expect(card.locator('.fm-setup-preset')).toHaveCount(3, {timeout: 60000});
-
-        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
-
-        await expect(card.locator('.fm-setup-preset').first()).toHaveClass(/is-chosen/);
-        await expect(card.locator('.fm-setup-steps .neo-list-item').nth(1)).toHaveClass(/is-ok/);
-        await expect(page.locator('.agent-setup-progress')).toHaveText('3 of 11 observed ok · next: plane-credential');
-
-        await card.locator('.fm-setup-credential-button').click();
-
-        await expect(card.locator('.fm-setup-q-note').first()).toContainText('consented · /Users/op/.neo-ai/setup/credentials/plane-credential');
-        await expect(card.locator('.fm-setup-steps .neo-list-item').nth(2)).toHaveClass(/is-ok/);
-
-        const calls = await page.evaluate(() => window.__neoShellCalls);
-
-        expect(calls.filter(([name]) => name === 'setupAnswer')).toEqual([['setupAnswer', {stepId: 'preset', answer: 'hosted'}]]);
-        expect(calls.filter(([name]) => name === 'setupCredential')).toEqual([['setupCredential', {stepId: 'plane-credential'}]]);
-        expect(await page.evaluate(() => document.body.innerHTML.includes('ghp_') || document.body.innerHTML.includes('glpat-')), 'no credential string in the DOM').toBe(false);
-
-        // the vessel's effect channel: each run consents to one effect in the recipe's order, the
-        // row re-reads ok; the third completes the run — the quiet confirmation fires once, the
-        // card retires from the primary slot and the chrome's progress line reads complete
-        const rows = card.locator('.fm-setup-steps .neo-list-item');
-
-        // the hosted preset requires a provider key: its row got its window once the preset was
-        // consented, and the window keeps the key as a file the same way
-        await rows.nth(3).locator('.fm-setup-step-action').click();
-        await expect(rows.nth(3), 'the provider key consented').toHaveClass(/is-ok/);
-
-        for (const [index, id] of [[6, 'write-secrets'], [5, 'write-env']]) {
-            await rows.nth(index).locator('.fm-setup-step-action').click();
-            await expect(rows.nth(index), `${id} re-reads ok`).toHaveClass(/is-ok/)
-        }
-
-        // the third consent completes the run: the card retires in the same tick, so the quiet
-        // confirmation is witnessed by the retirement and the chrome, not by a row
-        await rows.nth(7).locator('.fm-setup-step-action').click();
-        await expect(card).toBeHidden();
-        await expect(page.locator('.agent-setup-progress')).toHaveText('11 of 11 observed ok · complete');
-
-        const effects = (await page.evaluate(() => window.__neoShellCalls)).filter(([name]) => name === 'setupEffect').map(([, request]) => request.effectId);
-
-        expect(effects, 'one consent per effect, in the recipe\'s order').toEqual(['write-secrets', 'write-env', 'compose-up']);
-
-        // the completed run's density on the mounted provider: three answered questions and three
-        // consented effects, and no instruction handed to the operator
-        expect(await readSetupRun(page)).toMatchObject({decisions: 6, manualActions: 0, preset: 'hosted'})
+        // the completed run's density on the mounted provider: three answered questions and four consented
+        // effects, no instruction handed to the operator, and the plane it is bound to
+        expect(await readSetupRun(page)).toMatchObject({decisions: 7, manualActions: 0, preset: 'hosted', planeId: run.profile.planeId, dataRoot: run.profile.dataRoot})
     })
 });

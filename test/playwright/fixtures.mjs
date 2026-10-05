@@ -41,7 +41,7 @@ async function loadLanding(page) {
 }
 
 /**
- * @summary The mounted Viewport provider's `setupRun` leaves (`{decisions, manualActions, preset, runId}`),
+ * @summary The mounted Viewport provider's `setupRun` leaves (`{dataRoot, decisions, manualActions, planeId, preset, runId}`),
  * read inside the App worker through the landing.
  * @param {Object} page The Playwright page.
  * @returns {Promise<Object|null>}
