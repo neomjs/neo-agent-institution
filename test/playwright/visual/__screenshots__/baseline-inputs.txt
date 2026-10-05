@@ -312,16 +312,16 @@ apps/agentos/view/accounts/Panel.mjs
     827ce2a3d75a1f2176af37da580d3600dc841131
 
 apps/agentos/view/fleet/activity/ActorChipComponent.mjs
-    80e172b5f0d9a4ed464309e308fb14024fd14b4a
+    1c56919c8f0feb284f2711d598592f3df910377f
 
 apps/agentos/view/fleet/activity/Container.mjs
-    ae7a860083186d5a117a6ce2e41f1368d872eb3b
+    9e4d41f2253334e13800ef16e89b0e296109648a
 
 apps/agentos/view/fleet/activity/EventChipComponent.mjs
     c36dac634fbb1cccaae121e947b5a41aae2149a7
 
 apps/agentos/view/fleet/activity/RowContainer.mjs
-    dce79847927bd3c468b88c15ca44c12e6930e2e0
+    f2df0c79ad4ccdba5b9c6129307271b51706044c
 
 apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
@@ -552,16 +552,16 @@ resources/scss/src/apps/agentos/accounts/Panel.scss
     cb6f1b1562ada80f740949e584b38ca08ba0ecb4
 
 resources/scss/src/apps/agentos/fleet/activity/ActorChipComponent.scss
-    56b5a21524fe79e827336b570c4ae981e89b3733
+    5e6f2c481596221cca5b1227ffa42406fbcb65a7
 
 resources/scss/src/apps/agentos/fleet/activity/Container.scss
-    bf6afeff9b0132cae17f592de3e56ac4fd8eac46
+    daf94dd537854e41179ee61212cf2aca538f4f34
 
 resources/scss/src/apps/agentos/fleet/activity/EventChipComponent.scss
     32a9f3a84da7c788e06377188ab78644d9cf0b62
 
 resources/scss/src/apps/agentos/fleet/activity/RowContainer.scss
-    e15126054c9c15111520717bdf8c50a7ace0c6a9
+    632861b1ec62d5a08c9271c15b99507c28a0f11f
 
 resources/scss/src/apps/agentos/fleet/catchup/Container.scss
     a2bb58e723c846f130e6a1c3d942440cca6f4d0b
@@ -762,7 +762,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-conf
     d1bd8a2d2ee42ab2a29db91828f28a3d8ae0ba05
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/activity-stream-chips.png
-    7f9563d60cfbeb6040b75b8a9f4b7882a237ac22
+    6895e5a1fd222cfdb471e205beea5936183839f3
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/add-agent-memory-candidates.png
     c9d1c4a5495bab9c08a889fa524c9d21744d0fe8
@@ -792,7 +792,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-cold.
     184556f9f1a424ff22c42ffbadedc01513a6fb98
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-default-shell.png
-    7f5a6fefb30b23c9aec679b21e3e521510bc24d0
+    b19a67ce39d0a76cc9bfd84bdfa0f67d02331599
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-empty-light.png
     f59bca89bfb5b41792ab29ab76de51b56eae57e5
@@ -804,10 +804,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-inter
     b96303e4bf8941214bad189b16e2d2b47e57b64e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
-    3938638c3f57b6136c26e35e0e3985088ab599e6
+    b97b93a5a71a30e34a320e7f07f8acff527861a3
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
-    76243c74b4810955f0b09a14b4ae1ee0a921b760
+    34d9b53a07c872affae112105380b1679bb79373
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-lane-claim.png
     a6856140788ddc1c7d3d9ba667196f4a2ba065ef
@@ -924,7 +924,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     c602643123c5ed0359f6170812c4052e834fa073
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-activity.png
-    160ffee0ba9d663630899a978240d755c7ce6cde
+    b72d05dd38090bebe41054e92418503de01688fe
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agent.png
     e05e885b8afcbc99d261e74f931ad72ef24eb598

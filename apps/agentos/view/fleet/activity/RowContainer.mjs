@@ -233,7 +233,7 @@ class RowContainer extends Container {
             module   : ActorChip,
             reference: 'actor'
         }, {
-            module   : Component,
+            module   : ActorChip,
             cls      : ['fm-ev-recipient'],
             reference: 'recipient'
         }, {
@@ -283,14 +283,13 @@ class RowContainer extends Container {
      */
     updateRow() {
         const
-            me      = this,
-            event   = me.record,
-            agentId = event?.agentId || null,
-            facts   = agentId
-                ? me.actorDirectory?.[agentId] ?? me.actorDirectory?.[String(agentId).replace(/^@/, '')] ?? {}
-                : {},
+            me        = this,
+            event     = me.record,
+            agentId   = event?.agentId || null,
+            facts     = me.getActorFacts(agentId),
             time      = ViewerTime.formatViewerTime(event?.occurredAt),
             recipient = me.getRecipient(event),
+            toFacts   = me.getActorFacts(recipient?.to),
             timeCell  = me.getReference('time'),
             kindCell  = me.getReference('kind'),
             actorCell = me.getReference('actor'),
@@ -317,11 +316,13 @@ class RowContainer extends Container {
             label    : facts.displayName ?? null
         });
 
-        toCell.vdom.title = recipient?.title ?? null;
         toCell.setSilent({
-            cls   : ['fm-ev-recipient', recipient?.broadcast ? 'is-broadcast' : 'is-direct', ...(!recipient ? ['is-empty'] : [])],
-            hidden: false,
-            text  : recipient?.text ?? ''
+            agentId  : recipient?.title ?? null,
+            avatarUrl: toFacts.avatarUrl ?? null,
+            cls      : ['fm-ev-recipient', recipient?.broadcast ? 'is-broadcast' : 'is-direct', ...(!recipient ? ['is-empty'] : [])],
+            hidden   : false,
+            label    : !recipient ? null : recipient.broadcast ? 'fleet' : toFacts.displayName ?? recipient.to.replace(/^@/, ''),
+            lead     : recipient?.lead ?? null
         });
 
         textCell.vdom.title = getActivityObjectTitle(event);
@@ -333,9 +334,20 @@ class RowContainer extends Container {
     }
 
     /**
-     * @summary Resolves the optional A2A recipient cell without deriving identity.
+     * @summary The roster facts the actor directory holds for an id, `@`-form or bare.
+     * @param {String|null} id
+     * @returns {Object} The facts, or `{}` when the directory has none.
+     * @protected
+     */
+    getActorFacts(id) {
+        return id ? this.actorDirectory?.[id] ?? this.actorDirectory?.[String(id).replace(/^@/, '')] ?? {} : {}
+    }
+
+    /**
+     * @summary Resolves the optional A2A recipient cell without deriving identity: a direct
+     * recipient is a chip like the sender's, a broadcast is the fleet.
      * @param {Object|null} event
-     * @returns {Object|null}
+     * @returns {Object|null} `{broadcast, lead, text, title, to}`, or null for no recipient.
      * @protected
      */
     getRecipient(event) {
@@ -351,8 +363,10 @@ class RowContainer extends Container {
 
         return {
             broadcast,
+            lead : broadcast ? '⇒' : '→',
             text : broadcast ? '⇒ fleet' : `→ ${to}`,
-            title: to ?? 'AGENT:*'
+            title: to ?? 'AGENT:*',
+            to   : broadcast ? null : to
         }
     }
 }
