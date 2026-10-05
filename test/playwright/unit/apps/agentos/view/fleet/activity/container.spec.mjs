@@ -130,6 +130,37 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(row.vnode.childNodes.map(node => node.id)).toEqual(row.items.map(item => item.id))
     });
 
+    test('a direct recipient is the sender\'s chip — arrow, roster avatar, name — and a broadcast stays the fleet', async () => {
+        const {list} = await createStream({count: 20});
+        const row    = list.items[0];
+        const parts  = cell => cell.vdom.cn.map(node => node.cls[0]);
+        // reactive configs are prototype accessors, so the chip is compared through its own projection
+        const chip   = cell => ({agentId: cell.agentId, avatarUrl: cell.avatarUrl, label: cell.label, lead: cell.lead});
+        const show   = async payload => {
+            store.ingestSnapshot([event('to', 200, {eventId: 'a2a:MESSAGE:to', payload: {subject: 'hello', ...payload}})], {replace: true});
+            await row.promiseUpdate();
+            return row.getReference('recipient')
+        };
+
+        stream.actorDirectory = {'neo-gpt': {avatarUrl: 'https://avatars.example/euclid.png', displayName: 'Euclid'}};
+
+        const known = await show({to: '@neo-gpt', recipientClass: 'agent'});
+
+        expect(chip(known)).toEqual({agentId: '@neo-gpt', avatarUrl: 'https://avatars.example/euclid.png', label: 'Euclid', lead: '→'});
+        expect(parts(known)).toEqual(['fm-actor-chip-lead', 'fm-actor-chip-avatar', 'fm-actor-chip-text']);
+
+        const unknown = await show({to: '@neo-gpt-sophie', recipientClass: 'agent'});
+
+        expect(chip(unknown)).toEqual({agentId: '@neo-gpt-sophie', avatarUrl: null, label: 'neo-gpt-sophie', lead: '→'});
+        expect(parts(unknown), 'no avatar the roster cannot vouch for').toEqual(['fm-actor-chip-lead', 'fm-actor-chip-text']);
+
+        const fleet = await show({to: 'AGENT:*', recipientClass: 'broadcast'});
+
+        expect(chip(fleet)).toEqual({agentId: 'AGENT:*', avatarUrl: null, label: 'fleet', lead: '⇒'});
+        expect(fleet.cls).toContain('is-broadcast');
+        expect(row.vnode.childNodes.map(node => node.id), 'the five cells keep their shape').toEqual(row.items.map(item => item.id))
+    });
+
     test('prepend while reading history preserves record + pixel offset and surfaces new ids', async () => {
         const {list} = await createStream({count: 100});
 
@@ -151,6 +182,7 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(store.getAt(Math.floor(list.scrollTop / list.itemHeight)).eventId).toBe(anchorId);
         expect(stream.pendingNewEventCount).toBe(2);
         expect(stream.getReference('new-events').text).toBe('2 new events ↑');
+        expect(stream.getReference('new-events').cls, 'the shell\'s ghost skin, not the engine\'s default fill').toContain('neo-button-ghost');
         expect(stream.getReference('announcer').text).toContain('2 new fleet activity events');
 
         stream.onNewEventsClick();
