@@ -1,7 +1,7 @@
-import {expect, test}                          from '@playwright/test';
-import {existsSync, mkdtempSync, readFileSync, statSync, writeFileSync} from 'node:fs';
-import {tmpdir}                                from 'node:os';
-import path                                    from 'node:path';
+import {expect, test}                                                               from '@playwright/test';
+import fs, {existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {tmpdir}                                                                     from 'node:os';
+import path                                                                         from 'node:path';
 import {
     createPlaneBroker,
     forgetPlaneConfig,
@@ -27,8 +27,8 @@ const BEARER   = 'ghp_fixtureBearerNeverReal0000000000',
  */
 function fakeSafeStorage({available = true} = {}) {
     return {
-        decryptString       : buffer => Buffer.from(buffer.toString(), 'base64').toString().replace(/^enc:/, ''),
-        encryptString       : value => Buffer.from(Buffer.from(`enc:${value}`).toString('base64')),
+        decryptString        : buffer => Buffer.from(buffer.toString(), 'base64').toString().replace(/^enc:/, ''),
+        encryptString        : value => Buffer.from(Buffer.from(`enc:${value}`).toString('base64')),
         isEncryptionAvailable: () => available
     }
 }
@@ -118,7 +118,7 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         writePlaneConfig({dir, safeStorage, planeBase: 'http://127.0.0.1:3102/', bearer: BEARER, identity: IDENTITY});
 
         expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY, authSource: null});
-        expect(JSON.parse(readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'))).toEqual({identity: IDENTITY, planeBase: 'http://127.0.0.1:3102'});
+        expect(JSON.parse(readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'))).toEqual({bearerSha256: expect.stringMatching(/^[0-9a-f]{64}$/), identity: IDENTITY, planeBase: 'http://127.0.0.1:3102'});
         expect(readFileSync(path.join(dir, PLANE_BEARER_FILE)).toString()).not.toContain(BEARER);
         expect(statSync(path.join(dir, PLANE_BEARER_FILE)).mode & 0o777).toBe(0o600)
     });
@@ -129,7 +129,7 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         writePlaneConfig({dir, safeStorage, planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY, authSource: 'github-pat'});
 
         expect(readPlaneConfig({dir, safeStorage}).authSource).toBe('github-pat');
-        expect(JSON.parse(readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'))).toEqual({authSource: 'github-pat', identity: IDENTITY, planeBase: 'http://127.0.0.1:3102'});
+        expect(JSON.parse(readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'))).toEqual({authSource: 'github-pat', bearerSha256: expect.stringMatching(/^[0-9a-f]{64}$/), identity: IDENTITY, planeBase: 'http://127.0.0.1:3102'});
         expect(existsSync(path.join(dir, 'plane-fleet-credential.bin')), 'no second secret is stored').toBe(false);
 
         for (const authSource of [null, '', 'GitHub PAT', 'github-pat\nNEO_X=1', 42, {}]) {
@@ -155,6 +155,49 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         }
 
         expect(readPlaneConfig({dir, safeStorage: fakeSafeStorage()})).toEqual({planeBase: null, bearer: null, identity: null, authSource: null})
+    });
+
+    test('a replacement that fails between its two files reads as unconfigured, never as the new bearer under the old plane, identity or class', () => {
+        const
+            dir         = tempDir(),
+            safeStorage = fakeSafeStorage(),
+            unset       = {planeBase: null, bearer: null, identity: null, authSource: null},
+            // the bearer lands, then plane.json's rename fails
+            failing     = {...fs, renameSync: (from, to) => { if (to.endsWith(PLANE_CONFIG_FILE)) throw new Error('disk full'); return fs.renameSync(from, to) }};
+
+        writePlaneConfig({dir, safeStorage, planeBase: 'https://plane-a.example', bearer: BEARER, identity: '@viewer-a', authSource: 'github-pat'});
+
+        expect(() => writePlaneConfig({dir, safeStorage, planeBase: 'https://plane-b.example', bearer: 'ghp_anotherBearer', identity: '@viewer-b', authSource: 'oidc', fsModule: failing}))
+            .toThrow('disk full');
+
+        const record = readPlaneConfig({dir, safeStorage});
+
+        expect(record).toEqual(unset);
+        expect(planeEnvFragment({env: {}, planeConfig: record}), 'nothing is exported').toEqual({});
+        expect(existsSync(path.join(dir, `${PLANE_CONFIG_FILE}.${process.pid}.tmp`)), 'no temp file is left behind').toBe(false);
+
+        // a fresh attach stores a whole record again
+        writePlaneConfig({dir, safeStorage, planeBase: 'https://plane-b.example', bearer: 'ghp_anotherBearer', identity: '@viewer-b', authSource: 'github-pat'});
+
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'https://plane-b.example', bearer: 'ghp_anotherBearer', identity: '@viewer-b', authSource: 'github-pat'})
+    });
+
+    test('a bearer file that is missing or replaced outside the record voids it; a record from before the binding carries no class', () => {
+        const dir = tempDir(), safeStorage = fakeSafeStorage(), unset = {planeBase: null, bearer: null, identity: null, authSource: null};
+
+        writePlaneConfig({dir, safeStorage, planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY, authSource: 'github-pat'});
+        writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString('ghp_swappedBearer'));
+
+        expect(readPlaneConfig({dir, safeStorage}), 'another bearer').toEqual(unset);
+
+        rmSync(path.join(dir, PLANE_BEARER_FILE));
+
+        expect(readPlaneConfig({dir, safeStorage}), 'no bearer').toEqual(unset);
+
+        writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({authSource: 'github-pat', identity: IDENTITY, planeBase: 'https://plane.example'}));
+        writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString(BEARER));
+
+        expect(readPlaneConfig({dir, safeStorage}), 'an older record keeps its bearer, not a class').toEqual({planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY, authSource: null})
     });
 
     test('a missing record is unconfigured, a bearer that no longer decrypts reads as absent, and a record from before the identity reads it as null', () => {
@@ -390,7 +433,7 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
 
     test('an attach stores the record with the plane\'s class for its bearer, relaunches, and the reply never carries the PAT', async () => {
         const {broker, calls, dir, safeStorage} = makeBroker();
-        const reply = await broker.attach({}, {planeBase: 'http://127.0.0.1:3102'});
+        const reply                             = await broker.attach({}, {planeBase: 'http://127.0.0.1:3102'});
 
         expect(reply).toEqual({ok: true, reason: null, relaunching: true});
         expect(JSON.stringify(reply)).not.toContain(BEARER);

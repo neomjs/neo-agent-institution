@@ -1,5 +1,6 @@
-import fs   from 'node:fs';
-import path from 'node:path';
+import crypto from 'node:crypto';
+import fs     from 'node:fs';
+import path   from 'node:path';
 
 /**
  * @module harness/planeConfig
@@ -19,6 +20,10 @@ import path from 'node:path';
  * answered at attach. It is no secret, so it sits in `plane.json`, and it travels only with its bearer. A
  * forge PAT's class lets the fleet child present that one bearer to the plane's `/fleet` surface as well
  * (`NEO_FLEET_PLANE_BEARER_CLASS`). The shell never infers the class from the bytes.
+ *
+ * `plane.json` names the exact encrypted bearer it was written with (`bearerSha256`, the digest of those
+ * bytes). A record whose bearer file is gone or was replaced without it, by a write that failed halfway,
+ * reads as unconfigured. So the plane, identity and class are never read with another bearer.
  */
 
 /**
@@ -89,9 +94,11 @@ function authSourceOf(value) {
 }
 
 /**
- * @summary Reads the configured plane. A missing or unreadable record reads as unconfigured, and a
- * bearer that no longer decrypts (a reset keychain, another user) reads as absent instead of failing
- * the boot. A record stored before the identity, or the bearer's class, was recorded reads `null` for it.
+ * @summary Reads the configured plane. A missing or unreadable record reads as unconfigured, and so does
+ * one whose bearer file is not the one it was written with. A bearer that no longer decrypts (a reset
+ * keychain, another user) reads as absent instead of failing the boot. A record stored before the identity
+ * was recorded reads `null` for it. A class only travels with the bearer it was recorded for: a record that
+ * names no bearer (stored before the binding) carries none.
  * @param {Object} options
  * @param {String} options.dir Directory holding the record (Electron `userData`).
  * @param {Object} options.safeStorage Electron `safeStorage`.
@@ -99,33 +106,42 @@ function authSourceOf(value) {
  * @returns {{planeBase: String|null, bearer: String|null, identity: String|null, authSource: String|null}}
  */
 export function readPlaneConfig({dir, safeStorage, fsModule = fs}) {
-    let planeBase, identity, authSource, bearer = null;
+    const unconfigured = {planeBase: null, bearer: null, identity: null, authSource: null};
+    let record, planeBase, identity, sealed = null, bearer = null;
 
     try {
-        const record = JSON.parse(fsModule.readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'));
-
-        planeBase  = normalizePlaneBase(record.planeBase);
-        identity   = canonicalIdentity(record.identity);
-        authSource = authSourceOf(record.authSource)
+        record    = JSON.parse(fsModule.readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'));
+        planeBase = normalizePlaneBase(record.planeBase);
+        identity  = canonicalIdentity(record.identity)
     } catch {
-        return {planeBase: null, bearer: null, identity: null, authSource: null}
+        return unconfigured
     }
 
     try {
-        if (safeStorage.isEncryptionAvailable()) {
-            bearer = safeStorage.decryptString(fsModule.readFileSync(path.join(dir, PLANE_BEARER_FILE))) || null
+        sealed = fsModule.readFileSync(path.join(dir, PLANE_BEARER_FILE))
+    } catch {}
+
+    const bound = typeof record.bearerSha256 === 'string';
+
+    if (bound && (!sealed || sha256(sealed) !== record.bearerSha256)) return unconfigured;
+
+    try {
+        if (sealed && safeStorage.isEncryptionAvailable()) {
+            bearer = safeStorage.decryptString(sealed) || null
         }
     } catch {
         bearer = null
     }
 
-    return {planeBase, bearer, identity, authSource}
+    return {planeBase, bearer, identity, authSource: bound ? authSourceOf(record.authSource) : null}
 }
 
 /**
  * @summary Stores the plane record. Refuses when the OS cannot encrypt: a plain-text PAT under
- * `userData` is the launcher's stopgap, not the product. The bearer is written first, so `plane.json`
- * — the file that marks the shell as configured — never points at a credential that is missing. The
+ * `userData` is the launcher's stopgap, not the product. Each file is replaced whole (a temp file renamed
+ * over it). The bearer is written first, and `plane.json`, the file that marks the shell as configured,
+ * names the digest of the encrypted bearer it belongs to. A failure between the two leaves a record that
+ * reads as unconfigured, never one that pairs the new bearer with the old plane, identity or class. The
  * identity is the one the plane named for this bearer, and the class the one its fleet surface named;
  * neither is a secret, so both sit in `plane.json`. A class the plane didn't name is not recorded.
  * @param {Object} options
@@ -158,11 +174,46 @@ export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity,
         throw new Error('the OS cannot encrypt credentials for this user, so the plane credential was not stored')
     }
 
+    const
+        sealed = safeStorage.encryptString(bearer.trim()),
+        record = {...(source && {authSource: source}), bearerSha256: sha256(sealed), identity: viewer, planeBase: base};
+
     fsModule.mkdirSync(dir, {recursive: true});
-    fsModule.writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString(bearer.trim()), {mode: 0o600});
-    fsModule.writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({...(source && {authSource: source}), identity: viewer, planeBase: base}, null, 4) + '\n', {mode: 0o600});
+    replaceFile({file: path.join(dir, PLANE_BEARER_FILE), data: sealed, fsModule});
+    replaceFile({file: path.join(dir, PLANE_CONFIG_FILE), data: JSON.stringify(record, null, 4) + '\n', fsModule});
 
     return {identity: viewer, planeBase: base}
+}
+
+/**
+ * @summary Replaces a file whole: a temp file beside it, owner-only, renamed over it.
+ * @param {Object} options
+ * @param {String} options.file
+ * @param {String|Buffer} options.data
+ * @param {Object} options.fsModule
+ * @private
+ */
+function replaceFile({file, data, fsModule}) {
+    const temp = `${file}.${process.pid}.tmp`;
+
+    fsModule.writeFileSync(temp, data, {mode: 0o600});
+
+    try {
+        fsModule.renameSync(temp, file)
+    } catch (error) {
+        fsModule.rmSync(temp, {force: true});
+        throw error
+    }
+}
+
+/**
+ * @summary The hex sha256 of an encrypted bearer's bytes: what binds `plane.json` to them.
+ * @param {Buffer} bytes
+ * @returns {String}
+ * @private
+ */
+function sha256(bytes) {
+    return crypto.createHash('sha256').update(bytes).digest('hex')
 }
 
 /**

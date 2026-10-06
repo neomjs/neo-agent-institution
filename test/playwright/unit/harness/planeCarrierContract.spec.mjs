@@ -1,14 +1,15 @@
-import {expect, test}                         from '@playwright/test';
-import {spawn}                                from 'node:child_process';
-import {mkdtempSync, rmSync, writeFileSync}   from 'node:fs';
-import {tmpdir}                               from 'node:os';
-import path                                   from 'node:path';
+import {expect, test}                              from '@playwright/test';
+import {spawn}                                     from 'node:child_process';
+import {mkdtempSync, rmSync, writeFileSync}        from 'node:fs';
+import {tmpdir}                                    from 'node:os';
+import path                                        from 'node:path';
 import {resolveAgentOsRuntimeRoot, runBrainScript} from '../../../../harness/brain.mjs';
 import {
     createPlaneBroker,
     planeEnvFragment,
     PLANE_MCP_SERVER_NAME,
-    readPlaneConfig
+    readPlaneConfig,
+    writePlaneConfig
 } from '../../../../harness/planeConfig.mjs';
 
 /**
@@ -204,6 +205,21 @@ test.describe('harness/planeConfig — the carrier, composed with a real Brain r
 
         expect((await fleetSays({...childEnv({}, record), NEO_FLEET_PLANE_ADMISSION_BEARER: TOKEN})).assertion).toBe('refused')
     });
+
+    // a class the plane may name that is no forge PAT, and one no plane names today
+    for (const authSource of ['seat-token', 'oidc', 'acme-pat']) {
+        test(`a '${authSource}' record, stored and read back, derives no fleet-surface credential, and its equal bytes still refuse`, async () => {
+            const classDir = path.join(root, `class-${authSource}`);
+
+            writePlaneConfig({dir: classDir, safeStorage, planeBase: fleet.base, bearer: TOKEN, identity: IDENTITY, authSource});
+
+            const record = readPlaneConfig({dir: classDir, safeStorage});
+
+            expect(record.authSource, 'the record keeps the class as the plane named it').toBe(authSource);
+            expect(await fleetSays(childEnv({}, record))).toEqual({admission: 'none', assertion: 'none'});
+            expect((await fleetSays({...childEnv({}, record), NEO_FLEET_PLANE_ADMISSION_BEARER: TOKEN})).assertion).toBe('refused')
+        })
+    }
 
     test('another credential or another plane cannot borrow the record\'s class', async () => {
         expect(await fleetSays(childEnv({NEO_FLEET_PLANE_BEARER: 'another-credential'})), 'a bearer the launch supplied')
