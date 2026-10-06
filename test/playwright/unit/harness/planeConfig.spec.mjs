@@ -157,26 +157,45 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         expect(readPlaneConfig({dir, safeStorage: fakeSafeStorage()})).toEqual({planeBase: null, bearer: null, identity: null, authSource: null})
     });
 
-    test('a replacement that fails between its two files reads as unconfigured, never as the new bearer under the old plane, identity or class', () => {
+    test('a replacement that fails at either file never pairs the new bearer with the old record, over a bound record or an older one', () => {
         const
-            dir         = tempDir(),
             safeStorage = fakeSafeStorage(),
             unset       = {planeBase: null, bearer: null, identity: null, authSource: null},
-            // the bearer lands, then plane.json's rename fails
-            failing     = {...fs, renameSync: (from, to) => { if (to.endsWith(PLANE_CONFIG_FILE)) throw new Error('disk full'); return fs.renameSync(from, to) }};
+            failAt      = file => ({...fs, renameSync: (from, to) => { if (to.endsWith(file)) throw new Error('disk full'); return fs.renameSync(from, to) }}),
+            replace     = (dir, fsModule) => writePlaneConfig({dir, safeStorage, planeBase: 'https://plane-b.example', bearer: 'ghp_anotherBearer', identity: '@viewer-b', authSource: 'oidc', fsModule}),
+            seeds       = {
+                bound : dir => writePlaneConfig({dir, safeStorage, planeBase: 'https://plane-a.example', bearer: BEARER, identity: '@viewer-a', authSource: 'github-pat'}),
+                // stored before the binding: no digest, no class
+                legacy: dir => {
+                    writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({identity: '@viewer-a', planeBase: 'https://plane-a.example'}));
+                    writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString(BEARER))
+                }
+            };
 
-        writePlaneConfig({dir, safeStorage, planeBase: 'https://plane-a.example', bearer: BEARER, identity: '@viewer-a', authSource: 'github-pat'});
+        for (const [name, seed] of Object.entries(seeds)) {
+            // the new record landed, then the bearer failed: the record names a bearer that isn't there
+            let dir = tempDir();
 
-        expect(() => writePlaneConfig({dir, safeStorage, planeBase: 'https://plane-b.example', bearer: 'ghp_anotherBearer', identity: '@viewer-b', authSource: 'oidc', fsModule: failing}))
-            .toThrow('disk full');
+            seed(dir);
+            expect(() => replace(dir, failAt(PLANE_BEARER_FILE)), name).toThrow('disk full');
 
-        const record = readPlaneConfig({dir, safeStorage});
+            const record = readPlaneConfig({dir, safeStorage});
 
-        expect(record).toEqual(unset);
-        expect(planeEnvFragment({env: {}, planeConfig: record}), 'nothing is exported').toEqual({});
-        expect(existsSync(path.join(dir, `${PLANE_CONFIG_FILE}.${process.pid}.tmp`)), 'no temp file is left behind').toBe(false);
+            expect(record, `${name}: the bearer failed`).toEqual(unset);
+            expect(planeEnvFragment({env: {}, planeConfig: record}), `${name}: nothing is exported`).toEqual({});
+            expect(existsSync(path.join(dir, `${PLANE_BEARER_FILE}.${process.pid}.tmp`)), `${name}: no temp file is left behind`).toBe(false);
 
-        // a fresh attach stores a whole record again
+            // the record failed first: the old pair stays whole
+            dir = tempDir();
+            seed(dir);
+            expect(() => replace(dir, failAt(PLANE_CONFIG_FILE)), name).toThrow('disk full');
+            expect(readPlaneConfig({dir, safeStorage}), `${name}: the record failed`).toMatchObject({planeBase: 'https://plane-a.example', bearer: BEARER, identity: '@viewer-a'})
+        }
+
+        // a fresh attach over the older record stores a whole one
+        const dir = tempDir();
+
+        seeds.legacy(dir);
         writePlaneConfig({dir, safeStorage, planeBase: 'https://plane-b.example', bearer: 'ghp_anotherBearer', identity: '@viewer-b', authSource: 'github-pat'});
 
         expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'https://plane-b.example', bearer: 'ghp_anotherBearer', identity: '@viewer-b', authSource: 'github-pat'})

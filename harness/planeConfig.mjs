@@ -139,9 +139,10 @@ export function readPlaneConfig({dir, safeStorage, fsModule = fs}) {
 /**
  * @summary Stores the plane record. Refuses when the OS cannot encrypt: a plain-text PAT under
  * `userData` is the launcher's stopgap, not the product. Each file is replaced whole (a temp file renamed
- * over it). The bearer is written first, and `plane.json`, the file that marks the shell as configured,
- * names the digest of the encrypted bearer it belongs to. A failure between the two leaves a record that
- * reads as unconfigured, never one that pairs the new bearer with the old plane, identity or class. The
+ * over it). `plane.json` is written first and names the digest of the encrypted bearer written after it.
+ * A failure before it lands leaves the old record whole. A failure after it leaves a record whose bearer
+ * does not match, which reads as unconfigured; that holds even over a record from before the binding. So
+ * the new bearer is never paired with the old plane, identity or class. The
  * identity is the one the plane named for this bearer, and the class the one its fleet surface named;
  * neither is a secret, so both sit in `plane.json`. A class the plane didn't name is not recorded.
  * @param {Object} options
@@ -179,8 +180,8 @@ export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity,
         record = {...(source && {authSource: source}), bearerSha256: sha256(sealed), identity: viewer, planeBase: base};
 
     fsModule.mkdirSync(dir, {recursive: true});
-    replaceFile({file: path.join(dir, PLANE_BEARER_FILE), data: sealed, fsModule});
     replaceFile({file: path.join(dir, PLANE_CONFIG_FILE), data: JSON.stringify(record, null, 4) + '\n', fsModule});
+    replaceFile({file: path.join(dir, PLANE_BEARER_FILE), data: sealed, fsModule});
 
     return {identity: viewer, planeBase: base}
 }
