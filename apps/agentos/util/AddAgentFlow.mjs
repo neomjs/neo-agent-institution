@@ -65,6 +65,12 @@ const FLEET_OFFLINE_REASON = 'The fleet is not running. Start it, then add the a
 const MEMORY_IMPORT_NONE = 'none';
 
 /**
+ * What a memory choice promises about the original, beside a list of candidates.
+ * @member {String} MEMORY_COPY_NOTE
+ */
+const MEMORY_COPY_NOTE = 'Its notes are copied, never moved; the original stays where it is.';
+
+/**
  * Static validation and bridge-round-trip utilities for defining an AgentOS resident.
  * @class AgentOS.util.AddAgentFlow
  * @extends Neo.core.Base
@@ -73,6 +79,7 @@ class AddAgentFlow extends Base {
     static ADD_AGENT_STATES     = ADD_AGENT_STATES
     static DEFAULT_REPO_SLUG    = DEFAULT_REPO_SLUG
     static FLEET_OFFLINE_REASON = FLEET_OFFLINE_REASON
+    static MEMORY_COPY_NOTE     = MEMORY_COPY_NOTE
     static MEMORY_IMPORT_NONE   = MEMORY_IMPORT_NONE
 
     static config = {
@@ -278,6 +285,20 @@ class AddAgentFlow extends Base {
             default:
                 return []
         }
+    }
+
+    /**
+     * @summary The memory choice's lead, in one set of words for Add Agent's frame and Agent Detail's Memory row:
+     * one candidate, several, or a check that could not answer, with its reason.
+     * @param {Object} discovery The {@link readMemoryCandidates} outcome.
+     * @returns {String}
+     */
+    static memoryLead(discovery) {
+        if (discovery?.state === 'unavailable') {
+            return `Could not check for existing memory — ${discovery.reason}.`
+        }
+
+        return discovery?.candidates?.length === 1 ? 'Continue this agent\'s memory?' : 'Continue one of these agents\' memory?'
     }
 
     /**

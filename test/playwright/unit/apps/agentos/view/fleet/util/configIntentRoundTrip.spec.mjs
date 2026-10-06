@@ -306,6 +306,39 @@ test.describe('configIntentRoundTrip — cross-owner supersession authority (#15
         store.destroy()
     })
 
+    test('a memory consent crosses alone, lands from the readback, and a readback without one clears it (#572)', async () => {
+        const
+            store    = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop'}]),
+            received = [];
+
+        let answer = {status: 'accepted', agent: {id: 'ada', harnessType: 'claude-desktop', memoryImport: '/Users/ada/.claude/projects/ada/memory'}};
+
+        const run = intent => ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            bridgeResolver: () => ({configureAgent: async wire => {
+                received.push(wire);
+                return answer
+            }}),
+            intent,
+            owner        : {},
+            setSaveStatus: () => {},
+            store
+        });
+
+        await run({id: 'ada', memoryImport: '/Users/ada/.claude/projects/ada/memory', source: 'event-envelope'});
+
+        expect(received[0]).toEqual({id: 'ada', memoryImport: '/Users/ada/.claude/projects/ada/memory'});
+        expect(store.get('ada').memoryImport).toBe('/Users/ada/.claude/projects/ada/memory');
+
+        // a withdrawn consent is absent from the canonical readback, so the record drops it too
+        answer = {status: 'accepted', agent: {id: 'ada', harnessType: 'claude-desktop'}};
+        await run({id: 'ada', memoryImport: null});
+
+        expect(received[1]).toEqual({id: 'ada', memoryImport: null});
+        expect(store.get('ada').memoryImport).toBeNull();
+
+        store.destroy()
+    })
+
     test('an adoption takes its own facet verb by id alone, never configureAgent, and its readback is the only write', async () => {
         const
             store    = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex', launchOwner: 'external'}]),

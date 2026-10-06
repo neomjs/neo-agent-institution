@@ -253,7 +253,7 @@ class AddAgentForm extends FormContainer {
                 flex     : 'none',
                 hidden   : true,
                 reference: 'memory-note',
-                text     : 'Its notes are copied, never moved; the original stays where it is.'
+                text     : AddAgentFlow.MEMORY_COPY_NOTE
             }, {
                 // the technical facts, never on a row or in the lead: the chosen candidate's folder, or
                 // the producer's own words when the check could not answer
@@ -701,9 +701,7 @@ class AddAgentForm extends FormContainer {
         frame.hidden = rows.length === 0;
         frame[unavailable ? 'addCls' : 'removeCls']('is-unavailable');
 
-        me.getReference('memory-lead').text = unavailable
-            ? `Could not check for existing memory — ${discovery.reason}.`
-            : candidates.length === 1 ? 'Continue this agent\'s memory?' : 'Continue one of these agents\' memory?';
+        me.getReference('memory-lead').text = AddAgentFlow.memoryLead(discovery);
 
         me.getReference('memory-note').hidden    = candidates.length === 0;
         me.getReference('memory-actions').hidden = !unavailable;

@@ -828,6 +828,67 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         }
     });
 
+    test('#572: the Memory row reads the Fleet\'s candidates and records the consent through the runner, read back from the definition', async () => {
+        const
+            source      = '/Users/ada/.claude/projects/-Users-Shared-github-neomjs-neo/memory',
+            definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+                {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop'}
+            ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            intents    = [];
+
+        let refuse = null;
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent: async intent => {
+                intents.push(intent);
+                // the Fleet normalizes the consent it records: the row shows the readback, never the request
+                return refuse
+                    ? {status: 'rejected', reason: refuse}
+                    : {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop', memoryImport: `${intent.memoryImport}/`}}
+            },
+            fleetMemoryCandidates: async () => ({capability: {state: 'wired'}, candidates: [
+                {family: 'claude', source, name: 'github-neomjs-neo', notes: 918, lastChanged: null}
+            ]}),
+            fleetSeatGitIdentity : async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('seat-memory'),
+                line   = () => row.getReference('memory-line').text;
+
+            expect(line()).toBe('not chosen: its first Start opens with empty memory');
+
+            row.onChangeClick();
+            await expect.poll(() => row.discovery?.state).toBe('candidates');
+            // one candidate is preselected, as in Add
+            expect(row.choice).toBe(source);
+
+            await detail.controller.onDeclareSeatMemory({memoryImport: row.choice});
+
+            expect(intents).toEqual([{id: 'ada', memoryImport: source}]);
+            expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
+            expect(line()).toBe(`continues the memory at ${source}/`);
+            expect([row.editing, row.discovery, row.status.state]).toEqual([false, null, 'idle']);
+
+            // a refusal keeps the recorded consent and says why, in the Fleet's words
+            refuse = 'A seat\'s memory import is chosen before its first Start, and \'ada\' already holds its memory.';
+            await detail.controller.onDeclareSeatMemory({memoryImport: 'none'});
+            expect(row.status).toEqual({state: 'rejected', reason: refuse});
+            expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
     test('#559: a catalog read or a declaration answers only the seat and harness it started for', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
             {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', model: 'gpt-6-sol'},

@@ -76,6 +76,12 @@ class AgentDefinition extends Model {
             type        : 'String',
             defaultValue: null
         }, {
+            // the seat's memory consent: the folder of the existing agent's memory it continues, or 'none' to start
+            // empty; null = none recorded, so its first Start opens with empty memory
+            name        : 'memoryImport',
+            type        : 'String',
+            defaultValue: null
+        }, {
             // the repositories the registry declares for the seat: `repo` is the working one
             // ({repoSlug, cloneUrl}), `repos` the others. Nested fields, not a `mapping`: a mapping
             // only reads initial values, and the configure readback must refresh both.
