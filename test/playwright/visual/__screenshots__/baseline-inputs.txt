@@ -63,7 +63,7 @@ apps/agentos/index.html
     9ab6324cf458c8002667cd12b4ba1dd928ee33b6
 
 apps/agentos/model/AgentDefinition.mjs
-    788a6ec637c17f602d275cb6dabc6ef97dd1ab74
+    414eeb49380e141f80a4b145af050625dbd42c11
 
 apps/agentos/model/CatchUpEntry.mjs
     29fd958061be44385f2c1fcd6548a40d619b0533
@@ -195,7 +195,7 @@ apps/agentos/store/ViewerWakeFeed.mjs
     2416a3352de08dc4fa72d503913c6450a6f8dab6
 
 apps/agentos/util/AddAgentFlow.mjs
-    1fa5ecf5b413a1eaf48296d1eabbe972f64eb833
+    612d355b154292022e71a653c4da2239dad7513a
 
 apps/agentos/util/AgentFreshness.mjs
     82ac3c17912b1cb8b6fcae46662b0701f238e87e
@@ -210,7 +210,7 @@ apps/agentos/util/CockpitPerspectives.mjs
     f892864ca8a1ec0d92fb7e3fa45fa8f68c5c770f
 
 apps/agentos/util/ConfigIntentRoundTrip.mjs
-    2b91c88ede23247ae8c7b86e30402c36fa4137a6
+    72ca529790de94d4b06be35a92f27cf28585d702
 
 apps/agentos/util/DeploymentStateRead.mjs
     d2699ce646972d0252ce188b3012ca469a87be54
@@ -363,10 +363,10 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     147572b208ac973bcffacab7620e5b85beed4418
 
 apps/agentos/view/fleet/detail/Container.mjs
-    ccebb4a14b9a2fc9b637f364f202e1da91b60474
+    8d004ce288d5f9fe3b97452fad781cced73275dd
 
 apps/agentos/view/fleet/detail/Controller.mjs
-    743368693e2ff3b2d2c4cf92d26db4ad1d10b13c
+    022dfe5ce946e3f74e199ecc895bcc9d630bb7ca
 
 apps/agentos/view/fleet/detail/PullRequestList.mjs
     e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
@@ -374,8 +374,11 @@ apps/agentos/view/fleet/detail/PullRequestList.mjs
 apps/agentos/view/fleet/detail/RepositoryList.mjs
     c5ea39cc6a96f2874cb6f84dba77c9d0695150f5
 
+apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs
+    a5c93e75fed4e80cfa0b8a145b26c59ae0a6fb5c
+
 apps/agentos/view/fleet/detail/SeatModelContainer.mjs
-    3aee414f622b2965dc6f048c8d6cc5d50afb603d
+    9b33bf171a185749a6a486b40d2abe2f5a24074d
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
     e2b127838254f6fa5ab6512f19793c94aea2aa03
@@ -411,7 +414,7 @@ apps/agentos/view/fleet/health/SwatchComponent.mjs
     a2d3e1d8509ca2e06f4f024959aae9005a73dd13
 
 apps/agentos/view/fleet/instances/AddAgentForm.mjs
-    85c3ff243cecbc8c79fbd3d4787275c3647766ba
+    02462761ef708e0e792de5ec41a6e2619fbee019
 
 apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f
@@ -587,6 +590,9 @@ resources/scss/src/apps/agentos/fleet/detail/Container.scss
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
     e67fc0dddd05c2a1e49c73d645c9a0b13cbdd03a
 
+resources/scss/src/apps/agentos/fleet/detail/SeatMemoryContainer.scss
+    49050c5ab17c9149fa4ec3c3a4f1671ce7991859
+
 resources/scss/src/apps/agentos/fleet/detail/SeatModelContainer.scss
     4e07ccebcb5b900de08e1246900f5f423f19eb9e
 
@@ -738,7 +744,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    ebdfdfc088d134d09b2d5978afc8f8aa9e592dbd
+    0c63f2380f6462d431b0d3442783ee0373d183fa
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -959,23 +965,32 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-c
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-card.png
     4a695e841a80cd265493ce02e488f98e10a1b6c6
 
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-memory-choice-light.png
+    a26c5e8e56d6ec6f5f8ce03855295e1002bafb78
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-memory-choice.png
+    eacd5bc51aa8a9dc756c99dd2b0add434c163e46
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-memory-recorded.png
+    2607f0adf33c08bb7942ae28e2b146b7d4a468cb
+
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-app.png
-    20af5256142369c4dcb0b358da1825a1b7fecdf4
+    eea027770c337ed21afc014c79c0d3c89cfa3e7f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-declared.png
-    3498af1d54e35d07e69edf74822cf13677928b79
+    2bd13d8f44b55ab7e3f008abe1b0397017d8f19a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-derived.png
-    f85bfd4077b934e425524061c04adc206dc7c999
+    0c935b56a62188c540f676de003cfc479b7a6a16
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-differs-stopped-light.png
-    fc09723cf136191765638956cf6554a325ee267b
+    685ac8bf7ed30201fc304285408a2840b159fffc
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-differs-stopped.png
-    14b183d8ab2595a572abca13fb4f99950c5f4d12
+    6dee8d6ab56670d66f843408c1a97c6355117de9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-refused.png
-    b123690b7f3c9f0881cb30047d92f8bd4288aae6
+    ef82961f13eb29209cc5633893e1911aaf5a2bcc
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create-light.png
     b8d1c159f9d429979c33293df280f21d4ab2c087
