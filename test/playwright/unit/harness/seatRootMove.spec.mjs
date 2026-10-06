@@ -144,7 +144,7 @@ test('consent records the inputs of the plan it was shown, and changes nothing e
     expect(fs.existsSync(to)).toBe(false)
 });
 
-test('consent refuses a refused plan, a plan that changed since it was shown, a second consent, and a move of nothing', async () => {
+test('consent refuses with a code a caller decides on: a refused plan, a changed one, a second consent, nothing to move, no root', async () => {
     seatFolder('neo-gpt-sophie');
 
     const brain = fakeBrain({'neo-gpt-sophie': path.join(from, 'neo-gpt-sophie')});
@@ -153,21 +153,26 @@ test('consent refuses a refused plan, a plan that changed since it was shown, a 
     brain.registry.set('neo-opus-ada', path.join(from, 'neo-opus-ada'));
 
     expect(await consentSeatMove({dir: userData, to, fingerprint: shown.fingerprint, runStep: brain.runStep}))
-        .toEqual({state: 'refused', reason: 'the seats changed since the plan was shown; review it again'});
+        .toEqual({state: 'refused', code: 'plan-changed', reason: 'the seats changed since the plan was shown; review it again'});
 
     const refusing = {runStep: async () => ({state: 'refused', reason: "'/x/neo-gpt-sophie' holds something other than a verified copy of seat 'neo-gpt-sophie'", rows: []})};
 
-    expect((await consentSeatMove({dir: userData, to, fingerprint: 'any', ...refusing})).reason).toMatch(/verified copy/);
+    expect(await consentSeatMove({dir: userData, to, fingerprint: 'any', ...refusing}))
+        .toMatchObject({state: 'refused', code: 'plan-refused', reason: expect.stringMatching(/verified copy/)});
     expect(fs.existsSync(path.join(userData, SEAT_ROOT_MOVE_FILE))).toBe(false);
 
     expect((await consent(brain)).state).toBe('consented');
-    expect((await consent(brain)).reason).toBe('a move of the seats is already consented');
+    expect(await consent(brain)).toEqual({state: 'refused', code: 'already-consented', reason: 'a move of the seats is already consented'});
 
     fs.rmSync(path.join(userData, SEAT_ROOT_MOVE_FILE));
 
     const settled = fakeBrain({'neo-gpt-sophie': path.join(to, 'neo-gpt-sophie')});
 
-    expect((await consent(settled)).reason).toBe('no seat would move')
+    expect(await consent(settled)).toEqual({state: 'refused', code: 'nothing-to-move', reason: 'no seat would move'});
+
+    fs.rmSync(path.join(userData, 'seat-root.json'));
+
+    expect((await consent(brain)).code).toBe('no-seat-root')
 });
 
 test('a consented move commits at boot: copies, bindings, the root record, then the old folders archived', async () => {

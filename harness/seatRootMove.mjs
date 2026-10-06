@@ -125,22 +125,26 @@ function planFingerprint({from, to, rows}) {
  * @param {Function} [options.now]
  * @param {Function} [options.newId=crypto.randomUUID] The consent's id, which marks the move's own staging folders.
  * @param {Object}   [options.fsModule=fs]
- * @returns {Promise<{state: 'consented', inputs: Object}|{state: 'refused', reason: String}>}
+ * @returns {Promise<{state: 'consented', inputs: Object}|{state: 'refused', code: String, reason: String}>} A refusal's
+ *     `code` is what a caller decides on: `no-seat-root`, `already-consented`, `plan-refused`, `plan-changed` (plan
+ *     again and show it) or `nothing-to-move`. Its `reason` is the sentence for a person and the log.
  */
 export async function consentSeatMove({dir, to, fingerprint, runStep, now = () => new Date(), newId = crypto.randomUUID, fsModule = fs}) {
-    const record = readSeatRootRecord({dir, fsModule});
+    const
+        record  = readSeatRootRecord({dir, fsModule}),
+        refused = (code, reason) => ({state: 'refused', code, reason});
 
-    if (!record) return {state: 'refused', reason: 'this installation records no seat root yet'};
-    if (readSeatRootMove({dir, fsModule})) return {state: 'refused', reason: 'a move of the seats is already consented'};
+    if (!record) return refused('no-seat-root', 'this installation records no seat root yet');
+    if (readSeatRootMove({dir, fsModule})) return refused('already-consented', 'a move of the seats is already consented');
 
     const plan = await planSeatMove({from: record.root, to, runStep});
 
-    if (plan.state !== 'planned') return {state: 'refused', reason: plan.reason ?? `the plan reads '${plan.state}'`};
-    if (plan.fingerprint !== fingerprint) return {state: 'refused', reason: 'the seats changed since the plan was shown; review it again'};
+    if (plan.state !== 'planned') return refused('plan-refused', plan.reason ?? `the plan reads '${plan.state}'`);
+    if (plan.fingerprint !== fingerprint) return refused('plan-changed', 'the seats changed since the plan was shown; review it again');
 
     const rows = plan.rows.filter(row => MOVING_STATES.has(row.state));
 
-    if (rows.every(row => row.state === 'done')) return {state: 'refused', reason: 'no seat would move'};
+    if (rows.every(row => row.state === 'done')) return refused('nothing-to-move', 'no seat would move');
 
     const
         moment = now(),
