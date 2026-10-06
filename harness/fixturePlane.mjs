@@ -4,7 +4,7 @@ import http            from 'node:http';
 import path            from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {allocatePort, awaitPortListening, runBrainScript, stopBrainChild} from './brain.mjs';
-import {probePlaneCredential, writePlaneConfig}                           from './planeConfig.mjs';
+import {probePlaneBearerClass, probePlaneCredential, writePlaneConfig}    from './planeConfig.mjs';
 
 /**
  * @module harness/fixturePlane
@@ -318,7 +318,9 @@ export async function startFixturePlane({repoRoot, isolationRoot, recordDir, saf
             throw new Error(`the fixture plane refused its own seat (${verdict})`)
         }
 
-        writePlaneConfig({bearer: token, dir: recordDir, identity, planeBase, safeStorage})
+        const authSource = await probePlaneBearerClass({bearer: token, planeBase});
+
+        writePlaneConfig({authSource, bearer: token, dir: recordDir, identity, planeBase, safeStorage})
     } catch (error) {
         await ingress.close();
         throw error

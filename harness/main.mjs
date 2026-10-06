@@ -157,7 +157,7 @@ let
     launchedPlane = null;
 
 // Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
-const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer];
+const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, process.env.NEO_FLEET_PLANE_ADMISSION_BEARER, storedPlaneBearer];
 
 // A Finder launch has no terminal: every line main prints also lands in `main.log` in the platform's logs
 // folder, with each secret main holds redacted at the file boundary. A diagnostic run logs under its own
