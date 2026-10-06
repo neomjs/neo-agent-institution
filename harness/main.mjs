@@ -1656,6 +1656,7 @@ app.whenReady().then(async () => {
             const
                 expectedShellKeys = [
                     'attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus',
+                    'seatRootConsent', 'seatRootPlan', 'seatRootStatus',
                     'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe',
                     'shellVersion', 'verifyPlane'
                 ],

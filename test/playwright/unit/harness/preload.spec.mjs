@@ -134,10 +134,15 @@ test.describe('Electron harness preload capability', () => {
     test('exposes exactly the named promise capabilities and no raw transport or secret facts', async () => {
         const
             {exposed, invokes} = await loadPreload(),
-            request            = {method: 'listAgents', params: {}};
+            request            = {method: 'listAgents', params: {}},
+            expectedShellKeys  = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane'],
+            mainSource         = await readFile(mainPath, 'utf8'),
+            smokeKeys          = mainSource.match(/expectedShellKeys\s*=\s*\[([^\]]+)\]/);
 
         expect(exposed.name).toBe('neoShell');
-        expect(Object.keys(exposed.value).sort()).toEqual(['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane']);
+        expect(Object.keys(exposed.value).sort()).toEqual(expectedShellKeys);
+        expect(smokeKeys, 'packaged smoke declares its independent shell capability list').not.toBeNull();
+        expect(smokeKeys[1].split(',').map(key => key.trim().replace(/^'|'$/g, ''))).toEqual(expectedShellKeys);
         expect(exposed.value.shellVersion).toBe('42.0.0');
         expect(exposed.value).not.toHaveProperty('bearerToken');
         expect(exposed.value).not.toHaveProperty('defineFleetAgent');
