@@ -324,7 +324,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(group).toHaveScreenshot('seat-model-differs-stopped-light.png')
     });
 
-    test('the Seat group\'s Memory row: nothing chosen names the empty first Start, the choice opens in Add\'s list, a recorded consent reads back; both skins (#572)', async ({page}) => {
+    test('the Seat group\'s Memory row: no choice recorded reads as that, the choice opens in Add\'s list and names the chosen folder under Details, a recorded consent reads back; both skins (#572)', async ({page}) => {
         await page.setViewportSize({width: 1280, height: 800});
         await bootSettledCockpit(page);
 
@@ -341,11 +341,15 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 await page.mouse.move(0, 0);
                 await page.waitForTimeout(400)
             },
+            // the choice opens on two candidates; picking one names its folder under Details, opened for the capture
             choose = async () => {
                 const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${SEAT_MEMORY_DRIVER}?state=candidates&t=${++driverTick}`);
 
                 expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
-                await expect(group.locator('.fm-seat-memory-offer')).toBeVisible()
+                await expect(group.locator('.fm-seat-memory-offer')).toBeVisible();
+                await row.locator('.neo-list-item', {hasText: 'Mnemosyne'}).click();
+                await row.locator('.fm-seat-memory-details summary').click();
+                await expect(row.locator('.fm-seat-memory-source')).toHaveText(source)
             };
 
         await landFleetRoster(page, [...sampleRoster, {
@@ -357,7 +361,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
         await expect(group).toBeVisible({timeout: 30000});
 
-        await expect(line).toHaveText('not chosen: its first Start opens with empty memory');
+        await expect(line).toHaveText('no import choice recorded');
         // the open choice outgrows the inspector's fold, so it is captured as its own row
         await choose();
         await settle();
@@ -365,7 +369,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         // a recorded consent arrives as a new definitions Store: another binding, so the choice folds and the line reads it
         await define({memoryImport: source});
-        await expect(line).toHaveText(`continues the memory at ${source}`);
+        await expect(line).toHaveText(`recorded: import the memory at ${source}`);
         await expect(group.locator('.fm-seat-memory-change')).toHaveText('Change');
         await expect(group.locator('.fm-seat-memory-offer')).toBeHidden();
         await settle();

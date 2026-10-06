@@ -193,7 +193,7 @@ class Controller extends ComponentController {
             me.memoryRequest++;
             me.seatRequest++;
             me.getReference('seat-model')?.set({catalog: null, editing: null, status: {state: 'idle', reason: ''}});
-            me.getReference('seat-memory')?.set({discovery: null, editing: false, refused: false, status: {state: 'idle', reason: ''}})
+            me.getReference('seat-memory')?.set({closed: false, discovery: null, editing: false, status: {state: 'idle', reason: ''}})
         }
 
         me.component.applyConfigRecord()
@@ -326,9 +326,10 @@ class Controller extends ComponentController {
 
     /**
      * @summary Record the shown seat's memory consent through the shared runner, with the row as its own owner token.
-     * The accepted readback lands on the definition, and the row re-seats from it. A refusal the Fleet answered, such as
-     * its refusal for a seat that already holds its memory, stays on the row in the Fleet's words, and the row offers
-     * the choice no more; an unreachable or invalid answer leaves it open to try again.
+     * The accepted readback lands on the definition, and the row re-seats from it. Every refusal stays on the row in the
+     * Fleet's words. Only the Fleet's code for a closed choice ({@link AgentOS.util.AddAgentFlow#MEMORY_IMPORT_CLOSED},
+     * a seat that runs or already holds its memory) withdraws the offer. Any other refusal, and an unreachable or
+     * invalid answer, leaves the choice open to correct and try again. Nothing reaches the definition but readback.
      * @param {Object} data
      * @param {String} data.memoryImport A candidate's `source`, or `'none'`
      * @returns {Promise<void>}
@@ -356,8 +357,8 @@ class Controller extends ComponentController {
 
                 if (state === 'accepted') {
                     row.set({discovery: null, editing: false, status: {state: 'idle', reason: ''}})
-                } else if (detail?.refused) {
-                    row.set({discovery: null, editing: false, refused: true, status: {state, reason}})
+                } else if (detail?.code === AddAgentFlow.MEMORY_IMPORT_CLOSED) {
+                    row.set({closed: true, discovery: null, editing: false, status: {state, reason}})
                 } else {
                     row.status = {state, reason: state === 'pending' ? '' : reason}
                 }

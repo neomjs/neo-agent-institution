@@ -851,7 +851,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
                 // the Fleet normalizes the consent it records: the row shows the readback, never the request
                 return refuse
-                    ? {status: 'rejected', reason: refuse}
+                    ? {status: 'rejected', ...refuse}
                     : {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop', memoryImport: `${intent.memoryImport}/`}}
             },
             fleetMemoryCandidates: async () => ({capability: {state: 'wired'}, candidates: [
@@ -866,7 +866,8 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                 row    = detail.getReference('seat-memory'),
                 line   = () => row.getReference('memory-line').text;
 
-            expect(line()).toBe('not chosen: its first Start opens with empty memory');
+            // no consent says nothing about the seat's home, which may already hold memory: neither empty nor cleared
+            expect(line()).toBe('no import choice recorded');
 
             row.onChangeClick();
             await expect.poll(() => row.discovery?.state).toBe('candidates');
@@ -877,21 +878,32 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
             expect(intents).toEqual([{id: 'ada', memoryImport: source}]);
             expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
-            expect(line()).toBe(`continues the memory at ${source}/`);
+            // the recorded choice, never a finished import
+            expect(line()).toBe(`recorded: import the memory at ${source}/`);
             expect([row.editing, row.discovery, row.status.state]).toEqual([false, null, 'idle']);
 
             // an unreachable Fleet refuses nothing: the reason is generic, and the choice stays open to try again
             unreachable = true;
             await detail.controller.onDeclareSeatMemory({memoryImport: 'none'});
             expect(row.status).toEqual({state: 'rejected', reason: 'Could not save the configuration. Nothing was changed.'});
-            expect([row.refused, row.getReference('memory-change').hidden]).toEqual([false, false]);
+            expect([row.closed, row.getReference('memory-change').hidden]).toEqual([false, false]);
 
-            // the Fleet's refusal keeps the recorded consent, says why in its words, and closes the choice for good
+            // a refusal the operator can correct carries no code: its words show, the choice and Save stay open,
+            // and the definition keeps the readback
             unreachable = false;
-            refuse      = 'A seat\'s memory import is chosen before its first Start, and \'ada\' already holds its memory.';
+            refuse      = {reason: 'configureAgent: memoryImport must name a folder the Fleet offered.'};
+            row.onChangeClick();
+            await expect.poll(() => row.discovery?.state).toBe('candidates');
+            await detail.controller.onDeclareSeatMemory({memoryImport: '/elsewhere'});
+            expect(row.status).toEqual({state: 'rejected', reason: refuse.reason});
+            expect([row.closed, row.editing, row.getReference('memory-offer').hidden, row.getReference('memory-save').disabled]).toEqual([false, true, false, false]);
+            expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
+
+            // only the Fleet's code for a closed choice withdraws the offer: its words on the row, the readback kept
+            refuse = {code: 'FLEET_SEAT_MEMORY_IMPORT_CLOSED', reason: 'A seat\'s memory import is chosen before its first Start, and \'ada\' already holds its memory.'};
             await detail.controller.onDeclareSeatMemory({memoryImport: 'none'});
-            expect(row.status).toEqual({state: 'rejected', reason: refuse});
-            expect([row.refused, row.getReference('memory-change').hidden]).toEqual([true, true]);
+            expect(row.status).toEqual({state: 'rejected', reason: refuse.reason});
+            expect([row.closed, row.editing, row.getReference('memory-change').hidden]).toEqual([true, false, true]);
             expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
 
             detail.destroy()

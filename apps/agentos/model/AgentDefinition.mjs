@@ -76,8 +76,8 @@ class AgentDefinition extends Model {
             type        : 'String',
             defaultValue: null
         }, {
-            // the seat's memory consent: the folder of the existing agent's memory it continues, or 'none' to start
-            // empty; null = none recorded, so its first Start opens with empty memory
+            // the seat's memory consent: the folder of an existing agent's memory to import at its first Start, or
+            // 'none'; null = no choice recorded, and the Fleet imports nothing
             name        : 'memoryImport',
             type        : 'String',
             defaultValue: null

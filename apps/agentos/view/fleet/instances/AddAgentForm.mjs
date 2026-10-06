@@ -723,16 +723,14 @@ class AddAgentForm extends FormContainer {
     }
 
     /**
-     * @summary Details holds the technical facts the rows and the lead leave out: the chosen candidate's
-     * folder, or the producer's own words when the check could not answer. With neither, it hides.
+     * @summary Details holds the technical facts the rows and the lead leave out
+     * ({@link AgentOS.util.AddAgentFlow#memoryDetail}). With none, it hides.
      */
     syncMemoryDetails() {
         const
-            me        = this,
-            discovery = me.memoryDiscovery,
-            details   = me.getReference('memory-details'),
-            chosen    = me.memoryChoice !== AddAgentFlow.MEMORY_IMPORT_NONE && me.memoryChoice,
-            text      = discovery.state === 'unavailable' ? discovery.detail : discovery.state === 'candidates' && chosen ? chosen : null;
+            me      = this,
+            details = me.getReference('memory-details'),
+            text    = AddAgentFlow.memoryDetail({discovery: me.memoryDiscovery, choice: me.memoryChoice});
 
         details.vdom.cn[1].text = text ?? '';
         details.hidden          = !text;

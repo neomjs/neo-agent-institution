@@ -90,7 +90,7 @@ class ConfigIntentRoundTrip extends Base {
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam) — the DI discipline shared with `addAgentFlow`.
      * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?, gitName?, gitEmail?, model?, reasoningEffort?, memoryImport?}`, `{id, launchOwner: 'fleet'}`, `{id, repos}` or `{id, planeCredential: true}` ({@link runPlaneCredentialIntent}) (+ event envelope noise, stripped here).
      * @param {Object|null}   [config.owner]          The calling view — an opaque identity token for cross-owner supersede honesty. Omitting it degrades stale drops to silent.
-     * @param {Function}      config.setSaveStatus    `(agentId, state, reason, detail)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch). A `rejected` the Fleet itself answered carries `detail.refused: true`, apart from an unreachable or invalid answer.
+     * @param {Function}      config.setSaveStatus    `(agentId, state, reason, detail)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch). A `rejected` the Fleet itself answered carries `detail.code`, the Fleet's code for it or null; an unreachable or invalid answer carries no detail.
      * @param {Neo.data.Store|null} config.store      The shared definitions store — record resolution, the arbitration keys, and the write-generation bump all derive from it.
      * @returns {Promise<void>}
      */
@@ -225,7 +225,7 @@ class ConfigIntentRoundTrip extends Base {
                 record.set({memoryImport: null, model: null, reasoningEffort: null, ...agent});
                 setSaveStatus(agentId, 'accepted', 'Configuration saved.')
             } else if (outcome?.status === 'rejected') {
-                setSaveStatus(agentId, 'rejected', outcome.reason || 'Configuration was rejected.', {refused: true})
+                setSaveStatus(agentId, 'rejected', outcome.reason || 'Configuration was rejected.', {code: outcome.code ?? null})
             } else {
                 setSaveStatus(agentId, 'rejected', 'Configuration response was invalid. Nothing was changed.')
             }

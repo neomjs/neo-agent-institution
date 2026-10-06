@@ -56,18 +56,28 @@ test.describe('AgentOS.view.fleet.detail.SeatMemoryContainer (#572)', () => {
         SeatMemoryContainer = (await import('../../../../../../../../apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs')).default
     });
 
-    test('AC-3: the line says what the definition records; nothing recorded names the empty first Start', () => {
-        const row = Neo.create(SeatMemoryContainer, {appName, seat: ada});
+    test('AC-3: the line says what the definition records, never what the seat\'s home holds or that an import ran', () => {
+        const
+            row   = Neo.create(SeatMemoryContainer, {appName, seat: ada}),
+            lines = [];
 
-        expect(text(row, 'memory-line')).toBe('not chosen: its first Start opens with empty memory');
+        // a seat with no choice recorded may already hold memory: the row neither empties nor clears it in words
+        lines.push(text(row, 'memory-line'));
+        expect(lines[0]).toBe('no import choice recorded');
         expect([hidden(row, 'memory-change'), text(row, 'memory-change')]).toEqual([false, 'Choose']);
 
         row.seat = {id: 'ada', memoryImport: 'none'};
-        expect(text(row, 'memory-line')).toBe('starts with empty memory');
+        lines.push(text(row, 'memory-line'));
+        expect(lines[1]).toBe('recorded: import no memory');
         expect(text(row, 'memory-change')).toBe('Change');
 
         row.seat = {id: 'ada', memoryImport: source};
-        expect(text(row, 'memory-line')).toBe(`continues the memory at ${source}`);
+        lines.push(text(row, 'memory-line'));
+        expect(lines[2]).toBe(`recorded: import the memory at ${source}`);
+
+        for (const line of lines) {
+            expect(line, line).not.toMatch(/empty|clear|continues|opens/i)
+        }
 
         row.seat = null;
         expect(hidden(row, 'memory-change')).toBe(true);
@@ -113,9 +123,9 @@ test.describe('AgentOS.view.fleet.detail.SeatMemoryContainer (#572)', () => {
             row    = Neo.create(SeatMemoryContainer, {appName, seat: ada, editing: true}),
             events = fired(row);
 
-        // no memory on this machine: empty memory is the one choice, and Save records it
+        // no other agent's memory on this machine: importing none is the one choice, and Save records it
         row.discovery = {state: 'none'};
-        expect(text(row, 'memory-lead')).toBe('No other agent\'s memory is on this machine: the seat starts with empty memory.');
+        expect(text(row, 'memory-lead')).toBe('No other agent\'s memory is on this machine, so there is nothing to import.');
         expect(hidden(row, 'memory-list')).toBe(true);
         row.onSaveClick();
         expect(events).toEqual([['declare', 'none']]);
@@ -153,7 +163,7 @@ test.describe('AgentOS.view.fleet.detail.SeatMemoryContainer (#572)', () => {
     test('AC-4: a refusal shows in the row in the Fleet\'s words, and the choice stays open to correct', () => {
         const
             row    = Neo.create(SeatMemoryContainer, {appName, seat: ada, editing: true, discovery: candidates}),
-            reason = 'A seat\'s memory import is chosen before its first Start, and \'ada\' already holds its memory.';
+            reason = 'configureAgent: memoryImport must name a folder the Fleet offered.';
 
         row.status = {state: 'pending', reason: ''};
         expect(row.getReference('memory-save').disabled).toBe(true);
@@ -161,32 +171,67 @@ test.describe('AgentOS.view.fleet.detail.SeatMemoryContainer (#572)', () => {
         row.status = {state: 'rejected', reason};
         expect(status(row)).toEqual([reason, 'is-rejected']);
         expect(hidden(row, 'memory-offer')).toBe(false);
-        expect(text(row, 'memory-line')).toBe('not chosen: its first Start opens with empty memory');
+        expect(row.getReference('memory-save').disabled).toBe(false);
+        expect(text(row, 'memory-line')).toBe('no import choice recorded');
 
         row.destroy()
     });
 
-    test('AC-3: a seat the Fleet refused offers the choice no more, and its refusal stays on the row', () => {
+    test('AC-3: a seat whose choice the Fleet closed is offered it no more, and the Fleet\'s reason stays on the row', () => {
         const
             row    = Neo.create(SeatMemoryContainer, {appName, seat: {id: 'ada', memoryImport: 'none'}}),
             reason = 'A seat\'s memory import is chosen before its first Start, and \'ada\' already holds its memory.';
 
-        row.set({refused: true, status: {state: 'rejected', reason}});
+        row.set({closed: true, status: {state: 'rejected', reason}});
 
         expect(hidden(row, 'memory-change')).toBe(true);
         expect(hidden(row, 'memory-offer')).toBe(true);
-        expect(text(row, 'memory-line')).toBe('starts with empty memory');
+        expect(text(row, 'memory-line')).toBe('recorded: import no memory');
         expect(status(row)).toEqual([reason, 'is-rejected']);
 
         row.destroy()
     });
 
+    test('Details names the chosen candidate\'s folder before Save, so two that read alike are told apart; the empty row and a closed choice detail nothing', () => {
+        const
+            twins = {state: 'candidates', candidates: [
+                {family: 'codex', source: '/fixture/.codex/memories', name: 'codex', notes: 12, lastChanged: '2026-10-05T09:30:00Z'},
+                {family: 'codex', source: '/fixture/.codex-instances/codex/memories', name: 'codex', notes: 12, lastChanged: '2026-10-05T09:30:00Z'}
+            ]},
+            row     = Neo.create(SeatMemoryContainer, {appName, seat: ada, editing: true}),
+            details = () => [hidden(row, 'memory-details'), row.getReference('memory-details').vdom.cn[1].text],
+            pick    = source => row.onCandidateClick({record: row.getReference('memory-list').store.get(source)});
+
+        row.discovery = twins;
+        // several candidates wait for a choice, so nothing is detailed yet
+        expect(details()).toEqual([true, '']);
+
+        for (const {source} of twins.candidates) {
+            pick(source);
+            expect(details(), source).toEqual([false, source]);
+        }
+
+        pick('none');
+        expect(details()).toEqual([true, '']);
+
+        // a check that could not answer details the producer's own words
+        row.discovery = {state: 'unavailable', reason: 'the Agent OS did not answer', detail: 'memory discovery: EACCES on /fixture/.codex'};
+        expect(details()).toEqual([false, 'memory discovery: EACCES on /fixture/.codex']);
+
+        row.discovery = twins;
+        pick(twins.candidates[1].source);
+        row.editing = false;
+        expect(details()[0]).toBe(true);
+
+        row.destroy()
+    });
+
     test('another seat closes the choice and clears what belonged to the last one', () => {
-        const row = Neo.create(SeatMemoryContainer, {appName, seat: ada, editing: true, discovery: candidates, refused: true, status: {state: 'rejected', reason: 'no'}});
+        const row = Neo.create(SeatMemoryContainer, {appName, seat: ada, editing: true, discovery: candidates, closed: true, status: {state: 'rejected', reason: 'no'}});
 
         row.seat = {id: 'grace', memoryImport: null};
 
-        expect([row.editing, row.discovery, row.refused, row.status.state]).toEqual([false, null, false, 'idle']);
+        expect([row.editing, row.discovery, row.closed, row.status.state]).toEqual([false, null, false, 'idle']);
         expect(hidden(row, 'memory-offer')).toBe(true);
         expect(text(row, 'memory-change')).toBe('Choose');
 

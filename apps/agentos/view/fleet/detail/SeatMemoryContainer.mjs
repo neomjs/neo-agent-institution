@@ -7,14 +7,16 @@ import MemoryCandidateList from '../instances/MemoryCandidateList.mjs';
  * @class AgentOS.view.fleet.detail.SeatMemoryContainer
  * @extends Neo.container.Base
  *
- * @summary The Seat group's Memory row: the existing agent's memory the seat continues, or that it starts empty. A seat
- * added before Add Agent asked holds no consent, so its first Start opens on empty memory. This row offers the choice
- * Add makes, from the same helpers: the Fleet's candidates ({@link AgentOS.util.AddAgentFlow#readMemoryCandidates}) in
- * the same list, then *Start with empty memory*. The Fleet takes a consent only before the seat's first Start, and its
- * refusal of a later one shows on the row in its own words.
+ * @summary The Seat group's Memory row: the memory-import choice recorded for the seat, an existing agent's memory to
+ * import or none. It shows what was chosen, never what the seat's home holds: a seat added before Add Agent asked has
+ * no choice recorded, and the Fleet imports nothing for it. This row offers the choice Add makes, from the same
+ * helpers: the Fleet's candidates ({@link AgentOS.util.AddAgentFlow#readMemoryCandidates}) in the same list, then
+ * *Start with empty memory*, with the chosen candidate's folder under Details. The Fleet takes a choice only before
+ * the seat's first Start. Its refusal shows on the row in its own words, and only its code for a closed choice
+ * ({@link AgentOS.util.AddAgentFlow#MEMORY_IMPORT_CLOSED}) withdraws the offer.
  *
  * Like the model row it changes nothing itself. It fires `readSeatMemory` for the candidates and `declareSeatMemory`
- * with `{memoryImport}`; its owner runs both and sets `discovery`, `seat` and `status` back.
+ * with `{memoryImport}`; its owner runs both and sets `discovery`, `seat`, `status` and `closed` back.
  */
 class SeatMemoryContainer extends Container {
     static config = {
@@ -40,6 +42,13 @@ class SeatMemoryContainer extends Container {
          */
         choice_: null,
         /**
+         * Whether the Fleet closed this seat's choice: the seat runs, or already holds its memory. The Fleet's reason
+         * stays on the status line, and the row offers the choice no more.
+         * @member {Boolean} closed_=false
+         * @reactive
+         */
+        closed_: false,
+        /**
          * The Fleet's answer on existing memory, `{state: 'reading'}` while it is asked; `null` while the choice is closed.
          * @member {Object|null} discovery_=null
          * @reactive
@@ -51,13 +60,6 @@ class SeatMemoryContainer extends Container {
          * @reactive
          */
         editing_: false,
-        /**
-         * Whether the Fleet refused this seat's consent. Its reason stays on the status line, and the row offers the
-         * choice no more: a seat that already holds its memory keeps it.
-         * @member {Boolean} refused_=false
-         * @reactive
-         */
-        refused_: false,
         /**
          * The seat's definition, `{id, memoryImport}`; `null` without one.
          * @member {Object|null} seat_=null
@@ -117,6 +119,13 @@ class SeatMemoryContainer extends Container {
                 reference: 'memory-note',
                 text     : AddAgentFlow.MEMORY_COPY_NOTE
             }, {
+                ntype    : 'component',
+                cls      : ['fm-seat-memory-details'],
+                flex     : 'none',
+                hidden   : true,
+                reference: 'memory-details',
+                vdom     : {tag: 'details', cn: [{tag: 'summary', text: 'Details'}, {cls: ['fm-seat-memory-source']}]}
+            }, {
                 ntype : 'container',
                 cls   : ['fm-seat-memory-actions'],
                 flex  : 'none',
@@ -145,6 +154,11 @@ class SeatMemoryContainer extends Container {
         oldValue !== undefined && this.syncChoice()
     }
 
+    /** @param {Boolean} value @param {Boolean} oldValue */
+    afterSetClosed(value, oldValue) {
+        oldValue !== undefined && this.sync()
+    }
+
     /**
      * A new answer refills the list and starts a new choice: the recorded consent where the answer offers it, else
      * the one candidate an answer holds ({@link AgentOS.util.AddAgentFlow#preselectedMemory}).
@@ -170,19 +184,14 @@ class SeatMemoryContainer extends Container {
         oldValue !== undefined && this.sync()
     }
 
-    /** @param {Boolean} value @param {Boolean} oldValue */
-    afterSetRefused(value, oldValue) {
-        oldValue !== undefined && this.sync()
-    }
-
     /**
-     * Another seat closes the choice and clears what belonged to the last one, a refusal included.
+     * Another seat closes the choice and clears what belonged to the last one, a closed choice included.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      */
     afterSetSeat(value, oldValue) {
         if (oldValue !== undefined) {
-            value?.id !== oldValue?.id && this.set({discovery: null, editing: false, refused: false, status: {state: 'idle', reason: ''}});
+            value?.id !== oldValue?.id && this.set({closed: false, discovery: null, editing: false, status: {state: 'idle', reason: ''}});
             this.sync()
         }
     }
@@ -193,15 +202,15 @@ class SeatMemoryContainer extends Container {
     }
 
     /**
-     * @summary What the row's line says for a recorded consent: the memory the seat continues, that it starts empty,
-     * or that nothing was chosen, which leaves its first Start on empty memory.
+     * @summary What the row's line says: the choice on record, never the memory the seat's home holds or whether an
+     * import ran. That is the folder whose memory is to be imported, no import, or no choice recorded.
      * @param {String|null} consent The definition's `memoryImport`.
      * @returns {String}
      */
     static lineFor(consent) {
-        if (consent === AddAgentFlow.MEMORY_IMPORT_NONE) return 'starts with empty memory';
+        if (consent === AddAgentFlow.MEMORY_IMPORT_NONE) return 'recorded: import no memory';
 
-        return consent ? `continues the memory at ${consent}` : 'not chosen: its first Start opens with empty memory'
+        return consent ? `recorded: import the memory at ${consent}` : 'no import choice recorded'
     }
 
     /**
@@ -218,17 +227,17 @@ class SeatMemoryContainer extends Container {
             asks      = discovery?.state === 'unavailable' || discovery?.state === 'offline';
 
         me.getReference('memory-line').text = SeatMemoryContainer.lineFor(consent);
-        me.getReference('memory-change').set({disabled: pending, hidden: !me.seat || me.refused, text: me.editing ? 'Close' : consent ? 'Change' : 'Choose'});
+        me.getReference('memory-change').set({disabled: pending, hidden: !me.seat || me.closed, text: me.editing ? 'Close' : consent ? 'Change' : 'Choose'});
 
         const offer = me.getReference('memory-offer');
 
-        offer.hidden = !me.editing || reading || me.refused;
+        offer.hidden = !me.editing || reading || me.closed;
         offer[asks ? 'addCls' : 'removeCls']('is-unavailable');
 
         if (discovery && !reading) {
-            // a fleet that answers with no candidates leaves one honest choice: the empty memory it already has
+            // a fleet that answers with no candidates leaves one honest choice: the empty row, nothing to import
             me.getReference('memory-lead').text = discovery.state === 'none'
-                ? 'No other agent\'s memory is on this machine: the seat starts with empty memory.'
+                ? 'No other agent\'s memory is on this machine, so there is nothing to import.'
                 : discovery.state === 'offline' ? discovery.reason : AddAgentFlow.memoryLead(discovery);
 
             me.getReference('memory-list').hidden  = rows.length === 0;
@@ -246,7 +255,7 @@ class SeatMemoryContainer extends Container {
     }
 
     /**
-     * @summary Mark the operator's choice in the list.
+     * @summary Mark the operator's choice in the list; Details follows it.
      */
     syncChoice() {
         const
@@ -254,7 +263,23 @@ class SeatMemoryContainer extends Container {
             list   = me.getReference('memory-list'),
             record = me.choice ? list.store.get(me.choice) : null;
 
-        record ? list.selectItem(record) : list.selectionModel?.deselectAll()
+        record ? list.selectItem(record) : list.selectionModel?.deselectAll();
+        me.syncDetails()
+    }
+
+    /**
+     * @summary Details holds what the rows leave out ({@link AgentOS.util.AddAgentFlow#memoryDetail}), so two
+     * candidates that read alike are told apart before Save. With nothing to detail, it hides.
+     */
+    syncDetails() {
+        const
+            me      = this,
+            details = me.getReference('memory-details'),
+            text    = me.editing ? AddAgentFlow.memoryDetail({discovery: me.discovery, choice: me.choice}) : null;
+
+        details.vdom.cn[1].text = text ?? '';
+        details.hidden          = !text;
+        details.update()
     }
 
     /**
