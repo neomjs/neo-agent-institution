@@ -210,7 +210,7 @@ apps/agentos/util/CockpitPerspectives.mjs
     f892864ca8a1ec0d92fb7e3fa45fa8f68c5c770f
 
 apps/agentos/util/ConfigIntentRoundTrip.mjs
-    72ca529790de94d4b06be35a92f27cf28585d702
+    e1300e62fecbb2e4d20890f510d4c9c17a80738e
 
 apps/agentos/util/DeploymentStateRead.mjs
     d2699ce646972d0252ce188b3012ca469a87be54
@@ -366,7 +366,7 @@ apps/agentos/view/fleet/detail/Container.mjs
     8d004ce288d5f9fe3b97452fad781cced73275dd
 
 apps/agentos/view/fleet/detail/Controller.mjs
-    022dfe5ce946e3f74e199ecc895bcc9d630bb7ca
+    9ad91bc76eae1fab8e0f704f487cf096008861de
 
 apps/agentos/view/fleet/detail/PullRequestList.mjs
     e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
@@ -375,7 +375,7 @@ apps/agentos/view/fleet/detail/RepositoryList.mjs
     c5ea39cc6a96f2874cb6f84dba77c9d0695150f5
 
 apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs
-    a5c93e75fed4e80cfa0b8a145b26c59ae0a6fb5c
+    abdce8fce2e73aca1d39309d1e75bceadc7a2ad6
 
 apps/agentos/view/fleet/detail/SeatModelContainer.mjs
     9b33bf171a185749a6a486b40d2abe2f5a24074d

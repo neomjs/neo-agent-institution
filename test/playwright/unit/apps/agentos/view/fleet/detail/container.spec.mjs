@@ -840,12 +840,15 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             priorFleet = globalThis.AgentOS?.fleet,
             intents    = [];
 
-        let refuse = null;
+        let refuse = null, unreachable = false;
 
         globalThis.AgentOS ??= {};
         globalThis.AgentOS.fleet = {registryBridge: {
             configureAgent: async intent => {
                 intents.push(intent);
+
+                if (unreachable) throw new Error('transport closed');
+
                 // the Fleet normalizes the consent it records: the row shows the readback, never the request
                 return refuse
                     ? {status: 'rejected', reason: refuse}
@@ -877,10 +880,18 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             expect(line()).toBe(`continues the memory at ${source}/`);
             expect([row.editing, row.discovery, row.status.state]).toEqual([false, null, 'idle']);
 
-            // a refusal keeps the recorded consent and says why, in the Fleet's words
-            refuse = 'A seat\'s memory import is chosen before its first Start, and \'ada\' already holds its memory.';
+            // an unreachable Fleet refuses nothing: the reason is generic, and the choice stays open to try again
+            unreachable = true;
+            await detail.controller.onDeclareSeatMemory({memoryImport: 'none'});
+            expect(row.status).toEqual({state: 'rejected', reason: 'Could not save the configuration. Nothing was changed.'});
+            expect([row.refused, row.getReference('memory-change').hidden]).toEqual([false, false]);
+
+            // the Fleet's refusal keeps the recorded consent, says why in its words, and closes the choice for good
+            unreachable = false;
+            refuse      = 'A seat\'s memory import is chosen before its first Start, and \'ada\' already holds its memory.';
             await detail.controller.onDeclareSeatMemory({memoryImport: 'none'});
             expect(row.status).toEqual({state: 'rejected', reason: refuse});
+            expect([row.refused, row.getReference('memory-change').hidden]).toEqual([true, true]);
             expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
 
             detail.destroy()

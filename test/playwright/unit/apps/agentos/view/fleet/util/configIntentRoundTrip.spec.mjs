@@ -339,6 +339,39 @@ test.describe('configIntentRoundTrip — cross-owner supersession authority (#15
         store.destroy()
     })
 
+    test('a rejection the Fleet answered says so to the sink, apart from an unreachable or invalid answer (#572)', async () => {
+        const
+            store  = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop'}]),
+            sinks  = [],
+            answer = {current: null};
+
+        const run = () => ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            bridgeResolver: () => ({configureAgent: async () => {
+                if (answer.current instanceof Error) throw answer.current;
+                return answer.current
+            }}),
+            intent       : {id: 'ada', memoryImport: 'none'},
+            owner        : {},
+            setSaveStatus: (id, state, reason, detail) => state !== 'pending' && sinks.push([state, reason, detail ?? null]),
+            store
+        });
+
+        answer.current = {status: 'rejected', reason: 'the Fleet\'s own words'};
+        await run();
+        answer.current = new Error('transport closed');
+        await run();
+        answer.current = {status: 'mystery'};
+        await run();
+
+        expect(sinks).toEqual([
+            ['rejected', 'the Fleet\'s own words',                                    {refused: true}],
+            ['rejected', 'Could not save the configuration. Nothing was changed.',    null],
+            ['rejected', 'Configuration response was invalid. Nothing was changed.',  null]
+        ]);
+
+        store.destroy()
+    })
+
     test('an adoption takes its own facet verb by id alone, never configureAgent, and its readback is the only write', async () => {
         const
             store    = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex', launchOwner: 'external'}]),
@@ -458,7 +491,7 @@ test.describe('configIntentRoundTrip — the repository set takes setRepos', () 
             store
         });
 
-        expect(statuses.at(-1)).toEqual(['ada', 'rejected', 'a repository is listed twice.']);
+        expect(statuses.at(-1)).toEqual(['ada', 'rejected', 'a repository is listed twice.', {refused: true}]);
         expect(store.get('ada')['metadata.repos']).toEqual([brain]);
 
         store.destroy()

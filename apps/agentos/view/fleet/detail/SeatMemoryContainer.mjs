@@ -52,6 +52,13 @@ class SeatMemoryContainer extends Container {
          */
         editing_: false,
         /**
+         * Whether the Fleet refused this seat's consent. Its reason stays on the status line, and the row offers the
+         * choice no more: a seat that already holds its memory keeps it.
+         * @member {Boolean} refused_=false
+         * @reactive
+         */
+        refused_: false,
+        /**
          * The seat's definition, `{id, memoryImport}`; `null` without one.
          * @member {Object|null} seat_=null
          * @reactive
@@ -163,14 +170,19 @@ class SeatMemoryContainer extends Container {
         oldValue !== undefined && this.sync()
     }
 
+    /** @param {Boolean} value @param {Boolean} oldValue */
+    afterSetRefused(value, oldValue) {
+        oldValue !== undefined && this.sync()
+    }
+
     /**
-     * Another seat closes the choice and clears what belonged to the last one.
+     * Another seat closes the choice and clears what belonged to the last one, a refusal included.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      */
     afterSetSeat(value, oldValue) {
         if (oldValue !== undefined) {
-            value?.id !== oldValue?.id && this.set({discovery: null, editing: false, status: {state: 'idle', reason: ''}});
+            value?.id !== oldValue?.id && this.set({discovery: null, editing: false, refused: false, status: {state: 'idle', reason: ''}});
             this.sync()
         }
     }
@@ -206,11 +218,11 @@ class SeatMemoryContainer extends Container {
             asks      = discovery?.state === 'unavailable' || discovery?.state === 'offline';
 
         me.getReference('memory-line').text = SeatMemoryContainer.lineFor(consent);
-        me.getReference('memory-change').set({disabled: pending, hidden: !me.seat, text: me.editing ? 'Close' : consent ? 'Change' : 'Choose'});
+        me.getReference('memory-change').set({disabled: pending, hidden: !me.seat || me.refused, text: me.editing ? 'Close' : consent ? 'Change' : 'Choose'});
 
         const offer = me.getReference('memory-offer');
 
-        offer.hidden = !me.editing || reading;
+        offer.hidden = !me.editing || reading || me.refused;
         offer[asks ? 'addCls' : 'removeCls']('is-unavailable');
 
         if (discovery && !reading) {

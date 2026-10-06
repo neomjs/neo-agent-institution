@@ -193,7 +193,7 @@ class Controller extends ComponentController {
             me.memoryRequest++;
             me.seatRequest++;
             me.getReference('seat-model')?.set({catalog: null, editing: null, status: {state: 'idle', reason: ''}});
-            me.getReference('seat-memory')?.set({discovery: null, editing: false, status: {state: 'idle', reason: ''}})
+            me.getReference('seat-memory')?.set({discovery: null, editing: false, refused: false, status: {state: 'idle', reason: ''}})
         }
 
         me.component.applyConfigRecord()
@@ -326,8 +326,9 @@ class Controller extends ComponentController {
 
     /**
      * @summary Record the shown seat's memory consent through the shared runner, with the row as its own owner token.
-     * The accepted readback lands on the definition, and the row re-seats from it; a refusal, such as the Fleet's for
-     * a seat that has started, stays on the row in the Fleet's words.
+     * The accepted readback lands on the definition, and the row re-seats from it. A refusal the Fleet answered, such as
+     * its refusal for a seat that already holds its memory, stays on the row in the Fleet's words, and the row offers
+     * the choice no more; an unreachable or invalid answer leaves it open to try again.
      * @param {Object} data
      * @param {String} data.memoryImport A candidate's `source`, or `'none'`
      * @returns {Promise<void>}
@@ -348,14 +349,18 @@ class Controller extends ComponentController {
             intent: {id: binding.id, memoryImport},
             owner : row,
             store : binding.store,
-            setSaveStatus: (id, state, reason) => {
+            setSaveStatus: (id, state, reason, detail) => {
                 if (request !== me.memoryRequest || me.isDestroyed || row.isDestroyed || !me.holdsSeatBinding(binding)) {
                     return
                 }
 
-                state === 'accepted'
-                    ? row.set({discovery: null, editing: false, status: {state: 'idle', reason: ''}})
-                    : row.status = {state, reason: state === 'pending' ? '' : reason}
+                if (state === 'accepted') {
+                    row.set({discovery: null, editing: false, status: {state: 'idle', reason: ''}})
+                } else if (detail?.refused) {
+                    row.set({discovery: null, editing: false, refused: true, status: {state, reason}})
+                } else {
+                    row.status = {state, reason: state === 'pending' ? '' : reason}
+                }
             }
         })
     }
