@@ -81,6 +81,7 @@ import {
 } from './planeConfig.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                                                        from './seatRootRecord.mjs';
 import {findFleetWriters, runSeatMoveStep, seatMoveBootHold, settleSeatRootMove}                    from './seatRootMove.mjs';
+import {SEAT_ROOT_CHANNELS, createSeatRootBroker, createSeatRootRuntime}                           from './seatRootBroker.mjs';
 import {CONFIG_SOURCE_PATH, SETUP_CHANNELS, createSetupBroker, loadSetupModules, resolveSetupRoots} from './setupBroker.mjs';
 import {
     WAKE_RECEIVER_LAUNCH_AGENT,
@@ -1468,6 +1469,22 @@ app.whenReady().then(async () => {
 
     for (const [name, channel] of Object.entries(SETUP_CHANNELS)) {
         ipcMain.handle(channel, setupBroker[name])
+    }
+
+    // Register before boot: a held transition must remain readable from System.
+    const seatRootBroker = createSeatRootBroker({
+        ...(agentosRuntimeRoot
+            ? createSeatRootRuntime({repoRoot: agentosRuntimeRoot, userData: app.getPath('userData')})
+            : {resolveDestination: null}),
+        dir            : app.getPath('userData'),
+        getOutcome     : () => seatMoveOutcome,
+        isTrustedSender: isTrustedIpcSender,
+        packaged       : packagedMode,
+        relaunch       : () => setTimeout(() => { app.relaunch(); app.quit() }, 250)
+    });
+
+    for (const [name, channel] of Object.entries(SEAT_ROOT_CHANNELS)) {
+        ipcMain.handle(channel, seatRootBroker[name])
     }
 
     const win1 = createHarnessWindow(APP_URL);

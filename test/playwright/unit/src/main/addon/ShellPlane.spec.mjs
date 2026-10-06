@@ -71,5 +71,25 @@ test.describe('Neo.main.addon.ShellPlane — the cockpit\'s reach into the shell
             ['setupPresets',    {}],
             ['setupProbe',      {}]
         ])
+    });
+
+    test('seat placement forwards plain answers and only the reviewed fingerprint', async () => {
+        const {seatRootStatus, seatRootPlan, seatRootConsent} = ShellPlane.prototype;
+        for (const result of [seatRootStatus(), seatRootPlan(), seatRootConsent({fingerprint: 'reviewed'})]) {
+            expect(await result).toEqual({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+        }
+
+        const calls = [], held = {root: null, pending: null, outcome: {state: 'held', reason: 'unreadable record'}};
+        globalThis.neoShell = {
+            seatRootStatus : async () => held,
+            seatRootPlan   : async () => ({state: 'refused', reason: 'occupied destination', rows: []}),
+            seatRootConsent: async request => { calls.push(request); return {state: 'consented'} }
+        };
+        expect(await seatRootStatus()).toEqual(held);
+        expect((await seatRootPlan()).state).toBe('refused');
+        expect(await seatRootConsent({fingerprint: 'reviewed', from: '/injected', to: '/elsewhere', windowId: 7})).toEqual({state: 'consented'});
+        expect(calls).toEqual([{fingerprint: 'reviewed'}]);
+        globalThis.neoShell.seatRootPlan = async () => { throw new Error('transport lost') };
+        await expect(seatRootPlan()).rejects.toThrow('transport lost')
     })
 });

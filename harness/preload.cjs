@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('neoShell', {
     brainHealth : () => ipcRenderer.invoke('brain-health'),
     fleetRequest: request => ipcRenderer.invoke('fleet-request', request),
     planeStatus : () => ipcRenderer.invoke('shell-plane-status'),
+    // Installation placement (ADR 0034 item 11), independent of the Fleet child's availability.
+    seatRootStatus : () => ipcRenderer.invoke('shell-seat-root-status'),
+    seatRootPlan   : () => ipcRenderer.invoke('shell-seat-root-plan'),
+    seatRootConsent: request => ipcRenderer.invoke('shell-seat-root-consent', request),
     // The first-run setup broker (the setup card's Create door): every reply is the recipe's own
     // JSON, main runs the host effects through the Brain's host-effect module, and a credential is
     // asked for in main's window — the reply names the kept file's path only, never a value.

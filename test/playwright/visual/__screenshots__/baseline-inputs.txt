@@ -107,6 +107,9 @@ apps/agentos/model/MemoryCandidate.mjs
 apps/agentos/model/OpenPullRequest.mjs
     36f7ef5c9f2e57fd74d75f80203bd6e83b3eeff4
 
+apps/agentos/model/SeatMove.mjs
+    1166938a5c576a7d9d564ca0b4e67ab965701295
+
 apps/agentos/model/SeatRepository.mjs
     403f001ea89e9c9f8ab035a05908aaa300047521
 
@@ -184,6 +187,9 @@ apps/agentos/store/HeldPullRequests.mjs
 
 apps/agentos/store/MemoryCandidates.mjs
     83edf1e2e691c0269d88cbc4acde7f4e5cae8b84
+
+apps/agentos/store/SeatMoves.mjs
+    ab527c90bcefb34e79f9b0880ff3523e4faf0328
 
 apps/agentos/store/SeatRepositories.mjs
     3bb2013ec2e8d4c58cf28b490d7a7dd1702bb4d3
@@ -546,10 +552,19 @@ apps/agentos/view/setup/StepList.mjs
     435aa33e793097af5d7c7bfc5a34eba1d25b59c6
 
 apps/agentos/view/system/Container.mjs
-    565ebd3190d8aee8f68785d45558df651ad6567b
+    1b9e9cd89c265fa4aa0690d3e37a515a1b1aeb68
 
 apps/agentos/view/system/List.mjs
     2cf842add18dffc2f6267d981666c6153b9a71dd
+
+apps/agentos/view/system/SeatMoveList.mjs
+    574c19d20ef49a42d8f07ac3ffa0bbd3e0865efd
+
+apps/agentos/view/system/SeatRootContainer.mjs
+    e101849cfd812213af4098a17708011c862f79dc
+
+apps/agentos/view/system/SeatRootController.mjs
+    11d0ce4be716d394c51f275b56112e2c4aa19fac
 
 resources/scss/src/apps/agentos/Viewport.scss
     882e828c672087054c8f8f080de9d5b38bcf2cb4
@@ -700,6 +715,9 @@ resources/scss/src/apps/agentos/system/Container.scss
 
 resources/scss/src/apps/agentos/system/List.scss
     2c884c4386b03edc287f2c6a996dd68a6ff509e7
+
+resources/scss/src/apps/agentos/system/SeatRootContainer.scss
+    ce0fe43f2158ee85677ebbc11b8f0dd555010912
 
 resources/scss/theme-neo-dark/apps/agentos/Viewport.scss
     60ed53504494b2b243d070e7a2fdabd47264a218

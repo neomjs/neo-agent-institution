@@ -137,7 +137,7 @@ test.describe('Electron harness preload capability', () => {
             request            = {method: 'listAgents', params: {}};
 
         expect(exposed.name).toBe('neoShell');
-        expect(Object.keys(exposed.value).sort()).toEqual(['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane']);
+        expect(Object.keys(exposed.value).sort()).toEqual(['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane']);
         expect(exposed.value.shellVersion).toBe('42.0.0');
         expect(exposed.value).not.toHaveProperty('bearerToken');
         expect(exposed.value).not.toHaveProperty('defineFleetAgent');
@@ -156,6 +156,9 @@ test.describe('Electron harness preload capability', () => {
         await exposed.value.planeStatus();
         await exposed.value.attachPlane({planeBase: 'http://127.0.0.1:3102'});
         await exposed.value.verifyPlane();
+        await exposed.value.seatRootStatus();
+        await exposed.value.seatRootPlan();
+        await exposed.value.seatRootConsent({fingerprint: 'reviewed-plan'});
 
         // The setup six: each crosses its own named channel with the named fields only; the
         // credential call carries the step id, never a value — main's window is the input surface.
@@ -172,6 +175,9 @@ test.describe('Electron harness preload capability', () => {
             ['shell-plane-status'],
             ['shell-plane-attach', {planeBase: 'http://127.0.0.1:3102'}],
             ['shell-plane-verify'],
+            ['shell-seat-root-status'],
+            ['shell-seat-root-plan'],
+            ['shell-seat-root-consent', {fingerprint: 'reviewed-plan'}],
             ['shell-setup-evaluate', {target: null}],
             ['shell-setup-probe'],
             ['shell-setup-presets'],

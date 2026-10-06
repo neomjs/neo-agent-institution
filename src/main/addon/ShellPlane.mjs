@@ -42,6 +42,9 @@ class ShellPlane extends Base {
             app: [
                 'attachPlane',
                 'planeStatus',
+                'seatRootConsent',
+                'seatRootPlan',
+                'seatRootStatus',
                 'setupAnswer',
                 'setupCredential',
                 'setupEffect',
@@ -74,6 +77,38 @@ class ShellPlane extends Base {
         return globalThis.neoShell?.planeStatus
             ? {available: true, ...await globalThis.neoShell.planeStatus()}
             : {available: false}
+    }
+
+    /**
+     * @summary Reads this installation's root, pending inputs and boot outcome, even with Fleet held.
+     * @returns {Promise<Object>} Main's result, or a named no-shell refusal
+     */
+    seatRootStatus() {
+        return globalThis.neoShell?.seatRootStatus
+            ? globalThis.neoShell.seatRootStatus()
+            : Promise.resolve({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+    }
+
+    /**
+     * @summary Reviews the shell-owned roots and every row of the proposed placement transition.
+     * @returns {Promise<Object>} Main's plan or refusal
+     */
+    seatRootPlan() {
+        return globalThis.neoShell?.seatRootPlan
+            ? globalThis.neoShell.seatRootPlan()
+            : Promise.resolve({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+    }
+
+    /**
+     * @summary Returns only the reviewed fingerprint; main owns every path and the relaunch.
+     * @param {Object} data
+     * @param {String} data.fingerprint
+     * @returns {Promise<Object>} Consented or refused
+     */
+    seatRootConsent({fingerprint}) {
+        return globalThis.neoShell?.seatRootConsent
+            ? globalThis.neoShell.seatRootConsent({fingerprint})
+            : Promise.resolve({state: 'refused', code: 'no-shell', reason: 'no-shell'})
     }
 
     /**
