@@ -93,6 +93,24 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(excluded[2].reason).toContain('hibernating')
     });
 
+    test('a null participation whose read did not answer is unobserved, never "no node": excluded with the read\'s reason; a read that answered, or a Brain that reports no read, keeps the open-set rule (#568)', () => {
+        const {eligible, excluded} = FleetStartPlan.partitionFleetStart([
+            {agentId: 'iris',   state: 'off', sources: wiredRuntime(), participationStatus: null, participationRead: {state: 'unread', reason: 'presence unreadable'}},
+            {agentId: 'quiet',  state: 'off', sources: wiredRuntime(), participationStatus: null, participationRead: {state: 'unread'}},
+            {agentId: 'fork',   state: 'off', sources: wiredRuntime(), participationStatus: null, participationRead: {state: 'read'}},
+            {agentId: 'legacy', state: 'off', sources: wiredRuntime(), participationStatus: null, participationRead: null},
+            // a known status outranks the read: the node's recorded fact excludes as before
+            {agentId: 'eos',    state: 'off', sources: wiredRuntime(), participationStatus: 'operator_benched', participationRead: {state: 'read'}}
+        ]);
+
+        expect(eligible.map(record => record.agentId)).toEqual(['fork', 'legacy']);
+        expect(excluded.map(({agentId, reason}) => [agentId, reason])).toEqual([
+            ['iris',  'unobserved — the participation read did not answer: presence unreadable'],
+            ['quiet', 'unobserved — the participation read did not answer'],
+            ['eos',   'not active — authoritative participation status \'operator_benched\'']
+        ])
+    });
+
     test("authority rule: unusable runtime provenance fails a start closed — projected 'off' is display fallback, not a stopped runtime", () => {
         const partitionOne = record => FleetStartPlan.partitionFleetStart([record]);
 

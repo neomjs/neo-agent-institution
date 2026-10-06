@@ -336,6 +336,51 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
+    test('#568: a read that did not answer is unobserved, with its reason and the roster read\'s time; the Participation group names the one command that fits, where it runs, and re-seats on a re-read', () => {
+        const
+            readAt = Date.UTC(2026, 9, 6, 14, 30),
+            atTime = `read at ${new Date(readAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`,
+            detail = createDetail({agentId: 'preview', githubUsername: 'neo-preview', state: 'off', participationStatus: null, participationRead: {state: 'unread', reason: 'presence unreadable'}}, {rosterObservedAt: readAt}),
+            group  = detail.getReference('participation'),
+            pill   = () => {
+                const nodes = detail.down({reference: 'detail-ledger'}).vdom.cn ?? [],
+                      index = nodes.findIndex(node => node.text === 'status');
+
+                return index < 0 ? null : nodes[index + 1]
+            },
+            text   = reference => group.getReference(reference).text;
+
+        applySet(detail, {});
+        expect(pill()).toMatchObject({cls: ['fm-freshness', 'is-unobserved'], text: 'unobserved', title: `the read did not answer: presence unreadable · ${atTime}`});
+        expect(group.hidden).toBe(false);
+        expect(text('participation-line')).toBe('unobserved — presence unreadable');
+        expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs show --identity @neo-preview');
+        expect(text('participation-place')).toBe('Run it on this machine, inside its plane\'s Memory Core container.');
+
+        // a re-read in place re-seats the group, no restart: benched, with the operator's reason and date
+        applySet(detail, {participationStatus: 'operator_benched', participationRead: {state: 'read'}, participationReason: 'the preview model behind this chair ended', participationSince: '2026-10-01T00:00:00.000Z'});
+        expect(pill()).toMatchObject({cls: ['fm-freshness', 'is-stale'], text: 'operator benched', title: `since 2026-10-01 · the preview model behind this chair ended · ${atTime}`});
+        expect(text('participation-line')).toBe('benched since 2026-10-01 — the preview model behind this chair ended');
+        expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs activate --identity @neo-preview --apply');
+
+        // an active seat's one command is the bench, its reason a visible placeholder; an attached shell runs it on the plane host
+        detail.shellPlaneBase = 'https://plane.example.net:3102/mc';
+        applySet(detail, {participationStatus: 'active', participationReason: null, participationSince: null});
+        expect(text('participation-line')).toBe('active');
+        expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs bench --identity @neo-preview --reason "<why>" --apply');
+        expect(text('participation-place')).toBe('Run it on the plane host plane.example.net:3102, inside its Memory Core container.');
+
+        // the group offers the command to copy and nothing else: Copy is its one control
+        expect(group.down({ntype: 'button'})?.reference).toBe('participation-copy');
+        expect(group.getReference('participation-field').vdom.value).toBe('node ai/scripts/fleet/participation.mjs bench --identity @neo-preview --reason "<why>" --apply');
+
+        // no identity node (a read that answered, no status), or a Brain that reports no read: no group, no row
+        applySet(detail, {participationStatus: null, participationRead: {state: 'read'}});
+        expect([group.hidden, pill()]).toEqual([true, null]);
+
+        detail.destroy()
+    });
+
     test('the state dot is gated on a wired runtime source — missing runtime evidence never renders live', () => {
         const
             detail  = createDetail({agentId: 'vega', state: 'ok'}),

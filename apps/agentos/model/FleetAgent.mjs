@@ -7,7 +7,8 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  * @summary The cockpit fleet-roster record contract: one row per resident, keyed by the durable
  * `agentId`. The `fields` array IS the card's data contract — display state (`displayName`,
  * `avatarUrl`, `engineTag`, `family`, `laneLine`, `laneClaimedAt`), the roster-DTO tri-state truths (`launchable`,
- * `openLaneCount`, `participationStatus` — stamped Brain-side, null = not stamped, never guessed),
+ * `openLaneCount`, `participationStatus` with its reason, date and read, `launchRefusal` — stamped Brain-side,
+ * null = not stamped, never guessed),
  * session `state` (what the resident is doing now, never identity), per-source `sources`
  * provenance, and the B4/C2 lifecycle-control seam (`pendingAction`, `controlReason`) all live on
  * the record, so one Store of these records is the per-row reactive layer for the whole fleet
@@ -188,12 +189,29 @@ class FleetAgent extends Model {
             name        : 'lastActivityAt',
             defaultValue: null
         }, {
-            // the AUTHORITATIVE swarm-participation fact from the identity roots ('active' |
-            // 'operator_benched' | 'temporarily_unreachable'), resolved Brain-side through the
-            // identity join seam; typeless so null (no identity root / not stamped) survives —
-            // fleet-level eligibility excludes any KNOWN non-active status before a lifecycle
-            // write (null stays eligible: the open-set case for forks/custom residents)
+            // the AUTHORITATIVE swarm-participation fact from the seat's identity node ('active' |
+            // 'operator_benched' | 'temporarily_unreachable'), read Brain-side from the presence report;
+            // typeless so null (no node, a read that did not answer, not stamped) survives — fleet-level
+            // eligibility excludes any KNOWN non-active status before a lifecycle write, and
+            // `participationRead` tells an unanswered read from no node
             name        : 'participationStatus',
+            defaultValue: null
+        }, {
+            // the operator's reason and date (ISO) for that status, as the identity node records them;
+            // null = none recorded, or a Brain that does not report them
+            name        : 'participationReason',
+            defaultValue: null
+        }, {
+            name        : 'participationSince',
+            defaultValue: null
+        }, {
+            // whether the node's read answered: `{state: 'read'}`, or `{state: 'unread', reason}`, which leaves
+            // the status null without meaning "no node". Null from a Brain that does not report it
+            name        : 'participationRead',
+            defaultValue: null
+        }, {
+            // why the Fleet's Start refuses the seat, in its own words; null = it may start
+            name        : 'launchRefusal',
             defaultValue: null
         }, {
             // the verb whose lifecycle round-trip is in flight, written by the C2 adapter;

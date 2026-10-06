@@ -64,6 +64,12 @@ class RosterRow extends Base {
             laneClaimedAt      : row.laneClaimedAt ?? null,
             lastActivityAt     : row.lastActivityAt ?? null,
             participationStatus: row.participationStatus ?? null,
+            // the operator's reason and date for that status, and whether the identity node's read answered,
+            // from the same presence report; and why Start refuses the seat, in the Fleet's words
+            participationReason: row.participationReason ?? null,
+            participationSince : row.participationSince ?? null,
+            participationRead  : row.participationRead ?? null,
+            launchRefusal      : row.launchRefusal ?? null,
             sources            : sessionHealth.sources,
             state              : sessionHealth.state,
             presence           : row.presence ?? null,

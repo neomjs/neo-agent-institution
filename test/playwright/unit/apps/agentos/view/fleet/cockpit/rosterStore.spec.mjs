@@ -307,8 +307,13 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             openWorkHeld  : null,   // the same: the detail's pane reads no answer, not an empty one
             laneLine      : null,
             laneClaimedAt : null,
-            // the authoritative participation fact: absent on the row → honest null, never guessed
+            // the authoritative participation fact: absent on the row → honest null, never guessed;
+            // nor its reason, date or read, nor a Start refusal
             participationStatus: null,
+            participationReason: null,
+            participationSince : null,
+            participationRead  : null,
+            launchRefusal      : null,
             // the presence axis rides the same passthrough contract as wake/throttle below
             presence: null,
             // no start has reported its other repositories' outcome, the identity it resolved, nor
@@ -375,6 +380,22 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         const bare = FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', repoStatus: null, sources: liveSources()});
 
         expect(bare).toMatchObject({harnessType: null, repoPath: null, repoSlug: null})
+    });
+
+    test('mapRosterRow passes the participation facts and the Fleet\'s Start refusal through whole (#568)', () => {
+        const
+            facts  = {
+                participationStatus: 'operator_benched',
+                participationReason: 'the preview model behind this chair ended',
+                participationSince : '2026-10-01T00:00:00.000Z',
+                participationRead  : {state: 'read'},
+                launchRefusal      : 'the seat is benched by the operator'
+            },
+            mapped = FleetCockpitController.prototype.mapRosterRow({id: 'neo-preview', ...facts, sources: liveSources()});
+
+        expect(Object.fromEntries(Object.keys(facts).map(key => [key, mapped[key]]))).toEqual(facts);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', participationRead: {state: 'unread', reason: 'presence unreadable'}, sources: liveSources()}).participationRead)
+            .toEqual({state: 'unread', reason: 'presence unreadable'})
     });
 
     test('mapRosterRow passes the last start\'s per-repository outcome through whole — null on a row without one', () => {
@@ -513,6 +534,10 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             openWorkHeld       : null,
             laneLine           : null,
             laneClaimedAt      : null,
+            launchRefusal      : null,
+            participationRead  : null,
+            participationReason: null,
+            participationSince : null,
             participationStatus: null,
             presence           : null,
             repoOutcomes       : null,

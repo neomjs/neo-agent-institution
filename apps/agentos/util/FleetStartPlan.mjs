@@ -49,8 +49,11 @@ class FleetStartPlan extends Base {
      *    `operator_benched` and `temporarily_unreachable`) → the identity roots' AUTHORITATIVE
      *    participation fact — the wake-subscription liveness gate and the heartbeat target
      *    discovery both read every known non-active status as a hard exclusion, and lifecycle
-     *    fan-out follows the same authority; `null` (no identity root) stays ELIGIBLE — the
-     *    open-set case for forks/custom residents, unknown is not a recorded prohibition;
+     *    fan-out follows the same authority; `null` under a read that answered (no identity node)
+     *    stays ELIGIBLE — the open-set case for forks/custom residents, unknown is not a recorded
+     *    prohibition — but a `null` whose read did NOT answer (`participationRead.state === 'unread'`)
+     *    is `unobserved`, never "no node": excluded with the read's reason. A Brain that reports no read
+     *    keeps the open-set rule;
      * 3. `launchable === false` → the launch seam says this family has no harness template
      *    (tri-state honesty: `null` = not read back yet stays ELIGIBLE — the bridge's own refusal is
      *    the truthful outcome, never a cockpit guess);
@@ -85,6 +88,8 @@ class FleetStartPlan extends Base {
                 exclude('guest — no fleet definition to start')
             } else if (record.participationStatus != null && record.participationStatus !== 'active') {
                 exclude(`not active — authoritative participation status '${record.participationStatus}'`)
+            } else if (record.participationStatus == null && record.participationRead?.state === 'unread') {
+                exclude(`unobserved — the participation read did not answer${record.participationRead.reason ? `: ${record.participationRead.reason}` : ''}`)
             } else if (record.launchable === false) {
                 exclude(`not launchable — no harness template for the '${record.family ?? 'unknown'}' family`)
             } else if (record.pendingAction) {
