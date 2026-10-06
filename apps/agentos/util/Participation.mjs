@@ -7,6 +7,14 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 const PARTICIPATION_CLI = 'node ai/scripts/fleet/participation.mjs';
 
 /**
+ * A handle the command carries as one literal argument on any shell: an optional `@`, then letters, digits, `.`, `_`
+ * or `-`, starting with a letter or digit. Anything else (whitespace, quotes, shell metacharacters, a leading dash) is
+ * refused rather than escaped, so a copied command never carries more than the identity it names.
+ * @member {RegExp} PLAIN_HANDLE
+ */
+const PLAIN_HANDLE = /^@?[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
  * @summary What Agent Detail, its state ledger and the roster card say about a seat's participation, from the
  * roster's facts: the status the seat's identity node records, the operator's reason and date, and whether the read
  * answered. The cockpit shows the plane's identity fact and writes none of it, so a decision is the plane host's: the
@@ -82,7 +90,7 @@ class Participation extends Base {
     /**
      * @summary The one plane-host command that fits the state, the seat filled in: `bench` for an active seat, with
      * the reason as a visible placeholder; `activate` for a benched one; `show` where the state is unread or another
-     * status. `null` without a state, or without the seat's identity.
+     * status. `null` without a state, or without an identity that is a plain handle.
      * @param {Object|null} record
      * @returns {String|null}
      */
@@ -90,7 +98,7 @@ class Participation extends Base {
         const
             state    = Participation.stateOf(record),
             login    = record?.githubUsername ?? null,
-            identity = login && (login.startsWith('@') ? login : `@${login}`);
+            identity = login && PLAIN_HANDLE.test(login) ? (login.startsWith('@') ? login : `@${login}`) : null;
 
         if (!state || !identity) {
             return null
@@ -106,23 +114,42 @@ class Participation extends Base {
     }
 
     /**
-     * @summary Where the command runs: the plane's Memory Core, whose graph holds the node. This machine's plane when
-     * the shell holds no other, else the plane host the shell is attached to.
-     * @param {String|null} planeBase The plane the shell is attached to, or `null` for this machine.
-     * @returns {String}
+     * @summary What the group offers to run, and where: the command that fits ({@link #commandOf}), on the plane the
+     * shell is attached to, whose Memory Core serves the graph the command changes. There is no command for an
+     * identity that is not a plain handle. There is none either where the shell names no plane: when it runs its own,
+     * a command from a terminal would not reach that graph, and this view cannot name one that does.
+     * @param {Object|null} record
+     * @param {String|null} planeBase The plane the shell is attached to; `null` when it runs its own or names none.
+     * @returns {{command: String|null, place: String|null}} `place` says where to run the command, or why there is
+     *     none; both `null` without a participation to change.
      */
-    static placeOf(planeBase) {
-        if (!planeBase) {
-            return 'Run it on this machine, inside its plane\'s Memory Core container.'
+    static instructionOf(record, planeBase) {
+        if (!Participation.stateOf(record)) {
+            return {command: null, place: null}
+        }
+
+        const command = Participation.commandOf(record);
+
+        if (!command) {
+            return {command: null, place: record?.githubUsername ? 'No command is offered: the seat\'s identity is not a plain handle.' : 'No command is offered: the seat names no identity.'}
         }
 
         let host = null;
 
         try {
-            host = new URL(planeBase).host
+            host = planeBase ? new URL(planeBase).host : null
         } catch {}
 
-        return `Run it on the plane host${host ? ` ${host}` : ''}, inside its Memory Core container.`
+        if (!host) {
+            return {command: null, place: 'No command is offered: this view cannot name where the plane\'s Memory Core runs.'}
+        }
+
+        return {
+            command,
+            place: /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host)
+                ? `Run it on this machine, where the plane at ${host} runs its Memory Core (on a Docker plane, inside its container).`
+                : `Run it on the plane host ${host}, where its Memory Core runs (on a Docker plane, inside its container).`
+        }
     }
 }
 

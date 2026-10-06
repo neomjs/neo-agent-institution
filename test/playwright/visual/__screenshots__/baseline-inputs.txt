@@ -261,7 +261,7 @@ apps/agentos/util/OpenWorkSeat.mjs
     9cdbd64f758822ab9ed015e8f28790bcbe5600a4
 
 apps/agentos/util/Participation.mjs
-    11b478b94723efc7db4db4bd9bda9935589beb82
+    797b9190ad13733d77313600d936b586d1c3ced7
 
 apps/agentos/util/PlaneCredentialCheck.mjs
     e90a4505028072781fd15134801cc3c9cb0a37b5
@@ -372,7 +372,7 @@ apps/agentos/view/fleet/detail/Controller.mjs
     02777db58ca553744c879ed66250eb6e34aee10a
 
 apps/agentos/view/fleet/detail/ParticipationContainer.mjs
-    12f85f93ece446a37d4745eb83afa2659dea83cd
+    e54cdc8929444ac46fe943ca17b6021d28c61375
 
 apps/agentos/view/fleet/detail/PullRequestList.mjs
     e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
@@ -753,7 +753,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    9adefa955a521d82620a42e4b00a46e36cb042ad
+    ea85c3e421b4df87629c8ffdf4fca6a316386dc1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -969,19 +969,22 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-wake-rou
     2c81a3a7dd68ea89f4f275180a5736f185c52917
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-active.png
-    d91f896fc84f2f684376eda1f36965f788f7f200
+    f1124b8d9829b34f5670e3fabb2c06c12af5547a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-benched-light.png
-    9c563e2dc15352d36a23d53d3ca964dbc7d6de68
+    35fa08bed526e6bea38bc3f834cd08872ffc71be
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-benched.png
-    b70a3d2bcd8de2502d943ffaca147d45afb7f412
+    ee76d2544956ac1dde83ba43b6c71bb8f23f3f9c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-card-benched.png
     086854579ad4ea2bd180537971117c9f3a8c8b1a
 
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-own-plan.png
+    aa0d1cca514e94ca3fd56367e4891484563c2ac5
+
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-unobserved.png
-    533ba8e2a833d304ef421232dd1fdca688e6ad09
+    3f4071292cb8305da43dfea355de4eaf8669ff19
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-card-light.png
     f82fc5b9018567c8ee6a6836a97bc7777ddbacd6

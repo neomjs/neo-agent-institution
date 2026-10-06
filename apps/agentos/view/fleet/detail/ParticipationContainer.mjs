@@ -8,8 +8,9 @@ import Participation from '../../../util/Participation.mjs';
  *
  * @summary Configuration's Participation group, beside the Seat group: the seat's participation as its identity node
  * records it ({@link AgentOS.util.Participation#lineOf}). The cockpit writes no participation, so the group has no
- * action control. It names the one plane-host command that fits the state, with the seat filled in and where
- * it runs, and offers it to copy.
+ * action control. On an attached plane it names the one plane-host command that fits the state, with the seat filled
+ * in and where it runs, and offers it to copy; otherwise it says why there is none
+ * ({@link AgentOS.util.Participation#instructionOf}).
  *
  * It changes nothing itself: its owner sets `facts` from the roster record and `planeBase` from the shell, and a new
  * roster read re-seats it.
@@ -107,14 +108,14 @@ class ParticipationContainer extends Container {
      */
     sync() {
         const
-            me      = this,
-            command = Participation.commandOf(me.facts),
-            field   = me.getReference('participation-field');
+            me               = this,
+            {command, place} = Participation.instructionOf(me.facts, me.planeBase),
+            field            = me.getReference('participation-field');
 
-        me.getReference('participation-line').text    = Participation.lineOf(me.facts) ?? '';
+        me.getReference('participation-line').text   = Participation.lineOf(me.facts) ?? '';
         me.getReference('participation-command').set({hidden: !command, text: command ?? ''});
-        me.getReference('participation-place').text   = command ? Participation.placeOf(me.planeBase) : '';
-        me.getReference('participation-copy').hidden  = !command;
+        me.getReference('participation-place').text  = place ?? '';
+        me.getReference('participation-copy').hidden = !command;
 
         field.vdom.value = command ?? '';
         field.update()

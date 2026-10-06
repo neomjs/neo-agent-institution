@@ -354,8 +354,15 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(pill()).toMatchObject({cls: ['fm-freshness', 'is-unobserved'], text: 'unobserved', title: `the read did not answer: presence unreadable · ${atTime}`});
         expect(group.hidden).toBe(false);
         expect(text('participation-line')).toBe('unobserved — presence unreadable');
+
+        // the shell's own plan names no plane: no command is offered, and the group says why rather than guess a place
+        expect([group.getReference('participation-command').hidden, group.getReference('participation-copy').hidden]).toEqual([true, true]);
+        expect(text('participation-place')).toBe('No command is offered: this view cannot name where the plane\'s Memory Core runs.');
+
+        // attached to this machine's plane: the command, and where its Memory Core runs
+        detail.shellPlaneBase = 'http://127.0.0.1:3102';
         expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs show --identity @neo-preview');
-        expect(text('participation-place')).toBe('Run it on this machine, inside its plane\'s Memory Core container.');
+        expect(text('participation-place')).toBe('Run it on this machine, where the plane at 127.0.0.1:3102 runs its Memory Core (on a Docker plane, inside its container).');
 
         // a re-read in place re-seats the group, no restart: benched, with the operator's reason and date
         applySet(detail, {participationStatus: 'operator_benched', participationRead: {state: 'read'}, participationReason: 'the preview model behind this chair ended', participationSince: '2026-10-01T00:00:00.000Z'});
@@ -363,12 +370,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(text('participation-line')).toBe('benched since 2026-10-01 — the preview model behind this chair ended');
         expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs activate --identity @neo-preview --apply');
 
-        // an active seat's one command is the bench, its reason a visible placeholder; an attached shell runs it on the plane host
+        // an active seat's one command is the bench, its reason a visible placeholder; a remote plane names its host
         detail.shellPlaneBase = 'https://plane.example.net:3102/mc';
         applySet(detail, {participationStatus: 'active', participationReason: null, participationSince: null});
         expect(text('participation-line')).toBe('active');
         expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs bench --identity @neo-preview --reason "<why>" --apply');
-        expect(text('participation-place')).toBe('Run it on the plane host plane.example.net:3102, inside its Memory Core container.');
+        expect(text('participation-place')).toBe('Run it on the plane host plane.example.net:3102, where its Memory Core runs (on a Docker plane, inside its container).');
 
         // the group offers the command to copy and nothing else: Copy is its one control
         expect(group.down({ntype: 'button'})?.reference).toBe('participation-copy');
