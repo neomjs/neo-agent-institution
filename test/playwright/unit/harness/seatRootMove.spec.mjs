@@ -9,6 +9,7 @@ import {
     planSeatMove,
     readSeatRootMove,
     retireMovedHomes,
+    seatMoveBootHold,
     settleSeatRootMove
 } from '../../../../harness/seatRootMove.mjs';
 import {readSeatRootRecord, settleSeatRoot, writeSeatRootRecord} from '../../../../harness/seatRootRecord.mjs';
@@ -175,6 +176,31 @@ test('consent refuses with a code a caller decides on: a refused plan, a changed
     expect((await consent(brain)).code).toBe('no-seat-root')
 });
 
+test('a row already at its destination before the consent stays out of the move: a refusal never rebinds it', async () => {
+    const
+        alice = path.join(to, 'alice'),
+        brain = fakeBrain({alice, 'neo-gpt-sophie': seatFolder('neo-gpt-sophie')});
+
+    fs.mkdirSync(alice, {recursive: true});
+
+    const {inputs} = await consent(brain);
+
+    expect(inputs.rows.map(row => row.id)).toEqual(['neo-gpt-sophie']);
+    expect(inputs.outOfScope).toEqual([{id: 'alice', seatHome: alice, reason: 'already at its destination'}]);
+
+    // a seat registered after the consent refuses the move; the restore gives back only this move's bindings
+    brain.registry.set('neo-fable', path.join(from, 'neo-fable'));
+
+    expect((await boot(brain)).state).toBe('refused');
+    expect(brain.registry.get('alice'), 'alice stays where she was').toBe(alice);
+
+    brain.registry.delete('neo-fable');
+    await consent(brain);
+
+    expect((await boot(brain)).state).toBe('committed');
+    expect(Object.fromEntries(brain.registry)).toEqual({alice, 'neo-gpt-sophie': path.join(to, 'neo-gpt-sophie')})
+});
+
 test('a consented move commits at boot: copies, bindings, the root record, then the old folders archived', async () => {
     const sophie = seatFolder('neo-gpt-sophie');
     const brain  = fakeBrain({'neo-gpt-sophie': sophie, 'neo-opus-ada': path.join(from, 'neo-opus-ada'), carol: '/elsewhere/carol'});
@@ -299,6 +325,57 @@ test('interrupted after the commit, the next boot only finishes the retirement, 
     expect(fs.existsSync(ada)).toBe(false)
 });
 
+test('after the retirement, a lost or unreadable root record is written again from the archive: no Brain step, nothing restored', async () => {
+    const brain = fakeBrain({'neo-gpt-sophie': seatFolder('neo-gpt-sophie'), 'neo-opus-ada': seatFolder('neo-opus-ada')});
+
+    await consent(brain);
+    expect((await boot(brain)).state).toBe('committed');
+
+    const moved = Object.fromEntries(brain.registry);
+
+    // the record is lost, and the Brain cannot plan
+    fs.rmSync(path.join(userData, 'seat-root.json'));
+    brain.calls.length = 0;
+
+    const unplanned = {...brain, runStep: async step => step.step === 'plan' ? Promise.reject(new Error('the Brain cannot plan')) : brain.runStep(step)};
+
+    expect(await boot(unplanned)).toEqual({state: 'committed', retirement: {state: 'retired', archived: []}});
+    expect(readSeatRootRecord({dir: userData})).toMatchObject({origin: 'moved', root: to});
+    expect(Object.fromEntries(brain.registry)).toEqual(moved);
+
+    // the record is corrupt, and one row left the registry
+    fs.writeFileSync(path.join(userData, 'seat-root.json'), '{"root": ');
+    brain.registry.delete('neo-opus-ada');
+
+    expect((await boot(brain)).state).toBe('committed');
+    expect(brain.registry.get('neo-gpt-sophie')).toBe(path.join(to, 'neo-gpt-sophie'));
+    expect(readSeatRootRecord({dir: userData}).root).toBe(to);
+    expect(brain.calls, 'no Brain step either time').toEqual([])
+});
+
+test('a root record lost before the retirement: a move that cannot go on holds with its consent while a row reads its destination', async () => {
+    const brain = fakeBrain({'neo-gpt-sophie': seatFolder('neo-gpt-sophie')});
+
+    await consent(brain);
+
+    // the move published and relocated, then the record was lost: committed or not, it cannot tell
+    await brain.runStep({step: 'move', from, to});
+    fs.rmSync(path.join(userData, 'seat-root.json'));
+
+    const refusing = {...brain, runStep: async step => step.step === 'plan' ? {state: 'refused', reason: 'the plan is unavailable', rows: []} : brain.runStep(step)};
+
+    expect(await boot(refusing)).toEqual({
+        state : 'held',
+        reason: "the plan is unavailable; with no readable seat root record, 'neo-gpt-sophie' at its destination may be a committed move, so nothing is restored"
+    });
+    expect(brain.registry.get('neo-gpt-sophie')).toBe(path.join(to, 'neo-gpt-sophie'));
+    expect(readSeatRootMove({dir: userData}), 'the consent stays').not.toBeNull();
+    expect(fs.existsSync(path.join(userData, 'seat-root.json')), 'no record is guessed').toBe(false);
+
+    expect((await boot(brain)).state, 'a boot that can plan commits').toBe('committed');
+    expect(readSeatRootRecord({dir: userData}).root).toBe(to)
+});
+
 test('a missing or unreadable root record is written from the move, never by the first-launch choice', async () => {
     const brain = fakeBrain({'neo-gpt-sophie': seatFolder('neo-gpt-sophie')});
 
@@ -360,6 +437,52 @@ test('the retirement touches only the folders the move names, and an occupied ar
 
     expect(retireMovedHomes({inputs})).toEqual({state: 'retired', archived: ['neo-gpt-sophie', 'neo-opus-ada']});
     expect(fs.readdirSync(from).sort()).toEqual(['.moved-x', 'unrelated'])
+});
+
+test('an archive path that is a link, not a folder in the old root, stops the retirement before any rename', async () => {
+    const
+        sophie    = seatFolder('neo-gpt-sophie'),
+        elsewhere = fs.mkdtempSync(path.join(tmpdir(), 'seat-root-move-elsewhere-')),
+        inputs    = {
+            archive: path.join(from, '.moved-x'),
+            rows   : [{id: 'neo-gpt-sophie', from: sophie, to: path.join(to, 'neo-gpt-sophie'), materialized: true}]
+        };
+
+    try {
+        fs.symlinkSync(elsewhere, inputs.archive);
+
+        expect(retireMovedHomes({inputs})).toEqual({state: 'held', reason: `'${inputs.archive}' is a link or a file, not a folder in the old root; no old folder was archived`});
+        expect(fs.existsSync(path.join(sophie, 'harness', 'codex', 'config.toml'))).toBe(true);
+        expect(fs.readdirSync(elsewhere)).toEqual([])
+    } finally {
+        fs.rmSync(elsewhere, {recursive: true, force: true})
+    }
+});
+
+test('a committed move whose retirement is held holds the Fleet boot, as a held move does; a retired one does not', async () => {
+    const
+        brain    = fakeBrain({'neo-gpt-sophie': seatFolder('neo-gpt-sophie')}),
+        {inputs} = await consent(brain),
+        occupant = path.join(inputs.archive, 'neo-gpt-sophie');
+
+    fs.mkdirSync(occupant, {recursive: true});
+
+    const outcome = await boot(brain);
+
+    expect(outcome).toEqual({state: 'committed', retirement: {state: 'held', reason: `'${occupant}' is occupied; no old folder was archived`}});
+    expect(seatMoveBootHold(outcome)).toBe(`the move committed, but '${occupant}' is occupied; no old folder was archived`);
+    expect(readSeatRootRecord({dir: userData}).root, 'the commit stands').toBe(to);
+    expect(brain.registry.get('neo-gpt-sophie'), 'and so do the bindings').toBe(path.join(to, 'neo-gpt-sophie'));
+
+    fs.rmSync(occupant, {recursive: true});
+
+    const retired = await boot(brain);
+
+    expect(retired).toEqual({state: 'committed', retirement: {state: 'retired', archived: ['neo-gpt-sophie']}});
+    expect(seatMoveBootHold(retired)).toBeNull();
+    expect(seatMoveBootHold({state: 'held', reason: 'a process listens on the Fleet port 8083; quit it, then relaunch'})).toBe('a process listens on the Fleet port 8083; quit it, then relaunch');
+    expect(seatMoveBootHold({state: 'none'})).toBeNull();
+    expect(seatMoveBootHold(null)).toBeNull()
 });
 
 test('a writer is ruled out only by a free Fleet port and a readable process list without this installation\'s Fleet', async () => {

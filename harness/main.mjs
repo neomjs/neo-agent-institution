@@ -80,7 +80,7 @@ import {
     readPlaneConfig
 } from './planeConfig.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                                                        from './seatRootRecord.mjs';
-import {findFleetWriters, runSeatMoveStep, settleSeatRootMove}                                      from './seatRootMove.mjs';
+import {findFleetWriters, runSeatMoveStep, seatMoveBootHold, settleSeatRootMove}                    from './seatRootMove.mjs';
 import {CONFIG_SOURCE_PATH, SETUP_CHANNELS, createSetupBroker, loadSetupModules, resolveSetupRoots} from './setupBroker.mjs';
 import {
     WAKE_RECEIVER_LAUNCH_AGENT,
@@ -1041,7 +1041,8 @@ async function bootProductBrain() {
 
     // A consented move of the seats settles first: before the first-launch choice reads the root record, and
     // before any Brain child could hold the registry (seatRootMove.mjs). One that can neither go on nor come
-    // back holds the boot, so no Fleet starts over a half-moved installation.
+    // back holds the boot, as does a committed one whose old folders could not be archived, so no Fleet
+    // starts over a half-moved installation.
     seatMoveOutcome = packagedMode ? await settleSeatRootMove({
         dir        : app.getPath('userData'),
         checkWriter: () => findFleetWriters({fleetEntry: path.join(agentosRuntimeRoot, FLEET_SERVER_ENTRY), fleetPort, probePortFn: probePort}),
@@ -1053,8 +1054,10 @@ async function bootProductBrain() {
         console.log(`HARNESS_SEAT_MOVE_OUTCOME ${JSON.stringify(seatMoveOutcome)}`)
     }
 
-    if (seatMoveOutcome?.state === 'held') {
-        throw new Error(`the consented move of the seats is held: ${seatMoveOutcome.reason}`)
+    const seatMoveHold = seatMoveBootHold(seatMoveOutcome);
+
+    if (seatMoveHold) {
+        throw new Error(`the consented move of the seats is held: ${seatMoveHold}`)
     }
 
     // Where the seats live is the installation's record, never this launch's environment

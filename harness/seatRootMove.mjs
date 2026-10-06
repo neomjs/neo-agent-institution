@@ -17,7 +17,8 @@ import {SEAT_ROOT_ORIGINS, readSeatRootRecord, writeSeatRootRecord} from './seat
  * record (origin `moved`) once the registry reads every consented row at its destination. Before that, an
  * interruption resumes, or the old bindings come back and the consent is spent. After it, only the
  * retirement of the old folders resumes, into an archive under the old root that the first-launch choice
- * never counts.
+ * never counts. Bindings come back only while the record shows the move uncommitted: without the record,
+ * an old folder in the archive proves the commit, and a binding at its destination may be one.
  */
 
 /**
@@ -26,10 +27,11 @@ import {SEAT_ROOT_ORIGINS, readSeatRootRecord, writeSeatRootRecord} from './seat
 export const SEAT_ROOT_MOVE_FILE = 'seat-root-move.json';
 
 /**
- * The Brain's plan states for a row that the move carries to its destination.
+ * The Brain's plan states for a row that the move carries to its destination. A row the plan reads `done`
+ * is already there: the move neither moves it nor gives it back.
  * @type {ReadonlySet<String>}
  */
-const MOVING_STATES = new Set(['copy', 'relocate', 'rebind', 'done']);
+const MOVES = new Set(['copy', 'relocate', 'rebind']);
 
 /**
  * The one-shot the shell runs in the Brain root for each step of a move. The step and its inputs travel
@@ -116,7 +118,9 @@ function planFingerprint({from, to, rows}) {
 
 /**
  * @summary Records the operator's consent to move the seats from the recorded root to `to`: the inputs of a
- * fresh plan that still matches the one shown. Nothing else changes; the move runs at the next boot.
+ * fresh plan that still matches the one shown. Each moving row keeps the binding it was read with; a row
+ * already at its destination is kept with the rows the move leaves alone. Nothing else changes; the move
+ * runs at the next boot.
  * @param {Object}   options
  * @param {String}   options.dir         Directory holding the records (Electron `userData`).
  * @param {String}   options.to          The agents root the seats move to.
@@ -142,9 +146,9 @@ export async function consentSeatMove({dir, to, fingerprint, runStep, now = () =
     if (plan.state !== 'planned') return refused('plan-refused', plan.reason ?? `the plan reads '${plan.state}'`);
     if (plan.fingerprint !== fingerprint) return refused('plan-changed', 'the seats changed since the plan was shown; review it again');
 
-    const rows = plan.rows.filter(row => MOVING_STATES.has(row.state));
+    const rows = plan.rows.filter(row => MOVES.has(row.state));
 
-    if (rows.every(row => row.state === 'done')) return refused('nothing-to-move', 'no seat would move');
+    if (!rows.length) return refused('nothing-to-move', 'no seat would move');
 
     const
         moment = now(),
@@ -156,8 +160,12 @@ export async function consentSeatMove({dir, to, fingerprint, runStep, now = () =
             to,
             archive       : path.join(record.root, `.moved-${moment.toISOString().replace(/[:.]/g, '-')}`),
             previousRecord: record,
-            rows          : rows.map(row => ({id: row.id, from: path.join(record.root, row.id), to: row.destination, materialized: !!row.materialized})),
-            outOfScope    : plan.rows.filter(row => !MOVING_STATES.has(row.state)).map(row => ({id: row.id, seatHome: row.seatHome ?? null, reason: row.reason ?? null}))
+            rows          : rows.map(row => ({id: row.id, from: row.seatHome, to: row.destination, materialized: !!row.materialized})),
+            outOfScope    : plan.rows.filter(row => !MOVES.has(row.state)).map(row => ({
+                id      : row.id,
+                seatHome: row.seatHome ?? null,
+                reason  : row.reason ?? (row.state === 'done' ? 'already at its destination' : null)
+            }))
         };
 
     writeAtomically({file: path.join(dir, SEAT_ROOT_MOVE_FILE), content: inputs, fsModule});
@@ -208,13 +216,18 @@ function describesMove(inputs) {
  * @summary Settles a consented move at boot, before the first-launch choice and before any Brain child.
  * - Nothing consented: `none`.
  * - The root record names the destination: the move committed; the retirement resumes (`committed`).
+ * - The record is missing or unreadable, and an old folder sits in the archive: only a committed move
+ *   retires, so the record is written again from the move and the retirement resumes (`committed`).
  * - Otherwise, with no process able to write this installation's registry: the plan is read again, the
  *   move runs, the registry is read back, and the root record is written (`committed`). A changed plan, a
  *   refused or failed move, or a binding off its destination brings the old bindings back, spends the
- *   consent and keeps the old root (`refused`). A missing or unreadable root record is written from the
- *   move either way, never by the first-launch choice.
- * - A move that can neither go on nor come back, or whose inputs cannot be read: `held`. The caller does
- *   not start the Fleet over it.
+ *   consent and keeps the old root (`refused`), but only while each moved row's old folder is still there.
+ *   Without a readable record, nothing comes back: the consent is spent only when no consented row reads
+ *   its destination, since a row there may belong to a committed move, and the record it replaced is then
+ *   written from the consent, never by the first-launch choice.
+ * - A move that can neither go on nor come back, or whose inputs cannot be read: `held`, the consent kept.
+ *   The caller does not start the Fleet over it, nor over a committed move whose retirement is held
+ *   ({@link seatMoveBootHold}).
  * @param {Object}   options
  * @param {String}   options.dir         Directory holding the records (Electron `userData`).
  * @param {Function} options.checkWriter `() => Promise<{exclusive: Boolean, reason?: String}>` ({@link findFleetWriters}).
@@ -240,14 +253,29 @@ export async function settleSeatRootMove({dir, checkWriter, runStep, log = () =>
     try {
         record = readSeatRootRecord({dir, fsModule})
     } catch {
-        // an unreadable record is rewritten from the move below, never by the first-launch choice
+        // an unreadable record is no evidence either way: the move's own traces decide below
     }
 
-    if (record?.root === inputs.to) return {state: 'committed', retirement: retireMovedHomes({inputs, fsModule, log})};
+    if (record?.root === inputs.to) return commit({dir, inputs, fsModule, log});
 
     if (record && record.root !== inputs.from) {
         return {state: 'held', reason: `the seat root record names '${record.root}', neither side of the consented move`}
     }
+
+    let retired, gone;
+
+    try {
+        retired = retiredRow({inputs, fsModule});
+        gone    = inputs.rows.find(row => row.materialized && !lstatOrNull(row.from, fsModule))
+    } catch (error) {
+        return {state: 'held', reason: `the old folders cannot be read (${error.message})`}
+    }
+
+    if (retired && record) {
+        return {state: 'held', reason: `the seat root record names the old root, but '${retired}' was archived, which only a committed move does; restore the record to '${inputs.to}'`}
+    }
+
+    if (retired) return commit({dir, inputs, write: true, now, fsModule, log});
 
     const writer = await checkWriter();
 
@@ -261,12 +289,11 @@ export async function settleSeatRootMove({dir, checkWriter, runStep, log = () =>
         refusal = `the move failed: ${error.message}`
     }
 
-    if (!refusal) {
-        writeSeatRootRecord({dir, root: inputs.to, origin: 'moved', now, fsModule});
-        log({state: 'committed', root: inputs.to});
+    if (!refusal) return commit({dir, inputs, write: true, now, fsModule, log});
 
-        return {state: 'committed', retirement: retireMovedHomes({inputs, fsModule, log})}
-    }
+    if (!record) return settleUnrecorded({dir, inputs, refusal, runStep, now, fsModule, log});
+
+    if (gone) return {state: 'held', reason: `${refusal}; the old folder of '${gone.id}' is gone, so its binding cannot come back`};
 
     try {
         for (const row of await runStep({step: 'restore', rows: inputs.rows})) {
@@ -276,12 +303,92 @@ export async function settleSeatRootMove({dir, checkWriter, runStep, log = () =>
         return {state: 'held', reason: `${refusal}; the old bindings could not be restored (${error.message})`}
     }
 
-    if (!record) writeSeatRootRecord({dir, root: inputs.previousRecord.root, origin: inputs.previousRecord.origin, now, fsModule});
+    return spend({dir, refusal, fsModule, log})
+}
 
+/**
+ * @summary A move that cannot go on while no root record says whether it committed. The registry decides:
+ * a consented row at its destination may be a committed move, so nothing comes back and the consent stays.
+ * Only when none is there did the move never commit; the record it replaced is written again.
+ * @param {Object} options
+ * @returns {Promise<Object>} The settled outcome.
+ * @private
+ */
+async function settleUnrecorded({dir, inputs, refusal, runStep, now, fsModule, log}) {
+    let bindings;
+
+    try {
+        bindings = await runStep({step: 'bindings'})
+    } catch (error) {
+        return {state: 'held', reason: `${refusal}; with no readable seat root record and no readable registry (${error.message}), nothing is restored`}
+    }
+
+    const
+        seatHomes = new Map(bindings.map(row => [row.id, row.seatHome])),
+        arrived   = inputs.rows.find(row => seatHomes.get(row.id) === row.to);
+
+    if (arrived) {
+        return {state: 'held', reason: `${refusal}; with no readable seat root record, '${arrived.id}' at its destination may be a committed move, so nothing is restored`}
+    }
+
+    writeSeatRootRecord({dir, root: inputs.previousRecord.root, origin: inputs.previousRecord.origin, now, fsModule});
+
+    return spend({dir, refusal, fsModule, log})
+}
+
+/**
+ * @summary The committed move: the root record names the destination (written now when `write`), and the
+ * retirement of the old folders resumes.
+ * @param {Object} options
+ * @returns {{state: 'committed', retirement: Object}}
+ * @private
+ */
+function commit({dir, inputs, write = false, now, fsModule, log}) {
+    if (write) {
+        writeSeatRootRecord({dir, root: inputs.to, origin: 'moved', now, fsModule});
+        log({state: 'committed', root: inputs.to})
+    }
+
+    return {state: 'committed', retirement: retireMovedHomes({inputs, fsModule, log})}
+}
+
+/**
+ * @summary A move that did not commit and whose bindings are back: the consent is spent.
+ * @param {Object} options
+ * @returns {{state: 'refused', reason: String}}
+ * @private
+ */
+function spend({dir, refusal, fsModule, log}) {
     fsModule.rmSync(path.join(dir, SEAT_ROOT_MOVE_FILE), {force: true});
     log({state: 'refused', reason: refusal});
 
     return {state: 'refused', reason: refusal}
+}
+
+/**
+ * @summary The first consented row whose old folder the retirement has taken: gone from the old root and in
+ * the archive. Only a committed move retires.
+ * @param {Object} options
+ * @returns {String|null} The row's id.
+ * @private
+ */
+function retiredRow({inputs, fsModule}) {
+    if (!lstatOrNull(inputs.archive, fsModule)?.isDirectory()) return null;
+
+    return inputs.rows.find(row => row.materialized && !lstatOrNull(row.from, fsModule) && lstatOrNull(path.join(inputs.archive, row.id), fsModule))?.id ?? null
+}
+
+/**
+ * @summary Why a settled move must not start the Fleet, or `null`: a move that can neither go on nor come
+ * back, or a committed one whose old folders could not be archived and so still read as working seats.
+ * @param {Object|null} outcome The result of {@link settleSeatRootMove}.
+ * @returns {String|null}
+ */
+export function seatMoveBootHold(outcome) {
+    if (outcome?.state === 'held') return outcome.reason;
+    if (outcome?.retirement?.state === 'held') return `the move committed, but ${outcome.retirement.reason}`;
+
+    return null
 }
 
 /**
@@ -328,7 +435,7 @@ function scopeChange({inputs, rows}) {
         const consent = consented.get(row.id);
 
         if (!consent) {
-            if (MOVING_STATES.has(row.state) && row.state !== 'done') return `'${row.id}' would move but was not consented`;
+            if (MOVES.has(row.state)) return `'${row.id}' would move but was not consented`;
             continue
         }
 
@@ -368,8 +475,9 @@ function bindingsChange({inputs, bindings}) {
 
 /**
  * @summary Retires the old folders of a committed move into its archive, a dot-folder under the old root the
- * first-launch choice never counts. Only the folders the move names are touched, and an occupied archive path
- * stops the retirement before anything is renamed. Run again, it finishes what is left.
+ * first-launch choice never counts. Only the folders the move names are touched. An archive path that is a
+ * link or a file, not a folder in the old root, or an occupied one, stops the retirement before anything is
+ * renamed. Run again, it finishes what is left.
  * @param {Object}   options
  * @param {Object}   options.inputs The consented move.
  * @param {Object}   [options.fsModule=fs]
@@ -377,29 +485,26 @@ function bindingsChange({inputs, bindings}) {
  * @returns {{state: 'retired', archived: String[]}|{state: 'held', reason: String}}
  */
 export function retireMovedHomes({inputs, fsModule = fs, log = () => {}}) {
-    const
-        exists  = file => {
-            try {
-                fsModule.lstatSync(file);
-                return true
-            } catch (error) {
-                if (error?.code === 'ENOENT') return false;
-                throw error
-            }
-        },
-        pending = [];
+    const pending = [];
 
     try {
+        const archive = lstatOrNull(inputs.archive, fsModule);
+
+        // a link would carry the old folders wherever it points; the archive lives in the old root itself
+        if (archive && !archive.isDirectory()) {
+            return {state: 'held', reason: `'${inputs.archive}' is a link or a file, not a folder in the old root; no old folder was archived`}
+        }
+
         for (const row of inputs.rows.filter(row => row.materialized)) {
             const archived = path.join(inputs.archive, row.id);
 
-            if (!exists(row.from)) continue;
-            if (exists(archived)) return {state: 'held', reason: `'${archived}' is occupied; no old folder was archived`};
+            if (!lstatOrNull(row.from, fsModule)) continue;
+            if (lstatOrNull(archived, fsModule)) return {state: 'held', reason: `'${archived}' is occupied; no old folder was archived`};
 
             pending.push({id: row.id, from: row.from, to: archived})
         }
 
-        pending.length && fsModule.mkdirSync(inputs.archive, {recursive: true, mode: 0o700});
+        pending.length && !archive && fsModule.mkdirSync(inputs.archive, {mode: 0o700});
 
         for (const move of pending) {
             fsModule.renameSync(move.from, move.to);
@@ -460,6 +565,22 @@ export function listProcesses({execFileFn = execFile} = {}) {
                 .map(([, pid, command]) => ({pid: Number(pid), command})))
         })
     })
+}
+
+/**
+ * @summary `lstat` without following a final link; a missing path reads `null`, any other error throws.
+ * @param {String} file
+ * @param {Object} fsModule
+ * @returns {fs.Stats|null}
+ * @private
+ */
+function lstatOrNull(file, fsModule) {
+    try {
+        return fsModule.lstatSync(file)
+    } catch (error) {
+        if (error?.code === 'ENOENT') return null;
+        throw error
+    }
 }
 
 /** @private */
