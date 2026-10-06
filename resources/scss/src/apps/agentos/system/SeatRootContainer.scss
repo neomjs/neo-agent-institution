@@ -1,0 +1,113 @@
+.fm-seat-root {
+    gap         : var(--fm-space-2);
+    border-top  : 1px solid var(--fm-line);
+    padding     : var(--fm-space-3) 0;
+    color       : var(--fm-ink);
+
+    .fm-seat-root-head,
+    .fm-seat-root-actions {
+        flex-wrap: wrap;
+        gap      : var(--fm-space-2);
+    }
+
+    .fm-seat-root-title {
+        margin: 0;
+        font : var(--fm-text-subhead);
+    }
+
+    .fm-seat-root-scope,
+    .fm-seat-root-line,
+    .fm-seat-root-status,
+    .fm-seat-root-feedback {
+        min-width: 0;
+        color    : var(--fm-ink-dim);
+        font     : var(--fm-text-detail);
+        overflow-wrap: anywhere;
+    }
+
+    .fm-seat-root-status,
+    .fm-seat-root-feedback {
+        white-space: pre-wrap;
+    }
+
+    .fm-seat-root-plan {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-seat-root-plan-line {
+        color      : var(--fm-ink-dim);
+        font       : var(--fm-text-micro);
+        overflow-wrap: anywhere;
+    }
+
+    .fm-seat-root-feedback {
+        border-left: 2px solid var(--fm-state-warn);
+        padding-left: var(--fm-space-2);
+
+        &.is-refused {
+            border-color: var(--fm-state-bad);
+            color       : var(--fm-ink);
+        }
+    }
+}
+
+.fm-seat-move-list {
+    display       : flex;
+    flex-direction: column;
+    gap           : var(--fm-space-1);
+    margin        : 0;
+    padding       : 0;
+    list-style    : none;
+
+    .fm-seat-move-row {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-1);
+        border        : 1px solid var(--fm-line);
+        border-radius : var(--fm-radius);
+        padding       : var(--fm-space-2);
+        overflow-wrap : anywhere;
+        white-space   : normal;
+    }
+
+    .fm-seat-move-head {
+        display        : flex;
+        align-items    : baseline;
+        justify-content: space-between;
+        flex-wrap      : wrap;
+        gap            : var(--fm-space-1);
+    }
+
+    .fm-seat-move-agent {
+        color: var(--fm-ink);
+        font : var(--fm-text-label);
+    }
+
+    .fm-seat-move-state,
+    .fm-seat-move-paths,
+    .fm-seat-move-reason,
+    .fm-seat-move-materialized {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);
+    }
+
+    .fm-seat-move-paths {
+        display              : grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap                  : 2px var(--fm-space-2);
+        margin               : 0;
+
+        dd {
+            min-width: 0;
+            margin   : 0;
+            overflow-wrap: anywhere;
+            color: var(--fm-ink);
+        }
+    }
+
+    .fm-seat-move-reason,
+    .fm-seat-move-materialized {
+        margin: 0;
+        overflow-wrap: anywhere;
+    }
+}

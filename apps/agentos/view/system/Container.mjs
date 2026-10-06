@@ -1,6 +1,7 @@
 import BaseContainer                from '../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import DeploymentServices           from '../../store/DeploymentServices.mjs';
 import PlaneList                    from './List.mjs';
+import SeatRootContainer             from './SeatRootContainer.mjs';
 import AgentFreshness               from '../../util/AgentFreshness.mjs';
 import ViewerTime                   from '../../util/ViewerTime.mjs';
 import {FLEET_WIRE_RESPONSE_STATES} from '../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
@@ -51,11 +52,10 @@ const lane = (id, eyebrow) => ({
 });
 
 /**
- * The System keeper-view — the connected instance's engine room. It reads one thing: the
- * `fleetDeploymentState` picture the cockpit's read owner lands on the Viewport provider (the
- * orchestrator's own observation of its planes, bounded and redacted at the wire), and it renders
- * that picture as plane cards, three maintenance lanes and one freshness line. Observe-only by
- * declaration: nothing on this surface can act on a plane.
+ * The System keeper-view — the connected instance's engine room. The plane cards and maintenance
+ * lanes read the `fleetDeploymentState` picture the cockpit's read owner lands on the Viewport
+ * provider. A separate installation section shows the shell-owned seat-root transition; its scope
+ * is this installed shell, never the connected plane.
  *
  * @summary Binds the provider-held picture and the read's own connection observation; projects the
  * picture's service rows into a view-owned {@link AgentOS.store.DeploymentServices store} the
@@ -63,7 +63,7 @@ const lane = (id, eyebrow) => ({
  * maintenance blocks. Honest states are first-class: never answered says so, a stale picture keeps
  * its cards and dates them, an unavailable or unsupported wire is ONE reason for the whole view (no
  * card guesses), and the logs region names its missing verb rather than showing a stream that is
- * not the plane's. Nothing here reads the bridge — the pane-never-reads contract.
+ * not the plane's. The installation section has its own shell-owned controller and state.
  *
  * @class AgentOS.view.system.Container
  * @extends Neo.container.Base
@@ -177,6 +177,10 @@ class Container extends BaseContainer {
                 reference: 'connection',
                 text     : ''
             }]
+        }, {
+            module   : SeatRootContainer,
+            flex     : 'none',
+            reference: 'seat-root-move'
         }, {
             // the honest empty line for a picture with no rows — never a blank claiming to be the plane
             ntype    : 'component',
