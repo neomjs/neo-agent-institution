@@ -22,6 +22,7 @@ files:
     - mainLog.mjs
     - planeConfig.mjs
     - preload.cjs
+    - seatRootMove.mjs
     - seatRootRecord.mjs
     - setupBroker.mjs
     - wakeReceiver.mjs
