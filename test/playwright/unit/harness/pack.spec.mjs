@@ -1,9 +1,9 @@
-import {expect, test}             from '@playwright/test';
-import * as yaml                  from 'js-yaml';
+import {expect, test}                                       from '@playwright/test';
+import * as yaml                                            from 'js-yaml';
 import {mkdtemp, readFile, rm}                              from 'node:fs/promises';
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
-import {tmpdir}                               from 'node:os';
-import {fileURLToPath}                        from 'node:url';
+import {tmpdir}                                             from 'node:os';
+import {fileURLToPath}                                      from 'node:url';
 import {
     BRAIN_TREES,
     ENGINE_THEME_BUILD,
@@ -147,6 +147,7 @@ test.describe('harness pack stage', () => {
             'main.mjs',
             'mainLog.mjs',
             'planeConfig.mjs',
+            'seatRootMove.mjs',
             'seatRootRecord.mjs',
             'setupBroker.mjs',
             'wakeReceiver.mjs',
@@ -687,18 +688,18 @@ test.describe('harness pack stage', () => {
 
         // the red control: one key, two values — never a silent winner
         expect(() => buildOrganismManifest({
-            brainPackageJson  : {...brainPackageJson, overrides: {'@huggingface/transformers': {sharp: '^0.36.0'}}},
+            brainPackageJson: {...brainPackageJson, overrides: {'@huggingface/transformers': {sharp: '^0.36.0'}}},
             productPackageJson,
             scanned,
-            supplemental      : NO_SUPPLEMENTAL
+            supplemental    : NO_SUPPLEMENTAL
         })).toThrow(/owners disagree on the override @huggingface\/transformers/);
 
         // an owner that overrides the engine to anything but the product's pin is the same red
         expect(() => buildOrganismManifest({
-            brainPackageJson  : {...brainPackageJson, overrides: {'neo.mjs': 'https://github.com/neomjs/neo/archive/older.tar.gz'}},
+            brainPackageJson: {...brainPackageJson, overrides: {'neo.mjs': 'https://github.com/neomjs/neo/archive/older.tar.gz'}},
             productPackageJson,
             scanned,
-            supplemental      : NO_SUPPLEMENTAL
+            supplemental    : NO_SUPPLEMENTAL
         })).toThrow(/Engine is the product's pin github:neomjs\/neo#pin/);
 
         // owners that force nothing still stage the one forced resolution: the engine
@@ -732,7 +733,7 @@ test.describe('harness pack stage', () => {
 
     test('describeOwners keeps an unreadable product revision null without borrowing the Brain revision', () => {
         const roots = {brainRoot: '/build/brain', productRoot: '/build/product'};
-        const info = describeOwners({
+        const info  = describeOwners({
             brainPackageJson  : {},
             enginePackageJson : {},
             productPackageJson: {},
