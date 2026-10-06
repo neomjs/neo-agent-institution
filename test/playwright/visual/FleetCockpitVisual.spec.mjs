@@ -324,6 +324,64 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(group).toHaveScreenshot('seat-model-differs-stopped-light.png')
     });
 
+    test('the Seat group\'s Memory row: no choice recorded reads as that, the choice opens in Add\'s list and names the chosen folder under Details, a recorded consent reads back; both skins (#572)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            source = '/home/operator/.claude/projects/-work/memory',
+            card   = name => page.locator('.fm-agent-card', {hasText: name}),
+            detail = page.locator('.fm-agent-detail:visible').first(),
+            group  = detail.locator('.fm-seat-model'),
+            row    = group.locator('.fm-seat-memory'),
+            line   = row.locator('.fm-seat-model-line'),
+            define = facts => landAgentDefinitions(page, sampleDefinitions.map(row => row.id === 'neo-gpt-sophie' ? {...row, ...facts} : row)),
+            settle = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            },
+            // the choice opens on two candidates; picking one names its folder under Details, opened for the capture
+            choose = async () => {
+                const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${SEAT_MEMORY_DRIVER}?state=candidates&t=${++driverTick}`);
+
+                expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+                await expect(group.locator('.fm-seat-memory-offer')).toBeVisible();
+                await row.locator('.neo-list-item', {hasText: 'Mnemosyne'}).click();
+                await row.locator('.fm-seat-memory-details summary').click();
+                await expect(row.locator('.fm-seat-memory-source')).toHaveText(source)
+            };
+
+        await landFleetRoster(page, [...sampleRoster, {
+            ...sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+            agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null, state: 'off'
+        }]);
+        await define({});
+        await card('Sophie').click();
+        await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
+        await expect(group).toBeVisible({timeout: 30000});
+
+        await expect(line).toHaveText('no import choice recorded');
+        // the open choice outgrows the inspector's fold, so it is captured as its own row
+        await choose();
+        await settle();
+        await expect(row).toHaveScreenshot('seat-memory-choice.png');
+
+        // a recorded consent arrives as a new definitions Store: another binding, so the choice folds and the line reads it
+        await define({memoryImport: source});
+        await expect(line).toHaveText(`recorded: import the memory at ${source}`);
+        await expect(group.locator('.fm-seat-memory-change')).toHaveText('Change');
+        await expect(group.locator('.fm-seat-memory-offer')).toBeHidden();
+        await settle();
+        await expect(group).toHaveScreenshot('seat-memory-recorded.png');
+
+        await switchToLightSkin(page);
+        await define({});
+        await choose();
+        await settle();
+        await expect(row).toHaveScreenshot('seat-memory-choice-light.png')
+    });
+
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {
         await bootSettledCockpit(page);
 
@@ -1066,6 +1124,12 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      * @type {String}
      */
     const ADD_AGENT_MEMORY_DRIVER = '../../../../test/playwright/visual/addAgentMemory.driver.mjs';
+
+    /**
+     * The Seat group's Memory row driver, resolved the way {@link GOLDEN_PATH_DRIVER} is.
+     * @type {String}
+     */
+    const SEAT_MEMORY_DRIVER = '../../../../test/playwright/visual/seatMemory.driver.mjs';
 
     let driverTick = 0;
 

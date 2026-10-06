@@ -1,0 +1,37 @@
+/* The Seat group's Memory row: its label, line and status take the group's row skin (SeatModelContainer.scss). The
+   choice opens beneath the line in the Add frame's words: the question, the list ending in the empty row
+   (MemoryCandidateList.scss), the reassurance, Details with the chosen folder, then Save — or, when the check could
+   not answer, its reason in the limited hue, the empty row and Retry. */
+.fm-seat-memory {
+    .fm-seat-memory-offer {
+        gap        : var(--fm-space-1);
+        padding-top: var(--fm-space-1);
+
+        &.is-unavailable .fm-seat-memory-lead {
+            color      : var(--fm-state-limited);
+            font-weight: 600;
+        }
+    }
+
+    .fm-seat-memory-lead,
+    .fm-seat-memory-note,
+    .fm-seat-memory-details {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-detail);
+    }
+
+    .fm-seat-memory-details summary {
+        cursor: pointer;
+        width : fit-content;
+    }
+
+    .fm-seat-memory-source {
+        font-family  : var(--fm-font-mono);
+        overflow-wrap: anywhere;
+        padding-top  : 2px;
+    }
+
+    .fm-seat-memory-actions {
+        gap: var(--fm-space-2);
+    }
+}
