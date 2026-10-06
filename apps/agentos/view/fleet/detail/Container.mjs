@@ -536,8 +536,9 @@ class AgentDetail extends Container {
     }
 
     /**
-     * @summary Seat the Seat group from the joined definition (what is declared) and the roster record (what the
-     * harness's config is set to, and why the Fleet refused its latest start, if it did). No definition, no group.
+     * @summary Seat the Seat group from the joined definition (what is declared, the memory consent included) and the
+     * roster record (what the harness's config is set to, and why the Fleet refused its latest start, if it did). No
+     * definition, no group.
      */
     applySeatModel() {
         const
@@ -558,7 +559,9 @@ class AgentDetail extends Container {
                 model          : definition.model ?? null,
                 reasoningEffort: definition.reasoningEffort ?? null
             }
-        })
+        });
+
+        me.getReference('seat-memory').seat = definition && {id: definition.id, memoryImport: definition.memoryImport ?? null}
     }
 
     /**

@@ -1,4 +1,5 @@
 import ComponentController   from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import AddAgentFlow          from '../../../util/AddAgentFlow.mjs';
 import ConfigIntentRoundTrip from '../../../util/ConfigIntentRoundTrip.mjs';
 import SeatGitIdentity       from '../../../util/SeatGitIdentity.mjs';
 import SeatModel             from '../../../util/SeatModel.mjs';
@@ -33,6 +34,12 @@ class Controller extends ComponentController {
      */
     identityRequest = 0
     /**
+     * The latest Memory-row request, a candidate read or a consent: only its answer may paint the row.
+     * @member {Number} memoryRequest=0
+     * @protected
+     */
+    memoryRequest = 0
+    /**
      * The latest Seat-group request, a catalog read or a declaration: only its answer may paint the group.
      * @member {Number} seatRequest=0
      * @protected
@@ -52,6 +59,7 @@ class Controller extends ComponentController {
         card.on({configIntent: me.onConfigIntent, scope: me});
         me.getReference('identity-row').on({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model').on({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
+        me.getReference('seat-memory').on({declareSeatMemory: me.onDeclareSeatMemory, readSeatMemory: me.readSeatMemory, scope: me});
         // a roster refresh re-seats the same definition: only another seat is read again
         me.observeConfig(card, 'record', (value, oldValue) => {
             value?.id !== oldValue?.id && me.readGitIdentity()
@@ -74,8 +82,10 @@ class Controller extends ComponentController {
         me.getReference('config-pane')?.un({configIntent: me.onConfigIntent, scope: me});
         me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model')?.un({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
+        me.getReference('seat-memory')?.un({declareSeatMemory: me.onDeclareSeatMemory, readSeatMemory: me.readSeatMemory, scope: me});
         // a reply still on its way finds no request of its own
         me.identityRequest++;
+        me.memoryRequest++;
         me.seatRequest++;
         super.destroy(...args)
     }
@@ -180,8 +190,10 @@ class Controller extends ComponentController {
         // another Store is another binding: the Seat group's catalog and feedback belonged to the last one, even
         // where the new Store holds the same seat on the same harness
         if (oldValue && value !== oldValue) {
+            me.memoryRequest++;
             me.seatRequest++;
-            me.getReference('seat-model')?.set({catalog: null, editing: null, status: {state: 'idle', reason: ''}})
+            me.getReference('seat-model')?.set({catalog: null, editing: null, status: {state: 'idle', reason: ''}});
+            me.getReference('seat-memory')?.set({closed: false, discovery: null, editing: false, status: {state: 'idle', reason: ''}})
         }
 
         me.component.applyConfigRecord()
@@ -286,6 +298,70 @@ class Controller extends ComponentController {
                 state === 'accepted'
                     ? row.set({editing: null, status: {state: 'idle', reason: ''}})
                     : row.status = {state, reason: state === 'pending' ? '' : reason}
+            }
+        })
+    }
+
+    /**
+     * @summary Ask the Fleet which agents' memory the shown seat could continue, into the Memory row, for its choice.
+     * @returns {Promise<void>}
+     */
+    async readSeatMemory() {
+        const
+            me      = this,
+            row     = me.getReference('seat-memory'),
+            binding = me.seatBinding(),
+            request = ++me.memoryRequest;
+
+        if (!binding) return;
+
+        row.discovery = {state: 'reading'};
+
+        const discovery = await AddAgentFlow.readMemoryCandidates();
+
+        if (request === me.memoryRequest && !me.isDestroyed && !row.isDestroyed && me.holdsSeatBinding(binding)) {
+            row.discovery = discovery
+        }
+    }
+
+    /**
+     * @summary Record the shown seat's memory consent through the shared runner, with the row as its own owner token.
+     * The accepted readback lands on the definition, and the row re-seats from it. Every refusal stays on the row in the
+     * Fleet's words. Only the Fleet's code for a closed choice ({@link AgentOS.util.AddAgentFlow#MEMORY_IMPORT_CLOSED},
+     * a seat that runs or already holds its memory) withdraws the offer. Any other refusal, and an unreachable or
+     * invalid answer, leaves the choice open to correct and try again. Nothing reaches the definition but readback.
+     * @param {Object} data
+     * @param {String} data.memoryImport A candidate's `source`, or `'none'`
+     * @returns {Promise<void>}
+     */
+    onDeclareSeatMemory({memoryImport} = {}) {
+        const
+            me      = this,
+            row     = me.getReference('seat-memory'),
+            binding = me.seatBinding();
+
+        if (!binding || !memoryImport) {
+            return Promise.resolve()
+        }
+
+        const request = ++me.memoryRequest;
+
+        return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            intent: {id: binding.id, memoryImport},
+            owner : row,
+            store : binding.store,
+            setSaveStatus: (id, state, reason, detail) => {
+                if (request !== me.memoryRequest || me.isDestroyed || row.isDestroyed || !me.holdsSeatBinding(binding)) {
+                    return
+                }
+
+                if (state === 'accepted') {
+                    row.set({discovery: null, editing: false, status: {state: 'idle', reason: ''}})
+                } else if (detail?.code === AddAgentFlow.MEMORY_IMPORT_CLOSED) {
+                    row.set({closed: true, discovery: null, editing: false, status: {state, reason}})
+                } else {
+                    row.status = {state, reason: state === 'pending' ? '' : reason}
+                }
             }
         })
     }

@@ -1,7 +1,8 @@
-import Button    from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Container from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import TextField from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
-import SeatModel from '../../../util/SeatModel.mjs';
+import Button              from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container           from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import TextField           from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import SeatModel           from '../../../util/SeatModel.mjs';
+import SeatMemoryContainer from './SeatMemoryContainer.mjs';
 
 /**
  * The Seat group's two rows, each with the record field it declares.
@@ -59,7 +60,8 @@ const seatRow = (field, label) => ({
  *
  * Like the commit-identity row it changes nothing itself. It fires `readSeatCatalog` for the values to offer, and
  * `declareSeatModel` with `{field, value}` (`null` hands the field back to the harness); its owner runs the round-trip
- * and sets `catalog`, `seat` and `status` back.
+ * and sets `catalog`, `seat` and `status` back. The group's last row, {@link AgentOS.view.fleet.detail.SeatMemoryContainer},
+ * holds the seat's memory consent and talks to the same owner.
  */
 class SeatModelContainer extends Container {
     static config = {
@@ -131,7 +133,7 @@ class SeatModelContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * Heading · the two rows · the values on offer · status line. Skin in `SeatModelContainer.scss`.
+         * Heading · the two rows · the values on offer · status line · the memory row. Skin in `SeatModelContainer.scss`.
          * @member {Object[]} items
          */
         items: [
@@ -170,6 +172,10 @@ class SeatModelContainer extends Container {
                 cls      : ['fm-seat-model-status', 'is-idle'],
                 flex     : 'none',
                 reference: 'status-line'
+            }, {
+                module   : SeatMemoryContainer,
+                flex     : 'none',
+                reference: 'seat-memory'
             }
         ]
     }

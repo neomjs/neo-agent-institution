@@ -59,10 +59,23 @@ const REPO_SLUG_SHAPES = Object.freeze({
 const FLEET_OFFLINE_REASON = 'The fleet is not running. Start it, then add the agent.';
 
 /**
+ * The Fleet's code on its refusal of a seat's memory consent once the choice is closed: the seat runs, or already
+ * holds its memory. Every other refusal carries no code and leaves the choice open.
+ * @member {String} MEMORY_IMPORT_CLOSED
+ */
+const MEMORY_IMPORT_CLOSED = 'FLEET_SEAT_MEMORY_IMPORT_CLOSED';
+
+/**
  * The `memoryImport` of a seat that starts with no existing memory, the Fleet's own word.
  * @member {String} MEMORY_IMPORT_NONE
  */
 const MEMORY_IMPORT_NONE = 'none';
+
+/**
+ * What a memory choice promises about the original, beside a list of candidates.
+ * @member {String} MEMORY_COPY_NOTE
+ */
+const MEMORY_COPY_NOTE = 'Its notes are copied, never moved; the original stays where it is.';
 
 /**
  * Static validation and bridge-round-trip utilities for defining an AgentOS resident.
@@ -73,6 +86,8 @@ class AddAgentFlow extends Base {
     static ADD_AGENT_STATES     = ADD_AGENT_STATES
     static DEFAULT_REPO_SLUG    = DEFAULT_REPO_SLUG
     static FLEET_OFFLINE_REASON = FLEET_OFFLINE_REASON
+    static MEMORY_COPY_NOTE     = MEMORY_COPY_NOTE
+    static MEMORY_IMPORT_CLOSED = MEMORY_IMPORT_CLOSED
     static MEMORY_IMPORT_NONE   = MEMORY_IMPORT_NONE
 
     static config = {
@@ -278,6 +293,37 @@ class AddAgentFlow extends Base {
             default:
                 return []
         }
+    }
+
+    /**
+     * @summary The memory choice's Details, in one rule for Add Agent's frame and Agent Detail's Memory row: the
+     * technical facts the rows and the lead leave out. That is the chosen candidate's folder, which tells apart
+     * candidates that read alike, or the producer's own words when the check could not answer.
+     * @param {Object}      options
+     * @param {Object}      options.discovery The {@link readMemoryCandidates} outcome.
+     * @param {String|null} options.choice    A row's `source` (`'none'` for the empty row), or null.
+     * @returns {String|null} Null when there is nothing to detail.
+     */
+    static memoryDetail({discovery, choice}) {
+        if (discovery?.state === 'unavailable') {
+            return discovery.detail
+        }
+
+        return discovery?.state === 'candidates' && choice && choice !== MEMORY_IMPORT_NONE ? choice : null
+    }
+
+    /**
+     * @summary The memory choice's lead, in one set of words for Add Agent's frame and Agent Detail's Memory row:
+     * one candidate, several, or a check that could not answer, with its reason.
+     * @param {Object} discovery The {@link readMemoryCandidates} outcome.
+     * @returns {String}
+     */
+    static memoryLead(discovery) {
+        if (discovery?.state === 'unavailable') {
+            return `Could not check for existing memory — ${discovery.reason}.`
+        }
+
+        return discovery?.candidates?.length === 1 ? 'Continue this agent\'s memory?' : 'Continue one of these agents\' memory?'
     }
 
     /**
