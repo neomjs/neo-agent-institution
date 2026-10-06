@@ -44,10 +44,10 @@ export const SEAT_MOVE_SCRIPT = [
     "import AiConfig from './ai/config.mjs';",
     "import FleetRegistryService from './ai/services/fleet/FleetRegistryService.mjs';",
     "import {moveSeatHomes} from './ai/services/fleet/moveSeatHomes.mjs';",
-    "const {NEO_HARNESS_SEAT_MOVE_STEP: step, NEO_HARNESS_SEAT_MOVE_FROM: from, NEO_HARNESS_SEAT_MOVE_TO: to, NEO_HARNESS_SEAT_MOVE_ROWS: rows} = process.env;",
+    "const {NEO_HARNESS_SEAT_MOVE_STEP: step, NEO_HARNESS_SEAT_MOVE_FROM: from, NEO_HARNESS_SEAT_MOVE_TO: to, NEO_HARNESS_SEAT_MOVE_ROWS: rows, NEO_HARNESS_SEAT_MOVE_ID: moveId} = process.env;",
     "let result;",
     "if (step === 'plan' || step === 'move') {",
-    "    result = await moveSeatHomes({registry: FleetRegistryService, from, to, dryRun: step === 'plan'})",
+    "    result = await moveSeatHomes({registry: FleetRegistryService, from, to, moveId: moveId || null, dryRun: step === 'plan'})",
     "} else if (step === 'bindings') {",
     "    result = FleetRegistryService.listAgents().map(({id, seatHome}) => ({id, seatHome: seatHome ?? null}))",
     "} else if (step === 'restore') {",
@@ -67,16 +67,19 @@ export const SEAT_MOVE_SCRIPT = [
  * @param {String}   [options.from]    The agents root the seats leave.
  * @param {String}   [options.to]      The agents root they move to.
  * @param {Object[]} [options.rows]    The consented rows, for `restore`.
+ * @param {String}   [options.moveId]  The consent's id: the Brain treats only staging folders marked with it as
+ *     this move's own.
  * @param {Function} options.runScript `({label, script, env}) => Promise<Object>`: the shell's `runBrainScript`
  *     bound to the installation's Brain root and environment.
  * @returns {Promise<Object>} The step's JSON answer.
  */
-export function runSeatMoveStep({step, from, to, rows, runScript}) {
+export function runSeatMoveStep({step, from, to, rows, moveId, runScript}) {
     return runScript({
         label : `seat move ${step}`,
         script: SEAT_MOVE_SCRIPT,
         env   : {
             NEO_HARNESS_SEAT_MOVE_FROM: from ?? '',
+            NEO_HARNESS_SEAT_MOVE_ID  : moveId ?? '',
             NEO_HARNESS_SEAT_MOVE_ROWS: JSON.stringify(rows ?? []),
             NEO_HARNESS_SEAT_MOVE_STEP: step,
             NEO_HARNESS_SEAT_MOVE_TO  : to ?? ''
@@ -120,10 +123,11 @@ function planFingerprint({from, to, rows}) {
  * @param {String}   options.fingerprint The fingerprint of the plan the operator saw ({@link planSeatMove}).
  * @param {Function} options.runStep
  * @param {Function} [options.now]
+ * @param {Function} [options.newId=crypto.randomUUID] The consent's id, which marks the move's own staging folders.
  * @param {Object}   [options.fsModule=fs]
  * @returns {Promise<{state: 'consented', inputs: Object}|{state: 'refused', reason: String}>}
  */
-export async function consentSeatMove({dir, to, fingerprint, runStep, now = () => new Date(), fsModule = fs}) {
+export async function consentSeatMove({dir, to, fingerprint, runStep, now = () => new Date(), newId = crypto.randomUUID, fsModule = fs}) {
     const record = readSeatRootRecord({dir, fsModule});
 
     if (!record) return {state: 'refused', reason: 'this installation records no seat root yet'};
@@ -142,6 +146,7 @@ export async function consentSeatMove({dir, to, fingerprint, runStep, now = () =
         moment = now(),
         inputs = {
             version       : 1,
+            moveId        : newId(),
             consentedAt   : moment.toISOString(),
             from          : record.root,
             to,
@@ -186,7 +191,8 @@ export function readSeatRootMove({dir, fsModule = fs}) {
 function describesMove(inputs) {
     const absolute = value => typeof value === 'string' && path.isAbsolute(value);
 
-    return inputs?.version === 1 && absolute(inputs.from) && absolute(inputs.to) && absolute(inputs.archive) &&
+    return inputs?.version === 1 && typeof inputs.moveId === 'string' && inputs.moveId.length > 0 &&
+        absolute(inputs.from) && absolute(inputs.to) && absolute(inputs.archive) &&
         path.dirname(inputs.archive) === inputs.from && path.basename(inputs.archive).startsWith('.') &&
         absolute(inputs.previousRecord?.root) && SEAT_ROOT_ORIGINS.includes(inputs.previousRecord.origin) &&
         Array.isArray(inputs.rows) && inputs.rows.length > 0 &&
@@ -285,7 +291,7 @@ export async function settleSeatRootMove({dir, checkWriter, runStep, log = () =>
  * @private
  */
 async function moveConsentedSeats({inputs, runStep, log}) {
-    const plan = await runStep({step: 'plan', from: inputs.from, to: inputs.to});
+    const plan = await runStep({step: 'plan', from: inputs.from, to: inputs.to, moveId: inputs.moveId});
 
     if (plan.state !== 'planned') return plan.reason ?? `the plan reads '${plan.state}'`;
 
@@ -293,7 +299,7 @@ async function moveConsentedSeats({inputs, runStep, log}) {
 
     if (changed) return `the seats changed since the move was consented (${changed}); review the plan again`;
 
-    const moved = await runStep({step: 'move', from: inputs.from, to: inputs.to});
+    const moved = await runStep({step: 'move', from: inputs.from, to: inputs.to, moveId: inputs.moveId});
 
     (moved.rows ?? []).forEach(row => log({row: row.id, state: row.state}));
 

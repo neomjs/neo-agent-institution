@@ -56,7 +56,8 @@ function seatFolder(id) {
 function fakeBrain(bindings, {fail = {}} = {}) {
     const
         registry = new Map(Object.entries(bindings)),
-        calls    = [];
+        calls    = [],
+        moveIds  = [];
 
     const plan = ({from: source, to: destinationRoot}) => [...registry].map(([id, seatHome]) => {
         const destination = path.join(destinationRoot, id);
@@ -68,8 +69,9 @@ function fakeBrain(bindings, {fail = {}} = {}) {
         return {id, seatHome, destination, materialized: true, state: fs.existsSync(destination) ? 'relocate' : 'copy'}
     });
 
-    const runStep = async ({step, from: source, to: destinationRoot, rows}) => {
+    const runStep = async ({step, from: source, to: destinationRoot, rows, moveId}) => {
         calls.push(step);
+        moveId && moveIds.push(`${step}:${moveId}`);
 
         if (fail[step]) {
             const reason = fail[step];
@@ -99,7 +101,7 @@ function fakeBrain(bindings, {fail = {}} = {}) {
             : {id: row.id, state: 'unchanged'})
     };
 
-    return {calls, registry, runStep}
+    return {calls, moveIds, registry, runStep}
 }
 
 const exclusive = async () => ({exclusive: true});
@@ -110,7 +112,7 @@ const exclusive = async () => ({exclusive: true});
 async function consent(brain) {
     const plan = await planSeatMove({from, to, runStep: brain.runStep});
 
-    return consentSeatMove({dir: userData, to, fingerprint: plan.fingerprint, runStep: brain.runStep, now: NOW})
+    return consentSeatMove({dir: userData, to, fingerprint: plan.fingerprint, runStep: brain.runStep, now: NOW, newId: () => 'move-1'})
 }
 
 const boot = (brain, options = {}) => settleSeatRootMove({dir: userData, checkWriter: exclusive, runStep: brain.runStep, now: NOW, ...options});
@@ -125,6 +127,7 @@ test('consent records the inputs of the plan it was shown, and changes nothing e
     expect(result.state).toBe('consented');
     expect(readSeatRootMove({dir: userData})).toEqual({
         version       : 1,
+        moveId        : 'move-1',
         consentedAt   : '2026-10-06T14:00:00.000Z',
         from,
         to,
@@ -177,6 +180,7 @@ test('a consented move commits at boot: copies, bindings, the root record, then 
     const outcome = await boot(brain, {log: entry => lines.push(entry)});
 
     expect(outcome).toEqual({state: 'committed', retirement: {state: 'retired', archived: ['neo-gpt-sophie']}});
+    expect(brain.moveIds, 'the Brain stages under the consent\'s id').toEqual(['plan:move-1', 'move:move-1']);
     expect(readSeatRootRecord({dir: userData})).toEqual({origin: 'moved', recordedAt: '2026-10-06T14:00:00.000Z', root: to});
     expect(Object.fromEntries(brain.registry)).toEqual({'neo-gpt-sophie': path.join(to, 'neo-gpt-sophie'), 'neo-opus-ada': path.join(to, 'neo-opus-ada'), carol: '/elsewhere/carol'});
     expect(fs.readFileSync(path.join(to, 'neo-gpt-sophie', 'harness', 'codex', 'config.toml'), 'utf8')).toBe('# neo-gpt-sophie\n');
