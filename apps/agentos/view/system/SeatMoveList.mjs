@@ -88,7 +88,7 @@ class SeatMoveList extends BaseList {
                     {tag: 'dt', id: `${id}__from-label`, text: 'from'},
                     {tag: 'dd', id: `${id}__from`,       text: valueOr(record.seatHome, 'no recorded seat home')},
                     {tag: 'dt', id: `${id}__to-label`,   text: 'to'},
-                    {tag: 'dd', id: `${id}__to`,         text: valueOr(record.destination, 'no destination')}
+                    {tag: 'dd', id: `${id}__to`,         text: valueOr(record.destination, state === 'untouched' ? 'unchanged by this move' : 'no destination')}
                 ]
             }];
 

@@ -111,7 +111,27 @@ test.describe('AgentOS.view.system.SeatRootContainer (#582)', () => {
         try {
             panel.snapshot = {state: 'available', packaged: true, root: {root: '/Users/example/Seats-v2', origin: 'moved'}, pending: null, outcome: {state: 'committed', retirement: {state: 'held', reason: 'one folder is busy'}}};
             expect(panel.getReference('status-line').text).toContain('old folders were not all archived');
+            expect(panel.getReference('status-line').text).toContain('Fleet start held');
             expect(panel.getReference('status-line').text).not.toContain('remain archived')
+        } finally {
+            panel.destroy()
+        }
+    });
+
+    test('a previously arrived seat remains visible outside the consented moving rows', () => {
+        const panel = makePanel();
+        try {
+            panel.snapshot = {state: 'available', packaged: true, root: {root, origin: 'adopted'}, outcome: {state: 'held', reason: 'writer active'}, pending: {
+                from: root, to: '/destination',
+                rows: [{id: 'moving', from: `${root}/moving`, to: '/destination/moving', materialized: true}],
+                outOfScope: [{id: 'arrived', seatHome: '/destination/arrived', reason: 'already at its destination'}]
+            }};
+            expect(panel.moveStore.items.map(row => [row.id, row.state, row.seatHome, row.destination, row.reason])).toEqual([
+                ['moving', 'pending', `${root}/moving`, '/destination/moving', null],
+                ['arrived', 'untouched', '/destination/arrived', null, 'already at its destination']
+            ]);
+            expect(panel.getReference('plan-summary').hidden).toBe(false);
+            expect(panel.getReference('consent').hidden).toBe(true)
         } finally {
             panel.destroy()
         }

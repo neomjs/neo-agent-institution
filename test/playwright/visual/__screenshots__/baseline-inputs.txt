@@ -552,10 +552,10 @@ apps/agentos/view/system/List.mjs
     2cf842add18dffc2f6267d981666c6153b9a71dd
 
 apps/agentos/view/system/SeatMoveList.mjs
-    e87a203f826b2d937596d5b04aeea5f9155c620e
+    574c19d20ef49a42d8f07ac3ffa0bbd3e0865efd
 
 apps/agentos/view/system/SeatRootContainer.mjs
-    d228b7aadc0e83f3e897d160c7e7ae54cc119c56
+    e101849cfd812213af4098a17708011c862f79dc
 
 apps/agentos/view/system/SeatRootController.mjs
     11d0ce4be716d394c51f275b56112e2c4aa19fac

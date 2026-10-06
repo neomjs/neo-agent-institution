@@ -108,6 +108,24 @@ test.describe('System seat placement through the shell capability', () => {
         await testInfo.attach('seat-move-held', {body: await section.screenshot(), contentType: 'image/png'})
     });
 
+    test('a committed move with held retirement keeps Fleet held and shows already-arrived seats unchanged', async ({page, neuralLink}) => {
+        await installShell(page, {status: {...status, root: {root: to, origin: 'moved'}, outcome: {state: 'committed', retirement: {state: 'held', reason: 'archive occupied'}}, pending: {
+            from, to, archive: `${from}/.archive`, consentedAt: '2026-10-06T12:00:00Z',
+            rows: [{id: 'local-seat', from: rows[0].seatHome, to: rows[0].destination, materialized: true}],
+            outOfScope: [{id: 'arrived-seat', seatHome: `${to}/arrived-seat`, reason: 'already at its destination'}]
+        }}});
+        const {app, section} = await openSystem({page, neuralLink});
+        await expect(section).toContainText('Root move committed');
+        await expect(section).toContainText('Fleet start held');
+        await expect(section).toContainText('archive occupied');
+        const arrived = section.locator('.fm-seat-move-row').filter({hasText: 'arrived-seat'});
+        await expect(arrived).toContainText('unchanged by this move');
+        await expect(arrived).toContainText('already at its destination');
+        expect((await readSeatView(app)).snapshot.outcome.state).toBe('committed');
+        await expect(section.locator('.fm-seat-root-consent')).toBeHidden();
+        expect(await page.evaluate(() => window.seatMoveFixture.calls)).toEqual([])
+    });
+
     test('an initial unsettled move refreshes to its boot outcome without a click', async ({page, neuralLink}) => {
         await installShell(page, {status: {...status, outcome: null, pending: {
             from, to, archive: `${from}/.archive`, consentedAt: '2026-10-06T12:00:00Z', outOfScope: [],

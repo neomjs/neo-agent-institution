@@ -303,11 +303,11 @@ class SeatRootContainer extends Container {
                 snapshot?.state === 'available' ? 'No seat root is recorded.' : 'Installed seat root is not available.';
 
         if (outcome?.state === 'held') {
-            statusLine.text = `Move held · ${[outcome.code, outcome.reason].filter(Boolean).join(' · ') || 'the transition could not settle'}`
+            statusLine.text = `Move and Fleet start held · ${outcome.reason ?? 'the transition could not settle'}`
         } else if (outcome?.state === 'committed') {
             const retirement = outcome.retirement;
             statusLine.text = retirement?.state === 'held'
-                ? `Root move committed · old folders were not all archived: ${retirement.reason ?? 'retirement is held'}`
+                ? `Root move committed · Fleet start held; old folders were not all archived: ${retirement.reason ?? 'retirement is held'}`
                 : `Root move committed · ${rootPath(root) ?? 'destination root'}`
         } else if (snapshot?.state === 'refused' || snapshot?.state === 'unavailable') {
             statusLine.text = `Seat-root status unavailable · ${[snapshot.code, snapshot.reason].filter(Boolean).join(' · ') || 'the shell did not answer'}`
