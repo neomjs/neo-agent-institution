@@ -88,9 +88,9 @@ class ConfigIntentRoundTrip extends Base {
      * @summary Run one configuration round-trip and render its truth through the caller's sink.
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam) — the DI discipline shared with `addAgentFlow`.
-     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?, gitName?, gitEmail?, model?, reasoningEffort?}`, `{id, launchOwner: 'fleet'}`, `{id, repos}` or `{id, planeCredential: true}` ({@link runPlaneCredentialIntent}) (+ event envelope noise, stripped here).
+     * @param {Object}        config.intent           The card's `configIntent` payload: `{id, harnessType?, mcpServers?, mcpTarget?, gitName?, gitEmail?, model?, reasoningEffort?, memoryImport?}`, `{id, launchOwner: 'fleet'}`, `{id, repos}` or `{id, planeCredential: true}` ({@link runPlaneCredentialIntent}) (+ event envelope noise, stripped here).
      * @param {Object|null}   [config.owner]          The calling view — an opaque identity token for cross-owner supersede honesty. Omitting it degrades stale drops to silent.
-     * @param {Function}      config.setSaveStatus    `(agentId, state, reason)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch).
+     * @param {Function}      config.setSaveStatus    `(agentId, state, reason, detail)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch). A `rejected` the Fleet itself answered carries `detail.code`, the Fleet's code for it or null; an unreachable or invalid answer carries no detail.
      * @param {Neo.data.Store|null} config.store      The shared definitions store — record resolution, the arbitration keys, and the write-generation bump all derive from it.
      * @returns {Promise<void>}
      */
@@ -129,7 +129,9 @@ class ConfigIntentRoundTrip extends Base {
             if (Object.hasOwn(intent, 'gitEmail'))    wireIntent.gitEmail    = intent.gitEmail;
             // the Seat group's model and effort, each on its own; `null` hands one back to the harness
             if (Object.hasOwn(intent, 'model'))           wireIntent.model           = intent.model;
-            if (Object.hasOwn(intent, 'reasoningEffort')) wireIntent.reasoningEffort = intent.reasoningEffort
+            if (Object.hasOwn(intent, 'reasoningEffort')) wireIntent.reasoningEffort = intent.reasoningEffort;
+            // and its memory consent, which the Fleet takes only before the seat's first Start; `null` withdraws it
+            if (Object.hasOwn(intent, 'memoryImport'))    wireIntent.memoryImport    = intent.memoryImport
         }
 
         // supersede-correct ACROSS owners: the arbitration key is the shared record instance, so a
@@ -218,16 +220,14 @@ class ConfigIntentRoundTrip extends Base {
                 // regardless of which owner started it (see getDefinitionsWriteGeneration)
                 STORE_WRITE_GENERATIONS.set(store, ConfigIntentRoundTrip.getDefinitionsWriteGeneration(store) + 1);
 
-                // only the RESPONSE mutates the durable Body projection. A withdrawn model or effort is
-                // absent from the canonical readback, so it clears rather than outliving its withdrawal
-                record.set({model: null, reasoningEffort: null, ...agent});
+                // only the RESPONSE mutates the durable Body projection. A withdrawn model, effort or memory
+                // consent is absent from the canonical readback, so it clears rather than outliving its withdrawal
+                record.set({memoryImport: null, model: null, reasoningEffort: null, ...agent});
                 setSaveStatus(agentId, 'accepted', 'Configuration saved.')
+            } else if (outcome?.status === 'rejected') {
+                setSaveStatus(agentId, 'rejected', outcome.reason || 'Configuration was rejected.', {code: outcome.code ?? null})
             } else {
-                const reason = outcome?.status === 'rejected'
-                    ? (outcome.reason || 'Configuration was rejected.')
-                    : 'Configuration response was invalid. Nothing was changed.';
-
-                setSaveStatus(agentId, 'rejected', reason)
+                setSaveStatus(agentId, 'rejected', 'Configuration response was invalid. Nothing was changed.')
             }
         } catch (error) {
             const staleBy = staleAuthority();

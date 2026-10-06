@@ -76,6 +76,12 @@ class AgentDefinition extends Model {
             type        : 'String',
             defaultValue: null
         }, {
+            // the seat's memory consent: the folder of an existing agent's memory to import at its first Start, or
+            // 'none'; null = no choice recorded, and the Fleet imports nothing
+            name        : 'memoryImport',
+            type        : 'String',
+            defaultValue: null
+        }, {
             // the repositories the registry declares for the seat: `repo` is the working one
             // ({repoSlug, cloneUrl}), `repos` the others. Nested fields, not a `mapping`: a mapping
             // only reads initial values, and the configure readback must refresh both.
