@@ -67,10 +67,11 @@ const BEACON_PRESENT_GLYPH = '◉';
  */
 const LANE_AGE_REFRESH_MS = 30_000;
 
-import AgentFreshness from '../../../../util/AgentFreshness.mjs';
-import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
-import NameSlot       from '../../../../util/NameSlot.mjs';
+import AgentFreshness    from '../../../../util/AgentFreshness.mjs';
+import FamilyTokens      from '../../../../util/FamilyTokens.mjs';
+import NameSlot          from '../../../../util/NameSlot.mjs';
 import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
+import Participation     from '../../../../util/Participation.mjs';
 import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
 import SeatModel         from '../../../../util/SeatModel.mjs';
 import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
@@ -624,8 +625,9 @@ class AgentCard extends Container {
         });
 
         // the word stays short enough for the narrowest card; what "stuck" means, and why a seat is
-        // offline, ride its title (the detail pane spells the reason out)
-        cardState.changeVdomRootKey('title', stateMeaning(displayState, reason));
+        // offline, ride its title, a benched seat's with the operator's date and reason (the detail pane
+        // spells the reason out)
+        cardState.changeVdomRootKey('title', [stateMeaning(displayState, reason), reason === 'benched' ? Participation.detailOf(record) : null].filter(Boolean).join(' · ') || null);
 
         // The presence band: session state says what the resident's PROCESS does;
         // presence says whether the SEAT is alive anywhere (the plane's who_is_online graph
@@ -797,9 +799,11 @@ class AgentCard extends Container {
 
         const
             toggle  = me.getReference('control-toggle'),
-            restart = me.getReference('control-restart');
+            restart = me.getReference('control-restart'),
+            // the Fleet's own words for why its Start refuses this seat: Start stays closed before the click
+            refusal = recordState === 'off' ? record.launchRefusal ?? null : null;
 
-        toggle.set({disabled, iconCls: recordState === 'off' ? 'fa-solid fa-play' : 'fa-solid fa-stop'});
+        toggle.set({disabled: disabled || Boolean(refusal), iconCls: recordState === 'off' ? 'fa-solid fa-play' : 'fa-solid fa-stop'});
         // restart is meaningful only while running; at every card width it stays a real, visible control
         // (no hidden overflow) — the narrow row simply keeps both verbs as light, proportional icons
         restart.set({disabled, hidden: recordState === 'off'});
@@ -809,9 +813,10 @@ class AgentCard extends Container {
         // aria-label IS their only accessible name. The FM roster names its subject on every verb.
         toggle.changeVdomRootKey('aria-label', `${recordState === 'off' ? 'Start' : 'Stop'} ${nameSlot.text}`);
         restart.changeVdomRootKey('aria-label', `Restart ${nameSlot.text}`);
-        // a runtime fact that closes the verb, or infers its state, says why on the verb itself, in the
-        // producer's words: a seat outside fleet supervision, or a fleet-launched seat that never ran
-        toggle.changeVdomRootKey('title', !runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null);
+        // a fact that closes the verb, or infers its state, says why on the verb itself, in the producer's
+        // words: the Fleet's refusal to start the seat, a seat outside fleet supervision, or a fleet-launched
+        // seat that never ran
+        toggle.changeVdomRootKey('title', refusal ?? (!runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null));
 
         // The status row narrates the Start: the round-trip while it is live or refused, then whether
         // the session it launched opened in the seat's own folder (a desktop seat cannot be launched

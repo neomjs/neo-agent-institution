@@ -4,6 +4,7 @@ import Container                            from '../../../../../node_modules/ne
 import FamilyRail                           from '../shared/FamilyRailComponent.mjs';
 import GitIdentityContainer                 from '../shared/GitIdentityContainer.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
+import ParticipationContainer               from './ParticipationContainer.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
 import SeatModelContainer                   from './SeatModelContainer.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
@@ -13,6 +14,7 @@ import Controller                           from './Controller.mjs';
 import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
 import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
 import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
+import Participation                        from '../../../util/Participation.mjs';
 import SeatModel                            from '../../../util/SeatModel.mjs';
 import SeatSessionFolder                    from '../../../util/SeatSessionFolder.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
@@ -399,6 +401,13 @@ class AgentDetail extends Container {
                     flex     : 'none',
                     hidden   : true,
                     reference: 'seat-model'
+                }, {
+                    // the seat's participation, as its identity node records it, and the plane-host command that
+                    // changes it
+                    module   : ParticipationContainer,
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'participation'
                 }]
             }]
         }]
@@ -457,9 +466,10 @@ class AgentDetail extends Container {
     afterSetShellCustody(value) {
         this.getReference?.('config-pane')?.set({shellCustody: value})
     }
-    /** @summary Forward bound plane endpoint changes to the configuration card. @protected */
+    /** @summary Forward bound plane endpoint changes to the configuration card and the Participation group. @protected */
     afterSetShellPlaneBase(value) {
-        this.getReference?.('config-pane')?.set({shellPlaneBase: value})
+        this.getReference?.('config-pane')?.set({shellPlaneBase: value});
+        this.getReference?.('participation')?.set({planeBase: value})
     }
 
     /**
@@ -565,6 +575,26 @@ class AgentDetail extends Container {
     }
 
     /**
+     * @summary Seat the Participation group from the roster record, a fresh object per read so a re-read in place
+     * re-renders it, and the plane the shell is attached to for where its command runs. No participation known (no
+     * identity node, or a Brain that reports no read), no group.
+     * @param {Object} record The drilled-in FleetAgent record.
+     */
+    applyParticipation(record) {
+        this.getReference('participation').set({
+            facts    : {
+                githubUsername     : record.githubUsername ?? null,
+                participationRead  : record.participationRead ?? null,
+                participationReason: record.participationReason ?? null,
+                participationSince : record.participationSince ?? null,
+                participationStatus: record.participationStatus ?? null
+            },
+            hidden   : Participation.stateOf(record) === null,
+            planeBase: this.shellPlaneBase
+        })
+    }
+
+    /**
      * @summary Render the record onto the header, or fall back to the honest empty state.
      *
      * The identity header: displayName is mutable display state (falling back
@@ -616,6 +646,7 @@ class AgentDetail extends Container {
 
         me.applySeatRow(record);
         me.renderStateLedger(record, sources, display);
+        me.applyParticipation(record);
 
         me.getReference('detail-avatar').set({
             alt: record.displayName ?? agentId,
@@ -677,7 +708,8 @@ class AgentDetail extends Container {
      * rows in the pane's own freshness-pill vocabulary, the one pill language of the pane.
      *
      * Rows, in order: the session (the resolved display state; an offline one names its reason),
-     * availability (participationStatus — a known status word or no row),
+     * availability (the participation: a known status word, `unobserved` for a read that did not answer, or no row;
+     * its title the date and the operator's reason, or the read's reason, and when the roster was read),
      * the wake telltale (BOTH renderings the old readout carried: a nominal axis says so, an
      * observed `unknown` keeps the producer's reason — on the pill title now), capacity
      * (the throttle axis, SOURCE-GATED: it renders only when a producer actually reported it —
@@ -713,10 +745,11 @@ class AgentDetail extends Container {
                 : display.reason === 'unobserved' ? 'is-unobserved' : 'is-stale',
             stateMeaning(display.state, display.reason));
 
-        const participation = record.participationStatus ?? null;
+        const participation = Participation.stateOf(record);
 
         participation !== null && row('status', participation.replace(/_/g, ' '),
-            participation === 'active' ? 'is-fresh' : 'is-stale');
+            participation === 'active' ? 'is-fresh' : participation === 'unobserved' ? 'is-unobserved' : 'is-stale',
+            Participation.detailOf(record, me.rosterObservedAt));
 
         Telltale.describeTelltaleReadout({throttle: record.throttle, wake: record.wake})
             .forEach(({axis, reason, reported, state}) => {

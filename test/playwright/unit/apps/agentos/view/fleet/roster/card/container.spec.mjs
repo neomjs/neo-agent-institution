@@ -520,6 +520,32 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a seat the Fleet refuses to start shows Start closed in the Fleet\'s words before the click; a benched seat\'s state names the operator\'s date and reason (#568)', () => {
+        const
+            refusal = 'the seat is benched by the operator',
+            card    = createCard({
+                agentId            : 'preview',
+                state              : 'off',
+                launchRefusal      : refusal,
+                participationStatus: 'operator_benched',
+                participationReason: 'the preview model behind this chair ended',
+                participationSince : '2026-10-01T00:00:00.000Z'
+            }),
+            toggle  = card.down({reference: 'control-toggle'});
+
+        expect([toggle.disabled, toggle.vdom.title]).toEqual([true, refusal]);
+        expect(card.down({reference: 'card-state'}).vdom.title).toBe('benched by the operator · since 2026-10-01 · the preview model behind this chair ended');
+
+        // the refusal gone, Start opens again; a running seat's Stop is never closed by a start refusal
+        applySet(card, {launchRefusal: null, participationStatus: 'active', participationReason: null, participationSince: null});
+        expect([toggle.disabled, toggle.vdom.title ?? null]).toEqual([false, null]);
+
+        applySet(card, {launchRefusal: refusal, state: 'ok'});
+        expect(toggle.disabled).toBe(false);
+
+        card.destroy()
+    });
+
     test('ADR-0032: avatar/name/engine are display state over the durable id — a record write re-renders in place, never a re-key', () => {
         const card     = createCard({agentId: 'vega', displayName: 'Vega', avatarUrl: 'a.png', engineTag: 'opus-4.8', state: 'ok'});
         const beforeId = card.id;

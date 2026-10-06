@@ -382,6 +382,70 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(row).toHaveScreenshot('seat-memory-choice-light.png')
     });
 
+    test('the Participation group: benched with the operator\'s date and reason, unobserved with the read\'s reason, active with the bench command, and no command on the shell\'s own plan; the benched seat\'s Start closed in the Fleet\'s words; both skins (#568)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            refusal = 'the seat is benched by the operator: its participation is operator_benched',
+            benched = {participationStatus: 'operator_benched', participationReason: 'the preview model behind this chair ended', participationSince: '2026-07-01T00:00:00.000Z', participationRead: {state: 'read'}, launchRefusal: refusal},
+            card    = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
+            detail  = page.locator('.fm-agent-detail:visible').first(),
+            group   = detail.locator('.fm-participation'),
+            line    = group.locator('.fm-participation-line'),
+            land    = facts => landFleetRoster(page, [...sampleRoster, {
+                ...sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null, state: 'off', ...facts
+            }]),
+            plane   = async base => {
+                const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${SHELL_PLANE_DRIVER}?base=${encodeURIComponent(base ?? '')}&t=${++driverTick}`);
+
+                expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true)
+            },
+            settle  = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await land(benched);
+        await expect(card.locator('.fm-card-action').first()).toHaveAttribute('title', refusal);
+        await settle();
+        await expect(card).toHaveScreenshot('participation-card-benched.png');
+
+        await card.click();
+        await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
+        await expect(line).toHaveText('benched since 2026-07-01 — the preview model behind this chair ended', {timeout: 30000});
+
+        // the shell's own plan names no plane: the group says why it offers no command
+        await expect(group.locator('.fm-participation-place')).toHaveText('No command is offered: this view cannot name where the plane\'s Memory Core runs.');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-own-plan.png');
+
+        // attached to this machine's plane: the command, and where its Memory Core runs
+        await plane('http://127.0.0.1:3102');
+        await expect(group.locator('.fm-participation-command')).toHaveText('node ai/scripts/fleet/participation.mjs activate --identity @neo-gpt-sophie --apply');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-benched.png');
+
+        // a re-read in place: the group re-seats without a restart
+        await land({participationStatus: null, participationRead: {state: 'unread', reason: 'presence unreadable'}, launchRefusal: null});
+        await expect(line).toHaveText('unobserved — presence unreadable');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-unobserved.png');
+
+        await land({participationStatus: 'active', participationRead: {state: 'read'}, launchRefusal: null});
+        await expect(group.locator('.fm-participation-command')).toHaveText('node ai/scripts/fleet/participation.mjs bench --identity @neo-gpt-sophie --reason "<why>" --apply');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-active.png');
+
+        await switchToLightSkin(page);
+        await land(benched);
+        await expect(line).toHaveText('benched since 2026-07-01 — the preview model behind this chair ended');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-benched-light.png')
+    });
+
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {
         await bootSettledCockpit(page);
 
@@ -1130,6 +1194,12 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      * @type {String}
      */
     const SEAT_MEMORY_DRIVER = '../../../../test/playwright/visual/seatMemory.driver.mjs';
+
+    /**
+     * The shell-plane driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: it attaches the views to a plane.
+     * @type {String}
+     */
+    const SHELL_PLANE_DRIVER = '../../../../test/playwright/visual/shellPlane.driver.mjs';
 
     let driverTick = 0;
 
