@@ -17,16 +17,16 @@
 //   §2.1.5   one retained cockpit + tray; explicit quit owns exact-once Brain teardown
 
 import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell, Tray} from 'electron';
-import {createReadStream, readFileSync}                                          from 'node:fs';
-import {fileURLToPath}                                                           from 'node:url';
-import path                                                                      from 'node:path';
+import {createReadStream, readFileSync}                                                              from 'node:fs';
+import {fileURLToPath}                                                                               from 'node:url';
+import path                                                                                          from 'node:path';
 import {
     ADAPTER_STATE_NAMES,
     ROSTER_CROSSING_WINDOW_MS,
     computeFirstPaintVerdict
 } from './adapterWitness.mjs';
-import {createAppLifecycle}     from './appLifecycle.mjs';
-import {createCredentialPrompt} from './credentialPrompt.mjs';
+import {createAppLifecycle}                                 from './appLifecycle.mjs';
+import {createCredentialPrompt}                             from './credentialPrompt.mjs';
 import {createAbsentFleetCapability, createFleetCapability} from './fleetCapability.mjs';
 import {
     APP_HOST,
@@ -61,6 +61,7 @@ import {
     resolveProductBrainPlan,
     resolveSmokeRoot,
     loadFleetRuntimeContracts,
+    runBrainScript,
     runtimePlaneCause,
     startBrainChild,
     stopBrainTree,
@@ -69,8 +70,8 @@ import {
     writeRunState
 } from './brain.mjs';
 import {createSmokeSafeStorage, FIXTURE_PLANE_ID, startFixturePlane} from './fixturePlane.mjs';
-import {resolveSmokeHold, watchPlaneControl, writeWalkManifest} from './walkControl.mjs';
-import {carriesSecret, createMainLog}                         from './mainLog.mjs';
+import {resolveSmokeHold, watchPlaneControl, writeWalkManifest}      from './walkControl.mjs';
+import {carriesSecret, createMainLog}                                from './mainLog.mjs';
 import {
     createPlaneBroker,
     launchedPlaneRecord,
@@ -78,7 +79,8 @@ import {
     probePlaneCredential,
     readPlaneConfig
 } from './planeConfig.mjs';
-import {settleSeatRoot, writeSeatRootRecord}                  from './seatRootRecord.mjs';
+import {settleSeatRoot, writeSeatRootRecord}                                                        from './seatRootRecord.mjs';
+import {findFleetWriters, runSeatMoveStep, settleSeatRootMove}                                      from './seatRootMove.mjs';
 import {CONFIG_SOURCE_PATH, SETUP_CHANNELS, createSetupBroker, loadSetupModules, resolveSetupRoots} from './setupBroker.mjs';
 import {
     WAKE_RECEIVER_LAUNCH_AGENT,
@@ -154,7 +156,10 @@ let
     storedPlaneBearer = null,
     // The stored record this boot launched its fleet child with (`launchedPlaneRecord`), or `null` when
     // the plane came from elsewhere: the one record `verifyPlane()` may probe while the shell runs.
-    launchedPlane = null;
+    launchedPlane = null,
+    // How this boot settled a consented move of the seats (`settleSeatRootMove`), or `null` outside a
+    // packaged product boot: the outcome the shell reports, also when the Fleet could not start over it.
+    seatMoveOutcome = null;
 
 // Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
 const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer];
@@ -344,8 +349,8 @@ function configureWebContents(contents) {
  * @type {Object}
  */
 const MACOS_TITLE_BAR = Object.freeze({
-    titleBarOverlay     : true,
-    titleBarStyle       : 'hiddenInset',
+    titleBarOverlay: true,
+    titleBarStyle  : 'hiddenInset',
     // the lights' 14px frame centred in the 50px `.agent-top-toolbar`
     trafficLightPosition: Object.freeze({x: 16, y: 18})
 });
@@ -359,8 +364,8 @@ const MACOS_TITLE_BAR = Object.freeze({
  */
 function createHarnessWindow(url) {
     const win = new BrowserWindow({
-        height        : 900,
-        width         : 1400,
+        height: 900,
+        width : 1400,
         ...(process.platform === 'darwin' ? MACOS_TITLE_BAR : {}),
         webPreferences: getSecureWebPreferences()
     });
@@ -1025,15 +1030,40 @@ async function bootProductBrain() {
 
     storedPlaneBearer = storedPlane?.bearer ?? null;
 
+    const
+        dataRoot     = path.join(app.getPath('userData'), 'brain'),
+        fleetPort    = Number(process.env.NEO_FLEET_PORT) || 8083,
+        brainBaseEnv = {
+            ...buildPackagedBrainEnv({backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
+            ELECTRON_RUN_AS_NODE    : '1',
+            NEO_HARNESS_ELECTRON_BIN: process.execPath
+        };
+
+    // A consented move of the seats settles first: before the first-launch choice reads the root record, and
+    // before any Brain child could hold the registry (seatRootMove.mjs). One that can neither go on nor come
+    // back holds the boot, so no Fleet starts over a half-moved installation.
+    seatMoveOutcome = packagedMode ? await settleSeatRootMove({
+        dir        : app.getPath('userData'),
+        checkWriter: () => findFleetWriters({fleetEntry: path.join(agentosRuntimeRoot, FLEET_SERVER_ENTRY), fleetPort, probePortFn: probePort}),
+        runStep    : step => runSeatMoveStep({...step, runScript: ({env, ...script}) => runBrainScript({...script, env: {...brainBaseEnv, ...env}, repoRoot: agentosRuntimeRoot})}),
+        log        : entry => console.log(`HARNESS_SEAT_MOVE ${JSON.stringify(entry)}`)
+    }) : null;
+
+    if (seatMoveOutcome && seatMoveOutcome.state !== 'none') {
+        console.log(`HARNESS_SEAT_MOVE_OUTCOME ${JSON.stringify(seatMoveOutcome)}`)
+    }
+
+    if (seatMoveOutcome?.state === 'held') {
+        throw new Error(`the consented move of the seats is held: ${seatMoveOutcome.reason}`)
+    }
+
     // Where the seats live is the installation's record, never this launch's environment
     // (seatRootRecord.mjs); a fresh installation records the root the Brain resolves below.
-    const
-        dataRoot = path.join(app.getPath('userData'), 'brain'),
-        seatRoot = packagedMode ? settleSeatRoot({
-            dir       : app.getPath('userData'),
-            envRoot   : process.env.NEO_FLEET_AGENTS_ROOT,
-            legacyRoot: path.join(dataRoot, 'fleet', 'agents')
-        }) : null;
+    const seatRoot = packagedMode ? settleSeatRoot({
+        dir       : app.getPath('userData'),
+        envRoot   : process.env.NEO_FLEET_AGENTS_ROOT,
+        legacyRoot: path.join(dataRoot, 'fleet', 'agents')
+    }) : null;
 
     if (seatRoot?.ignoredEnvRoot) {
         console.warn(`HARNESS_SEAT_ROOT_ENV_IGNORED ${JSON.stringify({environment: seatRoot.ignoredEnvRoot, recorded: seatRoot.record.root})}`)
@@ -1044,7 +1074,7 @@ async function bootProductBrain() {
 
     launchedPlane = launchedPlaneRecord(storedPlane, planeFragment);
 
-    const packagedEnv   = packagedMode
+    const packagedEnv = packagedMode
         ? {
             ...buildPackagedBrainEnv({agentsRoot: seatRoot.record?.root, backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
             ...planeFragment,
@@ -1053,9 +1083,7 @@ async function bootProductBrain() {
         }
         : {};
 
-    const
-        fleetPort = Number(process.env.NEO_FLEET_PORT) || 8083,
-        paths     = await resolveBrainPaths({env: packagedEnv, repoRoot: agentosRuntimeRoot});
+    const paths = await resolveBrainPaths({env: packagedEnv, repoRoot: agentosRuntimeRoot});
 
     if (packagedMode) {
         const seatRecord = seatRoot.record ?? writeSeatRootRecord({dir: app.getPath('userData'), root: paths.fleetAgentsRoot, origin: 'default'});
@@ -1238,9 +1266,9 @@ async function bootSmokeBrain() {
     const
         orchestrator = plan.startOrchestrator ? startBrainChild({entry: ORCHESTRATOR_ENTRY, env: profile, onLog: brainLog, repoRoot: agentosRuntimeRoot}) : null,
         fleet        = startBrainChild({
-            entry   : FLEET_SERVER_ENTRY,
-            env     : profile,
-            onLog   : line => {
+            entry: FLEET_SERVER_ENTRY,
+            env  : profile,
+            onLog: line => {
                 fleetLastLine = line;
                 planeAdmitted ||= line.includes(`bound to the containerized plane at ${plan.planeBase} `);
                 brainLog(line)
@@ -1298,10 +1326,10 @@ async function attachSmokePlane({isolationRoot, runtimeEnv}) {
             registerBrainChild(entry);
             recordSmokeRunState(isolationRoot)
         },
-        repoRoot     : agentosRuntimeRoot,
+        repoRoot   : agentosRuntimeRoot,
         runtimeEnv,
-        safeStorage  : planeSafeStorage,
-        startChild   : startBrainChild
+        safeStorage: planeSafeStorage,
+        startChild : startBrainChild
     });
 
     const
