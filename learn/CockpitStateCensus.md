@@ -93,6 +93,27 @@ arm at `e1a9dbe`.
 | unreachable | Rendered as cold or stale by adapter state; the connection word lives on the banner. |
 | one source failing | `cannot enter` — one source. |
 
+
+### Native tool launch admission — `SeatLaunchAdmission.cardLine` in the existing roster card status line
+
+Added by #590. The issuer's `launchAdmission` is carried by `RosterRow.mapRosterRow` and
+`FleetAgent`. A live roster read and wired, observed runtime are required; losing either
+withdraws this guidance on the same card. This is admission for **new children**, not tool connectivity.
+
+| Issuer observation | Card and next step |
+|---|---|
+| Missing/unknown snapshot or `none` | No admission line and no inferred health. `none` means no generation or not applicable. |
+| `reserved` | `Preparing tool access`; no restart advice. |
+| `active`, no current credential refusal | No admission line; active is not a connection test. |
+| `active`, latest attempt for a server refused for a credential | `New <server> connection refused`; title names the seat's repository or plane credential as missing/unverified. Existing tools may still work. Credential repair is unavailable in this cockpit; restart is not its remedy (Brain #815 remains separate). |
+| `stale/revoked` | `New tool connections are blocked`; title names the closed generation reason and preserves the already-running-tools distinction. Existing Restart is recommended only when its normal running/current/authorized/not-pending guard permits it. |
+| Newer admitted attempt on that server, replacement generation or absent snapshot | Obsolete warning and restart guidance clear. Another server's success does not clear this server's failure. |
+
+Confirmed wrong folder, pending lifecycle actions and existing refusal feedback keep precedence;
+admission guidance may replace only the ordinary folder fallback. The audit is generation-scoped,
+with each server's newest outcome superseding its earlier attempts. #477/#12 retain the installed
+card/recovery witness; source fixtures are not installed acceptance.
+
 ### Activity feed — `apps/agentos/view/fleet/activity/Container.mjs` (`updateHead`, `empty-note`, `describeActivityCounts`)
 
 | State | Rendered |

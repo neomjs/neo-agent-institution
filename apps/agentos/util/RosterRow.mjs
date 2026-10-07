@@ -58,6 +58,7 @@ class RosterRow extends Base {
             harnessSettings    : row.harnessSettings ?? null,
             // where a running desktop seat's session opened, from the same record
             sessionFolder      : row.sessionFolder ?? null,
+            launchAdmission    : row.launchAdmission ?? null,
             launchable        : row.launchable ?? null,
             openLaneCount      : row.openLaneCount ?? null,
             laneLine           : row.laneLine ?? null,

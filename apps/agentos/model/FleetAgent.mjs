@@ -157,6 +157,11 @@ class FleetAgent extends Model {
             name        : 'sessionFolder',
             defaultValue: null
         }, {
+            // Issuer-owned native MCP generation and bounded audit; null before a producer answers.
+            // Admission describes new children, never tool connectivity.
+            name        : 'launchAdmission',
+            defaultValue: null
+        }, {
             // open assigned lanes for the resident (measured density evidence: 7–17 per active
             // agent — one lane line cannot carry that truth, the count badge can). Owned by the
             // roster DTO end-to-end (assembler stamp → mapRosterRow → this record → the badge);

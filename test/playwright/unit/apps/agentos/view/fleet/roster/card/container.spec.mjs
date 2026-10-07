@@ -40,7 +40,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         return store.get(data.agentId)
     };
 
-    const createCard = data => Neo.create(AgentCard, {appName, record: makeRecord(data)});
+    const createCard = data => Neo.create(AgentCard, {appName, record: makeRecord(data), rosterState: 'live'});
 
     // in the cockpit composition the GRID routes the store's recordChange to the card; standalone
     // card units drive the same seam directly: mutate the record, then apply it.
@@ -607,6 +607,128 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.getController().onLifecycleIntent({component: restart});
         expect(fired).toMatchObject([{action: 'restart', agentId: 'vega'}]);
 
+        card.destroy()
+    });
+
+
+    test('launch admission follows the real mapper/model/card and existing restart adapter', async () => {
+        const {default: RosterRow} = await import('../../../../../../../../../apps/agentos/util/RosterRow.mjs'),
+              {default: Adapter} = await import('../../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs'),
+              admission = {state: 'stale', reason: 'issuer-replaced', generation: null, since: null, servers: [], recent: []},
+              mapped = RosterRow.mapRosterRow({
+                  id: 'vega', displayName: 'Vega', sources: observedSources,
+                  lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
+                  launchAdmission: admission
+              }),
+              card = createCard(mapped),
+              status = card.getReference('control-status'),
+              restart = card.getReference('control-restart'),
+              calls = [];
+        let dispatched;
+
+        expect(card.record.launchAdmission).toEqual(admission);
+        expect(card.record.state).toBe('ok');
+        expect(status.hidden).toBe(false);
+        expect(status.text).toContain('New tool connections');
+        expect(status.vdom.title).toContain('already-running tools may still work');
+        expect(restart.disabled).toBe(false);
+        expect(restart.vdom.title).toContain('Restart this seat');
+        card.on('lifecycleIntent', intent => {
+            dispatched = Adapter.handleFleetLifecycleIntent(intent, card.record, {
+                bridge: {restartAgent: async id => { calls.push(id); return {status: 'running'} }}
+            })
+        });
+        card.getController().onLifecycleIntent({component: restart});
+        await dispatched;
+        expect(calls).toEqual(['vega']);
+        expect(card.record.pendingAction).toBeNull();
+        expect(card.record.state).toBe('ok');
+
+        applySet(card, {launchAdmission: {...admission, state: 'revoked', reason: 'stop-requested', generation: 'generation-a'}});
+        expect(status.text).toContain('New tool connections');
+        applySet(card, {state: 'off'});
+        expect(restart.hidden).toBe(true);
+        expect(restart.vdom.title).toBeFalsy();
+        expect(status.vdom.title).not.toContain('Restart this seat');
+        card.destroy()
+    });
+
+    test('active admission names credential owners without turning Restart into a repair', () => {
+        const snapshot = {
+            state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+            servers: [{key: 'memory-core', state: 'active', reason: null}], recent: []
+        }, card = createCard({agentId: 'vega', state: 'ok', launchAdmission: snapshot}),
+           status = card.getReference('control-status'), restart = card.getReference('control-restart');
+
+        expect(status.hidden).toBe(true);
+        for (const [code, owner, words] of [
+            ['credential-unproven', 'seat-pat', "seat's repository credential"],
+            ['credential-missing', 'plane-bearer', "seat's plane credential"]
+        ]) {
+            const failure = {at: '2026-10-07T10:01:00Z', server: 'memory-core', outcome: 'refused', code, reason: owner};
+            applySet(card, {launchAdmission: {...snapshot, recent: [failure]}});
+            expect(status.hidden).toBe(false);
+            expect(status.text).toContain('Memory Core');
+            expect(status.vdom.title).toContain(words);
+            expect(status.vdom.title).toContain('restarting will not repair');
+            expect(status.vdom.title).not.toMatch(/seat-pat|plane-bearer|credential-unproven/);
+            expect(restart.vdom.title).toBeFalsy();
+            expect(restart.disabled).toBe(false);
+            expect(card.record.state).toBe('ok');
+
+            // Another server's success cannot clear this server's warning.
+            applySet(card, {launchAdmission: {...snapshot, recent: [failure, {
+                at: '2026-10-07T10:02:00Z', server: 'knowledge-base', outcome: 'admitted', code: null, reason: null
+            }]}});
+            expect(status.hidden).toBe(false);
+            // A later success on this server supersedes its retained failure in the audit.
+            applySet(card, {launchAdmission: {...snapshot, recent: [failure, {
+                at: '2026-10-07T10:03:00Z', server: 'memory-core', outcome: 'admitted', code: null, reason: null
+            }]}});
+            expect(status.hidden).toBe(true);
+            expect(status.vdom.title).toBeFalsy()
+        }
+        card.destroy()
+    });
+
+    test('admission guidance clears on new snapshots, source loss and seat replacement without overriding existing status', () => {
+        const snapshot = {
+            state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+            servers: [{key: 'memory-core', state: 'active', reason: null}],
+            recent: [{at: '2026-10-07T10:01:00Z', server: 'memory-core', outcome: 'refused', code: 'credential-unproven', reason: 'seat-pat'}]
+        }, card = createCard({agentId: 'vega', state: 'ok', launchAdmission: snapshot}),
+           status = card.getReference('control-status'), restart = card.getReference('control-restart');
+
+        for (const launchAdmission of [null, {state: 'unexpected'}, {state: 'none'}, {
+            ...snapshot, generation: 'generation-b', since: '2026-10-07T10:02:00Z'
+        }, {...snapshot, recent: []}]) {
+            applySet(card, {launchAdmission});
+            expect(status.hidden).toBe(true);
+            expect(restart.vdom.title).toBeFalsy()
+        }
+        applySet(card, {launchAdmission: {...snapshot, state: 'reserved', recent: []}});
+        expect(status.text).toContain('Preparing');
+        expect(restart.vdom.title).toBeFalsy();
+        applySet(card, {launchAdmission: snapshot});
+        expect(status.hidden).toBe(false);
+        card.rosterState = 'stale';
+        expect(status.hidden).toBe(true);
+        card.rosterState = 'live';
+        expect(status.hidden).toBe(false);
+        applySet(card, {sources: {...observedSources, runtime: {...observedSources.runtime, confidence: 'inferred'}}});
+        expect(status.hidden).toBe(true);
+        applySet(card, {sources: observedSources, pendingAction: 'restart'});
+        expect(status.text).toBe('restart…');
+        applySet(card, {pendingAction: null, controlReason: {action: 'restart', kind: 'unauthorized', reason: 'not allowed'}});
+        expect(status.text).toContain('not allowed');
+        expect(restart.disabled).toBe(true);
+        applySet(card, {controlReason: null, sessionFolder: {state: 'wrong', expected: '/seat', observed: '/elsewhere'}});
+        expect(status.text).toContain('wrong folder');
+        applySet(card, {sessionFolder: {state: 'pending', expected: '/seat'}});
+        expect(status.text).toContain('Memory Core');
+        card.record = makeRecord({agentId: 'ada', state: 'ok'});
+        expect(status.hidden).toBe(true);
+        expect(restart.vdom.title).toBeFalsy();
         card.destroy()
     });
 

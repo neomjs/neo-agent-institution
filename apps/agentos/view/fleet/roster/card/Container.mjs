@@ -73,6 +73,7 @@ import NameSlot          from '../../../../util/NameSlot.mjs';
 import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
 import Participation     from '../../../../util/Participation.mjs';
 import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
+import SeatLaunchAdmission from '../../../../util/SeatLaunchAdmission.mjs';
 import SeatModel         from '../../../../util/SeatModel.mjs';
 import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
 import SourceHealth      from '../../../../util/SourceHealth.mjs';
@@ -160,6 +161,12 @@ class AgentCard extends Container {
          * @reactive
         */
         record_: null,
+        /**
+         * The shared roster read's state; a retained row cannot prove current launch admission.
+         * @member {String|null} rosterState_=null
+         * @reactive
+         */
+        rosterState_: null,
         /**
          * Injected wall clock for relative lane-age rendering; `null` uses `Date.now()`.
          * @member {Number|null} now_=null
@@ -437,6 +444,16 @@ class AgentCard extends Container {
      * @protected
      */
     afterSetRecord(value, oldValue) {
+        this.isConstructed && this.applyRecord()
+    }
+
+    /**
+     * @summary Withdraw admission guidance when the shared roster read loses freshness.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetRosterState(value, oldValue) {
         this.isConstructed && this.applyRecord()
     }
 
@@ -828,13 +845,21 @@ class AgentCard extends Container {
             sessionLine  = wrongFolder || !(pendingAction || controlReason) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
             // a start the Fleet refused for the declared model says so in the design read's words: the
             // recorded cause, shown only while this cockpit's own last outcome is that same refusal
-            modelRefusal = !pendingAction && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null;
+            modelRefusal = !pendingAction && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
+            admissionLine = !(pendingAction || controlReason || wrongFolder || modelRefusal)
+                ? SeatLaunchAdmission.cardLine(record.launchAdmission, {
+                    canRestart : !disabled && recordState !== 'off',
+                    rosterState: me.rosterState,
+                    runtime    : sources.runtime
+                }) : null;
+
+        restart.changeVdomRootKey('title', admissionLine?.restart ? admissionLine.title : null);
 
         // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
         // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
         // row height at every card width — the lane stays reachable via line one, its middle elision
         // and the title.
-        me[(pendingAction || controlReason || sessionLine || modelRefusal) ? 'addCls' : 'removeCls']('fm-control-live');
+        me[(pendingAction || controlReason || sessionLine || modelRefusal || admissionLine) ? 'addCls' : 'removeCls']('fm-control-live');
 
         // the runtime-source gating is already shown by the disabled controls + the source strip
         // ("RUN not nominal"), so the status line never duplicates it
@@ -849,7 +874,7 @@ class AgentCard extends Container {
                     : modelRefusal
                         ? modelRefusal.text
                         : !controlReason
-                            ? sessionLine?.text ?? ''
+                            ? admissionLine?.text ?? sessionLine?.text ?? ''
                             : controlReason.kind === 'timeout'
                                 ? `${controlReason.action}… stale — no response`
                                 : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
@@ -861,13 +886,13 @@ class AgentCard extends Container {
 
         controlStatus.set({
             cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : []), ...(modelRefusal ? ['is-model-refused'] : [])],
-            hidden: !pendingAction && !controlReason && !sessionLine && !modelRefusal,
+            hidden: !pendingAction && !controlReason && !sessionLine && !modelRefusal && !admissionLine,
             text  : controlStatusText
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
         controlStatus.changeVdomRootKey('title', modelRefusal
             ? modelRefusal.title + identityNote
-            : sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
+            : admissionLine?.title ?? sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
 
         me.update()
     }

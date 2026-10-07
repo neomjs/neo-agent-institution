@@ -110,6 +110,45 @@ const CARD_WIDTHS = [
 test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at pathological density (card-width matrix)', () => {
     test.setTimeout(150000);
 
+    test('native launch admission is visible without relabelling a running seat or offering a credential restart cure (#590)', async ({page, neuralLink}, testInfo) => {
+        await page.setViewportSize({width: 1000, height: 850});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        const app = await neuralLink.connectToApp('AgentOS'),
+              snapshot = {
+                  state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+                  servers: [{key: 'memory-core', state: 'active', reason: null}],
+                  recent: [{at: '2026-10-07T10:01:00Z', server: 'memory-core', outcome: 'refused', code: 'credential-unproven', reason: 'seat-pat'}]
+              },
+              row = {
+                  agentId: 'admission-witness', displayName: 'Admission witness', family: 'claude', state: 'ok',
+                  laneLine: 'Current native tool admission', launchAdmission: snapshot,
+                  sources: {roster: roster('wired', 'observed'), repoStatus: repo('not-wired'), runtime: runtime('wired', 'observed')}
+              };
+        await landFleetRoster(page, [row]);
+        const card = page.locator('.fm-agent-card').filter({hasText: 'Admission witness'}),
+              status = card.locator('.fm-card-control-status'),
+              restart = card.locator('.fm-card-action-restart');
+        await expect(status).toBeVisible();
+        await expect(status).toHaveText('New Memory Core connection refused');
+        await expect(status).toHaveAttribute('title', /seat's repository credential.*restarting will not repair/);
+        await expect(restart).not.toHaveAttribute('title', /Restart this seat/);
+
+        const [observed] = await app.queryComponent({className: 'AgentOS.view.fleet.roster.card.Container'}, ['id', 'rosterState']);
+        expect(observed.properties.rosterState).toBe('live');
+        await page.evaluate(() => document.fonts.ready);
+        await card.screenshot({path: testInfo.outputPath('launch-admission-card.png')});
+
+        await landFleetRoster(page, [{...row, launchAdmission: {state: 'stale', reason: 'issuer-replaced', generation: null, since: null, servers: [], recent: []}}]);
+        await expect(status).toHaveText('New tool connections are blocked');
+        await expect(restart).toHaveAttribute('title', /Restart this seat/);
+        await landFleetRoster(page, [{...row, launchAdmission: null}]);
+        await expect(status).toBeHidden();
+        await expect(restart).not.toHaveAttribute('title', /Restart this seat/);
+        const [same] = await app.queryComponent({className: 'AgentOS.view.fleet.roster.card.Container'}, ['id']);
+        expect(same.properties.id).toBe(observed.properties.id)
+    });
+
     test('the selected composition under long names, tail-elided shared-prefix lanes, mixed source health, telltales, and the avatar keeper', async ({page, neuralLink}) => {
         await page.setViewportSize({width: 900, height: 1000});
         await page.goto('/apps/agentos/index.html');
