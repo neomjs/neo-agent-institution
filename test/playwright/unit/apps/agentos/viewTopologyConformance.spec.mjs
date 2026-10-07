@@ -40,6 +40,7 @@ const
         ['src/button/Base.mjs',         'Button'],
         ['src/controller/Component.mjs','Controller'],
         ['src/selection/ListModel.mjs', 'Model'],
+        ['src/selection/grid/RowModel.mjs', 'Model'],
         ['src/state/Provider.mjs',      'StateProvider']
     ];
 

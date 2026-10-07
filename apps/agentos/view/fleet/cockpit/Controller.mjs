@@ -3,6 +3,7 @@ import CockpitPerspectives         from '../../../util/CockpitPerspectives.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
 import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
+import OperatorInbox               from '../../../util/OperatorInbox.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
 import TargetBinding               from '../../../util/TargetBinding.mjs';
 
@@ -84,6 +85,13 @@ class Controller extends ReadingSurfacesController {
      * @protected
      */
     operatorInboxReadGeneration = 0
+    /**
+     * Read-fence for the open message's body: a read that settles after another message opened lands
+     * nowhere.
+     * @member {Number} operatorMessageReadGeneration=0
+     * @protected
+     */
+    operatorMessageReadGeneration = 0
     /**
      * @member {Object|null} operatorSnapshot=null
      * @protected
@@ -264,6 +272,33 @@ class Controller extends ReadingSurfacesController {
      */
     onOperatorInboxPageRequest(data) {
         return this.loadOperatorInbox({offset: data.offset})
+    }
+
+    /**
+     * @summary Relay: read the open message in full ({@link AgentOS.util.OperatorInbox#open}).
+     * @param {Object} data `{messageId, refresh?, source}`
+     * @returns {Promise<void>}
+     */
+    onOperatorMessageOpen(data) {
+        return OperatorInbox.open(this, data)
+    }
+
+    /**
+     * @summary Relay: mark the open message read ({@link AgentOS.util.OperatorInbox#markRead}).
+     * @param {Object} data `{messageId, source}`
+     * @returns {Promise<Boolean>}
+     */
+    onOperatorMarkRead(data) {
+        return OperatorInbox.markRead(this, data)
+    }
+
+    /**
+     * @summary Relay: resolve the open message's Task ({@link AgentOS.util.OperatorInbox#resolve}).
+     * @param {Object} data `{expectedCurrentState, messageId, source}`
+     * @returns {Promise<Boolean>}
+     */
+    onOperatorResolve(data) {
+        return OperatorInbox.resolve(this, data)
     }
 
     /**
@@ -787,46 +822,12 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
-     * @summary WRITE: route one operator-composed message — one target, several (fan-out, one
-     * authenticated call and one honest outcome per recipient), or the `AGENT:*` broadcast (a
-     * single call; the server expands the sentinel). The sender is server-stamped at the
-     * authenticated ingress, never carried here. The inbox re-polls exactly ONCE for the batch,
-     * and only when a real send landed and the profile that sent it is still the bridge in hand.
-     * @param {Object} message `{to, subject, body, priority?, wakeSuppressed?, relatedTickets?}`
+     * @summary WRITE: route one operator-composed message ({@link AgentOS.util.OperatorInbox#compose}).
+     * @param {Object} message `{to, subject, body, priority?, wakeSuppressed?, relatedTickets?, inReplyTo?}`
      * @returns {Promise<Object>} `{results: [{to, outcome}]}` in order.
      */
-    async composeOperatorMessage(message) {
-        const
-            me        = this,
-            {bridge}  = me,
-            profileId = me.bridgeProfileId,
-            targets   = Array.isArray(message.to) ? message.to : (message.to == null ? [] : [message.to]),
-            wired     = typeof bridge?.composeOperatorMessage === 'function',
-            results   = [];
-
-        for (const to of targets) {
-            if (!wired) {
-                results.push({to, outcome: {status: 'not-wired', reason: 'fleet: operator compose verb not wired'}});
-                continue
-            }
-
-            let outcome;
-
-            try {
-                // one target per call; the spread never mutates the caller's payload
-                outcome = await bridge.composeOperatorMessage({...message, to})
-            } catch (error) {
-                outcome = {status: 'error', reason: error?.message || 'compose failed'}
-            }
-
-            results.push({to, outcome})
-        }
-
-        if (results.some(result => result.outcome?.messageId) && me.bridgeProfileId === profileId) {
-            await me.loadOperatorInbox({offset: 0})
-        }
-
-        return {results}
+    composeOperatorMessage(message) {
+        return OperatorInbox.compose(this, message)
     }
 
     /**

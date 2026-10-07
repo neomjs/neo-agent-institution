@@ -1,6 +1,7 @@
 import AgentMailboxStore from '../../../store/AgentMailbox.mjs';
 import Container         from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import MailboxGrid       from './Grid.mjs';
+import DetailContainer   from './DetailContainer.mjs';
 import AgentFreshness    from '../../../util/AgentFreshness.mjs';
 
 /**
@@ -51,13 +52,15 @@ function isRecognizedPage(page) {
  * host when the S5 Fleet grants/admission layer lands (viewer ingress is already live; the policy
  * ledger holds the mirror read at awaiting-s5).
  *
- * **Read-only is structural.** The pane renders zero mutation affordances — no mark-read, no
- * archive, no reply (the graduated record's MUST-NOT: operator-side mark-read would mutate the
- * agent's own turn-start signal and swallow peer handoffs). The single interaction is
- * thread-collapse toggling — pure display-state navigation on the view-owned `threadCollapsed`
- * record field, never a data write. The pane's host label stays COUNTLESS by design: an
- * unread-count badge would imply operator-side read tracking that deliberately does not exist
- * (the no-markRead MUST-NOT's quiet sibling); per-row `status` is the honest fact instead.
+ * **Read-only unless the host owns the inbox.** By default the pane renders zero mutation
+ * affordances — no mark-read, no archive, no reply (the graduated record's MUST-NOT: operator-side
+ * mark-read would mutate the agent's own turn-start signal and swallow peer handoffs). Selecting a
+ * row opens its {@link AgentOS.view.fleet.mailbox.DetailContainer} under the list, which reads and
+ * never writes. The one host that owns its inbox declares `detailEntry: 'own'` (the operator's own
+ * inbox, #551), and only there the detail renders `Mark read` · `Reply` · `Resolve`. Thread-collapse
+ * toggling stays pure display state on the view-owned `threadCollapsed` field. The pane's host label
+ * stays COUNTLESS by design: an unread-count badge would imply operator-side read tracking that
+ * deliberately does not exist; per-row `status` is the honest fact instead.
  *
  * **Four mutually exclusive honest states** (never a fake success):
  *  - `unobserved` — no snapshot injected yet: the feed is not wired; says so.
@@ -121,6 +124,25 @@ class MailboxPane extends Container {
          */
         now_: null,
         /**
+         * Which entry the open message's detail renders ({@link AgentOS.view.fleet.mailbox.DetailContainer#entry}):
+         * `observer` is read-only; the host that owns its inbox sets `own`.
+         * @member {'own'|'observer'} detailEntry_='observer'
+         * @reactive
+         */
+        detailEntry_: 'observer',
+        /**
+         * The owner's body read of the open message, passed to the detail. Owner-written, never fetched here.
+         * @member {Object|null} messageRead_=null
+         * @reactive
+         */
+        messageRead_: null,
+        /**
+         * The owner's settled action on the open message, passed to the detail. Owner-written.
+         * @member {Object|null} actionOutcome_=null
+         * @reactive
+         */
+        actionOutcome_: null,
+        /**
          * The mailbox mirror's honest live cadence (ms) — the freshness window the snapshot's
          * `capturedAt` is judged against. Tunable, not contractual.
          * @member {Number} freshnessTtl=60000
@@ -167,6 +189,13 @@ class MailboxPane extends Container {
             flex     : 1,
             hidden   : true,
             reference: 'mailbox-rows'
+        }, {
+            // the selected message, docked under the list: the grid's lattice cannot grow a row, so
+            // the selected row stays visible above as the detail's context
+            module   : DetailContainer,
+            flex     : '0 1 auto',
+            hidden   : true,
+            reference: 'mailbox-detail'
         }]
     }
 
@@ -191,6 +220,13 @@ class MailboxPane extends Container {
      * @protected
      */
     projectedFingerprint = null
+    /**
+     * The open message's id: the grid's selection, kept here so the detail follows the message
+     * across re-projections and closes when a refresh no longer lists it.
+     * @member {String|null} selectedMessageId=null
+     * @protected
+     */
+    selectedMessageId = null
 
     /**
      * @summary Create the pane-owned store, then render the initial (honest) state.
@@ -210,8 +246,104 @@ class MailboxPane extends Container {
 
         // the next window is asked for when the operator reaches the loaded end, never before
         rowsGrid.on('scrollEdge', me.onScrollEdge, me);
+        rowsGrid.on({deselect: me.onRowDeselect, select: me.onRowSelect, scope: me});
+
+        // the detail's intents leave through this pane (fire stamps the pane as their source); its host
+        // relays them to the owner
+        me.getReference('mailbox-detail').on({
+            markReadRequest: data => me.fire('markReadRequest', {...data}),
+            replyRequest   : data => me.fire('replyRequest',    {...data}),
+            resolveRequest : data => me.fire('resolveRequest',  {...data})
+        });
 
         me.applySnapshot()
+    }
+
+    /**
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetActionOutcome(value, oldValue) {
+        this.isConstructed && this.applyDetail()
+    }
+
+    /**
+     * @param {String} value
+     * @param {String} oldValue
+     * @protected
+     */
+    afterSetDetailEntry(value, oldValue) {
+        this.isConstructed && this.applyDetail()
+    }
+
+    /**
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetMessageRead(value, oldValue) {
+        this.isConstructed && this.applyDetail()
+    }
+
+    /**
+     * @summary A row was selected: its detail opens, and the host is asked for the body. A retracted
+     * message has none to ask for.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onRowSelect({record}) {
+        const me = this;
+
+        me.selectedMessageId = record.messageId;
+        me.applyDetail();
+
+        record.status === 'retracted' || me.fire('messageOpen', {messageId: record.messageId})
+    }
+
+    /**
+     * @summary The selected row was deselected (clicked again): the detail closes.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onRowDeselect({record}) {
+        if (record?.messageId === this.selectedMessageId) {
+            this.selectedMessageId = null;
+            this.applyDetail()
+        }
+    }
+
+    /**
+     * @summary Hand the detail the open message as the store holds it now, or close it when nothing is
+     * open or the pane shows no rows.
+     * @protected
+     */
+    applyDetail() {
+        const
+            me     = this,
+            detail = me.getReference('mailbox-detail'),
+            record = me.getPaneState() === 'rows' && me.selectedMessageId ? me.store.get(me.selectedMessageId) : null;
+
+        detail.set({
+            entry         : me.detailEntry,
+            hidden        : !record,
+            outcome       : me.actionOutcome,
+            read          : me.messageRead,
+            row           : record ? me.rowOf(record) : null,
+            viewerIdentity: me.snapshot?.admission?.viewerIdentity ?? null
+        })
+    }
+
+    /**
+     * @summary The plain row the detail renders, from a store record.
+     * @param {Object} record
+     * @returns {Object}
+     * @protected
+     */
+    rowOf(record) {
+        const {from, messageId, priority, relatedTickets, sentAt, status, subject, taskState} = record;
+
+        return {from, messageId, priority, relatedTickets, sentAt, status, subject, taskState}
     }
 
     /**
@@ -392,6 +524,14 @@ class MailboxPane extends Container {
             rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected);
             me.projectedFingerprint = fingerprint
         }
+
+        // the open message follows the refresh: its row's new status reaches the detail, and a
+        // message the refresh no longer lists closes it
+        if (me.selectedMessageId && !me.store.get(me.selectedMessageId)) {
+            me.selectedMessageId = null
+        }
+
+        me.applyDetail();
 
         // Nothing is requested from here. A landed window is projected and that is all; the next
         // window is the operator's to reach ({@link #onScrollEdge}). This pass used to request the
