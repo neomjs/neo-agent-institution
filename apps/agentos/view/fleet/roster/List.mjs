@@ -129,6 +129,7 @@ class List extends ComponentList {
         } else {
             card = Neo.create({
                 appName  : me.appName,
+                bind     : {rosterState: data => data.gridAdapterState},
                 id       : me.getCardId(record),
                 module   : AgentCard,
                 listeners: {lifecycleIntent: 'onAgentLifecycleIntent'},

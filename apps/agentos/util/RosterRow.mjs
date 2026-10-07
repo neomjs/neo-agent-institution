@@ -58,6 +58,9 @@ class RosterRow extends Base {
             harnessSettings    : row.harnessSettings ?? null,
             // where a running desktop seat's session opened, from the same record
             sessionFolder      : row.sessionFolder ?? null,
+            launchAdmission    : row.launchAdmission ?? null,
+            mcpSettings        : row.agent && row.agent.id === row.id && Object.hasOwn(row.agent, 'mcpServers')
+                ? {forge: row.agent.forge, mcpServers: row.agent.mcpServers} : null,
             launchable        : row.launchable ?? null,
             openLaneCount      : row.openLaneCount ?? null,
             laneLine           : row.laneLine ?? null,
