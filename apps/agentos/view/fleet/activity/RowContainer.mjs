@@ -90,7 +90,7 @@ const PR_TRANSITION_LABELS = Object.freeze({head: 'changes pushed', opened: 'ope
  */
 function transitionStatus({kind, to, by}, state) {
     const
-        [labels, key] = kind === 'verdict' ? [PR_DECISION_LABELS, to] : Object.hasOwn(PR_TRANSITION_LABELS, kind) ? [PR_TRANSITION_LABELS, kind] : [PR_STATE_LABELS, state],
+        [labels, key] = kind === 'verdict' ? [PR_DECISION_LABELS, to] : kind === 'merged' || kind === 'closed' ? [PR_STATE_LABELS, state] : [PR_TRANSITION_LABELS, kind],
         word          = Object.hasOwn(labels, key) ? labels[key] : null,
         names         = (Array.isArray(by) ? by : []).filter(name => typeof name === 'string' && name).map(name => name.replace(/^(?:@|login:|team:)/, ''));
 

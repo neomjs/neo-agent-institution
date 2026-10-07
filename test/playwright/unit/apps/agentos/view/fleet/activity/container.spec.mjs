@@ -315,6 +315,9 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(getPullRequestStatus(move({kind: 'closed', to: 'closed'}, 'CLOSED'))).toBe('closed');
         // nothing is guessed: an unknown kind or decision names nothing, and no reviewer means no name
         expect(getPullRequestStatus(move({kind: 'ci', to: 'green'}))).toBeNull();
+        // an unknown kind stays unknown even on a merged or closed PR
+        expect(getPullRequestStatus(move({kind: 'ci', to: 'green'}, 'MERGED'))).toBeNull();
+        expect(getPullRequestStatus(move({kind: 'review-requested', to: '@neo-gpt'}, 'CLOSED'))).toBeNull();
         expect(getPullRequestStatus(move({kind: 'verdict', to: 'DISMISSED', by: ['@neo-gpt', '@neo-gpt-sophie']}))).toBeNull();
         expect(getPullRequestStatus(move({kind: 'verdict', to: 'REVIEW_REQUIRED', by: []}))).toBe('review required');
         expect(getActivityObjectText(move({kind: 'verdict', to: 'CHANGES_REQUESTED'}))).toBe('brain#917 · changes requested')

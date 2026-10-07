@@ -330,7 +330,7 @@ apps/agentos/view/fleet/activity/EventChipComponent.mjs
     c36dac634fbb1cccaae121e947b5a41aae2149a7
 
 apps/agentos/view/fleet/activity/RowContainer.mjs
-    e238a7630e513a77c1b56e0dd287a1a82cbc0918
+    b603662bd69147576249b662db7948c58036e64b
 
 apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
