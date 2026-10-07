@@ -267,7 +267,7 @@ apps/agentos/util/OpenWorkSeat.mjs
     9cdbd64f758822ab9ed015e8f28790bcbe5600a4
 
 apps/agentos/util/OperatorInbox.mjs
-    105129f29b99470e61cb6a1176a6649b4772b400
+    5359c8991c4f6af39b85fa07273011048e3955fd
 
 apps/agentos/util/Participation.mjs
     797b9190ad13733d77313600d936b586d1c3ced7
@@ -447,16 +447,16 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    539e45f4ef69ca1efa586479b32c7c1f9f682e6a
+    e3318172463490a6da09373b3e159f9ece6c7625
 
 apps/agentos/view/fleet/mailbox/DetailContainer.mjs
-    01998b4cef584f531e78585a2edd5fd22324a7ea
+    f76523e5789348634042d0ad203ad8ef255d327a
 
 apps/agentos/view/fleet/mailbox/Grid.mjs
     94e06995030986fb79836e983ee34fd1c30325bd
 
 apps/agentos/view/fleet/mailbox/OperatorContainer.mjs
-    756bb3ad2faf5ef95f9c491ee7d6e23d54241641
+    b16fb9665227790bfcbfedb3f8910a0ea70d6bbc
 
 apps/agentos/view/fleet/mailbox/RecipientChip.mjs
     eb2c5727a9a2dc3af3183d0b218b0be686607e5a
@@ -657,19 +657,19 @@ resources/scss/src/apps/agentos/fleet/mailbox/Chips.scss
     17c59a0093ba8b8e9a959ae5dd56c474f8ecd8e8
 
 resources/scss/src/apps/agentos/fleet/mailbox/ComposeForm.scss
-    b36e4bf6c143fa55a0d3c4367d6edd5fe761936a
+    911485c152a176b6252412802bc0b441aec2b0c9
 
 resources/scss/src/apps/agentos/fleet/mailbox/Container.scss
     d52a82935fd11c387f2d496ee44f3113e48c8853
 
 resources/scss/src/apps/agentos/fleet/mailbox/DetailContainer.scss
-    db6d4ac84b91cd87928b8319f9be2da62b4e0889
+    a3cc5f2b902640e9890def6f4d5b7ad22bcb148a
 
 resources/scss/src/apps/agentos/fleet/mailbox/Grid.scss
     80e8ed7ea14ee14771e81578f5a278dd55848805
 
 resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
-    46bf0636fec257abc5bfbcba6e16d762c580c300
+    210806f376bff053a7d6e26d8ba92ffcc1aad74e
 
 resources/scss/src/apps/agentos/fleet/memories/Container.scss
     4e2008afdc07736bd3a23c9d7ff60a120a36f764

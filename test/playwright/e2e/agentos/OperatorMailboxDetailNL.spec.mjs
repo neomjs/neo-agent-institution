@@ -13,7 +13,7 @@ const BODY     = 'Seats bind the plane the switcher shows. Which one should Add 
 
 /**
  * A fixture plane whose operator inbox holds one open question. It records every wire call and
- * answers the own-inbox verbs the way the Brain does (#915): the body read, a read receipt that
+ * answers the own-inbox verbs the way the Brain does: the body read, a read receipt that
  * the next mirror read reflects, a sent reply, and a Task move refused once with a typed code before
  * it lands.
  */
@@ -89,8 +89,8 @@ async function startQuestionFleet() {
 }
 
 /**
- * The operator's 10-07 ask on the installed Mailbox (#551): open a message's full content, mark his
- * own message read, reply to the selected message, and resolve a question explicitly. A reply never
+ * The operator's own inbox: open a message's full content, mark it read, reply to the selected
+ * message, and resolve a question explicitly. A reply never
  * resolves, and a refused move shows its reason and the Brain's code.
  */
 test.describe('AgentOS operator mailbox — open, mark read, reply, resolve (#551)', () => {

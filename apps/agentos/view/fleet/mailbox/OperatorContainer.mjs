@@ -22,7 +22,7 @@ import OperatorComposeForm from './ComposeForm.mjs';
  * **The own-inbox entry.** The pane is read-only by its own MUST-NOT (operator mark-read would
  * mutate an agent's turn-start signal). The operator's OWN inbox is the one place a write is
  * legitimate, keyed by the server-stamped viewer, so this host declares `detailEntry: 'own'`: a
- * selected message opens to its full body with `Mark read` · `Reply` · `Resolve` (#551). Mark read
+ * selected message opens to its full body with `Mark read` · `Reply` · `Resolve`. Mark read
  * and Resolve relay to the owner as `markReadRequest` / `resolveRequest`; Reply opens the compose
  * reveal for the sender, the subject and `inReplyTo`. A reply never resolves.
  *

@@ -3,7 +3,7 @@ import Container  from '../../../../../node_modules/neo.mjs/src/container/Base.m
 import ViewerTime from '../../../util/ViewerTime.mjs';
 
 /**
- * The Task states the recipient may still move to Completed (Brain #860's recipient exits).
+ * The Task states the recipient may still move to Completed (the recipient's exits in the Task contract).
  * @type {String[]}
  */
 const RESOLVABLE_TASK_STATES = Object.freeze(['InputRequired', 'Working']);
@@ -16,7 +16,7 @@ const ACTION_LABELS = Object.freeze({markRead: 'Mark read', resolve: 'Resolve'})
 
 /**
  * One message opened from the mailbox: its facts, its full body, and on the operator's own inbox one
- * action strip, `Mark read` · `Reply` · then apart `Resolve: mark Completed` (the #551 design read).
+ * action strip, `Mark read` · `Reply` · then apart `Resolve: mark Completed`.
  *
  * @summary The pane owns which message is open (the grid's selection) and hands this view the selected
  * row; the owner reads the body and writes it back as {@link #read}. Two entries share this one view:

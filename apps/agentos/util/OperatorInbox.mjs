@@ -2,7 +2,7 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
  * @summary The operator's own inbox, owner-side: compose, and on a message opened from the inbox, read
- * it in full, mark it read and resolve its Task (Brain #915's `fleetOwnMessage`, `markOwnMessageRead`,
+ * it in full, mark it read and resolve its Task (the Fleet verbs `fleetOwnMessage`, `markOwnMessageRead`,
  * `transitionOwnTask`, all under the operator's transport-stamped identity).
  *
  * Every answer is written back onto the operator mailbox as owner state (`composeOutcome` on the form's

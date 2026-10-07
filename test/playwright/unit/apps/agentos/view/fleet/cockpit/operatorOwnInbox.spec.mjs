@@ -16,9 +16,9 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 import                     '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 
 /**
- * The owner side of the operator's own inbox (#551): the cockpit controller reads the open message
- * (`fleetOwnMessage`), marks it read (`markOwnMessageRead`) and resolves its Task (`transitionOwnTask`,
- * Brain #915), and writes each answer back onto the operator mailbox. Same harness as the compose
+ * The owner side of the operator's own inbox: the cockpit controller reads the open message
+ * (`fleetOwnMessage`), marks it read (`markOwnMessageRead`) and resolves its Task (`transitionOwnTask`),
+ * and writes each answer back onto the operator mailbox. Same harness as the compose
  * block in operatorMailbox.spec: a fake owner over the controller prototype, a recording mailbox and a
  * spied inbox re-read, so each decision is exercised without a mounted cockpit.
  */

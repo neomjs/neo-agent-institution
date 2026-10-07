@@ -57,7 +57,7 @@ function isRecognizedPage(page) {
  * mark-read would mutate the agent's own turn-start signal and swallow peer handoffs). Selecting a
  * row opens its {@link AgentOS.view.fleet.mailbox.DetailContainer} under the list, which reads and
  * never writes. The one host that owns its inbox declares `detailEntry: 'own'` (the operator's own
- * inbox, #551), and only there the detail renders `Mark read` · `Reply` · `Resolve`. Thread-collapse
+ * inbox), and only there the detail renders `Mark read` · `Reply` · `Resolve`. Thread-collapse
  * toggling stays pure display state on the view-owned `threadCollapsed` field. The pane's host label
  * stays COUNTLESS by design: an unread-count badge would imply operator-side read tracking that
  * deliberately does not exist; per-row `status` is the honest fact instead.
