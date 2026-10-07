@@ -303,6 +303,26 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(getActivityObjectTitle({type: 'a2a-activity', payload: {subject: 'hello'}})).toBeNull()
     });
 
+    test('an open-work transition row names what happened to its PR, and only reviewers the actor cell cannot hold (#593)', () => {
+        const move = (transition, state = null) => ({type: 'pr-activity', payload: {number: 917, repoSlug: 'neo-agent-brain', state, transition: {from: null, ...transition}}});
+
+        expect(getPullRequestStatus(move({kind: 'opened', to: 'open'}, 'OPEN'))).toBe('opened');
+        expect(getPullRequestStatus(move({kind: 'verdict', to: 'CHANGES_REQUESTED'}))).toBe('changes requested');
+        expect(getPullRequestStatus(move({kind: 'head', to: 'e41c0d2'}))).toBe('changes pushed');
+        expect(getPullRequestStatus(move({kind: 'verdict', to: 'APPROVED', by: ['@neo-gpt']}))).toBe('approved');
+        expect(getPullRequestStatus(move({kind: 'verdict', to: 'APPROVED', by: ['@neo-gpt', 'login:outsider']}))).toBe('approved by neo-gpt, outsider');
+        expect(getPullRequestStatus(move({kind: 'merged', to: 'merged'}, 'MERGED'))).toBe('merged');
+        expect(getPullRequestStatus(move({kind: 'closed', to: 'closed'}, 'CLOSED'))).toBe('closed');
+        // nothing is guessed: an unknown kind or decision names nothing, and no reviewer means no name
+        expect(getPullRequestStatus(move({kind: 'ci', to: 'green'}))).toBeNull();
+        // an unknown kind stays unknown even on a merged or closed PR
+        expect(getPullRequestStatus(move({kind: 'ci', to: 'green'}, 'MERGED'))).toBeNull();
+        expect(getPullRequestStatus(move({kind: 'review-requested', to: '@neo-gpt'}, 'CLOSED'))).toBeNull();
+        expect(getPullRequestStatus(move({kind: 'verdict', to: 'DISMISSED', by: ['@neo-gpt', '@neo-gpt-sophie']}))).toBeNull();
+        expect(getPullRequestStatus(move({kind: 'verdict', to: 'REVIEW_REQUIRED', by: []}))).toBe('review required');
+        expect(getActivityObjectText(move({kind: 'verdict', to: 'CHANGES_REQUESTED'}))).toBe('brain#917 · changes requested')
+    });
+
     test('a PR row names its state and review verdict, and nothing it cannot read', () => {
         const pr = payload => ({type: 'pr-activity', payload: {number: 739, repoSlug: 'neo-agent-brain', title: 'forge host', ...payload}});
 
