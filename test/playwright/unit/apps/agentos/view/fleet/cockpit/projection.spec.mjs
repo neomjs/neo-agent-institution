@@ -375,6 +375,40 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         expect(result.document.nodes['primary-split'].sizes).toEqual([0.25, 0.75])
     });
 
+    test('publishes the shared sort group to projected tab sources and the Engine participation target', async () => {
+        const registrations = [],
+              host           = makeHost({
+                  topologyGroupId: 'fleet-cockpit-test-group',
+                  windowId       : 'fleet-cockpit-test-window'
+              });
+
+        host.getDockParticipationConfig = () => ({
+            dragCoordinator: {
+                register  : target => registrations.push(target),
+                unregister: () => {}
+            },
+            getDocument: () => host.dockModel
+        });
+
+        try {
+            const projected = FleetCockpit.prototype.projectDockModel.call(host),
+                  tabZones  = collect(projected).filter(node => node.dockNodeType === 'tabs');
+
+            expect(tabZones.length).toBeGreaterThan(0);
+            expect(tabZones.every(node =>
+                node.headerToolbar.sortZoneConfig.sortGroup === FleetCockpit.CROSS_WINDOW_SORT_GROUP
+            ), 'each projected source participates in the same coordinator group').toBe(true);
+
+            const participation = await Workspace.prototype.syncDockParticipation.call(host);
+
+            expect(participation.sortGroup).toBe(FleetCockpit.CROSS_WINDOW_SORT_GROUP);
+            expect(participation.target.sortGroup).toBe(FleetCockpit.CROSS_WINDOW_SORT_GROUP);
+            expect(registrations).toEqual([participation.target]);
+        } finally {
+            await host.participation?.destroy()
+        }
+    });
+
     test('panes are layout-blind (§2.6) and absent-item fallback reads OWNER-held state', () => {
         const
             definitions = {id: 'definitions-store'},
