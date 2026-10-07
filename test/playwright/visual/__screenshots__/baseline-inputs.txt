@@ -267,7 +267,7 @@ apps/agentos/util/OpenWorkSeat.mjs
     9cdbd64f758822ab9ed015e8f28790bcbe5600a4
 
 apps/agentos/util/OperatorInbox.mjs
-    5359c8991c4f6af39b85fa07273011048e3955fd
+    5762bfae7e10f996277e6a1a362f1884642dbad3
 
 apps/agentos/util/Participation.mjs
     797b9190ad13733d77313600d936b586d1c3ced7
@@ -348,7 +348,7 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     3badbfebb7e80c296abf03bb23ce7354d23df2f3
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    5235963e0dbe6141452485e1f7beae6bbbfbc25a
+    9a035bcd6962ea0a9b2d20497fb546f7d01cd204
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     096bac787671764bb7c89de1a90b1f8da2a14e47

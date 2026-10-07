@@ -68,22 +68,30 @@ class OperatorInbox extends Base {
     }
 
     /**
-     * @summary READ: the open message in full (`fleetOwnMessage`, which writes no receipt). The detail
-     * shows `loading` first, unless the read is a `refresh` of the message already shown; a read that
-     * settles after another message opened lands nowhere; a bridge without the verb reads `unavailable`,
-     * never an empty body.
+     * @summary READ: the open message in full (`fleetOwnMessage`, which writes no receipt). An open shows
+     * `loading` first and supersedes every earlier read: one that settles after another message opened
+     * lands nowhere. A `refresh` re-reads the message still open under that open's fence, keeping the
+     * shown body until the answer lands. It reads nothing once another message opened, and never
+     * supersedes the newer read. A bridge without the verb reads `unavailable`, never an empty body.
      * @param {Object} owner The cockpit controller
      * @param {Object} data  `{messageId, refresh?}`
      * @returns {Promise<void>}
      */
     static async open(owner, data) {
-        const
-            {bridge}    = owner,
-            {messageId} = data,
-            generation  = ++owner.operatorMessageReadGeneration,
-            write       = OperatorInbox.writer(owner, 'messageRead', () => generation === owner.operatorMessageReadGeneration);
+        const {bridge} = owner, {messageId, refresh} = data;
 
-        data.refresh || write({messageId, state: 'loading'});
+        if (refresh && owner.operatorOpenMessageId !== messageId) {
+            return
+        }
+
+        const
+            generation = refresh ? owner.operatorMessageReadGeneration : ++owner.operatorMessageReadGeneration,
+            write      = OperatorInbox.writer(owner, 'messageRead', () => generation === owner.operatorMessageReadGeneration);
+
+        if (!refresh) {
+            owner.operatorOpenMessageId = messageId;
+            write({messageId, state: 'loading'})
+        }
 
         if (typeof bridge?.fleetOwnMessage !== 'function') {
             write({messageId, reason: 'fleet: the message read is not wired', state: 'unavailable'});
@@ -122,7 +130,7 @@ class OperatorInbox extends Base {
     /**
      * @summary WRITE: resolve the open message's Task by moving it to Completed (`transitionOwnTask`),
      * guarded by the state the detail read. Once it lands, the message re-reads without a loading
-     * flash, so the detail shows the Task's new state from the source.
+     * flash if it is still the open one, so the detail shows the Task's new state from the source.
      * @param {Object} owner The cockpit controller
      * @param {Object} data  `{expectedCurrentState, messageId}`
      * @returns {Promise<Boolean>} Whether the move landed

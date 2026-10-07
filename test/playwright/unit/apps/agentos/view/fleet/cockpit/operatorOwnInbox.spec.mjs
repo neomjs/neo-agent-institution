@@ -39,6 +39,7 @@ test.describe('Fleet cockpit — the operator\'s own inbox: open, mark read, res
         const owner = Object.assign(Object.create(Controller.prototype), {
             inboxReloads                 : [],
             operatorMessageReadGeneration: 0,
+            operatorOpenMessageId        : null,
             getReference(name) { return name === 'operator-mailbox' ? mailbox : null },
             loadOperatorInbox(params) { this.inboxReloads.push(params); return Promise.resolve() }
         });
@@ -139,12 +140,46 @@ test.describe('Fleet cockpit — the operator\'s own inbox: open, mark read, res
 
         const {mailbox, owner} = makeOwner();
 
+        await owner.onOperatorMessageOpen({messageId: 'MESSAGE:q1'});
+
         expect(await owner.onOperatorResolve({expectedCurrentState: 'InputRequired', messageId: 'MESSAGE:q1'})).toBe(true);
         expect(moves).toEqual([{expectedCurrentState: 'InputRequired', messageId: 'MESSAGE:q1', newState: 'Completed'}]);
         expect(owner.inboxReloads).toEqual([{offset: 0}]);
-        expect(reads).toEqual([{messageId: 'MESSAGE:q1'}]);
-        expect(mailbox.writes.map(([config, value]) => `${config}:${value.state}`)).toEqual(['actionOutcome:pending', 'actionOutcome:ok', 'messageRead:ok'])
+        expect(reads).toEqual([{messageId: 'MESSAGE:q1'}, {messageId: 'MESSAGE:q1'}]);
+        expect(mailbox.writes.map(([config, value]) => `${config}:${value.state}`)).toEqual(['messageRead:loading', 'messageRead:ok', 'actionOutcome:pending', 'actionOutcome:ok', 'messageRead:ok'])
     });
+
+    // A resolution that lands after the operator opened another message must neither supersede that
+    // message's read nor overwrite its body, whichever of the two settles first.
+    for (const order of ['after', 'before']) {
+        test(`resolve · B opened while A's resolution is in flight keeps B's body when B's read settles ${order} it`, async () => {
+            const
+                reads = [],
+                gate  = () => { let resolve; const promise = new Promise(done => { resolve = done }); return {promise, resolve} },
+                move  = gate(),
+                readB = gate();
+
+            setBridge({
+                fleetOwnMessage  : async ({messageId}) => { reads.push(messageId); return messageId === 'MESSAGE:b' ? readB.promise : {messageId, body: 'A', task: {state: 'InputRequired', assignee: '@tobiu'}} },
+                transitionOwnTask: () => move.promise
+            });
+
+            const {mailbox, owner} = makeOwner();
+
+            await owner.onOperatorMessageOpen({messageId: 'MESSAGE:a'});
+
+            const
+                resolving = owner.onOperatorResolve({expectedCurrentState: 'InputRequired', messageId: 'MESSAGE:a'}),
+                openingB  = owner.onOperatorMessageOpen({messageId: 'MESSAGE:b'}),
+                landA     = async () => { move.resolve({success: true, rowsAffected: 1, task: {state: 'Completed'}}); await resolving },
+                landB     = async () => { readB.resolve({messageId: 'MESSAGE:b', body: 'B'}); await openingB };
+
+            order === 'after' ? (await landA(), await landB()) : (await landB(), await landA());
+
+            expect(mailbox.writes.filter(([config]) => config === 'messageRead').at(-1)[1]).toEqual({message: {messageId: 'MESSAGE:b', body: 'B'}, messageId: 'MESSAGE:b', state: 'ok'});
+            expect(reads, 'A is not re-read once B is open').toEqual(['MESSAGE:a', 'MESSAGE:b'])
+        });
+    }
 
     test('resolve · a refused move shows the Brain\'s reason and code, and nothing re-reads', async () => {
         setBridge({transitionOwnTask: async () => ({success: false, rowsAffected: 0, code: 'TASK_TRANSITION_FORBIDDEN', reason: '@tobiu as assignee cannot transition `Completed → Completed`'})});

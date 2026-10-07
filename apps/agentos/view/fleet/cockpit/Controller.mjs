@@ -93,6 +93,12 @@ class Controller extends ReadingSurfacesController {
      */
     operatorMessageReadGeneration = 0
     /**
+     * The message the detail shows, set by each open: a refresh after an action re-reads only this one.
+     * @member {String|null} operatorOpenMessageId=null
+     * @protected
+     */
+    operatorOpenMessageId = null
+    /**
      * @member {Object|null} operatorSnapshot=null
      * @protected
      */
