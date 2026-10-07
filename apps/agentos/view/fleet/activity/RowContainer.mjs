@@ -77,15 +77,34 @@ const PR_DECISION_LABELS = Object.freeze({
     CHANGES_REQUESTED: 'changes requested',
     REVIEW_REQUIRED  : 'review required'
 });
+const PR_TRANSITION_LABELS = Object.freeze({head: 'changes pushed', opened: 'opened'});
+
+/**
+ * @summary What one open-work transition did to its PR: a verdict reads its new decision, a push or an
+ * opening its own word, a merge or a close the PR's state. Reviewers are named only when several moved a
+ * verdict, since a single one is the row's actor. An unknown kind or decision names nothing.
+ * @param {Object}      transition `{kind, to, by?}` from the Brain's PR lane.
+ * @param {String|null} state
+ * @returns {String|null}
+ * @private
+ */
+function transitionStatus({kind, to, by}, state) {
+    const
+        [labels, key] = kind === 'verdict' ? [PR_DECISION_LABELS, to] : Object.hasOwn(PR_TRANSITION_LABELS, kind) ? [PR_TRANSITION_LABELS, kind] : [PR_STATE_LABELS, state],
+        word          = Object.hasOwn(labels, key) ? labels[key] : null,
+        names         = (Array.isArray(by) ? by : []).filter(name => typeof name === 'string' && name).map(name => name.replace(/^(?:@|login:|team:)/, ''));
+
+    return word && names.length > 1 ? `${word} by ${names.join(', ')}` : word
+}
 
 /**
  * @summary Resolves the status a `pr-activity` row names, from the payload the Brain's PR adapter
  * already carries.
  *
- * A merged or closed PR names that. An open draft names `draft`. An open PR names GitHub's
- * `reviewDecision`, and where the repository computes none (no required reviews), the Brain's
- * `humanGateState`, read from the latest reviews. Anything else resolves `null`: a status is
- * never guessed.
+ * An open-work transition names what it did ({@link transitionStatus}). Otherwise a merged or closed
+ * PR names that. An open draft names `draft`. An open PR names GitHub's `reviewDecision`, and where
+ * the repository computes none (no required reviews), the Brain's `humanGateState`, read from the
+ * latest reviews. Anything else resolves `null`: a status is never guessed.
  * @param {Object} event Record or record-shaped object.
  * @returns {String|null}
  */
@@ -94,7 +113,11 @@ export function getPullRequestStatus(event) {
         return null
     }
 
-    const {humanGateState, isDraft, reviewDecision, state} = event.payload || {};
+    const {humanGateState, isDraft, reviewDecision, state, transition} = event.payload || {};
+
+    if (Neo.typeOf(transition) === 'Object') {
+        return transitionStatus(transition, state)
+    }
 
     if (Object.hasOwn(PR_STATE_LABELS, state)) {
         return PR_STATE_LABELS[state]
