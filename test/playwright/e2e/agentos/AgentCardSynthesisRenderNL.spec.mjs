@@ -142,7 +142,22 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         await landFleetRoster(page, [{...row, launchAdmission: {state: 'stale', reason: 'issuer-replaced', generation: null, since: null, servers: [], recent: []}}]);
         await expect(status).toHaveText('New tool connections are blocked');
         await expect(restart).toHaveAttribute('title', /Restart this seat/);
-        await landFleetRoster(page, [{...row, launchAdmission: null}]);
+
+        await landFleetRoster(page, [{...row, state: 'off', launchAdmission: {
+            state: 'revoked', reason: 'stop-requested', generation: 'generation-a', since: '2026-10-07T10:02:00Z', servers: [], recent: []
+        }}]);
+        await expect(status).toBeHidden();
+        await expect(restart).toBeHidden();
+
+        const revokedServer = {...snapshot, servers: [{key: 'memory-core', state: 'revoked', reason: 'server-disabled'}], recent: []};
+        await landFleetRoster(page, [{...row, mcpSettings: {forge: 'github', mcpServers: {'memory-core': false}}, launchAdmission: revokedServer}]);
+        await expect(status).toBeHidden();
+        await landFleetRoster(page, [{...row, mcpSettings: {forge: 'github', mcpServers: {'memory-core': true}}, launchAdmission: revokedServer}]);
+        await expect(status).toHaveText('New Memory Core connections are blocked');
+        await expect(restart).toHaveAttribute('title', /Restart this seat/);
+        await card.screenshot({path: testInfo.outputPath('server-reenabled-card.png')});
+
+        await landFleetRoster(page, [{...row, mcpSettings: null, launchAdmission: null}]);
         await expect(status).toBeHidden();
         await expect(restart).not.toHaveAttribute('title', /Restart this seat/);
         const [same] = await app.queryComponent({className: 'AgentOS.view.fleet.roster.card.Container'}, ['id']);

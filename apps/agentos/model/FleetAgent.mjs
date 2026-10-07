@@ -162,6 +162,11 @@ class FleetAgent extends Model {
             name        : 'launchAdmission',
             defaultValue: null
         }, {
+            // Current public MCP intent from the same roster DTO; null means not read, while
+            // mcpServers:null inside a present snapshot follows the canonical catalog defaults.
+            name        : 'mcpSettings',
+            defaultValue: null
+        }, {
             // open assigned lanes for the resident (measured density evidence: 7–17 per active
             // agent — one lane line cannot carry that truth, the count badge can). Owned by the
             // roster DTO end-to-end (assembler stamp → mapRosterRow → this record → the badge);

@@ -647,9 +647,10 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         applySet(card, {launchAdmission: {...admission, state: 'revoked', reason: 'stop-requested', generation: 'generation-a'}});
         expect(status.text).toContain('New tool connections');
         applySet(card, {state: 'off'});
+        expect(status.hidden).toBe(true);
         expect(restart.hidden).toBe(true);
         expect(restart.vdom.title).toBeFalsy();
-        expect(status.vdom.title).not.toContain('Restart this seat');
+        expect(status.vdom.title).toBeFalsy();
         card.destroy()
     });
 
@@ -688,6 +689,54 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             expect(status.hidden).toBe(true);
             expect(status.vdom.title).toBeFalsy()
         }
+        card.destroy()
+    });
+
+
+    test('enabled per-server revocation is distinct from an intentionally disabled MCP server', async () => {
+        const {default: RosterRow} = await import('../../../../../../../../../apps/agentos/util/RosterRow.mjs'),
+              snapshot = {
+                  state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+                  servers: [{key: 'memory-core', state: 'revoked', reason: 'server-disabled'}], recent: []
+              },
+              row = mcpServers => ({
+                  id: 'vega', displayName: 'Vega', agent: {id: 'vega', forge: 'github', mcpServers},
+                  lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
+                  sources: observedSources, launchAdmission: snapshot
+              }),
+              card = createCard(RosterRow.mapRosterRow(row({'memory-core': false}))),
+              status = card.getReference('control-status'), restart = card.getReference('control-restart');
+        expect(status.hidden).toBe(true);
+        applySet(card, RosterRow.mapRosterRow(row({'memory-core': true})));
+        expect(status.hidden).toBe(false);
+        expect(status.text).toContain('Memory Core');
+        expect(restart.vdom.title).toContain('Restart this seat');
+        expect(card.record.state).toBe('ok');
+
+        applySet(card, RosterRow.mapRosterRow({...row(null), launchAdmission: {
+            ...snapshot, servers: [{key: 'memory-core', state: 'revoked', reason: 'plan-changed'}]
+        }}));
+        expect(status.hidden).toBe(false);
+        expect(restart.vdom.title).toContain('Restart this seat');
+        applySet(card, RosterRow.mapRosterRow({...row(null), launchAdmission: {
+            ...snapshot, servers: [{key: 'memory-core', state: 'revoked', reason: 'credential-missing'}]
+        }}));
+        expect(status.text).toContain('credential');
+        expect(status.vdom.title).toContain('cannot repair');
+        expect(restart.vdom.title).toBeFalsy();
+
+
+        const workflowSnapshot = {...snapshot, servers: [{key: 'github-workflow', state: 'revoked', reason: 'server-disabled'}]};
+        applySet(card, RosterRow.mapRosterRow({...row(null), agent: {id: 'vega', forge: 'gitlab', mcpServers: null}, launchAdmission: workflowSnapshot}));
+        expect(status.hidden).toBe(true);
+        applySet(card, RosterRow.mapRosterRow({...row(null), agent: {id: 'vega', forge: 'github', mcpServers: null}, launchAdmission: workflowSnapshot}));
+        expect(status.hidden).toBe(false);
+        applySet(card, RosterRow.mapRosterRow({...row(null), agent: {id: 'another-seat', forge: 'github', mcpServers: null}}));
+        expect(status.hidden).toBe(true);
+
+        applySet(card, RosterRow.mapRosterRow({...row(null), agent: undefined}));
+        expect(status.hidden).toBe(true);
+        expect(restart.vdom.title).toBeFalsy();
         card.destroy()
     });
 

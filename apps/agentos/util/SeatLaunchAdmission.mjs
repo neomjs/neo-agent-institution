@@ -5,7 +5,9 @@ import {
     LAUNCH_ADMISSION_REASONS    as REASONS,
     LAUNCH_ADMISSION_REFUSALS   as REFUSALS,
     LAUNCH_ADMISSION_STATES     as STATES,
-    MCP_SERVERS
+    MCP_SERVERS,
+    mcpCatalogFor,
+    resolveMcpMatrix
 } from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 const
@@ -40,10 +42,11 @@ class SeatLaunchAdmission extends Base {
      * @param {Object} [options]
      * @param {String} options.rosterState Current grid source state.
      * @param {Object} options.runtime Normalized `SourceHealth` runtime fact.
+     * @param {Object|null} [options.mcpSettings=null] Current public definition from the same roster row.
      * @param {Boolean} [options.canRestart=false] The existing lifecycle controls' restart verdict.
      * @returns {{text:String, title:String, restart:Boolean}|null}
      */
-    static cardLine(snapshot, {rosterState, runtime, canRestart=false} = {}) {
+    static cardLine(snapshot, {rosterState, runtime, mcpSettings=null, canRestart=false} = {}) {
         if (rosterState !== 'live' || runtime?.state !== 'wired' || runtime?.confidence !== 'observed') {
             return null
         }
@@ -104,18 +107,19 @@ class SeatLaunchAdmission extends Base {
             latestByServer.set(entry.server, {entry, index})
         });
 
+        const enabled = SeatLaunchAdmission.enabledServers(mcpSettings);
         let latestFailure = null;
 
         for (const row of latestByServer.values()) {
             const {entry, index} = row;
 
-            if (entry.outcome === OUTCOMES.REFUSED && CREDENTIAL_REFUSAL.has(entry.code) &&
+            if (enabled?.[entry.server] !== false && entry.outcome === OUTCOMES.REFUSED && CREDENTIAL_REFUSAL.has(entry.code) &&
                 (!latestFailure || index > latestFailure.index)) {
                 latestFailure = row
             }
         }
 
-        if (!latestFailure) return null;
+        if (!latestFailure) return SeatLaunchAdmission.serverLine(snapshot, enabled, canRestart);
 
         const
             server       = SERVER_LABELS.get(latestFailure.entry.server) ?? 'MCP tool',
@@ -130,6 +134,50 @@ class SeatLaunchAdmission extends Base {
             restart: false,
             text   : `New ${server} connection refused`,
             title  : `${credential[0].toUpperCase()}${credential.slice(1)} ${problem} for ${server}. Existing tools may still work. Credential repair is not available in this cockpit; restarting will not repair it.`
+        }
+    }
+
+    /**
+     * @summary Resolve the same roster row's current intent through the shared forge-aware catalog.
+     * Missing or malformed intent stays unknown; grant state never supplies enablement.
+     * @param {Object|null} settings The public definition's forge and sparse MCP overrides.
+     * @returns {Object|null}
+     */
+    static enabledServers(settings) {
+        if (!isObject(settings) || (settings.mcpServers !== null && !isObject(settings.mcpServers))) return null;
+
+        try {
+            return resolveMcpMatrix(settings.mcpServers, mcpCatalogFor(settings.forge))
+        } catch {
+            return null
+        }
+    }
+
+    /**
+     * @summary Explain a revoked grant only when the current definition still enables that server.
+     * @param {Object} snapshot Issuer snapshot for the running seat.
+     * @param {Object|null} enabled Current resolved server intent.
+     * @param {Boolean} canRestart The existing Restart control's verdict.
+     * @returns {{text:String, title:String, restart:Boolean}|null}
+     */
+    static serverLine(snapshot, enabled, canRestart) {
+        if (!enabled || !Array.isArray(snapshot.servers)) return null;
+        const server = snapshot.servers.find(item => item?.state === STATES.REVOKED &&
+            enabled[item.key] === true && [REASONS.SERVER_DISABLED, REASONS.PLAN_CHANGED, REASONS.CREDENTIAL_MISSING].includes(item.reason));
+        if (!server) return null;
+        const label = SERVER_LABELS.get(server.key);
+        if (server.reason === REASONS.CREDENTIAL_MISSING) {
+            return {
+                restart: false,
+                text: `${label} startup credential missing`,
+                title: `${label} lacked a required credential at launch. This cockpit cannot repair that credential; restarting alone will not repair it. Existing tools may still work.`
+            }
+        }
+        const restart = canRestart === true;
+        return {
+            restart,
+            text: `New ${label} connections are blocked`,
+            title: `${label} is enabled now, but its grant was withdrawn during this launch. Existing tools may still work.${restart ? ' Restart this seat to allow new tool connections.' : ''}`
         }
     }
 }

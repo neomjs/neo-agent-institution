@@ -846,9 +846,10 @@ class AgentCard extends Container {
             // a start the Fleet refused for the declared model says so in the design read's words: the
             // recorded cause, shown only while this cockpit's own last outcome is that same refusal
             modelRefusal = !pendingAction && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
-            admissionLine = !(pendingAction || controlReason || wrongFolder || modelRefusal)
+            admissionLine = recordState !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal)
                 ? SeatLaunchAdmission.cardLine(record.launchAdmission, {
                     canRestart : !disabled && recordState !== 'off',
+                    mcpSettings: record.mcpSettings,
                     rosterState: me.rosterState,
                     runtime    : sources.runtime
                 }) : null;

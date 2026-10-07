@@ -104,9 +104,11 @@ withdraws this guidance on the same card. This is admission for **new children**
 |---|---|
 | Missing/unknown snapshot or `none` | No admission line and no inferred health. `none` means no generation or not applicable. |
 | `reserved` | `Preparing tool access`; no restart advice. |
-| `active`, no current credential refusal | No admission line; active is not a connection test. |
+| `active`, no current credential refusal or revoked enabled grant | No admission line; active is not a connection test. |
+| `active`, a revoked server grant | The current public MCP intent comes from the same roster row, resolved through the shared forge-aware catalog. An intentionally disabled server stays quiet. An enabled server revoked for `server-disabled` or `plan-changed` names the server and recommends the existing admitted Restart. A `credential-missing` grant names the missing startup credential without a restart cure. Missing/malformed intent makes no enablement claim. |
 | `active`, latest attempt for a server refused for a credential | `New <server> connection refused`; title names the seat's repository or plane credential as missing/unverified. Existing tools may still work. Credential repair is unavailable in this cockpit; restart is not its remedy (Brain #815 remains separate). |
-| `stale/revoked` | `New tool connections are blocked`; title names the closed generation reason and preserves the already-running-tools distinction. Existing Restart is recommended only when its normal running/current/authorized/not-pending guard permits it. |
+| Running seat with `stale/revoked` admission | `New tool connections are blocked`; title names the closed generation reason and preserves the already-running-tools distinction. Existing Restart is recommended only when its normal running/current/authorized/not-pending guard permits it. |
+| Stopped seat, including a retained `revoked` generation | No admission guidance or admission-specific Restart advice; the stopped state retains its existing Start control. |
 | Newer admitted attempt on that server, replacement generation or absent snapshot | Obsolete warning and restart guidance clear. Another server's success does not clear this server's failure. |
 
 Confirmed wrong folder, pending lifecycle actions and existing refusal feedback keep precedence;
