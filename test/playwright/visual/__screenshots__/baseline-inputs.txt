@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    34d424668cf2f3124f7ffae0bdffe51c453039f6
+    f74cc99ffab47940a718b5a77895fe02401f581b
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -276,10 +276,13 @@ apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
 
 apps/agentos/util/RosterRow.mjs
-    e0571b8fd1272af274a25ea65c91551f558380c5
+    50a2992e55e872c2dbe40c7840fccab989551a32
 
 apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
+
+apps/agentos/util/SeatLaunchAdmission.mjs
+    04babfa856bc9101c290294a98465170c8fe4dcd
 
 apps/agentos/util/SeatModel.mjs
     7951e3b0796839f7fb9e88d09f653a691a0fd5d6
@@ -501,13 +504,13 @@ apps/agentos/view/fleet/roster/Controller.mjs
     9e6126021991ca47d823c6f44583d4f6a292bd26
 
 apps/agentos/view/fleet/roster/List.mjs
-    d3665af26852da8e265b766b3feec1af9c465ee2
+    47fa2bf1689a7f41c0e8d14a90e832b250e58390
 
 apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    7439c2ca1361fc1fb87058ef799edaa09c3e2fa4
+    ede146c12dfc7db4fb98af9650f9325487172b84
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     64238dd4bac922bbfd33878431f3b9a21f9d8dfb
@@ -732,7 +735,7 @@ resources/scss/theme-neo-light/apps/agentos/childapps/missioncontrol/Viewport.sc
     fd2e29588ece473d851eab77e9a4ccd09a29f220
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs
-    d03f69917b645ab4c1d90ead971bcd5ee9e51b8d
+    b90320a6be25d268aca236e30afb5c77a639aca7
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-319-chromium-darwin.png
     eb3d526db80697f28b54ec221ee866c2ee5f2f08

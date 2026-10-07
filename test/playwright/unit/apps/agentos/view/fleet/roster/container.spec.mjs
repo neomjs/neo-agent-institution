@@ -141,6 +141,40 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         expect(healthCounts(null)).toEqual(zero)
     });
 
+    test('the provider roster liveness binding gates launch guidance on pooled cards', async () => {
+        const
+            sources = {
+                roster    : {source: 'fleet:listAgents', state: 'wired', confidence: 'observed'},
+                repoStatus: {source: 'fleet:fleetStatus', state: 'wired', confidence: 'observed'},
+                runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
+            },
+            store = makeStore([{
+                agentId: 'resident', displayName: 'Resident', state: 'ok', sources,
+                launchAdmission: {
+                    state: 'stale', reason: 'issuer-replaced', generation: null,
+                    since: null, servers: [], recent: []
+                }
+            }]),
+            grid = Neo.create(FleetGrid, {
+                appName, store,
+                stateProvider: {module: StateProvider, data: {gridAdapterState: 'live'}}
+            }),
+            list = await readyList(grid),
+            card = cards(list)[0],
+            status = card.down({reference: 'control-status'}),
+            provider = grid.stateProvider;
+
+        expect(provider).toBeTruthy();
+        expect(card.rosterState).toBe('live');
+        expect(status.hidden).toBe(false);
+
+        provider.setData({gridAdapterState: 'stale'});
+        expect(card.rosterState).toBe('stale');
+        expect(status.hidden).toBe(true);
+
+        grid.destroy()
+    });
+
     test('hasAttention derives the aggregate header verdict — only actionable buckets carry weight', () => {
         const zero = {ok: 0, idle: 0, wedged: 0, limited: 0, off: 0};
 
