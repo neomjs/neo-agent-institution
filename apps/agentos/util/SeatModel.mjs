@@ -1,5 +1,5 @@
-import Base                         from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import {resolveHarnessSeatSettings} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
+import Base                        from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import {resolveHarnessSeatSetting} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @summary What the Seat group in Agent Detail › Configuration says about a seat's model and reasoning effort, in
@@ -17,13 +17,14 @@ class SeatModel extends Base {
     }
 
     /**
-     * @summary Whether Fleet can declare a model and effort for a harness family: the shared harness catalog's
-     * `seatSettings`, the same fact the Brain refuses a declaration by.
+     * @summary Whether Fleet can declare one field for a harness family, using the same capability
+     * the Brain validates. Supporting effort does not imply model support.
      * @param {String|null} harnessType
+     * @param {'model'|'reasoningEffort'} field
      * @returns {Boolean}
      */
-    static declarable(harnessType) {
-        return resolveHarnessSeatSettings(harnessType) !== null
+    static declarable(harnessType, field) {
+        return resolveHarnessSeatSetting(harnessType, field) !== null
     }
 
     /**
@@ -32,6 +33,8 @@ class SeatModel extends Base {
      * - A family Fleet cannot declare for: the value its seat reported and `set per session in the app`, or before
      *   one `set per session in the app · not read back yet`, with no action.
      * - A start refused for the declared value: `declared <value> · start refused: <the Fleet's reason>`, with Change.
+     * - Desktop effort: the declaration or `app default`, with Change, even before the first Start.
+     *   This is declaration readback, not an observation of the running session's effort.
      * - Nothing declared: `derived · reads <value> (configured on disk)` where the config was read, else `derived from
      *   the harness default`, with Change.
      * - Declared and configured alike, or the config not read: `declared <value>`, with Change.
@@ -47,12 +50,16 @@ class SeatModel extends Base {
      * @returns {{text: String, actions: String[]}} `actions` among `change` and `adopt`
      */
     static row({field, harnessType, declared, configured, observed = null, refused = null}) {
-        if (!SeatModel.declarable(harnessType)) {
+        if (!SeatModel.declarable(harnessType, field)) {
             return {actions: [], text: observed ? `${observed} · set per session in the app` : 'set per session in the app · not read back yet'}
         }
 
         if (declared && refused) {
             return {actions: ['change'], text: `declared ${declared} · start refused: ${refused}`}
+        }
+
+        if (harnessType === 'claude-desktop') {
+            return {actions: ['change'], text: declared ? `declared ${declared}` : 'app default'}
         }
 
         const reads = configured ? configured[field] ?? null : undefined;

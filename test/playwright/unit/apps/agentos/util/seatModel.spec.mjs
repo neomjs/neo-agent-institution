@@ -11,11 +11,24 @@ import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_exp
 import SeatModel      from '../../../../../../apps/agentos/util/SeatModel.mjs';
 
 test.describe('AgentOS.util.SeatModel — the Seat group\'s words for a seat\'s model and effort', () => {
-    const row = facts => SeatModel.row({field: 'model', harnessType: 'codex-desktop', declared: null, configured: null, ...facts});
+    const
+        row       = facts => SeatModel.row({field: 'model', harnessType: 'codex-desktop', declared: null, configured: null, ...facts}),
+        effortRow = facts => SeatModel.row({field: 'reasoningEffort', harnessType: 'claude-desktop', declared: null, configured: null, ...facts});
 
-    test('a harness Fleet cannot declare for says why it has no action, and what its seat reported once it did', () => {
+    test('a Desktop model stays app-owned while an unobserved model remains readable', () => {
         expect(row({harnessType: 'claude-desktop'})).toEqual({actions: [], text: 'set per session in the app · not read back yet'});
         expect(row({harnessType: 'claude-desktop', observed: 'claude-opus-5-5'})).toEqual({actions: [], text: 'claude-opus-5-5 · set per session in the app'});
+    });
+
+    test('Desktop effort shows its app default or exact declaration without adopting configured values', () => {
+        expect(effortRow({})).toEqual({actions: ['change'], text: 'app default'});
+        expect(effortRow({declared: 'max'})).toEqual({actions: ['change'], text: 'declared max'});
+        expect(effortRow({declared: 'medium', configured: {reasoningEffort: 'max'}})).toEqual({actions: ['change'], text: 'declared medium'});
+        expect(effortRow({configured: {reasoningEffort: 'high'}})).toEqual({actions: ['change'], text: 'app default'});
+        expect(effortRow({declared: 'max', refused: 'reasoning effort max is not available'})).toEqual({
+            actions: ['change'],
+            text   : 'declared max · start refused: reasoning effort max is not available'
+        });
     });
 
     test('nothing declared reads the configured value as derived, or the harness default before a read', () => {
@@ -75,8 +88,15 @@ test.describe('AgentOS.util.SeatModel — the Seat group\'s words for a seat\'s 
         expect(SeatModel.refusedReason(null, null)).toBeNull();
     });
 
-    test('declarability is the shared harness catalog\'s, never a list of the cockpit\'s own', () => {
-        expect(['codex', 'codex-desktop', 'claude-code', 'claude-desktop', 'opencode', 'unknown'].map(SeatModel.declarable))
-            .toEqual([true, true, true, false, false, false]);
+    test('declarability follows the shared catalog per setting, never a list of the cockpit\'s own', () => {
+        expect([
+            ['codex', 'model'], ['codex', 'reasoningEffort'],
+            ['codex-desktop', 'model'], ['codex-desktop', 'reasoningEffort'],
+            ['claude-code', 'model'], ['claude-code', 'reasoningEffort'],
+            ['claude-desktop', 'model'], ['claude-desktop', 'reasoningEffort'],
+            ['opencode', 'model'], ['opencode', 'reasoningEffort'],
+            ['unknown', 'reasoningEffort'], ['claude-desktop', 'other']
+        ].map(([harnessType, field]) => SeatModel.declarable(harnessType, field)))
+            .toEqual([true, true, true, true, true, true, false, true, false, false, false, false]);
     });
 });

@@ -208,17 +208,68 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
         group.destroy()
     });
 
-    test('AC-1: a claude-desktop seat says its harness sets both per session, reads what it reported, and offers nothing', () => {
-        const group = Neo.create(SeatModelContainer, {appName, seat: {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: null}});
+    test('AC-1: a never-started Desktop seat can declare effort without a catalog, while model stays app-owned', () => {
+        for (const catalog of [null, {state: 'unsupported', models: []}, {state: 'unavailable', models: [], reason: 'catalog offline'}]) {
+            const
+                group  = Neo.create(SeatModelContainer, {appName, seat: {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: null}, catalog}),
+                events = fired(group);
 
-        expect([line(group, 'model'), line(group, 'reasoningEffort')]).toEqual(['set per session in the app · not read back yet', 'set per session in the app · not read back yet']);
+            expect(line(group, 'reasoningEffort')).toBe('app default');
+            expect(line(group, 'model')).toBe('set per session in the app · not read back yet');
+            expect(shown(group, 'model')).toEqual([]);
+            expect(shown(group, 'reasoningEffort')).toEqual(['change']);
 
-        group.observed = {model: 'claude-opus-5-5', reasoningEffort: null};
-        expect(line(group, 'model')).toBe('claude-opus-5-5 · set per session in the app');
+            group.onActionClick({component: group.getReference('reasoningEffort-change')});
 
-        for (const field of ['model', 'reasoningEffort']) {
-            expect(shown(group, field), field).toEqual([])
+            expect(events, 'Desktop effort choices do not depend on catalog enumeration').toEqual([]);
+            expect(group.getReference('offer').hidden).toBe(false);
+            expect(offered(group)).toEqual([['Max', false, 'false'], ['Use app default', true, 'true']]);
+
+            group.getReference('offer').items[0].handler();
+            expect(events).toEqual([['declare', 'reasoningEffort', 'max']]);
+
+            group.getReference('offer').items[1].handler();
+            expect(events).toEqual([['declare', 'reasoningEffort', 'max'], ['declare', 'reasoningEffort', null]]);
+
+            group.destroy()
         }
+    });
+
+    test('Desktop max is selected only for max; another existing declaration stays exact with no false selection', () => {
+        const group = Neo.create(SeatModelContainer, {
+            appName,
+            catalog: {state: 'unsupported', models: [], reason: 'Desktop does not enumerate models'},
+            seat   : {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: 'max'}
+        });
+
+        expect(line(group, 'reasoningEffort')).toBe('declared max');
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        expect(offered(group)).toEqual([['Max', true, 'true'], ['Use app default', false, 'false']]);
+
+        group.seat = {...group.seat, reasoningEffort: 'medium'};
+        expect(line(group, 'reasoningEffort')).toBe('declared medium');
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        expect(offered(group)).toEqual([['Max', false, 'false'], ['Use app default', false, 'false']]);
+
+        group.destroy()
+    });
+
+    test('Desktop pending keeps chip identity and accepted readback closes the offer', () => {
+        const group = Neo.create(SeatModelContainer, {
+            appName,
+            seat: {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: null}
+        });
+
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+
+        const chips = [...group.getReference('offer').items];
+
+        group.status = {state: 'pending', reason: ''};
+        expect(group.getReference('offer').items.every((chip, index) => chip === chips[index])).toBe(true);
+        expect(chips.every(chip => chip.disabled)).toBe(true);
+
+        group.seat = {...group.seat, reasoningEffort: 'max'};
+        expect([group.editing, group.getReference('offer').hidden, line(group, 'reasoningEffort')]).toEqual([null, true, 'declared max']);
 
         group.destroy()
     });

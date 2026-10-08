@@ -56,7 +56,8 @@ const seatRow = (field, label) => ({
  * @summary Agent Detail › Configuration's Seat group: the model and reasoning effort declared for the seat's harness,
  * beside what its config is set to, in {@link AgentOS.util.SeatModel}'s words. Change offers only what the harness
  * itself names: a Codex seat's catalog, `claude-code`'s effort levels, and a model id for `claude-code`, which takes
- * any it accepts. A seat whose harness chooses both itself, the Claude app, offers no action.
+ * any it accepts. Claude Desktop offers the explicit Max/default effort choice without pretending to enumerate
+ * its unsupported catalog. Its model stays read-only; a declaration is not an effective-session measurement.
  *
  * Like the commit-identity row it changes nothing itself. It fires `readSeatCatalog` for the values to offer, and
  * `declareSeatModel` with `{field, value}` (`null` hands the field back to the harness); its owner runs the round-trip
@@ -239,7 +240,8 @@ class SeatModelContainer extends Container {
     }
 
     /**
-     * @summary The values a field offers, from the catalog the harness answered: a Codex model's efforts belong to the
+     * @summary The values a field offers. Desktop's Max preset needs no catalog or prior Start. For catalog-backed
+     * fields, a Codex model's efforts belong to the
      * declared model, else to the configured one, else to the catalog's default. A model value names its entry by id
      * or slug ({@link AgentOS.util.SeatModel.findModel}).
      * @param {String} field
@@ -247,6 +249,10 @@ class SeatModelContainer extends Container {
      */
     offered(field) {
         const {catalog, configured, seat} = this;
+
+        if (seat?.harnessType === 'claude-desktop') {
+            return field === 'reasoningEffort' && SeatModel.declarable(seat.harnessType, field) ? ['max'] : null
+        }
 
         if (!catalog || catalog.state === 'unsupported' || catalog.state === 'unavailable' && !catalog.models?.length) return null;
 
@@ -296,9 +302,10 @@ class SeatModelContainer extends Container {
         }
 
         const
-            values   = me.editing ? me.offered(me.editing) : null,
-            free     = me.editing === 'model' && seat?.harnessType === 'claude-code',
-            offer    = me.getReference('offer'),
+            values        = me.editing ? me.offered(me.editing) : null,
+            desktopEffort = seat?.harnessType === 'claude-desktop' && me.editing === 'reasoningEffort',
+            free          = me.editing === 'model' && seat?.harnessType === 'claude-code',
+            offer         = me.getReference('offer'),
             // a model declared by its slug presses the chip of the entry it names
             declared = me.editing === 'model' ? SeatModel.findModel(me.catalog, seat?.model)?.id ?? seat?.model ?? null : me.editing ? seat?.[me.editing] ?? null : null,
             // the chips are rebuilt only when what they offer changes: never under a click still being handled
@@ -314,13 +321,13 @@ class SeatModelContainer extends Container {
                     module : Button,
                     cls    : ['fm-chip', 'fm-seat-model-value', declared === value ? 'is-selected' : 'is-selectable'],
                     handler: () => me.declare(me.editing, value),
-                    text   : value
+                    text   : desktopEffort ? 'Max' : value
                 })),
                 {
                     module : Button,
                     cls    : ['fm-chip', 'fm-seat-model-default', declared ? 'is-selectable' : 'is-selected'],
                     handler: () => me.declare(me.editing, null),
-                    text   : 'Use the harness default'
+                    text   : desktopEffort ? 'Use app default' : 'Use the harness default'
                 }
             ]).forEach(chip => chip.changeVdomRootKey('aria-pressed', String(chip.cls.includes('is-selected'))))
         }
@@ -360,7 +367,7 @@ class SeatModelContainer extends Container {
 
         if (action === 'change') {
             me.editing = me.editing === field ? null : field;
-            me.editing && !me.catalog && me.fire('readSeatCatalog')
+            me.editing && !me.catalog && !me.offered(me.editing) && me.fire('readSeatCatalog')
         } else {
             me.declare(field, me.configured?.[field] ?? null)
         }
