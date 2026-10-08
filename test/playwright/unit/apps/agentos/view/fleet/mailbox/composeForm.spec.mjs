@@ -320,3 +320,79 @@ test.describe('AgentOS OperatorComposeForm — operator write surface (#15377, D
         form.destroy()
     })
 });
+
+test.describe('AgentOS OperatorComposeForm — a reply carries what it answers (#551)', () => {
+    let OperatorComposeForm;
+
+    const options = [{id: '@neo-gpt', name: 'Euclid'}, {id: '@neo-opus-ada', name: 'Ada'}, {id: 'AGENT:*', name: 'All agents (broadcast)'}];
+
+    test.beforeAll(async () => {
+        OperatorComposeForm = (await import('../../../../../../../../apps/agentos/view/fleet/mailbox/ComposeForm.mjs')).default
+    });
+
+    test('replyTo selects the sender alone, puts Re: before the subject and names the answered message', () => {
+        const form = Neo.create(OperatorComposeForm, {appName});
+
+        form.recipientOptions = options;
+
+        form.getReference('compose-recipients').selectionModel.select([form.getReference('compose-recipients').store.get('@neo-opus-ada')]);
+        form.replyTo({inReplyTo: 'MESSAGE:q1', subject: '[question] which plane?', to: '@neo-gpt'});
+
+        expect(form.getReference('compose-recipient-chips').selectedIds, 'a reply goes to the sender alone').toEqual(['@neo-gpt']);
+        expect(form.getReference('compose-subject').value).toBe('Re: [question] which plane?');
+        expect(form.getReference('compose-reply').hidden).toBe(false);
+        expect(form.getReference('compose-reply').text).toBe('Reply to: [question] which plane?');
+
+        form.replyTo({inReplyTo: 'MESSAGE:q2', subject: 'Re: already a reply', to: '@neo-gpt'});
+        expect(form.getReference('compose-subject').value, 'Re: is never doubled').toBe('Re: already a reply');
+
+        form.inReplyTo = null;
+        expect(form.getReference('compose-reply').hidden).toBe(true);
+
+        form.destroy()
+    });
+
+    test('the send carries inReplyTo while the form answers a message, and omits it for a new message', async () => {
+        const form = Neo.create(OperatorComposeForm, {appName});
+
+        form.recipientOptions = options;
+
+        let captured = null;
+
+        form.isValid = async () => true;
+        form.on('compose', data => {captured = data});
+
+        form.replyTo({inReplyTo: 'MESSAGE:q1', subject: 'q', to: '@neo-gpt'});
+        form.getReference('compose-body').value = 'here is my answer';
+        await form.onSendClick();
+
+        expect(captured.message.to).toEqual(['@neo-gpt']);
+        expect(captured.message.inReplyTo).toBe('MESSAGE:q1');
+        expect(captured.message.subject).toBe('Re: q');
+
+        form.inReplyTo = null;
+        await form.onSendClick();
+        expect(Object.hasOwn(captured.message, 'inReplyTo'), 'a new message answers nothing').toBe(false);
+
+        form.destroy()
+    });
+
+    test('a sender the roster does not list stays unselected, so the send waits for a recipient', async () => {
+        const form = Neo.create(OperatorComposeForm, {appName});
+
+        form.recipientOptions = options;
+
+        let captured = null;
+
+        form.isValid = async () => true;
+        form.on('compose', data => {captured = data});
+        form.replyTo({inReplyTo: 'MESSAGE:q9', subject: 'q', to: '@not-on-the-roster'});
+        form.getReference('compose-body').value = 'b';
+        await form.onSendClick();
+
+        expect(form.getReference('compose-recipient-chips').selectedIds).toEqual([]);
+        expect(captured, 'no recipient, no send').toBe(null);
+
+        form.destroy()
+    });
+});

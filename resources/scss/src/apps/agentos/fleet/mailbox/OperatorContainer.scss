@@ -19,6 +19,15 @@
         min-height: calc(23px + 6px + 20px + 84px + 8px);
     }
 
+    /* replying: the selected row is that one row of context, so the open message's detail (and its
+       splitter) folds until the form does. The floor above holds one row, not a row and a body:
+       stacked, the detail starved the grid below one row and it stopped repainting; beside the
+       list, one row's height leaves no room to read a body. */
+    &.is-composing .fm-mailbox-splitter,
+    &.is-composing .fm-mailbox-detail {
+        display: none;
+    }
+
     /* the compose affordance in the inbox pane's head (the mailbox design page's "Compose
        placement"): an affordance-class chip inside the head's actions group — scale, padding and
        the chrome font are the group's law (Viewport.scss .fm-pane-actions); this rule adds only

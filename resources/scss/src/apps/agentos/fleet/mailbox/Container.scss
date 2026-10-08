@@ -8,6 +8,8 @@
    row gaps 6/4, thread indent 14, meta top 3, pill pads 2/7 — recorded here, deferred to the
    #17268 pane-composition pass. Pill registers keep their site-visible `line-height: 1`. */
 .fm-mailbox-pane {
+    container-name: fm-mailbox-pane;   /* the narrow regime below stacks the list over the detail */
+    container-type: inline-size;
     gap       : 6px;
     min-height: 0;
     /* The sibling of the min-height above, and mount-agnostic for the same reason: a flex item's
@@ -68,10 +70,49 @@
         }
     }
 
+    /* the list beside the open message, the Memories pane's reading split: the list two shares,
+       the detail one, the splitter resizing the list */
+    .fm-mailbox-body {
+        gap       : var(--fm-space-2);
+        min-height: 0;
+    }
+
     /* the rows body is the buffered mailbox grid (Grid.scss owns the designed row anatomy);
        this skin only slots it into the pane's vertical rhythm */
     .fm-mailbox-grid {
         overflow  : auto;
+        min-width : 0;
         min-height: 0;
+    }
+}
+
+/* the narrow regime (a popped-out or vessel-width pane, 720 px and below): the list over the open
+   message, never a squeezed pair; the selected row stays in view above it, and the splitter's drag
+   has no axis here */
+@container fm-mailbox-pane (max-width: 720px) {
+    .fm-mailbox-pane .fm-mailbox-body {
+        flex-direction: column !important;   /* beats the hbox layout's row */
+    }
+
+    .fm-mailbox-pane .fm-mailbox-grid {
+        flex : 1 1 0% !important;   /* beats the wrapperStyle a wide-regime drag writes */
+        width: auto !important;
+    }
+
+    .fm-mailbox-pane .fm-mailbox-splitter {
+        display: none;
+    }
+
+    .fm-mailbox-pane .fm-mailbox-detail {
+        flex        : 0 1 auto !important;
+        padding-left: 0;
+        padding-top : var(--fm-space-2);
+        border-left : none;
+        border-top  : 1px solid var(--fm-line-soft);
+
+        /* stacked, the body scrolls inside a capped height so the strip stays reachable */
+        .fm-mailbox-detail-body {
+            max-height: 40vh;
+        }
     }
 }

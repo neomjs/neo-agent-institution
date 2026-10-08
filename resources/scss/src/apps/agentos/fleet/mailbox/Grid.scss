@@ -18,6 +18,12 @@
         padding   : 0;
     }
 
+    /* the open message: its detail docks under the list, so its row keeps a quiet mark */
+    .neo-grid-row.neo-selected .fm-mail-row {
+        background: color-mix(in srgb, var(--fm-signal) 8%, transparent);
+        box-shadow: inset 2px 0 0 var(--fm-signal);
+    }
+
     /* ── the designed row: [unread mark] [monogram] [content] [age] ── */
     .fm-mail-row {
         display              : grid;

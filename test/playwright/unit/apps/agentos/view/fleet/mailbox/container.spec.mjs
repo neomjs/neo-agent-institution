@@ -717,3 +717,105 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
         expect(store.isDestroyed).toBe(true)
     });
 });
+
+test.describe('AgentOS.view.fleet.mailbox.Container — the open message (#551)', () => {
+    const open = (pane, messageId) => pane.getReference('mailbox-rows').fire('select', {record: pane.store.get(messageId)});
+
+    test('selecting a row opens its detail beside the list and asks for its body; deselecting closes it', () => {
+        const pane = createPane(), asked = [];
+
+        pane.on('messageOpen', data => asked.push(data.messageId));
+        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:a'}), row({messageId: 'MESSAGE:b', status: 'read'})]);
+
+        const
+            detail   = pane.getReference('mailbox-detail'),
+            splitter = pane.getReference('mailbox-splitter');
+
+        expect(detail.hidden, 'nothing is open until a row is selected').toBe(true);
+        expect(splitter.hidden, 'no split without a detail').toBe(true);
+        expect(pane.getReference('mailbox-body').items, 'the list, the splitter, then the detail')
+            .toEqual([pane.getReference('mailbox-rows'), splitter, detail]);
+
+        open(pane, 'MESSAGE:a');
+        expect(detail.hidden).toBe(false);
+        expect(splitter.hidden, 'the splitter opens with the detail').toBe(false);
+        expect(detail.row.messageId).toBe('MESSAGE:a');
+        expect(detail.entry, 'a pane is read-only unless its host owns the inbox').toBe('observer');
+        expect(detail.viewerIdentity).toBe('@tobiu');
+        expect(asked, 'opening reads; it writes nothing').toEqual(['MESSAGE:a']);
+
+        pane.getReference('mailbox-rows').fire('deselect', {record: pane.store.get('MESSAGE:a')});
+        expect(detail.hidden).toBe(true);
+        expect(splitter.hidden, 'and closes with it').toBe(true);
+
+        pane.destroy()
+    });
+
+    test('a retracted row opens to its placeholder and asks for no body', () => {
+        const pane = createPane(), asked = [];
+
+        pane.on('messageOpen', data => asked.push(data.messageId));
+        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:r', status: 'retracted'})]);
+        open(pane, 'MESSAGE:r');
+
+        expect(pane.getReference('mailbox-detail').hidden).toBe(false);
+        expect(asked).toEqual([]);
+
+        pane.destroy()
+    });
+
+    test('the open message follows a refresh: its new status reaches the detail, and a refresh that drops it closes the detail', () => {
+        const pane = createPane(), detail = pane.getReference('mailbox-detail');
+
+        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:a'}), row({messageId: 'MESSAGE:b'})]);
+        open(pane, 'MESSAGE:a');
+
+        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:a', status: 'read'}), row({messageId: 'MESSAGE:b'})]);
+        expect(detail.row.status, 'the re-read row, not the click, says read').toBe('read');
+
+        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:b'})]);
+        expect(detail.hidden).toBe(true);
+        expect(pane.selectedMessageId).toBe(null);
+
+        pane.destroy()
+    });
+
+    test('the owner-written read and outcome reach the detail, and the host\'s entry decides the strip', () => {
+        const pane = createPane({detailEntry: 'own'}), detail = pane.getReference('mailbox-detail');
+
+        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:a'})]);
+        open(pane, 'MESSAGE:a');
+        pane.messageRead   = {messageId: 'MESSAGE:a', state: 'ok', message: {messageId: 'MESSAGE:a', body: 'the full body'}};
+        pane.actionOutcome = {messageId: 'MESSAGE:a', action: 'markRead', state: 'pending'};
+
+        expect(detail.entry).toBe('own');
+        expect(detail.getReference('detail-body').text).toBe('the full body');
+        expect(detail.getReference('detail-outcome').text).toBe('Mark read…');
+        expect(detail.getReference('detail-strip').hidden).toBe(false);
+
+        pane.destroy()
+    });
+
+    test('the detail\'s intents leave through the pane, stamped with the pane as their source', () => {
+        const pane = createPane({detailEntry: 'own'}), fired = [];
+
+        ['markReadRequest', 'replyRequest', 'resolveRequest'].forEach(name => pane.on(name, data => fired.push([name, data.messageId, data.source === pane.id])));
+        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:a'})]);
+        open(pane, 'MESSAGE:a');
+        pane.messageRead = {messageId: 'MESSAGE:a', state: 'ok', message: {messageId: 'MESSAGE:a', body: 'b', task: {state: 'InputRequired', assignee: '@tobiu'}}};
+
+        const detail = pane.getReference('mailbox-detail');
+
+        detail.onMarkReadClick();
+        detail.onReplyClick();
+        detail.onResolveClick();
+
+        expect(fired).toEqual([
+            ['markReadRequest', 'MESSAGE:a', true],
+            ['replyRequest',    'MESSAGE:a', true],
+            ['resolveRequest',  'MESSAGE:a', true]
+        ]);
+
+        pane.destroy()
+    });
+});

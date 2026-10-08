@@ -1,0 +1,52 @@
+/* AgentOS.view.fleet.mailbox.DetailContainer — the message opened from the mailbox, beside the list
+   (the pane's narrow regime stacks it under). Mount-agnostic like the pane: no frame of its own
+   beyond the divider that separates it from the rows; every color reads from the --fm-* token
+   layer, T1 role tokens only. */
+.fm-mailbox-detail {
+    gap         : var(--fm-space-2);
+    min-width   : 0;
+    min-height  : 0;
+    padding-left: var(--fm-space-2);
+    border-left : 1px solid var(--fm-line-soft);
+
+    .fm-mailbox-detail-from {
+        font : var(--fm-text-detail);
+        color: var(--fm-ink-dim);
+    }
+
+    /* the full subject, un-clamped: the row clamps it, the detail never does */
+    .fm-mailbox-detail-subject {
+        font         : var(--fm-text-body);
+        font-weight  : 600;
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
+    }
+
+    .fm-mailbox-detail-meta {
+        display    : flex;
+        gap        : var(--fm-space-2);
+        align-items: center;
+        font       : var(--fm-text-micro);
+        color      : var(--fm-ink-dim);
+    }
+
+    /* the peer's words as written, scrolling inside the column so the strip stays reachable */
+    .fm-mailbox-detail-body {
+        min-height   : 0;
+        overflow-y   : auto;
+        white-space  : pre-wrap;
+        overflow-wrap: anywhere;
+        font         : var(--fm-text-body);
+        color        : var(--fm-ink);
+    }
+
+    /* a pending or refused action: the reason and the Brain's code, in the wedged tone */
+    .fm-mailbox-detail-outcome {
+        font : var(--fm-text-detail);
+        color: var(--fm-state-wedged);
+    }
+
+    .fm-mailbox-detail-strip {
+        gap: var(--fm-space-2);
+    }
+}

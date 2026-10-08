@@ -19,13 +19,12 @@ import OperatorComposeForm from './ComposeForm.mjs';
  * surface holds neither the read seam nor the verb — identity stays a transport fact end-to-end,
  * never authored here.
  *
- * **Capability today = the shipped read-only pane.** The pane is read-only by its own MUST-NOT
- * (operator mark-read would mutate an agent's turn-start signal). The operator's OWN inbox is the
- * one place mark-read is legitimate (own-inbox capability, keyed by the server-stamped viewer↔target
- * relation) — but that write verb is NOT wired here, and this surface does not fake it: own-inbox
- * mark-read is an EXPLICIT deferred acceptance criterion (tracked as remaining ticket work), never
- * silently claimed as landing elsewhere. What ships is the honest read (the pane's four states) + live
- * compose with per-recipient outcomes; the surface is complete and inert-safe for what it does not yet do.
+ * **The own-inbox entry.** The pane is read-only by its own MUST-NOT (operator mark-read would
+ * mutate an agent's turn-start signal). The operator's OWN inbox is the one place a write is
+ * legitimate, keyed by the server-stamped viewer, so this host declares `detailEntry: 'own'`: a
+ * selected message opens to its full body with `Mark read` · `Reply` · `Resolve`. Mark read
+ * and Resolve relay to the owner as `markReadRequest` / `resolveRequest`; Reply opens the compose
+ * reveal for the sender, the subject and `inReplyTo`. A reply never resolves.
  *
  * The container owns no `state.Provider` (the cockpit scopes it) — `record` / `snapshot` /
  * `recipientOptions` are injected by the cockpit from state it already holds, and passed straight
@@ -88,6 +87,20 @@ class OperatorMailbox extends Container {
          */
         composeOutcome_: null,
         /**
+         * The owner's body read of the open message (`{messageId, state, message?, code?, reason?}`),
+         * passed straight to the inbox pane's detail.
+         * @member {Object|null} messageRead_=null
+         * @reactive
+         */
+        messageRead_: null,
+        /**
+         * The owner's settled Mark read / Resolve on the open message (`{messageId, action, state,
+         * code?, reason?}`), passed straight to the inbox pane's detail.
+         * @member {Object|null} actionOutcome_=null
+         * @reactive
+         */
+        actionOutcome_: null,
+        /**
          * Whether the compose form is revealed. `false` keeps it out of the layout; the head's
          * `✎ compose` chip toggles it, Escape inside the form closes it, a send never does.
          * @member {Boolean} composeOpen_=false
@@ -115,10 +128,11 @@ class OperatorMailbox extends Container {
          * @member {Object[]} items
          */
         items: [{
-            module   : MailboxPane,
-            flex     : 1,
-            header   : {text: 'Your inbox'},
-            reference: 'operator-inbox-pane'
+            module     : MailboxPane,
+            detailEntry: 'own',
+            flex       : 1,
+            header     : {text: 'Your inbox'},
+            reference  : 'operator-inbox-pane'
         }, {
             // the seat-conflation truth marker — hidden until a conflated posture is injected;
             // placed directly above the compose surface so the fact sits where the writing starts
@@ -165,6 +179,14 @@ class OperatorMailbox extends Container {
         // the pane's scroll-edge requests (the next window while `page.hasMore`) relay through the same
         // read intent the construction fire uses — one event, one cockpit handler, no chrome
         inbox?.on('pageRequest', me.onInboxPageRequest, me);
+        // the open message's intents: the owner reads and writes, reply stays a compose reveal here
+        inbox?.on({
+            markReadRequest: data => me.fire('markReadRequest', {messageId: data.messageId}),
+            messageOpen    : data => me.fire('messageOpen',     {messageId: data.messageId}),
+            replyRequest   : me.onReplyRequest,
+            resolveRequest : data => me.fire('resolveRequest',  {expectedCurrentState: data.expectedCurrentState, messageId: data.messageId}),
+            scope          : me
+        });
         form?.on('compose', me.onCompose, me);
 
         if (inbox) {
@@ -224,6 +246,8 @@ class OperatorMailbox extends Container {
             chip = me.getReference('compose-toggle');
 
         form && (form.hidden = !open);
+        // a folded form answers nothing: the next reveal starts as a new message
+        form && !open && (form.inReplyTo = null);
         chip && (chip.pressed = open);
         me.toggleCls('is-composing', open)
     }
@@ -322,6 +346,37 @@ class OperatorMailbox extends Container {
      */
     afterSetComposeOutcome(value, oldValue) {
         this.isConstructed && (this.getReference('operator-compose-form').composeOutcome = value)
+    }
+
+    /**
+     * Triggered after the owner's settled action changed — passed straight to the pane's detail.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetActionOutcome(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').actionOutcome = value)
+    }
+
+    /**
+     * Triggered after the owner's body read changed — passed straight to the pane's detail.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetMessageRead(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').messageRead = value)
+    }
+
+    /**
+     * @summary Reply from the open message: the compose reveal opens for its sender, with its subject
+     * and `inReplyTo`. The send is the operator's; replying never moves the message's Task.
+     * @param {Object} data `{messageId, subject, to}`
+     * @protected
+     */
+    onReplyRequest(data) {
+        this.composeOpen = true;
+        this.getReference('operator-compose-form').replyTo({inReplyTo: data.messageId, subject: data.subject, to: data.to})
     }
 
     /**
