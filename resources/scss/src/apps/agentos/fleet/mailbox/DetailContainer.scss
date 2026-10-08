@@ -1,11 +1,13 @@
-/* AgentOS.view.fleet.mailbox.DetailContainer — the message opened from the mailbox, docked under the
-   list. Mount-agnostic like the pane: no frame of its own beyond the divider that separates
-   it from the rows; every color reads from the --fm-* token layer, T1 role tokens only. */
+/* AgentOS.view.fleet.mailbox.DetailContainer — the message opened from the mailbox, beside the list
+   (the pane's narrow regime stacks it under). Mount-agnostic like the pane: no frame of its own
+   beyond the divider that separates it from the rows; every color reads from the --fm-* token
+   layer, T1 role tokens only. */
 .fm-mailbox-detail {
-    gap        : var(--fm-space-2);
-    min-height : 0;
-    padding-top: var(--fm-space-2);
-    border-top : 1px solid var(--fm-line-soft);
+    gap         : var(--fm-space-2);
+    min-width   : 0;
+    min-height  : 0;
+    padding-left: var(--fm-space-2);
+    border-left : 1px solid var(--fm-line-soft);
 
     .fm-mailbox-detail-from {
         font : var(--fm-text-detail);
@@ -28,9 +30,8 @@
         color      : var(--fm-ink-dim);
     }
 
-    /* the peer's words as written, scrolling inside a capped height so the strip stays reachable */
+    /* the peer's words as written, scrolling inside the column so the strip stays reachable */
     .fm-mailbox-detail-body {
-        max-height   : 40vh;
         min-height   : 0;
         overflow-y   : auto;
         white-space  : pre-wrap;

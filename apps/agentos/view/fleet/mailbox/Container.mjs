@@ -3,6 +3,7 @@ import Container         from '../../../../../node_modules/neo.mjs/src/container
 import MailboxGrid       from './Grid.mjs';
 import DetailContainer   from './DetailContainer.mjs';
 import AgentFreshness    from '../../../util/AgentFreshness.mjs';
+import Splitter          from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
 
 /**
  * @summary Is this payload the mirror adapter's own envelope?
@@ -55,7 +56,8 @@ function isRecognizedPage(page) {
  * **Read-only unless the host owns the inbox.** By default the pane renders zero mutation
  * affordances — no mark-read, no archive, no reply (the graduated record's MUST-NOT: operator-side
  * mark-read would mutate the agent's own turn-start signal and swallow peer handoffs). Selecting a
- * row opens its {@link AgentOS.view.fleet.mailbox.DetailContainer} under the list, which reads and
+ * row opens its {@link AgentOS.view.fleet.mailbox.DetailContainer} beside the list, the way the
+ * Memories pane reads a record beside its own (a narrow pane stacks the two); the detail reads and
  * never writes. The one host that owns its inbox declares `detailEntry: 'own'` (the operator's own
  * inbox), and only there the detail renders `Mark read` · `Reply` · `Resolve`. Thread-collapse
  * toggling stays pure display state on the view-owned `threadCollapsed` field. The pane's host label
@@ -182,20 +184,33 @@ class MailboxPane extends Container {
             cls      : ['fm-mailbox-state'],
             reference: 'mailbox-state'
         }, {
-            // the rows body IS the buffered grid: one pooled RowComponent per rendered
-            // row, thread collapse delegated inside the grid itself — this pane keeps the honest
-            // states, the admission gate and the snapshot projection, and hands the grid its store
-            module   : MailboxGrid,
+            // the list beside the open message: two shares and one, the engine's Splitter between
+            ntype    : 'container',
+            cls      : ['fm-mailbox-body'],
             flex     : 1,
             hidden   : true,
-            reference: 'mailbox-rows'
-        }, {
-            // the selected message, docked under the list: the grid's lattice cannot grow a row, so
-            // the selected row stays visible above as the detail's context
-            module   : DetailContainer,
-            flex     : '0 1 auto',
-            hidden   : true,
-            reference: 'mailbox-detail'
+            layout   : {ntype: 'hbox', align: 'stretch'},
+            reference: 'mailbox-body',
+            items    : [{
+                // the rows body IS the buffered grid: one pooled RowComponent per rendered
+                // row, thread collapse delegated inside the grid itself — this pane keeps the honest
+                // states, the admission gate and the snapshot projection, and hands the grid its store
+                module   : MailboxGrid,
+                flex     : 2,
+                hidden   : true,
+                reference: 'mailbox-rows'
+            }, {
+                module      : Splitter,
+                cls         : ['fm-mailbox-splitter'],
+                hidden      : true,
+                reference   : 'mailbox-splitter',
+                resizeTarget: 'previous'
+            }, {
+                module   : DetailContainer,
+                flex     : 1,
+                hidden   : true,
+                reference: 'mailbox-detail'
+            }]
         }]
     }
 
@@ -323,6 +338,8 @@ class MailboxPane extends Container {
             me     = this,
             detail = me.getReference('mailbox-detail'),
             record = me.getPaneState() === 'rows' && me.selectedMessageId ? me.store.get(me.selectedMessageId) : null;
+
+        me.getReference('mailbox-splitter').hidden = !record;
 
         detail.set({
             entry         : me.detailEntry,
@@ -504,6 +521,8 @@ class MailboxPane extends Container {
             text  : rows ? '' : me.getStateText(state)
         });
 
+        // the body leaves the layout with its rows, so a state line keeps the room it had alone
+        me.getReference('mailbox-body').hidden = !rows;
         rowsGrid.hidden = !rows;
 
         // Projection: the FIRST window replaces wholesale; a follow-up window (offset > 0) extends

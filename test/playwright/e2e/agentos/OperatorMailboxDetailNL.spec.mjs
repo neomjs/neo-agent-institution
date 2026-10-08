@@ -124,9 +124,30 @@ test.describe('AgentOS operator mailbox — open, mark read, reply, resolve (#55
             await expect(row).toContainText('task · InputRequired');
             await expect(detail).toBeHidden();
 
-            // open: the full body under the list, and opening writes nothing
+            // open: the full body beside the list (a narrow pane stacks it under), and opening writes nothing
             await row.click();
             await expect(detail.locator('.fm-mailbox-detail-body')).toHaveText(BODY);
+
+            const
+                grid     = mailbox.locator('.fm-mailbox-grid'),
+                splitter = mailbox.locator('.fm-mailbox-splitter'),
+                [pane]   = await app.queryComponent({className: 'AgentOS.view.fleet.mailbox.Container'}, ['id']);
+
+            expect((await mailbox.locator('.fm-mailbox-pane').boundingBox()).width, 'the fixture viewport gives a wide pane').toBeGreaterThan(720);
+            await expect(splitter).toBeVisible();
+            expect((await detail.boundingBox()).x, 'a wide pane puts the detail beside the list')
+                .toBeGreaterThanOrEqual((await grid.boundingBox()).x + (await grid.boundingBox()).width);
+
+            // a narrow pane (a pop-out, a vessel) stacks the two instead, never a squeezed pair
+            await app.setProperties(pane.properties.id, {width: 600});
+            await expect(splitter).toBeHidden();
+            await expect.poll(async () => {
+                const gridBox = await grid.boundingBox(), detailBox = await detail.boundingBox();
+
+                return detailBox.y >= gridBox.y + gridBox.height - 1
+            }, {message: 'a narrow pane stacks the detail under the list'}).toBe(true);
+            await app.setProperties(pane.properties.id, {width: null});
+            await expect(splitter).toBeVisible();
             expect(of('fleetOwnMessage').map(call => call.params)).toEqual([{messageId: 'MESSAGE:q1'}]);
             expect(of('markOwnMessageRead')).toHaveLength(0);
 

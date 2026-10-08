@@ -450,7 +450,7 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    e3318172463490a6da09373b3e159f9ece6c7625
+    049bc9308a4a74aa7953bffa0e6f7cbc1cb3ae68
 
 apps/agentos/view/fleet/mailbox/DetailContainer.mjs
     f76523e5789348634042d0ad203ad8ef255d327a
@@ -663,16 +663,16 @@ resources/scss/src/apps/agentos/fleet/mailbox/ComposeForm.scss
     911485c152a176b6252412802bc0b441aec2b0c9
 
 resources/scss/src/apps/agentos/fleet/mailbox/Container.scss
-    d52a82935fd11c387f2d496ee44f3113e48c8853
+    5a78898c4efa46c2141102b7cf2e82d4bb8b0088
 
 resources/scss/src/apps/agentos/fleet/mailbox/DetailContainer.scss
-    a3cc5f2b902640e9890def6f4d5b7ad22bcb148a
+    19bbbe5bfff140d4d4574a22ff7a9a2a8605b350
 
 resources/scss/src/apps/agentos/fleet/mailbox/Grid.scss
     80e8ed7ea14ee14771e81578f5a278dd55848805
 
 resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
-    210806f376bff053a7d6e26d8ba92ffcc1aad74e
+    eaa8827fea2895e54325b04811dcdd3f3214a88e
 
 resources/scss/src/apps/agentos/fleet/memories/Container.scss
     4e2008afdc07736bd3a23c9d7ff60a120a36f764

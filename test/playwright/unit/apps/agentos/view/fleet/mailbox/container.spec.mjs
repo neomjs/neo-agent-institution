@@ -721,18 +721,24 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox
 test.describe('AgentOS.view.fleet.mailbox.Container — the open message (#551)', () => {
     const open = (pane, messageId) => pane.getReference('mailbox-rows').fire('select', {record: pane.store.get(messageId)});
 
-    test('selecting a row opens its detail under the list and asks for its body; deselecting closes it', () => {
+    test('selecting a row opens its detail beside the list and asks for its body; deselecting closes it', () => {
         const pane = createPane(), asked = [];
 
         pane.on('messageOpen', data => asked.push(data.messageId));
         pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:a'}), row({messageId: 'MESSAGE:b', status: 'read'})]);
 
-        const detail = pane.getReference('mailbox-detail');
+        const
+            detail   = pane.getReference('mailbox-detail'),
+            splitter = pane.getReference('mailbox-splitter');
 
         expect(detail.hidden, 'nothing is open until a row is selected').toBe(true);
+        expect(splitter.hidden, 'no split without a detail').toBe(true);
+        expect(pane.getReference('mailbox-body').items, 'the list, the splitter, then the detail')
+            .toEqual([pane.getReference('mailbox-rows'), splitter, detail]);
 
         open(pane, 'MESSAGE:a');
         expect(detail.hidden).toBe(false);
+        expect(splitter.hidden, 'the splitter opens with the detail').toBe(false);
         expect(detail.row.messageId).toBe('MESSAGE:a');
         expect(detail.entry, 'a pane is read-only unless its host owns the inbox').toBe('observer');
         expect(detail.viewerIdentity).toBe('@tobiu');
@@ -740,6 +746,7 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the open message (#551)'
 
         pane.getReference('mailbox-rows').fire('deselect', {record: pane.store.get('MESSAGE:a')});
         expect(detail.hidden).toBe(true);
+        expect(splitter.hidden, 'and closes with it').toBe(true);
 
         pane.destroy()
     });
