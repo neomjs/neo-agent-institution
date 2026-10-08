@@ -63,7 +63,7 @@ class FleetStartPlan extends Base {
      *    closed: the projected `state: 'off'` below is a degraded DISPLAY fallback in this case, not
      *    evidence of a stopped runtime — the same gate that disables the per-card controls;
      * 6. a prior lifecycle `timeout` → the outcome is still UNKNOWN because the bridge Promise was
-     *    raced, not cancelled; fleet-level retry stays closed until an explicit card action clears it;
+     *    raced, not cancelled; retry stays closed until its current answer or a new card action clears it;
      * 7. session `state` other than `off` → the resident is already up (ok / idle / wedged / limited
      *    are all live states) — a fleet start targets the DOWN fleet (a WIRED stopped record —
      *    `observed` or `inferred` — is exactly that fleet).

@@ -18,6 +18,21 @@ import * as core                                                              fr
 import                                                                             '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {makeControllerFake, makeProviderFake, wireDetailRecord, wiredSources} from './cockpitFakes.mjs';
 
+const deferred = () => {
+    let resolve, reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject  = rejectPromise
+    });
+
+    return {promise, resolve, reject}
+};
+
+const flushMicrotasks = async () => {
+    await Promise.resolve();
+    await Promise.resolve()
+};
+
 /**
  * Covers the observe half of define→start→observe: after a lifecycle intent SETTLES, the
  * cockpit re-polls the roster so runtime truth re-materializes — `loadRoster` otherwise only fires
@@ -25,7 +40,7 @@ import {makeControllerFake, makeProviderFake, wireDetailRecord, wiredSources} fr
  * `loadRoster` is a spied collaborator here; that it correctly reconciles the Store is covered above.
  */
 test.describe('Fleet cockpit — controller re-polls the roster on a settled lifecycle intent (#14978)', () => {
-    let FleetCockpitController, FleetCockpit, FleetAgent, Store;
+    let FleetCockpitController, FleetCockpit, FleetAgent, FleetLifecycleIntentAdapter, Store, TargetBinding;
 
     const settlingBridge  = () => ({startAgent: async () => ({}), stopAgent: async () => ({}), restartAgent: async () => ({})});
     const rejectingBridge = () => ({startAgent: async () => { throw new Error('harness offline') }});
@@ -44,10 +59,78 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         FleetCockpitController = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
         FleetCockpit          = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs')).default;
         FleetAgent            = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
+        FleetLifecycleIntentAdapter = (await import('../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs')).default;
+        TargetBinding         = (await import('../../../../../../../../apps/agentos/util/TargetBinding.mjs')).default;
         Store                 = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
     });
 
     test.afterEach(() => clearBridge());
+
+    const makeLiveRoster = async bridge => {
+        setBridge(bridge);
+
+        const
+            store    = Neo.create(Store, {keyProperty: 'agentId', model: FleetAgent}),
+            provider = makeProviderFake(),
+            grid     = {adapterState: 'cold', store},
+            view     = {
+                detailRecord          : null,
+                getCatchUpPane        : () => null,
+                getMemoriesPane       : () => null,
+                getOperatorMailboxPane: () => null,
+                getStateProvider      : () => provider,
+                livenessReadTimeout   : 4000
+            },
+            controller = makeControllerFake(FleetCockpitController, {
+                component              : view,
+                getReference           : reference => reference === 'fleet-grid' ? grid : null,
+                resolveFleetRosterStore: () => store
+            });
+
+        await controller.loadRoster();
+
+        return {controller, grid, provider, store}
+    };
+
+    const withFastLifecycleDeadline = async callback => {
+        const
+            original = FleetLifecycleIntentAdapter.handleFleetLifecycleIntent,
+            calls    = [];
+
+        FleetLifecycleIntentAdapter.handleFleetLifecycleIntent = function(intent, record, options={}) {
+            const timer = {callback: null, cleared: false};
+
+            const promise = original.call(this, intent, record, {
+                ...options,
+                clearTimeoutFn: () => { timer.cleared = true },
+                setTimeoutFn  : fn => {
+                    timer.callback = fn;
+                    return timer
+                },
+                timeoutMs: 1
+            });
+
+            calls.push({promise, timer});
+
+            return promise
+        };
+
+        try {
+            await callback({
+                calls,
+                async fire(index) {
+                    for (let attempt = 0; attempt < 8 && !calls[index]?.timer.callback; attempt++) {
+                        await Promise.resolve()
+                    }
+
+                    expect(calls[index]?.timer.callback, 'the lifecycle deadline was registered').toBeTruthy();
+                    calls[index].timer.callback()
+                }
+            })
+        } finally {
+            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent = original
+        }
+    };
 
     test('refreshRosterOnSettle re-polls only when the settle says the roster can read something new', async () => {
         const calls      = [],
@@ -283,5 +366,353 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         expect(provider.data.gridAdapterState).toBe('live');
 
         store.destroy()
+    })
+
+    test('a timed-out card Start reconciles the same real roster record off -> ok when its actual reply arrives', async () => {
+        let running = false, rosterReads = 0;
+
+        const response = deferred(),
+              wired    = channel => ({source: `fleet:${channel}`, state: 'wired', confidence: 'observed'}),
+              row      = () => ({
+                  id         : 'vega',
+                  displayName: 'Vega',
+                  lifecycle  : {source: 'fleet:runtimeStatus', state: running ? 'running' : 'stopped', confidence: 'observed'},
+                  sources    : {roster: wired('listAgents'), repoStatus: wired('fleetStatus'), runtime: wired('runtimeStatus')}
+              }),
+              bridge   = {
+                  profileId  : 'profile-a',
+                  startAgent : () => response.promise,
+                  fleetRoster: async () => { rosterReads++; return {rows: [row()]} }
+              },
+              {controller, store} = await makeLiveRoster(bridge),
+              record = store.get('vega'),
+              origGet = Neo.getComponent;
+
+        expect(record.state).toBe('off');
+
+        await withFastLifecycleDeadline(async ({calls, fire}) => {
+            Neo.getComponent = id => id === 'card-vega' ? {record} : null;
+
+            try {
+                const action = controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'card-vega'});
+
+                await flushMicrotasks();
+                await fire(0);
+                await action;
+
+                expect(record.state).toBe('off');
+                expect(record.controlReason.kind).toBe('timeout');
+                expect(rosterReads).toBe(1);
+
+                running = true;
+                response.resolve({state: 'running'});
+
+                const result = await calls[0].promise;
+                await result.settlement;
+
+                expect(store.get('vega')).toBe(record);
+                expect(record.state).toBe('ok');
+                expect(record.controlReason).toBeNull();
+                expect(rosterReads).toBe(2)
+            } finally {
+                Neo.getComponent = origGet
+            }
+        });
+
+        store.destroy()
+    });
+
+    test('Start All refreshes the real roster once when its timed-out member later answers', async () => {
+        let running = false, rosterReads = 0;
+
+        const response = deferred(), summaries = [],
+              wired    = channel => ({source: `fleet:${channel}`, state: 'wired', confidence: 'observed'}),
+              row      = () => ({
+                  id         : 'vega',
+                  displayName: 'Vega',
+                  lifecycle  : {source: 'fleet:runtimeStatus', state: running ? 'running' : 'stopped', confidence: 'observed'},
+                  sources    : {roster: wired('listAgents'), repoStatus: wired('fleetStatus'), runtime: wired('runtimeStatus')}
+              }),
+              bridge   = {
+                  profileId  : 'profile-a',
+                  startAgent : () => response.promise,
+                  fleetRoster: async () => { rosterReads++; return {rows: [row()]} }
+              },
+              {controller, store} = await makeLiveRoster(bridge);
+
+        controller.renderStartSummary = summary => summaries.push(summary);
+
+        await withFastLifecycleDeadline(async ({calls, fire}) => {
+            const batch = controller.onStartFleet();
+
+            await flushMicrotasks();
+            await fire(0);
+
+            const summary = await batch;
+
+            expect(summary.unknown).toHaveLength(1);
+            expect(summaries.at(-1).unknown).toHaveLength(1);
+            expect(store.get('vega').state).toBe('off');
+            expect(rosterReads).toBe(1);
+
+            running = true;
+            response.resolve({state: 'running'});
+
+            const result = await calls[0].promise;
+            await result.settlement;
+
+            expect(store.get('vega').state).toBe('ok');
+            expect(summaries.at(-1)).toMatchObject({started: 1, unknown: [], rejected: [], excluded: []});
+            expect(rosterReads).toBe(2)
+        });
+
+        store.destroy()
+    });
+
+    test('a newer Start All batch owns the summary after an older timed-out start later answers', async () => {
+        const response = deferred(), summaries = [],
+              wired    = channel => ({source: `fleet:${channel}`, state: 'wired', confidence: 'observed'}),
+              row      = () => ({
+                  id       : 'vega',
+                  lifecycle: {source: 'fleet:runtimeStatus', state: 'stopped', confidence: 'observed'},
+                  sources  : {roster: wired('listAgents'), repoStatus: wired('fleetStatus'), runtime: wired('runtimeStatus')}
+              }),
+              bridge   = {
+                  profileId  : 'profile-a',
+                  startAgent : () => response.promise,
+                  fleetRoster: async () => ({rows: [row()]})
+              },
+              {controller, store} = await makeLiveRoster(bridge);
+
+        controller.renderStartSummary = summary => summaries.push(summary);
+
+        await withFastLifecycleDeadline(async ({calls, fire}) => {
+            const oldBatch = controller.onStartFleet();
+
+            await flushMicrotasks();
+            await fire(0);
+            await oldBatch;
+
+            expect(summaries.at(-1).unknown).toHaveLength(1);
+
+            const newBatch = await controller.onStartFleet();
+
+            expect(newBatch.excluded).toHaveLength(1);
+            expect(summaries.at(-1).excluded).toHaveLength(1);
+
+            response.resolve({state: 'running'});
+
+            const result = await calls[0].promise;
+            await result.settlement;
+            await flushMicrotasks();
+
+            expect(summaries.at(-1).excluded).toHaveLength(1);
+            expect(summaries.at(-1).started).toBe(0)
+        });
+
+        store.destroy()
+    });
+
+    test('a late reply after profile replacement neither writes the retired record nor refreshes the new profile', async () => {
+        const response = deferred(),
+              wired    = channel => ({source: `fleet:${channel}`, state: 'wired', confidence: 'observed'}),
+              row      = displayName => ({
+                  id       : 'vega',
+                  displayName,
+                  lifecycle: {source: 'fleet:runtimeStatus', state: 'stopped', confidence: 'observed'},
+                  sources  : {roster: wired('listAgents'), repoStatus: wired('fleetStatus'), runtime: wired('runtimeStatus')}
+              }),
+              store = Neo.create(Store, {keyProperty: 'agentId', model: FleetAgent}),
+              provider = makeProviderFake(),
+              grid = {adapterState: 'live', store},
+              view = {
+                  detailRecord          : null,
+                  getCatchUpPane        : () => null,
+                  getMemoriesPane       : () => null,
+                  getOperatorMailboxPane: () => null,
+                  getStateProvider      : () => provider,
+                  livenessReadTimeout   : 4000
+              },
+              controller = makeControllerFake(FleetCockpitController, {
+                  component              : view,
+                  getReference           : reference => reference === 'fleet-grid' ? grid : null,
+                  resolveFleetRosterStore: () => store,
+                  rosterWired            : true,
+                  rosterProfileId        : 'profile-a'
+              }),
+              origGet = Neo.getComponent;
+
+        setBridge({profileId: 'profile-a', startAgent: () => response.promise});
+        store.add([controller.mapRosterRow(row('Profile A'))]);
+
+        const retired       = store.get('vega'), retiredSet = retired.set.bind(retired);
+        let   retiredWrites = 0, readsB = 0;
+
+        retired.set = values => { retiredWrites++; return retiredSet(values) };
+
+        await withFastLifecycleDeadline(async ({calls, fire}) => {
+            Neo.getComponent = id => id === 'card-vega' ? {record: retired} : null;
+
+            try {
+                const action = controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'card-vega'});
+
+                await flushMicrotasks();
+                await fire(0);
+                await action;
+
+                const writesAtTimeout = retiredWrites;
+
+                setBridge({
+                    profileId  : 'profile-b',
+                    fleetRoster: async () => { readsB++; return {rows: [row('Profile B')]} }
+                });
+
+                // The new profile gets a cold retirement then a fresh same-key admission; the old
+                // request still owns only A's record object.
+                TargetBinding.retireRoster(controller, {store, grid, profileId: 'profile-b'});
+                controller.admitRoster({profileId: 'profile-b', rows: [controller.mapRosterRow(row('Profile B'))]});
+
+                const current = store.get('vega');
+
+                expect(current).not.toBe(retired);
+                expect(current.displayName).toBe('Profile B');
+                expect(current.pendingAction).toBeNull();
+                expect(current.controlReason).toBeNull();
+
+                response.resolve({state: 'running'});
+
+                const result = await calls[0].promise;
+                await result.settlement;
+
+                expect(retiredWrites).toBe(writesAtTimeout);
+                expect(store.get('vega')).toBe(current);
+                expect(current.state).toBe('off');
+                expect(readsB).toBe(0)
+            } finally {
+                Neo.getComponent = origGet
+            }
+        });
+
+        store.destroy()
+    });
+
+    test('a same-profile bridge replacement accepts the late reply against the retained record', async () => {
+        let running = false, readsA = 0, readsReplacement = 0;
+
+        const response = deferred(),
+              wired    = channel => ({source: `fleet:${channel}`, state: 'wired', confidence: 'observed'}),
+              row      = () => ({
+                  id       : 'vega',
+                  lifecycle: {source: 'fleet:runtimeStatus', state: running ? 'running' : 'stopped', confidence: 'observed'},
+                  sources  : {roster: wired('listAgents'), repoStatus: wired('fleetStatus'), runtime: wired('runtimeStatus')}
+              }),
+              bridgeA  = {
+                  profileId  : 'profile-a',
+                  startAgent : () => response.promise,
+                  fleetRoster: async () => { readsA++; return {rows: [row()]} }
+              },
+              {controller, store} = await makeLiveRoster(bridgeA),
+              record = store.get('vega'),
+              origGet = Neo.getComponent;
+
+        await withFastLifecycleDeadline(async ({calls, fire}) => {
+            Neo.getComponent = id => id === 'card-vega' ? {record} : null;
+
+            try {
+                const action = controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'card-vega'});
+
+                await flushMicrotasks();
+                await fire(0);
+                await action;
+
+                const replacement = {
+                    profileId  : 'profile-a',
+                    fleetRoster: async () => { readsReplacement++; return {rows: [row()]} }
+                };
+
+                setBridge(replacement);
+                running = true;
+                response.resolve({state: 'running'});
+
+                const result = await calls[0].promise;
+                await result.settlement;
+
+                expect(store.get('vega')).toBe(record);
+                expect(record.state).toBe('ok');
+                expect(readsA).toBe(1);
+                expect(readsReplacement).toBe(1)
+            } finally {
+                Neo.getComponent = origGet
+            }
+        });
+
+        store.destroy()
+    });
+
+    test('late replies after the record is removed or cockpit destroyed do not write or refresh', async () => {
+        for (const destroyed of [false, true]) {
+            let reads = 0;
+
+            const response = deferred(),
+                  wired    = channel => ({source: `fleet:${channel}`, state: 'wired', confidence: 'observed'}),
+                  bridge   = {
+                      profileId  : 'profile-a',
+                      startAgent : () => response.promise,
+                      fleetRoster: async () => {
+                          reads++;
+                          return {rows: [{
+                              id       : 'vega',
+                              lifecycle: {source: 'fleet:runtimeStatus', state: 'stopped', confidence: 'observed'},
+                              sources  : {roster: wired('listAgents'), repoStatus: wired('fleetStatus'), runtime: wired('runtimeStatus')}
+                          }]}
+                      }
+                  },
+                  {controller, store} = await makeLiveRoster(bridge),
+                  record = store.get('vega'),
+                  origGet = Neo.getComponent;
+
+            await withFastLifecycleDeadline(async ({calls, fire}) => {
+                Neo.getComponent = id => id === 'card-vega' ? {record} : null;
+
+                try {
+                    const action = controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'card-vega'});
+
+                    await flushMicrotasks();
+                    await fire(0);
+                    await action;
+
+                    const writesAtTimeout = record.controlReason;
+
+                    if (destroyed) {
+                        controller.isDestroyed = true
+                    } else {
+                        store.remove(['vega'])
+                    }
+
+                    response.resolve({state: 'running'});
+
+                    const result = await calls[0].promise;
+                    await result.settlement;
+
+                    expect(record.controlReason).toBe(writesAtTimeout);
+                    expect(reads).toBe(1);
+                    expect(store.get('vega')).toBe(destroyed ? record : null);
+
+                    if (destroyed) {
+                        const reloaded = await makeLiveRoster(bridge);
+                        const fresh    = reloaded.store.get('vega');
+
+                        expect(fresh).not.toBe(record);
+                        expect(fresh.pendingAction).toBeNull();
+                        expect(fresh.controlReason).toBeNull();
+                        reloaded.store.destroy()
+                    }
+                } finally {
+                    Neo.getComponent = origGet
+                }
+            });
+
+            store.destroy()
+        }
     })
 });

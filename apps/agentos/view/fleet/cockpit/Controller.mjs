@@ -130,6 +130,8 @@ class Controller extends ReadingSurfacesController {
      * @protected
      */
     startFleetPromise = null
+    /** @member {Object|null} startFleetBatch=null Token fencing late summaries from older batches. */
+    startFleetBatch = null
     /**
      * Read-fence + in-flight accounting + owner-held snapshot for the tasks surface.
      * @member {Number} tasksReadGeneration=0
@@ -210,8 +212,8 @@ class Controller extends ReadingSurfacesController {
     onAgentLifecycleIntent(data) {
         const card = Neo.getComponent(data.source);
 
-        return card && this.refreshRosterOnSettle(
-            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent(data, card.record).then(FleetLifecycleIntentAdapter.rosterMayRead)
+        return card && this.requestFleetLifecycle(data, card.record).then(result =>
+            this.refreshRosterOnSettle(Promise.resolve(FleetLifecycleIntentAdapter.rosterMayRead(result)), result.isCurrent)
         )
     }
 
@@ -507,10 +509,8 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
-     * @summary Execute the STAGED fleet bring-up: partition the full roster truth through the
-     * pure eligibility rules (every fact from the wire, every exclusion named), drive each
-     * eligible record's own honest round-trip, render the outcome summary, then re-poll the
-     * roster once when anything started or the Fleet refused a start.
+     * @summary Start eligible records and re-poll once after their initial answers. Current late
+     * answers update the batch summary; a newer batch retires that summary's writer.
      * @returns {Promise<Object>} The outcome summary.
      * @protected
      */
@@ -518,19 +518,32 @@ class Controller extends ReadingSurfacesController {
         const
             me      = this,
             records = me.getRosterRecords(),
-            plan    = FleetStartPlan.partitionFleetStart(records);
+            plan    = FleetStartPlan.partitionFleetStart(records),
+            batch   = me.startFleetBatch = {},
+            profile = me.bridgeProfileId;
 
         me.renderStartSummary(null);
 
         const results = await Promise.all(plan.eligible.map(record =>
-            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent({action: 'start', agentId: record.agentId}, record)
+            me.requestFleetLifecycle({action: 'start', agentId: record.agentId}, record)
         ));
 
         const summary = FleetStartPlan.summarizeFleetStart(plan, results);
 
-        me.renderStartSummary(summary);
+        if (!me.isDestroyed && me.startFleetBatch === batch && me.bridgeProfileId === profile) {
+            me.renderStartSummary(summary)
+        }
 
-        await me.refreshRosterOnSettle(Promise.resolve(results.some(FleetLifecycleIntentAdapter.rosterMayRead)));
+        results.forEach((result, index) => {
+            result.settlement?.then(answer => {
+                if (me.startFleetBatch === batch && answer.isCurrent()) {
+                    results[index] = answer;
+                    me.renderStartSummary(FleetStartPlan.summarizeFleetStart(plan, results))
+                }
+            })
+        });
+
+        await me.refreshRosterOnSettle(Promise.resolve(true), () => results.some(FleetLifecycleIntentAdapter.rosterMayRead));
 
         return summary
     }
