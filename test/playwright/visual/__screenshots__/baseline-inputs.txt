@@ -399,7 +399,7 @@ apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs
     b386eb4c112e2116dabe889bbf3467c51c7f9bfa
 
 apps/agentos/view/fleet/detail/SeatModelContainer.mjs
-    5d43554e6c17bc1880445dc838072eb281315d5a
+    bfabaa61dac7c6600999b701101882b8260b25c6
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
     e2b127838254f6fa5ab6512f19793c94aea2aa03
@@ -789,7 +789,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    cc61149a6912e3d1df4eb58420ff83413194e13d
+    20f3bb9337a5b77fd75bee0afce746617a5c6c6a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -1038,10 +1038,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-memory-r
     1930eba5c2c8a58bd1618dc6c414a276dc6efe86
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-app-effort-light.png
-    afc559cc2c62ca6e3b17ab7d9ab56c8cf3c6e906
+    18b7d850dc09ecf74d8ef7f668393d82f02dab94
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-app-effort.png
-    d61eb3615aec0a619e19a97dc65d1918316cfd34
+    9178aa164a556ba1e646b2232428e16fb7810b71
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-app.png
     5209eb3e24d756a1b3ed3beaba2ffa57b797215f

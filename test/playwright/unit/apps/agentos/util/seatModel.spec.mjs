@@ -23,6 +23,7 @@ test.describe('AgentOS.util.SeatModel — the Seat group\'s words for a seat\'s 
     test('Desktop effort shows its app default or exact declaration without adopting configured values', () => {
         expect(effortRow({})).toEqual({actions: ['change'], text: 'app default'});
         expect(effortRow({declared: 'max'})).toEqual({actions: ['change'], text: 'declared max'});
+        expect(effortRow({declared: 'xhigh'})).toEqual({actions: ['change'], text: 'declared xhigh'});
         expect(effortRow({declared: 'medium', configured: {reasoningEffort: 'max'}})).toEqual({actions: ['change'], text: 'declared medium'});
         expect(effortRow({configured: {reasoningEffort: 'high'}})).toEqual({actions: ['change'], text: 'app default'});
         expect(effortRow({declared: 'max', refused: 'reasoning effort max is not available'})).toEqual({

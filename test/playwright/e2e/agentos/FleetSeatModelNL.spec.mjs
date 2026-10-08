@@ -247,18 +247,22 @@ test.describe('AgentOS Detail › Configuration — the Seat group over the Flee
             await expect(effortRow.locator('.fm-seat-model-change')).toBeVisible();
 
             await effortRow.locator('.fm-seat-model-change').click();
-            await expect(offer.locator('.fm-chip')).toHaveText(['Max', 'Use app default']);
+            await expect(offer.locator('.fm-chip')).toHaveText(['Low', 'Medium', 'High', 'Extra', 'Max', 'Use app default']);
             expect(sent('fleetSeatModelCatalog')).toEqual([]);
+            await expect(offer.getByText('Ultra', {exact: true})).toHaveCount(0);
 
-            await offer.getByText('Max', {exact: true}).click();
-            await expect(effort).toHaveText('declared max');
-            expect(sent('configureAgent')).toEqual([{id: SEAT, reasoningEffort: 'max'}]);
+            await offer.getByText('Extra', {exact: true}).click();
+            await expect(effort).toHaveText('declared xhigh');
 
             await effortRow.locator('.fm-seat-model-change').click();
-            await expect(offer.locator('.fm-chip')).toHaveText(['Max', 'Use app default']);
+            await offer.getByText('Max', {exact: true}).click();
+            await expect(effort).toHaveText('declared max');
+
+            await effortRow.locator('.fm-seat-model-change').click();
             await offer.getByText('Use app default', {exact: true}).click();
             await expect(effort).toHaveText('app default');
             expect(sent('configureAgent')).toEqual([
+                {id: SEAT, reasoningEffort: 'xhigh'},
                 {id: SEAT, reasoningEffort: 'max'},
                 {id: SEAT, reasoningEffort: null}
             ]);

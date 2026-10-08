@@ -302,7 +302,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(group).toHaveScreenshot('seat-model-app.png');
 
         await group.locator('.fm-seat-model-row').nth(1).locator('.fm-seat-model-change').click();
-        await expect(group.locator('.fm-seat-model-offer .fm-chip')).toHaveText(['Max', 'Use app default']);
+        await expect(group.locator('.fm-seat-model-offer .fm-chip')).toHaveText(['Low', 'Medium', 'High', 'Extra', 'Max', 'Use app default']);
         await settle();
         await expect(group).toHaveScreenshot('seat-model-app-effort.png');
 
@@ -330,7 +330,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await open('Ada');
         await group.locator('.fm-seat-model-row').nth(1).locator('.fm-seat-model-change').click();
-        await expect(group.locator('.fm-seat-model-offer .fm-chip')).toHaveText(['Max', 'Use app default']);
+        await expect(group.locator('.fm-seat-model-offer .fm-chip')).toHaveText(['Low', 'Medium', 'High', 'Extra', 'Max', 'Use app default']);
         await settle();
         await expect(group).toHaveScreenshot('seat-model-app-effort-light.png')
     });

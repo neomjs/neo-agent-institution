@@ -11,6 +11,14 @@ import SeatMemoryContainer from './SeatMemoryContainer.mjs';
 const FIELDS = [{field: 'model', label: 'model'}, {field: 'reasoningEffort', label: 'reasoning effort'}];
 
 /**
+ * Documented Claude effort declarations; the app applies model-specific support and caps.
+ * Extra names `xhigh`. Ultracode is a separate workflow setting, not an effort-carrier value.
+ * @type {Readonly<Object<String, String>>}
+ * @see https://code.claude.com/docs/en/model-config#adjust-effort-level
+ */
+const DESKTOP_EFFORT_LABELS = Object.freeze({low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra', max: 'Max'});
+
+/**
  * @summary One row: its label beside the actions its state offers, and its line beneath at the group's whole width,
  * so both values stay readable in the narrowest inspector.
  * @param {String} field
@@ -56,7 +64,7 @@ const seatRow = (field, label) => ({
  * @summary Agent Detail › Configuration's Seat group: the model and reasoning effort declared for the seat's harness,
  * beside what its config is set to, in {@link AgentOS.util.SeatModel}'s words. Change offers only what the harness
  * itself names: a Codex seat's catalog, `claude-code`'s effort levels, and a model id for `claude-code`, which takes
- * any it accepts. Claude Desktop offers the explicit Max/default effort choice without pretending to enumerate
+ * any it accepts. Claude Desktop offers documented effort declarations without pretending to enumerate
  * its unsupported catalog. Its model stays read-only; a declaration is not an effective-session measurement.
  *
  * Like the commit-identity row it changes nothing itself. It fires `readSeatCatalog` for the values to offer, and
@@ -240,7 +248,7 @@ class SeatModelContainer extends Container {
     }
 
     /**
-     * @summary The values a field offers. Desktop's Max preset needs no catalog or prior Start. For catalog-backed
+     * @summary The values a field offers. Desktop's documented choices need no catalog or prior Start. For catalog-backed
      * fields, a Codex model's efforts belong to the
      * declared model, else to the configured one, else to the catalog's default. A model value names its entry by id
      * or slug ({@link AgentOS.util.SeatModel.findModel}).
@@ -251,7 +259,7 @@ class SeatModelContainer extends Container {
         const {catalog, configured, seat} = this;
 
         if (seat?.harnessType === 'claude-desktop') {
-            return field === 'reasoningEffort' && SeatModel.declarable(seat.harnessType, field) ? ['max'] : null
+            return field === 'reasoningEffort' && SeatModel.declarable(seat.harnessType, field) ? Object.keys(DESKTOP_EFFORT_LABELS) : null
         }
 
         if (!catalog || catalog.state === 'unsupported' || catalog.state === 'unavailable' && !catalog.models?.length) return null;
@@ -321,7 +329,7 @@ class SeatModelContainer extends Container {
                     module : Button,
                     cls    : ['fm-chip', 'fm-seat-model-value', declared === value ? 'is-selected' : 'is-selectable'],
                     handler: () => me.declare(me.editing, value),
-                    text   : desktopEffort ? 'Max' : value
+                    text   : desktopEffort ? DESKTOP_EFFORT_LABELS[value] : value
                 })),
                 {
                     module : Button,
