@@ -1,12 +1,13 @@
-import ViewerWakeController from './ViewerWakeController.mjs';
-import BrainHealthRead      from '../../../util/BrainHealthRead.mjs';
-import DeploymentStateRead  from '../../../util/DeploymentStateRead.mjs';
-import FleetAdmission       from '../../../util/FleetAdmission.mjs';
-import LivenessCadence      from '../../../util/LivenessCadence.mjs';
-import PlaneCredentialCheck from '../../../util/PlaneCredentialCheck.mjs';
-import RosterRow            from '../../../util/RosterRow.mjs';
-import SourceHealth         from '../../../util/SourceHealth.mjs';
-import TargetBinding        from '../../../util/TargetBinding.mjs';
+import ViewerWakeController        from './ViewerWakeController.mjs';
+import BrainHealthRead             from '../../../util/BrainHealthRead.mjs';
+import DeploymentStateRead         from '../../../util/DeploymentStateRead.mjs';
+import FleetAdmission              from '../../../util/FleetAdmission.mjs';
+import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
+import LivenessCadence             from '../../../util/LivenessCadence.mjs';
+import PlaneCredentialCheck        from '../../../util/PlaneCredentialCheck.mjs';
+import RosterRow                   from '../../../util/RosterRow.mjs';
+import SourceHealth                from '../../../util/SourceHealth.mjs';
+import TargetBinding               from '../../../util/TargetBinding.mjs';
 
 const
     /**
@@ -186,13 +187,46 @@ class LivenessController extends ViewerWakeController {
      * ({@link AgentOS.util.FleetLifecycleIntentAdapter.rosterMayRead}): a runtime change, or a
      * refusal whose recorded cause the card then words. Never on a timeout, whose outcome is unknown.
      * @param {Promise<Boolean>} settled
+     * @param {Function} [isCurrent] Recheck the operation's target after waiting.
      * @returns {Promise<*>}
      * @protected
      */
-    async refreshRosterOnSettle(settled) {
-        if (await settled) {
+    async refreshRosterOnSettle(settled, isCurrent=() => true) {
+        if (await settled && !this.isDestroyed && isCurrent()) {
             return this.loadRoster()
         }
+    }
+
+    /**
+     * @summary Bind a lifecycle round-trip to its roster record and profile. A UI timeout returns
+     * promptly; its later answer still reconciles and re-polls while that same attempt is current.
+     * @param {Object} intent The card or batch lifecycle intent.
+     * @param {Object} record Its provider-owned roster record.
+     * @returns {Promise<Object>} Adapter result; a timeout's settlement includes the late re-poll.
+     */
+    async requestFleetLifecycle(intent, record) {
+        const
+            me        = this,
+            bridge    = me.bridge,
+            profileId = me.bridgeProfileId,
+            store     = me.resolveFleetRosterStore(),
+            agentId   = record.agentId,
+            isCurrent = () => !me.isDestroyed && me.bridgeProfileId === profileId &&
+                (!store || (me.resolveFleetRosterStore() === store &&
+                    (store.get(agentId) ?? store.allItems?.get(agentId)) === record)),
+            result      = await FleetLifecycleIntentAdapter.handleFleetLifecycleIntent(intent, record, {bridge, isCurrent});
+
+        if (result.settlement) {
+            result.settlement = result.settlement.then(async answer => {
+                await me.refreshRosterOnSettle(Promise.resolve(FleetLifecycleIntentAdapter.rosterMayRead(answer)), answer.isCurrent);
+                return answer
+            }).catch(error => {
+                console.error('FleetCockpit: late lifecycle reconciliation failed', FleetLifecycleIntentAdapter.sanitizeControlReason(error?.message));
+                return {ok: false, status: 'rejected', isCurrent: () => false}
+            })
+        }
+
+        return result
     }
 
     /**

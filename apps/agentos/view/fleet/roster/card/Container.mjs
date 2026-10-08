@@ -368,7 +368,7 @@ class AgentCard extends Container {
             vdom     : {'aria-label': 'Source health'}
         }, {
             // the honest control round-trip surface — hidden until a pending intent or a terminal
-            // reason exists; renders the B4/C2 matrix (pending "…", timeout stale, "⚠ rejected: reason")
+            // reason exists; renders the B4/C2 matrix (pending "…", unanswered timeout, "⚠ rejected: reason")
             // WITHOUT faking success. Kept distinct from the source strip so a control failure never
             // masquerades as a source fact.
             ntype    : 'component',
@@ -877,8 +877,10 @@ class AgentCard extends Container {
                         : !controlReason
                             ? admissionLine?.text ?? sessionLine?.text ?? ''
                             : controlReason.kind === 'timeout'
-                                ? `${controlReason.action}… stale — no response`
+                                ? `${controlReason.action}… no answer yet`
                                 : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
+            timeoutTitle      = !wrongFolder && !pendingAction && !modelRefusal && controlReason?.kind === 'timeout'
+                ? `${controlStatusText}. The outcome is unknown until the Fleet answers.` : null,
             // the last start's commit identity, when it needs repair, rides beside a refusal as its own
             // observation: the wire carries no refusal code, so it never stands in as the cause
             identityNote      = controlReason && !pendingAction && SeatGitIdentity.needsRepair(record.gitIdentity)
@@ -891,9 +893,9 @@ class AgentCard extends Container {
             text  : controlStatusText
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
-        controlStatus.changeVdomRootKey('title', modelRefusal
+        controlStatus.changeVdomRootKey('title', timeoutTitle || (modelRefusal
             ? modelRefusal.title + identityNote
-            : admissionLine?.title ?? sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null));
+            : admissionLine?.title ?? sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
 
         me.update()
     }

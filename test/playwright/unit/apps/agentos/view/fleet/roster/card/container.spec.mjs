@@ -1324,7 +1324,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         snapshot.destroy()
     });
 
-    test('B4 honest state: unauthorized disables the whole cluster with its reason; timeout renders stale-pending with retry still open (#14611)', () => {
+    test('B4 honest state: unauthorized disables the cluster; timeout remains unanswered with retry open (#608)', () => {
         const card   = createCard({agentId: 'vega', state: 'ok'});
         const verbs  = () => card.down({reference: 'control-verbs'}).items;
         const status = () => card.down({reference: 'control-status'});
@@ -1335,10 +1335,11 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(verbs().every(button => button.disabled)).toBe(true);
         expect(status().text).toBe('⚠ unauthorized: Fleet Registry bridge unavailable');
 
-        // timeout → the outcome is UNKNOWN (the verb may still be running, we lost the answer) → stale-pending:
+        // timeout → the outcome is UNKNOWN (the verb may still be running; its answer remains observed):
         // an unfinished "…", NOT a resolved "⚠" failure, and retry stays OPEN (the cluster re-enables)
         applySet(card, {controlReason: {action: 'restart', kind: 'timeout', reason: 'restart timed out after 30000ms'}, pendingAction: null});
-        expect(status().text).toBe('restart… stale — no response');
+        expect(status().text).toBe('restart… no answer yet');
+        expect(status().vdom.title).toBe('restart… no answer yet. The outcome is unknown until the Fleet answers.');
         expect(verbs()[0].disabled).toBe(false);
 
         card.destroy()

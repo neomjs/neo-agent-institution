@@ -6,7 +6,7 @@ engine
     eb389e9ae7fb26b122942ca069570b10f1fe08ba0683d32838eb5a5dca6207e4
 
 apps/agentos/CARD-CONTRACT.md
-    9d9b75d24b9653c8393fed004cd03ba4f721279a
+    28c19f4c412c9506215f684eae08faaa5db22bca
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -228,10 +228,10 @@ apps/agentos/util/FleetAdmission.mjs
     5d11901094202fb43245963d71a34ef3b1b37876
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
-    b3a1fa715c3dcb498557798afd1868ce64213399
+    de9cd02e4c59ba480b277b9aa2fa412bcb3c66e6
 
 apps/agentos/util/FleetStartPlan.mjs
-    cc922a2eceff7d82e50f0b8103b12105203acbc5
+    4a88183c21bc4898e122a10df7be65d80e21c7c5
 
 apps/agentos/util/FloatingMenuTheme.mjs
     84b03b77166b024f051b7aeb611873323c0e5cfb
@@ -348,10 +348,10 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     3badbfebb7e80c296abf03bb23ce7354d23df2f3
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    9a035bcd6962ea0a9b2d20497fb546f7d01cd204
+    6f2848314bd865045bf27b232fd5dbbe00ddebbc
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    096bac787671764bb7c89de1a90b1f8da2a14e47
+    92a9541eeaaeae6c080fb50296089efbe2ee69b0
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     a15fe77799d5ec278139537ba0be8fd0f0e8c9f4
@@ -519,7 +519,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    ede146c12dfc7db4fb98af9650f9325487172b84
+    2df3c04257ccdafb812b74999d633f6a8281745e
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     64238dd4bac922bbfd33878431f3b9a21f9d8dfb
