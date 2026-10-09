@@ -107,17 +107,22 @@ const readSurfaces = page => page.evaluate(() => {
 const revisionOf = cwd => execFileSync('git', ['rev-parse', '--short', 'HEAD'], {cwd, encoding: 'utf8'}).trim();
 
 /**
- * @summary Runs a walkthrough against the Fleet servers it starts. On every exit, a passing run or a
- * rejected receipt, it closes each server it started and puts the bridge's activity source back, so a
- * failed run leaks neither a listening port nor a missing-corpus source into the next spec.
+ * @summary Runs a walkthrough against the Fleet servers it starts, over an empty fleet. The bridge's
+ * registry seam answers `listAgents()` with no agents and passes every other call to the real registry,
+ * so the runtime root's own roster, a seat's real team, never reaches the census. On every exit, a passing
+ * run or a rejected receipt, it closes each server it started and puts the bridge's registry and activity
+ * source back, so a failed run leaks neither a listening port, a stubbed registry nor a missing-corpus
+ * source into the next spec.
  * @param {Function} body `start => Promise`, where `start(options)` is `startRealFleetServer`, tracked
  * @returns {Promise<*>} The body's result
  */
 const withWalkthroughFleet = async body => {
     const
-        originalSource = bridge.activitySource,
-        started        = [],
-        start          = async options => {
+        originalRegistry = bridge.registry,
+        originalSource   = bridge.activitySource,
+        registry         = bridge.getRegistry(),
+        started          = [],
+        start            = async options => {
             const server = await startRealFleetServer(options);
 
             started.push(server);
@@ -125,9 +130,16 @@ const withWalkthroughFleet = async body => {
             return server
         };
 
+    bridge.registry = new Proxy(registry, {
+        get: (target, key) => key === 'listAgents'
+            ? () => []
+            : typeof target[key] === 'function' ? target[key].bind(target) : target[key]
+    });
+
     try {
         return await body(start)
     } finally {
+        bridge.registry       = originalRegistry;
         bridge.activitySource = originalSource;
         // closing a server that already closed resolves too, so every one is closed once more
         await Promise.all(started.map(server => server.close()))

@@ -100,6 +100,51 @@ class FleetLifecycleIntentAdapter extends Base {
     }
 
     /**
+     * @summary Whether the bridge offers the Fleet's Skip verb, `skipAgentDependencies`. Its methods come from the
+     * pinned Brain's wire list, so an older pin has none, and the pane then offers no Skip at all.
+     * @param {Object|null} [bridge=getFleetRegistryBridge()]
+     * @returns {Boolean}
+     */
+    static canSkip(bridge=FleetLifecycleIntentAdapter.getFleetRegistryBridge()) {
+        return typeof bridge?.skipAgentDependencies === 'function'
+    }
+
+    /**
+     * @summary Ask the Fleet to skip a pending Start's remaining dependency installs. This is a side request, not
+     * a lifecycle round-trip: it never claims the record's pending verb, so the Start it serves keeps its own
+     * attempt, and that Start's late answer still settles the card. The Fleet answers `{id, skippedStarts}`;
+     * `0` means no install was left to skip. A bridge without the verb, or a Fleet that refuses it, reads as
+     * unavailable; no answer within the timeout reads as unanswered, since its outcome is unknown.
+     * @param {Object} intent
+     * @param {String} intent.agentId Durable fleet agent id.
+     * @param {Object} [options]
+     * @param {Object|null} [options.bridge=getFleetRegistryBridge()] Test seam or injected registry bridge.
+     * @param {Number} [options.timeoutMs=30000]
+     * @returns {Promise<{reason: String|null, state: 'requested'|'none'|'unavailable'|'unanswered'}>}
+     */
+    static async handleSkipIntent({agentId}={}, options={}) {
+        options ||= {};
+
+        const bridge = Object.hasOwn(options, 'bridge') ? options.bridge : FleetLifecycleIntentAdapter.getFleetRegistryBridge();
+
+        if (!agentId || !FleetLifecycleIntentAdapter.canSkip(bridge)) {
+            return {reason: 'this Fleet does not offer Skip', state: 'unavailable'}
+        }
+
+        try {
+            const result = await FleetLifecycleIntentAdapter.#withTimeout(Promise.resolve().then(() => bridge.skipAgentDependencies(agentId)), 'skip', options);
+
+            return result?.skippedStarts > 0
+                ? {reason: null, state: 'requested'}
+                : {reason: 'no install was still running', state: 'none'}
+        } catch (error) {
+            return error?.isFleetLifecycleTimeout
+                ? {reason: 'the Fleet has not answered yet', state: 'unanswered'}
+                : {reason: FleetLifecycleIntentAdapter.sanitizeControlReason(error?.message, 'the Fleet did not accept Skip'), state: 'unavailable'}
+        }
+    }
+
+    /**
      * @summary Write one or more lifecycle-control fields onto a card's record.
      * @param {Object} record An AgentOS.model.FleetAgent record (or any record-like exposing `set()`),
      *     or a plain field bag (dock-blueprint snapshot / test double) mutated in place.
