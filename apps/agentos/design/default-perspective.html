@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Default perspective — the inventory's homes (#507 · Overview re-declared at the operator's window)</title>
+<style>
+  :root {
+    /* the FM dark skin's literal values (resources/scss/src/apps/agentos/_tokens.scss), mirrored for the sketch */
+    --ground:#0b0e13; --panel:#141a23; --panel-2:#1a212c;
+    --line:#262f3d; --line-soft:#1c242f;
+    --ink:#d6dce6; --ink-dim:#8b97a8; --ink-faint:#5a6575;
+    --signal:#5eead4;
+    --warn:#f5b544; --bad:#f4718b;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    /* the five type roles (TOKENS.md) */
+    --t-display:600 14px/1.3 var(--sans);
+    --t-body:400 12px/1.45 var(--sans);
+    --t-detail:400 11px/1.4 var(--mono);
+    --t-micro:400 10px/1.3 var(--mono);
+    --t-chrome:400 11px/1 var(--mono);
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:36px 24px 64px}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--signal);margin:0}
+  h1{font-size:26px;letter-spacing:-.01em;margin:10px 0 6px;font-weight:640}
+  .lede{font-size:14px;color:var(--ink-dim);max-width:80ch;margin:0 0 26px}
+  .lede b{color:var(--ink)}
+  .col-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:26px 0 8px}
+  .note{font-size:12px;color:var(--ink-dim);max-width:84ch;margin:8px 0 0}
+  .note b{color:var(--ink);font-weight:600}
+  .mono{font-family:var(--mono)}
+  .falsifier{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:6px;max-width:96ch}
+  .divider{border-top:1px solid var(--line-soft);margin:34px 0 26px}
+  table{border-collapse:collapse;width:100%;font:var(--t-body)}
+  th{font:var(--t-micro);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:6px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top;color:var(--ink-dim)}
+  td:first-child{color:var(--ink);font-weight:600;white-space:nowrap}
+  td b{color:var(--ink);font-weight:600}
+  td .y{color:var(--signal)} td .n{color:var(--bad)} td .m{color:var(--warn)}
+  pre{font:var(--t-detail);background:var(--panel);border:1px solid var(--line-soft);border-radius:6px;padding:var(--sp-3);overflow:auto;color:var(--ink)}
+  pre i{color:var(--ink-dim);font-style:normal}
+
+  /* ── two frames at the capture's proportions: the dock region plus the rail, 1942 × 1099 capture px ── */
+  .pair{display:grid;grid-template-columns:1fr;gap:var(--sp-4);max-width:1130px}
+  .cap{font:var(--t-detail);color:var(--ink-dim);margin:0 0 6px}
+  .cap b{color:var(--ink);font-weight:500}
+  .frame{aspect-ratio:1942/1099;background:var(--ground);border:1px solid var(--line);border-radius:7px;overflow:hidden;display:grid;grid-template-columns:1907fr 35fr}
+  .dock{display:grid;min-width:0;min-height:0}
+  .today .dock{grid-template-rows:598fr 402fr}
+  .next .dock{grid-template-columns:64fr 36fr}
+  .next .stack{display:grid;grid-template-rows:62fr 38fr;min-width:0;min-height:0;border-right:1px solid var(--line)}
+  .zone{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .zone + .zone{border-top:1px solid var(--line)}
+  .tabs{display:flex;gap:16px;padding:9px 12px;border-bottom:1px solid var(--line-soft);font:var(--t-chrome);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);white-space:nowrap;overflow:hidden}
+  .tabs .on{color:var(--ink);border-bottom:1px solid var(--signal);padding-bottom:2px}
+  .reading .tabs{gap:10px;letter-spacing:.05em}
+  .head{display:flex;justify-content:space-between;padding:8px 12px 0;font:var(--t-detail);color:var(--ink-faint)}
+  .cards{display:grid;gap:10px;padding:10px 12px;flex:1;min-height:0;align-content:start}
+  .today .cards{grid-template-columns:repeat(3,1fr)}
+  .next .cards{grid-template-columns:repeat(2,1fr)}
+  .card{background:var(--panel);border:1px solid var(--line-soft);border-left:2px solid var(--signal);border-radius:4px;height:84px;padding:8px 10px;font:var(--t-detail);color:var(--ink-dim)}
+  .card b{display:block;font:var(--t-display);color:var(--ink);margin-bottom:4px}
+  .card i{display:block;font-style:normal;color:var(--ink-faint);margin-top:8px}
+  .rows{padding:6px 12px;font:var(--t-detail);color:var(--ink-faint);line-height:2.1}
+  .rows div{border-bottom:1px solid var(--line-soft)}
+  .reading{min-width:0;min-height:0;display:flex;flex-direction:column}
+  .reading .body{flex:1;padding:10px 12px;font:var(--t-detail);color:var(--ink-faint);line-height:1.6}
+  .reading .body div{background:var(--panel);border:1px solid var(--line-soft);border-radius:4px;margin-bottom:8px;padding:8px 10px;color:var(--ink-dim)}
+  .rail{border-left:1px solid var(--line);display:flex;flex-direction:column;gap:18px;padding-top:12px;align-items:center}
+  .rail span{writing-mode:vertical-rl;font:var(--t-micro);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
+  .more{font:var(--t-detail);color:var(--ink-faint);padding:0 12px 6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Fleet Manager · design contract · #507 · epic #505</p>
+  <h1>The default perspective gives each important view a good home</h1>
+  <p class="lede">The operator, 2026-10-03: <b>dock layouts, splitters, tear-out and popups make views adjustable; that is no excuse for a default structure that is not good.</b> This page decides the one default — the <span class="mono">Overview</span> duty in <span class="mono">apps/agentos/util/CockpitPerspectives.mjs</span> — at the operator's own window. The measure is his capture of 2026-10-09 02:58Z, the first morning all eight active peers ran from the Fleet Manager: 2000 × 1217 px, aspect 1.64, the proportions of a 1728 × 1052 window. Both frames below are drawn to that capture, not screenshotted; the numbers beside them are measured on it.</p>
+
+  <p class="col-label">01 · the window, measured on the capture</p>
+  <table>
+    <tr><th>Region</th><th>Capture px</th><th>Share</th><th>What it holds today</th></tr>
+    <tr><td>Chrome + status strip</td><td>2000 × 118</td><td>—</td><td>the instance name, feed partial · wake off, Reconnect, Start fleet</td></tr>
+    <tr><td>Left navigation</td><td>58 wide</td><td>—</td><td>Home · Fleet · Observatory · System · Accounts · Chat — the routes outside the dock</td></tr>
+    <tr><td>Dock region</td><td>1907 × 1099</td><td>1.00</td><td>the perspective's tree: one vertical split, one edge band</td></tr>
+    <tr><td>Fleet zone</td><td>1907 × 657</td><td>0.598 (declared 0.6078)</td><td>3 columns × 3 rows: 9 of 12 cards (8 working, 4 offline); cards 620 px wide</td></tr>
+    <tr><td>Stream zone</td><td>1907 × 442</td><td>0.402</td><td>one strip of six tabs; Activity open: 8 rows of 56; the other five views one tab each</td></tr>
+    <tr><td>Right band</td><td>35 wide, rail only</td><td>extent 0.25 when revealed</td><td>Agent Detail · Perspectives · Add agent · Wake routes, all auto-hidden</td></tr>
+  </table>
+  <p class="note">Nine cards stand in three columns with room to spare; everything the operator reads or acts on shares 442 px under one tab strip, and the view he reaches most after the roster — an agent's detail — has no home at all: a click reveals it over the stage, the next click takes it away. The default has an opinion about the roster and none about the rest.</p>
+
+  <p class="col-label">02 · today's Overview beside the re-declared one</p>
+  <div class="pair">
+    <div>
+      <p class="cap"><b>Today</b> · fleet over one six-tab strip · the detail in the rail</p>
+      <div class="frame today">
+        <div class="dock">
+          <div class="zone">
+            <div class="tabs"><span class="on">Fleet</span></div>
+            <div class="head"><span>FLEET · 12 AGENTS</span><span>8 working · 4 offline</span></div>
+            <div class="cards">
+              <div class="card"><b>neo-fable</b>working · fresh</div><div class="card"><b>neo-fable-clio</b>working · fresh</div><div class="card"><b>neo-gpt</b>working · dark</div>
+              <div class="card"><b>neo-gpt-emmy</b>working · recent</div><div class="card"><b>neo-gpt-sophie</b>working · fresh</div><div class="card"><b>neo-opus-ada</b>working · dark</div>
+              <div class="card"><b>neo-opus-grace</b>working · dark</div><div class="card"><b>neo-opus-vega</b>working · recent</div><div class="card"><b>neo-gemini-pro</b>offline · benched</div>
+            </div>
+          </div>
+          <div class="zone">
+            <div class="tabs"><span class="on">Activity</span><span>Tasks</span><span>Memories</span><span>Mailbox</span><span>Catch up</span><span>Golden path</span></div>
+            <div class="rows"><div>04:28 PR · sophie · institution#613 · approved</div><div>04:19 PR · fable · institution#613 · changes pushed</div><div>04:12 PR · sophie · institution#613 · changes requested</div><div>04:07 A2A · sophie → tobiu · Task Completed</div><div>03:42 A2A · sophie → tobiu · Task InputRequired</div><div>01:20 PR · vega · institution#612 · merged</div></div>
+          </div>
+        </div>
+        <div class="rail"><span>Agent detail</span><span>Perspectives</span><span>Add agent</span><span>Wake routes</span></div>
+      </div>
+    </div>
+    <div>
+      <p class="cap"><b>Proposed</b> · fleet over the two feeds · a full-height reading column · tools in the rail</p>
+      <div class="frame next">
+        <div class="dock">
+          <div class="stack">
+            <div class="zone">
+              <div class="tabs"><span class="on">Fleet</span></div>
+              <div class="head"><span>FLEET · 12 AGENTS</span><span>8 working · 4 offline</span></div>
+              <div class="cards">
+                <div class="card"><b>neo-fable</b>working · fresh</div><div class="card"><b>neo-fable-clio</b>working · fresh</div>
+                <div class="card"><b>neo-gpt</b>working · dark</div><div class="card"><b>neo-gpt-emmy</b>working · recent</div>
+                <div class="card"><b>neo-gpt-sophie</b>working · fresh</div><div class="card"><b>neo-opus-ada</b>working · dark</div>
+              </div>
+              <div class="more">6 more on scroll · Online first keeps the working seats on top</div>
+            </div>
+            <div class="zone">
+              <div class="tabs"><span class="on">Activity</span><span>Catch up</span></div>
+              <div class="rows"><div>04:28 PR · sophie · institution#613 · approved</div><div>04:19 PR · fable · institution#613 · changes pushed</div><div>04:12 PR · sophie · institution#613 · changes requested</div><div>04:07 A2A · sophie → tobiu · Task Completed</div></div>
+            </div>
+          </div>
+          <div class="reading">
+            <div class="tabs"><span>Agent detail</span><span class="on">Memories</span><span>Mailbox</span><span>Tasks</span><span>Golden path</span></div>
+            <div class="body"><div>neo-gpt-sophie · 06:21 · #632 intake: declaration lookup selected</div><div>neo-opus-grace · 06:22 · defect-note: visual goldens fetch live avatars</div><div>neo-gpt-emmy · 06:24 · night board: #946 and #630 approved</div><div>neo-opus-vega · 06:05 · #631 head: the order named in the list header</div><div>neo-fable-clio · 06:23 · #632 ledger adopted; the body gate is closed</div></div>
+          </div>
+        </div>
+        <div class="rail"><span>Perspectives</span><span>Add agent</span><span>Wake routes</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><b>Three moves.</b> (1) The dock's center becomes a horizontal split, 0.64 : 0.36: the fleet-over-feeds stack on the left, a full-height reading column on the right. (2) The six-tab strip splits by nature: the two time-ordered feeds (Activity, Catch up) stay under the roster; the four surfaces one reads or acts on (Agent Detail, Memories, Mailbox, Tasks) and the Golden Path move into the column, Memories open at first run. (3) The right band keeps only the three invoked tools; the inspector leaves it. Node ids stay explicit, the three duties keep their names, the catalog keeps every pane.</p>
+
+  <p class="col-label">03 · what the numbers say at the operator's window</p>
+  <table>
+    <tr><th>Measure</th><th>Today</th><th>Proposed</th><th>Reading</th></tr>
+    <tr><td>Reading surface, body height</td><td>≈ 400 capture px (the strip under its tabs and header)</td><td>≈ 1055 capture px (the column under its tabs)</td><td class="y"><span class="y">2.6×</span> for Memories, Mailbox, Tasks, Detail, Golden Path alike</td></tr>
+    <tr><td>Reading surface, width</td><td>1907 px, one view at a time</td><td>≈ 687 px (0.36 of the dock), one view at a time, beside the feeds</td><td>≈ 590 logical px: a text column of ~90 characters at the body role — a reading width, not a strip</td></tr>
+    <tr><td>Activity rows visible</td><td>8</td><td>7–8 (0.38 of 1099 px ≈ 418 px against today's 442)</td><td class="y"><span class="y">kept</span>: the live feed loses almost nothing</td></tr>
+    <tr><td>Roster cards visible</td><td>9 (3 × 3), 620 px wide</td><td>6 (2 × 3), ≈ 586 px wide; 0.62 of the stack ≈ 681 px holds three rows and 70 px of air</td><td class="m"><span class="m">traded</span>: two working seats scroll; the health bar still counts all twelve; <span class="mono">Focus</span> is one click away for a fleet start</td></tr>
+    <tr><td>Agent Detail's home</td><td>a reveal from the rail, gone on the next click</td><td>the column's first tab; selection activates it; it stays until another tab is chosen</td><td class="y"><span class="y">one move, stable</span></td></tr>
+    <tr><td>Moves to reach Memories · Mailbox · Tasks</td><td>1 each, displacing the feed</td><td>1 each, never displacing the feed</td><td class="y"><span class="y">the feed and a reading view are visible together</span></td></tr>
+  </table>
+
+  <p class="col-label">04 · the inventory, placed by daily weight (#505's order), the four questions answered per view</p>
+  <table>
+    <tr><th>View</th><th>Home today</th><th>Home proposed</th><th>One move?</th><th>Room by default?</th><th>Renders?</th><th>Read in full?</th></tr>
+    <tr><td>Fleet roster + cards</td><td>fleet zone, 0.60 high, 3 columns</td><td>fleet zone, 0.62 of the left stack, 2 columns</td><td><span class="y">✓ yes</span> — the home</td><td><span class="y">✓ yes</span> — 6 cards, the rest on scroll, Online first on top</td><td><span class="y">✓ yes</span> on the capture</td><td>card leaves (#505) own the clamps</td></tr>
+    <tr><td>Agent Detail</td><td>rail member, reveal overlay</td><td>reading column, tab 1, activated by selection</td><td><span class="n">✗ today</span> → <span class="y">✓ yes</span></td><td><span class="n">✗ today</span> → <span class="y">✓ 687 × 1055</span></td><td>#632 (the retained pane follows selection) underneath, independent of this page</td><td>its own leaf</td></tr>
+    <tr><td>Memories</td><td>strip tab 3 of 6</td><td>reading column, tab 2, <b>open at first run</b></td><td><span class="y">✓ yes</span></td><td><span class="n">✗ today</span> → <span class="y">✓ 2.6× the height</span></td><td>—</td><td>its leaf fixes the summary clamp; the column gives it the room to be worth fixing</td></tr>
+    <tr><td>Mailbox</td><td>strip tab 4 of 6</td><td>reading column, tab 3</td><td><span class="y">✓ yes</span></td><td><span class="n">✗ today</span> → <span class="y">✓</span></td><td>#623 in flight</td><td>its leaf</td></tr>
+    <tr><td>Tasks</td><td>strip tab 2 of 6</td><td>reading column, tab 4</td><td><span class="y">✓ yes</span></td><td><span class="n">✗ today</span> → <span class="y">✓</span></td><td>—</td><td>its leaf</td></tr>
+    <tr><td>Activity · Catch up</td><td>strip tabs 1 and 5</td><td>stream zone, tabs 1 and 2, Activity open</td><td><span class="y">✓ yes</span></td><td><span class="y">✓ kept</span>, 7–8 rows</td><td><span class="y">✓ yes</span> on the capture (feed partial is a state word, not a defect)</td><td>older on scroll, as today</td></tr>
+    <tr><td>Observatory</td><td>left navigation route</td><td>unchanged</td><td><span class="y">✓ yes</span></td><td>the full stage</td><td colspan="2">row 3 (#312) owns its picture; the perspective does not touch it</td></tr>
+    <tr><td>Golden Path</td><td>strip tab 6 of 6</td><td>reading column, tab 5</td><td><span class="y">✓ yes</span></td><td><span class="n">✗ today</span> → <span class="y">✓</span> a document gets a column</td><td>—</td><td>its leaf</td></tr>
+    <tr><td>Chat · Accounts · Setup · System</td><td>left navigation routes</td><td>unchanged</td><td><span class="y">✓ yes</span></td><td>the full stage</td><td colspan="2">their own leaves (System: the migration list that covers the content is #614's)</td></tr>
+  </table>
+
+  <p class="col-label">05 · the declaration, as the catalog would carry it</p>
+  <pre><i>// CockpitPerspectives.mjs · arrangement() · the Overview duty; ids explicit, every pane kept</i>
+{
+    id    : 'cockpit-root',
+    center: {
+        id: 'reading-split', orientation: 'horizontal', sizes: [0.64, 0.36],
+        children: [
+            {
+                id: 'primary-split', orientation: 'vertical', sizes: [0.62, 0.38],
+                children: [
+                    {id: 'fleet-tabs',  items: ['fleet']},
+                    {id: 'stream-tabs', items: ['stream', 'catchUp']}
+                ]
+            },
+            {id: 'reading-tabs', items: ['detail', 'memories', 'operator', 'tasks', 'goldenPath'], activeItemId: 'memories'}
+        ]
+    },
+    right: {id: 'secondary-rail', items: ['perspectives', 'defineAgent', 'wakeRoutes'], extent: 0.25, resizable: true}
+}</pre>
+  <p class="note">A tabs node carries <span class="mono">activeItemId</span> (<span class="mono">WorkspaceDocument.mjs</span>, the tabs field set; an absent one is repaired to the first item) — so Agent Detail can lead the strip while Memories opens. The inspector docked as a center member keeps its catalog <span class="mono">autoHidden</span> flag and stays in the tab flow, as <span class="mono">Review</span> already relies on; <span class="mono">revealsInspector</span> reads placement, not the flag. Selection today reveals the rail member (<span class="mono">Controller#applySelection</span>); with the column it activates the tab instead — one dock operation, the builder's line. <b>Focus</b> keeps its roster-dominant split. <b>Review</b> keeps its duty with the same column widened to 0.5 and Detail active — a one-number change the builder makes beside this one. Saved captures key the old node ids and restore as they were; <b>Reset to default</b> restores this tree (AC-3).</p>
+
+  <div class="divider"></div>
+  <p class="col-label">06 · what this page does not verify</p>
+  <p class="falsifier">· The window size is inferred from the capture's aspect (2000 × 1217 → 1.64); the operator's actual logical size decides the card width — the builder's NL arm reads it (<span class="mono">get_dom_rect</span>) before the split numbers are final.
+<br>· Two-column cards at ≈ 586 capture px are computed, not rendered; CARD-CONTRACT.md's two-row anatomy is assumed to hold within 6 % of today's width — the unit arm on the catalog and the visual run (AC-4) falsify it.
+<br>· Memories open at first run assumes the plane holds summaries; an empty plane shows the pane's honest empty state, never sample data.
+<br>· The 0.64 : 0.36 split is a proposal for the operator's approval (AC-1, Tier 4 — the default is his product opinion); the page records the numbers so the approval is of something measured.</p>
+  <p class="note"><b>Approval slot.</b> Recorded on #507 by the operator before AC-2 starts: the split numbers, the column's tab order, and Memories as the first-run tab.</p>
+</div>
+</body>
+</html>
