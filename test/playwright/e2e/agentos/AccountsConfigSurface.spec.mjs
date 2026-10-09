@@ -1,4 +1,4 @@
-import {test, expect, loadAgentOsModule, loadNeuralLinkModules}  from '../../fixtures.mjs';
+import {test, expect, landAgentDefinitions, loadAgentOsModule, loadNeuralLinkModules} from '../../fixtures.mjs';
 import {authenticatedFleetOptions, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
 import {listHarnessProducts}                                     from 'neo-agent-brain/fleet-contract';
 import fs                                                        from 'fs';
@@ -29,6 +29,102 @@ const [
  */
 test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
     test.setTimeout(120000);
+
+    /**
+     * @summary Body gestures keep their native meaning; only the Accounts header admits a
+     * dashboard drag. The native selection guard and App-worker sort state must agree.
+     */
+    test('Accounts body gestures stay native and its header still tears out', async ({page, neuralLink}, testInfo) => {
+        await page.setViewportSize({width: 1400, height: 700});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+        const app = await neuralLink.connectToApp('AgentOS');
+        await landAgentDefinitions(page);
+        await page.getByRole('tab', {name: 'Accounts', exact: true}).click();
+
+        const
+            panel = page.locator('.agent-panel-accounts'),
+            [accounts] = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id', 'parentId']),
+            dashboardId = accounts.properties.parentId;
+        await expect(panel).toBeVisible();
+        await expect.poll(async () => (await app.getComponent(dashboardId, ['sortZone.id']))['sortZone.id']).toBeTruthy();
+        const sortZoneId = (await app.getComponent(dashboardId, ['sortZone.id']))['sortZone.id'];
+
+        for (const [label, target, whitespace] of [
+            ['body whitespace', panel.locator('.fm-accounts-master'), true],
+            ['list text', panel.locator('.fm-accounts-list .neo-list-item').first(), false],
+            ['detail text', panel.locator('.fm-config-name'), false]
+        ]) {
+            await target.scrollIntoViewIfNeeded();
+            const box = await target.boundingBox(), before = await panel.boundingBox();
+            const x = whitespace ? box.x + box.width - 4 : box.x + 4;
+            const y = box.y + (whitespace ? box.height - 12 : box.height / 2);
+            await page.evaluate(() => getSelection().removeAllRanges());
+            await page.mouse.move(x, y);
+            await page.mouse.down();
+            try {
+                expect(await page.evaluate(() => document.body.classList.contains('neo-drag-active')), label).toBe(false);
+                await page.mouse.move(x + (whitespace ? -50 : 80), y, {steps: 15});
+                expect((await app.getComponent(sortZoneId, ['currentIndex'])).currentIndex, label).toBe(-1);
+                expect(await panel.boundingBox(), label).toEqual(before);
+                expect(page.context().pages(), label).toHaveLength(1)
+            } finally {
+                await page.mouse.up()
+            }
+            if (label === 'detail text') {
+                expect(await page.evaluate(() => getSelection().toString())).not.toBe('')
+            }
+        }
+
+        await panel.locator('.fm-accounts-add').click();
+        const input = panel.getByRole('textbox', {name: 'Username', exact: true});
+        await input.fill('selection-stays-native');
+        await input.scrollIntoViewIfNeeded();
+        const inputBox = await input.boundingBox();
+        await page.mouse.move(inputBox.x + 8, inputBox.y + inputBox.height / 2);
+        await page.mouse.down();
+        try {
+            expect(await page.evaluate(() => document.body.classList.contains('neo-drag-active'))).toBe(false);
+            await page.mouse.move(inputBox.x + 90, inputBox.y + inputBox.height / 2, {steps: 15})
+        } finally {
+            await page.mouse.up()
+        }
+        await expect(input).toHaveValue('selection-stays-native');
+        await page.setViewportSize({width: 1400, height: 420});
+        const detail = panel.locator('.fm-accounts-detail');
+        await expect.poll(() => detail.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+        await detail.hover();
+        await page.mouse.wheel(0, 400);
+        await expect.poll(() => detail.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+        expect((await app.getComponent(sortZoneId, ['currentIndex'])).currentIndex).toBe(-1);
+        expect(page.context().pages()).toHaveLength(1);
+
+        await page.setViewportSize({width: 1400, height: 700});
+        const handle = panel.locator('.fm-accounts-drag-handle');
+        await handle.scrollIntoViewIfNeeded();
+        const box = await handle.boundingBox();
+        const motion = app.observeMotion([accounts.properties.id], 800, 50);
+        const popupPromise = page.waitForEvent('popup', {timeout: 15000});
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        try {
+            await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, {steps: 20});
+            await expect.poll(async () => (await app.getComponent(sortZoneId, ['dragComponent.id']))['dragComponent.id']).toBe(accounts.properties.id);
+            expect(await page.evaluate(() => document.body.classList.contains('neo-drag-active'))).toBe(true);
+            await page.mouse.move(4, 4, {steps: 40});
+            const popup = await popupPromise;
+            await expect(popup.locator('.agent-panel-accounts')).toBeVisible({timeout: 30000});
+            await expect(popup.locator('.agent-panel-accounts')).toHaveAttribute('id', accounts.properties.id);
+            await expect(popup.getByRole('textbox', {name: 'Username', exact: true})).toHaveValue('selection-stays-native');
+            expect((await app.getComponent(accounts.properties.id, ['windowId'])).windowId)
+                .not.toBe((await app.getComponent(dashboardId, ['windowId'])).windowId);
+            await popup.screenshot({path: testInfo.outputPath('accounts-header-popup.png')})
+        } finally {
+            await page.mouse.up();
+            await testInfo.attach('header-motion', {body: JSON.stringify(await motion), contentType: 'application/json'});
+            await testInfo.attach('header-drag-trace', {body: JSON.stringify(await app.getDragTrace()), contentType: 'application/json'})
+        }
+    });
 
     test('cold-loads, saves config, adds an emergent resident, and freshly rehydrates over the real Fleet wire', async ({page, neuralLink}, testInfo) => {
         await page.setViewportSize({width: 1400, height: 900});
