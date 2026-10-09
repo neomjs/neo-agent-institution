@@ -1883,10 +1883,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             chip   = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
             settle = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
 
-        await expect(card.locator('.fm-setup-preset')).toHaveCount(3, {timeout: 15000});
-        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
-        await expect(row('preset')).toHaveClass(/is-ok/);
+        // the front answers one question at a time: the token, then the choice under Other choices,
+        // then the ledger's chips behind Details — the e2e walk's own route
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/, {timeout: 15000});
         await card.locator('.fm-setup-credential-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-other-choices-toggle').click();
+        await expect(card.locator('.fm-setup-preset')).toHaveCount(3);
+        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(row('preset')).toHaveClass(/is-ok/);
         await expect(row('plane-credential')).toHaveClass(/is-ok/);
         await chip('provider-key', 'open window').click();
         await expect(row('provider-key')).toHaveClass(/is-ok/);
@@ -1913,6 +1919,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(paint).toEqual([{filled: true, bordered: true, underlined: false}, {filled: false, bordered: false, underlined: true}]);
 
         await settle();
+
+        // the wrapped reason ends inside its row: the row's box clips nothing, the second line included
+        const fit = await row('verify').evaluate(el => ({
+            clipped : el.scrollHeight - el.clientHeight,
+            overhang: el.querySelector('.fm-setup-step-reason').getBoundingClientRect().bottom - el.getBoundingClientRect().bottom
+        }));
+
+        expect(fit.clipped, 'the row clips nothing').toBe(0);
+        expect(fit.overhang, 'the reason ends inside the row').toBeLessThanOrEqual(0);
+
         await expect(row('verify')).toHaveScreenshot('setup-row-two-exits.png');
 
         await chip('verify', 'write again').click();
