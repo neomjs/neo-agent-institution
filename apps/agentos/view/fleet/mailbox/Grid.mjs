@@ -96,6 +96,7 @@ class Grid extends GridContainer {
             component: ({record}) => ({
                 module : RowComponent,
                 rowData: {
+                    archivedAt    : record.archivedAt,
                     from          : record.from,
                     priority      : record.priority,
                     recipientClass: record.recipientClass,

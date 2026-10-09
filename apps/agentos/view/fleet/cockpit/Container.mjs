@@ -170,6 +170,7 @@ class FleetCockpit extends VesselContainer {
                 module   : OperatorMailbox,
                 header   : {text: 'Mailbox'},
                 reference: 'operator-mailbox',
+                bind     : {questionCount: data => data.questions},
                 listeners: {
                     compose         : 'onOperatorCompose',
                     inboxPageRequest: 'onOperatorInboxPageRequest',

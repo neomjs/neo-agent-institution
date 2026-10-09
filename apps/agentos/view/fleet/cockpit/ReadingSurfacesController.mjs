@@ -267,6 +267,23 @@ class ReadingSurfacesController extends LivenessController {
     }
 
     /**
+     * @summary Open the operator's open questions for a view outside the cockpit (Home's question count): the
+     * Mailbox tab comes forward showing `for you · open`, read anew.
+     * @returns {Promise<{opened: Boolean}>}
+     */
+    async openOperatorQuestions() {
+        const me = this;
+
+        await me.revealResidentTab('operator');
+
+        const mailbox = me.component.getOperatorMailboxPane();
+
+        mailbox?.showOpenQuestions();
+
+        return {opened: !!mailbox}
+    }
+
+    /**
      * @summary Open the fleet head's merge queue for a view outside the cockpit (Home's merge count): the
      * roster's tab comes forward and its awaiting-merge button opens its list, when there is one.
      * @returns {Promise<{opened: Boolean}>}

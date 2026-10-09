@@ -73,7 +73,7 @@ const door = (iconCls, route, question) => ({
  *
  * Above everything, the operator's own line says what waits for the operator: the merges that wait for a
  * hand and the questions that wait for a word ({@link #operatorLine}). Its merge count opens the fleet
- * head's merge queue (`mergeQueueOpen`).
+ * head's merge queue (`mergeQueueOpen`), its question count the Mailbox's open questions (`questionsOpen`).
  *
  * @summary Binds the Viewport provider's roster store and the roster surface's truths (the cockpit's
  * liveness owner fills them), the merge queue store, the open-work read's state and its questions axis, `instanceState`
@@ -359,14 +359,15 @@ class Container extends BaseContainer {
      * a zero that is not complete, each with its reason in the title. The other axis keeps its number,
      * never a 0, and a partial count reads as the least that waits ("at least 5 merges … · some could not
      * be read"). Any axis with something to say lights the line, so a silent one never hides a known count;
-     * with nothing to say, the line is hidden. The merge count is a link to the fleet head's merge queue.
+     * with nothing to say, the line is hidden. The merge count links to the fleet head's merge queue, the
+     * question count to the Mailbox's open questions.
      * @param {Object}      facts
      * @param {Object|null} facts.openWork  The provider's `openWork` block: the merge axis's state
      * @param {Object[]}    facts.mergeRows The merge queue's rows (`{observedAt, stale}`)
      * @param {Object|null} facts.questions The provider's `questions` block `{count, reason, state}`
      * @param {Number}      [facts.now=Date.now()] The viewer's clock, for a stale queue's age
      * @returns {{hidden: Boolean, segments: Object[], text: String, title: String|null}} `segments` are the
-     * line's runs: `{text}`, or `{link: 'merges', text}` for the merge count
+     * line's runs: `{text}`, or `{link, text}` for a count, `link` `merges` or `questions`
      */
     static operatorLine({openWork, mergeRows = [], questions, now = Date.now()}) {
         const axes = [
@@ -389,7 +390,7 @@ class Container extends BaseContainer {
             runs.push([
                 ...waiting.flatMap((axis, index) => [
                     ...(index ? [{text: ' · '}] : []),
-                    {...(axis.noun === 'merge' ? {link: 'merges'} : {}), text: (axis.lowerBound ? 'at least ' : '') + counted(axis.count, axis.noun) + axis.asOf}
+                    {link: `${axis.noun}s`, text: (axis.lowerBound ? 'at least ' : '') + counted(axis.count, axis.noun) + axis.asOf}
                 ]),
                 {text: ` ${one ? 'waits' : 'wait'} for you`}
             ]);
@@ -518,7 +519,7 @@ class Container extends BaseContainer {
 
         Object.assign(operatorLine.vdom, {
             cn: operator.segments.map(({link, text}) => link
-                ? {tag: 'button', type: 'button', cls: ['fm-home-operator-link'], text}
+                ? {tag: 'button', type: 'button', cls: ['fm-home-operator-link', `is-${link}`], text}
                 : {tag: 'span', text}),
             title: operator.title
         });
@@ -542,12 +543,15 @@ class Container extends BaseContainer {
 
     /**
      * @summary Hands a click anywhere on Home to the field. A click on the operator line's merge count
-     * asks for the fleet head's merge queue instead (`mergeQueueOpen`).
+     * asks for the fleet head's merge queue instead (`mergeQueueOpen`), one on its question count for the
+     * Mailbox's open questions (`questionsOpen`).
      * @param {Object} data
      */
     onFieldClick(data) {
-        if (data.path?.some(node => node.cls?.includes('fm-home-operator-link'))) {
-            this.fire('mergeQueueOpen');
+        const link = data.path?.find(node => node.cls?.includes('fm-home-operator-link'));
+
+        if (link) {
+            this.fire(link.cls.includes('is-questions') ? 'questionsOpen' : 'mergeQueueOpen');
             return
         }
 

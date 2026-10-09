@@ -241,7 +241,7 @@ class DetailContainer extends Container {
 
     /**
      * @summary The facts line: sender, the full subject, the sent time (exact ISO on its title) and the
-     * Task state when there is one.
+     * Task state when there is one. An expired question adds what its sender planned for that case.
      * @returns {Object[]}
      * @protected
      */
@@ -253,8 +253,9 @@ class DetailContainer extends Container {
         }
 
         const
-            stamp = ViewerTime.formatViewerTime(row.sentAt),
-            task  = this.openTask?.state ?? row.taskState;
+            stamp   = ViewerTime.formatViewerTime(row.sentAt),
+            task    = this.openTask?.state ?? row.taskState,
+            expired = this.getExpiredText();
 
         return [
             {cls: ['fm-mailbox-detail-from'], text: row.from},
@@ -265,8 +266,27 @@ class DetailContainer extends Container {
                     {tag: 'span', text: stamp?.text ?? '', ...(stamp?.title ? {title: stamp.title} : {})},
                     ...(task ? [{tag: 'span', cls: ['fm-mail-chip', 'fm-mail-task'], text: `task · ${task}`}] : [])
                 ]
-            }
+            },
+            ...(expired ? [{cls: ['fm-mailbox-detail-expired'], text: expired}] : [])
         ]
+    }
+
+    /**
+     * @summary The expired line, read from the persisted Task the body read returned, never from a list row:
+     * the sender's stated plan, or that none was stated. It states a plan, never that the plan ran.
+     * @returns {String|null} `null` unless the open message's Task expired
+     * @protected
+     */
+    getExpiredText() {
+        const task = this.openTask;
+
+        if (task?.state !== 'Expired') {
+            return null
+        }
+
+        return typeof task.fallback === 'string' && task.fallback.trim()
+            ? `expired; planned fallback: ${task.fallback.trim()}`
+            : 'expired; no fallback was stated'
     }
 
     /**

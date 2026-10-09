@@ -928,45 +928,15 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
-     * @summary READ-OBSERVE: the operator's own mailbox mirror. The gate IS the honest outcome
-     * (no pane / no bound subject / no verb → the pane's `unobserved` state stands); a throwing
-     * bridge KEEPS the last-known snapshot — the pane never renders "no mail" for a read that did
-     * not happen. Fence bumped before the gate: a refused intent still invalidates older
-     * in-flight reads. A bridge bound to another profile first retires the held identity and window,
-     * so no page is read as the previous instance's viewer.
+     * @summary READ-OBSERVE: one window of the list the operator's own mailbox shows, all mail or its open
+     * questions ({@link AgentOS.util.OperatorInbox#read}).
      * @param {Object} [params]
      * @param {Number} [params.offset=0]
+     * @returns {Promise<void>}
      * @protected
      */
-    async loadOperatorInbox({offset = 0} = {}) {
-        const
-            me       = this,
-            {bridge} = me;
-
-        TargetBinding.retireOperatorMailbox(me, {profileId: me.bridgeProfileId});
-
-        const
-            pane       = me.component.getOperatorMailboxPane(),
-            subject    = me.operatorRecord?.agentIdentityNodeId,
-            generation = ++me.operatorInboxReadGeneration;
-
-        if (!pane || !subject || typeof bridge?.fleetMailboxMirror !== 'function') {
-            return
-        }
-
-        try {
-            const snapshot = await bridge.fleetMailboxMirror({subjectAgentId: subject, offset});
-
-            if (generation === me.operatorInboxReadGeneration && !me.isDestroyed) {
-                me.operatorSnapshot = snapshot;
-
-                const livePane = me.component.getOperatorMailboxPane();
-
-                livePane && (livePane.snapshot = snapshot)
-            }
-        } catch (error) {
-            // fail-closed: the last-known snapshot stays
-        }
+    loadOperatorInbox(params = {}) {
+        return OperatorInbox.read(this, params)
     }
 
     /* ── the liveness reads (provider-written surfaces; the banner + chrome bind) ── */

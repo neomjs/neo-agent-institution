@@ -99,7 +99,7 @@ apps/agentos/model/HeldPullRequest.mjs
     f47da2bc3b5b704244aeae9ede24636a481af75c
 
 apps/agentos/model/MailboxMessage.mjs
-    2e999ccc7fd23d46519363cdf8f42814204e7857
+    03af1bc591fe8f23fd80e65408406e18f673e5ea
 
 apps/agentos/model/MemoryCandidate.mjs
     10804ad0e3a067958c961f1a7025acf9577683a8
@@ -267,7 +267,7 @@ apps/agentos/util/OpenWorkSeat.mjs
     9cdbd64f758822ab9ed015e8f28790bcbe5600a4
 
 apps/agentos/util/OperatorInbox.mjs
-    5762bfae7e10f996277e6a1a362f1884642dbad3
+    5356be7e090cf5501f2be4ec5beabfad1bf30bcb
 
 apps/agentos/util/Participation.mjs
     797b9190ad13733d77313600d936b586d1c3ced7
@@ -303,7 +303,7 @@ apps/agentos/util/SpineBanner.mjs
     5c8346c1813f76b88af81eb48f57147c2f9a917e
 
 apps/agentos/util/TargetBinding.mjs
-    aaf37a9f17e958b9ca06f4fc3d50d681534242a1
+    1db44f05d8a0d6f95150eb17cc5633fd7f26e334
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -315,10 +315,10 @@ apps/agentos/util/ViewerWakeTelltale.mjs
     31bff815feed1bf14ee4b9608168118f4621834a
 
 apps/agentos/view/Viewport.mjs
-    07dfc2f70e47e687f06339c0cc9b90ea8de17272
+    4fd556ed4a21b016c12a191386bed6783640e5a5
 
 apps/agentos/view/ViewportController.mjs
-    80e14eda4ffd7bd5821f3488ec0f3588358e2e9e
+    6feec85e5b8f674b59da96373c813cd8d458a28d
 
 apps/agentos/view/accounts/Controller.mjs
     443cd1c7a7cd062c51d03bf4076a4ff1620d6acc
@@ -345,19 +345,19 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    8842b67872a3fd09622c5194921ef4065182480c
+    70419a5cf6746ac2c1e78ae076856657dcc4d5d7
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     3badbfebb7e80c296abf03bb23ce7354d23df2f3
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    6f2848314bd865045bf27b232fd5dbbe00ddebbc
+    2731dc5ea7139d62a1736db69eee737678b4eb15
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     92a9541eeaaeae6c080fb50296089efbe2ee69b0
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
-    a15fe77799d5ec278139537ba0be8fd0f0e8c9f4
+    e6b47fefe7ccfa53fe13b0dd0df3856ce1a8a433
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
@@ -453,16 +453,16 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    049bc9308a4a74aa7953bffa0e6f7cbc1cb3ae68
+    b2eea7104b9a5f241ae7b0b9f9b5e6c8931d817b
 
 apps/agentos/view/fleet/mailbox/DetailContainer.mjs
-    f76523e5789348634042d0ad203ad8ef255d327a
+    7cb0fd434d049f5baed1c2d0717aad6ec42bd71e
 
 apps/agentos/view/fleet/mailbox/Grid.mjs
-    94e06995030986fb79836e983ee34fd1c30325bd
+    0846c3b6f4c9735d10954a399107624081ceef30
 
 apps/agentos/view/fleet/mailbox/OperatorContainer.mjs
-    b16fb9665227790bfcbfedb3f8910a0ea70d6bbc
+    348ac0afa1ec06d012cb99e6e716e7c043f278aa
 
 apps/agentos/view/fleet/mailbox/RecipientChip.mjs
     eb2c5727a9a2dc3af3183d0b218b0be686607e5a
@@ -471,7 +471,7 @@ apps/agentos/view/fleet/mailbox/RecipientChipList.mjs
     e278b61cfdc5156094119a92e9f2b0041eb20c4f
 
 apps/agentos/view/fleet/mailbox/RowComponent.mjs
-    157543a0c4855aedb34520c38ee6ff66b710be9a
+    c07a5baa6a6824e83fa01eb8dd34c7053ccbb6ac
 
 apps/agentos/view/fleet/mailbox/RowModel.mjs
     72154b75cbff2787ec289fc85fd61ac3e0182c9c
@@ -552,7 +552,7 @@ apps/agentos/view/home/Canvas.mjs
     33298795c5154b6b4dbb5df62017cc8771767f70
 
 apps/agentos/view/home/Container.mjs
-    c3425bd7a3afb719e04c46b28d0e6997905fafe6
+    a599ec0dc77acfa36458c0c8ae5ee100ea2f5067
 
 apps/agentos/view/setup/ConnectContainer.mjs
     d942330ea4f2fe19c9e94091c641be38f6acebe7
@@ -669,13 +669,13 @@ resources/scss/src/apps/agentos/fleet/mailbox/Container.scss
     5a78898c4efa46c2141102b7cf2e82d4bb8b0088
 
 resources/scss/src/apps/agentos/fleet/mailbox/DetailContainer.scss
-    19bbbe5bfff140d4d4574a22ff7a9a2a8605b350
+    ac277354946e48fe75a0b6c8f330d2c73cfa0d92
 
 resources/scss/src/apps/agentos/fleet/mailbox/Grid.scss
-    80e8ed7ea14ee14771e81578f5a278dd55848805
+    d4cad1576bd09ed5ec93b7c3b46e715f12e24add
 
 resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
-    eaa8827fea2895e54325b04811dcdd3f3214a88e
+    9f6319dfbd483b6b548a1fdfd985d6af2714e1f8
 
 resources/scss/src/apps/agentos/fleet/memories/Container.scss
     4e2008afdc07736bd3a23c9d7ff60a120a36f764
@@ -990,7 +990,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-golden-p
     f5dc23b1febf9063488454223d52ae4d8e2c1350
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox.png
-    8249a32fd767e68ac0cd0f96a12a8ef868033825
+    e8967f558b58fb9ee5c8110211e4de4ed48d092c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-memories.png
     2cd86cbf807da9d16de7d376b029da45ab7ed8f0
