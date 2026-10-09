@@ -181,6 +181,21 @@ class ViewportController extends Controller {
     }
 
     /**
+     * @summary Home's first-run door: the setup card on its Create door.
+     */
+    onSetupInstitution() {
+        this.showPlaneSetup({door: 'create'})
+    }
+
+    /**
+     * @summary Home's second door, for the team member whose plane exists: the setup card on its
+     * Connect door.
+     */
+    onConnectInstitution() {
+        this.showPlaneSetup({door: 'connect'})
+    }
+
+    /**
      * @summary Hydrates the configured-instances Store from storage, seeds the boot profile, and
      * mirrors the bound-instance fact.
      *

@@ -40,7 +40,7 @@ function read(home) {
         lead   : lead.text,
         quiet  : lead.cls.includes('is-quiet'),
         lede   : !home.getReference('lede').hidden,
-        connect: !home.getReference('connect-plane').hidden,
+        connect: !home.getReference('first-run').hidden,
         doors  : !home.getReference('doors').hidden,
         plane  : plane.hidden ? null : plane.text
     }
@@ -67,11 +67,16 @@ test.describe('AgentOS.view.home.Container — Home answers its two readers (#24
         host.destroy()
     });
 
-    test('a packaged shell without a plane gets the product line, the lede and Connect a plane, and nothing that reads as fleet state', () => {
+    test('a packaged shell without a plane gets the product line, the promise, Set up your institution with the quiet Connect door, and nothing that reads as fleet state', () => {
         const {host, home} = createHome();
 
         home.set({gridAdapterState: 'live', instanceState: 'limited', shellPlaneConfigured: false});
         expect(read(home)).toEqual({lead: PRODUCT_LINE, quiet: false, lede: true, connect: true, doors: false, plane: null});
+        // the promise keeps the merge decision the operator's own, never a property of the product
+        expect(home.getReference('lede').text).toBe('Set up your own AI engineering team — agents with memory that review each other\'s work, running on your machine. You decide what merges.');
+        expect(home.getReference('setup-institution').text).toBe('Set up your institution');
+        expect(home.getReference('setup-line').text, 'what the door asks for, without an unmeasured duration').toBe('A GitHub token · where it runs · start.');
+        expect(home.getReference('connect-plane').text).toBe('Joining a team that already runs one? Connect to it');
 
         home.shellPlaneConfigured = true;
         expect(read(home), 'a shell with a plane is a returning reader').toMatchObject({lead: 'No agents yet', lede: false, connect: false, doors: true, plane: 'Plane degraded'});
@@ -90,7 +95,7 @@ test.describe('AgentOS.view.home.Container — Home answers its two readers (#24
         expect(line('live', ['ok', 'idle', 'wedged', 'limited', 'starting', 'stopping', 'off']), 'the online and idle tiers are up').toEqual({answered: true, team: {total: 7, up: 4}, text: '4 of 7 agents up'})
     });
 
-    test('each door routes to its keeper view under the question it answers; Connect a plane asks the Viewport controller', () => {
+    test('each door routes to its keeper view under the question it answers; the first run\'s two doors ask the Viewport controller for the card\'s Create and Connect doors', () => {
         const
             {host, home} = createHome(),
             doors        = home.getReference('doors').items.map(({route, text}) => ({route, text}));
@@ -100,7 +105,8 @@ test.describe('AgentOS.view.home.Container — Home answers its two readers (#24
             {route: '/observatory', text: 'What does the organism know?'},
             {route: '/system',      text: 'Is the plane healing itself?'}
         ]);
-        expect(home.getReference('connect-plane').handler).toBe('onAttachPlane');
+        expect(home.getReference('setup-institution').handler).toBe('onSetupInstitution');
+        expect(home.getReference('connect-plane').handler).toBe('onConnectInstitution');
 
         host.destroy()
     });

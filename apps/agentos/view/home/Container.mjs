@@ -13,6 +13,13 @@ import {INSTANCE_STATE_WORDS} from '../fleet/instances/SwitcherButton.mjs';
 const PRODUCT_LINE = 'Mission control for a cross-model AI engineering team.';
 
 /**
+ * @summary The first run's promise, in the operator's words: what the door behind it sets up. The
+ * merge gate stays the operator's own decision, never a property of the product.
+ * @type {String}
+ */
+const PROMISE_LINE = 'Set up your own AI engineering team — agents with memory that review each other\'s work, running on your machine. You decide what merges.';
+
+/**
  * @summary An axis of the operator's line with nothing to say: no answer yet, or an absence another surface tells.
  * @type {Object}
  */
@@ -59,8 +66,9 @@ const door = (iconCls, route, question) => ({
  * Home, the rail's first keeper view. For the returning team it answers "is the team alive, and
  * where do I go?": the team line leads in the display slot, the plane line speaks only when the plane
  * is not connected, and one door leads to each view. For a first-time operator in a packaged shell
- * without a plane it says what FM is and offers one action, *Connect a plane*, with nothing that reads
- * as fleet state. Behind both, a field on the canvas worker ({@link AgentOS.view.home.Canvas}) takes the
+ * without a plane it says what FM is, promises what the door sets up, and offers one action — *Set up
+ * your institution* — with joining a team that already runs one as the quiet second door, and nothing
+ * that reads as fleet state. Behind both, a field on the canvas worker ({@link AgentOS.view.home.Canvas}) takes the
  * pointer from the whole view and draws one mark per rostered agent from the team line's own read.
  *
  * Above everything, the operator's own line says what waits for the operator: the merges that wait for a
@@ -208,7 +216,7 @@ class Container extends BaseContainer {
                 tag      : 'p',
                 cls      : ['fm-home-lede'],
                 reference: 'lede',
-                text     : 'Your fleet\'s state at a glance, its work streaming in real time, commanded from the cockpit, not a terminal.'
+                text     : PROMISE_LINE
             }, {
                 ntype    : 'component',
                 tag      : 'p',
@@ -227,12 +235,35 @@ class Container extends BaseContainer {
                     door('fa-solid fa-server',         '/system',      'Is the plane healing itself?')
                 ]
             }, {
-                module   : Button,
-                cls      : ['agent-button', 'agent-submit-button', 'fm-home-connect'],
-                handler  : 'onAttachPlane',
+                // the first run's two doors: the declared one as the primary action, joining as a text link
+                ntype    : 'container',
+                cls      : ['fm-home-first-run'],
+                flex     : 'none',
                 hidden   : true,
-                reference: 'connect-plane',
-                text     : 'Connect a plane'
+                layout   : {ntype: 'vbox', align: 'start'},
+                reference: 'first-run',
+                items    : [{
+                    module   : Button,
+                    cls      : ['agent-button', 'agent-submit-button', 'fm-home-setup'],
+                    flex     : 'none',
+                    handler  : 'onSetupInstitution',
+                    reference: 'setup-institution',
+                    text     : 'Set up your institution'
+                }, {
+                    ntype    : 'component',
+                    tag      : 'p',
+                    cls      : ['fm-home-setup-line'],
+                    flex     : 'none',
+                    reference: 'setup-line',
+                    text     : 'A GitHub token · where it runs · start.'
+                }, {
+                    module   : Button,
+                    cls      : ['fm-home-link', 'fm-home-connect'],
+                    flex     : 'none',
+                    handler  : 'onConnectInstitution',
+                    reference: 'connect-plane',
+                    text     : 'Joining a team that already runs one? Connect to it'
+                }]
             }]
         }]
     }
@@ -462,8 +493,8 @@ class Container extends BaseContainer {
     }
 
     /**
-     * @summary Picks the reader. A packaged shell without a plane gets the product line, the lede and
-     * *Connect a plane*. Everyone else gets the operator's line above everything, the team line in the
+     * @summary Picks the reader. A packaged shell without a plane gets the product line, the promise and
+     * the first run's two doors. Everyone else gets the operator's line above everything, the team line in the
      * display slot, the plane line whenever the chrome's verdict is not `ok`, and the doors. The field's
      * team comes from the team line's read.
      */
@@ -499,9 +530,9 @@ class Container extends BaseContainer {
             text: line?.text ?? PRODUCT_LINE
         });
 
-        me.getReference('lede').hidden          = !firstRun;
-        me.getReference('connect-plane').hidden = !firstRun;
-        me.getReference('doors').hidden         = firstRun;
+        me.getReference('lede').hidden      = !firstRun;
+        me.getReference('first-run').hidden = !firstRun;
+        me.getReference('doors').hidden     = firstRun;
 
         me.getReference('plane-line').set({hidden: firstRun || state === 'ok', text: `Plane ${word}`});
 

@@ -111,7 +111,50 @@
         }
     }
 
-    .neo-button.fm-home-connect {
+    /* the first run's doors: the declared one as the primary action, what it asks for in one line
+       under it, and joining a team that already runs one as a text link */
+    .fm-home-first-run {
+        gap   : var(--fm-space-2);
         margin: 28px 0 0;
+
+        .neo-button.fm-home-setup {
+            margin: 0;
+        }
+    }
+
+    .fm-home-setup-line {
+        margin     : 0;
+        font       : var(--fm-text-detail);
+        color      : var(--fm-ink-dim);
+        text-shadow: 0 0 2px var(--fm-ground), 0 0 4px var(--fm-ground), 0 0 10px var(--fm-ground);
+    }
+
+    .neo-button.fm-home-link {
+        --button-height   : 24px;
+        --button-min-width: 0;
+        --button-padding  : 0;
+
+        margin     : var(--fm-space-2) 0 0;
+        border     : 0;
+        background : transparent;
+        box-shadow : none;
+        color      : var(--fm-ink-dim);
+        font-weight: 500;
+
+        &:hover {
+            background: transparent;
+            color     : var(--fm-ink);
+        }
+
+        .neo-button-glyph,
+        .neo-button-text {
+            color: inherit;
+        }
+
+        .neo-button-text {
+            font                 : var(--fm-text-body);
+            text-decoration      : underline;
+            text-underline-offset: 2px;
+        }
     }
 }
