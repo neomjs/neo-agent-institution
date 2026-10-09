@@ -342,12 +342,12 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         pane.routeEnvelope = withheld;
         expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete · route withheld · freshness-sla-breached$/);
-        expect(state(), 'the route the graph read carries still draws, and the control still drops it').toEqual(['Golden Path · withheld', false, true]);
+        expect(state(), 'the route the graph read carries still draws, and the control still drops it').toEqual(['Route · withheld', false, true]);
         expect(control.tooltip.text, 'the reason sits in the detail').toMatch(/\(freshness-sla-breached\)/);
 
         pane.routeEnvelope = GoldenPathEnvelope.fromWire({...withheld, admission: {...withheld.admission, admitted: true, fallback: 'current', reasonCode: 'current'}});
         expect(lineOf(pane)).toMatch(/ · complete$/);
-        expect(state()).toEqual(['Golden Path', false, true]);
+        expect(state()).toEqual(['Route', false, true]);
 
         pane.destroy()
     });
@@ -422,7 +422,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         ['geography-density', 'geography-strategic'].forEach(reference => control(reference).useRippleEffect = false);
 
-        expect(texts).toEqual(['Roadmap', 'Hubs', 'Attention', 'Golden Path', 'Messages', 'Outside wells']);
+        expect(texts).toEqual(['Roadmap', 'Hubs', 'Attention', 'Route', 'Messages', 'Outside wells']);
         expect(pressed(), 'the strategic wells, the route and the halo, by default').toEqual([true, false, false, true, false, true]);
         expect(control('heat-toggle').tooltip.text, 'the attention window is stated').toMatch(/in the last 3 days/);
 
@@ -435,6 +435,30 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         control('geography-strategic').onClick({});
         expect([pane.geography, pressed().slice(0, 2)]).toEqual(['strategic', [true, false]]);
 
+        pane.destroy()
+    });
+
+    test('the head names the view and the geography the scene drew; no surface here calls itself the Golden Path', () => {
+        const
+            titleOf  = pane => pane.getReference('observatory-head').vdom.cn[0].text,
+            anchored = graphRead({nodes: graphRead().scene.nodes.map(node => node.id === q('concept-dock') ? {...node, gravityWell: true, strategicWeight: 1} : node)}),
+            cold     = createPane(),
+            pane     = createPane({envelope: anchored});
+
+        expect(titleOf(cold), 'nothing drawn, no geography named').toBe('Observatory');
+        expect(titleOf(pane)).toBe('Observatory · Roadmap wells');
+
+        pane.geography = 'density';
+        expect(titleOf(pane), 'the title follows a switch').toBe('Observatory · Hub wells');
+
+        pane.set({envelope: graphRead(), geography: 'strategic'});
+        expect(titleOf(pane), 'a read without an anchor draws hub wells, and the title says so').toBe('Observatory · Hub wells');
+
+        const named = [titleOf(pane), ...['geography-strategic', 'geography-density', 'heat-toggle', 'route-toggle', 'mail-toggle', 'halo-toggle'].map(reference => pane.getReference(reference).text)];
+
+        expect(named.filter(text => text.includes('Golden Path')), 'the Golden Path is the dock pane, never a name here').toEqual([]);
+
+        InstanceManager.get(cold.id) && cold.destroy();
         pane.destroy()
     });
 

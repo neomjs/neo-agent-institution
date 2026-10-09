@@ -1390,7 +1390,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the Observatory pane — a read draws its density wells, the nodes in no well in a faint halo, and the route as an overlay of rank beacons the toggle removes; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
         const
             pane    = page.locator('.fm-observatory-pane'),
-            toggle  = pane.getByRole('button', {name: 'Golden Path'}),
+            toggle  = pane.getByRole('button', {name: 'Route'}),
             label   = pane.locator('.fm-observatory-selected-label'),
             current = /^Current · captured .+ · 16 nodes · 15 edges · 3 in the halo · complete$/,
             // no tooltip in a shot. The pointer dwells until any pending tooltip has shown, then leaves and
@@ -1443,7 +1443,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         expect(withheld.success, `the driver loaded: ${JSON.stringify(withheld)}`).toBe(true);
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB · route withheld · freshness-sla-breached$/);
-        await expect(toggle, 'the control says so without a hover').toHaveText('Golden Path · withheld');
+        await expect(toggle, 'the control says so without a hover').toHaveText('Route · withheld');
         await expect(pane).toHaveScreenshot('observatory-pane-withheld-light.png');
         await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=current&t=${++driverTick}`);
         await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ \/ 32 KiB$/);
