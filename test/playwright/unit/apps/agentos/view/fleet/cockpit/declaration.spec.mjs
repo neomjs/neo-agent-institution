@@ -354,6 +354,79 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         expect(fresh.rosterObservedAt).toBe(controller.rosterObservedAt)
     });
 
+    test('a parked Wake routes pane keeps receiving the owner snapshot, and its lookup creates no pane', async () => {
+        cockpit = create();
+        const
+            controller = cockpit.getController(),
+            snapshot   = count => ({capability: {state: 'wired'}, count, seats: []}),
+            setHidden  = async autoHidden => {
+                const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'wakeRoutes', autoHidden});
+                expect(result.errors).toEqual([]);
+                await cockpit.onDockZoneDocumentChange(result.document);
+                await cockpit.refreshPromise
+            };
+        let answer = snapshot(1);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetWakeRoutes: async () => answer}};
+
+        try {
+            expect(cockpit.getWakeRoutesPane(), 'no pane before the first materialization').toBeNull();
+            expect(Neo.get(cockpit.getPaneDeclaration('wakeRoutes').id)).toBeFalsy();
+
+            await setHidden(false);
+            await expect.poll(() => cockpit.getWakeRoutesPane()).toBeTruthy();
+            const pane = cockpit.getWakeRoutesPane();
+
+            await controller.loadWakeRoutes();
+            expect(pane.snapshot.count).toBe(1);
+
+            await setHidden(true);
+            expect(cockpit.getReference('wakeRoutes'), 'parked: off the projected tree').toBeFalsy();
+            expect(cockpit.getWakeRoutesPane(), 'parked: still the live instance').toBe(pane);
+
+            answer = snapshot(2);
+            await controller.loadWakeRoutes();
+            expect(pane.snapshot.count, 'the parked pane holds the new snapshot').toBe(2);
+
+            await setHidden(false);
+            expect(cockpit.getWakeRoutesPane(), 'the reveal re-adopts the same instance').toBe(pane);
+            expect(pane.snapshot.count).toBe(2)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('Reconnect re-drives a parked Wake routes pane', async () => {
+        cockpit = create();
+        const
+            controller = cockpit.getController(),
+            snapshot   = count => ({capability: {state: 'wired'}, count, seats: []}),
+            setHidden  = async autoHidden => {
+                const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'wakeRoutes', autoHidden});
+                expect(result.errors).toEqual([]);
+                await cockpit.onDockZoneDocumentChange(result.document);
+                await cockpit.refreshPromise
+            };
+        let answer = snapshot(1);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetWakeRoutes: async () => answer}};
+
+        try {
+            await setHidden(false);
+            await expect.poll(() => cockpit.getWakeRoutesPane()).toBeTruthy();
+            const pane = cockpit.getWakeRoutesPane();
+
+            await controller.loadWakeRoutes();
+            await setHidden(true);
+
+            answer = snapshot(2);
+            controller.reconnectFleet();
+            await expect.poll(() => pane.snapshot.count, 'the re-drive reaches the parked pane').toBe(2)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
     test('a prior selection survives a direct Review write; a write that hides the inspector or names nothing declared seats nobody', async () => {
         cockpit = create();
 
