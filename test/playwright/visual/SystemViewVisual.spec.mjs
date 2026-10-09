@@ -144,3 +144,111 @@ test.describe('System keeper-view — visual baseline (populated plane cards)', 
         })
     }
 });
+
+/**
+ * The reviewed seat move on the FM skin: mixed dispositions and a refused row, every text node on a
+ * documented role, every row on the FM panel at rest, hover and press, with no pointer, since nothing
+ * here is selectable. The shell is a test-owned preload answer; Review move asks it for the plan.
+ */
+test.describe('System keeper-view — the reviewed seat move on the FM skin (#589)', () => {
+    test.setTimeout(120000);
+
+    test.skip(process.env.NEO_TEST_SKIP_CI === 'true', 'visual baselines are rendered-platform artifacts — local harness only');
+
+    const
+        from  = '/Users/operator/Library/Application Support/neo-harness/brain/fleet/agents',
+        to    = '/Users/operator/.neo-ai/agents',
+        seat  = (id, state, facts = {}) => ({id, seatHome: `${from}/${id}`, destination: `${to}/${id}`, state, materialized: true, ...facts}),
+        plan  = {state: 'planned', from, to, fingerprint: 'a'.repeat(64), rows: [
+            seat('neo-opus-vega', 'copy'),
+            // the refused row second, so it reads inside the box's first screen
+            seat('neo-opus-ada', 'untouched', {code: 'SEAT_HOME_BUSY', reason: 'a running harness holds this seat home open; stop it, then review the move again'}),
+            seat('neo-fable', 'rebind'),
+            seat('neo-gpt-emmy', 'done', {seatHome: `${to}/neo-gpt-emmy`, reason: 'already at its destination'}),
+            seat('neo-kimi-phoebe', 'untouched', {seatHome: '/Volumes/elsewhere/neo-kimi-phoebe', materialized: false, reason: 'bound to a home outside this installation'})
+        ]},
+        status = {packaged: true, root: {root: from, origin: 'adopted'}, pending: null, outcome: {state: 'none'}};
+
+    /**
+     * @summary The first row's background and cursor against a probe painted with `--fm-panel` in the same
+     * block, so the comparison reads the compiled theme rather than a hardcoded color.
+     * @param {Object} page
+     * @returns {Promise<Object>}
+     */
+    const rowSurface = page => page.evaluate(() => {
+        const block = document.querySelector('.fm-seat-root'),
+              probe = block.appendChild(document.createElement('div'));
+
+        probe.style.background = 'var(--fm-panel)';
+
+        const panel = getComputedStyle(probe).backgroundColor,
+              row   = getComputedStyle(document.querySelector('.fm-seat-move-row'));
+
+        probe.remove();
+
+        return {background: row.backgroundColor, cursor: row.cursor, panel}
+    });
+
+    for (const width of [1552, 560]) {
+        test(`mixed dispositions and a refused row read on the panel at rest, hover and press at ${width} px; both skins at 1552`, async ({page}) => {
+            await page.addInitScript(answers => {
+                window.neoShell = {seatRootStatus: async () => answers.status, seatRootPlan: async () => answers.plan, seatRootConsent: async () => null}
+            }, {plan, status});
+
+            await page.setViewportSize({width, height: 1000});
+            await page.goto('/apps/agentos/index.html');
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+
+            await page.evaluate(() => { location.hash = '#/system' });
+
+            const block = page.locator('.fm-seat-root'), rows = block.locator('.fm-seat-move-row');
+
+            await expect(block.locator('.fm-seat-root-review')).toBeVisible({timeout: 30000});
+            await block.locator('.fm-seat-root-review').click();
+            await expect(rows).toHaveCount(plan.rows.length, {timeout: 30000});
+            // every disposition keeps its words, and the plan stays consentable
+            await expect(rows.filter({hasText: 'SEAT_HOME_BUSY'})).toContainText('stop it, then review the move again');
+            await expect(block.locator('.fm-seat-root-consent')).toBeVisible();
+            await page.evaluate(() => document.fonts.ready);
+
+            const
+                skins     = width === 1552 ? ['dark', 'light'] : ['dark'],
+                toggle    = page.locator('.agent-theme-button'),
+                // keyboard activation, so no pointer lands on the switch or a row before a capture
+                nextSkin  = async skin => {
+                    await toggle.focus();
+                    await page.keyboard.press('Enter');
+                    await expect(page.locator(`.agent-os-viewport.neo-theme-neo-${skin}`), `the switch reaches ${skin}`).toBeVisible();
+                    await toggle.blur();
+                    await page.evaluate(() => document.fonts.ready)
+                },
+                // the row at rest, hovered and pressed: the panel throughout, and never a pointer
+                pointerOn = async skin => {
+                    const states = [['at rest', await rowSurface(page)]];
+
+                    await rows.first().hover();
+                    states.push(['hovered', await rowSurface(page)]);
+                    await page.mouse.down();
+                    states.push(['pressed', await rowSurface(page)]);
+                    await page.mouse.up();
+                    await page.mouse.move(0, 0);
+
+                    for (const [phase, surface] of states) {
+                        expect(surface.background, `${skin}, ${phase}: the row sits on the FM panel`).toBe(surface.panel);
+                        expect(surface.cursor, `${skin}, ${phase}: nothing here is selectable`).toBe('default')
+                    }
+                };
+
+            // every capture is taken at rest, before a press leaves the list's keyboard ring on a row
+            for (const skin of skins) {
+                skin === 'light' && await nextSkin('light');
+                await expect(block).toHaveScreenshot(`system-seat-move-review-${width}${skin === 'light' ? '-light' : ''}.png`)
+            }
+
+            for (const skin of [...skins].reverse()) {
+                skin !== skins.at(-1) && await nextSkin(skin);
+                await pointerOn(skin)
+            }
+        })
+    }
+});
