@@ -282,7 +282,7 @@ apps/agentos/util/RosterRow.mjs
     2e718b14cd61c6fa09f4c95294c22c555b299a1c
 
 apps/agentos/util/SeatDependencies.mjs
-    8ebcf29f12cfd9a73effa41339800630acb9b55c
+    c0f71da02903ccb244002a365f61edd64e2a474c
 
 apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
@@ -396,7 +396,7 @@ apps/agentos/view/fleet/detail/PullRequestList.mjs
     e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
 
 apps/agentos/view/fleet/detail/RepositoryBodyContainer.mjs
-    d19c4b1cbc5df13bcf4303f82a896065eed8e7dc
+    3f6dc7e002cb289bae31a80026e8077eebad340e
 
 apps/agentos/view/fleet/detail/RepositoryList.mjs
     fa88c7f51e9a8450766b6b0937bdaa46b36cb2f0
@@ -528,7 +528,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    ba5f221b5b58fb277945684abeb88fba664b09b0
+    2245d07fe9767b332134cc62d8be6f1c8079caf0
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     6be0a97126831188336d056730b994353b18fc3a
