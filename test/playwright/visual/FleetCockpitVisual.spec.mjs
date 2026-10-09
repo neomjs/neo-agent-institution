@@ -1890,10 +1890,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             chip   = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
             settle = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
 
-        await expect(card.locator('.fm-setup-preset')).toHaveCount(3, {timeout: 15000});
-        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
-        await expect(row('preset')).toHaveClass(/is-ok/);
+        // the front answers one question at a time: the token, then the choice under Other choices,
+        // then the ledger's chips behind Details — the e2e walk's own route
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/, {timeout: 15000});
         await card.locator('.fm-setup-credential-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-other-choices-toggle').click();
+        await expect(card.locator('.fm-setup-preset')).toHaveCount(3);
+        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(row('preset')).toHaveClass(/is-ok/);
         await expect(row('plane-credential')).toHaveClass(/is-ok/);
         await chip('provider-key', 'open window').click();
         await expect(row('provider-key')).toHaveClass(/is-ok/);
@@ -1919,12 +1925,38 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         expect(paint).toEqual([{filled: true, bordered: true, underlined: false}, {filled: false, bordered: false, underlined: true}]);
 
-        await settle();
+        // the door's foot fades under its sticky gradient (`.fm-setup-create::after`): before each
+        // capture the real scroll surface puts the row in its unobscured reading area, and the
+        // boundary is asserted — the row's box clips nothing, the wrapped reason ends inside it, and
+        // the row ends above the fade. The fade itself stays as designed.
+        const inReadingArea = async () => {
+            await row('verify').evaluate(el => el.scrollIntoView({block: 'center'}));
+            await settle();
+
+            const fit = await row('verify').evaluate(el => {
+                const
+                    door   = el.closest('.fm-setup-door'),
+                    fade   = parseFloat(getComputedStyle(door, '::after').height) || 0,
+                    rowBox = el.getBoundingClientRect();
+
+                return {
+                    clipped  : el.scrollHeight - el.clientHeight,
+                    overhang : el.querySelector('.fm-setup-step-reason').getBoundingClientRect().bottom - rowBox.bottom,
+                    clearance: door.getBoundingClientRect().bottom - fade - rowBox.bottom
+                }
+            });
+
+            expect(fit.clipped, 'the row clips nothing').toBe(0);
+            expect(fit.overhang, 'the reason ends inside the row').toBeLessThanOrEqual(0);
+            expect(fit.clearance, 'the row ends above the door\'s fade').toBeGreaterThanOrEqual(0)
+        };
+
+        await inReadingArea();
         await expect(row('verify')).toHaveScreenshot('setup-row-two-exits.png');
 
         await chip('verify', 'write again').click();
         await expect(row('verify').locator('.fm-setup-step-confirm')).toBeVisible();
-        await settle();
+        await inReadingArea();
         await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-confirming.png');
 
         // another row's click takes the first press back
@@ -1932,7 +1964,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(row('verify').locator('.fm-setup-step-confirm')).toHaveCount(0);
 
         await switchToLightSkin(page);
-        await settle();
+        await inReadingArea();
         await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-light.png')
     });
 
@@ -2062,7 +2094,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await landShellPlane(page, false);
         await expect(connect).toBeVisible();
-        await expect(home.locator('.fm-home-connect'), 'joining stays reachable as the second door').toHaveText('Joining a team that already runs one? Connect to it');
+        await expect(home.locator('.fm-home-connect-line'), 'joining stays reachable as the second door, only its verb a link').toHaveText('Joining a team that already runs one?Connect to it');
+        await expect(home.locator('.fm-home-connect')).toHaveText('Connect to it');
         await expect(home.locator('.fm-home-doors')).toBeHidden();
         await expect(home.locator('.fm-home-plane')).toBeHidden();
         // the lede declared no family and inherited the theme's body face, apart from the display line above it

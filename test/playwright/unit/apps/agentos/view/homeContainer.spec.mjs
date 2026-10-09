@@ -73,10 +73,13 @@ test.describe('AgentOS.view.home.Container — Home answers its two readers (#24
         home.set({gridAdapterState: 'live', instanceState: 'limited', shellPlaneConfigured: false});
         expect(read(home)).toEqual({lead: PRODUCT_LINE, quiet: false, lede: true, connect: true, doors: false, plane: null});
         // the promise keeps the merge decision the operator's own, never a property of the product
-        expect(home.getReference('lede').text).toBe('Set up your own AI engineering team — agents with memory that review each other\'s work, running on your machine. You decide what merges.');
+        // "other's work" never splits across the fold: a no-break space joins the possessive to its noun
+        expect(home.getReference('lede').text).toBe('Set up your own AI engineering team — agents with memory that review each other\'s work, running on your machine. You decide what merges.');
         expect(home.getReference('setup-institution').text).toBe('Set up your institution');
         expect(home.getReference('setup-line').text, 'what the door asks for, without an unmeasured duration').toBe('A GitHub token · where it runs · start.');
-        expect(home.getReference('connect-plane').text).toBe('Joining a team that already runs one? Connect to it');
+        // the second door: the question in plain words, only the verb is the link
+        expect(home.getReference('connect-question').text).toBe('Joining a team that already runs one?');
+        expect(home.getReference('connect-plane').text).toBe('Connect to it');
 
         home.shellPlaneConfigured = true;
         expect(read(home), 'a shell with a plane is a returning reader').toMatchObject({lead: 'No agents yet', lede: false, connect: false, doors: true, plane: 'Plane degraded'});

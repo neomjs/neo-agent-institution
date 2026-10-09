@@ -17,7 +17,7 @@ const PRODUCT_LINE = 'Mission control for a cross-model AI engineering team.';
  * merge gate stays the operator's own decision, never a property of the product.
  * @type {String}
  */
-const PROMISE_LINE = 'Set up your own AI engineering team — agents with memory that review each other\'s work, running on your machine. You decide what merges.';
+const PROMISE_LINE = 'Set up your own AI engineering team — agents with memory that review each other\'s work, running on your machine. You decide what merges.';
 
 /**
  * @summary An axis of the operator's line with nothing to say: no answer yet, or an absence another surface tells.
@@ -257,12 +257,27 @@ class Container extends BaseContainer {
                     reference: 'setup-line',
                     text     : 'A GitHub token · where it runs · start.'
                 }, {
-                    module   : Button,
-                    cls      : ['fm-home-link', 'fm-home-connect'],
+                    // the second door: the question in plain words, only the verb is the link
+                    ntype    : 'container',
+                    cls      : ['fm-home-connect-line'],
                     flex     : 'none',
-                    handler  : 'onConnectInstitution',
-                    reference: 'connect-plane',
-                    text     : 'Joining a team that already runs one? Connect to it'
+                    layout   : {ntype: 'hbox', align: 'baseline'},
+                    reference: 'connect-line',
+                    items    : [{
+                        ntype    : 'component',
+                        tag      : 'span',
+                        cls      : ['fm-home-connect-question'],
+                        flex     : 'none',
+                        reference: 'connect-question',
+                        text     : 'Joining a team that already runs one?'
+                    }, {
+                        module   : Button,
+                        cls      : ['fm-home-link', 'fm-home-connect'],
+                        flex     : 'none',
+                        handler  : 'onConnectInstitution',
+                        reference: 'connect-plane',
+                        text     : 'Connect to it'
+                    }]
                 }]
             }]
         }]
