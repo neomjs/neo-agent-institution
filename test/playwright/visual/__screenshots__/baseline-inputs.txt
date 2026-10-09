@@ -294,7 +294,7 @@ apps/agentos/util/SeatSessionFolder.mjs
     5c407e6a03f2b440af221d6a6e314aa7f89f6f53
 
 apps/agentos/util/SetupAsks.mjs
-    a8b9c7a1ea3847322c20b86fb1a327d1151ef0fe
+    581e8ff3e8eb665bf5b6d605c1defaaac025ad37
 
 apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
@@ -558,7 +558,7 @@ apps/agentos/view/setup/ConnectContainer.mjs
     d942330ea4f2fe19c9e94091c641be38f6acebe7
 
 apps/agentos/view/setup/CreateContainer.mjs
-    3ae86889cbae39fbb1834ed6db00b63aab53fe51
+    a64ff0c98eb6776ad8143d2565cd0c71d277d41a
 
 apps/agentos/view/setup/Panel.mjs
     b05bdade7c7ba7f5b1378ab83cc6cbfd0ccf1916

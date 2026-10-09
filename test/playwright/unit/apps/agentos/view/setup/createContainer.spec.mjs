@@ -231,11 +231,15 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.getReference('token-change').hidden).toBe(false);
         expect(door.getReference('ask-where').cls).toContain('is-open');
 
-        // Change opens the block again until the next evaluation — any fresh observation, equal or not
+        // Change opens the block again until the next evaluation — any fresh observation, equal or not —
+        // and makes it the one open block: the question after it falls back to next meanwhile
         door.onChangeClick({component: {askId: 'token'}});
         expect(door.getReference('ask-token').cls).toContain('is-open');
+        expect(SetupAsks.describeAsks(door.store, 'token'), 'the reopened block is the one open block').toEqual({token: 'open', where: 'next', start: 'next', startRow: null});
+        expect(door.getReference('ask-where').cls).toContain('is-next');
         door.evaluation = structuredClone(door.evaluation);
         expect(door.getReference('ask-token').cls, 'a fresh evaluation closes it').toContain('is-answered');
+        expect(door.getReference('ask-where').cls, 'and the progression returns').toContain('is-open');
 
         host.destroy()
     });
@@ -275,7 +279,19 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         await door.onStartClick();
         expect(calls.filter(([name]) => name === 'setupEffect').map(([, request]) => request)).toEqual([{effectId: 'write-secrets', windowId: 7}]);
 
-        // the witness row where a second row is possible: the first press says so in the block
+        // Change on an answered block makes it the one active progression: Start offers nothing until it settles
+        door.onChangeClick({component: {askId: 'where'}});
+        expect(SetupAsks.describeAsks(door.store, 'where')).toEqual({token: 'answered', where: 'open', start: 'next', startRow: null});
+        expect(door.getReference('ask-start').cls).toContain('is-next');
+        expect(door.getReference('start-button').hidden).toBe(true);
+        await door.onStartClick();
+        expect(calls.filter(([name]) => name === 'setupEffect').length, 'nothing is dispatched while a question is being edited').toBe(1);
+        door.evaluation = structuredClone(door.evaluation);
+        expect(door.getReference('ask-start').cls, 'a fresh evaluation restores the progression').toContain('is-open');
+        expect(door.getReference('start-button').hidden).toBe(false);
+
+        // the witness row where a second row is possible: the first press says so in the block, and the
+        // block's button becomes the press the help names — the second one, the consent — not the row's first exit
         evaluation = structuredClone(WITNESS.searched);
         await door.reevaluate('unused');
         expect(SetupAsks.describeAsks(door.store).startRow.id).toBe('verify');
@@ -283,6 +299,13 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         await door.onStepClick({action: 'write again', record: door.store.get('verify')});
         expect(door.getReference('start-help').text).toBe('a second row on the plane is possible · press Write again to write it');
+        expect(door.getReference('start-button').text, 'the button the help names').toBe('Write again');
+        expect(door.startAction).toBe('write again');
+
+        await door.onStartClick();
+        expect(calls.filter(([name]) => name === 'setupEffect').map(([, request]) => request).at(-1), 'the second press, from the block, is the consent').toEqual({effectId: 'verify', newAttempt: true, windowId: 7});
+        expect(door.getReference('step-list').confirmingId).toBe(null);
+        expect(door.getReference('start-button').text, 'the row\'s first exit again once nothing is pending').toBe('Check again');
 
         host.destroy()
     });

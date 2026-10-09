@@ -503,8 +503,10 @@ class CreateContainer extends Container {
             keyNeeded   = Boolean(key) && key.status !== 'ok' && !key.waitsFor,
             recommended = placement?.recommended?.[0] ?? null,
             progress    = store.describeProgress(),
-            action      = startRow ? actionsFor(startRow)[0] ?? null : null,
-            confirming  = me.getReference('step-list').confirmingId;
+            confirming  = me.getReference('step-list').confirmingId,
+            // a pending write-again confirmation is the row's one open question: the block's action is
+            // its second press, never the row's first exit beside it
+            action      = startRow ? (confirming === startRow.id ? 'write again' : actionsFor(startRow)[0] ?? null) : null;
 
         me.applyAskState('token', token);
         me.applyAskState('where', where);

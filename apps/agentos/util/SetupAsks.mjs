@@ -121,12 +121,13 @@ class SetupAsks extends Base {
      * credential, **where** the preset with its provider key when the preset needs one, **start** the
      * first row that is not ok and waits for nothing. The blocks read in order — the first one not
      * answered is open, the ones before it answered, the ones after it next — and `reopened` names an
-     * answered block the operator opened again with Change.
+     * answered block the operator opened again with Change: it becomes the one open block, and the
+     * blocks after it read next until it settles, so one progression is active at a time.
      * @param {Neo.data.Store|null} store The door's projection store
      * @param {String|null} [reopened=null] `token` | `where`
      * @returns {{token: String, where: String, start: String, startRow: Object|null}} Each state is
      * `open` · `answered` · `next`; `startRow` is the Start block's row, `null` while the questions
-     * are not done or once nothing is left to run
+     * are not done, while a question is being edited, or once nothing is left to run
      */
     static describeAsks(store, reopened = null) {
         const
@@ -137,11 +138,13 @@ class SetupAsks extends Base {
             keyDone    = !key || key.status === 'ok' || Boolean(key.waitsFor),
             answered   = {token: credential?.status === 'ok', where: preset?.status === 'ok' && keyDone},
             order      = ['token', 'where', 'start'],
-            firstOpen  = order.indexOf(order.find(id => id === 'start' || !answered[id])),
+            normal     = order.indexOf(order.find(id => id === 'start' || !answered[id])),
+            reopenedAt = order.indexOf(reopened),
+            firstOpen  = reopenedAt > -1 && reopenedAt < normal ? reopenedAt : normal,
             states     = {};
 
         order.forEach((id, index) => {
-            states[id] = reopened === id ? 'open' : index < firstOpen ? 'answered' : index === firstOpen ? 'open' : 'next'
+            states[id] = index < firstOpen ? 'answered' : index === firstOpen ? 'open' : 'next'
         });
 
         // the Start block's row: not ok, waits for nothing, and not a question the blocks above own
