@@ -10,9 +10,9 @@
 //     the organism receipt (`organism-build-info.json`) is the only identity a build has; the leg
 //     verifies the staged copy carries the artifact's receipt BEFORE any slot moves, and prints the
 //     receipt old → new;
-//   - quitting Neo Harness also stops the peer harnesses it launched (harness/README.md), so a
-//     running app is a refusal by default, `--quit` is the only way this leg stops one, and a copy
-//     running from ANY bundle named `Neo Harness*.app` counts — a renamed previous copy included;
+//   - detached desktop harnesses survive FM quit. Their local MCP processes can still use the
+//     bundle, so the census includes every executable inside ANY `Neo Harness*.app` bundle;
+//     `--quit` only asks the canonical FM app to quit and remaining bundle users still refuse;
 //   - a swap is several renames, and a process can die between two of them. Every intermediate
 //     state is a slot the next run recognizes and completes, never an absence it refuses.
 //
@@ -68,8 +68,8 @@ export const CUSTODY_FLEET_DIR   = path.join('brain', 'fleet');
 export const CUSTODY_AGENTS_DIR  = 'agents';
 
 export const PEER_QUIT_WARNING =
-    `Quitting ${APP_NAME} also stops the peer harnesses it launched. Checkpoint those seats first; ` +
-    'reopening the app does not itself prove their sessions resumed.';
+    `Quitting ${APP_NAME} leaves detached desktop harnesses running. Their MCP processes may still use this bundle; ` +
+    'the installer refuses replacement until those processes exit. Any separate seat shutdown needs a checkpoint.';
 
 /** A running executable inside any bundle named `Neo Harness….app`: the canonical one, a renamed copy, a staging twin. */
 const HARNESS_BUNDLE_PATTERN = new RegExp(`/${APP_NAME.replace(/ /g, '\\s')}[^/]*\\.app/`);
@@ -217,10 +217,10 @@ export function executePlan(steps, {runFn = run, runningFn = () => runningHarnes
         try {
             switch (step.type) {
                 case 'quit':
-                    // Through the app's own lifecycle, never a signal: an orderly quit is what stops
-                    // launched peers cleanly, and a SIGKILL would orphan them. Addressed by PATH, not
-                    // bundle identifier: every development build shares the identifier, so an id-based
-                    // quit resolves through a Launch Services pick among every registered copy — and
+                    // Through the app's own lifecycle, never a signal: quit drains its owned Brain
+                    // children, not detached desktop seats. The census still waits for all bundle users.
+                    // Addressed by PATH, not bundle identifier: development builds share the identifier,
+                    // so an id-based quit resolves through a Launch Services pick among every copy — and
                     // AppleScript launches the copy it picked if that one is not running.
                     runFn('osascript', ['-e', `tell application "${step.bundle}" to quit`]);
                     waitUntilGone(runningFn, quitTimeoutMs);
