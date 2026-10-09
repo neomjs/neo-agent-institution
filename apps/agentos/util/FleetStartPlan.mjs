@@ -155,17 +155,106 @@ class FleetStartPlan extends Base {
     }
 
     /**
+     * @summary The mirror partition for a fleet-wide stop: the UP eligible fleet. The same authority
+     * and evidence rules as {@link partitionFleetStart}, first match wins — a guest without
+     * `agentId`, a known non-active or unobserved `participationStatus`, a `pendingAction` in flight,
+     * an unwired runtime source (a projected state over an unusable source is no proof of a running
+     * seat either), a prior timeout — and then the direction flips: a session state of `off` is
+     * "already down", everything else is up and stoppable.
+     * @param {Object[]} records FleetAgent records (or plain field bags in tests).
+     * @returns {{eligible: Object[], excluded: Object[]}} `excluded` entries are `{record, agentId, reason}`.
+     */
+    static partitionFleetStop(records) {
+        const
+            eligible = [],
+            excluded = [];
+
+        (records ?? []).forEach(record => {
+            if (!record) return;
+
+            const
+                agentId = record.agentId ?? null,
+                runtime = SourceHealth.normalizeFleetSources(record.sources).runtime,
+                exclude = reason => excluded.push({agentId, reason, record});
+
+            if (!agentId) {
+                exclude('guest — no fleet definition to stop')
+            } else if (record.participationStatus != null && record.participationStatus !== 'active') {
+                exclude(`not active — authoritative participation status '${record.participationStatus}'`)
+            } else if (record.participationStatus == null && record.participationRead?.state === 'unread') {
+                exclude(`unobserved — the participation read did not answer${record.participationRead.reason ? `: ${record.participationRead.reason}` : ''}`)
+            } else if (record.pendingAction) {
+                exclude(`'${record.pendingAction}' round-trip already in flight`)
+            } else if (runtime.state !== 'wired') {
+                exclude(`runtime source '${runtime.state}' — no usable lifecycle evidence to stop against`)
+            } else if (record.controlReason?.kind === 'timeout') {
+                exclude(`'${record.controlReason.action ?? 'lifecycle'}' outcome unknown after timeout — retry only through an explicit card control`)
+            } else if ((record.state ?? 'off') === 'off') {
+                exclude('already down — session state \'off\'')
+            } else {
+                eligible.push(record)
+            }
+        });
+
+        return {eligible, excluded}
+    }
+
+    /**
+     * @summary The fleet button's words, from the plan a click would run: `Start fleet · n` while
+     * anything eligible is down; `Stop fleet · n` only when nothing is left to start and n eligible
+     * seats are up; the plain `Start fleet` with the reason in `title` when no plan can be computed —
+     * the roster unobserved, every runtime source unwired, or every row excluded — never a count the
+     * partition did not produce. The caller decides WHEN to read it (settled rosters only: a batch in
+     * flight keeps the last settled label).
+     * @param {Object[]|null} records FleetAgent records
+     * @returns {{action: String|null, count: Number, text: String, title: String|null}} `action` is
+     * `start` · `stop` · `null` (nothing to run)
+     */
+    static describeFleetButton(records) {
+        const rows = (records ?? []).filter(Boolean);
+
+        if (rows.length === 0) {
+            return {action: null, count: 0, text: 'Start fleet', title: 'the roster has not answered — no plan to run yet'}
+        }
+
+        const start = FleetStartPlan.partitionFleetStart(rows);
+
+        if (start.eligible.length > 0) {
+            return {action: 'start', count: start.eligible.length, text: `Start fleet · ${start.eligible.length}`, title: null}
+        }
+
+        const stop = FleetStartPlan.partitionFleetStop(rows);
+
+        if (stop.eligible.length > 0) {
+            return {action: 'stop', count: stop.eligible.length, text: `Stop fleet · ${stop.eligible.length}`, title: null}
+        }
+
+        const
+            unwired = rows.every(record => SourceHealth.normalizeFleetSources(record.sources).runtime.state !== 'wired'),
+            reasons = [...new Set(stop.excluded.map(({reason}) => reason))].join(' · ');
+
+        return {
+            action: null,
+            count : 0,
+            text  : 'Start fleet',
+            title : unwired ? 'no usable lifecycle evidence — the runtime source is not wired' : `nothing to start or stop — ${reasons}`
+        }
+    }
+
+    /**
      * @summary Render the summary as the compact chrome line + the reachable per-member reasons.
      * Pure string building: `text` is the at-a-glance state
      * ("3 started · 1 UNKNOWN · 1 rejected · 2 excluded"); `detail` lists every
      * unknown/rejected/excluded member with its reason, one per line — the "reasons reachable from
-     * the summary" contract, carried as the summary element's title.
+     * the summary" contract, carried as the summary element's title. The verb names the direction:
+     * `started` for a fleet start, `stopped` for a fleet stop.
      * @param {Object} summary From {@link summarizeFleetStart}.
+     * @param {String} [verb='started']
      * @returns {{text: String, detail: String}}
      */
-    static renderFleetStartSummary(summary) {
+    static renderFleetStartSummary(summary, verb = 'started') {
         const
-            parts  = [`${summary.started} started`],
+            parts  = [`${summary.started} ${verb}`],
             detail = [];
 
         summary.unknown.length  && parts.push(`${summary.unknown.length} UNKNOWN`);
