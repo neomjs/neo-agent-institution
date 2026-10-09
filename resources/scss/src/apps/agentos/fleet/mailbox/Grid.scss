@@ -137,7 +137,9 @@
     .fm-mail-task      { --fm-mail-chip-mark: var(--fm-signal); }
     /* the broadcast/other class chip keeps the neutral decorative mark */
 
-    .fm-mail-tickets {
+    /* the quiet words: related tickets, and an open question's `archived` */
+    .fm-mail-tickets,
+    .fm-mail-archived {
         font : var(--fm-text-micro);
         color: var(--fm-ink-dim);
     }

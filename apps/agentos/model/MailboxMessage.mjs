@@ -82,6 +82,10 @@ class MailboxMessage extends Model {
             name        : 'readAt',
             defaultValue: null
         }, {
+            // set only on the open-questions read's rows: an archived question that is still open
+            name        : 'archivedAt',
+            defaultValue: null
+        }, {
             // VIEW-OWNED display state (see class summary): thread heads start collapsed
             name        : 'threadCollapsed',
             type        : 'Boolean',

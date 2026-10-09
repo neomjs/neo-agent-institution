@@ -662,6 +662,19 @@ class ViewportController extends Controller {
     }
 
     /**
+     * @summary Home's question count opens the questions: the route moves to the Fleet cockpit, whose Mailbox
+     * shows the operator's open questions.
+     * @returns {Promise<Object>} The cockpit's `{opened}`
+     */
+    async onHomeQuestionsOpen() {
+        const me = this;
+
+        await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
+
+        return me.getReference('fleet-cockpit').getController().openOperatorQuestions()
+    }
+
+    /**
      * @summary Activates the Home keeper-view from the route.
      */
     onHomeRoute() {

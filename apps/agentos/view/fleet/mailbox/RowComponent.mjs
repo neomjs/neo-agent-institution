@@ -3,7 +3,7 @@ import ViewerTime from '../../../util/ViewerTime.mjs';
 
 /**
  * One designed mailbox row — the merged information-design sketch
- * (`apps/agentos/design/institution-mailbox-pane.html`, #36/#38) rendered from one
+ * (`apps/agentos/design/institution-mailbox-pane.html`) rendered from one
  * {@link AgentOS.model.MailboxMessage} record.
  *
  * @summary The grid cell for {@link AgentOS.view.fleet.mailbox.Grid}: a deliberately FLAT component —
@@ -23,6 +23,8 @@ import ViewerTime from '../../../util/ViewerTime.mjs';
  * - exception strip — chips render ONLY for deviations (T2 exception-only): `high`/`low` priority,
  *   an A2A `taskState` envelope, a non-direct `recipientClass`; a direct/normal/plain/read message
  *   renders two quiet lines and zero chips.
+ * - `archivedAt` — an archived question that is still open says `archived` beside its Task, so archiving
+ *   it never reads as having closed it (only the open-questions read lists archived messages).
  * - thread — a head renders the toggle (`+N earlier` collapsed · `collapse thread` expanded);
  *   members indent on the rail (grid-fed display facts, derived from the store's thread map).
  *
@@ -47,7 +49,7 @@ class RowComponent extends Component {
         baseCls: ['fm-mail-row'],
         /**
          * The row's render surface: a PLAIN bag of the record-derived values (subject, from,
-         * status, priority, taskState, recipientClass, relatedTickets, sentAt, threadFacts),
+         * status, priority, taskState, archivedAt, recipientClass, relatedTickets, sentAt, threadFacts),
          * assembled fresh by the column factory on every pool recycle. Deliberately NOT the record
          * instance: the engine's component-column contract re-seats pooled cells via `set()`, and
          * a same-instance record never re-fires its afterSet — a freshly built bag always does
@@ -112,6 +114,10 @@ class RowComponent extends Component {
 
         if (record.taskState) {
             strip.push({tag: 'span', cls: ['fm-mail-chip', 'fm-mail-task'], text: `task · ${record.taskState}`})
+        }
+
+        if (record.archivedAt) {
+            strip.push({tag: 'span', cls: ['fm-mail-archived'], text: 'archived'})
         }
 
         if (record.recipientClass && record.recipientClass !== 'agent') {

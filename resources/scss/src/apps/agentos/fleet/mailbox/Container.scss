@@ -70,6 +70,11 @@
         }
     }
 
+    /* the open questions' `read on` sits under the line that says why, at its own width */
+    .fm-mailbox-read-on {
+        align-self: flex-start;
+    }
+
     /* the list beside the open message, the Memories pane's reading split: the list two shares,
        the detail one, the splitter resizing the list */
     .fm-mailbox-body {
