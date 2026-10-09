@@ -971,8 +971,12 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             expect(card.cls).not.toContain('fm-control-live')
         }
 
-        // an offline card says nothing either: the Repository pane keeps the last attempt's rows
+        // an offline card says nothing either, whether stopped or unobserved: the Repository pane keeps the
+        // last attempt's rows
         applySet(card, {dependencyOutcomes: skipped, state: 'off'});
+        expect(status().hidden).toBe(true);
+        applySet(card, {state: 'ok', sources: {...observedSources, runtime: {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}}});
+        expect(card.down({reference: 'card-state'}).text).toBe('offline');
         expect(status().hidden).toBe(true);
 
         card.destroy()

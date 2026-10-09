@@ -855,8 +855,9 @@ class AgentCard extends Container {
                     runtime    : sources.runtime
                 }) : null,
             // the quietest exception: a running seat whose working checkout the last start did not prepare
-            // has no verified skills. Opening the session folder is the first-launch step, so it speaks first
-            skillsLine    = recordState !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal || admissionLine || sessionLine)
+            // has no verified skills. Running is the state the card shows, so a seat it reads offline says
+            // nothing; opening the session folder is the first-launch step, so it speaks first
+            skillsLine    = resolved.state !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal || admissionLine || sessionLine)
                 ? SeatDependencies.cardLine(record.dependencyOutcomes, record.repoSlug) : null;
 
         restart.changeVdomRootKey('title', admissionLine?.restart ? admissionLine.title : null);
