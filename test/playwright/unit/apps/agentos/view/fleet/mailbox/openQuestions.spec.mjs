@@ -242,6 +242,63 @@ test.describe('AgentOS operator mailbox — what waits for your word (#599)', ()
         expect(pane().store.getCount(), 'the next window extends the questions').toBe(2)
     });
 
+    test('a window can show none of the questions its count holds: what is held stays, the pane asks past it itself, and only a complete zero says nothing waits', () => {
+        const
+            asked = [],
+            read  = (rows, count, page) => ({...answered(rows, page), count});
+
+        box = createBox({record: OPERATOR, view: 'open'});
+        box.on('inboxPageRequest', data => asked.push(data.offset));
+        asked.length = 0;
+
+        // a middle window the graph could not project: the held question and its detail stay, and since the rows
+        // in view did not change, the pane asks for the next window itself
+        box.questions = read([question()], 3, {limit: 1, hasMore: true});
+        pane().onRowSelect({record: pane().store.get('MESSAGE:q1')});
+        box.questions = read([], 3, {limit: 1, offset: 1, hasMore: true});
+        expect([pane().store.getCount(), pane().selectedMessageId, stateLine().hidden]).toEqual([1, 'MESSAGE:q1', true]);
+        expect(asked).toEqual([2]);
+
+        box.questions = read([question({messageId: 'MESSAGE:q3'})], 3, {limit: 1, offset: 2, hasMore: false});
+        expect(pane().store.getCount()).toBe(2);
+
+        // an empty final window after held rows discards nothing and asks nothing
+        box.questions = read([], 3, {limit: 1, offset: 3, hasMore: false});
+        expect([pane().store.getCount(), stateLine().hidden, asked]).toEqual([2, true, [2]]);
+
+        // a switch starts the run over, and the other list's window request no longer applies
+        box.view = 'all';
+        expect([pane().emptyWindows, pane().pendingOffset]).toEqual([0, null])
+    });
+
+    test('a first window that shows none of a positive count never reads "nothing waits": the pane asks a few windows on, then says what it holds', () => {
+        const
+            asked = [],
+            read  = (rows, count, page) => ({...answered(rows, page), count});
+
+        box = createBox({record: OPERATOR, view: 'open'});
+        box.on('inboxPageRequest', data => asked.push(data.offset));
+        asked.length = 0;
+
+        box.questions = read([], 3, {limit: 1, hasMore: true});
+        expect(pane().getPaneState()).toBe('rows');
+        expect(stateLine().text, 'the next window is on its way').toBe('your open questions have not been read');
+
+        box.questions = read([], 3, {limit: 1, offset: 1, hasMore: true});
+        box.questions = read([], 3, {limit: 1, offset: 2, hasMore: true});
+        box.questions = read([], 3, {limit: 1, offset: 3, hasMore: true});
+        expect(asked, 'three windows in a row at most: never a walk through the inbox').toEqual([1, 2, 3]);
+        expect(stateLine().text).toBe('3 open · none can be shown here');
+
+        // a window that brings a row shows it and starts the run over
+        box.questions = read([question()], 3, {limit: 1, offset: 4, hasMore: false});
+        expect([pane().store.getCount(), stateLine().hidden, pane().emptyWindows]).toEqual([1, true, 0]);
+
+        // a complete zero is the one empty read
+        box.questions = read([], 0);
+        expect([pane().getPaneState(), stateLine().text]).toEqual(['empty', 'nothing waits for your word'])
+    });
+
     test('a question opened from the open view is the operator\'s to resolve without an all-mail read', () => {
         box = createBox({record: OPERATOR, view: 'open'});
         box.questions = answered([question()]);

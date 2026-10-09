@@ -63,6 +63,13 @@ function isRecognizedPage(page) {
 }
 
 /**
+ * How many windows in a row the open questions ask for themselves when a landed window showed no row: enough to
+ * pass a run of rows the graph cannot project, never a walk through the inbox.
+ * @type {Number}
+ */
+const EMPTY_WINDOWS = 3;
+
+/**
  * The mailbox mirror pane — the S1 view half: a read-only, viewer-admitted mirror of ONE subject's
  * ACTIVE A2A inbox, rendered from one Fleet mailbox-mirror adapter snapshot. Subject-generic by
  * construction: today its one host is the south pane's {@link AgentOS.view.fleet.mailbox.OperatorContainer}
@@ -258,9 +265,16 @@ class MailboxPane extends Container {
      */
     store = null
     /**
+     * The open questions' windows landed in a row without a row to show: the bound of the pane's own asks
+     * ({@link EMPTY_WINDOWS}). A window that brings a row starts it over, and so does a switch of list.
+     * @member {Number} emptyWindows=0
+     * @protected
+     */
+    emptyWindows = 0
+    /**
      * The offset of the window this pane has requested and not yet received, `null` otherwise —
-     * the one-request-in-flight gate of {@link #onScrollEdge}. Cleared by every landed snapshot
-     * ({@link #afterSetSnapshot}), whatever its offset.
+     * the one-request-in-flight gate of {@link #onScrollEdge} and of the open questions' own ask. Cleared by every
+     * landed snapshot ({@link #afterSetSnapshot}), whatever its offset.
      * @member {Number|null} pendingOffset=null
      * @protected
      */
@@ -363,6 +377,7 @@ class MailboxPane extends Container {
      * @protected
      */
     afterSetView(value, oldValue) {
+        this.emptyWindows  = 0;
         this.pendingOffset = null;
         // the open questions keep their read's order (priority, then age); all mail reads newest first
         this.store && (this.store.sorters = AgentMailboxStore.sortersOf(value));
@@ -547,7 +562,8 @@ class MailboxPane extends Container {
 
     /**
      * @summary Classify the open-questions read: not read yet or unrecognized → `unobserved`, `unavailable` →
-     * `degraded` (its reason, never an empty list), and a complete `ok` read → `empty` or `rows`.
+     * `degraded` (its reason, never an empty list), and a complete `ok` read by its count → `empty` for a complete
+     * zero, otherwise `rows`: a page can show none of the questions the count holds.
      * @returns {String} 'unobserved' | 'degraded' | 'empty' | 'rows'
      * @protected
      */
@@ -556,9 +572,9 @@ class MailboxPane extends Container {
 
         if (!isRecognizedQuestionsAnswer(answer)) return 'unobserved';
         if (answer.state === 'unavailable')       return 'degraded';
-        if (!isRecognizedPage(answer.page))       return 'unobserved';
+        if (!isRecognizedPage(answer.page) || !Number.isSafeInteger(answer.count)) return 'unobserved';
 
-        return answer.rows.length === 0 ? 'empty' : 'rows'
+        return answer.count === 0 ? 'empty' : 'rows'
     }
 
     /**
@@ -612,16 +628,6 @@ class MailboxPane extends Container {
 
         me.getReference('mailbox-freshness').set({cls, text: label});
 
-        stateCmp.set({
-            cls   : ['fm-mailbox-state', `is-${state}`],
-            hidden: rows,
-            text  : rows ? '' : me.getStateText(state)
-        });
-
-        // the body leaves the layout with its rows, so a state line keeps the room it had alone
-        me.getReference('mailbox-body').hidden = !rows;
-        rowsGrid.hidden = !rows;
-
         // Projection: the FIRST window replaces wholesale; a follow-up window (offset > 0) extends
         // the held corpus — the accumulation half of the no-paging contract (the buffered surface
         // owns the whole corpus; the old offset chrome moved windows, the scroll edge fetches
@@ -642,8 +648,30 @@ class MailboxPane extends Container {
 
             rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected);
             me.projectedFingerprint = fingerprint;
-            me.projectedView        = rows ? me.view : null
+            me.projectedView        = rows ? me.view : null;
+            me.emptyWindows         = rows && !projected.length ? me.emptyWindows + 1 : 0
         }
+
+        // The next window is the operator's to reach ({@link #onScrollEdge}); this pass once asked for it while
+        // `page.hasMore` held, and a boot walked the whole inbox, 173 pages in three minutes. One window is the
+        // exception: open questions that showed no row answered no gesture, and the edge cannot ask again while the
+        // visible rows stay the same, so the pane asks itself, {@link EMPTY_WINDOWS} in a row at most, past a run of
+        // rows the graph cannot project.
+        if (me.view === 'open' && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null && me.emptyWindows <= EMPTY_WINDOWS) {
+            me.pendingOffset = source.page.offset + source.page.limit;
+            me.fire('pageRequest', {offset: me.pendingOffset, source: me})
+        }
+
+        // a count the grid shows none of says so, never "nothing waits"
+        const
+            shown = rows && me.store.getCount() > 0,
+            line  = shown ? null : !rows ? state : me.pendingOffset === null ? 'unshown' : 'unobserved';
+
+        stateCmp.set({cls: ['fm-mailbox-state', `is-${line ?? state}`], hidden: shown, text: line ? me.getStateText(line) : ''});
+
+        // the body leaves the layout with its rows, so a state line keeps the room it had alone
+        me.getReference('mailbox-body').hidden = !shown;
+        rowsGrid.hidden = !shown;
 
         // the open message follows the refresh: its row's new status reaches the detail, and a
         // message the refresh no longer lists closes it
@@ -651,12 +679,7 @@ class MailboxPane extends Container {
             me.selectedMessageId = null
         }
 
-        me.applyDetail();
-
-        // Nothing is requested from here. A landed window is projected and that is all; the next
-        // window is the operator's to reach ({@link #onScrollEdge}). This pass used to request the
-        // next window itself while `page.hasMore` held, and a boot walked the whole inbox through
-        // the Memory Core, 173 pages in three minutes, starving every other read on it.
+        me.applyDetail()
     }
 
     /**
@@ -697,7 +720,8 @@ class MailboxPane extends Container {
      * subject) — all of which arrive as `admission.state: 'unavailable'`. Saying "source degraded"
      * would blame Memory Core for a refusal the adapter made, so the line states only what this
      * view actually knows — no rows, and the reason verbatim from the owner.
-     * @param {String} state From {@link #getPaneState} (never 'rows' here).
+     * @param {String} state From {@link #getPaneState} (never 'rows' here), or `unshown`: open questions counted
+     *     that no window could show.
      * @returns {String}
      * @protected
      */
@@ -712,6 +736,8 @@ class MailboxPane extends Container {
                     return `your questions could not be read · ${this.questions.reason || 'source unavailable'}`;
                 case 'empty':
                     return 'nothing waits for your word';
+                case 'unshown':
+                    return `${this.questions.count.toLocaleString('en-US')} open · none can be shown here`;
                 default:
                     return 'your open questions have not been read'
             }
