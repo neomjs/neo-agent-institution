@@ -6,7 +6,7 @@ engine
     3e65549e0873c20cece23963251dfca8898852286f88aac0a8dfcaf756cb6424
 
 apps/agentos/CARD-CONTRACT.md
-    4c3ade7f943b1ef4933eaea556cf99cf08b44e0b
+    23432af0a32a6d79eb8f38f21f40e24f68aa09e5
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -228,7 +228,7 @@ apps/agentos/util/FleetAdmission.mjs
     5d11901094202fb43245963d71a34ef3b1b37876
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
-    de9cd02e4c59ba480b277b9aa2fa412bcb3c66e6
+    cb0e7ab85ae87e83f5c685cc4d3927c9f73dc1f0
 
 apps/agentos/util/FleetStartPlan.mjs
     4a88183c21bc4898e122a10df7be65d80e21c7c5
@@ -282,7 +282,7 @@ apps/agentos/util/RosterRow.mjs
     2e718b14cd61c6fa09f4c95294c22c555b299a1c
 
 apps/agentos/util/SeatDependencies.mjs
-    b2305ac090c4778b522f23f320be393aece327a2
+    45f6624f0a0e8340c362b72399dcf9badba1e396
 
 apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
@@ -396,7 +396,7 @@ apps/agentos/view/fleet/detail/PullRequestList.mjs
     e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
 
 apps/agentos/view/fleet/detail/RepositoryBodyContainer.mjs
-    dcaa8f6266ff5bd8c560b072dfa39b03b1fa1978
+    3f6dc7e002cb289bae31a80026e8077eebad340e
 
 apps/agentos/view/fleet/detail/RepositoryList.mjs
     fa88c7f51e9a8450766b6b0937bdaa46b36cb2f0
@@ -528,10 +528,10 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    d3780252871cee0a2797a56d06ca8ef69c1737c9
+    2245d07fe9767b332134cc62d8be6f1c8079caf0
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
-    64238dd4bac922bbfd33878431f3b9a21f9d8dfb
+    6be0a97126831188336d056730b994353b18fc3a
 
 apps/agentos/view/fleet/shared/FamilyRailComponent.mjs
     4024c3de9411fa763dc93e8669a016bcf31f7de0
@@ -627,7 +627,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    f25227bdac1d3276feb5e18b8a0094fd7d0a275b
+    e40ef61fd6c8573c2375d075fe6edff83b8e8af2
 
 resources/scss/src/apps/agentos/fleet/detail/ParticipationContainer.scss
     41bbe1875faf487783c4058c28146e40955c070a
@@ -795,7 +795,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    0eea845216b75c426fe4ef91e716eea962911052
+    3e73c12db5314150329a390a6a421847e40d89c3
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -870,10 +870,16 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-p
     a956a5fd4f9879cd74e242d7ff6f338d09cb110b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation-live.png
-    ae40499378d9aab65f0cfca87d38b46a73209a5a
+    10bdbf790d293be9750f726efc9c51a05486ec1e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation.png
     e66f8b1d969f86fc663bcb84e8bfd0ead90dfc56
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-skip-light.png
+    7dca2f3745d4982f39702304e01c257c265e6b0e
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-skip.png
+    6aeacbc9a186ec1fff1c825fe19755702a34c8de
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-lane-claim.png
     a6856140788ddc1c7d3d9ba667196f4a2ba065ef
@@ -892,6 +898,12 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-op
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-open-work.png
     677c0d6de3b5278f69a1d47b3112679491514d55
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-preparing-light.png
+    87616a311711b704da1bcdcf5eccc1959c66271d
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-preparing.png
+    683593a9dbadb80bfe2f4939ae52c51e0231b145
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-skills-unverified-light.png
     6c82854368e3c308d1ad07a739f119f0a5138077

@@ -521,6 +521,56 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(card).toHaveScreenshot('fleet-card-skills-unverified-light.png')
     });
 
+    test('a Start the Fleet reports installing: the card counts it and its power verb cancels it; the Repository pane offers Skip with its consequence once the wire has the verb; both skins (#616)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            emmy    = sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+            sources = {...emmy.sources, runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            live    = [
+                {repoSlug: 'neomjs/neo',                   state: 'installing'},
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'installed'},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'installing'}
+            ],
+            land    = () => landFleetRoster(page, [...sampleRoster, {
+                ...emmy,
+                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null,
+                repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-gpt-sophie/neomjs/neo', sources, state: 'off', dependencyOutcomes: live
+            }]),
+            card    = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
+            detail  = page.locator('.fm-agent-detail:visible').first(),
+            pane    = detail.locator('.fm-detail-pane-repo'),
+            settle  = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await land();
+        await expect(card.locator('.fm-card-control-status')).toHaveText('start… preparing dependencies (1/3 done)');
+        await expect(card.locator('.fm-card-state')).toHaveText('starting');
+        await expect(card.getByRole('button', {name: 'Cancel start Sophie'})).toBeEnabled();
+        await settle();
+        await expect(card).toHaveScreenshot('fleet-card-preparing.png');
+
+        // the verb arrives with a newer pin; the pane reads the wire when it renders, so the roster lands again
+        const loaded = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${SKIP_WIRE_DRIVER}?t=${++driverTick}`);
+
+        expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+        await card.click();
+        await land();
+        await expect(pane.locator('.fm-detail-repo-skip')).toHaveText('Skip remaining preparation', {timeout: 30000});
+        await expect(pane.locator('.fm-detail-repo-skip-note')).toContainText('The seat launches without waiting');
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-skip.png');
+
+        await switchToLightSkin(page);
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-skip-light.png');
+        await expect(card).toHaveScreenshot('fleet-card-preparing-light.png')
+    });
+
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {
         await bootSettledCockpit(page);
 
@@ -1282,6 +1332,12 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      * @type {String}
      */
     const OPERATOR_QUESTIONS_DRIVER = '../../../../test/playwright/visual/operatorQuestions.driver.mjs';
+
+    /**
+     * The Skip-verb driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: it puts the verb a newer pin adds on the wire.
+     * @type {String}
+     */
+    const SKIP_WIRE_DRIVER = '../../../../test/playwright/visual/skipWire.driver.mjs';
 
     let driverTick = 0;
 
