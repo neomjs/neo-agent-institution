@@ -263,6 +263,49 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
+    test('the Repository pane reads each checkout\'s preparation, the working one first, each reason whole; an install still running belongs to this start (#610)', () => {
+        const
+            repoPath = '/seats/vega/neomjs/neo',
+            npm      = 'npm ci exited 1: ERESOLVE could not resolve dependency tree',
+            clone    = 'git clone exited 128: remote: Repository not found.',
+            detail   = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath, state: 'ok'}),
+            nodes    = () => body(detail, 'repo').vdom.cn,
+            rows     = () => nodes().filter(node => node.cls?.includes('fm-detail-repo-prep')).map(node => [node.cls[1], ...node.cn.map(part => part.text)]),
+            reasons  = () => nodes().filter(node => node.cls?.includes('fm-detail-repo-prep-reason')).map(node => [node.cls[1], node.text]);
+
+        applySet(detail, {
+            dependencyOutcomes: [
+                {repoSlug: 'neomjs/neo',             state: 'skipped', reason: 'skipped during the install'},
+                {repoSlug: 'neomjs/neo-agent-brain', state: 'failed',  reason: npm}
+            ],
+            // a clone that failed has no checkout to install: its row comes after the checkouts
+            repoOutcomes: [
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'prepared'},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'failed', reason: clone}
+            ]
+        });
+
+        expect(nodes().slice(0, 3).map(node => node.text)).toEqual(['neomjs/neo', repoPath, 'Preparation · last start']);
+        expect(rows()).toEqual([
+            ['is-skipped', 'neomjs/neo',                   'Skipped'],
+            ['is-failed',  'neomjs/neo-agent-brain',       'Failed'],
+            ['is-failed',  'neomjs/neo-agent-institution', 'Failed']
+        ]);
+        expect(reasons()).toEqual([['is-skipped', 'skipped during the install'], ['is-failed', npm], ['is-failed', clone]]);
+
+        // a Start installing now: the rows are live and the head names this start
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installing'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'present'}], repoOutcomes: null});
+        expect(nodes()[2].text).toBe('Preparation · this start');
+        expect(rows()).toEqual([['is-installing', 'neomjs/neo', 'Installing'], ['is-prepared', 'neomjs/neo-agent-brain', 'Prepared']]);
+        expect(reasons()).toEqual([]);
+
+        // no start has reported one: nothing beyond the slug and the path, never a ready claim
+        applySet(detail, {dependencyOutcomes: null});
+        expect(nodes().map(node => node.text)).toEqual(['neomjs/neo', repoPath]);
+
+        detail.destroy()
+    });
+
     test('Copy path selects the unseen field, copies through the main thread, and hands the focus back', async () => {
         const
             detail = createDetail({agentId: 'vega', harnessType: 'codex', repoPath: '/Users/x/agents/vega/neomjs/neo', state: 'ok'}),

@@ -226,6 +226,53 @@
         }
     }
 
+    /* each checkout's preparation at the latest start: a quiet head naming which start, then one row
+       per checkout, its slug in the mono voice eliding at rail widths beside its whole word, and the
+       reason whole beneath it. Prepared takes the ok ink and a failure the alert ink, as on the
+       Repositories card; every other word keeps the pane's own */
+    .fm-detail-repo-prep-head {
+        font       : var(--fm-text-micro);
+        padding-top: var(--fm-space-1);
+    }
+
+    .fm-detail-repo-prep {
+        display  : flex;
+        gap      : var(--fm-space-2);
+        min-width: 0;
+
+        &.is-prepared .fm-detail-repo-prep-state {
+            color: var(--fm-state-ok);
+        }
+
+        &.is-failed .fm-detail-repo-prep-state {
+            color      : var(--fm-kind-alert);
+            font-weight: 600;
+        }
+    }
+
+    .fm-detail-repo-prep-slug {
+        flex         : 1;
+        font-family  : var(--fm-font-mono);
+        min-width    : 0;
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+    }
+
+    .fm-detail-repo-prep-state {
+        flex: none;
+    }
+
+    .fm-detail-repo-prep-reason {
+        font         : var(--fm-text-micro);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+
+        &.is-failed {
+            color: var(--fm-kind-alert);
+        }
+    }
+
     .fm-detail-repo-copy {
         align-self: flex-start;
     }

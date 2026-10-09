@@ -1,13 +1,13 @@
-import BaseList from '../../../../../node_modules/neo.mjs/src/list/Base.mjs';
-
-const OUTCOME_TEXT = Object.freeze({failed: 'Failed', prepared: 'Prepared'});
+import BaseList         from '../../../../../node_modules/neo.mjs/src/list/Base.mjs';
+import SeatDependencies from '../../../util/SeatDependencies.mjs';
 
 /**
  * @class AgentOS.view.fleet.detail.RepositoryList
  * @extends Neo.list.Base
  *
  * @summary The rows of the Accounts Repositories card, one per {@link AgentOS.model.SeatRepository}:
- * the slug, the last start's outcome, then either the working repository's tag or a Remove button.
+ * the slug, the last start's outcome in {@link AgentOS.util.SeatDependencies}'s words, then either the
+ * working repository's tag or a Remove button.
  * The rows are affordances, not a selection. A Remove click fires `removeRepository` with the row's slug, and
  * the card turns it into the seat's new list; the list itself never changes a record.
  */
@@ -49,18 +49,18 @@ class RepositoryList extends BaseList {
 
     /**
      * @summary The slug, the last start's outcome, then the working repository's tag or a Remove
-     * button, and a failed start's reason on its own line. The working repository is set when the
+     * button, and the outcome's reason whole on its own line. The working repository is set when the
      * agent is added, so this card offers no way to drop it. An outcome this card does not know
      * shows nothing.
      * @param {Object} record An {@link AgentOS.model.SeatRepository} record.
      * @returns {Object[]} vdom child nodes
      */
     createItemContent(record) {
-        const outcome = OUTCOME_TEXT[record.state];
+        const outcome = SeatDependencies.label(record.state);
 
         return [
             {cls: ['fm-repo-slug'], text: record.repoSlug, title: record.cloneUrl},
-            outcome && {cls: ['fm-repo-outcome', `is-${record.state}`], text: outcome, title: 'At the last start'},
+            outcome && {cls: ['fm-repo-outcome', `is-${record.state}`], text: outcome, title: record.state === 'installing' ? 'This start' : 'At the last start'},
             record.working
                 ? {cls: ['fm-repo-working'], text: 'Working'}
                 : {
@@ -70,7 +70,7 @@ class RepositoryList extends BaseList {
                     'aria-label': `Remove ${record.repoSlug}`,
                     text        : 'Remove'
                 },
-            record.state === 'failed' && record.reason && {cls: ['fm-repo-reason'], text: record.reason}
+            outcome && record.reason && {cls: ['fm-repo-reason', `is-${record.state}`], text: record.reason}
         ].filter(Boolean)
     }
 

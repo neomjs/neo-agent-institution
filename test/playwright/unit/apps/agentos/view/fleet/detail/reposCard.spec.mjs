@@ -228,6 +228,58 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         store.destroy()
     });
 
+    test('every checkout shows its dependency state, the working one included; a failed clone wins, and an install still running belongs to this start (#610)', () => {
+        const
+            roster = Neo.create(FleetRoster),
+            npm    = 'npm ci exited 1: ERESOLVE could not resolve dependency tree',
+            vdom   = card => JSON.stringify(card.getReference('repo-list').vdom);
+
+        roster.add({agentId: 'ada', repoOutcomes: [
+            {repoSlug: brain.repoSlug,  state: 'prepared'},
+            {repoSlug: skills.repoSlug, state: 'failed', reason}
+        ], dependencyOutcomes: [
+            {repoSlug: working.repoSlug, state: 'skipped', reason: 'skipped during the install'},
+            {repoSlug: brain.repoSlug,   state: 'failed',  reason: npm},
+            {repoSlug: skills.repoSlug,  state: 'unverified'}
+        ]});
+
+        const {card, outcomes, store} = mount({repo: working, repos: [brain, skills]}, roster);
+
+        expect(outcomes()).toEqual([
+            {repoSlug: 'neomjs/neo',              state: 'skipped', reason: 'skipped during the install'},
+            {repoSlug: 'neomjs/neo-agent-brain',  state: 'failed',  reason: npm},
+            // nothing was installed in a clone that failed: its row is the clone's
+            {repoSlug: 'neomjs/neo-agent-skills', state: 'failed',  reason}
+        ]);
+        expect(card.getReference('repos-heading').text).toBe('Repositories · declared · last start');
+        expect(vdom(card)).toContain('"text":"Skipped"');
+        // every reason reads whole on its own line; only a failure's takes the alert class
+        expect(vdom(card).match(/"fm-repo-reason"/g)).toHaveLength(3);
+        expect(vdom(card).match(/"fm-repo-reason","is-failed"/g)).toHaveLength(2);
+
+        // a Start installing now: its rows are live, and the heading names this start
+        roster.get('ada').set({dependencyOutcomes: [
+            {repoSlug: working.repoSlug, state: 'installing'},
+            {repoSlug: brain.repoSlug,   state: 'installed'}
+        ]});
+
+        expect(outcomes().slice(0, 2)).toEqual([
+            {repoSlug: 'neomjs/neo',             state: 'installing', reason: null},
+            {repoSlug: 'neomjs/neo-agent-brain', state: 'prepared',   reason: null}
+        ]);
+        expect(card.getReference('repos-heading').text).toBe('Repositories · declared · this start');
+        expect(vdom(card)).toContain('"text":"Installing","title":"This start"');
+
+        // no preparation step reads as itself, never as prepared
+        roster.get('ada').set({dependencyOutcomes: [{repoSlug: working.repoSlug, state: 'not-applicable'}]});
+        expect(outcomes()[0]).toEqual({repoSlug: 'neomjs/neo', state: 'not-applicable', reason: null});
+        expect(vdom(card)).toContain('"text":"No preparation step"');
+
+        card.destroy();
+        roster.destroy();
+        store.destroy()
+    });
+
     test('a roster read refreshes the outcomes in place, another seat\'s read leaves the card alone, and a roster that arrives later fills it', () => {
         const roster = Neo.create(FleetRoster);
 

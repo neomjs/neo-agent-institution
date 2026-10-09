@@ -72,6 +72,7 @@ import FamilyTokens      from '../../../../util/FamilyTokens.mjs';
 import NameSlot          from '../../../../util/NameSlot.mjs';
 import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
 import Participation     from '../../../../util/Participation.mjs';
+import SeatDependencies  from '../../../../util/SeatDependencies.mjs';
 import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
 import SeatLaunchAdmission from '../../../../util/SeatLaunchAdmission.mjs';
 import SeatModel         from '../../../../util/SeatModel.mjs';
@@ -837,9 +838,9 @@ class AgentCard extends Container {
 
         // The status row narrates the Start: the round-trip while it is live or refused, then whether
         // the session it launched opened in the seat's own folder (a desktop seat cannot be launched
-        // into one). A confirmed wrong folder outranks even a live round-trip, because a live seat in
-        // the wrong folder is the failure itself; "not opened yet" and "unknown" sit below one, which
-        // a live seat contradicts.
+        // into one), and last whether it prepared the working checkout. A confirmed wrong folder
+        // outranks even a live round-trip, because a live seat in the wrong folder is the failure
+        // itself; "not opened yet" and "unknown" sit below one, which a live seat contradicts.
         const
             wrongFolder  = record.sessionFolder?.state === 'wrong',
             sessionLine  = wrongFolder || !(pendingAction || controlReason) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
@@ -852,7 +853,11 @@ class AgentCard extends Container {
                     mcpSettings: record.mcpSettings,
                     rosterState: me.rosterState,
                     runtime    : sources.runtime
-                }) : null;
+                }) : null,
+            // the quietest exception: a running seat whose working checkout the last start did not prepare
+            // has no verified skills. Opening the session folder is the first-launch step, so it speaks first
+            skillsLine    = recordState !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal || admissionLine || sessionLine)
+                ? SeatDependencies.cardLine(record.dependencyOutcomes, record.repoSlug) : null;
 
         restart.changeVdomRootKey('title', admissionLine?.restart ? admissionLine.title : null);
 
@@ -860,7 +865,7 @@ class AgentCard extends Container {
         // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
         // row height at every card width — the lane stays reachable via line one, its middle elision
         // and the title.
-        me[(pendingAction || controlReason || sessionLine || modelRefusal || admissionLine) ? 'addCls' : 'removeCls']('fm-control-live');
+        me[(pendingAction || controlReason || sessionLine || modelRefusal || admissionLine || skillsLine) ? 'addCls' : 'removeCls']('fm-control-live');
 
         // the runtime-source gating is already shown by the disabled controls + the source strip
         // ("RUN not nominal"), so the status line never duplicates it
@@ -875,7 +880,7 @@ class AgentCard extends Container {
                     : modelRefusal
                         ? modelRefusal.text
                         : !controlReason
-                            ? admissionLine?.text ?? sessionLine?.text ?? ''
+                            ? admissionLine?.text ?? sessionLine?.text ?? skillsLine?.text ?? ''
                             : controlReason.kind === 'timeout'
                                 ? `${controlReason.action}… no answer yet`
                                 : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
@@ -889,13 +894,13 @@ class AgentCard extends Container {
 
         controlStatus.set({
             cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : []), ...(modelRefusal ? ['is-model-refused'] : [])],
-            hidden: !pendingAction && !controlReason && !sessionLine && !modelRefusal && !admissionLine,
+            hidden: !pendingAction && !controlReason && !sessionLine && !modelRefusal && !admissionLine && !skillsLine,
             text  : controlStatusText
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
         controlStatus.changeVdomRootKey('title', timeoutTitle || (modelRefusal
             ? modelRefusal.title + identityNote
-            : admissionLine?.title ?? sessionLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
+            : admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
 
         me.update()
     }

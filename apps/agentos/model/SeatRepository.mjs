@@ -8,8 +8,8 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  * repository (`working: true`, set at add time through `setRepo`) or one of the others the
  * Accounts Repositories card sets through `setRepos`. A row is projected from an
  * {@link AgentOS.model.AgentDefinition}'s `metadata`, never edited in place: the registry's
- * readback is the only truth. Each of the others also carries the last start's outcome, from the
- * seat's {@link AgentOS.model.FleetAgent} roster record.
+ * readback is the only truth. Each row also carries the last start's outcome, from the seat's
+ * {@link AgentOS.model.FleetAgent} roster record.
  */
 class SeatRepository extends Model {
     static config = {
@@ -37,12 +37,13 @@ class SeatRepository extends Model {
             type        : 'Boolean',
             defaultValue: false
         }, {
-            // the last start's outcome, 'prepared' or 'failed'; null = no start has covered this
-            // repository yet. The working repository has the roster's repo status instead
+            // the last start's outcome (AgentOS.util.SeatDependencies#paneRow): 'failed' for a failed clone,
+            // else the checkout's dependency state, `installed`/`present` as 'prepared'; null = no start has
+            // covered this repository yet
             name        : 'state',
             defaultValue: null
         }, {
-            // a failed start's reason, credential-redacted by the Fleet
+            // the outcome's reason, credential-redacted by the Fleet
             name        : 'reason',
             defaultValue: null
         }]

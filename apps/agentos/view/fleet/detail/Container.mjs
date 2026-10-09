@@ -15,6 +15,7 @@ import HarnessChoice                        from '../../../util/HarnessChoice.mj
 import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
 import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
 import Participation                        from '../../../util/Participation.mjs';
+import SeatDependencies                     from '../../../util/SeatDependencies.mjs';
 import SeatModel                            from '../../../util/SeatModel.mjs';
 import SeatSessionFolder                    from '../../../util/SeatSessionFolder.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
@@ -882,6 +883,8 @@ class AgentDetail extends Container {
      * independent open-lane count. The repository pane renders the roster row's slug and its whole
      * clone path, and shows the path's Copy action only while a path is reported. Under the path, a
      * desktop session outside the launch's folder says where it opened and what to do, wrapped whole.
+     * Then each checkout's preparation at the latest start reads in {@link AgentOS.util.SeatDependencies}'s
+     * words, the working checkout first, each reason whole beneath its row.
      * The pull requests pane loads the seat's held pull requests, worst first, into its list's Store,
      * or says it holds none; without an answer it renders nothing, since its pill says so. The
      * list re-words its rows' ages at the pane's clock. The thought-stream pane renders
@@ -896,14 +899,28 @@ class AgentDetail extends Container {
 
         if (key === 'repo') {
             const
-                repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null,
-                session  = SeatSessionFolder.paneText(record.sessionFolder, repoPath),
-                field    = this.getReference('detail-repo-field');
+                repoPath  = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null,
+                session   = SeatSessionFolder.paneText(record.sessionFolder, repoPath),
+                checkouts = SeatDependencies.checkouts(record.dependencyOutcomes, record.repoOutcomes),
+                field     = this.getReference('detail-repo-field');
 
             body.vdom.cn = [
                 {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},
                 ...(repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: repoPath}] : []),
-                ...(session  ? [{tag: 'span', cls: ['fm-detail-repo-session', `is-${record.sessionFolder.state}`], text: session}] : [])
+                ...(session  ? [{tag: 'span', cls: ['fm-detail-repo-session', `is-${record.sessionFolder.state}`], text: session}] : []),
+                // an install still running belongs to the start pending now, every other row to the last one
+                ...(checkouts.length ? [{
+                    tag : 'span',
+                    cls : ['fm-detail-repo-prep-head'],
+                    text: checkouts.some(row => row.state === 'installing') ? 'Preparation · this start' : 'Preparation · last start'
+                }] : []),
+                ...checkouts.flatMap(({reason, repoSlug, state}) => [
+                    {tag: 'span', cls: ['fm-detail-repo-prep', `is-${state}`], cn: [
+                        {tag: 'span', cls: ['fm-detail-repo-prep-slug'],  text: repoSlug},
+                        {tag: 'span', cls: ['fm-detail-repo-prep-state'], text: SeatDependencies.label(state)}
+                    ]},
+                    ...(reason ? [{tag: 'span', cls: ['fm-detail-repo-prep-reason', `is-${state}`], text: reason}] : [])
+                ])
             ];
             body.update();
 
