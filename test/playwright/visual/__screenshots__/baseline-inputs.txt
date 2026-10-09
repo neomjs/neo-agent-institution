@@ -558,13 +558,13 @@ apps/agentos/view/home/Canvas.mjs
     33298795c5154b6b4dbb5df62017cc8771767f70
 
 apps/agentos/view/home/Container.mjs
-    c3425bd7a3afb719e04c46b28d0e6997905fafe6
+    d7259d7e2327f355327a071815ae0a666d2e6468
 
 apps/agentos/view/setup/ConnectContainer.mjs
     d942330ea4f2fe19c9e94091c641be38f6acebe7
 
 apps/agentos/view/setup/CreateContainer.mjs
-    a64ff0c98eb6776ad8143d2565cd0c71d277d41a
+    a0d12b6cf9071f963aac90eaf05b87a22fc9ced4
 
 apps/agentos/view/setup/Panel.mjs
     b05bdade7c7ba7f5b1378ab83cc6cbfd0ccf1916
@@ -723,7 +723,7 @@ resources/scss/src/apps/agentos/fleet/wake/Container.scss
     7c1ce12e34436cc2da14a4448c472f09cd5f4f5e
 
 resources/scss/src/apps/agentos/home/Container.scss
-    d1762184e47b455314dd2eb34b2841cc6bda0541
+    4f017430805847298af682224a569cca5c5cb879
 
 resources/scss/src/apps/agentos/setup/CreateContainer.scss
     2ce7ed5b1f6567a89c2b629ffdbf4e92e108f947
@@ -795,7 +795,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    f7956f2b5823aebb8fc840caf96afe61d70e3f77
+    e21853672b333a8f761db7c310c793d6307f5d36
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -924,10 +924,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-me
     11b7728e5f7996be2db181b181e314e94752b654
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
-    2e10bc3ccd4853e1f58323bc8c4417f28cc5914a
+    586b6e4567d30ecd2dc6a89bfa3103e3cb0070cd
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run.png
-    e89ef1bb90767306ed3f2dc0a99b47d96a001a64
+    68d341f2280dfe4855f75d07e79dcf1625b2ca9f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-both-light.png
     6e80e35a09a3dbcf71f746c325a1a73cc23c70ab
@@ -1095,25 +1095,25 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-re
     bbeac04cce46caf66d6b678498d4d9457799e883
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create-720.png
-    de7993e11dafb1836ab9b465107b82454a74af93
+    636df4bde17c93c4f587d544db1a86086dfc2590
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create-details.png
-    4efafb814afc3300d6e7846b4dac15e7f1d8f77a
+    64f2b036cf0c28890320f4997ab33c2dcf851e32
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create-light.png
-    a2aeabcc1a30bbaaf0de0713d7b7fdd093364df9
+    35d762d077e6afd779f7ff741cd88bdda9820367
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create.png
-    93005afbfe8447e39d89b99b7b2e899a7b2175ef
+    2dd6e08c3207ea214e6ad375704909692c29f9f6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-confirming.png
-    150134452c086fa3585eecc66e0af0d2246a011a
+    33574900652f9869efc2a88e793cff6751126097
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-light.png
-    81a427ef12a147be3b765205bc55e19e83018676
+    06cec6f6ae5f1dd7c6952c0500d13d050a508317
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits.png
-    e518e59a92421a0ff6b55666d09ed705f3e0e6c5
+    a279acf674b570a7a08f83da41c2b010efab8dd2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-240-light.png
     df1db7c66814a3102f5803069963ca9b06c5cef4

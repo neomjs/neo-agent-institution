@@ -1918,22 +1918,38 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         expect(paint).toEqual([{filled: true, bordered: true, underlined: false}, {filled: false, bordered: false, underlined: true}]);
 
-        await settle();
+        // the door's foot fades under its sticky gradient (`.fm-setup-create::after`): before each
+        // capture the real scroll surface puts the row in its unobscured reading area, and the
+        // boundary is asserted — the row's box clips nothing, the wrapped reason ends inside it, and
+        // the row ends above the fade. The fade itself stays as designed.
+        const inReadingArea = async () => {
+            await row('verify').evaluate(el => el.scrollIntoView({block: 'center'}));
+            await settle();
 
-        // the wrapped reason ends inside its row: the row's box clips nothing, the second line included
-        const fit = await row('verify').evaluate(el => ({
-            clipped : el.scrollHeight - el.clientHeight,
-            overhang: el.querySelector('.fm-setup-step-reason').getBoundingClientRect().bottom - el.getBoundingClientRect().bottom
-        }));
+            const fit = await row('verify').evaluate(el => {
+                const
+                    door   = el.closest('.fm-setup-door'),
+                    fade   = parseFloat(getComputedStyle(door, '::after').height) || 0,
+                    rowBox = el.getBoundingClientRect();
 
-        expect(fit.clipped, 'the row clips nothing').toBe(0);
-        expect(fit.overhang, 'the reason ends inside the row').toBeLessThanOrEqual(0);
+                return {
+                    clipped  : el.scrollHeight - el.clientHeight,
+                    overhang : el.querySelector('.fm-setup-step-reason').getBoundingClientRect().bottom - rowBox.bottom,
+                    clearance: door.getBoundingClientRect().bottom - fade - rowBox.bottom
+                }
+            });
 
+            expect(fit.clipped, 'the row clips nothing').toBe(0);
+            expect(fit.overhang, 'the reason ends inside the row').toBeLessThanOrEqual(0);
+            expect(fit.clearance, 'the row ends above the door\'s fade').toBeGreaterThanOrEqual(0)
+        };
+
+        await inReadingArea();
         await expect(row('verify')).toHaveScreenshot('setup-row-two-exits.png');
 
         await chip('verify', 'write again').click();
         await expect(row('verify').locator('.fm-setup-step-confirm')).toBeVisible();
-        await settle();
+        await inReadingArea();
         await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-confirming.png');
 
         // another row's click takes the first press back
@@ -1941,7 +1957,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(row('verify').locator('.fm-setup-step-confirm')).toHaveCount(0);
 
         await switchToLightSkin(page);
-        await settle();
+        await inReadingArea();
         await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-light.png')
     });
 
