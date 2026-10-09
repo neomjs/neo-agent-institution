@@ -140,25 +140,28 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
         }
     });
 
-    test('the three accessors are phase-blind: the owner\'s held handle → a pane in flight home → reference, in that order', () => {
+    test('the three accessors are phase-blind: the owner\'s held handle → a pane in flight home → the resident pane, in that order', () => {
         const
-            handle = {id: 'vessel-handle'},
-            docked = {id: 'docked-reference'};
+            handle   = {id: 'vessel-handle'},
+            docked   = {id: 'docked-reference'},
+            // the rail parks Wake routes off the projected tree, so its resident pane is the declared instance
+            declared = Neo.create(Component, {appName: 'VesselPaneIntentsTest'});
 
-        for (const [accessor, key, reference] of [
-            ['getOperatorMailboxPane', 'operator',   'operator-mailbox'],
-            ['getCatchUpPane',         'catchUp',    'catch-up'],
-            ['getWakeRoutesPane',      'wakeRoutes', 'wakeRoutes']
+        for (const [accessor, key, reference, resident] of [
+            ['getOperatorMailboxPane', 'operator',   'operator-mailbox', docked],
+            ['getCatchUpPane',         'catchUp',    'catch-up',         docked],
+            ['getWakeRoutesPane',      'wakeRoutes', 'wakeRoutes',       declared]
         ]) {
             // a returning pane is known to the owner only as a live pane in flight home; the
             // accessor recognizes it by the reference the record names
             const returning = {id: 'returning-parked', reference},
                   me        = {
-                      dockModel      : {items: {[key]: {reference}}},
-                      getReference   : () => docked,
-                      paneReference  : proto.paneReference,
-                      tearOutHandlers: {heldPane: itemId => itemId === key ? handle : null, heldPanes: () => [returning, handle]},
-                      vesselPane     : proto.vesselPane
+                      dockModel         : {items: {[key]: {reference}}},
+                      getPaneDeclaration: itemId => itemId === key ? {id: declared.id} : null,
+                      getReference      : () => docked,
+                      paneReference     : proto.paneReference,
+                      tearOutHandlers   : {heldPane: itemId => itemId === key ? handle : null, heldPanes: () => [returning, handle]},
+                      vesselPane        : proto.vesselPane
                   };
 
             expect(proto[accessor].call(me), `${accessor}: the owner's held handle wins`).toBe(handle);
@@ -167,11 +170,13 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
             expect(proto[accessor].call(me), `${accessor}: the pane in flight home is reached`).toBe(returning);
 
             me.tearOutHandlers = {heldPane: () => null, heldPanes: () => []};
-            expect(proto[accessor].call(me), `${accessor}: the docked reference is the fallback`).toBe(docked);
+            expect(proto[accessor].call(me), `${accessor}: the resident pane is the fallback`).toBe(resident);
 
             me.tearOutHandlers = null;
-            expect(proto[accessor].call(me), `${accessor}: no owner (the lifecycle off) still reaches the reference`).toBe(docked)
+            expect(proto[accessor].call(me), `${accessor}: no owner (the lifecycle off) still reaches the resident pane`).toBe(resident)
         }
+
+        declared.destroy()
     });
 
     test('loadCatchUp writes into the WRITE-time pane — a pane rebuilt mid-flight receives the truth', async () => {
