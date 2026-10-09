@@ -161,10 +161,11 @@ test.describe('System keeper-view — the reviewed seat move on the FM skin (#58
         seat  = (id, state, facts = {}) => ({id, seatHome: `${from}/${id}`, destination: `${to}/${id}`, state, materialized: true, ...facts}),
         plan  = {state: 'planned', from, to, fingerprint: 'a'.repeat(64), rows: [
             seat('neo-opus-vega', 'copy'),
+            // the refused row second, so it reads inside the box's first screen
+            seat('neo-opus-ada', 'untouched', {code: 'SEAT_HOME_BUSY', reason: 'a running harness holds this seat home open; stop it, then review the move again'}),
             seat('neo-fable', 'rebind'),
             seat('neo-gpt-emmy', 'done', {seatHome: `${to}/neo-gpt-emmy`, reason: 'already at its destination'}),
-            seat('neo-kimi-phoebe', 'untouched', {seatHome: '/Volumes/elsewhere/neo-kimi-phoebe', materialized: false, reason: 'bound to a home outside this installation'}),
-            seat('neo-opus-ada', 'untouched', {code: 'SEAT_HOME_BUSY', reason: 'a running harness holds this seat home open; stop it, then review the move again'})
+            seat('neo-kimi-phoebe', 'untouched', {seatHome: '/Volumes/elsewhere/neo-kimi-phoebe', materialized: false, reason: 'bound to a home outside this installation'})
         ]},
         status = {packaged: true, root: {root: from, origin: 'adopted'}, pending: null, outcome: {state: 'none'}};
 
@@ -210,35 +211,43 @@ test.describe('System keeper-view — the reviewed seat move on the FM skin (#58
             await expect(block.locator('.fm-seat-root-consent')).toBeVisible();
             await page.evaluate(() => document.fonts.ready);
 
-            const states = [['at rest', await rowSurface(page)]];
+            const
+                skins     = width === 1552 ? ['dark', 'light'] : ['dark'],
+                toggle    = page.locator('.agent-theme-button'),
+                // keyboard activation, so no pointer lands on the switch or a row before a capture
+                nextSkin  = async skin => {
+                    await toggle.focus();
+                    await page.keyboard.press('Enter');
+                    await expect(page.locator(`.agent-os-viewport.neo-theme-neo-${skin}`), `the switch reaches ${skin}`).toBeVisible();
+                    await toggle.blur();
+                    await page.evaluate(() => document.fonts.ready)
+                },
+                // the row at rest, hovered and pressed: the panel throughout, and never a pointer
+                pointerOn = async skin => {
+                    const states = [['at rest', await rowSurface(page)]];
 
-            await rows.first().hover();
-            states.push(['hovered', await rowSurface(page)]);
-            await page.mouse.down();
-            states.push(['pressed', await rowSurface(page)]);
-            await page.mouse.up();
-            await page.mouse.move(0, 0);
+                    await rows.first().hover();
+                    states.push(['hovered', await rowSurface(page)]);
+                    await page.mouse.down();
+                    states.push(['pressed', await rowSurface(page)]);
+                    await page.mouse.up();
+                    await page.mouse.move(0, 0);
 
-            for (const [phase, surface] of states) {
-                expect(surface.background, `${phase}: the row sits on the FM panel`).toBe(surface.panel);
-                expect(surface.cursor, `${phase}: nothing here is selectable`).toBe('default')
+                    for (const [phase, surface] of states) {
+                        expect(surface.background, `${skin}, ${phase}: the row sits on the FM panel`).toBe(surface.panel);
+                        expect(surface.cursor, `${skin}, ${phase}: nothing here is selectable`).toBe('default')
+                    }
+                };
+
+            // every capture is taken at rest, before a press leaves the list's keyboard ring on a row
+            for (const skin of skins) {
+                skin === 'light' && await nextSkin('light');
+                await expect(block).toHaveScreenshot(`system-seat-move-review-${width}${skin === 'light' ? '-light' : ''}.png`)
             }
 
-            await expect(block).toHaveScreenshot(`system-seat-move-review-${width}.png`);
-
-            if (width === 1552) {
-                const toggle = page.locator('.agent-theme-button');
-
-                await toggle.focus();
-                await page.keyboard.press('Enter');
-                await expect(page.locator('.agent-os-viewport.neo-theme-neo-light')).toBeVisible();
-                await toggle.blur();
-                await page.evaluate(() => document.fonts.ready);
-
-                const light = await rowSurface(page);
-
-                expect(light.background, 'light: the row sits on the FM panel').toBe(light.panel);
-                await expect(block).toHaveScreenshot('system-seat-move-review-1552-light.png')
+            for (const skin of [...skins].reverse()) {
+                skin !== skins.at(-1) && await nextSkin(skin);
+                await pointerOn(skin)
             }
         })
     }

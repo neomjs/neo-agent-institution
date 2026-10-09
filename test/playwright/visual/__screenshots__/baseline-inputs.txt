@@ -732,7 +732,7 @@ resources/scss/src/apps/agentos/system/List.scss
     2c884c4386b03edc287f2c6a996dd68a6ff509e7
 
 resources/scss/src/apps/agentos/system/SeatRootContainer.scss
-    ede703af068917f8d824240bb77b510cbb1d143b
+    aee94690c38ae9e974d9df80d976b2834fc647e6
 
 resources/scss/theme-neo-dark/apps/agentos/Viewport.scss
     60ed53504494b2b243d070e7a2fdabd47264a218
