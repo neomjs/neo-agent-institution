@@ -279,6 +279,9 @@ class SeatRootContainer extends Container {
 
     /**
      * @summary Render shell status, plan, and copy-only outcome text. All untrusted text reaches a text sink.
+     * The plan box (its line, the copy-note and the rows) is the operator's decision, so it shows only while
+     * there is one: a reviewed plan, or consented rows whose boot has not committed. A committed move keeps
+     * just its receipt on the status line, even though the consent record still carries the rows.
      */
     sync() {
         const
@@ -327,7 +330,7 @@ class SeatRootContainer extends Container {
             statusLine.text = `Boot outcome · ${outcome.state ?? 'unobserved'}`
         }
 
-        const planVisible = !!plan || Array.isArray(pending?.rows);
+        const planVisible = outcome?.state !== 'committed' && (!!plan || Array.isArray(pending?.rows));
         planBox.hidden = !planVisible;
         planLine.text = plan
             ? `Reviewed move · ${plan.from ?? 'current root'} → ${plan.to ?? 'destination root'}`
