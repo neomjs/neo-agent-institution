@@ -1,8 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
 import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
-import {MACHINES, installPinnedSetupShell, pinnedSetupHost} from '../fixture/pinnedSetupHost.mjs';
-import {sampleShellInitScript} from '../fixture/setupRecipeSample.mjs';
+import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost} from '../fixture/pinnedSetupHost.mjs';
 
 /**
  * The FM cockpit's visual-regression baselines — the design gate's mechanical guard: pixel
@@ -1723,41 +1722,78 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card-light.png')
     });
 
-    test('the setup card\'s Create door — the cold recipe projected on the fixture host: both budgets, three preset cards with their verdicts, eleven rows in two channels, the chrome\'s progress line; both skins', async ({page}) => {
+    test('the setup card\'s Create door — the cold recipe projected on the pinned host: three question blocks on one left edge, the token open; the ledger under Details, twelve rows in two channels; the chrome\'s progress line; the front at 720 px; both skins', async ({page}) => {
         // the vessel's seam, installed before the app boots: a packaged, unconfigured shell whose
-        // setup channels answer the recipe's cold --json, so the cockpit runs its real mount path
-        await page.addInitScript(sampleShellInitScript());
+        // setup channels reach the real broker over the pinned Brain, so the cockpit runs its real
+        // mount path and every row is the recipe's own answer
+        const run = await pinnedSetupHost({machine: MACHINES.laptop});
+
+        await installPinnedSetupShell(page, run);
         await bootSettledCockpit(page);
 
-        const card = page.locator('.agent-plane-setup');
+        const
+            card     = page.locator('.agent-plane-setup'),
+            expected = (await run.broker.evaluate(TRUSTED, {})).evaluation.steps.map(step => step.status);
 
         await expect(card).toBeVisible({timeout: 15000});
-        await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(11);
-        await expect(card.locator('.fm-setup-preset')).toHaveCount(3);
-        await expect(page.locator('.agent-setup-progress')).toHaveText('2 of 11 observed ok · next: preset');
+        await expect(card.locator('.fm-setup-ask')).toHaveCount(3);
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/);
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-next/);
+        await expect(card.locator('.fm-setup-steps'), 'the ledger is folded').toHaveCount(0);
+        await expect(page.locator('.agent-setup-progress')).toHaveText('2 of 12 observed ok · next: preset');
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(300);
 
-        const paint = await page.evaluate(() => {
-            const
-                cs     = el => getComputedStyle(el),
-                rows   = [...document.querySelectorAll('.fm-setup-steps .neo-list-item')],
-                glyphs = rows.map(row => cs(row.querySelector('.fm-setup-step-glyph')).color),
-                words  = rows.map(row => row.querySelector('.fm-setup-step-status').textContent);
+        // what shows, not what the element claims: inside a block every visible line starts on the
+        // same left edge, and no block is clipped behind its hidden overflow
+        const geometry = await page.evaluate(() => {
+            const blocks = [...document.querySelectorAll('.fm-setup-ask')];
 
-            return {glyphs, words, unknownColor: cs(rows[8].querySelector('.fm-setup-step-glyph')).color, dimInk: cs(document.querySelector('.fm-setup-q-key')).color}
+            return {
+                lefts: blocks.map(block => [...block.querySelectorAll('.fm-setup-ask-title, .fm-setup-ask-line, .fm-setup-ask-controls, .fm-setup-ask-help')].filter(el => el.offsetParent).map(el => Math.round(el.getBoundingClientRect().left))),
+                whole: blocks.every(block => block.clientHeight >= block.scrollHeight)
+            }
         });
 
-        // what shows, not what the element claims: every question row holds its content whole
-        // (the engine's column would otherwise shrink a row behind its hidden overflow)
-        expect(await page.evaluate(() => [...document.querySelectorAll('.fm-setup-q, .fm-setup-preset')].every(el => el.clientHeight >= el.scrollHeight)), 'no question row or preset card is clipped').toBe(true);
+        expect(geometry.whole, 'no block is clipped').toBe(true);
+        geometry.lefts.forEach((lefts, index) => expect(new Set(lefts).size, `block ${index} has one left edge: ${lefts.join(', ')}`).toBe(1));
 
-        // law-1: every status survives hue removal — the word carries it beside the glyph
-        expect(paint.words).toEqual(['ok', 'pending', 'pending', 'pending', 'ok', 'pending', 'pending', 'pending', 'unknown', 'unknown', 'unknown']);
+        await expect(card).toHaveScreenshot('setup-card-create.png');
+
+        // Details: the recipe's rows, every status in two channels — the word carries it beside the glyph
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(12);
+
+        const paint = await page.evaluate(() => {
+            const
+                cs   = el => getComputedStyle(el),
+                rows = [...document.querySelectorAll('.fm-setup-steps .neo-list-item')];
+
+            return {
+                words       : rows.map(row => row.querySelector('.fm-setup-step-status').textContent),
+                unknownColor: cs(rows.find(row => row.classList.contains('is-unknown')).querySelector('.fm-setup-step-glyph')).color,
+                dimInk      : cs(document.querySelector('.fm-setup-ask-help')).color
+            }
+        });
+
+        // law-1: every status survives hue removal; the words are the recipe's own statuses
+        expect(paint.words).toEqual(expected);
         // an unknown row is an indicator: the dim ink, never the faint one
         expect(paint.unknownColor).toBe(paint.dimInk);
 
-        await expect(card).toHaveScreenshot('setup-card-create.png');
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(300);
+        await expect(card).toHaveScreenshot('setup-card-create-details.png');
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(card.locator('.fm-setup-steps')).toHaveCount(0);
+
+        // the narrow card: the front keeps one column and nothing scrolls sideways
+        await page.setViewportSize({width: 720, height: 900});
+        await page.waitForTimeout(300);
+        expect(await page.evaluate(() => { const card = document.querySelector('.agent-plane-setup'); return card.scrollWidth <= card.clientWidth }), 'no horizontal overflow at 720 px').toBe(true);
+        await expect(card).toHaveScreenshot('setup-card-create-720.png');
+        await page.setViewportSize({width: 1280, height: 800});
+        await page.waitForTimeout(300);
 
         await switchToLightSkin(page);
         await page.mouse.move(0, 0);
@@ -1930,17 +1966,17 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(home.locator('.fm-home-h1')).toHaveText('No word from the team yet');
         await expect(home.locator('.fm-home-h1')).toHaveClass(/is-quiet/);
         await expect(home.locator('.fm-home-plane')).toHaveText('Plane not connected');
-        await expect(home.getByRole('button', {name: 'Connect a plane'})).toBeHidden();
+        await expect(home.getByRole('button', {name: 'Set up your institution'})).toBeHidden();
         await settleField(page, 'none');
         await expect(home).toHaveScreenshot('home-returning-cold.png')
     });
 
-    test('Home over a live fleet — the team line counts who is up and the plane line is quiet; a packaged shell without a plane gets the product line, the lede in its family, and Connect a plane; both skins', async ({page}) => {
+    test('Home over a live fleet — the team line counts who is up and the plane line is quiet; a packaged shell without a plane gets the product line, the promise in its family, Set up your institution and the quiet Connect door; both skins', async ({page}) => {
         await bootSettledCockpit(page);
 
         const
             home    = await openHome(page),
-            connect = home.getByRole('button', {name: 'Connect a plane'}),
+            connect = home.getByRole('button', {name: 'Set up your institution'}),
             family  = selector => home.locator(selector).evaluate(el => getComputedStyle(el).fontFamily);
 
         await expect(home.locator('.fm-home-h1')).toHaveText(/^\d+ of 11 agents up$/);
@@ -1951,6 +1987,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await landShellPlane(page, false);
         await expect(connect).toBeVisible();
+        await expect(home.locator('.fm-home-connect'), 'joining stays reachable as the second door').toHaveText('Joining a team that already runs one? Connect to it');
         await expect(home.locator('.fm-home-doors')).toBeHidden();
         await expect(home.locator('.fm-home-plane')).toBeHidden();
         // the lede declared no family and inherited the theme's body face, apart from the display line above it

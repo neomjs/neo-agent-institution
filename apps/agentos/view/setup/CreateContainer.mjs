@@ -5,71 +5,67 @@ import SetupSteps     from '../../store/SetupSteps.mjs';
 import StepList       from './StepList.mjs';
 import {actionsFor}   from './StepList.mjs';
 import TextArea       from '../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
+import SetupAsks      from '../../util/SetupAsks.mjs';
 
-const GiB = 1073741824;
+const
+    GiB       = 1073741824,
+    COLD_LEDE = 'Three questions, then one action at a time. Nothing is written until you say so, and every step says what it observed.';
 
 /**
- * @summary Words a byte count as GiB with one decimal; a missing count reads as such.
- * @param {*} bytes
- * @returns {String}
+ * @summary One question block: the title, then the block's own lines and controls, every one sized
+ * to its content (the engine's column would hand them `flex: 1` inline).
+ * @param {String} id `token` | `where` | `start`
+ * @param {String} title
+ * @param {Object[]} items
+ * @returns {Object}
  */
-export const gibText = bytes => Number.isFinite(bytes) ? `${(bytes / GiB).toFixed(1)} GiB` : 'not measured';
+const askBlock = (id, title, items) => ({
+    ntype    : 'container',
+    cls      : ['fm-setup-ask', `fm-setup-ask-${id}`, 'is-next'],
+    flex     : 'none',
+    layout   : {ntype: 'vbox'},
+    reference: `ask-${id}`,
+    items    : [{ntype: 'component', cls: ['fm-setup-ask-title'], flex: 'none', text: title}, ...items]
+});
 
 /**
- * @summary The CLI's own command, for a served cockpit without a vessel: the operator runs it on the
- * host and pastes its `--json` into the card, which projects it through the same list.
- * @type {String}
+ * @summary A block's control row: its one primary action, the quiet links beside it, wrapping.
+ * @param {String} id
+ * @param {Object[]} items
+ * @returns {Object}
  */
-export const CLI_COMMAND = 'node ai/scripts/setup/firstRun.mjs --json';
+const controls = (id, items) => ({
+    ntype    : 'container',
+    cls      : ['fm-setup-ask-controls'],
+    flex     : 'none',
+    layout   : {ntype: 'hbox', align: 'center'},
+    reference: `${id}-controls`,
+    items
+});
 
 /**
- * @summary A row's question-side word for one preset, from the placement step's verdicts: which
- * list the preset sits in and the recipe's reason for it.
- * @param {Object|null} placement The placement step's `{recommended, possible, refused}`
- * @param {String} presetId
- * @returns {{verdict: String, reason: String, margins: Object|null}} `margins` is the row's `{host, guest}`
+ * @summary The text link that opens an answered block again.
+ * @param {String} id
+ * @returns {Object}
  */
-export function presetVerdict(placement, presetId) {
-    for (const verdict of ['recommended', 'possible', 'refused']) {
-        const row = placement?.[verdict]?.find(entry => entry.id === presetId);
-
-        if (row) {
-            return {verdict, reason: row.reason ?? '', margins: row.margins ?? null}
-        }
-    }
-
-    return {verdict: 'unknown', reason: 'the placement step has not answered', margins: null}
-}
+const changeLink = id => ({
+    module   : Button,
+    askId    : id,
+    cls      : ['fm-setup-link', 'fm-setup-change'],
+    handler  : 'up.onChangeClick',
+    hidden   : true,
+    reference: `${id}-change`,
+    text     : 'Change'
+});
 
 /**
- * @summary The density of one completed run — the counting definition, not a measurement: a decision
- * is one answered question (a consent with an answer) or one consent to an effect (an accepted
- * receipt); a manual action is a step whose action was an operator instruction (an effect the
- * vessel could not run itself). Placement is defaulted, never decided, unless the advanced fold
- * was opened.
- * @param {Object|null} evaluation
- * @param {Number} manualActions The instructions the door handed the operator this session
- * @returns {{decisions: Number, manualActions: Number}}
- */
-export function countDensity(evaluation, manualActions = 0) {
-    const steps = evaluation?.steps ?? [];
-
-    return {
-        decisions: steps.filter(step =>
-            (step.kind === 'question' && step.status === 'ok' && step.answer !== null && step.answer !== undefined) ||
-            (step.kind === 'effect' && step.receipt === 'accepted')
-        ).length,
-        manualActions
-    }
-}
-
-/**
- * @summary The setup card's **Create** door: the first-run recipe projected inline. Every row is the
- * vessel's fresh evaluation for the bound target (the CLI's `--json` shape); the door stores
- * nothing, remembers no "completed" bit, and sends every action to main as a request whose reply
- * is a fresh evaluation. The three questions sit above the step list; the quiet confirmation is
- * the `done` step's own text at first persistence. Without a shell the door shows the CLI's command
- * and projects a pasted evaluation through the same list.
+ * @summary The setup card's **Create** door: the first-run recipe projected inline as three questions
+ * in the operator's words — the token, where it runs, start — one open at a time, with the recipe's
+ * ledger under Details. Every row is the vessel's fresh evaluation for the bound target (the CLI's
+ * `--json` shape); the door stores nothing, remembers no "completed" bit, and sends every action to
+ * main as a request whose reply is a fresh evaluation. The quiet confirmation is the `done` step's
+ * own text at first persistence. Without a shell the door shows the CLI's command and projects a
+ * pasted evaluation through the same list.
  * @class AgentOS.view.setup.CreateContainer
  * @extends Neo.container.Base
  */
@@ -128,6 +124,22 @@ class CreateContainer extends Container {
          */
         manualActions: 0,
         /**
+         * Whether the recipe's ledger shows under the questions. This session's choice, never stored.
+         * @member {Boolean} detailsOpen=false
+         */
+        detailsOpen: false,
+        /**
+         * Whether the preset choices show under the Where block. Opens by itself while nothing is
+         * recommended, and on Change; never closes by itself.
+         * @member {Boolean} otherChoicesOpen=false
+         */
+        otherChoicesOpen: false,
+        /**
+         * The answered block the operator opened again with Change, until the next evaluation.
+         * @member {String|null} reopened=null
+         */
+        reopened: null,
+        /**
          * @member {Object[]} items
          */
         items: [{
@@ -135,7 +147,7 @@ class CreateContainer extends Container {
             cls      : ['agent-plane-setup-lede'],
             flex     : 'none',
             reference: 'lede',
-            text     : 'A plane of your own on this machine: Docker, one inference preset, your GitHub or GitLab PAT. Nothing is written until you say so, each step says what it observed, and the frame stays usable behind this card.'
+            text     : COLD_LEDE
         }, {
             // the served cockpit's path: the CLI's command and a field for its --json
             ntype    : 'container',
@@ -152,7 +164,7 @@ class CreateContainer extends Container {
                 ntype: 'component',
                 cls  : ['fm-setup-served-command'],
                 tag  : 'code',
-                text : CLI_COMMAND
+                text : SetupAsks.CLI_COMMAND
             }, {
                 module   : TextArea,
                 cls      : ['fm-setup-served-json'],
@@ -167,70 +179,50 @@ class CreateContainer extends Container {
             }]
         }, {
             ntype    : 'container',
-            cls      : ['fm-setup-questions'],
+            cls      : ['fm-setup-questions', 'fm-setup-asks'],
             flex     : 'none',
             layout   : {ntype: 'vbox'},
             reference: 'questions',
-            items    : [{
-                ntype : 'container',
-                cls   : ['fm-setup-q'],
-                flex  : 'none',
-                layout: {ntype: 'hbox', align: 'start'},
-                items : [
-                    {ntype: 'component', cls: ['fm-setup-q-key'], text: 'placement'},
-                    {
-                        // the budgets, then the frame the three verdicts answer
-                        ntype : 'container',
-                        cls   : ['fm-setup-placement'],
-                        flex  : 1,
-                        layout: {ntype: 'vbox'},
-                        items : [
-                            {ntype: 'component', cls: ['fm-setup-budget'],         flex: 'none', reference: 'budget-line',    text: 'not probed yet'},
-                            {ntype: 'component', cls: ['fm-setup-placement-line'], flex: 'none', reference: 'placement-line', text: ''}
-                        ]
-                    }
-                ]
-            }, {
-                ntype : 'container',
-                cls   : ['fm-setup-q'],
-                flex  : 'none',
-                layout: {ntype: 'hbox', align: 'start'},
-                items : [
-                    {ntype: 'component', cls: ['fm-setup-q-key'], text: 'preset'},
-                    {ntype: 'container', cls: ['fm-setup-presets'], flex: 1, layout: {ntype: 'hbox', align: 'stretch'}, reference: 'presets', items: []}
-                ]
-            }, {
-                ntype : 'container',
-                cls   : ['fm-setup-q'],
-                flex  : 'none',
-                layout: {ntype: 'hbox', align: 'center'},
-                items : [
-                    {ntype: 'component', cls: ['fm-setup-q-key'], text: 'plane credential'},
-                    {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-credential-button'], handler: 'up.onCredentialClick', reference: 'credential-button', text: 'Open the credential window'},
-                    {ntype: 'component', cls: ['fm-setup-q-note'], reference: 'credential-line', text: 'the PAT is entered in the vessel\'s own window and kept as an owner-only file; this card only ever shows its path'}
-                ]
-            }, {
-                ntype : 'container',
-                cls   : ['fm-setup-q'],
-                flex  : 'none',
-                layout: {ntype: 'hbox', align: 'start'},
-                items : [
-                    {ntype: 'component', cls: ['fm-setup-q-key'], text: 'provider key'},
-                    {ntype: 'component', cls: ['fm-setup-q-note'], reference: 'provider-key-line', text: 'decided by the preset'}
-                ]
-            }, {
-                ntype : 'container',
-                cls   : ['fm-setup-q'],
-                flex  : 'none',
-                layout: {ntype: 'hbox', align: 'start'},
-                items : [
-                    {ntype: 'component', cls: ['fm-setup-q-key'], text: 'advanced'},
-                    {ntype: 'component', cls: ['fm-setup-q-note'], reference: 'advanced-line', text: 'folded: defaults apply'}
-                ]
-            }]
+            items    : [
+                askBlock('token', 'Your GitHub token', [
+                    {ntype: 'component', cls: ['fm-setup-ask-line'], flex: 'none', reference: 'credential-line', text: 'One token. It lets your agents read and write your repositories, and it signs you in here.'},
+                    controls('token', [
+                        {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-credential-button'], handler: 'up.onCredentialClick', reference: 'credential-button', text: 'Enter your token'},
+                        changeLink('token')
+                    ]),
+                    {ntype: 'component', cls: ['fm-setup-ask-help'], flex: 'none', reference: 'credential-help', text: 'Entered in the vessel\'s own window and kept as an owner-only file; this card only ever shows its path.'}
+                ]),
+                askBlock('where', 'Where it runs', [
+                    {ntype: 'component', cls: ['fm-setup-ask-line'], flex: 'none', reference: 'placement-line', text: 'Measuring this machine…'},
+                    controls('where', [
+                        {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-use-button'], handler: 'up.onUseClick', hidden: true, reference: 'use-button', text: 'Use this'},
+                        {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-key-button'], handler: 'up.onProviderKeyClick', hidden: true, reference: 'provider-key-button', text: 'Enter the provider key'},
+                        {module: Button, cls: ['fm-setup-link', 'fm-setup-other-choices-toggle'], handler: 'up.onOtherChoicesClick', reference: 'other-choices-toggle', text: 'Other choices'},
+                        changeLink('where')
+                    ]),
+                    {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-key-line'], flex: 'none', hidden: true, reference: 'provider-key-line', text: ''},
+                    {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-budget'], flex: 'none', reference: 'budget-line', text: 'not probed yet'},
+                    {ntype: 'container', cls: ['fm-setup-presets'], flex: 'none', hidden: true, layout: {ntype: 'base'}, reference: 'presets', items: []}
+                ]),
+                askBlock('start', 'Start', [
+                    {ntype: 'component', cls: ['fm-setup-ask-line'], flex: 'none', reference: 'start-line', text: ''},
+                    controls('start', [
+                        {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-start-button'], handler: 'up.onStartClick', hidden: true, reference: 'start-button', text: 'Run next step'}
+                    ]),
+                    {ntype: 'component', cls: ['fm-setup-ask-help'], flex: 'none', reference: 'start-help', text: ''}
+                ])
+            ]
+        }, {
+            module   : Button,
+            cls      : ['fm-setup-link', 'fm-setup-details-toggle'],
+            flex     : 'none',
+            handler  : 'up.onDetailsClick',
+            reference: 'details-toggle',
+            text     : 'Details'
         }, {
             module   : StepList,
             flex     : 'none',
+            hidden   : true,
             reference: 'step-list',
             listeners: {itemClick: 'up.onStepClick'}
         }, {
@@ -410,8 +402,9 @@ class CreateContainer extends Container {
     }
 
     /**
-     * @summary A fresh evaluation replaces every row, re-words the lede, the question lines and the
-     * quiet confirmation, and publishes the run and its progress to the view root's provider.
+     * @summary A fresh evaluation replaces every row, re-words the three blocks, the lede and the
+     * quiet confirmation, closes a block opened with Change, and publishes the run and its progress
+     * to the view root's provider.
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
@@ -423,8 +416,9 @@ class CreateContainer extends Container {
 
         // a fresh evaluation ends a pending confirmation; silent, the projection draws the rows once
         me.getReference('step-list')._confirmingId = null;
+        me.reopened = null;
         me.store.projectEvaluation(value);
-        me.applyQuestionLines();
+        me.applyAsks();
         me.applyLede();
         me.applyQuietLine();
         me.publishRun()
@@ -441,13 +435,14 @@ class CreateContainer extends Container {
     }
 
     /**
-     * @summary The preset cards follow the table (and the placement verdicts, re-applied per evaluation).
+     * @summary The Where block and its choices follow the table (with the placement verdicts,
+     * re-applied per evaluation).
      * @param {Object[]|null} value
      * @param {Object[]|null} oldValue
      * @protected
      */
     afterSetPresets(value, oldValue) {
-        this.getReference('presets') && this.applyPresetCards()
+        this.getReference('presets') && this.applyAsks()
     }
 
     /**
@@ -475,54 +470,108 @@ class CreateContainer extends Container {
 
         const
             {guest, host} = probe,
-            hostText      = `host ${gibText(host.totalBytes)} total · ${gibText(host.availableBytes)} available · pressure ${host.pressure ?? 'unknown'}`,
-            guestText     = guest ? ` · VM ${gibText(guest.capBytes)} cap · ${gibText(guest.availableBytes)} available` : ' · no VM observed';
+            hostText      = `host ${SetupAsks.gibText(host.totalBytes)} total · ${SetupAsks.gibText(host.availableBytes)} available · pressure ${host.pressure ?? 'unknown'}`,
+            guestText     = guest ? ` · VM ${SetupAsks.gibText(guest.capBytes)} cap · ${SetupAsks.gibText(guest.availableBytes)} available` : ' · no VM observed';
 
         return `${hostText}${guestText}`
     }
 
     /**
-     * @summary The question rows read their step: the credential path, the provider-key verdict,
-     * the advanced fold.
+     * @summary The three blocks read their rows: each block's state, the token's kept path, the
+     * Where line and its choices, the provider key when the preset needs one, and the Start block's
+     * row with its one action.
      * @protected
      */
-    applyQuestionLines() {
+    applyAsks() {
         const
-            me         = this,
-            step       = id => me.store.get(id),
-            credential = step('plane-credential'),
-            key        = step('provider-key'),
-            advanced   = step('advanced');
+            me    = this,
+            store = me.store;
 
+        if (!store || !me.getReference('ask-token')) return;
+
+        const
+            {token, where, start, startRow} = SetupAsks.describeAsks(store, me.reopened),
+            step        = id => store.get(id),
+            credential  = step('plane-credential'),
+            preset      = step('preset'),
+            key         = step('provider-key'),
+            done        = step('done'),
+            placement   = step('placement')?.placement ?? null,
+            presets     = me.presets ?? [],
+            label       = id => presets.find(row => row.id === id)?.label ?? id,
+            chosen      = preset?.answer ?? null,
+            keyNeeded   = Boolean(key) && key.status !== 'ok' && !key.waitsFor,
+            recommended = placement?.recommended?.[0] ?? null,
+            progress    = store.describeProgress(),
+            confirming  = me.getReference('step-list').confirmingId,
+            // a pending write-again confirmation is the row's one open question: the block's action is
+            // its second press, never the row's first exit beside it
+            action      = startRow ? (confirming === startRow.id ? 'write again' : actionsFor(startRow)[0] ?? null) : null;
+
+        me.applyAskState('token', token);
+        me.applyAskState('where', where);
+        me.applyAskState('start', start);
+
+        // the token: the kept file's path, never a value
         me.getReference('credential-line').text = credential?.status === 'ok'
             ? `consented · ${credential.answer ?? 'a kept file'}${credential.consentedAt ? ` · ${credential.consentedAt}` : ''}`
-            : 'the PAT is entered in the vessel\'s own window and kept as an owner-only file; this card only ever shows its path';
-        me.getReference('credential-button').text = credential?.status === 'ok' ? 'Change' : 'Open the credential window';
-        me.getReference('provider-key-line').text = key?.reason ?? 'decided by the preset';
-        me.getReference('advanced-line').text     = advanced?.reason ?? 'folded: defaults apply';
-        me.getReference('placement-line').text    = CreateContainer.placementText(step('placement')?.placement ?? null);
-        me.applyPresetCards()
+            : 'One token. It lets your agents read and write your repositories, and it signs you in here.';
+        me.getReference('token-change').hidden = token !== 'answered';
+
+        // where it runs: the choice once made, the recipe's recommendation until then; a placement
+        // that recommends nothing opens the choices, since the operator has to pick there
+        if (placement && !recommended && !chosen) {
+            me.otherChoicesOpen = true
+        }
+
+        me.getReference('placement-line').text = chosen
+            ? `This machine, ${label(chosen)}${keyNeeded ? ' · needs a provider key' : key?.status === 'ok' && key.answer ? ' · provider key kept' : ''}`
+            : SetupAsks.recommendationText(placement, presets);
+        me.getReference('use-button').set({hidden: !recommended || chosen === recommended.id, presetId: recommended?.id ?? null, text: recommended ? `Use ${label(recommended.id)}` : 'Use this'});
+        me.getReference('provider-key-button').hidden = !keyNeeded;
+        me.getReference('provider-key-line').set({hidden: !keyNeeded, text: keyNeeded ? `This preset needs a provider key — ${key.reason ?? 'unanswered'}` : ''});
+        me.getReference('other-choices-toggle').text = me.otherChoicesOpen ? 'Fewer choices' : 'Other choices';
+        me.getReference('presets').hidden = !me.otherChoicesOpen;
+        me.getReference('where-change').hidden = where !== 'answered';
+        me.applyPresetCards();
+
+        // start: the row that is not ok and waits for nothing, its action in the operator's words
+        me.startRow    = startRow;
+        me.startAction = action;
+
+        me.getReference('start-line').text = done?.status === 'ok'
+            ? 'Your institution is running. Add your first agent.'
+            : startRow
+                ? `${startRow.summary ?? startRow.id} · ${progress.ok} of ${progress.total}`
+                : start === 'open'
+                    ? `${progress.ok} of ${progress.total} — waiting for the plane`
+                    : 'Two answers, then one action at a time.';
+        me.getReference('start-help').text = startRow
+            ? confirming === startRow.id
+                ? 'a second row on the plane is possible · press Write again to write it'
+                : `${startRow.status} · ${startRow.reason ?? ''}`
+            : '';
+        me.getReference('start-button').set({hidden: !action, text: SetupAsks.START_VERBS[action] ?? action ?? 'Run next step'})
     }
 
     /**
-     * @summary The frame the three verdicts answer: the recommended presets, or that none is and
-     * each card says why.
-     * @param {Object|null} placement The placement step's `{recommended, possible, refused}`
-     * @returns {String}
+     * @summary One block's state class: `is-open` · `is-answered` · `is-next`.
+     * @param {String} id
+     * @param {String} state
+     * @protected
      */
-    static placementText(placement) {
-        if (!placement) return '';
+    applyAskState(id, state) {
+        const block = this.getReference(`ask-${id}`);
 
-        const recommended = placement.recommended ?? [];
+        if (!block) return;
 
-        return recommended.length > 0
-            ? `recommended: ${recommended.map(row => row.id).join(', ')}`
-            : 'nothing recommended — each preset says why'
+        block.removeCls(['is-open', 'is-answered', 'is-next']);
+        block.addCls(`is-${state}`)
     }
 
     /**
-     * @summary One card per preset: its facts from the table, its verdict from the placement step,
-     * the chosen one marked, a refused one visible but disabled with the shortfall.
+     * @summary One card per preset under Other choices: its facts from the table, its verdict from
+     * the placement step, the chosen one marked, a refused one visible but disabled with the shortfall.
      * @protected
      */
     applyPresetCards() {
@@ -538,21 +587,21 @@ class CreateContainer extends Container {
         container.removeAll();
 
         if (presets.length === 0) {
-            container.add({ntype: 'component', cls: ['fm-setup-q-note'], text: 'the preset table has not answered'});
+            container.add({ntype: 'component', cls: ['fm-setup-ask-help'], text: 'the preset table has not answered'});
             return
         }
 
         container.add(presets.map(preset => {
             const
-                {margins, reason, verdict} = presetVerdict(placement, preset.id),
+                {margins, reason, verdict} = SetupAsks.presetVerdict(placement, preset.id),
                 refused                    = verdict === 'refused',
                 workload                   = preset.workload ?? {},
                 facts                      = `chat ${preset.chatModel} · embed ${preset.embedder} · ${preset.vectorDimension} dims`,
                 // the decision numbers: the plane's own footprint, the models, the floor's date
                 footprint                  = preset.inference === 'local'
-                    ? `models ${gibText(workload.modelsBytes)} · ${preset.qualityFloor?.measuredAt ? `floor recorded ${preset.qualityFloor.measuredAt}` : 'no recorded floor'}`
-                    : `plane ${Number.isFinite(workload.planeIdleBytes) ? (workload.planeIdleBytes / GiB).toFixed(1) : '?'}–${gibText(workload.planePeakBytes)} · no local models · needs a provider key`,
-                margin                     = Number.isFinite(margins?.host) && margins.host >= 0 ? ` · ${gibText(margins.host)} host margin` : '';
+                    ? `models ${SetupAsks.gibText(workload.modelsBytes)} · ${preset.qualityFloor?.measuredAt ? `floor recorded ${preset.qualityFloor.measuredAt}` : 'no recorded floor'}`
+                    : `plane ${Number.isFinite(workload.planeIdleBytes) ? (workload.planeIdleBytes / GiB).toFixed(1) : '?'}–${SetupAsks.gibText(workload.planePeakBytes)} · no local models · needs a provider key`,
+                margin                     = Number.isFinite(margins?.host) && margins.host >= 0 ? ` · ${SetupAsks.gibText(margins.host)} host margin` : '';
 
             return {
                 ntype    : 'container',
@@ -584,7 +633,7 @@ class CreateContainer extends Container {
         } else if (evaluation?.runId && evaluation.steps?.some(step => step.kind === 'effect' && step.receipt)) {
             me.getReference('lede').text = `Resumed from the run record (${evaluation.runId}, bound to ${evaluation.target?.planeId ?? 'this plane'} at ${evaluation.target?.dataRoot ?? 'its data root'}). An interrupted effect is never run again; a fresh observation that matches the plane settles it.`
         } else {
-            me.getReference('lede').text = 'A plane of your own on this machine: Docker, one inference preset, your GitHub or GitLab PAT. Nothing is written until you say so, each step says what it observed, and the frame stays usable behind this card.'
+            me.getReference('lede').text = COLD_LEDE
         }
     }
 
@@ -610,7 +659,7 @@ class CreateContainer extends Container {
 
         if (finished && !me.firstPersistenceFired) {
             me.firstPersistenceFired = true;
-            me.fire('firstPersistence', {density: countDensity(me.evaluation, me.manualActions), evaluation: me.evaluation})
+            me.fire('firstPersistence', {density: SetupAsks.countDensity(me.evaluation, me.manualActions), evaluation: me.evaluation})
         }
     }
 
@@ -627,7 +676,7 @@ class CreateContainer extends Container {
 
         if (!provider) return;
 
-        const density = countDensity(evaluation, me.manualActions);
+        const density = SetupAsks.countDensity(evaluation, me.manualActions);
 
         // leaf-complete blocks: the provider's data is a tree of leaves, so every key is written
         // with a value (null for "no run"), never a block replaced wholesale
@@ -649,7 +698,7 @@ class CreateContainer extends Container {
      * @summary A row's action is a request to main; the reply is a fresh evaluation. The witness row's
      * exits are requests to its effect: `re-check` resumes it and writes nothing, `write again` is the
      * new attempt. A new attempt that can leave a second row on the plane is said in the row first,
-     * and its second press sends it.
+     * and its second press sends it. The Start block sends the same requests for its row.
      * @param {Object} data
      * @param {String|null} [data.action] The clicked chip's action; without one the row's first action
      * @param {Object} data.record The clicked step record
@@ -664,10 +713,12 @@ class CreateContainer extends Container {
 
         if (action === 'write again' && record.duplicatePossible && list.confirmingId !== record.id) {
             list.confirmingId = record.id;
+            me.applyAsks();
             return
         }
 
         list.confirmingId = null;
+        me.applyAsks();
 
         switch (action) {
             case 'open window':
@@ -695,6 +746,19 @@ class CreateContainer extends Container {
     }
 
     /**
+     * @summary The Start block's one action: its row's first request, the one the row's chip under
+     * Details would send.
+     * @returns {Promise<void>}
+     */
+    async onStartClick() {
+        const me = this;
+
+        if (me.startRow) {
+            await me.onStepClick({action: me.startAction, record: me.startRow})
+        }
+    }
+
+    /**
      * @summary Consents to one effect. A shell that cannot run it answers why; the row's action then
      * becomes the operator's instruction, counted as a manual action.
      * @param {String} effectId
@@ -712,7 +776,7 @@ class CreateContainer extends Container {
         if (!reply.ok && /^(no-brain-root|not-packaged|no-shell)/.test(reply.reason ?? '')) {
             // the shell cannot run effects at all: the row's action is the operator's instruction
             me.manualActions++;
-            me.getReference('status-line').text = `${effectId}: ${reply.reason ?? 'the shell could not run it'} — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`;
+            me.getReference('status-line').text = `${effectId}: ${reply.reason ?? 'the shell could not run it'} — run \`${SetupAsks.CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`;
             return
         }
 
@@ -741,6 +805,66 @@ class CreateContainer extends Container {
     }
 
     /**
+     * @summary The Where block's primary action: the recommended preset, one consent.
+     * @param {Object} data The button's click data
+     * @returns {Promise<void>}
+     */
+    onUseClick(data) {
+        return this.onPresetClick({component: {presetId: data?.component?.presetId}})
+    }
+
+    /**
+     * @summary The Where block's second action when the chosen preset needs a provider key: main's
+     * credential window for that step.
+     * @returns {Promise<void>}
+     */
+    onProviderKeyClick() {
+        return this.onCredentialClick('provider-key')
+    }
+
+    /**
+     * @summary Opens an answered block again; a preset change opens the choices with it. The next
+     * evaluation closes it.
+     * @param {Object} data The link's click data
+     */
+    onChangeClick(data) {
+        const
+            me = this,
+            id = data?.component?.askId;
+
+        if (!id) return;
+
+        me.reopened = id;
+
+        if (id === 'where') {
+            me.otherChoicesOpen = true
+        }
+
+        me.applyAsks()
+    }
+
+    /**
+     * @summary Shows or hides the preset choices under the Where block.
+     */
+    onOtherChoicesClick() {
+        const me = this;
+
+        me.otherChoicesOpen = !me.otherChoicesOpen;
+        me.applyAsks()
+    }
+
+    /**
+     * @summary Shows or hides the recipe's ledger under the questions.
+     */
+    onDetailsClick() {
+        const me = this;
+
+        me.detailsOpen = !me.detailsOpen;
+        me.getReference('step-list').hidden      = !me.detailsOpen;
+        me.getReference('details-toggle').text   = me.detailsOpen ? 'Hide details' : 'Details'
+    }
+
+    /**
      * @summary Opens main's credential window for the plane credential (or the provider key); the
      * reply names the kept file's path beside the re-evaluated steps.
      * @param {String} [stepId='plane-credential']
@@ -749,8 +873,8 @@ class CreateContainer extends Container {
     async onCredentialClick(stepId = 'plane-credential') {
         const
             me     = this,
-            button = me.getReference('credential-button'),
-            id     = typeof stepId === 'string' ? stepId : 'plane-credential';
+            id     = typeof stepId === 'string' ? stepId : 'plane-credential',
+            button = me.getReference(id === 'provider-key' ? 'provider-key-button' : 'credential-button');
 
         button.disabled = true;
         me.getReference('status-line').text = 'Enter the credential in the window that opens.';
