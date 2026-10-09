@@ -65,6 +65,18 @@
 
     .fm-seat-model-offer {
         gap: var(--fm-space-2);
+
+        &.is-desktop-effort {
+            &::after {
+                content   : '';
+                flex-basis: 100%;
+                order     : 1;
+            }
+
+            .fm-seat-model-default {
+                order: 2;
+            }
+        }
     }
 
     /* an inline field label floats about 5.4px above its box, as in the identity row's declaration */
