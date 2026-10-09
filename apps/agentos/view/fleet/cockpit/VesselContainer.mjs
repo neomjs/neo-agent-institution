@@ -500,12 +500,13 @@ class VesselContainer extends Workspace {
 
     /**
      * @summary Resolve the live {@link AgentOS.view.fleet.wake.Container} instance whether it is
-     * docked, vesseled, or in flight home — the {@link #getMemoriesPane} contract for the
+     * docked, parked, vesseled, or in flight home — the {@link #getMemoriesPane} contract for the
      * wake-routes surface, so snapshot writes and the reconnect re-drive reach the pane in every phase.
+     * The rail parks this pane off the projected tree, so it resolves by its declared id.
      * @returns {Neo.container.Base|null} The wake-routes pane, or `null` before materialization.
      */
     getWakeRoutesPane() {
-        return this.vesselPane('wakeRoutes') || this.getReference('wakeRoutes')
+        return this.vesselPane('wakeRoutes') || Neo.get(this.getPaneDeclaration('wakeRoutes')?.id) || null
     }
 
     /**
