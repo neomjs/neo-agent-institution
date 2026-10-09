@@ -934,6 +934,55 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a Start the Fleet reports installing refines the pending label with its count, the toggle cancels it, and a sent cancel reads canceling (#616)', () => {
+        const
+            card    = createCard({agentId: 'vega', displayName: 'Vega', state: 'off'}),
+            status  = () => card.down({reference: 'control-status'}),
+            toggle  = () => card.down({reference: 'control-verbs'}).items[0],
+            fired   = [],
+            live    = [
+                {repoSlug: 'neomjs/neo',             state: 'installing'},
+                {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'},
+                {repoSlug: 'neomjs/create-app',      state: 'installing'}
+            ];
+
+        card.on('lifecycleIntent', data => fired.push(data));
+
+        // this cockpit's Start is pending and the Fleet reports its installs: the count refines `start…`
+        applySet(card, {pendingAction: 'start', dependencyOutcomes: live});
+        expect(status().text).toBe('start… preparing dependencies (1/3 done)');
+        expect(status().vdom.title).toBe('neomjs/neo: installing · neomjs/neo-agent-brain: prepared · neomjs/create-app: installing');
+        expect(card.down({reference: 'card-state'}).text).toBe('starting');
+
+        // the power verb cancels the Start: open although a Start is pending, stop icon, its own name, a stop intent
+        expect(toggle().disabled).toBe(false);
+        expect(toggle().iconCls).toBe('fa-solid fa-stop');
+        expect(toggle().vdom['aria-label']).toBe('Cancel start Vega');
+        card.getController().onToggleLifecycle();
+        expect(fired).toMatchObject([{action: 'stop', agentId: 'vega'}]);
+
+        // the Fleet's report is an answer: it replaces the local timeout's "no answer yet"
+        applySet(card, {pendingAction: null, controlReason: {action: 'start', kind: 'timeout', reason: 'start timed out after 30000ms'}});
+        expect(status().text).toBe('start… preparing dependencies (1/3 done)');
+
+        // a sent cancel closes the verb and says so until the Start settles
+        applySet(card, {controlReason: null, pendingAction: 'stop'});
+        expect(status().text).toBe('canceling start…');
+        expect(toggle().disabled).toBe(true);
+        expect(card.down({reference: 'card-state'}).text).toBe('stopping');
+
+        // settled: no row installs any more, so nothing reads as live; the card is an ordinary offline seat
+        fired.length = 0;
+        applySet(card, {pendingAction: null, dependencyOutcomes: live.map(row => ({...row, state: row.state === 'installing' ? 'canceled' : row.state}))});
+        expect(status().hidden).toBe(true);
+        expect(toggle().iconCls).toBe('fa-solid fa-play');
+        expect(toggle().vdom['aria-label']).toBe('Start Vega');
+        card.getController().onToggleLifecycle();
+        expect(fired).toMatchObject([{action: 'start', agentId: 'vega'}]);
+
+        card.destroy()
+    });
+
     test('a running seat whose working checkout the last start did not prepare says skills not verified, below every other line; another repository\'s failure stays off the card (#610)', () => {
         const
             card    = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo'}),

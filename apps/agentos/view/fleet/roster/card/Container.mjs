@@ -616,15 +616,19 @@ class AgentCard extends Container {
             runtimeWired  = sources.runtime.state === 'wired',
             recordState   = record.state ?? 'off',
             resolved      = SourceHealth.resolveFleetDisplayState(record),
+            // a Start the Fleet reports still installing: live rows only, never a retained set
+            preparation   = SeatDependencies.liveLine(record.dependencyOutcomes),
+            canceling     = Boolean(preparation) && pendingAction === 'stop',
             displayState  = pendingAction === 'stop'
                 ? 'stopping'
-                : pendingAction // 'start' | 'restart' both transition toward running
+                : pendingAction || preparation // 'start' | 'restart' both transition toward running, as does a preparing Start
                     ? 'starting'
                     : resolved.state,
-            reason        = pendingAction ? null : resolved.reason,
+            reason        = pendingAction || preparation ? null : resolved.reason,
             // severity = weight: the exceptional resolved states take ink + weight on the word
             hot           = displayState === 'wedged' || displayState === 'limited',
-            disabled      = Boolean(pendingAction) || !runtimeWired || controlReason?.kind === 'unauthorized';
+            // a confirmed preparation keeps the toggle open as Cancel start; once the cancel is sent it closes
+            disabled      = (Boolean(pendingAction) && !(preparation && !canceling)) || !runtimeWired || controlReason?.kind === 'unauthorized';
 
         me.getReference('family-rail').family = record.family ?? null;
 
@@ -816,12 +820,14 @@ class AgentCard extends Container {
         monogram.changeVdomRootKey('aria-label', nameSlot.text);
 
         const
-            toggle  = me.getReference('control-toggle'),
-            restart = me.getReference('control-restart'),
+            toggle      = me.getReference('control-toggle'),
+            restart     = me.getReference('control-restart'),
+            // while the Fleet prepares a Start, the power verb cancels it: icon, name and intent agree
+            cancelStart = Boolean(preparation) && !canceling,
             // the Fleet's own words for why its Start refuses this seat: Start stays closed before the click
-            refusal = recordState === 'off' ? record.launchRefusal ?? null : null;
+            refusal     = recordState === 'off' && !preparation ? record.launchRefusal ?? null : null;
 
-        toggle.set({disabled: disabled || Boolean(refusal), iconCls: recordState === 'off' ? 'fa-solid fa-play' : 'fa-solid fa-stop'});
+        toggle.set({disabled: disabled || Boolean(refusal), iconCls: recordState === 'off' && !preparation ? 'fa-solid fa-play' : 'fa-solid fa-stop'});
         // restart is meaningful only while running; at every card width it stays a real, visible control
         // (no hidden overflow) — the narrow row simply keeps both verbs as light, proportional icons
         restart.set({disabled, hidden: recordState === 'off'});
@@ -829,12 +835,14 @@ class AgentCard extends Container {
         // The accessible name must reach the DOM via the vdom root: `ariaLabel` is NOT a Neo config (it
         // maps to nothing), and these controls are icon-only (`.neo-button-text` is display:none), so the
         // aria-label IS their only accessible name. The FM roster names its subject on every verb.
-        toggle.changeVdomRootKey('aria-label', `${recordState === 'off' ? 'Start' : 'Stop'} ${nameSlot.text}`);
+        toggle.changeVdomRootKey('aria-label', `${cancelStart ? 'Cancel start' : recordState === 'off' && !preparation ? 'Start' : 'Stop'} ${nameSlot.text}`);
         restart.changeVdomRootKey('aria-label', `Restart ${nameSlot.text}`);
         // a fact that closes the verb, or infers its state, says why on the verb itself, in the producer's
         // words: the Fleet's refusal to start the seat, a seat outside fleet supervision, or a fleet-launched
         // seat that never ran
-        toggle.changeVdomRootKey('title', refusal ?? (!runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null));
+        toggle.changeVdomRootKey('title', cancelStart
+            ? 'Cancel this Start: the Fleet stops its installs and does not launch the seat.'
+            : refusal ?? (!runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null));
 
         // The status row narrates the Start: the round-trip while it is live or refused, then whether
         // the session it launched opened in the seat's own folder (a desktop seat cannot be launched
@@ -843,10 +851,10 @@ class AgentCard extends Container {
         // itself; "not opened yet" and "unknown" sit below one, which a live seat contradicts.
         const
             wrongFolder  = record.sessionFolder?.state === 'wrong',
-            sessionLine  = wrongFolder || !(pendingAction || controlReason) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
+            sessionLine  = wrongFolder || !(pendingAction || controlReason || preparation) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
             // a start the Fleet refused for the declared model says so in the design read's words: the
             // recorded cause, shown only while this cockpit's own last outcome is that same refusal
-            modelRefusal = !pendingAction && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
+            modelRefusal = !pendingAction && !preparation && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
             admissionLine = recordState !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal)
                 ? SeatLaunchAdmission.cardLine(record.launchAdmission, {
                     canRestart : !disabled && recordState !== 'off',
@@ -866,26 +874,31 @@ class AgentCard extends Container {
         // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
         // row height at every card width — the lane stays reachable via line one, its middle elision
         // and the title.
-        me[(pendingAction || controlReason || sessionLine || modelRefusal || admissionLine || skillsLine) ? 'addCls' : 'removeCls']('fm-control-live');
+        me[(pendingAction || controlReason || preparation || sessionLine || modelRefusal || admissionLine || skillsLine) ? 'addCls' : 'removeCls']('fm-control-live');
 
         // the runtime-source gating is already shown by the disabled controls + the source strip
         // ("RUN not nominal"), so the status line never duplicates it
         const
             controlStatus     = me.getReference('control-status'),
             // pending takes visual priority over a prior reason, so a new attempt never shows a stale
-            // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠"
+            // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠".
+            // The Fleet's own report of a preparing Start refines both: it is an answer, not silence
             controlStatusText = wrongFolder
                 ? sessionLine.text
-                : pendingAction
-                    ? `${pendingAction}…`
-                    : modelRefusal
-                        ? modelRefusal.text
-                        : !controlReason
-                            ? admissionLine?.text ?? sessionLine?.text ?? skillsLine?.text ?? ''
-                            : controlReason.kind === 'timeout'
-                                ? `${controlReason.action}… no answer yet`
-                                : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
-            timeoutTitle      = !wrongFolder && !pendingAction && !modelRefusal && controlReason?.kind === 'timeout'
+                : canceling
+                    ? 'canceling start…'
+                    : preparation
+                        ? `${pendingAction === 'restart' ? 'restart' : 'start'}… ${preparation.text}`
+                        : pendingAction
+                            ? `${pendingAction}…`
+                            : modelRefusal
+                                ? modelRefusal.text
+                                : !controlReason
+                                    ? admissionLine?.text ?? sessionLine?.text ?? skillsLine?.text ?? ''
+                                    : controlReason.kind === 'timeout'
+                                        ? `${controlReason.action}… no answer yet`
+                                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
+            timeoutTitle      = !wrongFolder && !pendingAction && !preparation && !modelRefusal && controlReason?.kind === 'timeout'
                 ? `${controlStatusText}. The outcome is unknown until the Fleet answers.` : null,
             // the last start's commit identity, when it needs repair, rides beside a refusal as its own
             // observation: the wire carries no refusal code, so it never stands in as the cause
@@ -895,13 +908,18 @@ class AgentCard extends Container {
 
         controlStatus.set({
             cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : []), ...(modelRefusal ? ['is-model-refused'] : [])],
-            hidden: !pendingAction && !controlReason && !sessionLine && !modelRefusal && !admissionLine && !skillsLine,
+            hidden: !pendingAction && !controlReason && !preparation && !sessionLine && !modelRefusal && !admissionLine && !skillsLine,
             text  : controlStatusText
         });
-        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words
-        controlStatus.changeVdomRootKey('title', timeoutTitle || (modelRefusal
-            ? modelRefusal.title + identityNote
-            : admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
+        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words; a preparing
+        // Start names each checkout's live row there
+        controlStatus.changeVdomRootKey('title', timeoutTitle || (canceling
+            ? 'Cancel requested: the Fleet stops the installs and does not launch the seat.'
+            : preparation
+                ? preparation.title
+                : modelRefusal
+                    ? modelRefusal.title + identityNote
+                    : admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
 
         me.update()
     }

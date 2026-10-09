@@ -1,4 +1,5 @@
-import Controller from '../../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import Controller       from '../../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import SeatDependencies from '../../../../util/SeatDependencies.mjs';
 
 /**
  * Controller for {@link AgentOS.view.fleet.roster.card.Container}: turns the card's start/stop/restart controls
@@ -38,18 +39,20 @@ class AgentCardController extends Controller {
     }
 
     /**
-     * @summary Fires the contextual power intent — `start` when the resident is off, `stop` when running.
+     * @summary Fires the contextual power intent — `start` when the resident is off, `stop` when running,
+     * and `stop` while the Fleet still prepares a Start, which cancels it.
      *
      * The single power toggle replaces a start+stop pair: only one of the two is ever valid for a
-     * given session state, so rendering both (one disabled) is noise, not safety. Reads `state` +
-     * the durable `agentId` from the card's record; intent-only (Lane-C owns the round-trip).
+     * given session state, so rendering both (one disabled) is noise, not safety. Reads `state`, the live
+     * dependency rows and the durable `agentId` from the card's record; intent-only (Lane-C owns the round-trip).
      * @param {Object} data The button click event.
      */
     onToggleLifecycle(data) {
-        let me       = this,
-            {record} = me.component,
-            agentId  = record?.agentId ?? null,
-            action   = (record?.state ?? 'off') === 'off' ? 'start' : 'stop';
+        let me        = this,
+            {record}  = me.component,
+            agentId   = record?.agentId ?? null,
+            preparing = Boolean(SeatDependencies.liveLine(record?.dependencyOutcomes)),
+            action    = !preparing && (record?.state ?? 'off') === 'off' ? 'start' : 'stop';
 
         me.component.fire('lifecycleIntent', {action, agentId})
     }

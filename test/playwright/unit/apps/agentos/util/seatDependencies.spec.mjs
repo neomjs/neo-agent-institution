@@ -96,6 +96,23 @@ test.describe('AgentOS.util.SeatDependencies', () => {
         }
     });
 
+    test('a live Start counts its reported checkouts and names each row; a retained set, with nothing installing, is never live (#616)', () => {
+        expect(SeatDependencies.liveLine([
+            {repoSlug: working, state: 'installing'},
+            {repoSlug: brain,   state: 'present'},
+            {repoSlug: 'neomjs/create-app', state: 'failed', reason: npm}
+        ])).toEqual({
+            done : 2,
+            text : 'preparing dependencies (2/3 done)',
+            title: `${working}: installing · ${brain}: prepared · neomjs/create-app: failed`,
+            total: 3
+        });
+
+        for (const rows of [null, [], [{repoSlug: working, state: 'installed'}, {repoSlug: brain, state: 'canceled'}], [{state: 'installing'}]]) {
+            expect(SeatDependencies.liveLine(rows)).toBeNull()
+        }
+    });
+
     test('the pane\'s words: prepared is never claimed for a skipped, canceled or unverified checkout, and an unknown state has none', () => {
         expect(['prepared', 'installing', 'skipped', 'canceled', 'failed', 'unverified', 'not-applicable'].map(SeatDependencies.label))
             .toEqual(['Prepared', 'Installing', 'Skipped', 'Canceled', 'Failed', 'Unverified', 'No preparation step']);

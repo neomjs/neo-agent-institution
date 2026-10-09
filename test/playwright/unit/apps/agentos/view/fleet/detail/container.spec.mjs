@@ -306,6 +306,65 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
+    test('the Repository pane offers Skip only while a Start installs and only from a Fleet with the verb; the answer binds to the seat it was asked for (#616)', async () => {
+        const
+            oldAgentOS = globalThis.AgentOS,
+            calls      = [],
+            live       = [{repoSlug: 'neomjs/neo', state: 'installing'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'}],
+            detail     = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath: '/seats/vega/neomjs/neo', state: 'off'}),
+            nodes      = () => body(detail, 'repo').vdom.cn,
+            find       = cls => nodes().find(node => node.cls?.includes(cls)) ?? null,
+            skipWire   = () => {
+                const answer = deferred();
+
+                globalThis.AgentOS = {fleet: {registryBridge: {skipAgentDependencies: agentId => { calls.push(agentId); return answer.promise }}}};
+
+                return answer
+            };
+
+        try {
+            // today's pinned wire has no verb: no Skip is offered, even while the Start installs
+            globalThis.AgentOS = {fleet: {registryBridge: {startAgent() {}}}};
+            applySet(detail, {dependencyOutcomes: live});
+            expect(find('fm-detail-repo-skip')).toBeNull();
+
+            // a wire with the verb: Skip, its consequence before the click, then the Fleet's answer
+            let answer = skipWire();
+
+            applySet(detail, {dependencyOutcomes: [...live]});
+            expect(find('fm-detail-repo-skip').text).toBe('Skip remaining preparation');
+            expect(find('fm-detail-repo-skip-note').text).toBe('The seat launches without waiting. A checkout still installing reads Skipped, and while the working checkout is unfinished the seat\'s skills stay unverified.');
+
+            let clicking = body(detail, 'repo').onSkipClick();
+
+            expect(find('fm-detail-repo-skip').text).toBe('Skipping…');
+            expect(find('fm-detail-repo-skip').disabled).toBe(true);
+            answer.resolve({id: 'vega', skippedStarts: 1});
+            await clicking;
+            expect(find('fm-detail-repo-skip-status').text).toBe('Skip requested: the installs still running stop, and the seat launches.');
+            expect(calls).toEqual(['vega']);
+
+            // an answer for a seat the pane no longer shows writes nothing
+            answer   = skipWire();
+            clicking = body(detail, 'repo').onSkipClick();
+            detail.record = makeRecord({agentId: 'ada', repoSlug: 'neomjs/neo', state: 'off', dependencyOutcomes: live});
+            answer.resolve({id: 'vega', skippedStarts: 0});
+            await clicking;
+            expect(body(detail, 'repo').skipStatus.agentId).toBe('vega');
+            expect(find('fm-detail-repo-skip').text).toBe('Skip remaining preparation');
+            expect(find('fm-detail-repo-skip-status')).toBeNull();
+
+            // a sent cancel withdraws Skip, and so does the end of the live phase
+            applySet(detail, {pendingAction: 'stop'});
+            expect(find('fm-detail-repo-skip')).toBeNull();
+            applySet(detail, {pendingAction: null, dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'skipped', reason: 'skipped during the install'}]});
+            expect(find('fm-detail-repo-skip')).toBeNull()
+        } finally {
+            globalThis.AgentOS = oldAgentOS;
+            detail.destroy()
+        }
+    });
+
     test('Copy path selects the unseen field, copies through the main thread, and hands the focus back', async () => {
         const
             detail = createDetail({agentId: 'vega', harnessType: 'codex', repoPath: '/Users/x/agents/vega/neomjs/neo', state: 'ok'}),

@@ -82,6 +82,29 @@ class SeatDependencies extends Base {
     }
 
     /**
+     * @summary The live preparation of a Start still pending: how many of the reported checkouts are done,
+     * and each live row for the title. `installing` appears only while that Start is pending, since the
+     * Fleet retires every undecided row when it ends, so a retained set never reads as live. The count is
+     * over the rows reported so far; an install not yet begun has no row.
+     * @param {Object[]|null} dependencyOutcomes
+     * @returns {{done: Number, text: String, title: String, total: Number}|null} `null` while nothing installs.
+     */
+    static liveLine(dependencyOutcomes) {
+        const rows = Array.isArray(dependencyOutcomes) ? dependencyOutcomes.filter(row => row?.repoSlug && row.state) : [];
+
+        if (!rows.some(row => row.state === 'installing')) return null;
+
+        const done = rows.filter(row => row.state !== 'installing').length;
+
+        return {
+            done,
+            text : `preparing dependencies (${done}/${rows.length} done)`,
+            title: rows.map(({repoSlug, state}) => `${repoSlug}: ${(LABELS[SeatDependencies.paneRow(null, {state}).state] ?? state).toLowerCase()}`).join(' · '),
+            total: rows.length
+        }
+    }
+
+    /**
      * @summary The panes' word for a row state.
      * @param {String|null} state A {@link #paneRow} state.
      * @returns {String|null} `null` for no state, or one the panes do not know.

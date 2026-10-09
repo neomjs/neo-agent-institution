@@ -273,6 +273,40 @@
         }
     }
 
+    /* the live Start's Skip: a quiet button (the Repositories card's Remove idiom) with its consequence
+       beneath it, read before the click, then the Fleet's answer in the pane's own voice */
+    .fm-detail-repo-skip {
+        background   : var(--fm-panel-2);
+        border       : 1px solid var(--fm-line);
+        border-radius: 6px;
+        color        : var(--fm-ink);
+        cursor       : pointer;
+        font         : var(--fm-text-detail);
+        justify-self : start;
+        margin-top   : var(--fm-space-1);
+        padding      : 2px var(--fm-space-2);
+
+        &:hover:not([disabled]) {
+            border-color: var(--fm-ink-dim);
+        }
+
+        &[disabled] {
+            color : var(--fm-ink-dim);
+            cursor: default;
+        }
+    }
+
+    .fm-detail-repo-skip-note,
+    .fm-detail-repo-skip-status {
+        font         : var(--fm-text-detail);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+    }
+
+    .fm-detail-repo-skip-status {
+        color: var(--fm-ink);
+    }
+
     .fm-detail-repo-copy {
         align-self: flex-start;
     }
