@@ -208,17 +208,136 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
         group.destroy()
     });
 
-    test('AC-1: a claude-desktop seat says its harness sets both per session, reads what it reported, and offers nothing', () => {
-        const group = Neo.create(SeatModelContainer, {appName, seat: {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: null}});
+    test('AC-1: a never-started Desktop seat can declare effort without a catalog, while model stays app-owned', () => {
+        for (const catalog of [null, {state: 'unsupported', models: []}, {state: 'unavailable', models: [], reason: 'catalog offline'}]) {
+            const
+                group  = Neo.create(SeatModelContainer, {appName, seat: {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: null}, catalog}),
+                events = fired(group);
 
-        expect([line(group, 'model'), line(group, 'reasoningEffort')]).toEqual(['set per session in the app · not read back yet', 'set per session in the app · not read back yet']);
+            expect(line(group, 'reasoningEffort')).toBe('app default');
+            expect(line(group, 'model')).toBe('set per session in the app · not read back yet');
+            expect(shown(group, 'model')).toEqual([]);
+            expect(shown(group, 'reasoningEffort')).toEqual(['change']);
 
-        group.observed = {model: 'claude-opus-5-5', reasoningEffort: null};
-        expect(line(group, 'model')).toBe('claude-opus-5-5 · set per session in the app');
+            group.onActionClick({component: group.getReference('reasoningEffort-change')});
 
-        for (const field of ['model', 'reasoningEffort']) {
-            expect(shown(group, field), field).toEqual([])
+            expect(events, 'Desktop effort choices do not depend on catalog enumeration').toEqual([]);
+            expect(group.getReference('offer').hidden).toBe(false);
+            expect(offered(group)).toEqual([
+                ['Low', false, 'false'],
+                ['Medium', false, 'false'],
+                ['High', false, 'false'],
+                ['Extra', false, 'false'],
+                ['Max', false, 'false'],
+                ['Use app default', true, 'true']
+            ]);
+
+            for (const [label, value] of [['Low', 'low'], ['Medium', 'medium'], ['High', 'high'], ['Extra', 'xhigh'], ['Max', 'max']]) {
+                group.getReference('offer').items.find(chip => chip.text === label).handler();
+                expect(events.at(-1), label).toEqual(['declare', 'reasoningEffort', value])
+            }
+
+            group.getReference('offer').items.find(chip => chip.text === 'Use app default').handler();
+            expect(events.at(-1)).toEqual(['declare', 'reasoningEffort', null]);
+
+            group.destroy()
         }
+    });
+
+    test('Desktop medium and xhigh select their matching choices; an unknown existing value stays exact and unselected', () => {
+        const group = Neo.create(SeatModelContainer, {
+            appName,
+            catalog: {state: 'unsupported', models: [], reason: 'Desktop does not enumerate models'},
+            seat   : {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: 'medium'}
+        });
+
+        expect(line(group, 'reasoningEffort')).toBe('declared Medium');
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        expect(offered(group)).toEqual([
+            ['Low', false, 'false'],
+            ['Medium', true, 'true'],
+            ['High', false, 'false'],
+            ['Extra', false, 'false'],
+            ['Max', false, 'false'],
+            ['Use app default', false, 'false']
+        ]);
+
+        group.seat = {...group.seat, reasoningEffort: 'xhigh'};
+        expect(line(group, 'reasoningEffort')).toBe('declared Extra');
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        expect(offered(group)).toEqual([
+            ['Low', false, 'false'],
+            ['Medium', false, 'false'],
+            ['High', false, 'false'],
+            ['Extra', true, 'true'],
+            ['Max', false, 'false'],
+            ['Use app default', false, 'false']
+        ]);
+
+        group.seat = {...group.seat, reasoningEffort: 'ultra'};
+        expect(line(group, 'reasoningEffort')).toBe('declared ultra');
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        expect(offered(group).map(([, selected]) => selected)).toEqual([false, false, false, false, false, false]);
+
+        group.destroy()
+    });
+
+    test('Codex preserves Ultra on open and allows the operator to choose another catalog effort', () => {
+        const
+            group  = Neo.create(SeatModelContainer, {
+                appName,
+                catalog: {state: 'complete', reason: null, models: [{id: 'gpt-6-astra', isDefault: true, efforts: ['low', 'ultra']}]},
+                seat   : {...codex, model: 'gpt-6-astra', reasoningEffort: 'ultra'}
+            }),
+            events = fired(group);
+
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+
+        expect(events).toEqual([]);
+        expect(offered(group)).toEqual([
+            ['low', false, 'false'],
+            ['ultra', true, 'true'],
+            ['Use the harness default', false, 'false']
+        ]);
+
+        expect(line(group, 'reasoningEffort')).toBe('declared ultra');
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        expect(events, 'reopening never rewrites the existing Ultra declaration').toEqual([]);
+        expect(offered(group)).toEqual([
+            ['low', false, 'false'],
+            ['ultra', true, 'true'],
+            ['Use the harness default', false, 'false']
+        ]);
+
+        group.getReference('offer').items.find(chip => chip.text === 'low').handler();
+        expect(events).toEqual([['declare', 'reasoningEffort', 'low']]);
+
+        group.seat = {...group.seat, reasoningEffort: 'low'};
+        expect(line(group, 'reasoningEffort')).toBe('declared low');
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+        group.getReference('offer').items.find(chip => chip.text === 'ultra').handler();
+        expect(events.at(-1)).toEqual(['declare', 'reasoningEffort', 'ultra']);
+
+        group.destroy()
+    });
+
+    test('Desktop pending keeps chip identity and accepted readback closes the offer', () => {
+        const group = Neo.create(SeatModelContainer, {
+            appName,
+            seat: {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: null}
+        });
+
+        group.onActionClick({component: group.getReference('reasoningEffort-change')});
+
+        const chips = [...group.getReference('offer').items];
+
+        group.status = {state: 'pending', reason: ''};
+        expect(group.getReference('offer').items.every((chip, index) => chip === chips[index])).toBe(true);
+        expect(chips.every(chip => chip.disabled)).toBe(true);
+
+        group.seat = {...group.seat, reasoningEffort: 'max'};
+        expect([group.editing, group.getReference('offer').hidden, line(group, 'reasoningEffort')]).toEqual([null, true, 'declared Max']);
 
         group.destroy()
     });

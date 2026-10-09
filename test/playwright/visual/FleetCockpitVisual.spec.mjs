@@ -294,11 +294,17 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await roster({state: 'ok'});
         await expect(modelLine).toHaveText('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
 
-        // a Claude app seat takes no declaration, and says so before it reported anything
+        // Desktop leaves its model to the app and offers an effort declaration before the first Start.
         await open('Ada');
         await expect(modelLine).toHaveText('set per session in the app · not read back yet');
+        await expect(group.locator('.fm-seat-model-line').nth(1)).toHaveText('app default');
         await settle();
         await expect(group).toHaveScreenshot('seat-model-app.png');
+
+        await group.locator('.fm-seat-model-row').nth(1).locator('.fm-seat-model-change').click();
+        await expect(group.locator('.fm-seat-model-offer .fm-chip')).toHaveText(['Low', 'Medium', 'High', 'Extra', 'Max', 'Use app default']);
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-app-effort.png');
 
         // a start refused for the declared model: the card's line is the reason, and the row it sends the operator to
         await define({model: 'gpt-6-astra', reasoningEffort: null});
@@ -320,7 +326,13 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await roster({state: 'off'});
         await expect(modelLine).toHaveText('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
         await settle();
-        await expect(group).toHaveScreenshot('seat-model-differs-stopped-light.png')
+        await expect(group).toHaveScreenshot('seat-model-differs-stopped-light.png');
+
+        await open('Ada');
+        await group.locator('.fm-seat-model-row').nth(1).locator('.fm-seat-model-change').click();
+        await expect(group.locator('.fm-seat-model-offer .fm-chip')).toHaveText(['Low', 'Medium', 'High', 'Extra', 'Max', 'Use app default']);
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-app-effort-light.png')
     });
 
     test('the Seat group\'s Memory row: no choice recorded reads as that, the choice opens in Add\'s list and names the chosen folder under Details, a recorded consent reads back; both skins (#572)', async ({page}) => {
