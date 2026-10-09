@@ -2055,7 +2055,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await landShellPlane(page, false);
         await expect(connect).toBeVisible();
-        await expect(home.locator('.fm-home-connect'), 'joining stays reachable as the second door').toHaveText('Joining a team that already runs one? Connect to it');
+        await expect(home.locator('.fm-home-connect-line'), 'joining stays reachable as the second door, only its verb a link').toHaveText('Joining a team that already runs one?Connect to it');
+        await expect(home.locator('.fm-home-connect')).toHaveText('Connect to it');
         await expect(home.locator('.fm-home-doors')).toBeHidden();
         await expect(home.locator('.fm-home-plane')).toBeHidden();
         // the lede declared no family and inherited the theme's body face, apart from the display line above it
