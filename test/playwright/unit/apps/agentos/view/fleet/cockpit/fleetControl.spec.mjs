@@ -19,13 +19,13 @@ import                     '../../../../../../../../node_modules/neo.mjs/src/man
 import {wiredSources} from './cockpitFakes.mjs';
 
 /**
- * Covers the cockpit's whole-fleet control (B4, #14611): `onStartFleet` fans a start intent out to
+ * Covers the cockpit's whole-fleet control: `onStartFleet` fans a start intent out to
  * every resident card through the C2 adapter (the collapsed-idle fold skipped; no bridge → an honest
  * `unauthorized` reason onto each record, never an optimistic fleet-wide success),
  * `getRosterRecords` treats a present Store as authoritative over the rendered cards, overlapping
  * activations join one active batch (one bridge call per member, one authoritative summary), the
  * next activation excludes a timeout-bearing member instead of retrying an unknown operation, the
- * wire's partition keeps excluded members off `pending` and renders their reasons (#14612), and a
+ * wire's partition keeps excluded members off `pending` and renders their reasons, and a
  * card's own lifecycle intent resolves the firing card before it drives the adapter. Prototype-call
  * harness on the REAL controller; the adapter and the bridge are the collaborators the arms fake.
  */

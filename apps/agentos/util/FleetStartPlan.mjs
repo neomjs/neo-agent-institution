@@ -243,7 +243,7 @@ class FleetStartPlan extends Base {
 
     /**
      * @summary The armed stop's plan as the chrome line the first press renders where the batch
-     * summaries live (#618): `Stop fleet · 8 seats: Ada, Grace, … · 4 excluded` — the eligible seats
+     * summaries live: `Stop fleet · 8 seats: Ada, Grace, … · 4 excluded` — the eligible seats
      * by display name in roster order, the exclusions counted in the text and worded one per line in
      * `detail` (the summary element's title), the same reach as a batch outcome. Nothing in it is
      * sent: it is the question the second press answers.

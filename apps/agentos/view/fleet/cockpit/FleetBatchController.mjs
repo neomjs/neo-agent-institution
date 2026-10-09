@@ -41,7 +41,7 @@ class FleetBatchController extends ReadingSurfacesController {
     /**
      * How long the first press stays armed: the bounded window after which the button reads its plan
      * again with nothing sent — a slow operator is never punished, a changed fleet never stopped on a
-     * stale plan (#618, the design read's rule 3).
+     * stale plan.
      * @member {Number} stopFleetArmMs=10000
      */
     stopFleetArmMs = 10000
@@ -204,7 +204,7 @@ class FleetBatchController extends ReadingSurfacesController {
     }
 
     /**
-     * @summary The fleet-wide stop is a two-press (#618). The first press arms it: the summary slot
+     * @summary The fleet-wide stop is a two-press. The first press arms it: the summary slot
      * shows the plan — the up, eligible fleet by name and every exclusion with its reason — the chip
      * becomes the second press, and nothing is sent; the second press, inside the armed window, sends
      * one stop intent per planned seat through the card's own verb and the summary reads
