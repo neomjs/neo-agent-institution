@@ -121,11 +121,12 @@ class Accounts extends DashboardPanel {
          */
         flex: 1,
         /**
+         * The header is the pane's only drag handle; body gestures remain native.
          * @member {Object[]} headers
          */
         headers: [{
             dock: 'top',
-            cls : ['neo-draggable'],
+            cls : ['neo-draggable', 'fm-accounts-drag-handle'],
             text: 'Accounts'
         }],
         /**

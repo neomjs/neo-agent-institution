@@ -296,6 +296,64 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'})
     });
 
+    test('a selection reaches the retained inspector before its auto-hidden reveal, and visible selection stays live', async () => {
+        cockpit = create();
+        const store = seatRoster(cockpit), controller = cockpit.getController();
+
+        controller.rosterObservedAt = 1_700_000_000_000;
+        controller.onAgentSelect({agentId: 'ada'});
+        await cockpit.refreshPromise;
+        const pane = cockpit.getAgentDetailPane();
+
+        expect(pane.record).toBe(store.get('ada'));
+        expect((await cockpit.activatePerspective('Overview')).errors).toEqual([]);
+        await cockpit.refreshPromise;
+        expect(cockpit.getReference('agent-detail'), 'the inspector is outside the projected tree').toBeFalsy();
+        expect(Neo.get(pane.id), 'the parked instance is still owned').toBe(pane);
+
+        controller.rosterObservedAt = 1_700_000_060_000;
+        controller.onAgentSelect({agentId: 'vega'});
+        expect(pane.record, 'the selection lands before deferred reveal').toBe(store.get('vega'));
+        expect(pane.rosterObservedAt).toBe(controller.rosterObservedAt);
+        await cockpit.refreshPromise;
+
+        expect(cockpit.getAgentDetailPane(), 'reveal keeps the same inspector').toBe(pane);
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'vega', pane: 'vega', provider: 'vega'});
+
+        controller.onAgentSelect({agentId: 'ada'});
+        expect(cockpit.getAgentDetailPane()).toBe(pane);
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'})
+    });
+
+    test('an absent inspector is not created by lookup; fresh materialization receives the current selection and clock', async () => {
+        cockpit = create();
+        const store = seatRoster(cockpit), controller = cockpit.getController();
+
+        expect(cockpit.getAgentDetailPane()).toBeNull();
+        expect(Neo.get(cockpit.getPaneDeclaration('detail').id)).toBeFalsy();
+        controller.onAgentSelect({agentId: 'ada'});
+        await cockpit.refreshPromise;
+        const oldPane = cockpit.getAgentDetailPane();
+
+        const closed = cockpit.applyDockZoneOperation({operation: 'closeItem', itemId: 'detail'});
+        expect(closed.errors).toEqual([]);
+        await cockpit.onDockZoneDocumentChange(closed.document);
+        await cockpit.refreshPromise;
+        expect(oldPane.isDestroyed).toBe(true);
+        expect(cockpit.getAgentDetailPane()).toBeNull();
+
+        controller.rosterObservedAt = 1_700_000_120_000;
+        controller.applySelection(store.get('vega'));
+        expect(cockpit.getAgentDetailPane(), 'selection alone does not reopen a closed pane').toBeNull();
+        expect((await cockpit.activatePerspective('Review')).errors).toEqual([]);
+        await cockpit.refreshPromise;
+
+        const fresh = cockpit.getAgentDetailPane();
+        expect(fresh).not.toBe(oldPane);
+        expect(fresh.record).toBe(store.get('vega'));
+        expect(fresh.rosterObservedAt).toBe(controller.rosterObservedAt)
+    });
+
     test('a prior selection survives a direct Review write; a write that hides the inspector or names nothing declared seats nobody', async () => {
         cockpit = create();
 

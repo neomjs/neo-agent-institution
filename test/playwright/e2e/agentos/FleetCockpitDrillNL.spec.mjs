@@ -18,6 +18,37 @@ import {sampleOpenWork, sampleRoster}                                      from 
 test.describe('AgentOS fleet cockpit — semantic roster item→detail live drill (#14608, #15212, #17553)', () => {
     test.setTimeout(90000);
 
+    test('a retained Overview inspector reveals the newly selected resident, not its previous peer', async ({page, neuralLink}) => {
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetRoster(page, sampleRoster.slice(0, 2).map(row => ({...row, avatarUrl: null})));
+
+        const app = await neuralLink.connectToApp('AgentOS'),
+              [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+              card = name => page.locator('.fm-agent-card', {has: page.locator('.fm-card-name', {hasText: new RegExp(`^${name}$`)})}),
+              detail = page.locator('.fm-agent-detail'),
+              readDetail = () => app.queryComponent({className: 'AgentOS.view.fleet.detail.Container'}, ['id', 'record.agentId']);
+
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name')).toHaveText('Ada');
+        const [original] = await readDetail();
+
+        expect((await app.callMethod(cockpit.properties.id, 'activatePerspective', ['Overview'])).errors).toEqual([]);
+        await expect(detail).toBeHidden();
+        const [parked] = await readDetail();
+        expect(parked.properties.id, 'Overview retained the existing inspector').toBe(original.properties.id);
+
+        await card('Grace').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name'), 'hidden selection reaches the returning pane').toHaveText('Grace');
+        const [revealed] = await readDetail();
+        expect(revealed.properties.id).toBe(original.properties.id);
+        expect(revealed.properties['record.agentId']).toBe('neo-opus-grace');
+
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name'), 'visible selection still updates in place').toHaveText('Ada');
+        expect((await readDetail())[0].properties.id).toBe(original.properties.id)
+    });
+
     test('nested avatar content selects its resident and reveals the AgentDetail inspector + four panes', async ({page, neuralLink}) => {
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
@@ -168,4 +199,3 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(/claimed \d+m ago/)
     })
 });
-
