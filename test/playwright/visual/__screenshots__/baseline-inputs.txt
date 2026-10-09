@@ -138,7 +138,7 @@ apps/agentos/store/AgentDefinitions.mjs
     4ab99be2d24ece3dec4744c080c53f6196b2d168
 
 apps/agentos/store/AgentMailbox.mjs
-    a91e2ff54ff2124bd0b84481af835b44ca8089fe
+    40e36d5fdcf6f78a8da8b9e2f84f67ac768a8070
 
 apps/agentos/store/AgentSessionSummaries.mjs
     9149223b8ff53fa9fc094639108295964dba50bb
@@ -453,7 +453,7 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    b2eea7104b9a5f241ae7b0b9f9b5e6c8931d817b
+    91f5177f94db0ad28a94320a138cf8b140326612
 
 apps/agentos/view/fleet/mailbox/DetailContainer.mjs
     7cb0fd434d049f5baed1c2d0717aad6ec42bd71e
@@ -789,7 +789,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    20f3bb9337a5b77fd75bee0afce746617a5c6c6a
+    fb96da0079addf63b8c4794452b8b1095eaa7150
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -988,6 +988,9 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-golden-path.png
     f5dc23b1febf9063488454223d52ae4d8e2c1350
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox-open-questions.png
+    2e470bfe61cf1b4adf0e667608e744d5b50257b2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox.png
     e8967f558b58fb9ee5c8110211e4de4ed48d092c

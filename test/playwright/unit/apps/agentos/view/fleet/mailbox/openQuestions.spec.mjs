@@ -172,6 +172,30 @@ test.describe('AgentOS operator mailbox — what waits for your word (#599)', ()
         expect(pane().getPaneState(), 'a payload that is not the read renders nothing from it').toBe('unobserved')
     });
 
+    test('the open view keeps its read\'s order (priority, then age) and lists every question on its own row; all mail reads newest first again', () => {
+        const order = () => pane().store.items.map(record => record.messageId);
+
+        box = createBox({record: OPERATOR, view: 'open'});
+        // the read's order: the high-priority question first, then the oldest; the other two share a thread
+        box.questions = answered([
+            question({messageId: 'MESSAGE:high', priority: 'high',   sentAt: '2026-10-08T08:00:00.000Z'}),
+            question({messageId: 'MESSAGE:old',  priority: 'normal', sentAt: '2026-10-08T09:00:00.000Z', partOfThread: 'THREAD:x'}),
+            question({messageId: 'MESSAGE:new',  priority: 'normal', sentAt: '2026-10-08T23:00:00.000Z', partOfThread: 'THREAD:x'})
+        ]);
+
+        expect(order(), 'never re-sorted newest first, and no thread hides a question').toEqual(['MESSAGE:high', 'MESSAGE:old', 'MESSAGE:new']);
+
+        box.snapshot = {
+            capability: {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', capturedAt: CAPTURED_AT, reason: null},
+            admission : {state: 'granted', viewerIdentity: '@tobiu', subjectAgentId: '@tobiu', checkedAt: CAPTURED_AT, reason: null},
+            rows      : [question({messageId: 'MESSAGE:a', sentAt: '2026-10-08T08:00:00.000Z'}), question({messageId: 'MESSAGE:b', sentAt: '2026-10-08T12:00:00.000Z'})],
+            page      : {limit: 50, offset: 0, count: 2, hasMore: false}
+        };
+        box.view = 'all';
+
+        expect(order(), 'all mail: newest first').toEqual(['MESSAGE:b', 'MESSAGE:a'])
+    });
+
     test('the freshness chip ages the list in view by its own read', () => {
         box = createBox({record: OPERATOR, view: 'open'});
         pane().now = NOW;

@@ -157,9 +157,11 @@ test.describe('AgentOS operator mailbox — the open questions (#599)', () => {
             await expect(chip).toHaveClass(/pressed/);
             await expect.poll(listed, {timeout: 15000}).toBe(2);
 
-            // AC-1: the archived question is still open, so it is listed beside the other and counted
+            // AC-1: the archived question is still open, so it is listed beside the other and counted, and the
+            // read's order holds: the high-priority question reads first although it is the older one
             await expect(q1).toBeVisible();
             await expect(q2.locator('.fm-mail-archived')).toHaveText('archived');
+            expect((await q1.boundingBox()).y, 'priority, then age').toBeLessThan((await q2.boundingBox()).y);
             await expect(q1.locator('.fm-mail-archived')).toHaveCount(0);
             expect(of('fleetOwnQuestions').length, 'the open view read its own list').toBeGreaterThan(0);
 

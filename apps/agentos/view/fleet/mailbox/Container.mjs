@@ -89,9 +89,10 @@ function isRecognizedPage(page) {
  *  - `empty` — wired, admitted, zero active rows: an explicit empty state.
  *
  * **The open view.** The host that owns its inbox can switch the list to `view: 'open'`: the viewer's open
- * questions from the owner-written `questions` read, highest priority then oldest first, in the same rows.
- * Its states are its own: not read yet, `your questions could not be read · <reason>`, or
- * `nothing waits for your word`. Reading a message never removes a row; only the Task's transition or expiry does.
+ * questions from the owner-written `questions` read, in the read's own order (highest priority, then oldest), each
+ * on its own row: no sorter re-sorts them and no thread collapses one away. Its states are its own: not read yet,
+ * `your questions could not be read · <reason>`, or `nothing waits for your word`. Reading a message never removes
+ * a row; only the Task's transition or expiry does.
  *
  * **Rows** render through {@link AgentOS.view.fleet.mailbox.Grid} — the buffered
  * `grid.Container` with one pooled {@link AgentOS.view.fleet.mailbox.RowComponent} per rendered
@@ -296,7 +297,7 @@ class MailboxPane extends Container {
         let me       = this,
             rowsGrid = me.getReference('mailbox-rows');
 
-        me.store = Neo.create(AgentMailboxStore);
+        me.store = Neo.create(AgentMailboxStore, {sorters: AgentMailboxStore.sortersOf(me.view)});
 
         // the grid renders what this pane projects: injected store (autoDestroyStore: false on the
         // grid — this pane stays the owner), refresh driven by applySnapshot() per projection
@@ -363,6 +364,8 @@ class MailboxPane extends Container {
      */
     afterSetView(value, oldValue) {
         this.pendingOffset = null;
+        // the open questions keep their read's order (priority, then age); all mail reads newest first
+        this.store && (this.store.sorters = AgentMailboxStore.sortersOf(value));
         this.isConstructed && this.applySnapshot()
     }
 
@@ -634,7 +637,8 @@ class MailboxPane extends Container {
         if (fingerprint !== me.projectedFingerprint) {
             const
                 extend    = rows && source.page?.offset > 0 && me.projectedView === me.view,
-                projected = rows ? source.rows.map(row => ({...row, threadCollapsed: true})) : [];
+                // a thread never hides an open question: the open view lists each one on its own row
+                projected = rows ? source.rows.map(row => me.view === 'open' ? {...row, partOfThread: null, threadCollapsed: false} : {...row, threadCollapsed: true}) : [];
 
             rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected);
             me.projectedFingerprint = fingerprint;
