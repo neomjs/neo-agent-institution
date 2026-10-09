@@ -961,9 +961,21 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.getController().onToggleLifecycle();
         expect(fired).toMatchObject([{action: 'stop', agentId: 'vega'}]);
 
+        // live progress lost while the Start is pending: the plain pending label, and the verb closes again
+        applySet(card, {dependencyOutcomes: null});
+        expect(status().text).toBe('start…');
+        expect(toggle().disabled).toBe(true);
+        expect(toggle().vdom['aria-label']).toBe('Start Vega');
+        applySet(card, {dependencyOutcomes: live});
+
         // the Fleet's report is an answer: it replaces the local timeout's "no answer yet"
         applySet(card, {pendingAction: null, controlReason: {action: 'start', kind: 'timeout', reason: 'start timed out after 30000ms'}});
         expect(status().text).toBe('start… preparing dependencies (1/3 done)');
+
+        // and without it the local timeout speaks again
+        applySet(card, {dependencyOutcomes: null});
+        expect(status().text).toBe('start… no answer yet');
+        applySet(card, {dependencyOutcomes: live});
 
         // a sent cancel closes the verb and says so until the Start settles
         applySet(card, {controlReason: null, pendingAction: 'stop'});
