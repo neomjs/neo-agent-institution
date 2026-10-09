@@ -436,17 +436,20 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             applySet(detail, {dependencyOutcomes: ended});
             expect(find('fm-detail-repo-skip')).toBeNull();
 
-            // attempt B of the same seat: Skip is offered fresh, and A's late answer reads nowhere
+            // attempt B of the same seat: Skip is offered fresh
             applySet(detail, {dependencyOutcomes: [...live]});
             expect(find('fm-detail-repo-skip').text).toBe('Skip remaining preparation');
             expect(find('fm-detail-repo-skip').disabled).toBe(false);
-            await answer(0, {id: 'vega', skippedStarts: 1});
-            await clickingA;
-            expect(find('fm-detail-repo-skip-status')).toBeNull();
 
-            // B's own Skip answers within B, then retires when B's installs end and C begins
+            // B's own Skip goes out, then A's late answer lands: it neither reads under B nor replaces B's request
             const clickingB = pane().onSkipClick();
 
+            await answer(0, {id: 'vega', skippedStarts: 1});
+            await clickingA;
+            expect(find('fm-detail-repo-skip').text).toBe('Skipping…');
+            expect(find('fm-detail-repo-skip-status')).toBeNull();
+
+            // B's answer reads within B, then retires when B's installs end and C begins
             await answer(1, {id: 'vega', skippedStarts: 1});
             await clickingB;
             expect(find('fm-detail-repo-skip-status').text).toBe('Skip requested: the installs still running stop, and the seat launches.');
