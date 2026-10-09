@@ -252,11 +252,11 @@ test.describe('AgentOS Detail › Configuration — the Seat group over the Flee
             await expect(offer.getByText('Ultra', {exact: true})).toHaveCount(0);
 
             await offer.getByText('Extra', {exact: true}).click();
-            await expect(effort).toHaveText('declared xhigh');
+            await expect(effort).toHaveText('declared Extra');
 
             await effortRow.locator('.fm-seat-model-change').click();
             await offer.getByText('Max', {exact: true}).click();
-            await expect(effort).toHaveText('declared max');
+            await expect(effort).toHaveText('declared Max');
 
             await effortRow.locator('.fm-seat-model-change').click();
             await offer.getByText('Use app default', {exact: true}).click();

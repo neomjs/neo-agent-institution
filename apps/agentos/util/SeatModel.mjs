@@ -2,6 +2,14 @@ import Base                        from '../../../node_modules/neo.mjs/src/core/
 import {resolveHarnessSeatSetting} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
+ * Documented Claude effort declarations; the app applies model-specific support and caps.
+ * Extra names `xhigh`. Ultracode is a separate workflow setting, not an effort-carrier value.
+ * @type {Readonly<Object<String, String>>}
+ * @see https://code.claude.com/docs/en/model-config#adjust-effort-level
+ */
+export const DESKTOP_EFFORT_LABELS = Object.freeze({low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra', max: 'Max'});
+
+/**
  * @summary What the Seat group in Agent Detail › Configuration says about a seat's model and reasoning effort, in
  * the design read's words: the declared value beside what the harness is configured to, never one hiding the other.
  * @class AgentOS.util.SeatModel
@@ -54,12 +62,15 @@ class SeatModel extends Base {
             return {actions: [], text: observed ? `${observed} · set per session in the app` : 'set per session in the app · not read back yet'}
         }
 
+        const label = harnessType === 'claude-desktop' && Object.hasOwn(DESKTOP_EFFORT_LABELS, declared)
+            ? DESKTOP_EFFORT_LABELS[declared] : declared;
+
         if (declared && refused) {
-            return {actions: ['change'], text: `declared ${declared} · start refused: ${refused}`}
+            return {actions: ['change'], text: `declared ${label} · start refused: ${refused}`}
         }
 
         if (harnessType === 'claude-desktop') {
-            return {actions: ['change'], text: declared ? `declared ${declared}` : 'app default'}
+            return {actions: ['change'], text: declared ? `declared ${label}` : 'app default'}
         }
 
         const reads = configured ? configured[field] ?? null : undefined;

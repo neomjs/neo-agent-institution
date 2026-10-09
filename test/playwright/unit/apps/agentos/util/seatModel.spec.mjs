@@ -20,15 +20,17 @@ test.describe('AgentOS.util.SeatModel — the Seat group\'s words for a seat\'s 
         expect(row({harnessType: 'claude-desktop', observed: 'claude-opus-5-5'})).toEqual({actions: [], text: 'claude-opus-5-5 · set per session in the app'});
     });
 
-    test('Desktop effort shows its app default or exact declaration without adopting configured values', () => {
+    test('Desktop effort shows its app default or labelled declaration without adopting configured values', () => {
         expect(effortRow({})).toEqual({actions: ['change'], text: 'app default'});
-        expect(effortRow({declared: 'max'})).toEqual({actions: ['change'], text: 'declared max'});
-        expect(effortRow({declared: 'xhigh'})).toEqual({actions: ['change'], text: 'declared xhigh'});
-        expect(effortRow({declared: 'medium', configured: {reasoningEffort: 'max'}})).toEqual({actions: ['change'], text: 'declared medium'});
+        expect(effortRow({declared: 'max'})).toEqual({actions: ['change'], text: 'declared Max'});
+        expect(effortRow({declared: 'xhigh'})).toEqual({actions: ['change'], text: 'declared Extra'});
+        expect(effortRow({declared: 'ultra'})).toEqual({actions: ['change'], text: 'declared ultra'});
+        expect(effortRow({declared: 'constructor'})).toEqual({actions: ['change'], text: 'declared constructor'});
+        expect(effortRow({declared: 'medium', configured: {reasoningEffort: 'max'}})).toEqual({actions: ['change'], text: 'declared Medium'});
         expect(effortRow({configured: {reasoningEffort: 'high'}})).toEqual({actions: ['change'], text: 'app default'});
         expect(effortRow({declared: 'max', refused: 'reasoning effort max is not available'})).toEqual({
             actions: ['change'],
-            text   : 'declared max · start refused: reasoning effort max is not available'
+            text   : 'declared Max · start refused: reasoning effort max is not available'
         });
     });
 

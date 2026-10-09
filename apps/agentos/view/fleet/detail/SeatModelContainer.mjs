@@ -1,22 +1,14 @@
-import Button              from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Container           from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import TextField           from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
-import SeatModel           from '../../../util/SeatModel.mjs';
-import SeatMemoryContainer from './SeatMemoryContainer.mjs';
+import Button                           from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container                        from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import TextField                        from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import SeatModel, {DESKTOP_EFFORT_LABELS} from '../../../util/SeatModel.mjs';
+import SeatMemoryContainer              from './SeatMemoryContainer.mjs';
 
 /**
  * The Seat group's two rows, each with the record field it declares.
  * @type {Object[]}
  */
 const FIELDS = [{field: 'model', label: 'model'}, {field: 'reasoningEffort', label: 'reasoning effort'}];
-
-/**
- * Documented Claude effort declarations; the app applies model-specific support and caps.
- * Extra names `xhigh`. Ultracode is a separate workflow setting, not an effort-carrier value.
- * @type {Readonly<Object<String, String>>}
- * @see https://code.claude.com/docs/en/model-config#adjust-effort-level
- */
-const DESKTOP_EFFORT_LABELS = Object.freeze({low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra', max: 'Max'});
 
 /**
  * @summary One row: its label beside the actions its state offers, and its line beneath at the group's whole width,
@@ -320,6 +312,7 @@ class SeatModelContainer extends Container {
             offerKey = me.editing && !free ? JSON.stringify([me.editing, values, declared]) : null;
 
         offer.hidden = !offerKey;
+        offer.toggleCls('is-desktop-effort', desktopEffort);
 
         if (offerKey && offerKey !== me.offerKey) {
             offer.removeAll();

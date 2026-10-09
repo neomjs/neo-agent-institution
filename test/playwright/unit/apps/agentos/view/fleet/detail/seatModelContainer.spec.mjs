@@ -251,7 +251,7 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
             seat   : {id: 'ada', harnessType: 'claude-desktop', model: null, reasoningEffort: 'medium'}
         });
 
-        expect(line(group, 'reasoningEffort')).toBe('declared medium');
+        expect(line(group, 'reasoningEffort')).toBe('declared Medium');
         group.onActionClick({component: group.getReference('reasoningEffort-change')});
         expect(offered(group)).toEqual([
             ['Low', false, 'false'],
@@ -263,7 +263,7 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
         ]);
 
         group.seat = {...group.seat, reasoningEffort: 'xhigh'};
-        expect(line(group, 'reasoningEffort')).toBe('declared xhigh');
+        expect(line(group, 'reasoningEffort')).toBe('declared Extra');
         group.onActionClick({component: group.getReference('reasoningEffort-change')});
         expect(offered(group)).toEqual([
             ['Low', false, 'false'],
@@ -337,7 +337,7 @@ test.describe('AgentOS.view.fleet.detail.SeatModelContainer (#559)', () => {
         expect(chips.every(chip => chip.disabled)).toBe(true);
 
         group.seat = {...group.seat, reasoningEffort: 'max'};
-        expect([group.editing, group.getReference('offer').hidden, line(group, 'reasoningEffort')]).toEqual([null, true, 'declared max']);
+        expect([group.editing, group.getReference('offer').hidden, line(group, 'reasoningEffort')]).toEqual([null, true, 'declared Max']);
 
         group.destroy()
     });
