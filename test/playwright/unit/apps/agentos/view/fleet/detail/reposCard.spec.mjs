@@ -202,7 +202,7 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         expect(outcomes()).toEqual([
             {repoSlug: 'neomjs/neo',              state: null,         reason: null},
             // a clone with no install reported is never called prepared
-            {repoSlug: 'neomjs/neo-agent-brain',  state: 'unverified', reason: 'no dependency install was reported for this checkout'},
+            {repoSlug: 'neomjs/neo-agent-brain',  state: 'unverified', reason: 'no dependency install reported'},
             {repoSlug: 'neomjs/neo-agent-skills', state: 'failed',     reason},
             // the last start did not cover it: no outcome until the next one
             {repoSlug: 'neomjs/create-app',       state: null,         reason: null}
@@ -314,7 +314,7 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         // the next start replaces the outcome
         roster.get('ada').set({repoOutcomes: [{repoSlug: brain.repoSlug, state: 'prepared'}]});
         expect(refreshes).toBe(1);
-        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: 'unverified', reason: 'no dependency install was reported for this checkout'});
+        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: 'unverified', reason: 'no dependency install reported'});
 
         // a retired card leaves the roster's listeners behind it
         card.destroy();

@@ -110,7 +110,7 @@ class SeatDependencies extends Base {
         }
 
         return clone?.state === 'prepared'
-            ? {reason: 'no dependency install was reported for this checkout', state: 'unverified'}
+            ? {reason: 'no dependency install reported', state: 'unverified'}
             : {reason: clone?.reason ?? null, state: clone?.state ?? null}
     }
 }

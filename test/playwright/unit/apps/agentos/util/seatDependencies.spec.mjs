@@ -77,7 +77,7 @@ test.describe('AgentOS.util.SeatDependencies', () => {
         expect(SeatDependencies.paneRow({state: 'failed', reason: cloneFailure}, {state: 'installed'})).toEqual({state: 'prepared', reason: null});
         // no dependency row: a failed clone had nothing installed, and a prepared one had no install reported
         expect(SeatDependencies.paneRow({state: 'failed', reason: cloneFailure}, null)).toEqual({state: 'failed', reason: cloneFailure});
-        expect(SeatDependencies.paneRow({state: 'prepared'}, null)).toEqual({state: 'unverified', reason: 'no dependency install was reported for this checkout'});
+        expect(SeatDependencies.paneRow({state: 'prepared'}, null)).toEqual({state: 'unverified', reason: 'no dependency install reported'});
         expect(SeatDependencies.paneRow(undefined, undefined)).toEqual({state: null, reason: null})
     });
 
@@ -104,7 +104,7 @@ test.describe('AgentOS.util.SeatDependencies', () => {
         expect(SeatDependencies.checkouts([{repoSlug: working, state: 'installed'}], previous)).toEqual([
             {repoSlug: working,                        state: 'prepared',   reason: null},
             {repoSlug: brain,                          state: 'failed',     reason: cloneFailure},
-            {repoSlug: 'neomjs/neo-agent-institution', state: 'unverified', reason: 'no dependency install was reported for this checkout'}
+            {repoSlug: 'neomjs/neo-agent-institution', state: 'unverified', reason: 'no dependency install reported'}
         ]);
 
         for (const [dependencies, clones] of [[null, null], [undefined, []], [[{state: 'installed'}], null]]) {
