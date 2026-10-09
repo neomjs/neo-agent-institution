@@ -316,10 +316,11 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             launchRefusal      : null,
             // the presence axis rides the same passthrough contract as wake/throttle below
             presence: null,
-            // no start has reported its other repositories' outcome, the identity it resolved, nor
-            // where its session opened
-            repoOutcomes   : null,
-            gitIdentity    : null,
+            // no start has reported its other repositories' outcome, its checkouts' dependencies, the
+            // identity it resolved, nor where its session opened
+            repoOutcomes      : null,
+            dependencyOutcomes: null,
+            gitIdentity       : null,
             // nor what it found of a declared model, nor what a Codex config is set to
             seatModel      : null,
             harnessSettings: null,
@@ -408,6 +409,16 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', repoOutcomes, sources: liveSources()}).repoOutcomes).toEqual(repoOutcomes);
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).repoOutcomes).toBeNull()
+    });
+
+    test('mapRosterRow passes each checkout\'s dependency row through whole — null on a row without one, which is unknown, never ready (#610)', () => {
+        const dependencyOutcomes = [
+            {repoSlug: 'neomjs/neo',             state: 'installing'},
+            {repoSlug: 'neomjs/neo-agent-brain', state: 'skipped', reason: 'skipped during the install'}
+        ];
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', dependencyOutcomes, sources: liveSources()}).dependencyOutcomes).toEqual(dependencyOutcomes);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).dependencyOutcomes).toBeNull()
     });
 
     test('mapRosterRow passes where a desktop seat\'s session opened through whole — null on every other row (#522)', () => {
@@ -543,6 +554,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             participationStatus: null,
             presence           : null,
             repoOutcomes       : null,
+            dependencyOutcomes : null,
             gitIdentity        : null,
             seatModel          : null,
             harnessSettings    : null,

@@ -66,6 +66,14 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     const chip = (detail, key) => detail.down({reference: `pane-${key}-freshness`});
     const body = (detail, key) => detail.down({reference: `pane-${key}-body`});
+    // the Repository pane's lines read from the record, above its checkouts' list
+    const repoFacts = detail => body(detail, 'repo').getReference('repo-facts').vdom.cn;
+    // the checkouts' rows as the list renders them: the outcome's state class, then each node's words
+    const repoRows = detail => {
+        const list = body(detail, 'repo').getReference('repo-checkouts');
+
+        return list.hidden ? [] : list.vdom.cn.map(item => [item.cn[1]?.cls[1], ...item.cn.map(node => node.text)])
+    };
     /**
      * @summary Hold a transport response or scheduler wait until the test releases it.
      * @returns {{promise: Promise, resolve: Function, reject: Function}}
@@ -207,7 +215,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             }),
             part     = reference => detail.down({reference}),
             words    = () => part('detail-seat-folder').vdom.cn.map(node => node.text).join(''),
-            session  = () => part('pane-repo-body').vdom.cn.find(node => node.cls?.includes('fm-detail-repo-session')) ?? null;
+            session  = () => repoFacts(detail).find(node => node.cls?.includes('fm-detail-repo-session')) ?? null;
 
         // AC-1: the Seat row stays one short line with no path; the pane says where and what to do
         expect(part('detail-seat-folder').hidden).toBe(false);
@@ -250,15 +258,84 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             detail   = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath, state: 'ok'}),
             part     = reference => detail.down({reference});
 
-        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo', repoPath]);
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo', repoPath]);
         expect(part('detail-repo-copy').hidden).toBe(false);
         expect(part('detail-repo-copy').text).toBe('Copy path');
         expect(part('detail-repo-field').vdom.value).toBe(repoPath);
 
         applySet(detail, {repoPath: null});
-        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo']);
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo']);
         expect(part('detail-repo-copy').hidden).toBe(true);
         expect(part('detail-repo-field').vdom.value).toBe('');
+
+        detail.destroy()
+    });
+
+    test('the Repository pane reads each checkout\'s preparation, the working one first, each reason whole; an install still running belongs to this start (#610)', () => {
+        const
+            repoPath = '/seats/vega/neomjs/neo',
+            npm      = 'npm ci exited 1: ERESOLVE could not resolve dependency tree',
+            clone    = 'git clone exited 128: remote: Repository not found.',
+            detail   = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath, state: 'ok'});
+
+        applySet(detail, {
+            dependencyOutcomes: [
+                {repoSlug: 'neomjs/neo',             state: 'skipped', reason: 'skipped during the install'},
+                {repoSlug: 'neomjs/neo-agent-brain', state: 'failed',  reason: npm}
+            ],
+            // a clone that failed has no checkout to install: its row comes after the checkouts
+            repoOutcomes: [
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'prepared'},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'failed', reason: clone}
+            ]
+        });
+
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo', repoPath, 'Preparation · last start']);
+        // the Accounts card's rows, read-only: no Remove, no working tag, each reason whole on its own line
+        expect(repoRows(detail)).toEqual([
+            ['is-skipped', 'neomjs/neo',                   'Skipped', 'skipped during the install'],
+            ['is-failed',  'neomjs/neo-agent-brain',       'Failed',  npm],
+            ['is-failed',  'neomjs/neo-agent-institution', 'Failed',  clone]
+        ]);
+        expect(body(detail, 'repo').getReference('repo-checkouts').store.getCount()).toBe(3);
+
+        // a Start installing now: the rows are live and the head names this start
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installing'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'present'}], repoOutcomes: null});
+        expect(repoFacts(detail)[2].text).toBe('Preparation · this start');
+        expect(repoRows(detail)).toEqual([['is-installing', 'neomjs/neo', 'Installing'], ['is-prepared', 'neomjs/neo-agent-brain', 'Prepared']]);
+
+        // no start has reported one: nothing beyond the slug and the path, never a ready claim
+        applySet(detail, {dependencyOutcomes: null});
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo', repoPath]);
+        expect(repoRows(detail)).toEqual([]);
+
+        detail.destroy()
+    });
+
+    test('the Repository pane never reads a clone alone as prepared, and a retry\'s rows speak over the previous launch\'s clone failure while it installs and once it settles without a launch (#610)', () => {
+        const
+            clone  = 'git clone exited 128: remote: Repository not found.',
+            detail = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath: '/seats/vega/neomjs/neo', state: 'off'});
+
+        // an older Fleet reports only its clones: no install was reported, so nothing reads prepared
+        applySet(detail, {dependencyOutcomes: null, repoOutcomes: [{repoSlug: 'neomjs/extra', state: 'prepared'}]});
+        expect(repoFacts(detail)[2].text).toBe('Preparation · last start');
+        expect(repoRows(detail)).toEqual([['is-unverified', 'neomjs/extra', 'Unverified', 'no dependency install reported']]);
+
+        // the previous launch: the working checkout prepared, and the other repository's clone failed
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installed'}], repoOutcomes: [{repoSlug: 'neomjs/neo-agent-brain', state: 'failed', reason: clone}]});
+        expect(repoRows(detail)).toEqual([['is-prepared', 'neomjs/neo', 'Prepared'], ['is-failed', 'neomjs/neo-agent-brain', 'Failed', clone]]);
+
+        // the retry clones it and installs: the Fleet records its clones only at a launch, so the old failure stays on
+        // the record, and this start's rows speak alone
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installed'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installing'}]});
+        expect(repoFacts(detail)[2].text).toBe('Preparation · this start');
+        expect(repoRows(detail)).toEqual([['is-prepared', 'neomjs/neo', 'Prepared'], ['is-installing', 'neomjs/neo-agent-brain', 'Installing']]);
+
+        // it settles and the launch is refused: the old clone failure is still on the record, and the install speaks over it
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installed'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'}]});
+        expect(repoFacts(detail)[2].text).toBe('Preparation · last start');
+        expect(repoRows(detail)).toEqual([['is-prepared', 'neomjs/neo', 'Prepared'], ['is-prepared', 'neomjs/neo-agent-brain', 'Prepared']]);
 
         detail.destroy()
     });
@@ -1671,7 +1748,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         expect(chip(detail, 'repo').cls).toContain('is-fresh');
         expect(chip(detail, 'repo').text).toBe('updated 10s ago');
-        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo', '/seats/vega/neo']);
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo', '/seats/vega/neo']);
 
         // no roster read in this mount: the pane says so instead of claiming an observation it never had
         detail.rosterObservedAt = null;
@@ -1688,7 +1765,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(missing, 'repo').text).toBe('missing — no repository status answered for this agent');
         // the full answer rides the title too: a rail-width head elides the pill's words
         expect(chip(missing, 'repo').vdom.title).toBe('missing — no repository status answered for this agent');
-        expect(body(missing, 'repo').vdom.cn.map(node => node.text)).toEqual(['no repository declared']);
+        expect(repoFacts(missing).map(node => node.text)).toEqual(['no repository declared']);
 
         const rows = missing.down({reference: 'detail-ledger'}).vdom.cn,
               axis = rows.findIndex(node => node.text === 'repository');

@@ -457,6 +457,70 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(group).toHaveScreenshot('participation-benched-light.png')
     });
 
+    test('a running seat whose working checkout the last start did not prepare reads skills not verified on its card; Detail\'s Repository pane reads each checkout\'s preparation, a long failure whole and parallel installs as this start; both skins (#610)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            npm     = 'npm ci exited 1: npm error code ERESOLVE · npm error ERESOLVE unable to resolve dependency tree · While resolving: neo-agent-brain@0.0.0 · Found: neo.mjs@13.1.0 · Could not resolve dependency: peer neo.mjs@"^13.2.0" from neo-agent-skills@0.1.30',
+            settled = [
+                {repoSlug: 'neomjs/neo',                   state: 'skipped', reason: 'skipped during the install'},
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'failed',  reason: npm},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'installed'}
+            ],
+            // the Start's three installs run in parallel: two still running, one already done
+            live    = [
+                {repoSlug: 'neomjs/neo',                   state: 'installing'},
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'installing'},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'present'}
+            ],
+            emmy    = sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+            // Fleet runs this seat: a wired runtime, so the card reads it working rather than offline. The
+            // repository status stays unwired, so the pane's freshness pill carries no clock into the golden
+            sources = {...emmy.sources, runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            land    = facts => landFleetRoster(page, [...sampleRoster, {
+                ...emmy,
+                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null,
+                repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-gpt-sophie/neomjs/neo', sources, ...facts
+            }]),
+            card    = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
+            detail  = page.locator('.fm-agent-detail:visible').first(),
+            pane    = detail.locator('.fm-detail-pane-repo'),
+            head    = pane.locator('.fm-detail-repo-prep-head'),
+            // a reason wraps whole: neither the pane nor a row is wider than its own box
+            noClip  = () => pane.evaluate(node => [node, ...node.querySelectorAll('.fm-repository-list .neo-list-item, .fm-repo-reason')].every(el => el.scrollWidth <= el.clientWidth + 1)),
+            settle  = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await land({state: 'ok', dependencyOutcomes: settled});
+        await expect(card.locator('.fm-card-state')).toHaveText('working');
+        await expect(card.locator('.fm-card-control-status')).toHaveText('skills not verified');
+        await settle();
+        await expect(card).toHaveScreenshot('fleet-card-skills-unverified.png');
+
+        await card.click();
+        await expect(head).toHaveText('Preparation · last start', {timeout: 30000});
+        await expect(pane.locator('.fm-repo-reason').nth(1)).toHaveText(npm);
+        expect(await noClip(), 'the long failure wraps whole inside the pane').toBe(true);
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-preparation.png');
+
+        await land({state: 'off', dependencyOutcomes: live});
+        await expect(head).toHaveText('Preparation · this start');
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-preparation-live.png');
+
+        await switchToLightSkin(page);
+        await land({state: 'ok', dependencyOutcomes: settled});
+        await expect(head).toHaveText('Preparation · last start');
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-preparation-light.png');
+        await expect(card).toHaveScreenshot('fleet-card-skills-unverified-light.png')
+    });
+
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {
         await bootSettledCockpit(page);
 
