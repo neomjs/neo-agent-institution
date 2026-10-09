@@ -30,6 +30,13 @@
         color      : var(--fm-ink-dim);
     }
 
+    /* an expired question: the sender's stated plan, a fact beside the state, never an action */
+    .fm-mailbox-detail-expired {
+        font         : var(--fm-text-detail);
+        color        : var(--fm-ink-dim);
+        overflow-wrap: anywhere;
+    }
+
     /* the peer's words as written, scrolling inside the column so the strip stays reachable */
     .fm-mailbox-detail-body {
         min-height   : 0;

@@ -18,7 +18,7 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
 /**
- * The designed mailbox row grammar, pinned at the cell layer (the merged #36/#38 sketch is the
+ * The designed mailbox row grammar, pinned at the cell layer (the merged design sketch is the
  * scored spec): status renders as dot + weight (two channels), the exception strip is T2
  * exception-only (a direct/normal/plain/read message renders zero chips and NO strip node), the
  * thread toggle is a native button with aria-expanded, ages are viewer-local with the exact ISO
@@ -99,6 +99,18 @@ test.describe('Fleet mailbox RowComponent — the sketch\'s row grammar from one
 
         expect(row.cls).toContain('status-retracted');
         expect(nodeBy(row, 'fm-mail-tickets').text).toBe('retracted');
+
+        row.destroy()
+    });
+
+    test('an archived question that is still open says archived beside its Task; an unarchived row says nothing', () => {
+        const row = makeRow({taskState: 'InputRequired', archivedAt: '2026-10-08T23:00:00.000Z'});
+
+        expect(nodeBy(row, 'fm-mail-task').text).toBe('task · InputRequired');
+        expect(nodeBy(row, 'fm-mail-archived').text).toBe('archived');
+
+        row.rowData = {...baseRecord, taskState: 'InputRequired', archivedAt: null};
+        expect(nodeBy(row, 'fm-mail-archived'), 'the word recycles away with the fact').toBe(null);
 
         row.destroy()
     });

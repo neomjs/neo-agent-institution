@@ -134,6 +134,27 @@ test.describe('AgentOS.view.fleet.mailbox.DetailContainer — one message, two e
         expect(shown(detail, 'detail-outcome'), 'another message\'s outcome is not this one\'s').toBe(false)
     });
 
+    test('an expired question states its sender\'s planned fallback from the persisted Task, or that none was stated, and offers no Resolve', () => {
+        const expired = () => detail.getReference('detail-facts').vdom.cn.find(node => node.cls?.includes('fm-mailbox-detail-expired'))?.text ?? null;
+
+        detail = createDetail({entry: 'own', row: row(), read: okRead({state: 'Expired', assignee: VIEWER, fallback: '  I merge #946 as is  '})});
+
+        expect(expired(), 'a plan, never a claim that it ran').toBe('expired; planned fallback: I merge #946 as is');
+        expect(shown(detail, 'detail-resolve'), 'Expired is terminal: nothing is left to move').toBe(false);
+
+        detail.read = okRead({state: 'Expired', assignee: VIEWER});
+        expect(expired()).toBe('expired; no fallback was stated');
+
+        detail.read = okRead({state: 'Expired', assignee: VIEWER, fallback: '   '});
+        expect(expired(), 'a blank plan is no plan').toBe('expired; no fallback was stated');
+
+        detail.read = okRead({state: 'InputRequired', assignee: VIEWER, fallback: 'I merge #946 as is'});
+        expect(expired(), 'a live question shows no fallback').toBe(null);
+
+        detail.set({read: {messageId: 'MESSAGE:q1', state: 'loading'}, row: row({taskState: 'Expired'})});
+        expect(expired(), 'the line reads the persisted Task, never the list row').toBe(null)
+    });
+
     test('the strip fires intents only: mark read, reply to the sender, resolve guarded by the read state', () => {
         detail = createDetail({entry: 'own', row: row(), read: okRead()});
 

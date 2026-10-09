@@ -250,15 +250,19 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#557)'
         expect(line(ok, 0, null).hidden, 'a zero queue beside unanswered questions').toBe(true);
     });
 
-    test('the merge count is the line\'s one link, to the merge queue; a question count is not', () => {
+    test('each count is a link: the merges to the merge queue, the questions to the Mailbox\'s open questions; a line without a number links nothing', () => {
+        const links = result => result.segments.filter(segment => segment.link).map(segment => segment.link);
+
         expect(line(ok, 5, known(3)).segments).toEqual([
-            {text: '3 questions'},
+            {link: 'questions', text: '3 questions'},
             {text: ' · '},
             {link: 'merges', text: '5 merges'},
             {text: ' wait for you'}
         ]);
-        expect(line(ok, 0, known(3)).segments.some(segment => segment.link), 'no merges, nothing to open').toBe(false);
-        expect(line({state: 'unavailable', coverage: 'unavailable', reason: 'x'}, 0, known(1)).segments.some(segment => segment.link)).toBe(false);
+        expect(links(line(ok, 0, known(3))), 'no merges, only the questions open').toEqual(['questions']);
+        expect(links(line({state: 'unavailable', coverage: 'unavailable', reason: 'x'}, 0, known(1)))).toEqual(['questions']);
+        expect(links(line(ok, 5, unsupported)), 'questions not listed: nothing of theirs to open').toEqual(['merges']);
+        expect(links(line(ok, 0, known(0))), '"nothing waits for you" opens nothing').toEqual([]);
     });
 
     test('Home shows the line above everything from the provider: the merge queue, the open-work read and the questions axis its source answers', () => {
@@ -288,7 +292,7 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#557)'
         merges.add([pr(1), pr(2)]);
         expect(readLine(home)).toBe('your questions are not listed yet · 2 merges wait for you');
         expect(operator.vdom.title, 'the source\'s reason rides the title').toBe('your questions: questions are not listed yet');
-        expect(operator.vdom.cn[2], 'the merge count is a button').toMatchObject({tag: 'button', type: 'button', cls: ['fm-home-operator-link'], text: '2 merges'});
+        expect(operator.vdom.cn[2], 'the merge count is a button').toMatchObject({tag: 'button', type: 'button', cls: ['fm-home-operator-link', 'is-merges'], text: '2 merges'});
 
         // the source changes its answer: the line follows without a word of it living in the view
         provider.setData({questions: unreadable('Memory Core refused the read')});
@@ -306,18 +310,19 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#557)'
         host.destroy()
     });
 
-    test('a click on the merge count asks for the merge queue; a click anywhere else stays the field\'s', () => {
+    test('a click on the merge count asks for the merge queue, one on the question count for the open questions; a click anywhere else stays the field\'s', () => {
         const
             {host, home} = createHome(),
             asked        = [];
 
-        home.on('mergeQueueOpen', () => asked.push(true));
+        home.on({mergeQueueOpen: () => asked.push('merges'), questionsOpen: () => asked.push('questions')});
 
-        home.onFieldClick({path: [{cls: ['fm-home-operator-link']}, {cls: ['fm-home-operator']}]});
-        expect(asked.length).toBe(1);
+        home.onFieldClick({path: [{cls: ['fm-home-operator-link', 'is-merges']}, {cls: ['fm-home-operator']}]});
+        home.onFieldClick({path: [{cls: ['fm-home-operator-link', 'is-questions']}, {cls: ['fm-home-operator']}]});
+        expect(asked).toEqual(['merges', 'questions']);
 
         home.onFieldClick({path: [{cls: ['fm-home-operator']}, {cls: ['fm-home-view']}]});
-        expect(asked.length, 'the line itself is not the link').toBe(1);
+        expect(asked.length, 'the line itself is not the link').toBe(2);
 
         host.destroy()
     })

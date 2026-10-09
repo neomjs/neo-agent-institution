@@ -1327,6 +1327,13 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     const SHELL_PLANE_DRIVER = '../../../../test/playwright/visual/shellPlane.driver.mjs';
 
     /**
+     * The open-questions driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: the operator Mailbox shows its open
+     * questions.
+     * @type {String}
+     */
+    const OPERATOR_QUESTIONS_DRIVER = '../../../../test/playwright/visual/operatorQuestions.driver.mjs';
+
+    /**
      * The Skip-verb driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: it puts the verb a newer pin adds on the wire.
      * @type {String}
      */
@@ -2190,6 +2197,31 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
         await expect(cockpit).toHaveScreenshot('cockpit-empty-light.png')
+    });
+
+    test('the operator\'s open questions — `for you · 3 open` pressed, three rows in the read\'s order, one still open after it was archived', async ({page}) => {
+        // tall enough for the lower dock to hold all three rows
+        await page.setViewportSize({width: 1280, height: 1100});
+        await bootSettledCockpit(page);
+
+        const
+            name  = /^\s*Mailbox\s*$/i,
+            strip = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+            tab   = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first(),
+            pane  = page.locator('.fm-operator-mailbox:visible').first();
+
+        await tab.click();
+        await expect(pane).toBeVisible({timeout: 30000});
+
+        const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${OPERATOR_QUESTIONS_DRIVER}?state=three&t=${++driverTick}`);
+
+        expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+        await expect(pane.locator('.fm-mailbox-view-chip', {hasText: 'for you'})).toHaveText('for you · 3 open');
+        await expect(pane.locator('.fm-mail-row', {hasText: 'does row 3 walk'}).locator('.fm-mail-archived')).toHaveText('archived');
+        await expect(pane.locator('.fm-freshness')).toHaveText('updated 30s ago');
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(pane).toHaveScreenshot('pane-mailbox-open-questions.png')
     });
 
     test('every strip and rail pane at 1280 — its head, its inset and its verbs, as the operator reads them', async ({page}) => {

@@ -227,7 +227,7 @@ class Viewport extends BaseViewport {
             items: [{
                 module   : HomeView,
                 header   : railHeader('fa-solid fa-house', '/home', 'Home'),
-                listeners: {mergeQueueOpen: 'onHomeMergeQueueOpen'},
+                listeners: {mergeQueueOpen: 'onHomeMergeQueueOpen', questionsOpen: 'onHomeQuestionsOpen'},
                 reference: 'home-view'
             }, {
                 module   : FleetCockpit,

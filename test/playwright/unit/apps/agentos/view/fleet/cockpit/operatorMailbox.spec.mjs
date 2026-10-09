@@ -233,6 +233,50 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         expect(pane.snapshot).toBe(snapshot)
     });
 
+    const openQuestions = (rows = [{messageId: 'MESSAGE:q'}]) => ({
+        state: 'ok', reason: null, count: rows.length, rows, page: {limit: 50, offset: 0, count: rows.length, hasMore: false}, capturedAt: '2026-10-09T04:00:00.000Z'
+    });
+
+    test('inbox · the open view reads the operator\'s open questions and writes them to the pane alone', async () => {
+        const seen = [], questions = openQuestions();
+
+        setBridge({
+            fleetMailboxMirror: async () => { throw new Error('the all-mail read must not run in the open view') },
+            fleetOwnQuestions : async params => { seen.push(params); return questions }
+        });
+
+        const {pane, cockpit} = makeReadOwner();
+
+        pane.view = 'open';
+        await cockpit.loadOperatorInbox({offset: 0});
+
+        // no identity crosses: the questions read is the viewer's own, stamped by the transport
+        expect(seen).toEqual([{offset: 0}]);
+        expect(pane.questions).toBe(questions);
+        expect(pane.snapshot, 'the all-mail window stays as it was').toBe(null);
+        expect(cockpit.operatorSnapshot, 'only the all-mail window is held for a rematerialized pane').toBe(null)
+    });
+
+    test('inbox · one fence serves both lists: a switch supersedes the other list\'s read in flight', async () => {
+        let release;
+
+        setBridge({
+            fleetMailboxMirror: () => new Promise(resolve => { release = () => resolve({rows: ['late']}) }),
+            fleetOwnQuestions : async () => openQuestions()
+        });
+
+        const {pane, cockpit} = makeReadOwner(),
+              allMail         = cockpit.loadOperatorInbox({offset: 0});
+
+        pane.view = 'open';
+        await cockpit.loadOperatorInbox({offset: 0});
+        release();
+        await allMail;
+
+        expect(pane.snapshot, 'the superseded all-mail window never lands').toBe(null);
+        expect(pane.questions.state).toBe('ok')
+    });
+
     test('inbox · a gesture-torn mailbox resolves through the owner\'s held vessel handle', async () => {
         const docked  = {id: 'docked'},
               torn    = {id: 'torn'},
@@ -379,7 +423,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         const
             mail     = {rows: ['a:mail']},
             operator = {agentIdentityNodeId: '@op', githubUsername: 'op'},
-            retired  = {composeOutcome: null, identityPosture: null, record: null, snapshot: null},
+            retired  = {composeOutcome: null, identityPosture: null, questions: null, record: null, snapshot: null},
             flush    = () => new Promise(resolve => setTimeout(resolve, 0)),
             // the identity and window profile A answered, held the way a real controller holds them
             heldByA  = (fields = {}) => {

@@ -38,9 +38,11 @@ test.describe('Fleet cockpit — the operator\'s own inbox: open, mark read, res
 
         const owner = Object.assign(Object.create(Controller.prototype), {
             inboxReloads                 : [],
+            openWorkReloads              : 0,
             operatorMessageReadGeneration: 0,
             operatorOpenMessageId        : null,
             getReference(name) { return name === 'operator-mailbox' ? mailbox : null },
+            loadOpenWork() { this.openWorkReloads++; return Promise.resolve() },
             loadOperatorInbox(params) { this.inboxReloads.push(params); return Promise.resolve() }
         });
 
@@ -117,7 +119,8 @@ test.describe('Fleet cockpit — the operator\'s own inbox: open, mark read, res
             ['actionOutcome', {action: 'markRead', messageId: 'MESSAGE:q1', state: 'pending'}],
             ['actionOutcome', {action: 'markRead', messageId: 'MESSAGE:q1', state: 'ok'}]
         ]);
-        expect(owner.inboxReloads).toEqual([{offset: 0}])
+        expect(owner.inboxReloads).toEqual([{offset: 0}]);
+        expect(owner.openWorkReloads, 'a read receipt never moves the open-question count, so nothing re-counts it').toBe(0)
     });
 
     test('mark read · an answer that read nothing refuses with what it said, and re-reads nothing', async () => {
@@ -145,6 +148,7 @@ test.describe('Fleet cockpit — the operator\'s own inbox: open, mark read, res
         expect(await owner.onOperatorResolve({expectedCurrentState: 'InputRequired', messageId: 'MESSAGE:q1'})).toBe(true);
         expect(moves).toEqual([{expectedCurrentState: 'InputRequired', messageId: 'MESSAGE:q1', newState: 'Completed'}]);
         expect(owner.inboxReloads).toEqual([{offset: 0}]);
+        expect(owner.openWorkReloads, 'the transition re-counts the open questions at once').toBe(1);
         expect(reads).toEqual([{messageId: 'MESSAGE:q1'}, {messageId: 'MESSAGE:q1'}]);
         expect(mailbox.writes.map(([config, value]) => `${config}:${value.state}`)).toEqual(['messageRead:loading', 'messageRead:ok', 'actionOutcome:pending', 'actionOutcome:ok', 'messageRead:ok'])
     });
@@ -194,7 +198,8 @@ test.describe('Fleet cockpit — the operator\'s own inbox: open, mark read, res
             reason   : '@tobiu as assignee cannot transition `Completed → Completed`',
             state    : 'refused'
         }]);
-        expect(owner.inboxReloads).toEqual([])
+        expect(owner.inboxReloads).toEqual([]);
+        expect(owner.openWorkReloads, 'a refused move counts nothing anew').toBe(0)
     });
 
     test('resolve · a lost race refuses with its reason; a missing verb and a transport failure refuse visibly too', async () => {

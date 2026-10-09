@@ -132,7 +132,7 @@ class TargetBinding extends Base {
      * the identity and window the owner holds. They leave together: the window was read as that
      * identity, and one operator handle can name two instances, so the pane's subject check cannot
      * tell them apart. The pane reads `unobserved` until the new profile's identity binds and reads
-     * its own first window; the last send's outcome goes with them.
+     * its own first window; the open questions and the last send's outcome go with them.
      * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      * @param {Object} options
      * @param {String|null} options.profileId The profile the bridge in hand is bound to.
@@ -149,7 +149,7 @@ class TargetBinding extends Base {
         owner.operatorSnapshot        = null;
         owner.operatorInboxReadGeneration++;
 
-        owner.component.getOperatorMailboxPane()?.set({composeOutcome: null, identityPosture: null, record: null, snapshot: null});
+        owner.component.getOperatorMailboxPane()?.set({composeOutcome: null, identityPosture: null, questions: null, record: null, snapshot: null});
 
         return true
     }

@@ -31,8 +31,10 @@
     /* the compose affordance in the inbox pane's head (the mailbox design page's "Compose
        placement"): an affordance-class chip inside the head's actions group — scale, padding and
        the chrome font are the group's law (Viewport.scss .fm-pane-actions); this rule adds only
-       the chip's outline, its ink and its pressed state while the form is revealed */
-    .fm-pane-actions .fm-compose-affordance {
+       the chip's outline, its ink and its pressed state while the form is revealed. The view chips
+       beside it (`all mail` · `for you · 3 open`) are the same chip, pressed for the list in view. */
+    .fm-pane-actions .fm-compose-affordance,
+    .fm-pane-actions .fm-mailbox-view-chip {
         --button-background-color      : transparent;
         --button-background-color-hover: transparent;
         --button-border                : 1px solid var(--fm-line-soft);
