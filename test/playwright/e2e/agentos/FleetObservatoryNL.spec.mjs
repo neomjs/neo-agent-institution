@@ -85,7 +85,8 @@ async function openObservatory(page, neuralLink) {
     const locate = id => app.callMethod(canvas.properties.id, 'locate', [id]);
 
     return {
-        currency : pane.locator('.fm-observatory-currency'),
+        // the read's complete words, which the head keeps behind Details
+        currency : pane.locator('.fm-observatory-details'),
         geography: async () => (await app.getComponent(container.properties.id, ['geography'])).geography,
         hover    : pane.locator('.fm-observatory-hover'),
         land     : envelope => app.callMethod(cockpitState.controller.id, 'writeGraphScene', [envelope]),

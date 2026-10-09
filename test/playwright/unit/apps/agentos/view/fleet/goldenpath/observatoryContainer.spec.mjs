@@ -65,7 +65,8 @@ function graphRead(scene = {}, envelope = {}) {
 
 const
     createPane     = (config = {}) => Neo.create(ObservatoryPane, {appName, ...config}),
-    lineOf         = pane => pane.getReference('observatory-head').vdom.cn[1].text,
+    // the read's complete words, which the head keeps behind Details
+    lineOf         = pane => pane.getReference('observatory-head').details,
     selectedOf     = pane => pane.getReference('observatory-selected'),
     // the selected node's label and kind as the section heads them, `null` for a part it leaves out
     headOf         = pane => selectedOf(pane).getReference('selected-head').vdom.cn.map(({removeDom, text}) => removeDom ? null : text),
@@ -422,7 +423,9 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         ['geography-density', 'geography-strategic'].forEach(reference => control(reference).useRippleEffect = false);
 
-        expect(texts).toEqual(['Roadmap', 'Hubs', 'Attention', 'Route', 'Messages', 'Outside wells']);
+        // the fixture carries no roadmap anchor, so the pressed Roadmap says it drew hub wells instead
+        expect(texts).toEqual(['Roadmap · no anchors', 'Hubs', 'Attention', 'Route', 'Messages', 'Outside wells']);
+        expect(control('geography-strategic').tooltip.text).toMatch(/no roadmap anchors/);
         expect(pressed(), 'the strategic wells, the route and the halo, by default').toEqual([true, false, false, true, false, true]);
         expect(control('heat-toggle').tooltip.text, 'the attention window is stated').toMatch(/in the last 3 days/);
 
@@ -431,16 +434,41 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         expect([pane.geography, pane.scene.geography, pane.selectedId]).toEqual(['density', 'density', q('issue-404')]);
         expect(pressed().slice(0, 2)).toEqual([false, true]);
+        expect(control('geography-strategic').text, 'unpressed, Roadmap promises nothing').toBe('Roadmap');
 
         control('geography-strategic').onClick({});
         expect([pane.geography, pressed().slice(0, 2)]).toEqual(['strategic', [true, false]]);
+
+        pane.envelope = graphRead({nodes: graphRead().scene.nodes.map(node => node.id === q('concept-dock') ? {...node, gravityWell: true, strategicWeight: 1} : node)});
+        expect(control('geography-strategic').text, 'a read with an anchor draws roadmap wells, and the control drops the note').toBe('Roadmap');
+
+        pane.destroy()
+    });
+
+    test('the head opens with the team\'s sentence, keeps the counts behind Details, and its attention item selects its node', () => {
+        const pane = createPane({envelope: teamRead()}), head = pane.getReference('observatory-head');
+
+        expect(head.brief).toMatchObject({attention: {id: q('pr-101'), text: '#101 · first route item', title: 'first route item'}, tail: 'complete'});
+        expect(head.brief.lead).toMatch(/^captured .+ · last 3 days: 1 in motion$/);
+        expect(head.details, 'the renderer\'s counts wait behind Details').toMatch(/^Current · captured .+ · 7 nodes · 4 edges/);
+        expect([head.detailsOpen, head.vdom.cn[4].hidden], 'folded by default').toEqual([false, true]);
+
+        head.onDetailsClick();
+        expect([head.detailsOpen, head.vdom.cn[4].hidden, head.vdom.cn[3]['aria-expanded']]).toEqual([true, null, 'true']);
+
+        head.onAttentionClick();
+        expect(pane.selectedId, 'the attention item is a way in').toBe(q('pr-101'));
+
+        pane.envelope = GraphSceneEnvelope.fromWire({capability: {state: 'unavailable', reason: 'route-read-failed'}});
+        expect([head.brief.lead, head.brief.attention, head.details]).toEqual(['Unavailable · route-read-failed', null, 'Unavailable · route-read-failed']);
+        expect(head.vdom.cn[3].removeDom, 'nothing more to disclose, no disclosure').toBe(true);
 
         pane.destroy()
     });
 
     test('the head names the view and the geography the scene drew; no surface here calls itself the Golden Path', () => {
         const
-            titleOf  = pane => pane.getReference('observatory-head').vdom.cn[0].text,
+            titleOf  = pane => pane.getReference('observatory-head').title,
             anchored = graphRead({nodes: graphRead().scene.nodes.map(node => node.id === q('concept-dock') ? {...node, gravityWell: true, strategicWeight: 1} : node)}),
             cold     = createPane(),
             pane     = createPane({envelope: anchored});

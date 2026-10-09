@@ -59,7 +59,6 @@ class ObservatoryViewContainer extends Container {
                 flex     : 'none',
                 reference: 'geography-strategic',
                 text     : 'Roadmap',
-                tooltip  : 'Wells around the Brain\'s strategic anchors: where the roadmap\'s weight lies',
                 ui       : 'ghost'
             }, {
                 module   : Button,
@@ -115,9 +114,11 @@ class ObservatoryViewContainer extends Container {
     }
 
     /**
-     * @summary Shows the pane's state: the drawn geography pressed, each overlay pressed while drawn (for the eye
-     * and for assistive technology alike), and a withheld route named withheld with its reason in the detail.
+     * @summary Shows the pane's state: the chosen geography pressed, each overlay pressed while drawn (for the eye
+     * and for assistive technology alike), and a withheld route named withheld with its reason in the detail. A
+     * read without roadmap anchors draws hub wells under a pressed Roadmap, which then says so the same way.
      * @param {Object}      state
+     * @param {String|null} state.drawn       The geography the scene drew, `null` before it drew a node
      * @param {String}      state.geography   The pane's geography
      * @param {Boolean}     state.halo
      * @param {Boolean}     state.heat
@@ -126,8 +127,10 @@ class ObservatoryViewContainer extends Container {
      * @param {Boolean}     state.route
      * @param {String|null} state.routeWithheld Why the Golden Path read withholds the route, `null` while it does not
      */
-    sync({geography, halo, heat, heatDays, mail, route, routeWithheld}) {
-        const me = this;
+    sync({drawn = null, geography, halo, heat, heatDays, mail, route, routeWithheld}) {
+        const
+            me         = this,
+            anchorless = geography === 'strategic' && drawn !== null && drawn !== 'strategic';
 
         [
             ['geography-strategic', geography === 'strategic'],
@@ -144,6 +147,12 @@ class ObservatoryViewContainer extends Container {
             control.update()
         });
 
+        me.getReference('geography-strategic').set({
+            text   : anchorless ? 'Roadmap · no anchors' : 'Roadmap',
+            tooltip: anchorless
+                ? 'This read carries no roadmap anchors, so its wells gather around the hubs'
+                : 'Wells around the Brain\'s strategic anchors: where the roadmap\'s weight lies'
+        });
         me.getReference('heat-toggle').tooltip = `Brighten what drew attention in the last ${heatDays} day${heatDays === 1 ? '' : 's'}: open work, memories and gaps`;
         me.getReference('route-toggle').set({
             text   : routeWithheld ? 'Route · withheld' : 'Route',
