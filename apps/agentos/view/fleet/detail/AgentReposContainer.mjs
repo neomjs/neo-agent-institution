@@ -2,6 +2,7 @@ import Button           from '../../../../../node_modules/neo.mjs/src/button/Bas
 import Container        from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import TextField        from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 import RepositoryList   from './RepositoryList.mjs';
+import SeatDependencies from '../../../util/SeatDependencies.mjs';
 import SeatRepositories from '../../../store/SeatRepositories.mjs';
 
 /**
@@ -18,9 +19,10 @@ import SeatRepositories from '../../../store/SeatRepositories.mjs';
  * list, so a refusal's reason is the Brain's own and shows on the status line, while the rows keep
  * what the registry holds.
  *
- * Each of the other repositories also shows the last start's outcome, prepared or failed with the
- * Fleet's redacted reason. That outcome is runtime truth, so it comes from the seat's roster record
- * ({@link #rosterStore}), never from the definition.
+ * Every repository, the working one included, also shows the last start's outcome in
+ * {@link AgentOS.util.SeatDependencies}'s words: a failed clone, else its checkout's dependency state, with
+ * the Fleet's redacted reason. While a start installs, the rows are that start's. The outcome is runtime
+ * truth, so it comes from the seat's roster record ({@link #rosterStore}), never from the definition.
  */
 class AgentReposCard extends Container {
     static config = {
@@ -51,9 +53,9 @@ class AgentReposCard extends Container {
         record_: null,
         /**
          * The provider-hosted fleet roster (`stores.fleetRoster`), read for one fact: the last
-         * start's per-repository outcome on the seat's {@link AgentOS.model.FleetAgent} record. The
-         * card listens to the Store directly, as the configuration card does to the tenant roster,
-         * and never writes it.
+         * start's per-repository outcome on the seat's {@link AgentOS.model.FleetAgent} record, its
+         * clones and its dependencies. The card listens to the Store directly, as the configuration
+         * card does to the tenant roster, and never writes it.
          * @member {Neo.data.Store|null} rosterStore_=null
          * @reactive
          */
@@ -181,15 +183,16 @@ class AgentReposCard extends Container {
     }
 
     /**
-     * @summary The last start's outcome per repository slug, from the seat's roster record. A
-     * repository that start did not cover has no entry and shows none until the next start. One removed
-     * and re-added since keeps that start's entry: the outcome records the start, not the current list.
+     * @summary The last start's outcome per repository slug, from the seat's roster record: its clone and
+     * its dependency rows, folded by {@link AgentOS.util.SeatDependencies#checkouts}. A repository that
+     * start did not cover has no entry and shows none until the next start. One removed and re-added since
+     * keeps that start's entry: the outcome records the start, not the current list.
      * @returns {Map<String, {reason: String|null, state: String}>}
      */
     getRepoOutcomes() {
-        const outcomes = this.record && this.rosterStore?.get(this.record.id)?.repoOutcomes;
+        const agent = this.record && this.rosterStore?.get(this.record.id);
 
-        return new Map((Array.isArray(outcomes) ? outcomes : []).map(({reason=null, repoSlug, state}) => [repoSlug, {reason, state}]))
+        return new Map(SeatDependencies.checkouts(agent?.dependencyOutcomes, agent?.repoOutcomes).map(({repoSlug, ...outcome}) => [repoSlug, outcome]))
     }
 
     /**
@@ -254,7 +257,7 @@ class AgentReposCard extends Container {
 
     /**
      * @summary Re-derive the rows from the CURRENT record data, the working repository first, each
-     * other repository with its last start outcome, and the add field's slug shape for the seat's
+     * repository with its last start outcome, and the add field's slug shape for the seat's
      * forge. Public on purpose: a readback changes the
      * record's fields without changing its identity, so the owning view calls `refresh()` when the
      * roster changes.
@@ -266,13 +269,16 @@ class AgentReposCard extends Container {
             workingRepo = me.record?.['metadata.repo'],
             rows        = [
                 ...(workingRepo ? [{...workingRepo, working: true}] : []),
-                ...me.getOtherRepos().map(repo => ({...repo, ...outcomes.get(repo.repoSlug)}))
-            ];
+                ...me.getOtherRepos()
+            ].map(repo => ({...repo, ...outcomes.get(repo.repoSlug)}));
 
-        // an outcome is a fact of the last start, not a live observation: the heading names it
-        me.getReference('repos-heading').text = rows.some(row => row.state)
-            ? 'Repositories · declared · last start'
-            : 'Repositories · declared';
+        // an outcome is a fact of a start, not a live observation: the heading names which one, and an
+        // install still running belongs to the start pending now
+        me.getReference('repos-heading').text = rows.some(row => row.state === 'installing')
+            ? 'Repositories · declared · this start'
+            : rows.some(row => row.state)
+                ? 'Repositories · declared · last start'
+                : 'Repositories · declared';
 
         me.getReference('repo-list').store.data        = rows;
         me.getReference('repos-empty').hidden          = !me.record || rows.length > 0;

@@ -258,6 +258,7 @@ class Viewport extends BaseViewport {
                 header   : railHeader('fa-solid fa-id-badge', '/accounts', 'Accounts'),
                 popupUrl : 'apps/agentos/childapps/widget/index.html',
                 sortGroup: 'neo-connected-dashboard',
+                sortZoneConfig: {dragHandleSelector: '.fm-accounts-drag-handle'},
 
                 items: [{
                     module   : Accounts,
