@@ -5,7 +5,9 @@ import GraphNodeSource               from '../../../util/GraphNodeSource.mjs';
 import GraphSceneEnvelope            from '../../../util/GraphSceneEnvelope.mjs';
 import GraphSceneNodes               from '../../../store/GraphSceneNodes.mjs';
 import GraphSceneRelations           from '../../../store/GraphSceneRelations.mjs';
+import ObservatoryBrief              from '../../../util/ObservatoryBrief.mjs';
 import ObservatoryCanvas             from './ObservatoryCanvas.mjs';
+import ObservatoryHeadComponent      from './ObservatoryHeadComponent.mjs';
 import ObservatoryNodeList           from './ObservatoryNodeList.mjs';
 import ObservatorySceneLayout        from '../../../util/ObservatorySceneLayout.mjs';
 import ObservatorySelectionContainer from './ObservatorySelectionContainer.mjs';
@@ -16,19 +18,14 @@ import ViewerTime                    from '../../../util/ViewerTime.mjs';
 import {peerHues}                    from '../../../canvas/fmPalette.mjs';
 
 /**
- * What the hover slot says while no node is under the pointer.
- * @type {String}
- */
-const HOVER_HINT = 'drag orbits · wheel zooms · click selects';
-
-/**
  * @summary The Observatory keeper-view — the graph read in its wells, as a navigable 3D scene on the canvas
  * worker beside a side panel that reads, top to bottom, the team, the view, the nodes and the selected node.
  * The {@link #geography} is strategic wells by default, the Brain's strategic anchors drawing the
  * rest around them, and density wells on a read that carries no anchor; mail stays out of the scene until the
- * View section brings it in, and the nodes in no well sit in an outer halo it can hide. The head carries the
- * read's line first (capability, capture, holdings, what the view hid, completeness —
- * {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node under the pointer beside it. The pane binds the
+ * View section brings it in, and the nodes in no well sit in an outer halo it can hide. The head
+ * ({@link AgentOS.view.fleet.goldenpath.ObservatoryHeadComponent}) opens with the team's sentence
+ * ({@link AgentOS.util.ObservatoryBrief#line}), keeps the read's counts behind Details
+ * ({@link AgentOS.util.GraphSceneEnvelope#describe}) and names the node under the pointer. The pane binds the
  * shell's `graphSceneEnvelope` leaf, which the cockpit's graph read writes, derives the scene once
  * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas and the panel. The
  * Golden Path leaf only qualifies the line and the route's control: its route's admission is not the graph
@@ -139,15 +136,10 @@ class ObservatoryContainer extends Container {
          * @member {Object[]} items
          */
         items: [{
-            ntype    : 'component',
-            cls      : ['fm-observatory-head'],
+            module   : ObservatoryHeadComponent,
+            brief    : {attention: null, lead: GraphSceneEnvelope.describe(null).text, tail: null},
             flex     : 'none',
-            reference: 'observatory-head',
-            vdom     : {cn: [
-                {tag: 'span', cls: ['fm-observatory-title'],    text: 'Observatory'},
-                {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
-                {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HOVER_HINT}
-            ]}
+            reference: 'observatory-head'
         }, {
             ntype    : 'container',
             cls      : ['fm-observatory-body'],
@@ -316,6 +308,7 @@ class ObservatoryContainer extends Container {
         relations.store = me.relationStore;
         nodes    .on('select', me.onNodeListSelect,     me);
         relations.on('select', me.onRelationListSelect, me);
+        me.getReference('observatory-head').on('attentionSelect', ({id}) => me.onNodeSelect({node: {id}}));
         me.getReference('observatory-team').on('lensChange', ({lensPeers}) => me.lensPeers = lensPeers);
         me.getReference('observatory-selected').on({selectionClear: me.onSelectionClear, sessionOpen: me.onSessionOpen, scope: me});
         me.getReference('geography-density')  .set({handler: () => me.geography = 'density',   handlerScope: me});
@@ -380,7 +373,9 @@ class ObservatoryContainer extends Container {
      * @protected
      */
     afterSetEnvelope(value, oldValue) {
-        this.applyScene(this.layOut(value), 'read')
+        this.applyScene(this.layOut(value), 'read');
+        // a read with roadmap anchors and one without draw different wells; the View section says which
+        this.updateView()
     }
 
     /**
@@ -732,17 +727,13 @@ class ObservatoryContainer extends Container {
      * @param {Object|null} data.node
      */
     onNodeHover({node}) {
-        const head = this.getReference('observatory-head'), slot = head?.vdom.cn[2];
+        const head = this.getReference('observatory-head');
 
-        if (slot) {
-            slot.text = node ? [
-                node.label ?? node.id,
-                node.kind,
-                node.hop === 0 ? `rank ${node.rank}` : node.hop === null ? 'no edge to the route in this read' : `${node.hop} hop${node.hop === 1 ? '' : 's'} from the route`
-            ].filter(Boolean).join(' · ') : HOVER_HINT;
-            slot.cls = ['fm-observatory-hover', ...(node ? [] : ['is-hint'])];
-            head.update()
-        }
+        head && (head.hover = node ? [
+            node.label ?? node.id,
+            node.kind,
+            node.hop === 0 ? `rank ${node.rank}` : node.hop === null ? 'no edge to the route in this read' : `${node.hop} hop${node.hop === 1 ? '' : 's'} from the route`
+        ].filter(Boolean).join(' · ') : null)
     }
 
     /**
@@ -934,37 +925,37 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Writes the read's line into the head, with the capture instant in the viewer's own clock, the
-     * way the Golden Path text pane stamps it, and a withheld route named beside it. The Golden Path leaf is the
-     * pane's one source for the route's admission: it alone knows whether the route expired. Under the lens the
-     * line counts its nodes and peers; under the heat it states the window and how many nodes it could not read.
-     * The title names the view and the geography the scene drew, once it drew a node.
+     * @summary Writes the head: the title names the view and the geography the scene drew, once it drew a node; the
+     * first line is the team's sentence ({@link AgentOS.util.ObservatoryBrief#line}), stamped in the viewer's own
+     * clock the way the Golden Path text pane stamps it; Details holds the read's counts, a withheld route (the
+     * Golden Path leaf alone knows whether the route expired), the lens's nodes and peers, and the heat's window
+     * with how many nodes it could not read.
      * @protected
      */
     updateLine() {
         const
-            me             = this,
-            head           = me.getReference('observatory-head'),
-            route          = me.routeEnvelope,
-            {scene}        = me,
-            {heat, lens}   = me.overlays,
-            plural         = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`,
-            days           = ObservatorySceneLayout.attention.windowMs / 86400000,
-            lensed         = lens ? lens.lens.reduce((sum, peer) => sum + (peer > 0 ? 1 : 0), 0) : 0,
-            unknown        = heat ? heat.reduce((sum, value) => sum + (Number.isNaN(value) ? 1 : 0), 0) : 0,
-            // the line counts what the layout drew, names what the view hid, and what the read carried beyond it
-            drawn          = scene && {nodes: scene.nodes.length, edges: scene.edges.length, halo: scene.halo, hidden: scene.hidden, overCap: scene.overCap, wellCap: scene.wellCap};
+            me           = this,
+            route        = me.routeEnvelope,
+            {scene}      = me,
+            {heat, lens} = me.overlays,
+            formatStamp  = at => ViewerTime.formatViewerTime(at)?.text ?? null,
+            plural       = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`,
+            days         = ObservatorySceneLayout.attention.windowMs / 86400000,
+            lensed       = lens ? lens.lens.reduce((sum, peer) => sum + (peer > 0 ? 1 : 0), 0) : 0,
+            unknown      = heat ? heat.reduce((sum, value) => sum + (Number.isNaN(value) ? 1 : 0), 0) : 0,
+            // the counts are what the layout drew, what the view hid, and what the read carried beyond it
+            drawn        = scene && {nodes: scene.nodes.length, edges: scene.edges.length, halo: scene.halo, hidden: scene.hidden, overCap: scene.overCap, wellCap: scene.wellCap};
 
-        if (head) {
-            head.vdom.cn[0].text = ['Observatory', scene?.nodes.length && ObservatoryViewContainer.titleOf(scene.geography)].filter(Boolean).join(' · ');
-            head.vdom.cn[1].text = [
-                GraphSceneEnvelope.describe(me.envelope, at => ViewerTime.formatViewerTime(at)?.text ?? null, drawn).text,
+        me.getReference('observatory-head')?.set({
+            brief  : ObservatoryBrief.line(me.envelope, scene, {formatStamp}),
+            details: [
+                GraphSceneEnvelope.describe(me.envelope, formatStamp, drawn).text,
                 GoldenPathEnvelope.currency(route) === 'withheld' && `route withheld · ${GoldenPathEnvelope.withheldReason(route)}`,
                 lens && `lens · ${plural(lensed, 'node')} · ${plural(me.lensPeers.length, 'peer')}`,
                 heat && `heat · last ${plural(days, 'day')}${unknown ? ` · ${unknown} unknown` : ''}`
-            ].filter(Boolean).join(' · ');
-            head.update()
-        }
+            ].filter(Boolean).join(' · '),
+            title  : ['Observatory', scene?.nodes.length && ObservatoryViewContainer.titleOf(scene.geography)].filter(Boolean).join(' · ')
+        })
     }
 
     /**
@@ -976,14 +967,15 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Hands the View section the pane's state: the geography, each overlay, the attention window, and
-     * why the Golden Path read withholds the route while it does.
+     * @summary Hands the View section the pane's state: the geography chosen and the one drawn, each overlay, the
+     * attention window, and why the Golden Path read withholds the route while it does.
      * @protected
      */
     updateView() {
         const me = this, route = me.routeEnvelope;
 
         me.getReference('observatory-view-section')?.sync({
+            drawn        : me.scene?.nodes.length ? me.scene.geography : null,
             geography    : me.geography,
             halo         : me.halo,
             heat         : me.heatOverlay,

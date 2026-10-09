@@ -38,58 +38,6 @@
         font : var(--fm-text-micro);
     }
 
-    /* two rows: the title with the hovered node beside it, then the read's line on its own, so no hover
-       pushes the line out */
-    .fm-observatory-head {
-        display              : grid;
-        align-items          : baseline;
-        border-bottom        : thin solid var(--fm-line-soft);
-        column-gap           : var(--fm-space-3);
-        grid-template-areas  : "title hover" "line line";
-        grid-template-columns: auto minmax(0, 1fr);
-        min-width            : 0;
-        padding              : var(--fm-space-2) var(--fm-space-3);
-        row-gap              : var(--fm-space-1);
-        font                 : var(--fm-text-chrome);
-        letter-spacing       : var(--fm-text-chrome-tracking);
-        text-transform       : uppercase;
-        color                : var(--fm-ink-dim);
-        white-space          : nowrap;
-
-        .fm-observatory-title {
-            color    : var(--fm-ink);
-            grid-area: title;
-        }
-
-        .fm-observatory-currency,
-        .fm-observatory-hover {
-            max-width    : 100%;
-            min-width    : 0;
-            overflow     : hidden;
-            text-overflow: ellipsis;
-        }
-
-        .fm-observatory-currency {
-            grid-area: line;
-        }
-
-        /* the hovered node keeps its own case: it is a title, not chrome; the gesture hint that
-           stands in for it while no node is under the pointer stays chrome, dim */
-        .fm-observatory-hover {
-            color         : var(--fm-signal);
-            grid-area     : hover;
-            justify-self  : end;
-            letter-spacing: normal;
-            text-transform: none;
-
-            &.is-hint {
-                color         : var(--fm-ink-dim);
-                letter-spacing: inherit;
-                text-transform: inherit;
-            }
-        }
-    }
-
     /* the selected node: its label in its own case, like the hovered one, then the kind and the facts dim; a
        cleared selection's reason names an id and keeps its case, and the hint is chrome. The id is a read-only
        field without chrome, the text the Copy action selects */
