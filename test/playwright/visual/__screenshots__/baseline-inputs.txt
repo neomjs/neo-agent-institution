@@ -288,7 +288,7 @@ apps/agentos/util/SeatLaunchAdmission.mjs
     04babfa856bc9101c290294a98465170c8fe4dcd
 
 apps/agentos/util/SeatModel.mjs
-    105d7af82cc5728df3c6b42e45375d40d50ceb53
+    5c11aa54560f60972c0f7652ab44561247e79a34
 
 apps/agentos/util/SeatSessionFolder.mjs
     5c407e6a03f2b440af221d6a6e314aa7f89f6f53
@@ -399,7 +399,7 @@ apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs
     b386eb4c112e2116dabe889bbf3467c51c7f9bfa
 
 apps/agentos/view/fleet/detail/SeatModelContainer.mjs
-    171edbd8427beff3a620393e4f1e5181082fbdd9
+    8ea75cb81bb7bb73bf0c935c99458fd1699ca408
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
     e2b127838254f6fa5ab6512f19793c94aea2aa03

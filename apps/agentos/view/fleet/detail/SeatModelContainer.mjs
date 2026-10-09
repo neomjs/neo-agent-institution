@@ -1,8 +1,8 @@
-import Button                           from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Container                        from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import TextField                        from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
-import SeatModel, {DESKTOP_EFFORT_LABELS} from '../../../util/SeatModel.mjs';
-import SeatMemoryContainer              from './SeatMemoryContainer.mjs';
+import Button              from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container           from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import TextField           from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
+import SeatModel           from '../../../util/SeatModel.mjs';
+import SeatMemoryContainer from './SeatMemoryContainer.mjs';
 
 /**
  * The Seat group's two rows, each with the record field it declares.
@@ -251,7 +251,7 @@ class SeatModelContainer extends Container {
         const {catalog, configured, seat} = this;
 
         if (seat?.harnessType === 'claude-desktop') {
-            return field === 'reasoningEffort' && SeatModel.declarable(seat.harnessType, field) ? Object.keys(DESKTOP_EFFORT_LABELS) : null
+            return field === 'reasoningEffort' && SeatModel.declarable(seat.harnessType, field) ? Object.keys(SeatModel.desktopEffortLabels) : null
         }
 
         if (!catalog || catalog.state === 'unsupported' || catalog.state === 'unavailable' && !catalog.models?.length) return null;
@@ -322,7 +322,7 @@ class SeatModelContainer extends Container {
                     module : Button,
                     cls    : ['fm-chip', 'fm-seat-model-value', declared === value ? 'is-selected' : 'is-selectable'],
                     handler: () => me.declare(me.editing, value),
-                    text   : desktopEffort ? DESKTOP_EFFORT_LABELS[value] : value
+                    text   : desktopEffort ? SeatModel.desktopEffortLabels[value] : value
                 })),
                 {
                     module : Button,
