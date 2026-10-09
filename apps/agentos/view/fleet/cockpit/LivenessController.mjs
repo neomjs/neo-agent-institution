@@ -364,7 +364,7 @@ class LivenessController extends ViewerWakeController {
             return
         }
 
-        TargetBinding.retireRoster(me, {store, grid, profileId});
+        TargetBinding.retireRoster(me, {store, grid, profileId}) && me.onRosterRetired();
 
         try {
             me.publishConnection('grid', {pending: true});
@@ -419,8 +419,24 @@ class LivenessController extends ViewerWakeController {
      */
     admitRoster(answer) {
         FleetAdmission.admitRoster(this, answer);
-        PlaneCredentialCheck.settle(this)
+        PlaneCredentialCheck.settle(this);
+        this.onRosterSettled()
     }
+
+    /**
+     * @summary The roster settled: called once per admitted roster, after its records landed. The
+     * batch layer reads the fleet button's plan here (`FleetBatchController`); this layer adds nothing.
+     * @protected
+     */
+    onRosterSettled() {}
+
+    /**
+     * @summary The roster was retired for another target: the bridge in hand belongs to a profile
+     * other than the rows the store held, and the store emptied. The batch layer drops an armed stop
+     * here; this layer adds nothing.
+     * @protected
+     */
+    onRosterRetired() {}
 
     /**
      * @summary The Brain-health read owner's pull — the daemon surface on the liveness cadence.

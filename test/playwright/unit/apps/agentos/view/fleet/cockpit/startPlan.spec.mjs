@@ -256,4 +256,66 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(clean.text).toBe('2 started');
         expect(clean.detail).toBe('')
     });
+
+    test('the stop partition is the mirror: the UP eligible fleet stops; down, benched, pending, unwired and guest rows are excluded with reasons (#618)', () => {
+        const {eligible, excluded} = FleetStartPlan.partitionFleetStop([
+            {agentId: 'ada',    state: 'ok',   sources: wiredRuntime()},
+            {agentId: 'grace',  state: 'idle', sources: wiredRuntime()},
+            {agentId: 'vega',   state: 'off',  sources: wiredRuntime()},
+            {agentId: 'gemini', state: 'ok',   sources: wiredRuntime(), participationStatus: 'operator_benched'},
+            {agentId: 'euclid', state: 'ok',   sources: wiredRuntime(), pendingAction: 'stop'},
+            {agentId: 'sophie', state: 'ok'},
+            {state: 'ok'}
+        ]);
+
+        expect(eligible.map(record => record.agentId)).toEqual(['ada', 'grace']);
+        expect(excluded.map(({agentId, reason}) => [agentId, reason])).toEqual([
+            ['vega',   expect.stringContaining('already down')],
+            ['gemini', expect.stringContaining('operator_benched')],
+            ['euclid', expect.stringContaining('stop')],
+            ['sophie', expect.stringContaining('runtime source')],
+            [null,     expect.stringContaining('guest')]
+        ])
+    });
+
+    test('the fleet button reads the plan it would run: Start fleet · n while anything eligible is down, Stop fleet · n only when nothing is left to start, the plain label with its reason when no plan can be computed (#618 AC-1)', () => {
+        const
+            up   = id => ({agentId: id, state: 'ok',  sources: wiredRuntime()}),
+            down = id => ({agentId: id, state: 'off', sources: wiredRuntime()}),
+            eight = ['ada', 'grace', 'vega', 'sophie', 'emmy', 'euclid', 'clio', 'fable'];
+
+        expect(FleetStartPlan.describeFleetButton([...eight.slice(0, 4).map(up), ...eight.slice(4).map(down)]))
+            .toEqual({action: 'start', count: 4, text: 'Start fleet · 4', title: null});
+        // a benched seat never counts in either direction
+        expect(FleetStartPlan.describeFleetButton([...eight.map(up), {agentId: 'gemini', state: 'off', sources: wiredRuntime(), participationStatus: 'operator_benched'}]))
+            .toEqual({action: 'stop', count: 8, text: 'Stop fleet · 8', title: null});
+        // the roster unobserved: the plain label, the reason in the title, no count the partition did not produce
+        expect(FleetStartPlan.describeFleetButton([])).toMatchObject({action: null, count: 0, text: 'Start fleet', title: expect.stringContaining('roster')});
+        expect(FleetStartPlan.describeFleetButton(null)).toMatchObject({action: null, text: 'Start fleet'});
+        // every row unwired: nothing can be planned — still the plain label, the reason names the source
+        expect(FleetStartPlan.describeFleetButton([{agentId: 'ada', state: 'off'}, {agentId: 'vega', state: 'ok'}])).toMatchObject({action: null, text: 'Start fleet', title: expect.stringContaining('wired')});
+        // every row benched: nothing to start or stop — the reasons reachable in the title
+        expect(FleetStartPlan.describeFleetButton([{agentId: 'gemini', state: 'ok', sources: wiredRuntime(), participationStatus: 'operator_benched'}])).toMatchObject({action: null, text: 'Start fleet', title: expect.stringContaining('operator_benched')})
+    });
+
+    test('the summary speaks both directions: N stopped · M excluded, every reason reachable (#618)', () => {
+        const
+            partition = {eligible: [{agentId: 'ada'}, {agentId: 'grace'}], excluded: [{agentId: 'vega', reason: 'already down — session state \'off\''}]},
+            summary   = FleetStartPlan.summarizeFleetStart(partition, [{ok: true}, {ok: false, status: 'rejected', controlReason: {reason: 'the seat refused'}}]);
+
+        expect(FleetStartPlan.renderFleetStartSummary(summary, 'stopped')).toEqual({text: '1 stopped · 1 rejected · 1 excluded', detail: 'grace: the seat refused\nvega: already down — session state \'off\''});
+        expect(FleetStartPlan.renderFleetStartSummary(summary).text, 'the default verb is unchanged').toBe('1 started · 1 rejected · 1 excluded')
+    });
+
+    test('the armed stop renders where the summaries live: the eligible seats by name in roster order, the exclusions counted and reachable; a plan\'s key is its eligible set (#618 AC-4)', () => {
+        const plan = {
+            eligible: [{agentId: 'neo-opus-ada', displayName: 'Ada'}, {agentId: 'neo-gpt'}],
+            excluded: [{agentId: 'neo-gemini-pro', reason: 'not active — authoritative participation status \'operator_benched\''}]
+        };
+
+        expect(FleetStartPlan.renderFleetStopPlan(plan)).toEqual({detail: 'neo-gemini-pro: not active — authoritative participation status \'operator_benched\'', text: 'Stop fleet · 2 seats: Ada, neo-gpt · 1 excluded'});
+        expect(FleetStartPlan.renderFleetStopPlan({eligible: [{agentId: 'ada', displayName: 'Ada'}], excluded: []})).toEqual({detail: '', text: 'Stop fleet · 1 seat: Ada'});
+        expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'b'}, {agentId: 'a'}]})).toBe(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}, {agentId: 'b'}]}));
+        expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}]})).not.toBe(FleetStartPlan.stopPlanKey({eligible: []}))
+    });
 });

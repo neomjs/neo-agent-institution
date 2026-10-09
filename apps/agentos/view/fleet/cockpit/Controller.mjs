@@ -1,7 +1,6 @@
-import ReadingSurfacesController   from './ReadingSurfacesController.mjs';
+import FleetBatchController        from './FleetBatchController.mjs';
 import CockpitPerspectives         from '../../../util/CockpitPerspectives.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
-import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
 import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
 import OperatorInbox               from '../../../util/OperatorInbox.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
@@ -28,9 +27,9 @@ import TargetBinding               from '../../../util/TargetBinding.mjs';
  * unavailable fallback (never a fabricated success), and only the newest generation writes.
  *
  * @class AgentOS.view.fleet.cockpit.Controller
- * @extends AgentOS.view.fleet.cockpit.ReadingSurfacesController
+ * @extends AgentOS.view.fleet.cockpit.FleetBatchController
  */
-class Controller extends ReadingSurfacesController {
+class Controller extends FleetBatchController {
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.cockpit.Controller'
@@ -123,15 +122,6 @@ class Controller extends ReadingSurfacesController {
      * @protected
      */
     operatorIdentityPosture = null
-    /**
-     * The active fleet-start batch — repeated activations join it until its summary and one
-     * roster reconciliation settled.
-     * @member {Promise<Object>|null} startFleetPromise=null
-     * @protected
-     */
-    startFleetPromise = null
-    /** @member {Object|null} startFleetBatch=null Token fencing late summaries from older batches. */
-    startFleetBatch = null
     /**
      * Read-fence + in-flight accounting + owner-held snapshot for the tasks surface.
      * @member {Number} tasksReadGeneration=0
@@ -490,63 +480,7 @@ class Controller extends ReadingSurfacesController {
         }
     }
 
-    /* ── the fleet-start batch ── */
-
-    /**
-     * @summary Join the active one-click fleet-start batch, or create exactly one new batch.
-     * @returns {Promise<Object>} The one authoritative batch outcome summary.
-     */
-    onStartFleet() {
-        const me = this;
-
-        if (!me.startFleetPromise) {
-            me.startFleetPromise = me.executeStartFleetBatch().finally(() => {
-                me.startFleetPromise = null
-            })
-        }
-
-        return me.startFleetPromise
-    }
-
-    /**
-     * @summary Start eligible records and re-poll once after their initial answers. Current late
-     * answers update the batch summary; a newer batch retires that summary's writer.
-     * @returns {Promise<Object>} The outcome summary.
-     * @protected
-     */
-    async executeStartFleetBatch() {
-        const
-            me      = this,
-            records = me.getRosterRecords(),
-            plan    = FleetStartPlan.partitionFleetStart(records),
-            batch   = me.startFleetBatch = {},
-            profile = me.bridgeProfileId;
-
-        me.renderStartSummary(null);
-
-        const results = await Promise.all(plan.eligible.map(record =>
-            me.requestFleetLifecycle({action: 'start', agentId: record.agentId}, record)
-        ));
-
-        const summary = FleetStartPlan.summarizeFleetStart(plan, results);
-
-        if (!me.isDestroyed && me.startFleetBatch === batch && me.bridgeProfileId === profile) {
-            me.renderStartSummary(summary)
-        }
-
-        results.forEach((result, index) => {
-            result.settlement?.then(answer => {
-                if (me.startFleetBatch === batch && answer.isCurrent()) {
-                    results[index] = answer;
-                    me.renderStartSummary(FleetStartPlan.summarizeFleetStart(plan, results))
-                }
-            })
-        });
-
-        await me.refreshRosterOnSettle(Promise.resolve(true), () => results.some(FleetLifecycleIntentAdapter.rosterMayRead));
-
-        return summary
-    }
+    /* ── the fleet batches live on FleetBatchController; the roster truth they read stays here ── */
 
     /**
      * @summary The full roster truth for fleet-level actions: the grid store's records (a folded
@@ -558,27 +492,6 @@ class Controller extends ReadingSurfacesController {
         const store = this.getReference('fleet-grid')?.store;
 
         return store ? [...(store.items ?? [])] : this.getAgentCards().map(card => card.record).filter(Boolean)
-    }
-
-    /**
-     * @summary Write the fleet-start outcome into the chrome summary slot — counts as text,
-     * per-member reasons on the title; hidden again when cleared.
-     * @param {Object|null} summary
-     */
-    renderStartSummary(summary) {
-        const slot = this.getReference('fleet-start-summary');
-
-        if (!slot) return;
-
-        if (!summary) {
-            slot.set({hidden: true, text: ''});
-            return
-        }
-
-        const {detail, text} = FleetStartPlan.renderFleetStartSummary(summary);
-
-        slot.vdom.title = detail;
-        slot.set({hidden: false, text})
     }
 
     /**
