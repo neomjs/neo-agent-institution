@@ -3,12 +3,14 @@ import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapt
 import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
 
 /**
- * @summary The cockpit controller's fleet-batch layer: the one-click fleet start and the two-press
- * fleet stop, each N per-record honest round-trips through the C2 adapter — never one optimistic
- * fleet-wide spinner — planned by {@link AgentOS.util.FleetStartPlan} and summarized into the chrome's
- * summary slot with every reason reachable. The roster truth (`getRosterRecords`) and the lifecycle
- * request (`requestFleetLifecycle`) are the subclass's and the liveness layer's; this layer owns the
- * batches, their fencing token and the stop's armed state.
+ * @summary The cockpit controller's fleet-batch layer: the fleet button that reads the plan it would
+ * run (`Start fleet · n` · `Stop fleet · n` · the plain `Start fleet` with its reason), the one-click
+ * fleet start and the two-press fleet stop, each N per-record honest round-trips through the C2
+ * adapter — never one optimistic fleet-wide spinner — planned by {@link AgentOS.util.FleetStartPlan}
+ * and summarized into the chrome's summary slot with every reason reachable. The roster truth
+ * (`getRosterRecords`) and the lifecycle request (`requestFleetLifecycle`) are the subclass's and the
+ * liveness layer's; this layer owns the batches, their fencing token, the stop's armed window and the
+ * button's words, read on settled rosters only ({@link #onRosterSettled}).
  * @class AgentOS.view.fleet.cockpit.FleetBatchController
  * @extends AgentOS.view.fleet.cockpit.ReadingSurfacesController
  */
@@ -37,11 +39,108 @@ class FleetBatchController extends ReadingSurfacesController {
      */
     stopFleetArmed = null
     /**
+     * How long the first press stays armed: the bounded window after which the button reads its plan
+     * again with nothing sent — a slow operator is never punished, a changed fleet never stopped on a
+     * stale plan (#618, the design read's rule 3).
+     * @member {Number} stopFleetArmMs=10000
+     */
+    stopFleetArmMs = 10000
+    /**
+     * The armed window's timer, `null` while not armed.
+     * @member {Number|null} stopFleetArmTimer=null
+     * @protected
+     */
+    stopFleetArmTimer = null
+    /**
      * The active fleet-stop batch — repeated presses join it until its summary settled.
      * @member {Promise<Object>|null} stopFleetPromise=null
      * @protected
      */
     stopFleetPromise = null
+
+    /**
+     * @summary The fleet button's press, routed by the plan it shows: an armed stop's second press
+     * sends; a `Stop fleet · n` label arms the stop; any `Start fleet` label starts — the plain one
+     * too, whose press reports in the summary why nothing started.
+     * @returns {Object|Promise<Object>} The armed plan, or the batch outcome summary.
+     */
+    onFleetButton() {
+        const me = this;
+
+        if (me.stopFleetArmed) return me.onStopFleet();
+
+        return FleetStartPlan.describeFleetButton(me.getRosterRecords()).action === 'stop' ? me.onStopFleet() : me.onStartFleet()
+    }
+
+    /**
+     * @summary Write the fleet button's words. During a batch the last settled label stays and the
+     * button is disabled — a press mid-cascade is impossible, not ignored. While the stop is armed the
+     * chip reads `Stop fleet · press again`. Otherwise the plan's own label, the icon following the
+     * verb, and a plain label's reason on the title. Read it on settled rosters only.
+     * @protected
+     */
+    renderFleetButton() {
+        const
+            me     = this,
+            button = me.getReference('fleet-button');
+
+        if (!button) return;
+
+        if (me.startFleetPromise || me.stopFleetPromise) {
+            button.disabled = true;
+            return
+        }
+
+        const label = me.stopFleetArmed
+            ? {action: 'stop', text: 'Stop fleet · press again', title: null}
+            : FleetStartPlan.describeFleetButton(me.getRosterRecords());
+
+        if (label.title) {
+            button.vdom.title = label.title
+        } else {
+            delete button.vdom.title
+        }
+
+        button.set({
+            disabled: false,
+            iconCls : label.action === 'stop' ? 'fa-solid fa-stop' : 'fa-solid fa-play',
+            text    : label.text
+        });
+        button.update()
+    }
+
+    /**
+     * @summary The roster settled — the liveness layer's one admit path. An armed stop whose plan the
+     * fresh roster no longer matches is taken back, nothing sent; then the button reads its plan.
+     * @protected
+     */
+    onRosterSettled() {
+        const me = this;
+
+        if (me.stopFleetArmed && FleetStartPlan.stopPlanKey(FleetStartPlan.partitionFleetStop(me.getRosterRecords())) !== FleetStartPlan.stopPlanKey(me.stopFleetArmed)) {
+            me.disarmStopFleet()
+        }
+
+        me.renderFleetButton()
+    }
+
+    /**
+     * @summary Take the first press back: the armed plan and its window go, the summary slot clears,
+     * the button reads its plan again.
+     * @protected
+     */
+    disarmStopFleet() {
+        const me = this;
+
+        clearTimeout(me.stopFleetArmTimer);
+        me.stopFleetArmTimer = null;
+
+        if (!me.stopFleetArmed || me.isDestroyed) return;
+
+        me.stopFleetArmed = null;
+        me.renderSummarySlot(null);
+        me.renderFleetButton()
+    }
 
     /**
      * @summary Join the active one-click fleet-start batch, or create exactly one new batch. A start
@@ -51,12 +150,14 @@ class FleetBatchController extends ReadingSurfacesController {
     onStartFleet() {
         const me = this;
 
-        me.stopFleetArmed = null;
+        me.disarmStopFleet();
 
         if (!me.startFleetPromise) {
             me.startFleetPromise = me.executeStartFleetBatch().finally(() => {
-                me.startFleetPromise = null
-            })
+                me.startFleetPromise = null;
+                me.renderFleetButton()
+            });
+            me.renderFleetButton()
         }
 
         return me.startFleetPromise
@@ -104,9 +205,10 @@ class FleetBatchController extends ReadingSurfacesController {
 
     /**
      * @summary The fleet-wide stop is a two-press (#618). The first press arms it: the summary slot
-     * shows the plan — the up, eligible fleet it would stop and every exclusion with its reason — and
-     * nothing is sent; the second press, while armed, sends one stop intent per planned seat through
-     * the card's own verb and the summary reads `N stopped · M excluded`. A fleet start takes the
+     * shows the plan — the up, eligible fleet by name and every exclusion with its reason — the chip
+     * becomes the second press, and nothing is sent; the second press, inside the armed window, sends
+     * one stop intent per planned seat through the card's own verb and the summary reads
+     * `N stopped · M excluded`. A roster whose plan differs, the window's end or a fleet start take the
      * first press back; a press during a running stop batch joins it.
      * @returns {Object|Promise<Object>} The plan on the first press, the batch summary on the second.
      */
@@ -118,18 +220,24 @@ class FleetBatchController extends ReadingSurfacesController {
         if (!me.stopFleetArmed) {
             const plan = FleetStartPlan.partitionFleetStop(me.getRosterRecords());
 
-            me.stopFleetArmed = plan;
-            me.renderStartSummary({...FleetStartPlan.summarizeFleetStart(plan, []), rejected: [], started: plan.eligible.length}, 'to stop — press Stop fleet again to send');
+            me.stopFleetArmed    = plan;
+            me.stopFleetArmTimer = setTimeout(() => me.disarmStopFleet(), me.stopFleetArmMs);
+            me.renderSummarySlot(FleetStartPlan.renderFleetStopPlan(plan));
+            me.renderFleetButton();
 
             return plan
         }
 
         const plan = me.stopFleetArmed;
 
-        me.stopFleetArmed   = null;
-        me.stopFleetPromise = me.executeStopFleetBatch(plan).finally(() => {
-            me.stopFleetPromise = null
+        clearTimeout(me.stopFleetArmTimer);
+        me.stopFleetArmTimer = null;
+        me.stopFleetArmed    = null;
+        me.stopFleetPromise  = me.executeStopFleetBatch(plan).finally(() => {
+            me.stopFleetPromise = null;
+            me.renderFleetButton()
         });
+        me.renderFleetButton();
 
         return me.stopFleetPromise
     }
@@ -175,25 +283,43 @@ class FleetBatchController extends ReadingSurfacesController {
     }
 
     /**
-     * @summary Write a fleet batch's outcome (or a stop's armed plan) into the chrome summary slot —
-     * counts as text, per-member reasons on the title; hidden again when cleared.
+     * @summary Write a fleet batch's outcome into the chrome summary slot — counts as text, per-member
+     * reasons on the title; hidden again when cleared.
      * @param {Object|null} summary
-     * @param {String} [verb='started'] The direction's word: `started`, `stopped`, or the armed plan's instruction
+     * @param {String} [verb='started'] The direction's word: `started` or `stopped`
      */
     renderStartSummary(summary, verb = 'started') {
+        this.renderSummarySlot(summary && FleetStartPlan.renderFleetStartSummary(summary, verb))
+    }
+
+    /**
+     * @summary Write one line into the chrome summary slot — its text as the element's text, the
+     * per-member reasons on its title — or hide the slot again. The batch outcomes and the armed stop's
+     * plan share it.
+     * @param {{text: String, detail: String}|null} line
+     * @protected
+     */
+    renderSummarySlot(line) {
         const slot = this.getReference('fleet-start-summary');
 
         if (!slot) return;
 
-        if (!summary) {
+        if (!line) {
             slot.set({hidden: true, text: ''});
             return
         }
 
-        const {detail, text} = FleetStartPlan.renderFleetStartSummary(summary, verb);
+        slot.vdom.title = line.detail;
+        slot.set({hidden: false, text: line.text})
+    }
 
-        slot.vdom.title = detail;
-        slot.set({hidden: false, text})
+    /**
+     * @summary The armed window dies with the controller.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        clearTimeout(this.stopFleetArmTimer);
+        super.destroy(...args)
     }
 }
 

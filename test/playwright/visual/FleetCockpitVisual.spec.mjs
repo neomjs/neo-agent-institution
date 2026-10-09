@@ -2221,4 +2221,53 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await expect(form, `Add agent, memory ${state}`).toHaveScreenshot(golden)
         }
     });
+
+    test('the fleet button reads the plan it would run (#618): the plain verb with its reason on the title, Start fleet · 4 with the summary empty, Stop fleet · 8, and Stop fleet · press again with the plan where the summaries live', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        const
+            bar     = page.locator('.fm-cockpit-bar'),
+            button  = bar.locator('.fm-fleet-start'),
+            summary = bar.locator('.fm-fleet-start-summary'),
+            wired   = {
+                roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
+                repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
+                runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
+            },
+            // the sample roster with lifecycle evidence: `state` picks each ACTIVE seat's session state in order
+            live    = state => {
+                let active = 0;
+
+                return sampleRoster.map(row => ({...row, sources: wired, state: row.participationStatus === 'active' ? state(active++) : 'off'}))
+            },
+            settle  = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
+
+        // the static sample roster carries no lifecycle evidence: the plain verb, the reason on the title
+        await expect(button).toHaveText('Start fleet');
+        await expect(button).toHaveAttribute('title', /not wired/);
+
+        // four of the eight active seats down: the plan is a start of four, the summary line empty
+        await landFleetRoster(page, live(index => index % 2 ? 'off' : 'ok'));
+        await expect(button).toHaveText('Start fleet · 4');
+        await expect(button).not.toHaveAttribute('title', /./);
+        await expect(summary).toBeHidden();
+        await settle();
+        await expect(button).toHaveScreenshot('fleet-button-start-4.png');
+
+        // every active seat up: the plan is a stop of eight
+        await landFleetRoster(page, live(() => 'ok'));
+        await expect(button).toHaveText('Stop fleet · 8');
+        await settle();
+        await expect(button).toHaveScreenshot('fleet-button-stop-8.png');
+
+        // the first press: the plan where the summaries live (the names in the grid's own order), the
+        // chip the second press, nothing sent
+        await button.click();
+        await expect(button).toHaveText('Stop fleet · press again');
+        await expect(summary).toHaveText('Stop fleet · 8 seats: Ada, Clio, Emmy, Eos, Euclid, Grace, Mnemosyne, Vega · 3 excluded');
+        await expect(summary).toHaveAttribute('title', /operator_benched/);
+        await settle();
+        await expect(button).toHaveScreenshot('fleet-button-stop-armed.png');
+        await expect(summary).toHaveScreenshot('fleet-button-stop-plan.png')
+    });
 });

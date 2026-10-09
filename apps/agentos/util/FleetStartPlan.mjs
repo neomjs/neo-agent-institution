@@ -242,6 +242,39 @@ class FleetStartPlan extends Base {
     }
 
     /**
+     * @summary The armed stop's plan as the chrome line the first press renders where the batch
+     * summaries live (#618): `Stop fleet · 8 seats: Ada, Grace, … · 4 excluded` — the eligible seats
+     * by display name in roster order, the exclusions counted in the text and worded one per line in
+     * `detail` (the summary element's title), the same reach as a batch outcome. Nothing in it is
+     * sent: it is the question the second press answers.
+     * @param {{eligible: Object[], excluded: Object[]}} plan From {@link partitionFleetStop}.
+     * @returns {{text: String, detail: String}}
+     */
+    static renderFleetStopPlan(plan) {
+        const
+            names = plan.eligible.map(record => record.displayName ?? record.agentId),
+            parts = [`Stop fleet · ${names.length} seat${names.length === 1 ? '' : 's'}: ${names.join(', ')}`];
+
+        plan.excluded.length && parts.push(`${plan.excluded.length} excluded`);
+
+        return {
+            detail: plan.excluded.map(({agentId, reason}) => `${agentId ?? '(guest)'}: ${reason}`).join('\n'),
+            text  : parts.join(' · ')
+        }
+    }
+
+    /**
+     * @summary A stop plan's identity: its eligible seats, order-free. A settled roster whose key
+     * differs from the armed plan's takes the first press back — the fleet it would stop is no
+     * longer the one shown.
+     * @param {{eligible: Object[]}} plan
+     * @returns {String}
+     */
+    static stopPlanKey(plan) {
+        return plan.eligible.map(record => record.agentId).sort().join(' ')
+    }
+
+    /**
      * @summary Render the summary as the compact chrome line + the reachable per-member reasons.
      * Pure string building: `text` is the at-a-glance state
      * ("3 started · 1 UNKNOWN · 1 rejected · 2 excluded"); `detail` lists every

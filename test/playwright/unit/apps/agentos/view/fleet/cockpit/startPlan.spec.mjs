@@ -306,4 +306,16 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(FleetStartPlan.renderFleetStartSummary(summary, 'stopped')).toEqual({text: '1 stopped · 1 rejected · 1 excluded', detail: 'grace: the seat refused\nvega: already down — session state \'off\''});
         expect(FleetStartPlan.renderFleetStartSummary(summary).text, 'the default verb is unchanged').toBe('1 started · 1 rejected · 1 excluded')
     });
+
+    test('the armed stop renders where the summaries live: the eligible seats by name in roster order, the exclusions counted and reachable; a plan\'s key is its eligible set (#618 AC-4)', () => {
+        const plan = {
+            eligible: [{agentId: 'neo-opus-ada', displayName: 'Ada'}, {agentId: 'neo-gpt'}],
+            excluded: [{agentId: 'neo-gemini-pro', reason: 'not active — authoritative participation status \'operator_benched\''}]
+        };
+
+        expect(FleetStartPlan.renderFleetStopPlan(plan)).toEqual({detail: 'neo-gemini-pro: not active — authoritative participation status \'operator_benched\'', text: 'Stop fleet · 2 seats: Ada, neo-gpt · 1 excluded'});
+        expect(FleetStartPlan.renderFleetStopPlan({eligible: [{agentId: 'ada', displayName: 'Ada'}], excluded: []})).toEqual({detail: '', text: 'Stop fleet · 1 seat: Ada'});
+        expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'b'}, {agentId: 'a'}]})).toBe(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}, {agentId: 'b'}]}));
+        expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}]})).not.toBe(FleetStartPlan.stopPlanKey({eligible: []}))
+    });
 });

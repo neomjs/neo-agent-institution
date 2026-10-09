@@ -29,6 +29,13 @@ import {wiredSources} from './cockpitFakes.mjs';
  * card's own lifecycle intent resolves the firing card before it drives the adapter. Prototype-call
  * harness on the REAL controller; the adapter and the bridge are the collaborators the arms fake.
  */
+/**
+ * @summary The toolbar's fleet button as the controller writes it: configs land on the fake, the
+ * title on its `vdom` like the real Button's root node.
+ * @returns {Object}
+ */
+const fakeButton = () => ({disabled: false, vdom: {}, set(values) { Object.assign(this, values) }, update() {}});
+
 test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
     let FleetCockpit, FleetCockpitController;
 
@@ -92,15 +99,17 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         controller.getReference          = name => name === 'fleet-grid' ? {store: {items: records}} : null;
         controller.refreshRosterOnSettle = settledOk => settledOk;
         controller.renderStartSummary    = (summary, verb) => summaries.push({summary, verb});
+        controller.renderSummarySlot     = line => lines.push(line);
+
+        const lines = [];
 
         try {
-            // the first press: the plan in the summary slot, nothing sent
+            // the first press: the plan where the summaries live, nothing sent
             const plan = controller.onStopFleet();
 
             expect(plan.eligible.map(record => record.agentId)).toEqual(['ada', 'euclid']);
             expect(calls).toEqual([]);
-            expect(summaries.at(-1).verb).toContain('press');
-            expect(summaries.at(-1).summary).toMatchObject({started: 2, excluded: [{agentId: 'vega', reason: expect.stringContaining('already down')}]});
+            expect(lines.at(-1)).toEqual({text: 'Stop fleet · 2 seats: ada, euclid · 1 excluded', detail: expect.stringContaining('vega: already down')});
             expect(controller.stopFleetArmed).toBe(plan);
 
             // the second press: one stop intent per planned seat, the summary in the stop direction
@@ -118,6 +127,112 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             expect(controller.stopFleetArmed).not.toBeNull();
             await controller.onStartFleet();
             expect(controller.stopFleetArmed).toBeNull()
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('the fleet button reads its plan on settled rosters only: the last words and a disabled button during a batch, the settled plan after it; a plain label carries its reason on the title (#618 AC-1, AC-2)', async () => {
+        const
+            releases   = [],
+            records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'off', set(values) { Object.assign(this, values) }})),
+            button     = fakeButton(),
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                startAgent: () => new Promise(resolve => releases.push(() => resolve({state: 'ok'})))
+            }
+        };
+
+        controller.getReference          = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button})[name] ?? null;
+        controller.renderStartSummary    = () => {};
+        // the settle re-poll: registry truth replaces the round-trip residue and the roster settles
+        // while the batch is still in flight — the button keeps its words and stays disabled
+        controller.refreshRosterOnSettle = async () => {
+            records.forEach(record => record.set({controlReason: null, pendingAction: null, state: 'ok'}));
+            controller.onRosterSettled();
+            expect(button).toMatchObject({disabled: true, text: 'Start fleet · 2'})
+        };
+
+        try {
+            controller.onRosterSettled();
+            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-play', text: 'Start fleet · 2'});
+            expect(button.vdom.title).toBeUndefined();
+
+            // in flight: the last settled words stay and the button is disabled (the adapter reaches
+            // the bridge after its own awaits — a tick lets both round-trips open before they are released)
+            const batch = controller.onFleetButton();
+
+            expect(button).toMatchObject({disabled: true, text: 'Start fleet · 2'});
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(releases).toHaveLength(2);
+            expect(button).toMatchObject({disabled: true, text: 'Start fleet · 2'});
+
+            releases.forEach(release => release());
+            await batch;
+
+            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · 2'});
+
+            // the plain label: every row unwired — the reason rides the title, no count
+            records.forEach(record => record.set({sources: {}}));
+            controller.onRosterSettled();
+            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-play', text: 'Start fleet'});
+            expect(button.vdom.title).toContain('wired')
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('the first press arms for a bounded window: a settled roster whose plan differs takes it back, a matching one keeps it, the window\'s end takes it back — nothing sent until the second press (#618 AC-3, AC-4)', async () => {
+        const
+            calls      = [],
+            lines      = [],
+            records    = ['ada', 'euclid'].map(agentId => ({agentId, displayName: agentId[0].toUpperCase() + agentId.slice(1), controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
+            button     = fakeButton(),
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {stopAgent: agentId => (calls.push(agentId), Promise.resolve({state: 'off'}))}};
+
+        controller.getReference          = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button})[name] ?? null;
+        controller.refreshRosterOnSettle = settledOk => settledOk;
+        controller.renderStartSummary    = () => {};
+        controller.renderSummarySlot     = line => lines.push(line);
+        controller.stopFleetArmMs        = 20;
+
+        try {
+            controller.onRosterSettled();
+            expect(button.text).toBe('Stop fleet · 2');
+
+            // the first press: the plan where the summaries live, the chip the second press, nothing sent
+            controller.onFleetButton();
+            expect(calls).toEqual([]);
+            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · press again'});
+            expect(lines.at(-1)).toEqual({detail: '', text: 'Stop fleet · 2 seats: Ada, Euclid'});
+
+            // a settled roster whose plan matches keeps the arm; one whose plan differs takes it back
+            controller.onRosterSettled();
+            expect(controller.stopFleetArmed).not.toBeNull();
+            records[1].set({state: 'off'});
+            controller.onRosterSettled();
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(lines.at(-1)).toBeNull();
+            expect(button.text).toBe('Start fleet · 1');
+
+            // armed again with both up: the window's end takes it back, the button reads its plan
+            records[1].set({state: 'ok'});
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            expect(controller.stopFleetArmed).not.toBeNull();
+            await new Promise(resolve => setTimeout(resolve, 60));
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(button.text).toBe('Stop fleet · 2');
+            expect(calls).toEqual([]);
+
+            // the second press inside the window sends one stop intent per planned seat
+            controller.onFleetButton();
+            await controller.onFleetButton();
+            expect(calls).toEqual(['ada', 'euclid'])
         } finally {
             delete globalThis.AgentOS?.fleet
         }

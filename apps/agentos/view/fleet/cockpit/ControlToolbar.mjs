@@ -142,11 +142,16 @@ class ControlToolbar extends Toolbar {
             reference: 'detail-recall-chrome',
             text     : 'Reattach detail'
         }, {
-            module : Button,
-            cls    : ['fm-fleet-start'],
-            handler: 'onStartFleet',
-            iconCls: 'fa-solid fa-play',
-            text   : 'Start fleet'
+            // the fleet button reads the plan it would run (#618): `Start fleet · n`, `Stop fleet · n`
+            // or the plain verb with its reason on the title — the controller writes it on settled
+            // rosters and routes the press by that plan. The class keeps the chip's name in the
+            // stylesheet and the journeys.
+            module   : Button,
+            cls      : ['fm-fleet-start'],
+            handler  : 'onFleetButton',
+            iconCls  : 'fa-solid fa-play',
+            reference: 'fleet-button',
+            text     : 'Start fleet'
         }]
     }
 }
