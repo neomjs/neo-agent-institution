@@ -274,6 +274,17 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         expect(card.getReference('repos-heading').text).toBe('Repositories · declared · this start');
         expect(vdom(card)).toContain('"text":"Installing","title":"This start"');
 
+        // the retry settles with every checkout installed and its launch refused: the old clone failure stays on the
+        // record, and the install speaks over it
+        roster.get('ada').set({dependencyOutcomes: [
+            {repoSlug: working.repoSlug, state: 'installed'},
+            {repoSlug: brain.repoSlug,   state: 'installed'},
+            {repoSlug: skills.repoSlug,  state: 'installed'}
+        ]});
+        expect(outcomes().map(({state}) => state)).toEqual(['prepared', 'prepared', 'prepared']);
+        expect(card.getReference('repos-heading').text).toBe('Repositories · declared · last start');
+        expect(vdom(card)).not.toContain(reason);
+
         // no preparation step reads as itself, never as prepared
         roster.get('ada').set({dependencyOutcomes: [{repoSlug: working.repoSlug, state: 'not-applicable'}]});
         expect(outcomes()[0]).toEqual({repoSlug: 'neomjs/neo', state: 'not-applicable', reason: null});

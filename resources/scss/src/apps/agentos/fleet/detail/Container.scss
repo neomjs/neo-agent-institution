@@ -193,7 +193,8 @@
     .fm-detail-pane-repo {
         position: relative;
 
-        .fm-detail-pane-body {
+        .fm-detail-pane-body,
+        .fm-detail-repo-facts {
             display: grid;
             gap    : 2px;
         }
@@ -226,50 +227,36 @@
         }
     }
 
-    /* each checkout's preparation at the latest start: a quiet head naming which start, then one row
-       per checkout, its slug in the mono voice eliding at rail widths beside its whole word, and the
-       reason whole beneath it. Prepared takes the ok ink and a failure the alert ink, as on the
-       Repositories card; every other word keeps the pane's own */
+    /* each checkout's preparation at the latest start: a quiet head naming which start, then the
+       Repositories card's rows, read-only. Here they keep the pane's voice: detail on the row, micro on
+       the reason, the pane's 2px rhythm, and no pointer or hover ink, since a row does nothing */
     .fm-detail-repo-prep-head {
         font       : var(--fm-text-micro);
         padding-top: var(--fm-space-1);
     }
 
-    .fm-detail-repo-prep {
-        display  : flex;
-        gap      : var(--fm-space-2);
-        min-width: 0;
+    .fm-detail-pane-repo .fm-repository-list.neo-list {
+        --list-container-list-color: var(--fm-ink-dim);
 
-        &.is-prepared .fm-detail-repo-prep-state {
-            color: var(--fm-state-ok);
+        .neo-list-item {
+            color  : inherit;
+            cursor : default;
+            font   : var(--fm-text-detail);
+            gap    : 0 var(--fm-space-2);
+            padding: 1px 0;
         }
 
-        &.is-failed .fm-detail-repo-prep-state {
-            color      : var(--fm-kind-alert);
-            font-weight: 600;
+        .fm-repo-slug,
+        .fm-repo-outcome {
+            font: inherit;
         }
-    }
 
-    .fm-detail-repo-prep-slug {
-        flex         : 1;
-        font-family  : var(--fm-font-mono);
-        min-width    : 0;
-        overflow     : hidden;
-        text-overflow: ellipsis;
-        white-space  : nowrap;
-    }
+        .fm-repo-slug {
+            font-family: var(--fm-font-mono);
+        }
 
-    .fm-detail-repo-prep-state {
-        flex: none;
-    }
-
-    .fm-detail-repo-prep-reason {
-        font         : var(--fm-text-micro);
-        min-width    : 0;
-        overflow-wrap: anywhere;
-
-        &.is-failed {
-            color: var(--fm-kind-alert);
+        .fm-repo-reason {
+            font: var(--fm-text-micro);
         }
     }
 

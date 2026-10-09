@@ -5,9 +5,10 @@ import SeatDependencies from '../../../util/SeatDependencies.mjs';
  * @class AgentOS.view.fleet.detail.RepositoryList
  * @extends Neo.list.Base
  *
- * @summary The rows of the Accounts Repositories card, one per {@link AgentOS.model.SeatRepository}:
- * the slug, the last start's outcome in {@link AgentOS.util.SeatDependencies}'s words, then either the
- * working repository's tag or a Remove button.
+ * @summary A seat's repository rows, one per {@link AgentOS.model.SeatRepository}: the slug, the last
+ * start's outcome in {@link AgentOS.util.SeatDependencies}'s words, and on the Accounts Repositories card
+ * either the working repository's tag or a Remove button. Agent Detail's Repository pane reads the same rows
+ * without the edit (`editable: false`).
  * The rows are affordances, not a selection. A Remove click fires `removeRepository` with the row's slug, and
  * the card turns it into the seat's new list; the list itself never changes a record.
  */
@@ -30,7 +31,13 @@ class RepositoryList extends BaseList {
         /**
          * @member {Boolean} disableSelection=true
          */
-        disableSelection: true
+        disableSelection: true,
+        /**
+         * Whether each row carries its edit: the working repository's tag or a Remove button. A surface that
+         * only reads the outcomes sets it to `false`.
+         * @member {Boolean} editable=true
+         */
+        editable: true
     }
 
     /**
@@ -48,10 +55,9 @@ class RepositoryList extends BaseList {
     }
 
     /**
-     * @summary The slug, the last start's outcome, then the working repository's tag or a Remove
-     * button, and the outcome's reason whole on its own line. The working repository is set when the
-     * agent is added, so this card offers no way to drop it. An outcome this card does not know
-     * shows nothing.
+     * @summary The slug, the last start's outcome, then on an editable list the working repository's tag or a
+     * Remove button, and the outcome's reason whole on its own line. The working repository is set when the
+     * agent is added, so the card offers no way to drop it. An outcome this list does not know shows nothing.
      * @param {Object} record An {@link AgentOS.model.SeatRepository} record.
      * @returns {Object[]} vdom child nodes
      */
@@ -61,7 +67,7 @@ class RepositoryList extends BaseList {
         return [
             {cls: ['fm-repo-slug'], text: record.repoSlug, title: record.cloneUrl},
             outcome && {cls: ['fm-repo-outcome', `is-${record.state}`], text: outcome, title: record.state === 'installing' ? 'This start' : 'At the last start'},
-            record.working
+            this.editable && (record.working
                 ? {cls: ['fm-repo-working'], text: 'Working'}
                 : {
                     tag         : 'button',
@@ -69,7 +75,7 @@ class RepositoryList extends BaseList {
                     cls         : ['fm-repo-remove'],
                     'aria-label': `Remove ${record.repoSlug}`,
                     text        : 'Remove'
-                },
+                }),
             outcome && record.reason && {cls: ['fm-repo-reason', `is-${record.state}`], text: record.reason}
         ].filter(Boolean)
     }
