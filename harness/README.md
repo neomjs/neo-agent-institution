@@ -39,11 +39,12 @@ than treating broad disk access as an installation prerequisite. See Apple's
 After launch, check the agent's window and the capability you need. A **working** roster entry
 proves neither that a model turn ran nor that every tool is ready. If the chat is blank and waiting,
 send its first prompt. If necessary access remains blocked, review the matching permission above;
-after changing it, follow any macOS relaunch request and retry the affected feature. **Quitting
-Neo Harness currently also stops the peer harnesses it launched**, including when quitting for a
-permission change or app update. Checkpoint those peers first; reopening FM does not itself prove
-that their sessions resumed. Closing the cockpit window only hides it and keeps the tray running.
-Retain each peer's existing profile and login when using Fleet's Stop/Restart controls.
+after changing it, follow any macOS relaunch request and retry the affected feature. **Provisioned
+desktop app harnesses run detached and survive an FM quit or restart.** Fleet re-adopts their
+matching process leases when it returns. Stopping or restarting a seat is a separate, explicit
+Fleet action; retain its existing profile and login. This desktop survival contract does not
+describe CLI harnesses whose launcher holds their stdio pipes. Closing the cockpit window only
+hides it and keeps the tray running.
 
 If the cause is unclear or the entry is missing, retain the notification text, macOS version and
 app build receipt for diagnosis; do not infer the denied operation from the launcher name alone.
@@ -71,12 +72,18 @@ had 17 registered copies on one machine). `--dry-run` prints the plan and change
 installed bundle; `--artifact <bundle.app>` names a bundle explicitly. Equal receipts end the run
 with nothing replaced.
 
-A running Neo Harness is a refusal: `--quit` is the only way the leg stops it, through the app's
-own quit addressed to the canonical bundle by path (an identifier-addressed quit would pick one
-of the registered copies and launch it if it was not running), and **quitting also stops the peer
-harnesses it launched** — checkpoint those seats first. Closing the cockpit window only hides it. A Neo Harness running from any bundle other than
-the canonical one — a renamed previous copy, a dist copy — is refused by path, with or without
-`--quit`; the census reads every process inside a bundle named `Neo Harness….app`.
+The installer's census includes every process executing from a `Neo Harness….app` bundle.
+`--quit` asks the canonical FM app to quit by path (an identifier-addressed quit could pick another
+registered copy); it does not stop detached desktop harnesses. A process using a different bundle
+path is refused with or without `--quit`.
+
+An ordinary FM restart is different from replacing its bundle. Some local MCP launchers and
+servers currently use the bundle's executable and scripts, even when their service connection is
+to an external Agent OS. Repositories and profiles outside FM do not remove that file dependency.
+If those processes remain alive after FM quits, the installer refuses before replacement. Treat
+that as the current bundle-use limitation, not a request to change detached harness lifetime or
+bypass the guard. Any separately planned seat shutdown requires a checkpoint and an explicit
+Stop or harness quit; `--open` only reopens FM and does not prove a stopped seat resumed.
 
 The leg never writes the application's userData (`~/Library/Application Support/neo-harness/`:
 the saved plane record, the `brain/fleet/` custody files, encrypted credentials). Its only reads
@@ -191,7 +198,7 @@ declaration is resolved through the config SSOT before host liveness can select 
   check): the harness starts only the missing Fleet transport and stops exactly what IT started.
 - **own** — no plane is declared and no host orchestrator is live (the true fresh-machine /
   packaged-app shape): the harness starts the whole organism on the default canonical-layout paths,
-  and quitting tears the full tree down.
+  and quitting tears that supervised Agent OS tree down, not the detached desktop seats.
 
 This order is the safety property. The orchestrator performs single-instance TAKEOVER and its
 supervisor REAPS foreign listeners on singleton ports; temporary plane unavailability must never
