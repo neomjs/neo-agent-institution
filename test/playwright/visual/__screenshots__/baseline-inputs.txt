@@ -453,7 +453,7 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    91f5177f94db0ad28a94320a138cf8b140326612
+    0dc8168ce56b8919c8c396755da791438410a760
 
 apps/agentos/view/fleet/mailbox/DetailContainer.mjs
     7cb0fd434d049f5baed1c2d0717aad6ec42bd71e
