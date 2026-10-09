@@ -966,10 +966,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     fe3cf7191c0a0feeac96116e07c4bb47ac06ad93
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-widened-light.png
-    73903e48318340a0aeca358c8f5336a662f509ff
+    1e68c0fe907cc906347008d8f8722b83cef40b8a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-widened.png
-    33defe77dece8498ff3b667d23bec06cb3656cda
+    c14ddfb44a29742d51a745a03de8df2c2cca0742
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-withheld-light.png
     45ea6b9a32e3271dace468419239c924ac7cae2a
