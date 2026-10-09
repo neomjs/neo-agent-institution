@@ -651,22 +651,13 @@ class MailboxPane extends Container {
         // other list's rows until the first window of its own lands.
         const fingerprint = rows ? JSON.stringify([me.view, source.page?.offset ?? 0, source.rows]) : null;
 
-        // the body leaves the layout with its rows, so a state line keeps the room it had alone
-        let shown = rows && me.store.getCount() > 0;
-
         if (fingerprint !== me.projectedFingerprint) {
             const
                 extend    = rows && source.page?.offset > 0 && me.projectedView === me.view,
                 // a thread never hides an open question: the open view lists each one on its own row
-                projected = rows ? source.rows.map(row => me.view === 'open' ? {...row, partOfThread: null, threadCollapsed: false} : {...row, threadCollapsed: true}) : [],
-                bags      = extend ? rowsGrid.extractBags().concat(projected) : projected;
+                projected = rows ? source.rows.map(row => me.view === 'open' ? {...row, partOfThread: null, threadCollapsed: false} : {...row, threadCollapsed: true}) : [];
 
-            // the grid takes its room before its rows land, so it renders them into its own box
-            shown = rows && bags.length > 0;
-            me.getReference('mailbox-body').hidden = !shown;
-            rowsGrid.hidden = !shown;
-
-            rowsGrid.applyBags(bags);
+            rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected);
             me.projectedFingerprint = fingerprint;
             me.projectedView        = rows ? me.view : null;
             me.emptyWindows         = rows && !projected.length ? me.emptyWindows + 1 : 0
@@ -685,11 +676,14 @@ class MailboxPane extends Container {
         // a count the grid shows none of says so, never "nothing waits"; where the pane's own asks stopped short of the
         // read's end, the line says what the read showed and `read on` continues from the served cursor
         const
+            shown   = rows && me.store.getCount() > 0,
             stopped = me.view === 'open' && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null,
             line    = stopped ? (shown ? 'more' : 'stopped') : shown ? null : !rows ? state : me.pendingOffset === null ? 'unshown' : 'unobserved';
 
         stateCmp.set({cls: ['fm-mailbox-state', `is-${line ?? state}`], hidden: !line, text: line ? me.getStateText(line) : ''});
         me.getReference('mailbox-read-on').hidden = !stopped;
+
+        // the body leaves the layout with its rows, so a state line keeps the room it had alone
         me.getReference('mailbox-body').hidden = !shown;
         rowsGrid.hidden = !shown;
 
