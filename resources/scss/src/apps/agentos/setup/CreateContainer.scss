@@ -1,6 +1,10 @@
-/* The Create door: the three questions as a row each (a key column, then the answer), the preset
-   question as three choice cards, the quiet confirmation as one line in the body role. The served
-   path (no vessel) shows the CLI's command in the mono detail role over a field for its JSON. */
+/* The Create door: three question blocks in one column, every line of a block on one left edge —
+   the title, one sentence, the control row, the help under the control — with a 4 px rhythm inside
+   a block and 16 px between blocks. One block is open; an answered one reads as its one line with a
+   Change link; a next one shows its title and sentence in the dim ink and nothing else. The recipe's
+   ledger and the preset choices are folds. The served path (no vessel) shows the CLI's command in
+   the mono detail role over a field for its JSON. Column widths never come from a stylesheet `flex`
+   on a layout child: the engine writes `flex` inline on every one of them. */
 .fm-setup-create {
     /* the bounded door scrolls: a fade at its foot says the rows continue */
     &::after {
@@ -15,48 +19,98 @@
         pointer-events: none;
     }
 
-    .fm-setup-placement {
-        gap: 2px;
+    .fm-setup-asks {
+        gap    : var(--fm-space-4);
+        padding: var(--fm-space-3) var(--fm-space-3) 0;
     }
 
-    .fm-setup-placement-line {
-        font : var(--fm-text-detail);
-        color: var(--fm-ink-dim);
+    .fm-setup-ask {
+        gap: var(--fm-space-1);
     }
 
-    .fm-setup-q {
-        gap        : var(--fm-space-2);
-        padding    : var(--fm-space-2) var(--fm-space-3) 0;
-        align-items: start;
+    .fm-setup-ask-title {
+        font       : var(--fm-text-body);
+        font-weight: 600;
+        color      : var(--fm-ink);
     }
 
-    .fm-setup-q-key {
-        flex       : 0 0 140px;
-        padding-top: 3px;
-        font       : var(--fm-text-detail);
+    .fm-setup-ask-line {
+        max-width: 64ch;
+        font     : var(--fm-text-body);
+        color    : var(--fm-ink);
+    }
+
+    .fm-setup-ask-help {
+        max-width: 64ch;
+        font     : var(--fm-text-detail);
+        color    : var(--fm-ink-dim);
+    }
+
+    .fm-setup-ask-controls {
+        gap       : var(--fm-space-2);
+        flex-wrap : wrap;
+        margin-top: var(--fm-space-1);
+    }
+
+    /* a next block: its title and sentence, dim; no control, no help, no choices */
+    .fm-setup-ask.is-next {
+        .fm-setup-ask-title,
+        .fm-setup-ask-line {
+            color: var(--fm-ink-dim);
+        }
+
+        .fm-setup-ask-controls,
+        .fm-setup-ask-help,
+        .fm-setup-presets {
+            display: none;
+        }
+    }
+
+    /* an answered block: its one line and the Change link */
+    .fm-setup-ask.is-answered {
+        .fm-setup-ask-help,
+        .fm-setup-presets,
+        .fm-setup-ask-controls .neo-button:not(.fm-setup-change) {
+            display: none;
+        }
+    }
+
+    /* the quiet links: Change, Other choices, Details — text, underlined, on the detail role */
+    .neo-button.fm-setup-link {
+        --button-height   : 20px;
+        --button-min-width: 0;
+        --button-padding  : 0;
+
+        border     : 0;
+        background : transparent;
         color      : var(--fm-ink-dim);
+        font-weight: 500;
+
+        &:hover {
+            background: transparent;
+            color     : var(--fm-ink);
+        }
+
+        .neo-button-glyph,
+        .neo-button-text {
+            color: inherit;
+        }
     }
 
-    .fm-setup-budget,
-    .fm-setup-q-note {
-        font : var(--fm-text-detail);
-        color: var(--fm-ink);
+    .neo-button.fm-setup-details-toggle {
+        align-self: start;
+        margin    : var(--fm-space-3) var(--fm-space-3) 0;
     }
 
-    .fm-setup-q-note {
-        color: var(--fm-ink-dim);
-    }
-
-    .neo-button.fm-setup-credential-button {
-        margin-right: var(--fm-space-2);
-    }
-
+    /* the preset choices: one grid, as many columns as the width holds, one at the vessel's */
     .fm-setup-presets {
-        gap: var(--fm-space-2);
+        display              : grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap                  : var(--fm-space-2);
+        margin-top           : var(--fm-space-1);
     }
 
     .fm-setup-preset {
-        flex         : 1 1 0;
         min-width    : 0;
         border       : 1px solid var(--fm-line);
         border-radius: 6px;
@@ -153,4 +207,11 @@
     .neo-button.fm-setup-project-button {
         align-self: start;
     }
+}
+
+/* the link's label role, scoped past the card's own button rule (same specificity, later file) */
+.agent-plane-setup .fm-setup-create .neo-button.fm-setup-link .neo-button-text {
+    font                 : var(--fm-text-detail);
+    text-decoration      : underline;
+    text-underline-offset: 2px;
 }
