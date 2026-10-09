@@ -22,24 +22,25 @@ const WIRED_SOURCES = {
  * harness no longer lists, which records that refusal on the seat.
  * @param {Object} [options]
  * @param {Object} [options.declared={}] The seat's declared `model` and `reasoningEffort`.
+ * @param {String} [options.harnessType='codex-desktop'] The seat's declared harness family.
  * @param {String} [options.state='stopped'] The seat's runtime state.
  * @returns {Promise<{bearerToken: String, close: Function, endpoint: String, requests: Object[]}>}
  */
-async function startSeatFleet({declared = {}, state = 'stopped'} = {}) {
+async function startSeatFleet({declared = {}, harnessType = 'codex-desktop', state = 'stopped'} = {}) {
     const
         {startFleetBridgeServer} = await loadAgentOsModule('ai/services/fleet/fleetBridgeServer.mjs'),
-        requests   = [],
-        definition = {id: SEAT, githubUsername: SEAT, displayName: 'Seat Witness', harnessType: 'codex-desktop', launchOwner: 'fleet', mcpServers: null, mcpTarget: null, ...declared},
-        seat       = {seatModel: null},
-        row        = () => ({
+        requests                 = [],
+        definition               = {id: SEAT, githubUsername: SEAT, displayName: 'Seat Witness', harnessType, launchOwner: 'fleet', mcpServers: null, mcpTarget: null, ...declared},
+        seat                     = {seatModel: null},
+        row                      = () => ({
             id             : SEAT,
             githubUsername : SEAT,
             displayName    : 'Seat Witness',
             engineTag      : null,
-            family         : 'gpt',
+            family         : harnessType.startsWith('claude') ? 'claude' : 'gpt',
             avatarUrl      : '',
-            harnessType    : 'codex-desktop',
-            harnessSettings: {model: 'gpt-6-luna', reasoningEffort: 'high'},
+            harnessType,
+            harnessSettings: harnessType === 'claude-desktop' ? null : {model: 'gpt-6-luna', reasoningEffort: 'high'},
             seatModel      : seat.seatModel,
             lifecycle      : {source: 'fleet:runtimeStatus', state, confidence: 'observed'},
             sources        : WIRED_SOURCES
@@ -55,6 +56,10 @@ async function startSeatFleet({declared = {}, state = 'stopped'} = {}) {
                 case 'fleetRoster':
                     return fleetE2ESuccess({rows: [row()]});
                 case 'fleetSeatModelCatalog':
+                    if (harnessType === 'claude-desktop') {
+                        return fleetE2ESuccess({state: 'unsupported', models: [], reason: 'Claude Desktop does not enumerate model settings'})
+                    }
+
                     return fleetE2ESuccess({state: 'complete', reason: null, models: [
                         {id: 'gpt-6-luna',   slug: 'gpt-6-luna',   efforts: ['low', 'high'], defaultEffort: 'low', hidden: false, isDefault: true},
                         {id: 'gpt-6-astra',  slug: 'gpt-6-astra',  efforts: ['low', 'max'],  defaultEffort: 'low', hidden: false, isDefault: false},
@@ -217,6 +222,52 @@ test.describe('AgentOS Detail › Configuration — the Seat group over the Flee
             await adopt.click();
             await expect(effort).toHaveText('declared high');
             expect(fleet.requests.filter(request => request.method === 'configureAgent').map(request => request.params)).toEqual([{id: SEAT, reasoningEffort: 'high'}])
+        } finally {
+            await fleet.close()
+        }
+    });
+
+    test('a never-started Claude Desktop seat can declare Max or use its app default without model catalog or Start', async ({page, neuralLink}) => {
+        const fleet = await startSeatFleet({harnessType: 'claude-desktop'});
+
+        try {
+            await bootWiredCockpit(page, neuralLink, fleet);
+
+            const
+                {group, effort, model, open} = parts(page),
+                sent                         = method => fleet.requests.filter(request => request.method === method).map(request => request.params),
+                modelRow                     = group.locator('.fm-seat-model-row').first(),
+                effortRow                    = group.locator('.fm-seat-model-row').nth(1),
+                offer                        = group.locator('.fm-seat-model-offer');
+
+            await open();
+            await expect(model).toHaveText('set per session in the app · not read back yet');
+            await expect(modelRow.locator('.fm-seat-model-change')).toBeHidden();
+            await expect(effort).toHaveText('app default');
+            await expect(effortRow.locator('.fm-seat-model-change')).toBeVisible();
+
+            await effortRow.locator('.fm-seat-model-change').click();
+            await expect(offer.locator('.fm-chip')).toHaveText(['Low', 'Medium', 'High', 'Extra', 'Max', 'Use app default']);
+            expect(sent('fleetSeatModelCatalog')).toEqual([]);
+            await expect(offer.getByText('Ultra', {exact: true})).toHaveCount(0);
+
+            await offer.getByText('Extra', {exact: true}).click();
+            await expect(effort).toHaveText('declared Extra');
+
+            await effortRow.locator('.fm-seat-model-change').click();
+            await offer.getByText('Max', {exact: true}).click();
+            await expect(effort).toHaveText('declared Max');
+
+            await effortRow.locator('.fm-seat-model-change').click();
+            await offer.getByText('Use app default', {exact: true}).click();
+            await expect(effort).toHaveText('app default');
+            expect(sent('configureAgent')).toEqual([
+                {id: SEAT, reasoningEffort: 'xhigh'},
+                {id: SEAT, reasoningEffort: 'max'},
+                {id: SEAT, reasoningEffort: null}
+            ]);
+
+            expect(sent('startAgent')).toEqual([])
         } finally {
             await fleet.close()
         }
