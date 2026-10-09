@@ -399,7 +399,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const
             ids    = [envelope.scene.route[0], envelope.scene.nodes[12345].id],
             before = await Promise.all(ids.map(locate)),
-            toggle = pane.getByRole('button', {name: 'Golden Path'});
+            toggle = pane.getByRole('button', {name: 'Route'});
 
         await toggle.click();
         await expect.poll(async () => (await stats()).counts.paths).toBe(0);

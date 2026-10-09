@@ -144,7 +144,7 @@ class ObservatoryContainer extends Container {
             flex     : 'none',
             reference: 'observatory-head',
             vdom     : {cn: [
-                {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
+                {tag: 'span', cls: ['fm-observatory-title'],    text: 'Observatory'},
                 {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
                 {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HOVER_HINT}
             ]}
@@ -217,7 +217,7 @@ class ObservatoryContainer extends Container {
          */
         routeEnvelope_: null,
         /**
-         * Whether the route is drawn over the graph; the View section's Golden Path control flips it.
+         * Whether the route is drawn over the graph; the View section's Route control flips it.
          * @member {Boolean} routeOverlay_=true
          * @reactive
          */
@@ -776,7 +776,7 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Golden Path was clicked: the route overlay flips.
+     * @summary Route was clicked: the route overlay flips.
      */
     onRouteToggleClick() {
         this.routeOverlay = !this.routeOverlay
@@ -938,6 +938,7 @@ class ObservatoryContainer extends Container {
      * way the Golden Path text pane stamps it, and a withheld route named beside it. The Golden Path leaf is the
      * pane's one source for the route's admission: it alone knows whether the route expired. Under the lens the
      * line counts its nodes and peers; under the heat it states the window and how many nodes it could not read.
+     * The title names the view and the geography the scene drew, once it drew a node.
      * @protected
      */
     updateLine() {
@@ -955,6 +956,7 @@ class ObservatoryContainer extends Container {
             drawn          = scene && {nodes: scene.nodes.length, edges: scene.edges.length, halo: scene.halo, hidden: scene.hidden, overCap: scene.overCap, wellCap: scene.wellCap};
 
         if (head) {
+            head.vdom.cn[0].text = ['Observatory', scene?.nodes.length && ObservatoryViewContainer.titleOf(scene.geography)].filter(Boolean).join(' · ');
             head.vdom.cn[1].text = [
                 GraphSceneEnvelope.describe(me.envelope, at => ViewerTime.formatViewerTime(at)?.text ?? null, drawn).text,
                 GoldenPathEnvelope.currency(route) === 'withheld' && `route withheld · ${GoldenPathEnvelope.withheldReason(route)}`,
