@@ -369,7 +369,7 @@ apps/agentos/view/fleet/cockpit/StateProvider.mjs
     0ee80eb6bfaf204aaa65fea9fb51660785fb0cf2
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
-    1d234563becfcaa461677bb4492aad4c3f1ea85a
+    8e5f348a81af79e6878d9e1d2918a689fdac2255
 
 apps/agentos/view/fleet/cockpit/ViewerWakeController.mjs
     98461852e5d446ee2f386a67004c2142a15d56b6

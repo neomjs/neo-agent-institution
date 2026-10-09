@@ -587,13 +587,13 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             grid         = {adapterState: 'cold', store},
             provider     = makeProviderFake(),
             getReference = reference => reference === 'fleet-grid' ? grid : reference === 'agent-detail' ? detail : null,
-            // the REAL View selection surface: applySelection, the phase-blind pane accessors and
-            // the store-load guard run as production code over this fake — no stub drift
+            // Real selection hooks and store reconciliation; this fixture supplies the pane seam.
+            // The declaration spec covers managed-instance resolution with a real cockpit.
             view         = wireDetailRecord({
-                // no vessel on this fake: the phase-blind accessors fall through to the reference
+                // no vessel on this fake; the other accessors find no resident pane
                 vesselPane            : () => null,
                 detailRecord          : null,
-                getAgentDetailPane    : FleetCockpit.prototype.getAgentDetailPane,
+                getAgentDetailPane    : () => detail,
                 getCatchUpPane        : () => null,
                 getMemoriesPane       : FleetCockpit.prototype.getMemoriesPane,
                 getOperatorMailboxPane: () => null,
@@ -878,7 +878,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         FleetCockpitController.prototype.onDetailRecordChange.call({component: host}, {record: {agentId: 'ada'}});
         expect(applied).toEqual([true]);
 
-        // detail not mounted (auto-hidden, not yet revealed) → the optional chain no-ops safely
+        // detail has never materialized → there is no pane to update yet
         host.getAgentDetailPane = () => null;
         FleetCockpitController.prototype.onDetailRecordChange.call({component: host}, {record});
         expect(applied).toEqual([true])
@@ -892,7 +892,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                 const view = wireDetailRecord({
                           vesselPane        : () => null,
                           detailRecord,
-                          getAgentDetailPane: FleetCockpit.prototype.getAgentDetailPane,
+                          getAgentDetailPane: () => detail,
                           getMemoriesPane   : () => null,
                           getReference      : name => name === 'agent-detail' ? detail : null,
                           selectionState    : {},
