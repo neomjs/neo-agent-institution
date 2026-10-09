@@ -8,24 +8,38 @@
     background: var(--fm-panel);
     min-height: 0;
 
-    /* the Team head, the View section's rows and the selected node's actions: the shell's ghost verb at the chrome
-       scale (Viewport.scss `.fm-pane-actions`), whose pressed state carries the choice; they lead their row, so the
-       head's trailing-slot margin does not apply */
+    /* the Team and Nodes heads, the View section's rows and the selected node's actions: the shell's ghost verb at the
+       chrome scale (Viewport.scss `.fm-pane-actions`), whose pressed state carries the choice; they lead their row,
+       so the head's trailing-slot margin does not apply */
     .fm-observatory-peers-head,
+    .fm-observatory-nodes-head,
     .fm-observatory-view-row,
     .fm-observatory-selected-actions {
         margin-left: 0;
     }
 
-    /* the Team head: the section's title, then the lens's Clear and the scope's All; the row draws the line
-       between the View section and the team across its full width, so the title inside it keeps none of its own */
-    .fm-observatory-peers-head {
+    /* the Team head (the section's title, then the lens's Clear and the scope's All) and the Nodes head (the title
+       naming the order, then the order's toggle): the row draws the line above its section across its full width,
+       so the title inside it keeps none of its own */
+    .fm-observatory-peers-head,
+    .fm-observatory-nodes-head {
         border-top   : thin solid var(--fm-line-soft);
         padding-right: var(--fm-space-3);
 
         .fm-observatory-side-title.neo-button {
             border-top: none;
             min-width : 0;
+        }
+    }
+
+    /* the Nodes title names its order in full, so it wraps beside the toggle instead of running under it, at the
+       detail scale's leading: the chrome scale's is for one line */
+    .fm-observatory-nodes-head .fm-observatory-side-title.neo-button {
+        text-align : left;
+        white-space: normal;
+
+        .neo-button-text {
+            line-height: 1.4;
         }
     }
 

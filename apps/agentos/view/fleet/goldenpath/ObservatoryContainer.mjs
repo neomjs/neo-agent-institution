@@ -1,7 +1,6 @@
 import Button                        from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container                     from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import GoldenPathEnvelope            from '../../../util/GoldenPathEnvelope.mjs';
-import GraphNodeSource               from '../../../util/GraphNodeSource.mjs';
 import GraphSceneEnvelope            from '../../../util/GraphSceneEnvelope.mjs';
 import GraphSceneNodes               from '../../../store/GraphSceneNodes.mjs';
 import GraphSceneRelations           from '../../../store/GraphSceneRelations.mjs';
@@ -161,12 +160,26 @@ class ObservatoryContainer extends Container {
                     flex     : 'none',
                     reference: 'observatory-team'
                 }, {
-                    module   : Button,
-                    cls      : ['fm-observatory-side-title', 'fm-observatory-section-head'],
+                    ntype    : 'container',
+                    cls      : ['fm-pane-actions', 'fm-observatory-nodes-head'],
                     flex     : 'none',
-                    reference: 'observatory-nodes-title',
-                    text     : 'Nodes',
-                    ui       : 'ghost'
+                    layout   : {ntype: 'hbox', align: 'center'},
+                    reference: 'observatory-nodes-head',
+                    items    : [{
+                        module   : Button,
+                        cls      : ['fm-observatory-side-title', 'fm-observatory-section-head'],
+                        flex     : 1,
+                        reference: 'observatory-nodes-title',
+                        text     : 'Nodes',
+                        ui       : 'ghost'
+                    }, {
+                        module   : Button,
+                        flex     : 'none',
+                        reference: 'observatory-nodes-order',
+                        text     : 'by relations',
+                        tooltip  : 'Read the nodes with the most relations first',
+                        ui       : 'ghost'
+                    }]
                 }, {
                     module   : ObservatoryNodeList,
                     flex     : 1,
@@ -193,6 +206,14 @@ class ObservatoryContainer extends Container {
          * @reactive
          */
         lensPeers_: [],
+        /**
+         * The Nodes list's order ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#orderOf}): `changed` leads
+         * with what changed in the attention window, `relations` with the most related. Session view state; the
+         * Nodes head's toggle flips it.
+         * @member {'changed'|'relations'} nodeOrder_='changed'
+         * @reactive
+         */
+        nodeOrder_: 'changed',
         /**
          * The side panel's open section (`team`, `nodes` or `selected`): it takes the panel's remaining height and
          * the others collapse to their heads, each still naming its count. Selecting a node opens `selected`,
@@ -318,6 +339,8 @@ class ObservatoryContainer extends Container {
         me.getReference('mail-toggle')        .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle')       .set({handler: 'onRouteToggleClick', handlerScope: me});
         me.getReference('observatory-nodes-title').set({handler: () => me.chooseSection('nodes'), handlerScope: me});
+        me.getReference('observatory-nodes-order').set({handler: () => me.nodeOrder = me.nodeOrder === 'relations' ? 'changed' : 'relations', handlerScope: me});
+        me.afterSetNodeOrder(me.nodeOrder);
         me.getReference('observatory-team').on('sectionHeadClick', ({section}) => me.chooseSection(section));
         me.getReference('observatory-selected').on('sectionHeadClick', ({section}) => me.chooseSection(section));
         me.syncSections();
@@ -462,6 +485,28 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * Triggered after the Nodes order changed: the toggle says which order reads, and the list reorders, keeping the
+     * selection.
+     * @param {String} value
+     * @param {String|undefined} oldValue
+     * @protected
+     */
+    afterSetNodeOrder(value, oldValue) {
+        const me = this, toggle = me.getReference('observatory-nodes-order');
+
+        if (toggle) {
+            toggle.pressed               = value === 'relations';
+            toggle.vdom['aria-pressed'] = String(toggle.pressed);
+            toggle.update()
+        }
+
+        if (oldValue !== undefined && me.scene) {
+            me.fillNodeList();
+            me.syncLists()
+        }
+    }
+
+    /**
      * Triggered after the routeEnvelope config got changed: the line and the route's control follow the route's
      * currency.
      * @param {Object|null} value
@@ -580,45 +625,9 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The selected node as the scene has it, for its section: the qualified id, a label other than the
-     * id, the kind, the state, attribution and last activity the read carries (each `null` where it does not),
-     * the rank while the current route holds the node, its relations in the read and how many of them list, and
-     * its source ({@link AgentOS.util.GraphNodeSource#sourceOf}). `null` while nothing is selected.
-     * @returns {Object|null}
-     * @protected
-     */
-    factsOf() {
-        const
-            {listBudget, scene, selectedId} = this,
-            index = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1;
-
-        if (index < 0) {
-            return null
-        }
-
-        const
-            node      = scene.nodes[index],
-            relations = scene.edges.reduce((sum, pair) => sum + (pair.includes(index) ? 1 : 0), 0);
-
-        return {
-            assignedTo     : node.assignedTo,
-            authoredBy     : node.authoredBy,
-            id             : node.id,
-            kind           : node.kind ?? null,
-            label          : node.label && node.label !== node.id ? node.label : null,
-            lastActivityAt : node.lastActivityAt,
-            memoryOf       : node.memoryOf,
-            rank           : node.rank ?? null,
-            relations,
-            relationsListed: Math.min(relations, listBudget),
-            source         : GraphNodeSource.sourceOf(node),
-            state          : node.state
-        }
-    }
-
-    /**
-     * @summary Fills the node list from the current scene: the whole read up to {@link #listBudget}, else the
-     * budget's first nodes in the layout's order, the route's seeds leading. The title says when the list holds
+     * @summary Fills the node list from the current scene in the chosen {@link #nodeOrder}
+     * ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#orderOf}) up to {@link #listBudget} rows; the order
+     * applies to the whole read before the budget cuts it. The title names the order and says when the list holds
      * less than the read.
      * @protected
      */
@@ -627,7 +636,6 @@ class ObservatoryContainer extends Container {
             me                             = this,
             {listBudget, nodeStore, scene} = me,
             counts                         = new Uint32Array(scene.nodes.length),
-            listed                         = scene.nodes.slice(0, listBudget),
             title                          = me.getReference('observatory-nodes-title');
 
         scene.edges.forEach(([from, to]) => {
@@ -635,16 +643,14 @@ class ObservatoryContainer extends Container {
             from !== to && counts[to]++
         });
 
+        const listed = ObservatoryNodeList.orderOf(scene, me.nodeOrder, counts).slice(0, listBudget).map(index => scene.nodes[index]);
+
         me.relationCounts = counts;
         me.extraId        = null;
         nodeStore.clear();
         listed.length && nodeStore.add(listed.map(node => me.rowOf(node)));
 
-        if (title) {
-            title.text = scene.nodes.length > listed.length
-                ? `Nodes · ${listed.length.toLocaleString('en-US')} of ${scene.nodes.length.toLocaleString('en-US')} · relations reach the rest`
-                : 'Nodes'
-        }
+        title?.set({text: ObservatoryNodeList.titleOf({by: me.nodeOrder, listed: listed.length, total: scene.nodes.length})})
     }
 
     /**
@@ -963,7 +969,7 @@ class ObservatoryContainer extends Container {
      * @protected
      */
     updateSelection() {
-        this.getReference('observatory-selected')?.set({facts: this.factsOf(), note: this.selectionNote})
+        this.getReference('observatory-selected')?.set({facts: ObservatorySelectionContainer.factsOf(this), note: this.selectionNote})
     }
 
     /**

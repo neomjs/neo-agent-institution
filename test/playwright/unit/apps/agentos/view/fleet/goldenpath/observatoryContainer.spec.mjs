@@ -102,7 +102,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         expect(lineOf(pane)).toBe('Unobserved');
         expect(pane.items.map(item => item.reference), 'the head and the body, no strip').toEqual(['observatory-head', 'observatory-body']);
         expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the view, the team, the nodes, then the selected node')
-            .toEqual(['observatory-view-section', 'observatory-team', 'observatory-nodes-title', 'observatory-nodes', 'observatory-selected']);
+            .toEqual(['observatory-view-section', 'observatory-team', 'observatory-nodes-head', 'observatory-nodes', 'observatory-selected']);
         expect(headOf(pane)).toEqual(['No node selected', null]);
         expect(labelClsOf(pane)).toContain('is-hint');
         expect(selectedOf(pane).getReference('selected-actions').hidden, 'no node, no action').toBe(true);
@@ -218,7 +218,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.envelope   = graphRead();
 
         expect(ids()).toEqual(['pr-101']);
-        expect(title('observatory-nodes-title')).toBe('Nodes · 1 of 7 · relations reach the rest');
+        expect(title('observatory-nodes-title')).toBe('Nodes · changed in the last 3 days first · then by activity · 1 of 7 · relations reach the rest');
 
         pane.onNodeSelect({node: {id: q('pr-101')}});
         expect(rowsOf(pane)).toHaveLength(1);
@@ -245,8 +245,39 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.listBudget = 500;
         pane.envelope   = graphRead({completeness: 'truncated'}, {snapshotId: 'snap-8b21'});
         expect(ids()).toHaveLength(7);
-        expect(title('observatory-nodes-title')).toBe('Nodes');
+        expect(title('observatory-nodes-title')).toBe('Nodes · changed in the last 3 days first · then by activity');
         expect(relationsTitle(pane)).toBe('Relations · 2');
+
+        pane.destroy()
+    });
+
+    test('the Nodes list orders the whole read before the budget cuts it, and its toggle reads by relations and back, keeping the selection listed', () => {
+        const
+            pane   = createPane(),
+            toggle = pane.getReference('observatory-nodes-order'),
+            ids    = () => pane.nodeStore.items.map(({id}) => id.replace('neomjs/neo#', '')),
+            state  = () => [pane.getReference('observatory-nodes-title').text, toggle.pressed, toggle.vdom['aria-pressed']];
+
+        // the ripple measures the rendered button, which the unit harness has none of
+        toggle.useRippleEffect = false;
+
+        pane.listBudget = 2;
+        pane.envelope   = teamRead();
+
+        expect(ids(), 'the newest change leads, though the layout places it sixth').toEqual(['issue-404', 'pr-101']);
+        expect(state()).toEqual(['Nodes · changed in the last 3 days first · then by activity · 2 of 7 · relations reach the rest', false, 'false']);
+
+        toggle.onClick({});
+        expect(ids()).toEqual(['pr-101', 'agent-grace']);
+        expect(state()).toEqual(['Nodes · by relations · 2 of 7 · relations reach the rest', true, 'true']);
+
+        pane.onNodeSelect({node: {id: q('issue-404')}});
+        expect(ids(), 'a selection the order leaves out takes the one extra row').toEqual(['pr-101', 'agent-grace', 'issue-404']);
+
+        toggle.onClick({});
+        expect(ids(), 'back to what changed, which lists the selection itself').toEqual(['issue-404', 'pr-101']);
+        expect(pane.selectedId).toBe(q('issue-404'));
+        expect(state()[1]).toBe(false);
 
         pane.destroy()
     });
@@ -589,12 +620,12 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         expect(pane.lensPeers, 'in check order').toEqual(['@neo-opus-vega', '@tobiu', '@neo-preview']);
         expect(hue(pane, '@neo-preview'), 'checked together, the two take hues of their own').not.toBe(hue(pane, '@tobiu'));
         expect(Array.from(pane.overlays.lens.hues), 'the swatches are the hues the canvas draws').toEqual(pane.lensPeers.map(id => hue(pane, id)));
-        expect(roles(pane)[0], 'a node two checked peers share is the first-checked one\'s').toEqual(['pr-101', 'assigned · changed recently', hue(pane, '@neo-opus-vega')]);
+        expect(roles(pane).find(([id]) => id === 'pr-101'), 'a node two checked peers share is the first-checked one\'s').toEqual(['pr-101', 'assigned · changed recently', hue(pane, '@neo-opus-vega')]);
         expect(lineOf(pane)).toMatch(/ · lens · 4 nodes · 3 peers$/);
 
         click(pane, '@neo-opus-vega');
         expect(pane.lensPeers, 'a second click unchecks').toEqual(['@tobiu', '@neo-preview']);
-        expect(roles(pane)[0]).toEqual(['pr-101', 'authored · changed recently', hue(pane, '@tobiu')]);
+        expect(roles(pane).find(([id]) => id === 'pr-101')).toEqual(['pr-101', 'authored · changed recently', hue(pane, '@tobiu')]);
 
         pane.destroy()
     });
