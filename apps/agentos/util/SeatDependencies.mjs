@@ -46,6 +46,22 @@ class SeatDependencies extends Base {
     }
 
     /**
+     * @summary Whether a live Start's cancel is still open: `sent` while its Stop is in flight, and `unanswered`
+     * once the cockpit's own deadline passed without the Fleet's answer, which can still settle it. Either way
+     * the Start reads as canceling, never as plain preparation.
+     * @param {Object} record The roster record, or a bag of its `controlReason`, `dependencyOutcomes` and
+     * `pendingAction`.
+     * @returns {'sent'|'unanswered'|null} `null` without a live preparation or without a cancel.
+     */
+    static cancelState({controlReason, dependencyOutcomes, pendingAction}) {
+        if (!SeatDependencies.liveLine(dependencyOutcomes)) return null;
+
+        if (pendingAction === 'stop') return 'sent';
+
+        return controlReason?.action === 'stop' && controlReason.kind === 'timeout' ? 'unanswered' : null
+    }
+
+    /**
      * @summary The card's line for a running seat whose working checkout the last start did not prepare,
      * and its title.
      * @param {Object[]|null} dependencyOutcomes
@@ -76,11 +92,34 @@ class SeatDependencies extends Base {
         const
             bySlug       = rows => new Map((Array.isArray(rows) ? rows : []).filter(row => row?.repoSlug).map(row => [row.repoSlug, row])),
             dependencies = bySlug(dependencyOutcomes),
-            clones       = [...dependencies.values()].some(row => row.state === 'installing') ? new Map() : bySlug(repoOutcomes);
+            clones       = SeatDependencies.liveLine(dependencyOutcomes) ? new Map() : bySlug(repoOutcomes);
 
         return [...new Set([...dependencies.keys(), ...clones.keys()])]
             .map(repoSlug => ({repoSlug, ...SeatDependencies.paneRow(clones.get(repoSlug), dependencies.get(repoSlug))}))
             .filter(row => LABELS[row.state])
+    }
+
+    /**
+     * @summary The live preparation of a Start still pending: how many of the reported checkouts are done,
+     * and each live row for the title. `installing` appears only while that Start is pending, since the
+     * Fleet retires every undecided row when it ends, so a retained set never reads as live. The count is
+     * over the rows reported so far; an install not yet begun has no row.
+     * @param {Object[]|null} dependencyOutcomes
+     * @returns {{done: Number, text: String, title: String, total: Number}|null} `null` while nothing installs.
+     */
+    static liveLine(dependencyOutcomes) {
+        const rows = Array.isArray(dependencyOutcomes) ? dependencyOutcomes.filter(row => row?.repoSlug && row.state) : [];
+
+        if (!rows.some(row => row.state === 'installing')) return null;
+
+        const done = rows.filter(row => row.state !== 'installing').length;
+
+        return {
+            done,
+            text : `preparing dependencies (${done}/${rows.length} done)`,
+            title: rows.map(({repoSlug, state}) => `${repoSlug}: ${(LABELS[SeatDependencies.paneRow(null, {state}).state] ?? state).toLowerCase()}`).join(' · '),
+            total: rows.length
+        }
     }
 
     /**
