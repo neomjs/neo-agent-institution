@@ -85,7 +85,8 @@ async function openObservatory(page, neuralLink) {
     const locate = id => app.callMethod(canvas.properties.id, 'locate', [id]);
 
     return {
-        currency : pane.locator('.fm-observatory-currency'),
+        // the read's complete words, which the head keeps behind Details
+        currency : pane.locator('.fm-observatory-details'),
         geography: async () => (await app.getComponent(container.properties.id, ['geography'])).geography,
         hover    : pane.locator('.fm-observatory-hover'),
         land     : envelope => app.callMethod(cockpitState.controller.id, 'writeGraphScene', [envelope]),
@@ -399,7 +400,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const
             ids    = [envelope.scene.route[0], envelope.scene.nodes[12345].id],
             before = await Promise.all(ids.map(locate)),
-            toggle = pane.getByRole('button', {name: 'Golden Path'});
+            toggle = pane.getByRole('button', {name: 'Route'});
 
         await toggle.click();
         await expect.poll(async () => (await stats()).counts.paths).toBe(0);
@@ -429,11 +430,22 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
     });
 
     test('the team lens and the heat draw over the same places: a checked peer reaches the worker, the rows name each node\'s role, the Heat toggle counts what it cannot read, and no node moves', async ({page, neuralLink}) => {
-        const {currency, land, locate, pane, settle, stats} = await openObservatory(page, neuralLink), attribution = team(Date.now());
+        const
+            {currency, land, locate, pane, selection, settle, stats} = await openObservatory(page, neuralLink),
+            attribution = team(Date.now()),
+            details     = pane.getByRole('button', {name: 'Details'});
 
         await land(read({nodes: NODES.map(node => ({...node, ...attribution[node.id]}))}));
-        await expect(currency).toHaveText(/^Current · captured .+ · complete$/);
         await settle();
+
+        // the head's first line is the team's sentence, and the counts stay folded until a real click opens Details
+        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/^captured .+ · last 3 days: 1 in motion · 2 unknown · attention: #101 · first route item · complete$/);
+        await expect(details).toHaveAttribute('aria-expanded', 'false');
+        await expect(currency).toBeHidden();
+        await details.click();
+        await expect(details).toHaveAttribute('aria-expanded', 'true');
+        await expect(currency).toBeVisible();
+        await expect(currency).toHaveText(/^Current · captured .+ · complete$/);
 
         const
             places = () => Promise.all(NODES.map(({id}) => locate(id))),
@@ -463,7 +475,12 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
             return [heat, lens]
         }).toEqual([null, null]);
-        await expect(currency).toHaveText(/ · complete$/)
+        await expect(currency).toHaveText(/ · complete$/);
+
+        // the attention item selects its node
+        await pane.locator('.fm-observatory-attention').click();
+        await expect(selection).toHaveText('first route item');
+        expect((await stats()).selectedId).toBe(q('pr-101'))
     });
 
     test('the selected node says what it is and opens its evidence one step away, from the keyboard: a work item its GitHub page, a session its Memories drill in the cockpit, a concept that it has no source view', async ({page, neuralLink}) => {

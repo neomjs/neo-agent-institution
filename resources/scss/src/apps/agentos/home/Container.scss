@@ -129,12 +129,24 @@
         text-shadow: 0 0 2px var(--fm-ground), 0 0 4px var(--fm-ground), 0 0 10px var(--fm-ground);
     }
 
+    /* the second door reads as one sentence: the question in plain words, only the verb underlined */
+    .fm-home-connect-line {
+        gap       : 6px;
+        margin-top: var(--fm-space-2);
+    }
+
+    .fm-home-connect-question {
+        font       : var(--fm-text-body);
+        color      : var(--fm-ink-dim);
+        text-shadow: 0 0 2px var(--fm-ground), 0 0 4px var(--fm-ground), 0 0 10px var(--fm-ground);
+    }
+
     .neo-button.fm-home-link {
         --button-height   : 24px;
         --button-min-width: 0;
         --button-padding  : 0;
 
-        margin     : var(--fm-space-2) 0 0;
+        margin     : 0;
         border     : 0;
         background : transparent;
         box-shadow : none;
