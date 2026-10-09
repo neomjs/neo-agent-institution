@@ -38,18 +38,23 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
             return card.parentElement === shell.parentElement && card.compareDocumentPosition(shell) === Node.DOCUMENT_POSITION_FOLLOWING
         })).toBe(true);
 
-        // the Create door is open: the recipe's twelve rows, the status in two channels, the reason verbatim
+        // the Create door is open: three question blocks, the token open first; the recipe's twelve rows
+        // under Details, the status in two channels, the reason verbatim
         await expect(card.locator('.fm-setup-create')).toBeVisible();
+        await expect(card.locator('.fm-setup-ask')).toHaveCount(3);
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/, {timeout: 30000});
+        await expect(card.locator('.fm-setup-steps')).toHaveCount(0);
+        await card.locator('.fm-setup-details-toggle').click();
         await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(12, {timeout: 30000});
         await expect(card.locator('.fm-setup-steps .neo-list-item').first()).toHaveClass(/is-ok/);
         await expect(card.locator('.fm-setup-steps .neo-list-item').nth(8).locator('.fm-setup-step-reason')).toHaveText('connect ECONNREFUSED 127.0.0.1:3102');
         await expect(card.locator('.fm-setup-steps .neo-list-item').nth(8).locator('.fm-setup-step-status')).toHaveText('unknown');
 
-        // the three questions read the probe and the table; a refused preset stays visible, disabled, with its shortfall
+        // where it runs reads the placement and the table before anything is answered: the recommendation
+        // in the recipe's words, the budgets as its help, the choices folded until the block opens
+        await expect(card.locator('.fm-setup-ask-where .fm-setup-ask-line')).toContainText('fits with 13.0 GiB host margin');
         await expect(card.locator('.fm-setup-budget')).toHaveText('host 32.0 GiB total · 15.5 GiB available · pressure ok · VM 16.0 GiB cap · 13.5 GiB available');
-        await expect(card.locator('.fm-setup-preset')).toHaveCount(3);
-        await expect(card.locator('.fm-setup-preset').nth(1)).toHaveClass(/is-refused/);
-        await expect(card.locator('.fm-setup-preset').nth(1).locator('.fm-setup-preset-verdict')).toHaveText('refused — the host budget falls 2.2 GiB short');
+        await expect(card.locator('.fm-setup-preset')).toHaveCount(0);
 
         // the chrome's progress line IS the recipe's projected progress
         await expect(page.locator('.agent-setup-progress')).toHaveText('2 of 12 observed ok · next: preset');
@@ -78,37 +83,48 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         expect(calls.filter(name => ['setupAnswer', 'setupEffect', 'setupCredential', 'attachPlane'].includes(name))).toEqual([])
     });
 
-    test('a run the card starts reaches done on the real broker: one consent per choice, the credentials kept as paths, each effect in the recipe\'s order, one command and one witness row, and the card retires', async ({page}) => {
+    test('a run the front starts reaches done on the real broker — the three blocks in order, then the Start block\'s one action per row: one consent per choice, the credentials kept as paths, each effect in the recipe\'s order, one command and one witness row, and the card retires', async ({page}) => {
         await page.goto('/apps/agentos/index.html');
 
         const
             card     = page.locator('.agent-plane-setup'),
+            token    = card.locator('.fm-setup-ask-token'),
+            where    = card.locator('.fm-setup-ask-where'),
+            start    = card.locator('.fm-setup-ask-start'),
             rows     = card.locator('.fm-setup-steps .neo-list-item'),
             row      = id => rows.filter({has: page.locator(`.fm-setup-step-id:text-is("${id}")`)}),
             progress = page.locator('.agent-setup-progress');
 
-        await expect(card.locator('.fm-setup-preset')).toHaveCount(3, {timeout: 60000});
-        await expect(card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-verdict')).toContainText('recommended — fits with 13.0 GiB host margin');
-
-        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
-
-        await expect(card.locator('.fm-setup-preset').first()).toHaveClass(/is-chosen/);
-        await expect(row('preset')).toHaveClass(/is-ok/);
-        // the hosted preset requires a provider key: the recipe turns that row into a question of its own
-        await expect(row('provider-key').locator('.fm-setup-step-reason')).toHaveText('unanswered');
-        await expect(progress).toHaveText('3 of 12 observed ok · next: plane-credential');
-
+        // the token first: the block opens the vessel's window and collapses to the kept path
+        await expect(token).toHaveClass(/is-open/, {timeout: 60000});
+        await expect(where).toHaveClass(/is-next/);
         await card.locator('.fm-setup-credential-button').click();
+        await expect(token.locator('.fm-setup-ask-line')).toContainText(`consented · ${path.join(run.setupRoot, 'credentials', 'plane-credential')}`);
+        await expect(token).toHaveClass(/is-answered/);
+        await expect(progress).toHaveText('3 of 12 observed ok · next: preset');
 
-        await expect(card.locator('.fm-setup-q-note').first()).toContainText(`consented · ${path.join(run.setupRoot, 'credentials', 'plane-credential')}`);
-        await expect(row('plane-credential')).toHaveClass(/is-ok/);
-
-        await row('provider-key').locator('.fm-setup-step-action').click();
-        await expect(row('provider-key'), 'the provider key consented').toHaveClass(/is-ok/);
+        // where it runs: the recipe's recommendation is the one primary action; the hosted preset then
+        // needs a provider key, which the block asks for before it reads answered
+        await expect(where).toHaveClass(/is-open/);
+        await expect(where.locator('.fm-setup-ask-line')).toContainText('fits with 13.0 GiB host margin');
+        await card.locator('.fm-setup-use-button').click();
+        await expect(where.locator('.fm-setup-ask-line')).toContainText('· needs a provider key');
+        await expect(where).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-key-button').click();
+        await expect(where, 'the provider key consented').toHaveClass(/is-answered/);
         await expect(progress).toHaveText('5 of 12 observed ok · next: write-secrets');
 
-        // the first effect: the secret files land under the run's state root, and nothing has left the host's files
-        await row('write-secrets').locator('.fm-setup-step-action').click();
+        // the ledger under Details agrees, row for row
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(row('preset')).toHaveClass(/is-ok/);
+        await expect(row('plane-credential')).toHaveClass(/is-ok/);
+        await expect(row('provider-key')).toHaveClass(/is-ok/);
+
+        // start: the first effect through the block's one button — the secret files land under the run's
+        // state root, and nothing has left the host's files
+        await expect(start).toHaveClass(/is-open/);
+        await expect(card.locator('.fm-setup-start-button')).toHaveText('Run next step');
+        await card.locator('.fm-setup-start-button').click();
         await expect(row('write-secrets'), 'write-secrets re-reads ok').toHaveClass(/is-ok/);
         await expect(row('write-secrets').locator('.fm-setup-step-reason')).toHaveText('observed; matches the accepted receipt');
 
@@ -116,17 +132,17 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         expect(run.world.commands, 'nothing was asked of the host yet').toEqual([]);
 
         // the env file names the plane the profile declares: the card sent no target, the broker bound it
-        await row('write-env').locator('.fm-setup-step-action').click();
+        await card.locator('.fm-setup-start-button').click();
         await expect(row('write-env'), 'write-env re-reads ok').toHaveClass(/is-ok/);
 
-        await row('compose-up').locator('.fm-setup-step-action').click();
+        await card.locator('.fm-setup-start-button').click();
         await expect(row('served-plane'), 'the plane that came up is the run\'s own').toHaveClass(/is-ok/);
         await expect(progress).toHaveText('10 of 12 observed ok · next: verify');
 
         // the witness: written once, read back and recalled; the card retires in the same tick, so the
         // quiet confirmation is witnessed by the retirement and the chrome, not by a row
         run.world.recallLands = true;
-        await row('verify').locator('.fm-setup-step-action').click();
+        await card.locator('.fm-setup-start-button').click();
         await expect(card).toBeHidden();
         await expect(progress).toHaveText('12 of 12 observed ok · complete');
 
@@ -154,10 +170,20 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
             chip     = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
             progress = page.locator('.agent-setup-progress');
 
-        await expect(card.locator('.fm-setup-preset')).toHaveCount(3, {timeout: 60000});
-        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
-        await expect(row('preset')).toHaveClass(/is-ok/);
+        // the token, then the choice through the fold's own card, then the key through the ledger's chip:
+        // every route is one of the recipe's requests
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/, {timeout: 60000});
         await card.locator('.fm-setup-credential-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-other-choices-toggle').click();
+        await expect(card.locator('.fm-setup-preset')).toHaveCount(3);
+        // a refused preset stays visible, disabled, with its shortfall
+        await expect(card.locator('.fm-setup-preset').nth(1)).toHaveClass(/is-refused/);
+        await expect(card.locator('.fm-setup-preset').nth(1).locator('.fm-setup-preset-verdict')).toHaveText('refused — the host budget falls 2.2 GiB short');
+        await expect(card.locator('.fm-setup-preset').nth(1).locator('.fm-setup-preset-choose')).toBeDisabled();
+        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(row('preset')).toHaveClass(/is-ok/);
         await expect(row('plane-credential')).toHaveClass(/is-ok/);
         await chip('provider-key', 'open window').click();
         await expect(row('provider-key')).toHaveClass(/is-ok/);

@@ -13,7 +13,7 @@ import * as core       from '../../../../../../../node_modules/neo.mjs/src/core/
 import                      '../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import BaseContainer   from '../../../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import StateProvider   from '../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
-import CreateContainer, {CLI_COMMAND, countDensity, presetVerdict} from '../../../../../../../apps/agentos/view/setup/CreateContainer.mjs';
+import CreateContainer, {CLI_COMMAND, START_VERBS, countDensity, describeAsks, presetVerdict, recommendationText} from '../../../../../../../apps/agentos/view/setup/CreateContainer.mjs';
 import SetupSteps      from '../../../../../../../apps/agentos/store/SetupSteps.mjs';
 import {EXIT_VERBS, actionsFor} from '../../../../../../../apps/agentos/view/setup/StepList.mjs';
 import {BRAIN_ROOT, MACHINES, TRUSTED, pinnedSetupHost} from '../../../../../fixture/pinnedSetupHost.mjs';
@@ -168,7 +168,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         host.destroy()
     });
 
-    test('the three questions: both budgets from the probe, three preset cards with the placement\'s verdicts (a refused one visible, disabled, with its shortfall), the credential as a window', async () => {
+    test('the three blocks read in order: the token open first; where it runs carries the recipe\'s recommendation, both budgets, and three choices under a fold (a refused one visible, disabled, with its shortfall); the credential as a window, then its block answered', async () => {
         const calls = stubShell({
             setupEvaluate  : {ok: true, evaluation: coldEvaluation()},
             setupProbe     : {ok: true, probe: PROBE},
@@ -185,7 +185,24 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         await settle();
 
+        // cold: the token is the open block, the other two are next; the Start block has no row yet
+        expect(describeAsks(door.store)).toEqual({token: 'open', where: 'next', start: 'next', startRow: null});
+        expect(door.getReference('ask-token').cls).toContain('is-open');
+        expect(door.getReference('ask-where').cls).toContain('is-next');
+        expect(door.getReference('token-change').hidden).toBe(true);
+        expect(door.getReference('credential-button').text).toBe('Enter your token');
+        expect(door.getReference('start-button').hidden).toBe(true);
+
+        // where it runs: the recipe's recommendation in its own words, the budgets as the help, the choices folded
+        expect(door.getReference('placement-line').text).toBe(`This machine, ${PRESETS[0].label} — fits with 13.0 GiB host margin (headroom 4.0 GiB)`);
+        expect(door.getReference('use-button')).toMatchObject({hidden: false, presetId: 'hosted', text: `Use ${PRESETS[0].label}`});
         expect(door.getReference('budget-line').text).toBe('host 32.0 GiB total · 15.5 GiB available · pressure ok · VM 16.0 GiB cap · 13.5 GiB available');
+        expect(door.getReference('presets').hidden, 'a recommendation folds the choices').toBe(true);
+        expect(door.getReference('provider-key-button').hidden, 'no preset chosen: no key asked').toBe(true);
+
+        door.onOtherChoicesClick();
+        expect(door.getReference('presets').hidden).toBe(false);
+        expect(door.getReference('other-choices-toggle').text).toBe('Fewer choices');
 
         const cards = door.getReference('presets').items;
 
@@ -196,7 +213,6 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(cards[0].items[1].text, 'the table row, whatever the pin names').toBe(`chat ${PRESETS[0].chatModel} · embed ${PRESETS[0].embedder} · ${PRESETS[0].vectorDimension} dims`);
         expect(cards[0].items[2].text, 'the plane\'s own footprint').toBe('plane 0.4–2.5 GiB · no local models · needs a provider key');
         expect(cards[1].items[2].text, 'the floor is a receipt with a date').toBe('models 15.2 GiB · floor recorded 2026-10-02');
-        expect(door.getReference('placement-line').text).toBe('recommended: hosted');
         // the provider key is asked only once the consented preset requires it: until then the row waits, as data
         expect(door.store.get('provider-key').waitsFor).toBe('preset');
         expect(actionsFor(door.store.get('provider-key'))).toEqual([]);
@@ -206,8 +222,66 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         expect(calls.filter(([name]) => name === 'setupCredential')).toEqual([['setupCredential', {stepId: 'plane-credential', windowId: 7}]]);
         expect(door.getReference('credential-line').text).toBe('consented · /Users/op/.neo-ai/setup/credentials/plane-credential · 2026-10-02T10:22:00.000Z');
-        expect(door.getReference('credential-button').text).toBe('Change');
         expect(JSON.stringify(door.store.items.map(step => step.toJSON?.() ?? step))).not.toMatch(/ghp_|glpat-/);
+
+        // the token answered: its block collapses to its line with Change, the next question opens
+        expect(describeAsks(door.store)).toMatchObject({token: 'answered', where: 'open', start: 'next'});
+        expect(door.getReference('ask-token').cls).toContain('is-answered');
+        expect(door.getReference('token-change').hidden).toBe(false);
+        expect(door.getReference('ask-where').cls).toContain('is-open');
+
+        // Change opens the block again until the next evaluation — any fresh observation, equal or not
+        door.onChangeClick({component: {askId: 'token'}});
+        expect(door.getReference('ask-token').cls).toContain('is-open');
+        door.evaluation = structuredClone(door.evaluation);
+        expect(door.getReference('ask-token').cls, 'a fresh evaluation closes it').toContain('is-answered');
+
+        host.destroy()
+    });
+
+    test('the recommendation sentence: the recipe\'s verdict and reason, the card\'s label; nothing recommended says so; no placement says it is measuring', () => {
+        expect(recommendationText(PLACEMENT, PRESETS)).toBe(`This machine, ${PRESETS[0].label} — ${PLACEMENT.recommended[0].reason}`);
+        expect(recommendationText({recommended: [], possible: [{id: 'hosted', reason: 'no recorded quality floor: a candidate, never recommended by default'}], refused: []}, PRESETS))
+            .toBe(`Nothing fits this machine outright; ${PRESETS[0].label} is possible — no recorded quality floor: a candidate, never recommended by default. Choose under Other choices.`);
+        expect(recommendationText({recommended: [], possible: [], refused: [{id: 'local-full', reason: 'short'}]}, PRESETS)).toBe('Nothing fits this machine yet — each choice says why under Other choices.');
+        expect(recommendationText(null, PRESETS)).toBe('Measuring this machine…');
+        // the verb map covers every chip verb a row can offer
+        expect(Object.keys(START_VERBS).sort()).toEqual(['open memories', 're-check', 're-read', 'retry', 'run', 'which plane?', 'write again'].sort())
+    });
+
+    test('start: with both answers in, the Start block owns the first row that is not ok and waits for nothing; its button sends that row\'s own request; a costly write is said in the block first', async () => {
+        let evaluation = consented();
+
+        const calls = stubShell({
+            setupEvaluate: () => ({ok: true, evaluation: structuredClone(evaluation)}),
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS},
+            setupEffect  : () => ({ok: true, evaluation: structuredClone(evaluation)})
+        });
+
+        const {host, door} = createDoor();
+
+        await settle();
+
+        expect(describeAsks(door.store)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(describeAsks(door.store).startRow.id).toBe('write-secrets');
+        expect(door.getReference('ask-start').cls).toContain('is-open');
+        expect(door.getReference('placement-line').text).toBe(`This machine, ${PRESETS[1].label}`);
+        expect(door.getReference('start-line').text).toBe(`${door.store.get('write-secrets').summary} · 5 of 12`);
+        expect(door.getReference('start-help').text).toBe(`pending · ${door.store.get('write-secrets').reason}`);
+        expect(door.getReference('start-button')).toMatchObject({hidden: false, text: 'Run next step'});
+
+        await door.onStartClick();
+        expect(calls.filter(([name]) => name === 'setupEffect').map(([, request]) => request)).toEqual([{effectId: 'write-secrets', windowId: 7}]);
+
+        // the witness row where a second row is possible: the first press says so in the block
+        evaluation = structuredClone(WITNESS.searched);
+        await door.reevaluate('unused');
+        expect(describeAsks(door.store).startRow.id).toBe('verify');
+        expect(door.getReference('start-button').text).toBe('Check again');
+
+        await door.onStepClick({action: 'write again', record: door.store.get('verify')});
+        expect(door.getReference('start-help').text).toBe('a second row on the plane is possible · press Write again to write it');
 
         host.destroy()
     });
@@ -236,7 +310,12 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(calls.filter(([name]) => name === 'setupAnswer')).toEqual([['setupAnswer', {answer: 'hosted', stepId: 'preset', windowId: 7}]]);
         expect(door.store.get('preset').answer).toBe('hosted');
         expect(door.getReference('presets').items[0].items[4].text).toBe('chosen');
-        expect(door.getReference('provider-key-line').text).toBe('unanswered');
+        expect(door.getReference('use-button').hidden, 'the recommended preset is the chosen one').toBe(true);
+        // the hosted preset requires a key: the block says so and offers the window, the row too
+        expect(door.getReference('placement-line').text).toBe(`This machine, ${PRESETS[0].label} · needs a provider key`);
+        expect(door.getReference('provider-key-line')).toMatchObject({hidden: false, text: 'This preset needs a provider key — unanswered'});
+        expect(door.getReference('provider-key-button').hidden).toBe(false);
+        expect(describeAsks(door.store).where, 'not answered until the key is kept').not.toBe('answered');
         expect(actionsFor(door.store.get('provider-key')), 'the hosted preset requires a key: the row gets its window').toEqual(['open window']);
         expect(run().preset).toBe('hosted');
         expect(progress()).toEqual({ok: 3, total: 12, next: 'plane-credential', blocking: null});
