@@ -1,7 +1,7 @@
 /* The Repositories card's rows: the slug, the last start's outcome, then the working tag or a quiet
    Remove. The rows are affordances, not a selection, so they take no hover or selected fill. The
-   slug is monospace and elides, and its full clone URL rides the title. A failed start's reason
-   wraps onto its own line, since a git error can carry a long URL. */
+   slug is monospace and elides, and its full clone URL rides the title. An outcome's reason wraps
+   onto its own line, since a git or npm error can carry a long URL; only a failure's takes the alert ink. */
 .fm-repository-list.neo-list {
     --list-item-background-color       : transparent;
     --list-item-background-color-active: transparent;
@@ -47,10 +47,15 @@
     }
 
     .fm-repo-reason {
-        color        : var(--fm-kind-alert);
+        color        : var(--fm-ink-dim);
         flex-basis   : 100%;
         font         : var(--fm-text-detail);
         overflow-wrap: anywhere;
+        white-space  : normal; /* a list item does not wrap; the reason must */
+
+        &.is-failed {
+            color: var(--fm-kind-alert);
+        }
     }
 
     .fm-repo-remove {
