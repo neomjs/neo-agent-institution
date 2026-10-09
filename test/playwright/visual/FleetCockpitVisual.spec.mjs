@@ -1374,7 +1374,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      * short settle follows.
      * @param {Object} page
      * @param {String} state `current|team|truncated|degraded|routeless|unavailable`
-     * @param {RegExp|String} currency The line that envelope must produce
+     * @param {RegExp|String} currency The complete words that envelope must produce (the head keeps them behind Details)
      * @param {String} [select] The qualified id to select
      */
     const feedObservatory = async (page, state, currency, select) => {
@@ -1383,7 +1383,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             result = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GRAPH_SCENE_DRIVER}?${query}`);
 
         expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true);
-        await expect(page.locator('.fm-observatory-pane .fm-observatory-currency')).toHaveText(currency);
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-details')).toHaveText(currency);
         await page.waitForTimeout(600)
     };
 
@@ -1442,11 +1442,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         const withheld = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=withheld&t=${++driverTick}`);
 
         expect(withheld.success, `the driver loaded: ${JSON.stringify(withheld)}`).toBe(true);
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB · route withheld · freshness-sla-breached$/);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB · route withheld · freshness-sla-breached$/);
         await expect(toggle, 'the control says so without a hover').toHaveText('Route · withheld');
         await expect(pane).toHaveScreenshot('observatory-pane-withheld-light.png');
         await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=current&t=${++driverTick}`);
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ \/ 32 KiB$/);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(/ \/ 32 KiB$/);
 
         await feedObservatory(page, 'degraded', 'Degraded · graph-seam-refused · 16 nodes · 15 edges · 3 in the halo · complete');
         await expect(pane).toHaveScreenshot('observatory-pane-degraded-light.png');
@@ -1481,14 +1481,14 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // the operator's direction: Vega's AND Grace's nodes, as one union
         await peer('@neo-opus-vega').click();
         await peer('@neo-opus-grace').click();
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(lensed);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(lensed);
         await rest();
         await expect(pane).toHaveScreenshot('observatory-pane-lens.png');
 
         await peer('@neo-opus-vega').click();
         await peer('@neo-opus-grace').click();
         await heat.click();
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · complete · heat · last 3 days · 2 unknown$/);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(/ · complete · heat · last 3 days · 2 unknown$/);
         await rest();
         await expect(pane).toHaveScreenshot('observatory-pane-heat.png');
 
@@ -1501,7 +1501,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await rest();
         await peer('@neo-opus-vega').click();
         await peer('@neo-opus-grace').click();
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(lensed);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(lensed);
         await rest();
         await expect(pane).toHaveScreenshot('observatory-pane-lens-light.png');
 
@@ -1537,6 +1537,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             nodesHead = pane.getByRole('button', {name: /^Nodes/}),
             label     = pane.locator('.fm-observatory-selected-label'),
             currency  = pane.locator('.fm-observatory-currency'),
+            details   = pane.locator('.fm-observatory-details'),
             top       = async selector => Math.round((await pane.locator(selector).boundingBox()).y),
             outlineOf = locator => locator.evaluate(el => getComputedStyle(el).outlineStyle);
 
@@ -1587,18 +1588,18 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await peers.first().click();
         await nodesHead.click();
         await node(1).click();
-        await expect(currency).toHaveText(/ · lens · /);
+        await expect(details).toHaveText(/ · lens · /);
         await page.keyboard.press('Escape');
         await expect(label).toHaveText('No node selected');
-        await expect(currency, 'the lens outlives the selection').toHaveText(/ · lens · /);
+        await expect(details, 'the lens outlives the selection').toHaveText(/ · lens · /);
         await page.keyboard.press('Escape');
-        await expect(currency).not.toHaveText(/lens/);
+        await expect(details).not.toHaveText(/lens/);
 
         // and each has its own Clear
         await teamHead.click();
         await peers.first().click();
         await head.getByRole('button', {name: 'Clear'}).click();
-        await expect(currency).not.toHaveText(/lens/);
+        await expect(details).not.toHaveText(/lens/);
         await expect(head.getByRole('button', {name: 'Clear'}), 'no lens, nothing to clear').toBeHidden();
         await nodesHead.click();
         await node(1).click();

@@ -97,6 +97,18 @@ class GraphNodeSource extends Base {
 
         return null
     }
+
+    /**
+     * @summary A canonical GitHub work item's number, vouched for exactly as {@link #sourceOf} vouches for its page;
+     * `null` for any other node.
+     * @param {Object|null} node A scene node, `{id, kind}`
+     * @returns {Number|null}
+     */
+    numberOf(node) {
+        const source = this.sourceOf(node);
+
+        return source?.type === 'github' ? Number(source.url.slice(source.url.lastIndexOf('/') + 1)) : null
+    }
 }
 
 export default Neo.setupClass(GraphNodeSource);
