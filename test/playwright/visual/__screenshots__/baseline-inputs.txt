@@ -282,7 +282,7 @@ apps/agentos/util/RosterRow.mjs
     2e718b14cd61c6fa09f4c95294c22c555b299a1c
 
 apps/agentos/util/SeatDependencies.mjs
-    6790103fa841aa584be165c89a6325176529262e
+    8ebcf29f12cfd9a73effa41339800630acb9b55c
 
 apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627

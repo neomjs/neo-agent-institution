@@ -76,7 +76,7 @@ class SeatDependencies extends Base {
         const
             bySlug       = rows => new Map((Array.isArray(rows) ? rows : []).filter(row => row?.repoSlug).map(row => [row.repoSlug, row])),
             dependencies = bySlug(dependencyOutcomes),
-            clones       = [...dependencies.values()].some(row => row.state === 'installing') ? new Map() : bySlug(repoOutcomes);
+            clones       = SeatDependencies.liveLine(dependencyOutcomes) ? new Map() : bySlug(repoOutcomes);
 
         return [...new Set([...dependencies.keys(), ...clones.keys()])]
             .map(repoSlug => ({repoSlug, ...SeatDependencies.paneRow(clones.get(repoSlug), dependencies.get(repoSlug))}))
