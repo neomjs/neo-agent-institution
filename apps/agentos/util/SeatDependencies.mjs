@@ -64,8 +64,10 @@ class SeatDependencies extends Base {
 
     /**
      * @summary The panes' rows for one seat: each checkout the latest start reported, in its order (the
-     * working checkout first), then each repository whose clone failed before it had a checkout, all
-     * folded by {@link #paneRow}. A state the panes have no word for is left out, as unknown.
+     * working checkout first), then each repository known only from its clone, all folded by {@link #paneRow}.
+     * A state the panes have no word for is left out, as unknown. The Fleet records a start's clones only once
+     * it launches, so while a Start installs every clone outcome is the previous launch's, and the rows list
+     * this start's checkouts alone.
      * @param {Object[]|null} dependencyOutcomes The roster row's `dependencyOutcomes`.
      * @param {Object[]|null} repoOutcomes The roster row's `repoOutcomes`.
      * @returns {{reason: String|null, repoSlug: String, state: String}[]}
@@ -73,8 +75,8 @@ class SeatDependencies extends Base {
     static checkouts(dependencyOutcomes, repoOutcomes) {
         const
             bySlug       = rows => new Map((Array.isArray(rows) ? rows : []).filter(row => row?.repoSlug).map(row => [row.repoSlug, row])),
-            clones       = bySlug(repoOutcomes),
-            dependencies = bySlug(dependencyOutcomes);
+            dependencies = bySlug(dependencyOutcomes),
+            clones       = [...dependencies.values()].some(row => row.state === 'installing') ? new Map() : bySlug(repoOutcomes);
 
         return [...new Set([...dependencies.keys(), ...clones.keys()])]
             .map(repoSlug => ({repoSlug, ...SeatDependencies.paneRow(clones.get(repoSlug), dependencies.get(repoSlug))}))
@@ -114,18 +116,15 @@ class SeatDependencies extends Base {
     }
 
     /**
-     * @summary One Repository pane row's state and reason. A failed clone wins, since nothing was installed
-     * in it. Otherwise the checkout's dependency row speaks, with `installed` and `present` as `prepared`.
-     * Without one, a clone the last start prepared reads `prepared`, as an older Fleet reports it.
+     * @summary One Repository pane row's state and reason. The checkout's dependency row speaks when there is
+     * one, with `installed` and `present` as `prepared`: the Fleet writes it before the launch and records the
+     * clones after, so it is never older than the clone, and its start had cloned that repository. Without one,
+     * a failed clone reads `failed`, and a prepared clone `unverified`, since no install was reported for it.
      * @param {Object|null} [clone] The repository's `repoOutcomes` row: `{state: 'prepared'|'failed', reason?}`.
      * @param {Object|null} [dependency] Its `dependencyOutcomes` row: `{state, reason?}`.
      * @returns {{reason: String|null, state: String|null}}
      */
     static paneRow(clone, dependency) {
-        if (clone?.state === 'failed') {
-            return {reason: clone.reason ?? null, state: 'failed'}
-        }
-
         if (dependency?.state) {
             return {
                 reason: dependency.reason ?? null,
@@ -133,7 +132,9 @@ class SeatDependencies extends Base {
             }
         }
 
-        return {reason: clone?.reason ?? null, state: clone?.state ?? null}
+        return clone?.state === 'prepared'
+            ? {reason: 'no dependency install reported', state: 'unverified'}
+            : {reason: clone?.reason ?? null, state: clone?.state ?? null}
     }
 }
 

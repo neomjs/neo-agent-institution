@@ -15,7 +15,7 @@ import SeatDependencies from '../../../../../../apps/agentos/util/SeatDependenci
 /**
  * @summary Each checkout's dependency row from a Fleet Start, worded once: the card speaks only for a
  * running seat's working checkout the last start did not prepare, and the Repository pane gives every
- * checkout its own word, a failed clone first.
+ * checkout its own word, the dependency row first.
  */
 test.describe('AgentOS.util.SeatDependencies', () => {
     const
@@ -61,11 +61,9 @@ test.describe('AgentOS.util.SeatDependencies', () => {
         }
     });
 
-    test('the pane folds a failed clone first, then the dependency state, then a clone an older Fleet prepared', () => {
+    test('the pane folds the dependency row first, never older than the clone; without one a failed clone reads failed and a prepared clone unverified', () => {
         const cloneFailure = 'git clone exited 128: remote: Repository not found.';
 
-        // nothing was installed in a clone that failed
-        expect(SeatDependencies.paneRow({state: 'failed', reason: cloneFailure}, {state: 'unverified'})).toEqual({state: 'failed', reason: cloneFailure});
         // installed and present are both prepared; a note on an install stays with it
         expect(SeatDependencies.paneRow({state: 'prepared'}, {state: 'installed'})).toEqual({state: 'prepared', reason: null});
         expect(SeatDependencies.paneRow(null, {state: 'present'})).toEqual({state: 'prepared', reason: null});
@@ -74,12 +72,16 @@ test.describe('AgentOS.util.SeatDependencies', () => {
         for (const state of ['installing', 'skipped', 'canceled', 'failed', 'unverified', 'not-applicable']) {
             expect(SeatDependencies.paneRow({state: 'prepared'}, {state, reason: 'why'})).toEqual({state, reason: 'why'})
         }
-        // an older Fleet reports only the clone
-        expect(SeatDependencies.paneRow({state: 'prepared'}, null)).toEqual({state: 'prepared', reason: null});
+        // the previous launch's clone failure never speaks over this start's row
+        expect(SeatDependencies.paneRow({state: 'failed', reason: cloneFailure}, {state: 'installing'})).toEqual({state: 'installing', reason: null});
+        expect(SeatDependencies.paneRow({state: 'failed', reason: cloneFailure}, {state: 'installed'})).toEqual({state: 'prepared', reason: null});
+        // no dependency row: a failed clone had nothing installed, and a prepared one had no install reported
+        expect(SeatDependencies.paneRow({state: 'failed', reason: cloneFailure}, null)).toEqual({state: 'failed', reason: cloneFailure});
+        expect(SeatDependencies.paneRow({state: 'prepared'}, null)).toEqual({state: 'unverified', reason: 'no dependency install reported'});
         expect(SeatDependencies.paneRow(undefined, undefined)).toEqual({state: null, reason: null})
     });
 
-    test('the panes\' rows: the reported checkouts in their order, then a clone that failed before it had one; an unknown state is left out', () => {
+    test('the panes\' rows: the reported checkouts in their order, then each repository known only from its clone unless a Start installs; an unknown state is left out', () => {
         const cloneFailure = 'git clone exited 128: remote: Repository not found.';
 
         expect(SeatDependencies.checkouts(
@@ -89,6 +91,20 @@ test.describe('AgentOS.util.SeatDependencies', () => {
             {repoSlug: working,                        state: 'prepared', reason: null},
             {repoSlug: 'neomjs/create-app',            state: 'skipped',  reason: 'skipped during the install'},
             {repoSlug: 'neomjs/neo-agent-institution', state: 'failed',   reason: cloneFailure}
+        ]);
+
+        // while a Start installs, the clones are the previous launch's: the rows are this start's alone
+        const previous = [{repoSlug: brain, state: 'failed', reason: cloneFailure}, {repoSlug: 'neomjs/neo-agent-institution', state: 'prepared'}];
+
+        expect(SeatDependencies.checkouts([{repoSlug: working, state: 'installed'}, {repoSlug: brain, state: 'installing'}], previous)).toEqual([
+            {repoSlug: working, state: 'prepared',   reason: null},
+            {repoSlug: brain,   state: 'installing', reason: null}
+        ]);
+        // once it ends, a repository known only from its clone is back, and a prepared clone claims nothing
+        expect(SeatDependencies.checkouts([{repoSlug: working, state: 'installed'}], previous)).toEqual([
+            {repoSlug: working,                        state: 'prepared',   reason: null},
+            {repoSlug: brain,                          state: 'failed',     reason: cloneFailure},
+            {repoSlug: 'neomjs/neo-agent-institution', state: 'unverified', reason: 'no dependency install reported'}
         ]);
 
         for (const [dependencies, clones] of [[null, null], [undefined, []], [[{state: 'installed'}], null]]) {

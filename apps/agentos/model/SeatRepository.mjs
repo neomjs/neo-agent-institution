@@ -37,8 +37,8 @@ class SeatRepository extends Model {
             type        : 'Boolean',
             defaultValue: false
         }, {
-            // the last start's outcome (AgentOS.util.SeatDependencies#paneRow): 'failed' for a failed clone,
-            // else the checkout's dependency state, `installed`/`present` as 'prepared'; null = no start has
+            // the last start's outcome (AgentOS.util.SeatDependencies#paneRow): the checkout's dependency state,
+            // `installed`/`present` as 'prepared', else 'failed' for a failed clone; null = no start has
             // covered this repository yet
             name        : 'state',
             defaultValue: null
