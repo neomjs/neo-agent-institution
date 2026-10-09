@@ -483,6 +483,35 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect((await stats()).selectedId).toBe(q('pr-101'))
     });
 
+    test('the Nodes list leads with what changed, its head names the order, and its toggle reads by relations and back', async ({page, neuralLink}) => {
+        const
+            {land, pane, settle} = await openObservatory(page, neuralLink),
+            attribution = team(Date.now()),
+            caption     = pane.locator('.fm-observatory-nodes-caption'),
+            labels      = pane.locator('.fm-observatory-node-list .fm-observatory-row-label'),
+            nodesHead   = pane.getByRole('button', {name: /^Nodes/}),
+            toggle      = pane.getByRole('button', {name: 'by relations', exact: true});
+
+        await land(read({nodes: NODES.map(node => ({...node, ...attribution[node.id]}))}));
+        await settle();
+
+        // the read names peers, so Team opens first and Nodes keeps only its chrome line
+        await expect(caption, 'collapsed, the order waits with the list').toBeHidden();
+        await nodesHead.click();
+        await expect(nodesHead).toHaveText('Nodes');
+        await expect(caption).toHaveText('changed in the last 3 days first · then by activity');
+        await expect(labels, 'the work changed within the window, newest first, the closed issue among it; then by activity').toHaveText(['two hops out', 'first route item', 'third route item', 'second route item', 'Grace', 'Dock', 'no seed reaches']);
+        await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        await expect(caption).toHaveText('by relations · most related first');
+        await expect(labels, 'the most related first, ties in the scene\'s order').toHaveText(['first route item', 'Grace', 'Dock', 'second route item', 'two hops out', 'third route item', 'no seed reaches']);
+
+        await toggle.click();
+        await expect(labels.first()).toHaveText('two hops out')
+    });
+
     test('the selected node says what it is and opens its evidence one step away, from the keyboard: a work item its GitHub page, a session its Memories drill in the cockpit, a concept that it has no source view', async ({page, neuralLink}) => {
         const
             {land, pane, selection, settle} = await openObservatory(page, neuralLink),
@@ -516,7 +545,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             selectedHead = pane.getByRole('button', {name: /^Selected node/});
 
         await nodesHead.click();
-        await rows.first().click();
+        await rows.filter({hasText: 'first route item'}).click();
         await expect(selection).toHaveText('first route item');
         await expect(head, 'the qualified id stays out of the head').not.toContainText('neomjs/neo#');
         await selectedHead.click();
@@ -536,7 +565,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(selection, 'the Observatory kept its selection').toHaveText('a session');
         await settle();
         await nodesHead.click();
-        await rows.first().click();
+        await rows.filter({hasText: 'first route item'}).click();
         await expect(selection).toHaveText('first route item');
         await walkTo('Dock');
         await selectedHead.click();
