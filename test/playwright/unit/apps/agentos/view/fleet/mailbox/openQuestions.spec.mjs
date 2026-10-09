@@ -271,32 +271,67 @@ test.describe('AgentOS operator mailbox — what waits for your word (#599)', ()
         expect([pane().emptyWindows, pane().pendingOffset]).toEqual([0, null])
     });
 
-    test('a first window that shows none of a positive count never reads "nothing waits": the pane asks a few windows on, then says what it holds', () => {
+    test('a first window that shows none of a positive count never reads "nothing waits": the pane asks a few windows on, then the operator reads on from where it stopped', () => {
         const
-            asked = [],
-            read  = (rows, count, page) => ({...answered(rows, page), count});
+            asked  = [],
+            readOn = () => pane().getReference('mailbox-read-on'),
+            read   = (rows, count, page) => ({...answered(rows, page), count});
 
         box = createBox({record: OPERATOR, view: 'open'});
         box.on('inboxPageRequest', data => asked.push(data.offset));
         asked.length = 0;
+        // the ripple measures the rendered button, which the unit harness has none of
+        readOn().useRippleEffect = false;
 
-        box.questions = read([], 3, {limit: 1, hasMore: true});
+        // five questions, a page of one, the first four rows ones the graph cannot project
+        box.questions = read([], 5, {limit: 1, hasMore: true});
         expect(pane().getPaneState()).toBe('rows');
         expect(stateLine().text, 'the next window is on its way').toBe('your open questions have not been read');
 
-        box.questions = read([], 3, {limit: 1, offset: 1, hasMore: true});
-        box.questions = read([], 3, {limit: 1, offset: 2, hasMore: true});
-        box.questions = read([], 3, {limit: 1, offset: 3, hasMore: true});
+        box.questions = read([], 5, {limit: 1, offset: 1, hasMore: true});
+        box.questions = read([], 5, {limit: 1, offset: 2, hasMore: true});
+        box.questions = read([], 5, {limit: 1, offset: 3, hasMore: true});
         expect(asked, 'three windows in a row at most: never a walk through the inbox').toEqual([1, 2, 3]);
-        expect(stateLine().text).toBe('3 open · none can be shown here');
+        expect([stateLine().text, readOn().hidden], 'the line claims only what was read, and the rest stays reachable')
+            .toEqual(['5 open · the ones read so far cannot be shown', false]);
 
-        // a window that brings a row shows it and starts the run over
-        box.questions = read([question()], 3, {limit: 1, offset: 4, hasMore: false});
-        expect([pane().store.getCount(), stateLine().hidden, pane().emptyWindows]).toEqual([1, true, 0]);
+        // read on continues from the served cursor, one request in flight
+        readOn().onClick({});
+        readOn().onClick({});
+        expect(asked).toEqual([1, 2, 3, 4]);
+        expect([stateLine().text, readOn().hidden]).toEqual(['your open questions have not been read', true]);
+
+        box.questions = read([question()], 5, {limit: 1, offset: 4, hasMore: false});
+        expect([pane().store.getCount(), stateLine().hidden, readOn().hidden, pane().emptyWindows]).toEqual([1, true, true, 0]);
+
+        // every row served and none projectable: the read itself says none can be shown
+        box.questions = read([], 2, {hasMore: false});
+        expect(stateLine().text).toBe('2 open · none can be shown here');
 
         // a complete zero is the one empty read
         box.questions = read([], 0);
         expect([pane().getPaneState(), stateLine().text]).toEqual(['empty', 'nothing waits for your word'])
+    });
+
+    test('held questions stay in view when the pane\'s own asks stop short: the line says more follow, and read on continues', () => {
+        const
+            asked  = [],
+            readOn = () => pane().getReference('mailbox-read-on'),
+            read   = (rows, count, page) => ({...answered(rows, page), count});
+
+        box = createBox({record: OPERATOR, view: 'open'});
+        box.on('inboxPageRequest', data => asked.push(data.offset));
+        asked.length = 0;
+        readOn().useRippleEffect = false;
+
+        box.questions = read([question()], 9, {limit: 1, hasMore: true});
+        [1, 2, 3, 4].forEach(offset => box.questions = read([], 9, {limit: 1, offset, hasMore: true}));
+
+        expect(asked).toEqual([2, 3, 4]);
+        expect([pane().store.getCount(), stateLine().hidden, stateLine().text, readOn().hidden]).toEqual([1, false, '9 open · more follow', false]);
+
+        readOn().onClick({});
+        expect(asked).toEqual([2, 3, 4, 5])
     });
 
     test('a question opened from the open view is the operator\'s to resolve without an all-mail read', () => {

@@ -1,4 +1,5 @@
 import AgentMailboxStore from '../../../store/AgentMailbox.mjs';
+import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container         from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import MailboxGrid       from './Grid.mjs';
 import DetailContainer   from './DetailContainer.mjs';
@@ -229,6 +230,15 @@ class MailboxPane extends Container {
             cls      : ['fm-mailbox-state'],
             reference: 'mailbox-state'
         }, {
+            // the open questions' continuation once the pane's own asks stopped short of the read's end
+            module   : Button,
+            cls      : ['fm-mailbox-read-on'],
+            flex     : 'none',
+            hidden   : true,
+            reference: 'mailbox-read-on',
+            text     : 'read on',
+            ui       : 'ghost'
+        }, {
             // the list beside the open message: two shares and one, the engine's Splitter between
             ntype    : 'container',
             cls      : ['fm-mailbox-body'],
@@ -319,6 +329,7 @@ class MailboxPane extends Container {
 
         // the next window is asked for when the operator reaches the loaded end, never before
         rowsGrid.on('scrollEdge', me.onScrollEdge, me);
+        me.getReference('mailbox-read-on').set({handler: 'onReadOnClick', handlerScope: me});
         rowsGrid.on({deselect: me.onRowDeselect, select: me.onRowSelect, scope: me});
 
         // the detail's intents leave through this pane (fire stamps the pane as their source); its host
@@ -662,12 +673,15 @@ class MailboxPane extends Container {
             me.fire('pageRequest', {offset: me.pendingOffset, source: me})
         }
 
-        // a count the grid shows none of says so, never "nothing waits"
+        // a count the grid shows none of says so, never "nothing waits"; where the pane's own asks stopped short of the
+        // read's end, the line says what the read showed and `read on` continues from the served cursor
         const
-            shown = rows && me.store.getCount() > 0,
-            line  = shown ? null : !rows ? state : me.pendingOffset === null ? 'unshown' : 'unobserved';
+            shown   = rows && me.store.getCount() > 0,
+            stopped = me.view === 'open' && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null,
+            line    = stopped ? (shown ? 'more' : 'stopped') : shown ? null : !rows ? state : me.pendingOffset === null ? 'unshown' : 'unobserved';
 
-        stateCmp.set({cls: ['fm-mailbox-state', `is-${line ?? state}`], hidden: shown, text: line ? me.getStateText(line) : ''});
+        stateCmp.set({cls: ['fm-mailbox-state', `is-${line ?? state}`], hidden: !line, text: line ? me.getStateText(line) : ''});
+        me.getReference('mailbox-read-on').hidden = !stopped;
 
         // the body leaves the layout with its rows, so a state line keeps the room it had alone
         me.getReference('mailbox-body').hidden = !shown;
@@ -680,6 +694,22 @@ class MailboxPane extends Container {
         }
 
         me.applyDetail()
+    }
+
+    /**
+     * @summary The operator reads on past the windows the pane's own asks could not show: the next window from the
+     * served cursor, and a new run of {@link EMPTY_WINDOWS} asks behind it.
+     * @protected
+     */
+    onReadOnClick() {
+        const me = this, page = me.listSource?.page;
+
+        if (page?.hasMore && me.pendingOffset === null) {
+            me.emptyWindows  = 0;
+            me.pendingOffset = page.offset + page.limit;
+            me.fire('pageRequest', {offset: me.pendingOffset, source: me});
+            me.applySnapshot()
+        }
     }
 
     /**
@@ -720,8 +750,9 @@ class MailboxPane extends Container {
      * subject) — all of which arrive as `admission.state: 'unavailable'`. Saying "source degraded"
      * would blame Memory Core for a refusal the adapter made, so the line states only what this
      * view actually knows — no rows, and the reason verbatim from the owner.
-     * @param {String} state From {@link #getPaneState} (never 'rows' here), or `unshown`: open questions counted
-     *     that no window could show.
+     * @param {String} state From {@link #getPaneState} (never 'rows' here), `unshown` (open questions counted that no
+     *     window could show), or `stopped` / `more` (the pane's own asks stopped short of the read's end, with no row
+     *     or with rows in view).
      * @returns {String}
      * @protected
      */
@@ -738,6 +769,10 @@ class MailboxPane extends Container {
                     return 'nothing waits for your word';
                 case 'unshown':
                     return `${this.questions.count.toLocaleString('en-US')} open · none can be shown here`;
+                case 'stopped':
+                    return `${this.questions.count.toLocaleString('en-US')} open · the ones read so far cannot be shown`;
+                case 'more':
+                    return `${this.questions.count.toLocaleString('en-US')} open · more follow`;
                 default:
                     return 'your open questions have not been read'
             }

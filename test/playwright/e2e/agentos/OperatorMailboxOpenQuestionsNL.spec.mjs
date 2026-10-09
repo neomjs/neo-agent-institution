@@ -15,8 +15,12 @@ const OPERATOR = '@e2e-operator';
  * It answers the reads the way the Brain does: the open questions (non-terminal Tasks, archived ones
  * included) with their complete count, the open work's `questions` count from the same set, the all-mail
  * mirror without archived mail, and a read receipt that changes a message's status and never its Task.
+ * With `windows`, the open questions are served a page of one at a time instead: `count` of them, the rows of
+ * each window from `rowsAt(offset, messages)` (an empty window is one the graph could not project).
+ * @param {Object} [options]
+ * @param {Object} [options.windows] `{count, rowsAt}`
  */
-async function startOpenQuestionsFleet() {
+async function startOpenQuestionsFleet({windows = null} = {}) {
     const
         calls    = [],
         messages = [{
@@ -65,9 +69,20 @@ async function startOpenQuestionsFleet() {
                       case 'fleetOpenWork':
                           return fleetE2ESuccess({
                               state    : 'ok', observedAt, coverage: 'complete', reason: null, seats: {}, awaitingMerge: [],
-                              questions: {state: 'ok', count: open().length, reason: null}
+                              questions: {state: 'ok', count: windows?.count ?? open().length, reason: null}
                           });
                       case 'fleetOwnQuestions': {
+                          if (windows) {
+                              const
+                                  offset = request.params?.offset ?? 0,
+                                  served = windows.rowsAt(offset, messages).map(message => createFleetMailboxMirrorRow(message, observedAt));
+
+                              return fleetE2ESuccess({
+                                  state: 'ok', reason: null, count: windows.count, rows: served, capturedAt: observedAt,
+                                  page : {limit: 1, offset, count: served.length, hasMore: offset + 1 < windows.count}
+                              })
+                          }
+
                           const rows = open().map(message => createFleetMailboxMirrorRow(message, observedAt));
 
                           return fleetE2ESuccess({
@@ -180,6 +195,49 @@ test.describe('AgentOS operator mailbox — the open questions (#599)', () => {
             await expect(row('the night shift continues')).toBeVisible({timeout: 15000});
             await expect(q2).toHaveCount(0);
             expect(await listed()).toBe(2)
+        } finally {
+            await fleet.close()
+        }
+    });
+
+    test('questions the graph cannot show never strand the ones after them: the pane asks three windows on, then read on reaches the next', async ({page, neuralLink}) => {
+        const
+            fleet = await startOpenQuestionsFleet({windows: {count: 5, rowsAt: (offset, messages) => offset === 4 ? [messages[0]] : []}}),
+            asked = () => new Set(fleet.calls.filter(call => call.method === 'fleetOwnQuestions').map(call => call.params?.offset ?? 0));
+
+        try {
+            await page.setViewportSize({width: 1440, height: 1000});
+            await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl: fleet.endpoint})}#/home`);
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+
+            const app = await neuralLink.connectToApp('AgentOS');
+            await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken: fleet.bearerToken});
+
+            const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
+            await app.callMethod(cockpit.properties.id, 'controller.loadRoster');
+            await app.callMethod(cockpit.properties.id, 'controller.loadOperatorIdentity');
+            await app.callMethod(cockpit.properties.id, 'controller.loadOpenWork');
+
+            const link = page.locator('.fm-home-operator-link.is-questions');
+
+            await expect(link).toHaveText('5 questions', {timeout: 30000});
+            await link.click();
+
+            const
+                mailbox = page.locator('.fm-operator-mailbox'),
+                state   = mailbox.locator('.fm-mailbox-state'),
+                readOn  = mailbox.getByRole('button', {name: 'read on', exact: true});
+
+            // four windows the graph cannot project: the pane asks three on by itself, then says only what it read
+            await expect(state).toHaveText('5 open · the ones read so far cannot be shown', {timeout: 30000});
+            await expect(readOn).toBeVisible();
+            expect(asked()).toEqual(new Set([0, 1, 2, 3]));
+
+            await readOn.click();
+            await expect(mailbox.locator('.fm-mail-row', {hasText: 'which plane do the seats bind?'})).toBeVisible({timeout: 15000});
+            await expect(readOn).toBeHidden();
+            await expect(state).toBeHidden();
+            expect(asked()).toEqual(new Set([0, 1, 2, 3, 4]))
         } finally {
             await fleet.close()
         }
