@@ -236,7 +236,7 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
             npm    = 'npm ci exited 1: ERESOLVE could not resolve dependency tree',
             vdom   = card => JSON.stringify(card.getReference('repo-list').vdom);
 
-        // the Fleet installs only in a checkout it cloned, so a failed clone has no dependency row
+        // the Fleet installs only in a checkout it holds, so a repository whose clone failed has no dependency row
         roster.add({agentId: 'ada', repoOutcomes: [
             {repoSlug: brain.repoSlug,  state: 'prepared'},
             {repoSlug: skills.repoSlug, state: 'failed', reason}
