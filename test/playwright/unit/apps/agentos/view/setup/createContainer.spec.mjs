@@ -13,7 +13,8 @@ import * as core       from '../../../../../../../node_modules/neo.mjs/src/core/
 import                      '../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import BaseContainer   from '../../../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import StateProvider   from '../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
-import CreateContainer, {CLI_COMMAND, START_VERBS, countDensity, describeAsks, presetVerdict, recommendationText} from '../../../../../../../apps/agentos/view/setup/CreateContainer.mjs';
+import CreateContainer from '../../../../../../../apps/agentos/view/setup/CreateContainer.mjs';
+import SetupAsks       from '../../../../../../../apps/agentos/util/SetupAsks.mjs';
 import SetupSteps      from '../../../../../../../apps/agentos/store/SetupSteps.mjs';
 import {EXIT_VERBS, actionsFor} from '../../../../../../../apps/agentos/view/setup/StepList.mjs';
 import {BRAIN_ROOT, MACHINES, TRUSTED, pinnedSetupHost} from '../../../../../fixture/pinnedSetupHost.mjs';
@@ -186,7 +187,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         await settle();
 
         // cold: the token is the open block, the other two are next; the Start block has no row yet
-        expect(describeAsks(door.store)).toEqual({token: 'open', where: 'next', start: 'next', startRow: null});
+        expect(SetupAsks.describeAsks(door.store)).toEqual({token: 'open', where: 'next', start: 'next', startRow: null});
         expect(door.getReference('ask-token').cls).toContain('is-open');
         expect(door.getReference('ask-where').cls).toContain('is-next');
         expect(door.getReference('token-change').hidden).toBe(true);
@@ -225,7 +226,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(JSON.stringify(door.store.items.map(step => step.toJSON?.() ?? step))).not.toMatch(/ghp_|glpat-/);
 
         // the token answered: its block collapses to its line with Change, the next question opens
-        expect(describeAsks(door.store)).toMatchObject({token: 'answered', where: 'open', start: 'next'});
+        expect(SetupAsks.describeAsks(door.store)).toMatchObject({token: 'answered', where: 'open', start: 'next'});
         expect(door.getReference('ask-token').cls).toContain('is-answered');
         expect(door.getReference('token-change').hidden).toBe(false);
         expect(door.getReference('ask-where').cls).toContain('is-open');
@@ -240,13 +241,13 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
     });
 
     test('the recommendation sentence: the recipe\'s verdict and reason, the card\'s label; nothing recommended says so; no placement says it is measuring', () => {
-        expect(recommendationText(PLACEMENT, PRESETS)).toBe(`This machine, ${PRESETS[0].label} — ${PLACEMENT.recommended[0].reason}`);
-        expect(recommendationText({recommended: [], possible: [{id: 'hosted', reason: 'no recorded quality floor: a candidate, never recommended by default'}], refused: []}, PRESETS))
+        expect(SetupAsks.recommendationText(PLACEMENT, PRESETS)).toBe(`This machine, ${PRESETS[0].label} — ${PLACEMENT.recommended[0].reason}`);
+        expect(SetupAsks.recommendationText({recommended: [], possible: [{id: 'hosted', reason: 'no recorded quality floor: a candidate, never recommended by default'}], refused: []}, PRESETS))
             .toBe(`Nothing fits this machine outright; ${PRESETS[0].label} is possible — no recorded quality floor: a candidate, never recommended by default. Choose under Other choices.`);
-        expect(recommendationText({recommended: [], possible: [], refused: [{id: 'local-full', reason: 'short'}]}, PRESETS)).toBe('Nothing fits this machine yet — each choice says why under Other choices.');
-        expect(recommendationText(null, PRESETS)).toBe('Measuring this machine…');
+        expect(SetupAsks.recommendationText({recommended: [], possible: [], refused: [{id: 'local-full', reason: 'short'}]}, PRESETS)).toBe('Nothing fits this machine yet — each choice says why under Other choices.');
+        expect(SetupAsks.recommendationText(null, PRESETS)).toBe('Measuring this machine…');
         // the verb map covers every chip verb a row can offer
-        expect(Object.keys(START_VERBS).sort()).toEqual(['open memories', 're-check', 're-read', 'retry', 'run', 'which plane?', 'write again'].sort())
+        expect(Object.keys(SetupAsks.START_VERBS).sort()).toEqual(['open memories', 're-check', 're-read', 'retry', 'run', 'which plane?', 'write again'].sort())
     });
 
     test('start: with both answers in, the Start block owns the first row that is not ok and waits for nothing; its button sends that row\'s own request; a costly write is said in the block first', async () => {
@@ -263,8 +264,8 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         await settle();
 
-        expect(describeAsks(door.store)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
-        expect(describeAsks(door.store).startRow.id).toBe('write-secrets');
+        expect(SetupAsks.describeAsks(door.store)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(SetupAsks.describeAsks(door.store).startRow.id).toBe('write-secrets');
         expect(door.getReference('ask-start').cls).toContain('is-open');
         expect(door.getReference('placement-line').text).toBe(`This machine, ${PRESETS[1].label}`);
         expect(door.getReference('start-line').text).toBe(`${door.store.get('write-secrets').summary} · 5 of 12`);
@@ -277,7 +278,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         // the witness row where a second row is possible: the first press says so in the block
         evaluation = structuredClone(WITNESS.searched);
         await door.reevaluate('unused');
-        expect(describeAsks(door.store).startRow.id).toBe('verify');
+        expect(SetupAsks.describeAsks(door.store).startRow.id).toBe('verify');
         expect(door.getReference('start-button').text).toBe('Check again');
 
         await door.onStepClick({action: 'write again', record: door.store.get('verify')});
@@ -315,7 +316,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.getReference('placement-line').text).toBe(`This machine, ${PRESETS[0].label} · needs a provider key`);
         expect(door.getReference('provider-key-line')).toMatchObject({hidden: false, text: 'This preset needs a provider key — unanswered'});
         expect(door.getReference('provider-key-button').hidden).toBe(false);
-        expect(describeAsks(door.store).where, 'not answered until the key is kept').not.toBe('answered');
+        expect(SetupAsks.describeAsks(door.store).where, 'not answered until the key is kept').not.toBe('answered');
         expect(actionsFor(door.store.get('provider-key')), 'the hosted preset requires a key: the row gets its window').toEqual(['open window']);
         expect(run().preset).toBe('hosted');
         expect(progress()).toEqual({ok: 3, total: 12, next: 'plane-credential', blocking: null});
@@ -387,7 +388,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         await door.onStepClick({record: door.store.get('write-secrets')});
 
         expect(calls.filter(([name]) => name === 'setupEffect')).toEqual([['setupEffect', {effectId: 'write-secrets', windowId: 7}]]);
-        expect(door.getReference('status-line').text).toBe(`write-secrets: no-brain-root: the preset's env set has no config to be checked against — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`);
+        expect(door.getReference('status-line').text).toBe(`write-secrets: no-brain-root: the preset's env set has no config to be checked against — run \`${SetupAsks.CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`);
         expect(door.manualActions).toBe(1);
         expect(door.store.get('write-secrets').status, 'nothing changed locally').toBe('pending');
 
@@ -545,7 +546,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         // the counting definition: three answered questions (the fold stays a default) + four
         // consented effects = 7 decisions, 0 manual actions on a host where every effect ran
-        expect(countDensity(finished)).toEqual({decisions: 7, manualActions: 0});
+        expect(SetupAsks.countDensity(finished)).toEqual({decisions: 7, manualActions: 0});
 
         door.evaluation = {...finished};
         expect(fired, 'fired once, with the count').toEqual([{density: {decisions: 7, manualActions: 0}, evaluation: expect.any(Object), source: door.id}]);
@@ -561,7 +562,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.shellAvailable).toBe(false);
         expect(door.getReference('served').hidden).toBe(false);
         expect(door.getReference('questions').hidden).toBe(true);
-        expect(door.getReference('served').items[1].text).toBe(CLI_COMMAND);
+        expect(door.getReference('served').items[1].text).toBe(SetupAsks.CLI_COMMAND);
 
         door.getReference('pasted-json').value = 'not json';
         door.onProjectPastedClick();
@@ -652,12 +653,12 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(store.describeProgress()).toEqual({ok: 2, total: 12, next: 'preset', blocking: null});
         expect(store.projectEvaluation(null), 'no steps clears the list').toBe(0);
         expect(store.describeProgress()).toEqual({ok: 0, total: 0, next: null, blocking: null});
-        expect(presetVerdict(PLACEMENT, 'local-full')).toMatchObject({verdict: 'refused', reason: 'the host budget falls 5.9 GiB short'});
-        expect(presetVerdict(PLACEMENT, 'hosted')).toMatchObject({verdict: 'recommended', margins: PLACEMENT.recommended[0].margins});
+        expect(SetupAsks.presetVerdict(PLACEMENT, 'local-full')).toMatchObject({verdict: 'refused', reason: 'the host budget falls 5.9 GiB short'});
+        expect(SetupAsks.presetVerdict(PLACEMENT, 'hosted')).toMatchObject({verdict: 'recommended', margins: PLACEMENT.recommended[0].margins});
         // an adverse placement, constructed: a candidate without a recorded floor reads possible, with its reason
-        expect(presetVerdict({recommended: [], possible: [{id: 'hosted', margins: {host: 1, guest: 1}, reason: 'no recorded quality floor: a candidate, never recommended by default'}], refused: []}, 'hosted'))
+        expect(SetupAsks.presetVerdict({recommended: [], possible: [{id: 'hosted', margins: {host: 1, guest: 1}, reason: 'no recorded quality floor: a candidate, never recommended by default'}], refused: []}, 'hosted'))
             .toMatchObject({verdict: 'possible', reason: 'no recorded quality floor: a candidate, never recommended by default'});
-        expect(presetVerdict(null, 'hosted')).toEqual({verdict: 'unknown', reason: 'the placement step has not answered', margins: null});
+        expect(SetupAsks.presetVerdict(null, 'hosted')).toEqual({verdict: 'unknown', reason: 'the placement step has not answered', margins: null});
 
         store.destroy()
     })

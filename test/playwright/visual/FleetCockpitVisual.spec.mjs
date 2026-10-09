@@ -1902,17 +1902,17 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(home.locator('.fm-home-h1')).toHaveText('No word from the team yet');
         await expect(home.locator('.fm-home-h1')).toHaveClass(/is-quiet/);
         await expect(home.locator('.fm-home-plane')).toHaveText('Plane not connected');
-        await expect(home.getByRole('button', {name: 'Connect a plane'})).toBeHidden();
+        await expect(home.getByRole('button', {name: 'Set up your institution'})).toBeHidden();
         await settleField(page, 'none');
         await expect(home).toHaveScreenshot('home-returning-cold.png')
     });
 
-    test('Home over a live fleet — the team line counts who is up and the plane line is quiet; a packaged shell without a plane gets the product line, the lede in its family, and Connect a plane; both skins', async ({page}) => {
+    test('Home over a live fleet — the team line counts who is up and the plane line is quiet; a packaged shell without a plane gets the product line, the promise in its family, Set up your institution and the quiet Connect door; both skins', async ({page}) => {
         await bootSettledCockpit(page);
 
         const
             home    = await openHome(page),
-            connect = home.getByRole('button', {name: 'Connect a plane'}),
+            connect = home.getByRole('button', {name: 'Set up your institution'}),
             family  = selector => home.locator(selector).evaluate(el => getComputedStyle(el).fontFamily);
 
         await expect(home.locator('.fm-home-h1')).toHaveText(/^\d+ of 11 agents up$/);
@@ -1923,6 +1923,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await landShellPlane(page, false);
         await expect(connect).toBeVisible();
+        await expect(home.locator('.fm-home-connect'), 'joining stays reachable as the second door').toHaveText('Joining a team that already runs one? Connect to it');
         await expect(home.locator('.fm-home-doors')).toBeHidden();
         await expect(home.locator('.fm-home-plane')).toBeHidden();
         // the lede declared no family and inherited the theme's body face, apart from the display line above it

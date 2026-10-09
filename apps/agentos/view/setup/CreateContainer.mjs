@@ -5,10 +5,7 @@ import SetupSteps     from '../../store/SetupSteps.mjs';
 import StepList       from './StepList.mjs';
 import {actionsFor}   from './StepList.mjs';
 import TextArea       from '../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
-import {CLI_COMMAND, START_VERBS, countDensity, describeAsks, gibText, presetVerdict, recommendationText} from '../../util/SetupAsks.mjs';
-
-// the door's readings live beside the other util readings; the tests import them from the door
-export {CLI_COMMAND, START_VERBS, countDensity, describeAsks, gibText, presetVerdict, recommendationText};
+import SetupAsks      from '../../util/SetupAsks.mjs';
 
 const
     GiB       = 1073741824,
@@ -167,7 +164,7 @@ class CreateContainer extends Container {
                 ntype: 'component',
                 cls  : ['fm-setup-served-command'],
                 tag  : 'code',
-                text : CLI_COMMAND
+                text : SetupAsks.CLI_COMMAND
             }, {
                 module   : TextArea,
                 cls      : ['fm-setup-served-json'],
@@ -473,8 +470,8 @@ class CreateContainer extends Container {
 
         const
             {guest, host} = probe,
-            hostText      = `host ${gibText(host.totalBytes)} total · ${gibText(host.availableBytes)} available · pressure ${host.pressure ?? 'unknown'}`,
-            guestText     = guest ? ` · VM ${gibText(guest.capBytes)} cap · ${gibText(guest.availableBytes)} available` : ' · no VM observed';
+            hostText      = `host ${SetupAsks.gibText(host.totalBytes)} total · ${SetupAsks.gibText(host.availableBytes)} available · pressure ${host.pressure ?? 'unknown'}`,
+            guestText     = guest ? ` · VM ${SetupAsks.gibText(guest.capBytes)} cap · ${SetupAsks.gibText(guest.availableBytes)} available` : ' · no VM observed';
 
         return `${hostText}${guestText}`
     }
@@ -493,7 +490,7 @@ class CreateContainer extends Container {
         if (!store || !me.getReference('ask-token')) return;
 
         const
-            {token, where, start, startRow} = describeAsks(store, me.reopened),
+            {token, where, start, startRow} = SetupAsks.describeAsks(store, me.reopened),
             step        = id => store.get(id),
             credential  = step('plane-credential'),
             preset      = step('preset'),
@@ -527,7 +524,7 @@ class CreateContainer extends Container {
 
         me.getReference('placement-line').text = chosen
             ? `This machine, ${label(chosen)}${keyNeeded ? ' · needs a provider key' : key?.status === 'ok' && key.answer ? ' · provider key kept' : ''}`
-            : recommendationText(placement, presets);
+            : SetupAsks.recommendationText(placement, presets);
         me.getReference('use-button').set({hidden: !recommended || chosen === recommended.id, presetId: recommended?.id ?? null, text: recommended ? `Use ${label(recommended.id)}` : 'Use this'});
         me.getReference('provider-key-button').hidden = !keyNeeded;
         me.getReference('provider-key-line').set({hidden: !keyNeeded, text: keyNeeded ? `This preset needs a provider key — ${key.reason ?? 'unanswered'}` : ''});
@@ -552,7 +549,7 @@ class CreateContainer extends Container {
                 ? 'a second row on the plane is possible · press Write again to write it'
                 : `${startRow.status} · ${startRow.reason ?? ''}`
             : '';
-        me.getReference('start-button').set({hidden: !action, text: START_VERBS[action] ?? action ?? 'Run next step'})
+        me.getReference('start-button').set({hidden: !action, text: SetupAsks.START_VERBS[action] ?? action ?? 'Run next step'})
     }
 
     /**
@@ -594,15 +591,15 @@ class CreateContainer extends Container {
 
         container.add(presets.map(preset => {
             const
-                {margins, reason, verdict} = presetVerdict(placement, preset.id),
+                {margins, reason, verdict} = SetupAsks.presetVerdict(placement, preset.id),
                 refused                    = verdict === 'refused',
                 workload                   = preset.workload ?? {},
                 facts                      = `chat ${preset.chatModel} · embed ${preset.embedder} · ${preset.vectorDimension} dims`,
                 // the decision numbers: the plane's own footprint, the models, the floor's date
                 footprint                  = preset.inference === 'local'
-                    ? `models ${gibText(workload.modelsBytes)} · ${preset.qualityFloor?.measuredAt ? `floor recorded ${preset.qualityFloor.measuredAt}` : 'no recorded floor'}`
-                    : `plane ${Number.isFinite(workload.planeIdleBytes) ? (workload.planeIdleBytes / GiB).toFixed(1) : '?'}–${gibText(workload.planePeakBytes)} · no local models · needs a provider key`,
-                margin                     = Number.isFinite(margins?.host) && margins.host >= 0 ? ` · ${gibText(margins.host)} host margin` : '';
+                    ? `models ${SetupAsks.gibText(workload.modelsBytes)} · ${preset.qualityFloor?.measuredAt ? `floor recorded ${preset.qualityFloor.measuredAt}` : 'no recorded floor'}`
+                    : `plane ${Number.isFinite(workload.planeIdleBytes) ? (workload.planeIdleBytes / GiB).toFixed(1) : '?'}–${SetupAsks.gibText(workload.planePeakBytes)} · no local models · needs a provider key`,
+                margin                     = Number.isFinite(margins?.host) && margins.host >= 0 ? ` · ${SetupAsks.gibText(margins.host)} host margin` : '';
 
             return {
                 ntype    : 'container',
@@ -660,7 +657,7 @@ class CreateContainer extends Container {
 
         if (finished && !me.firstPersistenceFired) {
             me.firstPersistenceFired = true;
-            me.fire('firstPersistence', {density: countDensity(me.evaluation, me.manualActions), evaluation: me.evaluation})
+            me.fire('firstPersistence', {density: SetupAsks.countDensity(me.evaluation, me.manualActions), evaluation: me.evaluation})
         }
     }
 
@@ -677,7 +674,7 @@ class CreateContainer extends Container {
 
         if (!provider) return;
 
-        const density = countDensity(evaluation, me.manualActions);
+        const density = SetupAsks.countDensity(evaluation, me.manualActions);
 
         // leaf-complete blocks: the provider's data is a tree of leaves, so every key is written
         // with a value (null for "no run"), never a block replaced wholesale
@@ -777,7 +774,7 @@ class CreateContainer extends Container {
         if (!reply.ok && /^(no-brain-root|not-packaged|no-shell)/.test(reply.reason ?? '')) {
             // the shell cannot run effects at all: the row's action is the operator's instruction
             me.manualActions++;
-            me.getReference('status-line').text = `${effectId}: ${reply.reason ?? 'the shell could not run it'} — run \`${CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`;
+            me.getReference('status-line').text = `${effectId}: ${reply.reason ?? 'the shell could not run it'} — run \`${SetupAsks.CLI_COMMAND.replace(' --json', '')}\` on the host, then re-check`;
             return
         }
 

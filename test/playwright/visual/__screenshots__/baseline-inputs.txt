@@ -294,7 +294,7 @@ apps/agentos/util/SeatSessionFolder.mjs
     5c407e6a03f2b440af221d6a6e314aa7f89f6f53
 
 apps/agentos/util/SetupAsks.mjs
-    8326d323800fcfd677bb216151154f4917894f31
+    a8b9c7a1ea3847322c20b86fb1a327d1151ef0fe
 
 apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
@@ -318,7 +318,7 @@ apps/agentos/view/Viewport.mjs
     07dfc2f70e47e687f06339c0cc9b90ea8de17272
 
 apps/agentos/view/ViewportController.mjs
-    1a9c30d564d13c22c739d66d9a6a81157d36dbd4
+    80e14eda4ffd7bd5821f3488ec0f3588358e2e9e
 
 apps/agentos/view/accounts/Controller.mjs
     443cd1c7a7cd062c51d03bf4076a4ff1620d6acc
@@ -552,13 +552,13 @@ apps/agentos/view/home/Canvas.mjs
     33298795c5154b6b4dbb5df62017cc8771767f70
 
 apps/agentos/view/home/Container.mjs
-    581501193ef6e9d83fb96f9bee37c6663902eadb
+    c3425bd7a3afb719e04c46b28d0e6997905fafe6
 
 apps/agentos/view/setup/ConnectContainer.mjs
     d942330ea4f2fe19c9e94091c641be38f6acebe7
 
 apps/agentos/view/setup/CreateContainer.mjs
-    68174301a834662450c38c0a433a666657ab58be
+    3ae86889cbae39fbb1834ed6db00b63aab53fe51
 
 apps/agentos/view/setup/Panel.mjs
     b05bdade7c7ba7f5b1378ab83cc6cbfd0ccf1916
@@ -717,7 +717,7 @@ resources/scss/src/apps/agentos/fleet/wake/Container.scss
     7c1ce12e34436cc2da14a4448c472f09cd5f4f5e
 
 resources/scss/src/apps/agentos/home/Container.scss
-    c573cd03ef96b7cb553d0b8621ff89cfe2f8311b
+    d1762184e47b455314dd2eb34b2841cc6bda0541
 
 resources/scss/src/apps/agentos/setup/CreateContainer.scss
     2ce7ed5b1f6567a89c2b629ffdbf4e92e108f947
@@ -789,7 +789,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    0d07b28620322a39e463b0a5dd874408b0edaa7a
+    255005dcf4a66a54655d77bdd2b53fffe85bfa9b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     ff439f185bac3cadb9000b7b45474b9a1a8af18e
@@ -891,10 +891,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-me
     11b7728e5f7996be2db181b181e314e94752b654
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
-    0facff4dc71f0aac3e6c09d21336642ad02279c2
+    2e10bc3ccd4853e1f58323bc8c4417f28cc5914a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run.png
-    fdd06ca066737c8514a95a6aee531b1c5b6875ba
+    e89ef1bb90767306ed3f2dc0a99b47d96a001a64
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-both-light.png
     6e80e35a09a3dbcf71f746c325a1a73cc23c70ab
