@@ -101,9 +101,10 @@ class SeatRootContainer extends Container {
                 cls      : ['fm-seat-root-plan-line'],
                 reference: 'plan-line'
             }, {
-                ntype: 'component',
-                cls  : ['fm-seat-root-copy-note'],
-                text : 'The shell copies and checks each seat home before changing the root. This needs free space and can take time; original folders stay in an archive for rollback.'
+                ntype    : 'component',
+                cls      : ['fm-seat-root-copy-note'],
+                reference: 'copy-note',
+                text     : 'The shell copies and checks each seat home before changing the root. This needs free space and can take time; original folders stay in an archive for rollback.'
             }, {
                 module   : SeatMoveList,
                 reference: 'move-list',
@@ -279,9 +280,10 @@ class SeatRootContainer extends Container {
 
     /**
      * @summary Render shell status, plan, and copy-only outcome text. All untrusted text reaches a text sink.
-     * The plan box (its line, the copy-note and the rows) is the operator's decision, so it shows only while
-     * there is one: a reviewed plan, or consented rows whose boot has not committed. A committed move keeps
-     * just its receipt on the status line, even though the consent record still carries the rows.
+     * The plan box shows only while it still asks something of the operator: a reviewed plan, consented rows
+     * whose boot has not committed, or a committed move whose retirement is held, which keeps Fleet start
+     * held. A cleanly committed move keeps just its receipt on the status line, although the consent record
+     * still carries the rows. The copy-note says what the shell will do, so a committed move never shows it.
      */
     sync() {
         const
@@ -330,8 +332,12 @@ class SeatRootContainer extends Container {
             statusLine.text = `Boot outcome · ${outcome.state ?? 'unobserved'}`
         }
 
-        const planVisible = outcome?.state !== 'committed' && (!!plan || Array.isArray(pending?.rows));
+        const
+            committed   = outcome?.state === 'committed',
+            planVisible = (!committed || outcome.retirement?.state === 'held') && (!!plan || Array.isArray(pending?.rows));
+
         planBox.hidden = !planVisible;
+        me.getReference('copy-note').hidden = committed;
         planLine.text = plan
             ? `Reviewed move · ${plan.from ?? 'current root'} → ${plan.to ?? 'destination root'}`
             : pending ? `Consented move · ${pending.from ?? 'current root'} → ${pending.to ?? 'destination root'}` : '';

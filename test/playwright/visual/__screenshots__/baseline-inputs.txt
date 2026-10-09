@@ -573,7 +573,7 @@ apps/agentos/view/system/SeatMoveList.mjs
     574c19d20ef49a42d8f07ac3ffa0bbd3e0865efd
 
 apps/agentos/view/system/SeatRootContainer.mjs
-    e101849cfd812213af4098a17708011c862f79dc
+    464ace7fe664549c1963aea21002fde5d948522d
 
 apps/agentos/view/system/SeatRootController.mjs
     11d0ce4be716d394c51f275b56112e2c4aa19fac
@@ -732,7 +732,7 @@ resources/scss/src/apps/agentos/system/List.scss
     2c884c4386b03edc287f2c6a996dd68a6ff509e7
 
 resources/scss/src/apps/agentos/system/SeatRootContainer.scss
-    ce0fe43f2158ee85677ebbc11b8f0dd555010912
+    ede703af068917f8d824240bb77b510cbb1d143b
 
 resources/scss/theme-neo-dark/apps/agentos/Viewport.scss
     60ed53504494b2b243d070e7a2fdabd47264a218

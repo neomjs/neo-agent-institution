@@ -131,10 +131,14 @@ test.describe('System keeper-view — visual baseline (populated plane cards)', 
                 expect(await page.locator('.fm-seat-root-plan .fm-seat-move-list').evaluate(list => list.scrollHeight > list.clientHeight), 'the rows scroll in their own box').toBe(true)
             }
 
-            // reach is the rendered fact, not an inference: the first plane card starts inside the window
-            const reach = await page.evaluate(() => ({top: Math.round(document.querySelector('.fm-plane-card').getBoundingClientRect().top), height: window.innerHeight}));
+            // reach is the rendered fact, not an inference: the first card's head reads inside the plane list's
+            // visible box without a scroll, so the list is more than a sliver that technically starts on screen
+            const reach = await page.evaluate(() => ({
+                head: Math.round(document.querySelector('.fm-plane-card .fm-plane-head').getBoundingClientRect().bottom),
+                list: Math.round(document.querySelector('.fm-plane-list').getBoundingClientRect().bottom)
+            }));
 
-            expect(reach.top, 'the first plane card starts inside the window').toBeLessThan(reach.height);
+            expect(reach.head, 'the first card\'s head reads without a scroll').toBeLessThanOrEqual(reach.list);
 
             await expect(page.locator('.fm-system-view')).toHaveScreenshot(`system-view-seat-move-${state}.png`)
         })

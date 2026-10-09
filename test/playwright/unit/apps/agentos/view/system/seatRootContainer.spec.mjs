@@ -118,26 +118,29 @@ test.describe('AgentOS.view.system.SeatRootContainer (#582)', () => {
         }
     });
 
-    test('a committed move leaves no decision: the consented rows and the copy-note give way to the receipt line, retirement held or not (#614)', () => {
+    test('a cleanly committed move leaves no decision: the rows and the copy-note give way to the receipt line; a held retirement keeps the rows, never the copy-note (#614)', () => {
         const
-            panel   = makePanel(),
-            to      = '/Users/example/Seats-v2',
-            pending = {from: root, to, rows: Array.from({length: 12}, (_, i) => ({id: `seat-${i}`, from: `${root}/seat-${i}`, to: `${to}/seat-${i}`, materialized: true}))};
+            panel    = makePanel(),
+            to       = '/Users/example/Seats-v2',
+            copyNote = () => panel.getReference('copy-note'),
+            pending  = {from: root, to, rows: Array.from({length: 12}, (_, i) => ({id: `seat-${i}`, from: `${root}/seat-${i}`, to: `${to}/seat-${i}`, materialized: true}))};
 
         try {
             panel.snapshot = {state: 'available', packaged: true, root: {root: to, origin: 'moved'}, pending, outcome: {state: 'committed'}};
             expect(panel.getReference('status-line').text).toBe(`Root move committed · ${to}`);
             expect(panel.getReference('plan-summary').hidden).toBe(true);
 
+            // Fleet start stays held until the old folders are archived: the rows still ask something of the operator
             panel.snapshot = {state: 'available', packaged: true, root: {root: to, origin: 'moved'}, pending, outcome: {state: 'committed', retirement: {state: 'held', reason: 'one folder is busy'}}};
             expect(panel.getReference('status-line').text).toContain('Fleet start held');
-            expect(panel.getReference('plan-summary').hidden).toBe(true);
+            expect(panel.getReference('plan-summary').hidden).toBe(false);
+            expect(copyNote().hidden).toBe(true);
 
             // the same rows before this boot reports its outcome are still the operator's decision, with the copy-note
             panel.snapshot = {state: 'available', packaged: true, root: {root, origin: 'adopted'}, pending, outcome: null};
             expect(panel.getReference('plan-summary').hidden).toBe(false);
             expect(panel.moveStore.count).toBe(12);
-            expect(panel.getReference('plan-summary').items.map(item => item.cls?.[0])).toContain('fm-seat-root-copy-note')
+            expect(copyNote().hidden).toBe(false)
         } finally {
             panel.destroy()
         }

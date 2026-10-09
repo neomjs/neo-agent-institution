@@ -34,9 +34,10 @@
         gap: var(--fm-space-2);
 
         /* the rows scroll in their own box: the plane list below owns the System view's scroll, and a
-           consent review of every seat must never push it out of reach */
+           consent review of every seat must never push it out of reach. About two rows show at a laptop
+           height; the review scrolls, the planes keep their room */
         .fm-seat-move-list {
-            max-height: 40vh;
+            max-height: 24vh;
             overflow-y: auto;
         }
     }
