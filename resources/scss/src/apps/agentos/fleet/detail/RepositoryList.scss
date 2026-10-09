@@ -51,6 +51,7 @@
         flex-basis   : 100%;
         font         : var(--fm-text-detail);
         overflow-wrap: anywhere;
+        white-space  : normal; /* a list item does not wrap; the reason must */
 
         &.is-failed {
             color: var(--fm-kind-alert);

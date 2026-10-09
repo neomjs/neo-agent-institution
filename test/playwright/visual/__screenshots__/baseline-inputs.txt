@@ -384,7 +384,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     c5848ceeb5fafcbecfdff22109fa2fb2bf3555b1
 
 apps/agentos/view/fleet/detail/Container.mjs
-    3e359b2be7ee508fd2f1fe8ee20990b1de64e1f3
+    29e547f24a38f5a366126d45617c5d8c5d0a9e17
 
 apps/agentos/view/fleet/detail/Controller.mjs
     02777db58ca553744c879ed66250eb6e34aee10a
@@ -395,11 +395,11 @@ apps/agentos/view/fleet/detail/ParticipationContainer.mjs
 apps/agentos/view/fleet/detail/PullRequestList.mjs
     e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
 
-apps/agentos/view/fleet/detail/RepositoryBodyComponent.mjs
-    de5a5bfe1f32786e2a8e085afa9be8b57e57175f
+apps/agentos/view/fleet/detail/RepositoryBodyContainer.mjs
+    d19c4b1cbc5df13bcf4303f82a896065eed8e7dc
 
 apps/agentos/view/fleet/detail/RepositoryList.mjs
-    86b633a004257cb091234e4ca49c6fb11225f5ed
+    fa88c7f51e9a8450766b6b0937bdaa46b36cb2f0
 
 apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs
     b386eb4c112e2116dabe889bbf3467c51c7f9bfa
@@ -627,13 +627,13 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    924fe73e6cdf03da2bdb9e0addb08f4c0ec5a34c
+    e40ef61fd6c8573c2375d075fe6edff83b8e8af2
 
 resources/scss/src/apps/agentos/fleet/detail/ParticipationContainer.scss
     41bbe1875faf487783c4058c28146e40955c070a
 
 resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
-    a71a398f285cc56c9844dff2dd7a71b795886b24
+    522a530b99562a1766a86746f7f329ea09ac2c90
 
 resources/scss/src/apps/agentos/fleet/detail/SeatMemoryContainer.scss
     5c79bf0a58cdd15732dd245ce0b34e6b25bb6945
@@ -795,7 +795,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     e71aea247eacde5adb77fb60a74942d01a9fc86e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    a79b5b856d86e65d4954ac019fcbad7ecde59bc2
+    f7956f2b5823aebb8fc840caf96afe61d70e3f77
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
