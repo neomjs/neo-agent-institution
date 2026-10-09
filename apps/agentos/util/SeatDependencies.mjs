@@ -95,7 +95,7 @@ class SeatDependencies extends Base {
     /**
      * @summary One Repository pane row's state and reason. The checkout's dependency row speaks when there is
      * one, with `installed` and `present` as `prepared`: the Fleet writes it before the launch and records the
-     * clones after, so it is never older than the clone, and its start had cloned that repository. Without one,
+     * clones after, so it is never older than the clone, and its start held a checkout of that repository. Without one,
      * a failed clone reads `failed`, and a prepared clone `unverified`, since no install was reported for it.
      * @param {Object|null} [clone] The repository's `repoOutcomes` row: `{state: 'prepared'|'failed', reason?}`.
      * @param {Object|null} [dependency] Its `dependencyOutcomes` row: `{state, reason?}`.
