@@ -306,7 +306,8 @@ export function describeReceipt(receipt) {
     const
         {owners = {}, stagedAt = '?'} = receipt,
         brain    = owners.brain?.revision?.slice(0, 7)                ?? '?',
-        engine   = owners.engine?.pin?.split('#').pop()?.slice(0, 7)   ?? '?',
+        // the Engine tracks `dev`, so its pin names a branch; a receipt from before the revision names it only there
+        engine   = (owners.engine?.revision ?? owners.engine?.pin?.split('#').pop())?.slice(0, 7) ?? '?',
         product  = owners.product?.version                           ?? '?',
         revision = owners.product?.revision?.slice(0, 7)              ?? '?';
 

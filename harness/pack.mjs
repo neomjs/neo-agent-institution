@@ -534,23 +534,42 @@ export function materializeOverlaySlots({stageDir, trees}) {
 
 /**
  * @summary The provenance the shipped artifact carries: role, package name, version, the Engine's
- * pin and each source owner's revision — and NO build-host coordinate. The stage's `organism-build-info.json`
- * rides `extraResources` verbatim, so an absolute checkout path written here would ship to every
- * stranger's machine.
- * Revisions are Git HEAD identifiers or null, not proof of a clean tree or an installed candidate.
+ * pin and installed revision, and each source owner's revision — and NO build-host coordinate. The stage's
+ * `organism-build-info.json` rides `extraResources` verbatim, so an absolute checkout path written here would
+ * ship to every stranger's machine.
+ * Source revisions are Git HEAD identifiers or null, not proof of a clean tree or an installed candidate. The
+ * Engine's pin names the branch it tracks; its revision is the commit npm installed from it.
  * @param {Object} options
  * @param {Object} options.brainPackageJson
  * @param {Object} options.enginePackageJson
  * @param {Object} options.productPackageJson
  * @param {{brainRoot: String, productRoot: String}} options.roots Consulted for their revisions only; never recorded.
  * @param {Function} [options.revisionOf=readRevision] `(root) => String|null`, injectable for tests.
+ * @param {Function} [options.engineRevisionOf=readEngineRevision] `(productRoot) => String|null`, injectable for tests.
  * @returns {{brain: Object, engine: Object, product: Object}}
  */
-export function describeOwners({brainPackageJson, enginePackageJson, productPackageJson, roots, revisionOf = readRevision}) {
+export function describeOwners({brainPackageJson, enginePackageJson, productPackageJson, roots, revisionOf = readRevision, engineRevisionOf = readEngineRevision}) {
     return {
         brain  : {name: brainPackageJson.name ?? null, revision: revisionOf(roots.brainRoot), version: brainPackageJson.version ?? null},
-        engine : {name: enginePackageJson.name ?? 'neo.mjs', pin: productPackageJson.dependencies?.['neo.mjs'] ?? null, version: enginePackageJson.version ?? null},
+        engine : {name: enginePackageJson.name ?? 'neo.mjs', pin: productPackageJson.dependencies?.['neo.mjs'] ?? null, revision: engineRevisionOf(roots.productRoot), version: enginePackageJson.version ?? null},
         product: {name: productPackageJson.name ?? null, revision: revisionOf(roots.productRoot), version: productPackageJson.version ?? null}
+    }
+}
+
+/**
+ * @summary The Engine commit npm installed under the product, read from npm's own record of the install
+ * (`node_modules/.package-lock.json`): the part after `#` in its resolved git URL.
+ * @param {String} productRoot
+ * @returns {String|null}
+ */
+function readEngineRevision(productRoot) {
+    try {
+        const resolved = JSON.parse(fs.readFileSync(path.join(productRoot, 'node_modules', '.package-lock.json'), 'utf8'))
+            .packages?.['node_modules/neo.mjs']?.resolved;
+
+        return typeof resolved === 'string' && resolved.includes('#') ? resolved.slice(resolved.lastIndexOf('#') + 1) : null
+    } catch {
+        return null
     }
 }
 

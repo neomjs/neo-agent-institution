@@ -201,6 +201,12 @@ test.describe('harness/install.mjs — the plan', () => {
 
             expect(describeReceipt(build)).toBe(`staged 2026-10-01T14:21:46.232Z · Brain aaaaaaa · Engine bbbbbbb · product 0.1.0 @ ${expected}`)
         }
+    });
+
+    test('describeReceipt names the Engine by its installed revision when the pin names the branch it tracks', () => {
+        const build = {...OLD, owners: {...OLD.owners, engine: {name: 'neo.mjs', pin: 'github:neomjs/neo#dev', revision: '7aae7c3166b7fc35', version: '13.1.0'}}};
+
+        expect(describeReceipt(build)).toContain('Engine 7aae7c3 ·')
     })
 });
 

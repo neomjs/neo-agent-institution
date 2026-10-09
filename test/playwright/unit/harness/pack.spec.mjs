@@ -718,14 +718,15 @@ test.describe('harness pack stage', () => {
             info  = describeOwners({
                 brainPackageJson  : {name: 'neo-agent-brain', version: '0.0.0'},
                 enginePackageJson : {name: 'neo.mjs', version: '13.1.0'},
-                productPackageJson: {dependencies: {'neo.mjs': 'github:neomjs/neo#205bc52f'}, name: 'neo-agent-institution', version: '0.1.0'},
+                productPackageJson: {dependencies: {'neo.mjs': 'github:neomjs/neo#dev'}, name: 'neo-agent-institution', version: '0.1.0'},
                 revisionOf        : root => root === roots.brainRoot ? 'abc123' : root === roots.productRoot ? 'def456' : null,
+                engineRevisionOf  : root => root === roots.productRoot ? '7aae7c3' : null,
                 roots
             });
 
         expect(JSON.parse(JSON.stringify(info))).toEqual({
             brain  : {name: 'neo-agent-brain', revision: 'abc123', version: '0.0.0'},
-            engine : {name: 'neo.mjs', pin: 'github:neomjs/neo#205bc52f', version: '13.1.0'},
+            engine : {name: 'neo.mjs', pin: 'github:neomjs/neo#dev', revision: '7aae7c3', version: '13.1.0'},
             product: {name: 'neo-agent-institution', revision: 'def456', version: '0.1.0'}
         });
         expect(JSON.stringify(info)).not.toContain('/Users/');
@@ -757,7 +758,28 @@ test.describe('harness pack stage', () => {
                 enginePackageJson : {},
                 productPackageJson: {},
                 roots             : {brainRoot: root, productRoot: root}
-            })).toMatchObject({brain: {revision: null}, product: {revision: null}})
+            })).toMatchObject({brain: {revision: null}, engine: {revision: null}, product: {revision: null}})
+        } finally {
+            await rm(root, {recursive: true, force: true})
+        }
+    });
+
+    test('describeOwners reads the Engine revision npm installed, so a pin naming a branch still ships its commit', async () => {
+        const root = await mkdtemp(path.join(tmpdir(), 'neo-pack-engine-'));
+
+        try {
+            mkdirSync(path.join(root, 'node_modules'), {recursive: true});
+            writeFileSync(path.join(root, 'node_modules', '.package-lock.json'), JSON.stringify({packages: {
+                'node_modules/neo.mjs': {resolved: 'git+ssh://git@github.com/neomjs/neo.git#7aae7c3166b7fc35ace2550763681791bb84e7f4'}
+            }}));
+
+            expect(describeOwners({
+                brainPackageJson  : {},
+                enginePackageJson : {name: 'neo.mjs'},
+                productPackageJson: {dependencies: {'neo.mjs': 'github:neomjs/neo#dev'}},
+                revisionOf        : () => null,
+                roots             : {brainRoot: root, productRoot: root}
+            }).engine).toEqual({name: 'neo.mjs', pin: 'github:neomjs/neo#dev', revision: '7aae7c3166b7fc35ace2550763681791bb84e7f4', version: null})
         } finally {
             await rm(root, {recursive: true, force: true})
         }

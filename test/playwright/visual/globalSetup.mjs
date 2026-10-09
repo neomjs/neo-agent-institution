@@ -42,27 +42,25 @@ const THEME_GUIDANCE =
     '  fresh for the rest of the session, so this failure stops recurring';
 
 /**
- * The installed-engine invariant, one step earlier in the same chain: `package-lock.json` pins
- * `neo.mjs` to a git commit, and `node_modules/.package-lock.json` records what npm actually put
- * on disk. A plain `npm install` leaves a github-SHA dependency where it is, so the two drift
- * apart silently — the theme build then compiles the wrong engine's SCSS, the CSS-vs-SCSS check
- * above passes, the stamp compares Institution inputs only, and a capture commits the wrong
- * engine's pixels as goldens. Two Observatory arms read as a `dev` regression for an hour before
- * the drift was found; the guard turns that into a setup error before any browser opens.
+ * The installed-engine invariant, one step earlier in the same chain. The Engine tracks `dev`, so the
+ * engine a capture renders with is whatever npm last installed, recorded in `node_modules/.package-lock.json`.
+ * It must be nameable: the stamp records it beside the goldens, and a red capture run is traced through it.
  *
- * The recovery is the realign, not `npm install` alone: npm treats the installed git package as
- * satisfied until its directory is gone.
+ * The old failure this guards is a theme build compiled from a different engine's SCSS than the one on
+ * disk: the run passed its CSS-vs-SCSS check, and a capture committed the wrong engine's pixels as goldens
+ * (two Observatory arms read as a `dev` regression for an hour). An engine install rewrites its SCSS with
+ * fresh mtimes, so the CSS-vs-SCSS check below covers the engine's SCSS too: a new engine on disk with an
+ * old theme build fails the run before any browser opens.
  */
-const ENGINE_GUIDANCE = '  rm -rf node_modules/neo.mjs && npm install';
+const ENGINE_GUIDANCE = '  npm run resolve-org-dev';
 
 /**
- * Reads the commit an npm lock file resolves `neo.mjs` to — the `#<sha>` suffix of the package's
- * `resolved` field — so the pinned and the installed engine can be compared by identity.
- * @param {String} lockFile A lock file path relative to the repository root
- * @returns {String|null} The 40-character commit, or `null` when the file or the entry is missing
+ * Reads the commit npm installed `neo.mjs` from — the `#<sha>` suffix of the package's `resolved` field in
+ * npm's own record of the install.
+ * @returns {String|null} The commit, or `null` when nothing has been installed from git
  */
-function resolvedEngineCommit(lockFile) {
-    const file = path.join(repoRoot, lockFile);
+function installedEngineCommit() {
+    const file = path.join(repoRoot, 'node_modules/.package-lock.json');
 
     if (!fs.existsSync(file)) {
         return null
@@ -74,18 +72,21 @@ function resolvedEngineCommit(lockFile) {
 }
 
 export default function globalSetup() {
-    const pinnedEngine    = resolvedEngineCommit('package-lock.json'),
-          installedEngine = resolvedEngineCommit('node_modules/.package-lock.json');
+    const installedEngine = installedEngineCommit();
 
-    if (!pinnedEngine || !installedEngine || pinnedEngine !== installedEngine) {
+    if (!installedEngine) {
         throw new Error(
-            `visual harness: the installed engine (${installedEngine ?? 'none recorded'}) is not the locked one ` +
-            `(${pinnedEngine ?? 'none pinned'}) — a baseline over the wrong engine is a poisoned golden:\n` +
-            ENGINE_GUIDANCE
+            'visual harness: no installed engine revision is recorded in node_modules/.package-lock.json — a ' +
+            'baseline over an engine nobody can name cannot be traced:\n' + ENGINE_GUIDANCE
         )
     }
 
-    const newestScss = newestMtime(path.join(repoRoot, 'resources/scss'), '.scss'),
+    console.log(`visual harness: rendering with engine ${installedEngine}`);
+
+    const newestScss = Math.max(
+              newestMtime(path.join(repoRoot, 'resources/scss'), '.scss'),
+              newestMtime(path.join(repoRoot, 'node_modules/neo.mjs/resources/scss'), '.scss')
+          ),
           newestCss  = newestMtime(path.join(repoRoot, 'dist/development/css'), '.css');
 
     if (newestCss === 0) {
