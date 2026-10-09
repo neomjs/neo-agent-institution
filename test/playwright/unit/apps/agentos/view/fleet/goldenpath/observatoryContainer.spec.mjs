@@ -449,7 +449,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         const pane = createPane({envelope: teamRead()}), head = pane.getReference('observatory-head');
 
         expect(head.brief).toMatchObject({attention: {id: q('pr-101'), text: '#101 · first route item', title: 'first route item'}, tail: 'complete'});
-        expect(head.brief.lead).toMatch(/^captured .+ · last 3 days: 1 in motion$/);
+        expect(head.brief.lead, 'the open issue without its time and the fresh one without its state are unknown').toMatch(/^captured .+ · last 3 days: 1 in motion · 2 unknown$/);
         expect(head.details, 'the renderer\'s counts wait behind Details').toMatch(/^Current · captured .+ · 7 nodes · 4 edges/);
         expect([head.detailsOpen, head.vdom.cn[4].hidden], 'folded by default').toEqual([false, true]);
 

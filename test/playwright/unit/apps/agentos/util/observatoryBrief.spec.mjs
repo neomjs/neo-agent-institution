@@ -63,8 +63,26 @@ test.describe('AgentOS.util.ObservatoryBrief — the team\'s sentence over a cur
             attention: {id: q('issue-599'), label: 'The Mailbox lists open questions', number: 599},
             inMotion : 2,
             merged   : 1,
-            timed    : true
+            timed    : true,
+            unknown  : 0
         })
+    });
+
+    test('a time on another node never makes untimed work read as a zero: it is unknown, beside what the read can time', () => {
+        const
+            untimed = {id: q('issue-700'), label: 'untimed open issue', kind: 'ISSUE', state: 'OPEN'},
+            file    = {id: q('file-1'),    label: 'a file',             kind: 'FILE',  lastActivityAt: NOW - HOUR},
+            lead    = nodes => ObservatoryBrief.line(read(nodes), sceneOf(read(nodes)), {formatStamp: STAMP, now: NOW}).lead;
+
+        expect(ObservatoryBrief.of(sceneOf(read([untimed, file])), NOW)).toMatchObject({inMotion: 0, merged: 0, timed: true, unknown: 1});
+        expect(lead([untimed, file])).toBe('captured 04:50 · last 3 days: 1 unknown');
+        expect(lead([TEAM[0], untimed, file])).toBe('captured 04:50 · last 3 days: 1 merged · 1 unknown');
+        expect(lead([{id: q('issue-701'), label: 'state omitted', kind: 'ISSUE', lastActivityAt: NOW - HOUR}, {id: q('issue-702'), label: 'state omitted, long ago', kind: 'ISSUE', lastActivityAt: NOW - 30 * DAY}]),
+            'a recent item without its state is unknown; one outside the window could not count either way').toBe('captured 04:50 · last 3 days: 1 unknown');
+
+        // the controls: the same work all timed and stale, and none of the read timed
+        expect(lead([TEAM[1], TEAM[5], file])).toBe('captured 04:50 · last 3 days: nothing moved');
+        expect(lead([untimed, {id: q('file-2'), label: 'an untimed file', kind: 'FILE'}])).toBe('captured 04:50 · this read carries no activity times')
     });
 
     test('the line: the capture stamp, the window\'s counts, the attention item with its number and title, then completeness', () => {

@@ -258,7 +258,7 @@ apps/agentos/util/NameSlot.mjs
     3fe98fcc20425319dc01e37d905079564c308f3f
 
 apps/agentos/util/ObservatoryBrief.mjs
-    9d505cd13dba0b0e7e79c9431e6772174e140bbf
+    3b152993d9973611ab078f07b62957bfca7e4abb
 
 apps/agentos/util/ObservatorySceneLayout.mjs
     9508c5d7dd72b845ab48682f1950d0a59ab215ed
@@ -942,16 +942,16 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     018ad7dfc36a5601fe9463a41bc44f66b73b61e2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-heat-light.png
-    4538d746d76e808ce4619bfeb990e56c1061d6da
+    0134543edc6c3bdbdbd96d2679356aee2c7d67ea
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-heat.png
-    3ff32ab6c8537a294ce0e0ba81955b1b7d0d0e5b
+    a86d7f9f235e8b04771b3ec2616902b08ec1b534
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-lens-light.png
-    f90f0876f70c13ed56c3dcd77d80f5ff0ada49ec
+    7ab0f2495ebe0202136f5b47119d9e55b539ff6e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-lens.png
-    7172e365987e6d127cbde959cc3236662218592e
+    ecb35010e0be99e82fb2017885b098aba8538657
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-route-off.png
     0c1bc67c3ed7116ebf3b7e50639385e5d09d4abe
@@ -960,7 +960,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     8cfe26bc9fca5482ec5edbe68bbc01b20566e0b8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-selected-source-light.png
-    7434c352620a905102816e1b95db590e06694ef7
+    85d996561f0beef1b3f0645b65cdb78d2377f456
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-selected.png
     5fd6cf9e12f7f2744d5defdbe2120b7f699463e1
@@ -975,10 +975,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     f32be4ead632acb7db08b6b7d6a8469b7e5b7e20
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-widened-light.png
-    277c2492b558a6b434e0c96d768d1d15ee05c867
+    39bab54498c165e9ec0f80b86064e386190c733f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-widened.png
-    735da464b41910ad2cfb36ca522f68e43867d08b
+    a3ef78ebb3ec7b9dddf26aadb7fc464536ae356d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-withheld-light.png
     5494e77a67b142336fa8ce0670fc417e91f884be

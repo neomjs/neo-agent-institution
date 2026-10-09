@@ -25,12 +25,12 @@ class ObservatoryBrief extends Base {
 
     /**
      * @summary What a scene says the team did within the attention window: the pull requests that merged, the open
-     * work items active in it, and the named work item that drew the most attention. A node whose heat the overlay
-     * derives from its neighbours never leads.
+     * work items active in it, the work either count could hold whose time or state the read omits, and the named
+     * work item that drew the most attention. A node whose heat the overlay derives from its neighbours never leads.
      * @param {Object} scene An {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene} scene
      * @param {Number} [now=Date.now()] Epoch ms
-     * @returns {{attention: Object|null, inMotion: Number, merged: Number, timed: Boolean}} `attention` is
-     *     `{id, label, number}`; `timed` is false for a read that carries no activity time at all
+     * @returns {{attention: Object|null, inMotion: Number, merged: Number, timed: Boolean, unknown: Number}}
+     *     `attention` is `{id, label, number}`; `timed` is false for a read that carries no activity time at all
      */
     static of(scene, now = Date.now()) {
         const
@@ -39,14 +39,23 @@ class ObservatoryBrief extends Base {
             nodes                    = scene?.nodes ?? [],
             heat                     = ObservatorySceneLayout.heatOf(scene, now);
 
-        let attention = -1, inMotion = 0, merged = 0;
+        let attention = -1, inMotion = 0, merged = 0, unknown = 0;
 
         nodes.forEach((node, index) => {
-            const recent = node.lastActivityAt !== null && now - node.lastActivityAt <= windowMs;
+            const
+                timed  = node.lastActivityAt !== null,
+                recent = timed && now - node.lastActivityAt <= windowMs,
+                merges = node.kind === 'PULL_REQUEST' && node.state === 'MERGED',
+                // a work item's lifecycle, `unread` where the read omits its state or cannot interpret it
+                state  = heatEvents[node.kind] === 'open' ? workStates[node.state] ?? 'unread' : null;
 
-            if (recent && node.kind === 'PULL_REQUEST' && node.state === 'MERGED') {
+            // a count needs the item's own time and state: where the read omits either, the item is unknown, never a
+            // zero, and a time on another node says nothing about it
+            if (((merges || state === 'open') && !timed) || (state === 'unread' && (recent || !timed))) {
+                unknown++
+            } else if (merges && recent) {
                 merged++
-            } else if (recent && heatEvents[node.kind] === 'open' && workStates[node.state] === 'open') {
+            } else if (state === 'open' && recent) {
                 inMotion++
             }
 
@@ -61,15 +70,17 @@ class ObservatoryBrief extends Base {
             attention: top && {id: top.id, label: top.label ?? top.id, number: GraphNodeSource.numberOf(top)},
             inMotion,
             merged,
-            timed: nodes.some(node => node.lastActivityAt !== null)
+            timed: nodes.some(node => node.lastActivityAt !== null),
+            unknown
         }
     }
 
     /**
      * @summary The head's first line for a landed read, as `lead`, the attention item, then `tail`. A current read
-     * says `captured 06:20 PM · last 3 days: 4 merged · 12 in motion`, names its attention item (`#<number> · <title>`,
-     * the full title on the item's own title) and ends on its completeness; any other read keeps
-     * {@link AgentOS.util.GraphSceneEnvelope#describe}'s words.
+     * says `captured 06:20 PM · last 3 days: 4 merged · 12 in motion`, with `· 2 unknown` for the work whose time or
+     * state the read omits (the heat line's word), so `nothing moved` is said only of work the read can place. It names its
+     * attention item (`#<number> · <title>`, the full title on the item's own title) and ends on its completeness;
+     * any other read keeps {@link AgentOS.util.GraphSceneEnvelope#describe}'s words.
      * @param {Object|null} envelope A landed envelope
      * @param {Object|null} scene The scene the pane drew from it
      * @param {Object}   [options]
@@ -83,11 +94,11 @@ class ObservatoryBrief extends Base {
         }
 
         const
-            {attention, inMotion, merged, timed} = ObservatoryBrief.of(scene, now),
+            {attention, inMotion, merged, timed, unknown} = ObservatoryBrief.of(scene, now),
             days  = ObservatorySceneLayout.attention.windowMs / 86400000,
             at    = envelope.capturedAt,
             stamp = typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? formatStamp(at) : null,
-            moved = [merged > 0 && `${merged} merged`, inMotion > 0 && `${inMotion} in motion`].filter(Boolean).join(' · ');
+            moved = [merged > 0 && `${merged} merged`, inMotion > 0 && `${inMotion} in motion`, unknown > 0 && `${unknown} unknown`].filter(Boolean).join(' · ');
 
         return {
             attention: attention && {id: attention.id, text: [attention.number && `#${attention.number}`, attention.label].filter(Boolean).join(' · '), title: attention.label},
