@@ -91,4 +91,56 @@ test.describe('System keeper-view — visual baseline (populated plane cards)', 
             await expect(page.locator('.fm-system-view')).toHaveScreenshot(`system-view-populated-${width}.png`)
         })
     }
+
+    // The seat-move block by its state, at the operator's 1552 × 850 window, beside the same six cards. Its
+    // twelve consented rows are a decision only until the move commits; while they are, they scroll in their
+    // own box. The shell is a test-owned preload answer: no Electron handler, registry or filesystem effect runs.
+    const
+        from     = '/Users/operator/Library/Application Support/neo-harness/brain/fleet/agents',
+        to       = '/Users/operator/.neo-ai/agents',
+        moveRows = Array.from({length: 12}, (_, i) => ({id: `seat-${i + 1}`, from: `${from}/seat-${i + 1}`, to: `${to}/seat-${i + 1}`, materialized: true}));
+
+    for (const [state, outcome, statusText] of [
+        ['committed', {state: 'committed'}, `Root move committed · ${to}`],
+        ['pending',   null,                 'A move is consented; this boot has not reported its outcome yet.']
+    ]) {
+        test(`a ${state} seat move at the operator's 1552 × 850 window: the plane cards stay in reach (#614)`, async ({page}) => {
+            await page.addInitScript(status => {
+                window.neoShell = {seatRootStatus: async () => status, seatRootPlan: async () => null, seatRootConsent: async () => null}
+            }, {packaged: true, root: {root: outcome ? to : from, origin: outcome ? 'moved' : 'adopted'}, pending: {from, to, rows: moveRows}, outcome});
+
+            await page.setViewportSize({width: 1552, height: 850});
+            await page.goto('/apps/agentos/index.html');
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+
+            await page.evaluate(() => { location.hash = '#/system' });
+            await expect(page.locator('.fm-system-view')).toBeVisible({timeout: 30000});
+            await expect(page.locator('.fm-seat-root-status')).toHaveText(statusText, {timeout: 30000});
+
+            const result = await page.evaluate(path => Neo.worker.App.loadModule({path}),
+                `${DRIVER}?picture=${encodeURIComponent(JSON.stringify(picture))}&t=seat-move-${state}`);
+
+            expect(result.success, `systemPlanes driver: ${result.error?.message ?? ''}`).toBe(true);
+            await expect(page.locator('.fm-plane-card')).toHaveCount(rows.length, {timeout: 30000});
+            await page.evaluate(() => document.fonts.ready);
+
+            if (outcome) {
+                await expect(page.locator('.fm-seat-root-plan')).toBeHidden()
+            } else {
+                await expect(page.locator('.fm-seat-move-row')).toHaveCount(moveRows.length);
+                expect(await page.locator('.fm-seat-root-plan .fm-seat-move-list').evaluate(list => list.scrollHeight > list.clientHeight), 'the rows scroll in their own box').toBe(true)
+            }
+
+            // reach is the rendered fact, not an inference: the first card's head reads inside the plane list's
+            // visible box without a scroll, so the list is more than a sliver that technically starts on screen
+            const reach = await page.evaluate(() => ({
+                head: Math.round(document.querySelector('.fm-plane-card .fm-plane-head').getBoundingClientRect().bottom),
+                list: Math.round(document.querySelector('.fm-plane-list').getBoundingClientRect().bottom)
+            }));
+
+            expect(reach.head, 'the first card\'s head reads without a scroll').toBeLessThanOrEqual(reach.list);
+
+            await expect(page.locator('.fm-system-view')).toHaveScreenshot(`system-view-seat-move-${state}.png`)
+        })
+    }
 });
