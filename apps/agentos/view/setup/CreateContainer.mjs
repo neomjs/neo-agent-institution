@@ -190,7 +190,7 @@ class CreateContainer extends Container {
                         {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-credential-button'], handler: 'up.onCredentialClick', reference: 'credential-button', text: 'Enter your token'},
                         changeLink('token')
                     ]),
-                    {ntype: 'component', cls: ['fm-setup-ask-help'], flex: 'none', reference: 'credential-help', text: 'Entered in the vessel\'s own window and kept as an owner-only file; this card only ever shows its path.'}
+                    {ntype: 'component', cls: ['fm-setup-ask-help'], flex: 'none', reference: 'credential-help', text: 'Entered in the app\'s own window and kept as an owner-only file; this card only ever shows its path.'}
                 ]),
                 askBlock('where', 'Where it runs', [
                     {ntype: 'component', cls: ['fm-setup-ask-line'], flex: 'none', reference: 'placement-line', text: 'Measuring this machine…'},
