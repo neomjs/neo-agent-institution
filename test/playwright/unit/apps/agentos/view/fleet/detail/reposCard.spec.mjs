@@ -200,11 +200,12 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         const {card, intents, outcomes, store} = mount({repo: working, repos: [brain, skills, createApp]}, roster);
 
         expect(outcomes()).toEqual([
-            {repoSlug: 'neomjs/neo',              state: null,       reason: null},
-            {repoSlug: 'neomjs/neo-agent-brain',  state: 'prepared', reason: null},
-            {repoSlug: 'neomjs/neo-agent-skills', state: 'failed',   reason},
+            {repoSlug: 'neomjs/neo',              state: null,         reason: null},
+            // a clone with no install reported is never called prepared
+            {repoSlug: 'neomjs/neo-agent-brain',  state: 'unverified', reason: 'no dependency install reported'},
+            {repoSlug: 'neomjs/neo-agent-skills', state: 'failed',     reason},
             // the last start did not cover it: no outcome until the next one
-            {repoSlug: 'neomjs/create-app',       state: null,       reason: null}
+            {repoSlug: 'neomjs/create-app',       state: null,         reason: null}
         ]);
         // an outcome is a fact of the last start, and the heading says so
         expect(card.getReference('repos-heading').text).toBe('Repositories · declared · last start');
@@ -212,9 +213,10 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         const vdom = JSON.stringify(card.getReference('repo-list').vdom);
 
         expect(vdom.match(/fm-repo-outcome/g)).toHaveLength(2);
-        expect(vdom).toContain('"text":"Prepared"');
+        expect(vdom).toContain('"text":"Unverified"');
         expect(vdom).toContain('"text":"Failed"');
-        expect(vdom.match(/fm-repo-reason/g)).toHaveLength(1);
+        expect(vdom).not.toContain('"text":"Prepared"');
+        expect(vdom.match(/fm-repo-reason/g)).toHaveLength(2);
         expect(vdom).toContain(reason);
 
         // the outcome is display only: a new list carries the registry's entries and nothing else
@@ -222,6 +224,71 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         card.onAddClick();
 
         expect(intents[0].repos.map(Object.keys)).toEqual([['cloneUrl', 'repoSlug'], ['cloneUrl', 'repoSlug'], ['cloneUrl', 'repoSlug'], ['repoSlug']]);
+
+        card.destroy();
+        roster.destroy();
+        store.destroy()
+    });
+
+    test('every checkout shows its dependency state, the working one included; a failed clone shows its own, and an install still running belongs to this start (#610)', () => {
+        const
+            roster = Neo.create(FleetRoster),
+            npm    = 'npm ci exited 1: ERESOLVE could not resolve dependency tree',
+            vdom   = card => JSON.stringify(card.getReference('repo-list').vdom);
+
+        // the Fleet installs only in a checkout it holds, so a repository whose clone failed has no dependency row
+        roster.add({agentId: 'ada', repoOutcomes: [
+            {repoSlug: brain.repoSlug,  state: 'prepared'},
+            {repoSlug: skills.repoSlug, state: 'failed', reason}
+        ], dependencyOutcomes: [
+            {repoSlug: working.repoSlug, state: 'skipped', reason: 'skipped during the install'},
+            {repoSlug: brain.repoSlug,   state: 'failed',  reason: npm}
+        ]});
+
+        const {card, outcomes, store} = mount({repo: working, repos: [brain, skills]}, roster);
+
+        expect(outcomes()).toEqual([
+            {repoSlug: 'neomjs/neo',              state: 'skipped', reason: 'skipped during the install'},
+            {repoSlug: 'neomjs/neo-agent-brain',  state: 'failed',  reason: npm},
+            // nothing was installed in a clone that failed: its row is the clone's
+            {repoSlug: 'neomjs/neo-agent-skills', state: 'failed',  reason}
+        ]);
+        expect(card.getReference('repos-heading').text).toBe('Repositories · declared · last start');
+        expect(vdom(card)).toContain('"text":"Skipped"');
+        // every reason reads whole on its own line; only a failure's takes the alert class
+        expect(vdom(card).match(/"fm-repo-reason"/g)).toHaveLength(3);
+        expect(vdom(card).match(/"fm-repo-reason","is-failed"/g)).toHaveLength(2);
+
+        // a Start installing now: its rows are live, and the heading names this start
+        roster.get('ada').set({dependencyOutcomes: [
+            {repoSlug: working.repoSlug, state: 'installing'},
+            {repoSlug: brain.repoSlug,   state: 'installed'}
+        ]});
+
+        expect(outcomes()).toEqual([
+            {repoSlug: 'neomjs/neo',              state: 'installing', reason: null},
+            {repoSlug: 'neomjs/neo-agent-brain',  state: 'prepared',   reason: null},
+            // the clone failure is the previous launch's: the Fleet records this start's clones once it launches
+            {repoSlug: 'neomjs/neo-agent-skills', state: null,         reason: null}
+        ]);
+        expect(card.getReference('repos-heading').text).toBe('Repositories · declared · this start');
+        expect(vdom(card)).toContain('"text":"Installing","title":"This start"');
+
+        // the retry settles with every checkout installed and its launch refused: the old clone failure stays on the
+        // record, and the install speaks over it
+        roster.get('ada').set({dependencyOutcomes: [
+            {repoSlug: working.repoSlug, state: 'installed'},
+            {repoSlug: brain.repoSlug,   state: 'installed'},
+            {repoSlug: skills.repoSlug,  state: 'installed'}
+        ]});
+        expect(outcomes().map(({state}) => state)).toEqual(['prepared', 'prepared', 'prepared']);
+        expect(card.getReference('repos-heading').text).toBe('Repositories · declared · last start');
+        expect(vdom(card)).not.toContain(reason);
+
+        // no preparation step reads as itself, never as prepared
+        roster.get('ada').set({dependencyOutcomes: [{repoSlug: working.repoSlug, state: 'not-applicable'}]});
+        expect(outcomes()[0]).toEqual({repoSlug: 'neomjs/neo', state: 'not-applicable', reason: null});
+        expect(vdom(card)).toContain('"text":"No preparation step"');
 
         card.destroy();
         roster.destroy();
@@ -258,7 +325,7 @@ test.describe('AgentOS.view.fleet.detail.AgentReposContainer — rows from the d
         // the next start replaces the outcome
         roster.get('ada').set({repoOutcomes: [{repoSlug: brain.repoSlug, state: 'prepared'}]});
         expect(refreshes).toBe(1);
-        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: 'prepared', reason: null});
+        expect(outcomes()[1]).toEqual({repoSlug: brain.repoSlug, state: 'unverified', reason: 'no dependency install reported'});
 
         // a retired card leaves the roster's listeners behind it
         card.destroy();

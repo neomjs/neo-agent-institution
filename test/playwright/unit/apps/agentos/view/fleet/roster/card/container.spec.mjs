@@ -934,6 +934,54 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a running seat whose working checkout the last start did not prepare says skills not verified, below every other line; another repository\'s failure stays off the card (#610)', () => {
+        const
+            card    = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo'}),
+            status  = () => card.down({reference: 'control-status'}),
+            skipped = [{repoSlug: 'neomjs/neo', state: 'skipped', reason: 'skipped during the install'}];
+
+        applySet(card, {dependencyOutcomes: skipped});
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe('skills not verified');
+        expect(status().vdom.title).toBe('Skills not verified. The working checkout neomjs/neo reads Skipped after the last start (skipped during the install). Detail › Repositories shows each checkout.');
+        expect(card.cls).toContain('fm-control-live');
+
+        // opening the session folder is the first-launch step, so it speaks first
+        applySet(card, {sessionFolder: {state: 'pending', expected: '/seats/vega/neomjs/neo'}});
+        expect(status().text).toBe('session not opened yet · open the folder');
+        applySet(card, {sessionFolder: null});
+        expect(status().text).toBe('skills not verified');
+
+        // so do a live round-trip and a refusal
+        applySet(card, {pendingAction: 'restart'});
+        expect(status().text).toBe('restart…');
+        applySet(card, {pendingAction: null, controlReason: {action: 'restart', kind: 'rejected', reason: 'harness offline'}});
+        expect(status().text).toBe('⚠ rejected: harness offline');
+        applySet(card, {controlReason: null});
+        expect(status().text).toBe('skills not verified');
+
+        // a prepared working checkout, another repository's failure, and no rows all say nothing
+        for (const dependencyOutcomes of [
+            [{repoSlug: 'neomjs/neo', state: 'installed'}],
+            [{repoSlug: 'neomjs/neo', state: 'present'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'failed', reason: 'npm ci exited 1'}],
+            null
+        ]) {
+            applySet(card, {dependencyOutcomes});
+            expect(status().hidden).toBe(true);
+            expect(card.cls).not.toContain('fm-control-live')
+        }
+
+        // an offline card says nothing either, whether stopped or unobserved: the Repository pane keeps the
+        // last attempt's rows
+        applySet(card, {dependencyOutcomes: skipped, state: 'off'});
+        expect(status().hidden).toBe(true);
+        applySet(card, {state: 'ok', sources: {...observedSources, runtime: {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}}});
+        expect(card.down({reference: 'card-state'}).text).toBe('offline');
+        expect(status().hidden).toBe(true);
+
+        card.destroy()
+    });
+
     test('AC-4 (#524): a refused start keeps the Fleet\'s own words; a last start\'s identity that needs repair rides the title as its own observation, never as the cause', () => {
         const
             card     = createCard({agentId: 'vega', state: 'off'}),

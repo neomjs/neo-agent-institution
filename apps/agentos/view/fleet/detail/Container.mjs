@@ -6,6 +6,7 @@ import GitIdentityContainer                 from '../shared/GitIdentityContainer
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
 import ParticipationContainer               from './ParticipationContainer.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
+import RepositoryBodyContainer              from './RepositoryBodyContainer.mjs';
 import SeatModelContainer                   from './SeatModelContainer.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
@@ -24,14 +25,15 @@ import Telltale                             from '../../../util/Telltale.mjs';
  * The SSOT drill-in panes (design §B3: "thought-stream, lane, repo, and PRs"), each with the honest
  * live cadence its freshness is judged against. `freshnessTtl` is the default window a pane's ledger
  * may override once its feed stamps one; the values are tunable, not contractual. A pane whose body
- * is more than its text names its own `body` config: the pull requests pane holds the sentence an
- * answer holding nothing renders, and its Store-backed list joins on the first resident shown.
+ * is more than its text names its own `body` config: the repository pane's is its own container, and the
+ * pull requests pane holds the sentence an answer holding nothing renders, its Store-backed list joining
+ * on the first resident shown.
  * @type {Object[]}
  */
 const PANES = [
     {key: 'thought-stream', title: 'Thought stream', freshnessTtl: 60_000},
     {key: 'lane',           title: 'Current lane',   freshnessTtl: 300_000},
-    {key: 'repo',           title: 'Repository',     freshnessTtl: 300_000},
+    {key: 'repo',           title: 'Repository',     freshnessTtl: 300_000, body: {module: RepositoryBodyContainer}},
     {key: 'prs',            title: 'Pull requests',  freshnessTtl: 300_000, body: {
         ntype: 'container',
         items: [{
@@ -879,9 +881,9 @@ class AgentDetail extends Container {
      * @summary The honest body content for one pane from the record's known facts.
      *
      * The lane pane renders the lane line with its claim age when its source is wired, plus the
-     * independent open-lane count. The repository pane renders the roster row's slug and its whole
-     * clone path, and shows the path's Copy action only while a path is reported. Under the path, a
-     * desktop session outside the launch's folder says where it opened and what to do, wrapped whole.
+     * independent open-lane count. The repository pane hands the record to its
+     * {@link AgentOS.view.fleet.detail.RepositoryBodyContainer} and shows the path's Copy action only while
+     * a path is reported.
      * The pull requests pane loads the seat's held pull requests, worst first, into its list's Store,
      * or says it holds none; without an answer it renders nothing, since its pill says so. The
      * list re-words its rows' ages at the pane's clock. The thought-stream pane renders
@@ -897,15 +899,10 @@ class AgentDetail extends Container {
         if (key === 'repo') {
             const
                 repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null,
-                session  = SeatSessionFolder.paneText(record.sessionFolder, repoPath),
                 field    = this.getReference('detail-repo-field');
 
-            body.vdom.cn = [
-                {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},
-                ...(repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: repoPath}] : []),
-                ...(session  ? [{tag: 'span', cls: ['fm-detail-repo-session', `is-${record.sessionFolder.state}`], text: session}] : [])
-            ];
-            body.update();
+            // a roster read changes the record's fields without changing its identity
+            body.record === record ? body.refresh() : body.record = record;
 
             this.getReference('detail-repo-copy').hidden = repoPath === null;
 
