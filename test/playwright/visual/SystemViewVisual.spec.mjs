@@ -163,8 +163,8 @@ test.describe('System keeper-view — the reviewed seat move on the FM skin (#58
             seat('neo-opus-vega', 'copy'),
             seat('neo-fable', 'rebind'),
             seat('neo-gpt-emmy', 'done', {seatHome: `${to}/neo-gpt-emmy`, reason: 'already at its destination'}),
-            seat('neo-kimi-phoebe', 'untouched', {seatHome: '/Volumes/elsewhere/neo-kimi-phoebe', destination: null, materialized: false, reason: 'bound to a home outside this installation'}),
-            seat('neo-opus-ada', 'untouched', {destination: null, code: 'SEAT_HOME_BUSY', reason: 'a running harness holds this seat home open; stop it, then review the move again'})
+            seat('neo-kimi-phoebe', 'untouched', {seatHome: '/Volumes/elsewhere/neo-kimi-phoebe', materialized: false, reason: 'bound to a home outside this installation'}),
+            seat('neo-opus-ada', 'untouched', {code: 'SEAT_HOME_BUSY', reason: 'a running harness holds this seat home open; stop it, then review the move again'})
         ]},
         status = {packaged: true, root: {root: from, origin: 'adopted'}, pending: null, outcome: {state: 'none'}};
 
