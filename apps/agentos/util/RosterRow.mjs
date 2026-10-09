@@ -50,6 +50,8 @@ class RosterRow extends Base {
             repoPath           : row.repoStatus?.repoPath ?? null,
             // the last start's outcome per other repository, from the Fleet's launch record
             repoOutcomes       : row.repoOutcomes ?? null,
+            // each checkout's dependency row from the latest start that reached its install
+            dependencyOutcomes : row.dependencyOutcomes ?? null,
             // the commit identity the last start resolved, from the same record
             gitIdentity        : row.gitIdentity ?? null,
             // what the last start found of the declared model in the harness's catalog, from the same record
