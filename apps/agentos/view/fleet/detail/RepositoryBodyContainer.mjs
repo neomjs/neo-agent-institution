@@ -26,6 +26,12 @@ class RepositoryBodyContainer extends Container {
          */
         ntype: 'fm-detail-repository-body',
         /**
+         * The pane's vbox would give the body `flex: 1 1 0%`, and a container clips what overflows it: the body
+         * takes its content's height instead, so every checkout's row and reason shows.
+         * @member {String} flex='none'
+         */
+        flex: 'none',
+        /**
          * The body stacks its lines as a grid, so its children take no flex box.
          * @member {Object} layout={ntype:'base'}
          */

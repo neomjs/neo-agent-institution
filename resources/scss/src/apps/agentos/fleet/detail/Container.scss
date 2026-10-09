@@ -238,20 +238,21 @@
     .fm-detail-pane-repo .fm-repository-list.neo-list {
         --list-container-list-color: var(--fm-ink-dim);
 
+        /* a list scrolls its own box; here the pane grows with its rows instead */
+        display : grid;
+        gap     : 2px;
+        overflow: visible;
+
         .neo-list-item {
             color  : inherit;
             cursor : default;
             font   : var(--fm-text-detail);
-            gap    : 0 var(--fm-space-2);
-            padding: 1px 0;
-        }
-
-        .fm-repo-slug,
-        .fm-repo-outcome {
-            font: inherit;
+            gap    : 2px var(--fm-space-2);
+            padding: 0;
         }
 
         .fm-repo-slug {
+            font       : inherit;
             font-family: var(--fm-font-mono);
         }
 

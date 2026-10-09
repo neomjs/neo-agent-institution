@@ -488,7 +488,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             pane    = detail.locator('.fm-detail-pane-repo'),
             head    = pane.locator('.fm-detail-repo-prep-head'),
             // a reason wraps whole: neither the pane nor a row is wider than its own box
-            noClip  = () => pane.evaluate(node => [node, ...node.querySelectorAll('.fm-detail-repo-prep, .fm-detail-repo-prep-reason')].every(el => el.scrollWidth <= el.clientWidth + 1)),
+            noClip  = () => pane.evaluate(node => [node, ...node.querySelectorAll('.fm-repository-list .neo-list-item, .fm-repo-reason')].every(el => el.scrollWidth <= el.clientWidth + 1)),
             settle  = async () => {
                 await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
                 await page.mouse.move(0, 0);
@@ -503,7 +503,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await card.click();
         await expect(head).toHaveText('Preparation · last start', {timeout: 30000});
-        await expect(pane.locator('.fm-detail-repo-prep-reason').nth(1)).toHaveText(npm);
+        await expect(pane.locator('.fm-repo-reason').nth(1)).toHaveText(npm);
         expect(await noClip(), 'the long failure wraps whole inside the pane').toBe(true);
         await settle();
         await expect(pane).toHaveScreenshot('detail-repo-preparation.png');
