@@ -618,8 +618,9 @@ class AgentCard extends Container {
             resolved      = SourceHealth.resolveFleetDisplayState(record),
             // a Start the Fleet reports still installing: live rows only, never a retained set
             preparation   = SeatDependencies.liveLine(record.dependencyOutcomes),
-            canceling     = Boolean(preparation) && pendingAction === 'stop',
-            displayState  = pendingAction === 'stop'
+            // a cancel stays open until the Fleet answers it, past the cockpit's own deadline too
+            cancel        = SeatDependencies.cancelState(record),
+            displayState  = pendingAction === 'stop' || cancel
                 ? 'stopping'
                 : pendingAction || preparation // 'start' | 'restart' both transition toward running, as does a preparing Start
                     ? 'starting'
@@ -627,8 +628,8 @@ class AgentCard extends Container {
             reason        = pendingAction || preparation ? null : resolved.reason,
             // severity = weight: the exceptional resolved states take ink + weight on the word
             hot           = displayState === 'wedged' || displayState === 'limited',
-            // a confirmed preparation keeps the toggle open as Cancel start; once the cancel is sent it closes
-            disabled      = (Boolean(pendingAction) && !(preparation && !canceling)) || !runtimeWired || controlReason?.kind === 'unauthorized';
+            // a confirmed preparation keeps the toggle open as Cancel start; it closes while a cancel is in flight
+            disabled      = (Boolean(pendingAction) && !(preparation && pendingAction !== 'stop')) || !runtimeWired || controlReason?.kind === 'unauthorized';
 
         me.getReference('family-rail').family = record.family ?? null;
 
@@ -822,8 +823,9 @@ class AgentCard extends Container {
         const
             toggle      = me.getReference('control-toggle'),
             restart     = me.getReference('control-restart'),
-            // while the Fleet prepares a Start, the power verb cancels it: icon, name and intent agree
-            cancelStart = Boolean(preparation) && !canceling,
+            // while the Fleet prepares a Start, the power verb cancels it: icon, name and intent agree. An
+            // unanswered cancel can be sent again
+            cancelStart = Boolean(preparation) && pendingAction !== 'stop',
             // the Fleet's own words for why its Start refuses this seat: Start stays closed before the click
             refusal     = recordState === 'off' && !preparation ? record.launchRefusal ?? null : null;
 
@@ -841,7 +843,9 @@ class AgentCard extends Container {
         // words: the Fleet's refusal to start the seat, a seat outside fleet supervision, or a fleet-launched
         // seat that never ran
         toggle.changeVdomRootKey('title', cancelStart
-            ? 'Cancel this Start: the Fleet stops its installs and does not launch the seat.'
+            ? cancel === 'unanswered'
+                ? 'Cancel this Start again: the Fleet has not answered the first request.'
+                : 'Cancel this Start: the Fleet stops its installs and does not launch the seat.'
             : refusal ?? (!runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null));
 
         // The status row narrates the Start: the round-trip while it is live or refused, then whether
@@ -885,8 +889,8 @@ class AgentCard extends Container {
             // The Fleet's own report of a preparing Start refines both: it is an answer, not silence
             controlStatusText = wrongFolder
                 ? sessionLine.text
-                : canceling
-                    ? 'canceling start…'
+                : cancel
+                    ? cancel === 'sent' ? 'canceling start…' : 'canceling start… no answer yet'
                     : preparation
                         ? `${pendingAction === 'restart' ? 'restart' : 'start'}… ${preparation.text}`
                         : pendingAction
@@ -913,8 +917,10 @@ class AgentCard extends Container {
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words; a preparing
         // Start names each checkout's live row there
-        controlStatus.changeVdomRootKey('title', timeoutTitle || (canceling
-            ? 'Cancel requested: the Fleet stops the installs and does not launch the seat.'
+        controlStatus.changeVdomRootKey('title', timeoutTitle || (cancel
+            ? cancel === 'sent'
+                ? 'Cancel requested: the Fleet stops the installs and does not launch the seat.'
+                : 'Cancel requested, and the Fleet has not answered yet while the Start still prepares. Its answer settles the card.'
             : preparation
                 ? preparation.title
                 : modelRefusal

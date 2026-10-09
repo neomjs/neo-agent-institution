@@ -57,9 +57,9 @@ class RepositoryBodyContainer extends Container {
          */
         record_: null,
         /**
-         * The last Skip for the seat it was asked for: `{agentId, state, reason}`, `state` one of `pending`,
-         * `requested`, `none`, `unavailable` or `unanswered`. Component state, never record data; another
-         * seat's status renders nothing.
+         * The last Skip and the attempt it was asked in: `{agentId, phase, state, reason}`, `state` one of
+         * `pending`, `requested`, `none`, `unavailable` or `unanswered`. Component state, never record data;
+         * a status from another seat or another phase ({@link #observePhase}) renders nothing.
          * @member {Object|null} skipStatus_=null
          * @reactive
          */
@@ -118,22 +118,48 @@ class RepositoryBodyContainer extends Container {
     }
 
     /**
-     * @summary Ask the Fleet to skip the shown seat's remaining installs. The answer binds to the seat it was
-     * asked for, so a body already showing another seat ignores it.
+     * @summary The phase of what this body shows, one attempt as this body observed it. Showing another seat, a
+     * live install beginning or ending, or a Start sent from this cockpit opens a new phase, so a Skip asked in
+     * one phase never speaks in another. The roster rows carry no attempt id: a Start that ends and another that
+     * begins between two roster reads look like one phase.
+     * @param {Object} record The shown roster record.
+     * @returns {Number}
+     * @protected
+     */
+    observePhase(record) {
+        const
+            me       = this,
+            live     = Boolean(SeatDependencies.liveLine(record.dependencyOutcomes)),
+            starting = record.pendingAction === 'start' || record.pendingAction === 'restart',
+            seen     = me.attemptSeen;
+
+        if (!seen || seen.agentId !== record.agentId || seen.live !== live || (starting && !seen.starting)) {
+            me.attemptPhase = (me.attemptPhase ?? 0) + 1
+        }
+
+        me.attemptSeen = {agentId: record.agentId, live, starting};
+
+        return me.attemptPhase
+    }
+
+    /**
+     * @summary Ask the Fleet to skip the shown seat's remaining installs. The answer binds to the phase it was
+     * asked in, so a later attempt of the same seat, or another seat, never reads it.
      * @returns {Promise<void>}
      */
     async onSkipClick() {
         const
             me      = this,
-            agentId = me.record?.agentId ?? null;
+            agentId = me.record?.agentId ?? null,
+            phase   = me.attemptPhase;
 
-        if (!agentId || (me.skipStatus?.agentId === agentId && me.skipStatus.state === 'pending')) return;
+        if (!agentId || (me.skipStatus?.phase === phase && me.skipStatus.state === 'pending')) return;
 
-        me.skipStatus = {agentId, reason: null, state: 'pending'};
+        me.skipStatus = {agentId, phase, reason: null, state: 'pending'};
 
         const answer = await FleetLifecycleIntentAdapter.handleSkipIntent({agentId});
 
-        !me.isDestroyed && me.record?.agentId === agentId && (me.skipStatus = {agentId, ...answer})
+        !me.isDestroyed && me.attemptPhase === phase && (me.skipStatus = {agentId, phase, ...answer})
     }
 
     /**
@@ -155,11 +181,12 @@ class RepositoryBodyContainer extends Container {
             repoPath  = typeof record?.repoPath === 'string' && record.repoPath ? record.repoPath : null,
             session   = record ? SeatSessionFolder.paneText(record.sessionFolder, repoPath) : null,
             checkouts = record ? SeatDependencies.checkouts(record.dependencyOutcomes, record.repoOutcomes) : [],
-            // Skip is offered only while this Start installs, never once its cancel is sent, and only by a
+            phase     = record ? me.observePhase(record) : null,
+            // Skip is offered only while this Start installs, never while a cancel of it is open, and only by a
             // Fleet whose wire has the verb
-            skippable = Boolean(record && SeatDependencies.liveLine(record.dependencyOutcomes)) && record.pendingAction !== 'stop' &&
+            skippable = Boolean(record && SeatDependencies.liveLine(record.dependencyOutcomes)) && !SeatDependencies.cancelState(record) &&
                 FleetLifecycleIntentAdapter.canSkip(),
-            status    = skippable && me.skipStatus?.agentId === record.agentId ? me.skipStatus : null;
+            status    = skippable && me.skipStatus?.agentId === record.agentId && me.skipStatus.phase === phase ? me.skipStatus : null;
 
         facts.vdom.cn = record ? [
             {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},

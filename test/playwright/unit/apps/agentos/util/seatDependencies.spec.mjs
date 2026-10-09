@@ -23,6 +23,20 @@ test.describe('AgentOS.util.SeatDependencies', () => {
         brain   = 'neomjs/neo-agent-brain',
         npm     = 'npm ci exited 1: ERESOLVE could not resolve dependency tree';
 
+    test('a live Start\'s cancel stays open until the Fleet answers: sent while the Stop is in flight, unanswered past the cockpit\'s deadline (#616)', () => {
+        const
+            live    = [{repoSlug: working, state: 'installing'}],
+            timeout = {action: 'stop', kind: 'timeout', reason: 'stop timed out after 30000ms'};
+
+        expect(SeatDependencies.cancelState({dependencyOutcomes: live, pendingAction: 'stop'})).toBe('sent');
+        expect(SeatDependencies.cancelState({controlReason: timeout, dependencyOutcomes: live, pendingAction: null})).toBe('unanswered');
+        // a Start's own deadline or a refused Stop is no open cancel, and nothing is open once no install runs
+        expect(SeatDependencies.cancelState({controlReason: {...timeout, action: 'start'}, dependencyOutcomes: live})).toBeNull();
+        expect(SeatDependencies.cancelState({controlReason: {...timeout, kind: 'rejected'}, dependencyOutcomes: live})).toBeNull();
+        expect(SeatDependencies.cancelState({controlReason: timeout, dependencyOutcomes: [{repoSlug: working, state: 'canceled'}]})).toBeNull();
+        expect(SeatDependencies.cancelState({dependencyOutcomes: null, pendingAction: 'stop'})).toBeNull()
+    });
+
     test('the card warns for the working checkout\'s skipped, failed, unverified and canceled rows, with the row and its reason in the title', () => {
         for (const [state, reason, word] of [
             ['skipped',    'skipped during the install',                          'Skipped'],

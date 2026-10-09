@@ -46,6 +46,22 @@ class SeatDependencies extends Base {
     }
 
     /**
+     * @summary Whether a live Start's cancel is still open: `sent` while its Stop is in flight, and `unanswered`
+     * once the cockpit's own deadline passed without the Fleet's answer, which can still settle it. Either way
+     * the Start reads as canceling, never as plain preparation.
+     * @param {Object} record The roster record, or a bag of its `controlReason`, `dependencyOutcomes` and
+     * `pendingAction`.
+     * @returns {'sent'|'unanswered'|null} `null` without a live preparation or without a cancel.
+     */
+    static cancelState({controlReason, dependencyOutcomes, pendingAction}) {
+        if (!SeatDependencies.liveLine(dependencyOutcomes)) return null;
+
+        if (pendingAction === 'stop') return 'sent';
+
+        return controlReason?.action === 'stop' && controlReason.kind === 'timeout' ? 'unanswered' : null
+    }
+
+    /**
      * @summary The card's line for a running seat whose working checkout the last start did not prepare,
      * and its title.
      * @param {Object[]|null} dependencyOutcomes

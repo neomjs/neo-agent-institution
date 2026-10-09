@@ -995,6 +995,56 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a cancel the Fleet has not answered by the cockpit\'s deadline still reads canceling, can be sent again, and settles on the late answer (#616)', async () => {
+        const
+            {default: Adapter} = await import('../../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs'),
+            card    = createCard({agentId: 'vega', displayName: 'Vega', state: 'off'}),
+            status  = () => card.down({reference: 'control-status'}),
+            toggle  = () => card.down({reference: 'control-verbs'}).items[0],
+            timers  = [],
+            live    = [{repoSlug: 'neomjs/neo', state: 'installing'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'}];
+        let answer;
+
+        applySet(card, {pendingAction: 'start', dependencyOutcomes: live});
+
+        // the cancel goes out through the real adapter; its deadline fires by hand
+        const cancel = Adapter.handleFleetLifecycleIntent({action: 'stop', agentId: 'vega'}, card.record, {
+            bridge        : {stopAgent: () => new Promise(resolve => answer = resolve)},
+            clearTimeoutFn: () => {},
+            setTimeoutFn  : fn => timers.push(fn),
+            timeoutMs     : 30000
+        });
+
+        card.applyRecord();
+        expect(status().text).toBe('canceling start…');
+        expect(toggle().disabled).toBe(true);
+
+        // the deadline passes while the installs still run: the cancel stays open, never plain preparation
+        await new Promise(resolve => setTimeout(resolve, 0));
+        timers[0]();
+        expect((await cancel).status).toBe('timeout');
+        card.applyRecord();
+        expect(card.record.pendingAction).toBeNull();
+        expect(status().text).toBe('canceling start… no answer yet');
+        expect(status().vdom.title).toBe('Cancel requested, and the Fleet has not answered yet while the Start still prepares. Its answer settles the card.');
+        expect(card.down({reference: 'card-state'}).text).toBe('stopping');
+        // the cancel can be sent again, under its own name
+        expect(toggle().disabled).toBe(false);
+        expect(toggle().vdom['aria-label']).toBe('Cancel start Vega');
+        expect(toggle().vdom.title).toBe('Cancel this Start again: the Fleet has not answered the first request.');
+
+        // the Fleet's late answer settles it, and its canceled installs leave an ordinary offline seat
+        answer({id: 'vega', state: 'stopped', canceled: true});
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(card.record.controlReason).toBeNull();
+        applySet(card, {dependencyOutcomes: live.map(row => ({...row, state: row.state === 'installing' ? 'canceled' : row.state}))});
+        expect(status().hidden).toBe(true);
+        expect(card.down({reference: 'card-state'}).text).toBe('offline');
+        expect(toggle().vdom['aria-label']).toBe('Start Vega');
+
+        card.destroy()
+    });
+
     test('a running seat whose working checkout the last start did not prepare says skills not verified, below every other line; another repository\'s failure stays off the card (#610)', () => {
         const
             card    = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo'}),
