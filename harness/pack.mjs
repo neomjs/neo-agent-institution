@@ -351,6 +351,7 @@ export function collectBarePackages({files, rootDir}) {
  * @param {{brain: String[], product: String[]}} [options.supplemental=SUPPLEMENTAL_DEPENDENCIES]
  * @param {String[]} [options.optionalLazy=OPTIONAL_LAZY_PACKAGES]
  * @param {Object} [options.ownerExceptions=OWNER_EXCEPTIONS]
+ * @param {{brain: String, engine: String}} [options.cut] The cut's commits; pins `neo.mjs` and `neo-agent-brain`.
  * @returns {Object} `{name, private, type, version, dependencies, [overrides]}` — the staged package.json.
  */
 export function buildOrganismManifest({
@@ -359,7 +360,8 @@ export function buildOrganismManifest({
     brainPackageJson,
     supplemental = SUPPLEMENTAL_DEPENDENCIES,
     optionalLazy = OPTIONAL_LAZY_PACKAGES,
-    ownerExceptions = OWNER_EXCEPTIONS
+    ownerExceptions = OWNER_EXCEPTIONS,
+    cut = null
 }) {
     if (!productPackageJson || !brainPackageJson) {
         throw new Error('organism manifest: the product package.json and the Brain package.json are both required dependency authorities')
@@ -422,6 +424,12 @@ export function buildOrganismManifest({
 
     if (contested.length > 0) {
         throw new Error(`organism manifest: the owners disagree on the override ${contested.map(name => `${name}: brain ${JSON.stringify(brainOverrides[name])} vs product ${JSON.stringify(productOverrides[name])}`).join('; ')} — align the declarations`)
+    }
+
+    // A cut is one commit of each org dependency: the specs track `dev`, the stage installs exactly the cut
+    if (cut) {
+        [['neo.mjs', cut.engine], ['neo-agent-brain', cut.brain]]
+            .forEach(([name, revision]) => name in dependencies && (dependencies[name] = pinSpec(dependencies[name], revision)))
     }
 
     // ONE engine in the organism. The Brain declares its own `neo.mjs` pin; when it differs from the
@@ -557,19 +565,75 @@ export function describeOwners({brainPackageJson, enginePackageJson, productPack
 }
 
 /**
- * @summary The Engine commit npm installed under the product, read from npm's own record of the install
- * (`node_modules/.package-lock.json`): the part after `#` in its resolved git URL.
- * @param {String} productRoot
+ * @summary The commit npm installed for a git dependency under a root, read from npm's own record of the
+ * install (`node_modules/.package-lock.json`): the part after `#` in its resolved git URL.
+ * @param {String} root A product checkout or the stage
+ * @param {String} name The package name
  * @returns {String|null}
  */
-function readEngineRevision(productRoot) {
+export function installedRevisionOf(root, name) {
     try {
-        const resolved = JSON.parse(fs.readFileSync(path.join(productRoot, 'node_modules', '.package-lock.json'), 'utf8'))
-            .packages?.['node_modules/neo.mjs']?.resolved;
+        const resolved = JSON.parse(fs.readFileSync(path.join(root, 'node_modules', '.package-lock.json'), 'utf8'))
+            .packages?.[`node_modules/${name}`]?.resolved;
 
         return typeof resolved === 'string' && resolved.includes('#') ? resolved.slice(resolved.lastIndexOf('#') + 1) : null
     } catch {
         return null
+    }
+}
+
+function readEngineRevision(productRoot) {
+    return installedRevisionOf(productRoot, 'neo.mjs')
+}
+
+/**
+ * @summary The cut's org revisions, resolved once before any source is consumed: the Engine the product has
+ * installed (the theme build compiles its SCSS, so the stage must ship that same commit) and the Brain runtime
+ * root's HEAD (the trees the stage copies, so the Brain contract package must be that commit too). The org
+ * dependencies track `dev`; a cut is one commit of each. An unknown revision fails before anything is built.
+ * @param {Object} options
+ * @param {{brainRoot: String, productRoot: String}} options.roots
+ * @param {Function} [options.revisionOf=readRevision] `(root) => String|null`, injectable for tests.
+ * @param {Function} [options.engineRevisionOf=readEngineRevision] `(productRoot) => String|null`, injectable for tests.
+ * @returns {{brain: String, engine: String}}
+ */
+export function resolveCutRevisions({roots, revisionOf = readRevision, engineRevisionOf = readEngineRevision}) {
+    const cut = {brain: revisionOf(roots.brainRoot), engine: engineRevisionOf(roots.productRoot)};
+
+    if (!cut.brain || !cut.engine) {
+        throw new Error(`pack: a cut needs known revisions — the Brain runtime root is at ${cut.brain ?? 'an unknown revision'}, ` +
+            `the installed Engine at ${cut.engine ?? 'an unknown revision'}`)
+    }
+
+    return cut
+}
+
+/**
+ * @summary Pins an org dependency's spec to one commit: `github:neomjs/neo#dev` becomes `github:neomjs/neo#<revision>`.
+ * @param {String} spec The declared spec
+ * @param {String} revision The cut's commit
+ * @returns {String}
+ */
+export function pinSpec(spec, revision) {
+    return `${String(spec).replace(/#.*$/, '')}#${revision}`
+}
+
+/**
+ * @summary Verifies the stage installed exactly the cut: the Engine and the Brain contract package in the stage
+ * must be the commits the theme build and the copied Brain runtime came from. A mismatch or an unreadable revision
+ * fails the pack, so a mixed artifact never ships under a receipt that names one set.
+ * @param {Object} options
+ * @param {String} options.stageDir
+ * @param {{brain: String, engine: String}} options.cut
+ */
+export function assertStagedRevisions({stageDir, cut}) {
+    const mismatched = [['neo.mjs', cut.engine], ['neo-agent-brain', cut.brain]]
+        .map(([name, expected]) => [name, expected, installedRevisionOf(stageDir, name)])
+        .filter(([, expected, installed]) => installed !== expected);
+
+    if (mismatched.length > 0) {
+        throw new Error('pack: the stage installed a different cut than its sources — ' +
+            mismatched.map(([name, expected, installed]) => `${name} ${installed ?? 'unreadable'}, expected ${expected}`).join('; '))
     }
 }
 
@@ -706,9 +770,11 @@ function run(command, args, options = {}) {
  * @param {String} [options.productRoot] Defaults to this checkout.
  * @param {String} [options.stageDir=STAGE_DIR]
  * @param {Function} [options.runFn=run] Runner seam for every child process the stage issues (tests).
+ * @param {Function} [options.revisionOf=readRevision] Source-revision seam (tests).
+ * @param {Function} [options.engineRevisionOf=readEngineRevision] Installed-Engine seam (tests).
  * @returns {Object} build info (also written to `<stageDir>/organism-build-info.json`).
  */
-export function stageOrganism({electronVersion, env = process.env, productRoot = repoRoot, runFn = run, stageDir = STAGE_DIR} = {}) {
+export function stageOrganism({electronVersion, env = process.env, productRoot = repoRoot, runFn = run, stageDir = STAGE_DIR, revisionOf = readRevision, engineRevisionOf = readEngineRevision} = {}) {
     if (!electronVersion) {
         throw new Error('pack: electronVersion is required — the staged natives MUST target the bundled runtime ABI.')
     }
@@ -718,7 +784,9 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
         productPackageJson = readPackageJson(roots.productRoot),
         enginePackageJson  = readPackageJson(roots.enginePackageRoot),
         brainPackageJson   = readPackageJson(roots.brainRoot),
-        {brain, product}   = deriveCopySpecs();
+        {brain, product}   = deriveCopySpecs(),
+        // one commit of each org dependency, before any source is consumed or the stage is touched
+        cut                = resolveCutRevisions({engineRevisionOf, revisionOf, roots});
 
     fs.rmSync(stageDir, {force: true, recursive: true});
     fs.mkdirSync(stageDir, {recursive: true});
@@ -733,12 +801,13 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
 
     const
         {copied, scanned} = stageOwners({roots, stageDir}),
-        manifest          = buildOrganismManifest({brainPackageJson, productPackageJson, scanned});
+        manifest          = buildOrganismManifest({brainPackageJson, cut, productPackageJson, scanned});
 
     fs.writeFileSync(path.join(stageDir, 'package.json'), JSON.stringify(manifest, null, 4), 'utf8');
 
-    console.log(`[pack] staged ${copied.product.length} product + ${copied.brain.length} Brain files; installing ${Object.keys(manifest.dependencies).length} organism dependencies`);
+    console.log(`[pack] staged ${copied.product.length} product + ${copied.brain.length} Brain files; installing ${Object.keys(manifest.dependencies).length} organism dependencies (Engine ${cut.engine}, Brain ${cut.brain})`);
     runFn('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], {cwd: stageDir});
+    assertStagedRevisions({cut, stageDir});
 
     // Mandatory ABI targeting: the staged natives rebuild for the bundled Electron. Failure fails
     // the build — a catch-and-ship here is a silently-broken-artifact vector.
@@ -746,7 +815,8 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
 
     const buildInfo = {
         electronVersion,
-        owners  : describeOwners({brainPackageJson, enginePackageJson, productPackageJson, roots}),
+        // the receipt reads the Engine from the stage — the payload that ships, verified against the cut above
+        owners  : describeOwners({brainPackageJson, enginePackageJson, engineRevisionOf: () => installedRevisionOf(stageDir, 'neo.mjs'), productPackageJson, revisionOf, roots}),
         rebuilt : true,
         stagedAt: new Date().toISOString()
     };

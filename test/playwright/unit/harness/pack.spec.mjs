@@ -10,6 +10,7 @@ import {
     TREE_EXCLUDES,
     assertImportClosure,
     assertNoInstanceOverlays,
+    assertStagedRevisions,
     buildNodeShim,
     buildOrganismManifest,
     collectBarePackages,
@@ -20,6 +21,8 @@ import {
     extractLocalMjsImports,
     isInstanceOverlayPath,
     materializeOverlaySlots,
+    pinSpec,
+    resolveCutRevisions,
     resolvePackRoots,
     stageOrganism,
     stageOwners,
@@ -345,8 +348,15 @@ test.describe('harness pack stage', () => {
             };
 
         try {
-            expect(() => stageOrganism({electronVersion: '43.1.0', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product, runFn, stageDir}))
-                .toThrow(/stop after the theme build/);
+            expect(() => stageOrganism({
+                electronVersion : '43.1.0',
+                engineRevisionOf: () => 'a'.repeat(40),
+                env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
+                productRoot     : product,
+                revisionOf      : () => 'b'.repeat(40),
+                runFn,
+                stageDir
+            })).toThrow(/stop after the theme build/);
 
             expect(calls).toEqual([{
                 args   : themeBuildArgv(path.join(product, 'node_modules', 'neo.mjs')),
@@ -355,6 +365,124 @@ test.describe('harness pack stage', () => {
             }]);
             expect(calls[0].args).not.toContain('-f');
             expect(calls[0].args.slice(-2)).toEqual(['-t', 'all'])
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
+    // A cut is one commit of each org dependency: the theme build's Engine (A) and the copied Brain runtime (R).
+    // The stage installs its own tree, so the only proof it shipped that cut is what npm recorded there.
+    const
+        ENGINE_A    = 'a'.repeat(40),
+        ENGINE_B    = 'c'.repeat(40),
+        BRAIN_R     = 'b'.repeat(40),
+        lockOf      = ({engine, brain}) => JSON.stringify({packages: {
+            'node_modules/neo-agent-brain': {resolved: `git+ssh://git@github.com/neomjs/neo-agent-brain.git#${brain}`},
+            'node_modules/neo.mjs'        : {resolved: `git+ssh://git@github.com/neomjs/neo.git#${engine}`}
+        }}),
+        // every owner tree and file the stage copies, plus one product import of each org dependency
+        scaffoldCut = async () => {
+            const {brain, product, root} = await scaffoldRoots(), specs = deriveCopySpecs();
+
+            specs.product.trees.forEach(tree => mkdirSync(path.join(product, tree), {recursive: true}));
+            specs.product.files.forEach(file => {
+                mkdirSync(path.dirname(path.join(product, file)), {recursive: true});
+                writeFileSync(path.join(product, file), '', 'utf8')
+            });
+            specs.brain.trees.forEach(tree => mkdirSync(path.join(brain, tree), {recursive: true}));
+            writeFileSync(path.join(product, 'apps', 'agentos', 'cut.mjs'), "import Neo from 'neo.mjs/src/Neo.mjs';\nimport 'neo-agent-brain/src/fleet/contract/wire.mjs';\n", 'utf8');
+            writeFileSync(path.join(product, 'package.json'), JSON.stringify({name: 'product', version: '1.0.0', dependencies: {
+                '@fortawesome/fontawesome-free': '^7.3.0',
+                'neo-agent-brain'              : 'github:neomjs/neo-agent-brain#dev',
+                'neo.mjs'                      : 'github:neomjs/neo#dev'
+            }}), 'utf8');
+            writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0', dependencies: {'@chroma-core/default-embed': '^0.1.0'}}), 'utf8');
+
+            return {brain, product, root}
+        };
+
+    test('a cut needs known revisions: an unknown Engine or Brain revision fails before anything is built or the stage is touched', async () => {
+        const {brain, product, root} = await scaffoldRoots(), stageDir = path.join(root, 'stage'), calls = [];
+
+        mkdirSync(stageDir, {recursive: true});
+        writeFileSync(path.join(stageDir, 'sentinel'), 'still here', 'utf8');
+
+        try {
+            for (const [engine, brainRevision] of [[null, BRAIN_R], [ENGINE_A, null]]) {
+                expect(() => stageOrganism({
+                    electronVersion : '43.1.0',
+                    engineRevisionOf: () => engine,
+                    env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
+                    productRoot     : product,
+                    revisionOf      : () => brainRevision,
+                    runFn           : (...args) => calls.push(args),
+                    stageDir
+                })).toThrow(/a cut needs known revisions/)
+            }
+
+            expect(calls, 'nothing built or installed').toEqual([]);
+            expect(existsSync(path.join(stageDir, 'sentinel'))).toBe(true)
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
+    test('the cut-path control: themes built from Engine A, a stage that resolved Engine B fails, and no receipt is written; the same stage at A passes', async () => {
+        const {brain, product, root} = await scaffoldCut(), stageDir = path.join(root, 'stage');
+
+        try {
+            for (const [stagedEngine, verdict] of [[ENGINE_B, /the stage installed a different cut.*neo\.mjs c{40}, expected a{40}/], [ENGINE_A, /stop after the verified install/]]) {
+                let manifest = null;
+
+                expect(() => stageOrganism({
+                    electronVersion : '43.1.0',
+                    engineRevisionOf: () => ENGINE_A,
+                    env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
+                    productRoot     : product,
+                    revisionOf      : () => BRAIN_R,
+                    runFn           : (command, args, options) => {
+                        if (command === 'npm') {
+                            manifest = JSON.parse(readFileSync(path.join(options.cwd, 'package.json'), 'utf8'));
+                            mkdirSync(path.join(options.cwd, 'node_modules'), {recursive: true});
+                            writeFileSync(path.join(options.cwd, 'node_modules', '.package-lock.json'), lockOf({brain: BRAIN_R, engine: stagedEngine}), 'utf8')
+                        }
+                        if (command === 'npx') {
+                            throw new Error('stop after the verified install')
+                        }
+                    },
+                    stageDir
+                })).toThrow(verdict);
+
+                // the stage was asked for exactly the cut, never for `dev`
+                expect(manifest.dependencies['neo.mjs']).toBe(`github:neomjs/neo#${ENGINE_A}`);
+                expect(manifest.overrides['neo.mjs']).toBe(`github:neomjs/neo#${ENGINE_A}`);
+                expect(manifest.dependencies['neo-agent-brain']).toBe(`github:neomjs/neo-agent-brain#${BRAIN_R}`);
+                expect(existsSync(path.join(stageDir, 'organism-build-info.json')), 'no receipt for a failed or unfinished cut').toBe(false)
+            }
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
+    test('resolveCutRevisions, pinSpec and assertStagedRevisions: one commit of each, a spec pinned to it, a stage held to it', async () => {
+        const root = await mkdtemp(path.join(tmpdir(), 'neo-pack-cut-'));
+
+        try {
+            expect(resolveCutRevisions({engineRevisionOf: () => ENGINE_A, revisionOf: () => BRAIN_R, roots: {brainRoot: 'b', productRoot: 'p'}}))
+                .toEqual({brain: BRAIN_R, engine: ENGINE_A});
+            expect(pinSpec('github:neomjs/neo#dev', ENGINE_A)).toBe(`github:neomjs/neo#${ENGINE_A}`);
+            expect(pinSpec('github:neomjs/neo', ENGINE_A)).toBe(`github:neomjs/neo#${ENGINE_A}`);
+
+            expect(() => assertStagedRevisions({cut: {brain: BRAIN_R, engine: ENGINE_A}, stageDir: root}), 'no install recorded')
+                .toThrow(/neo\.mjs unreadable, expected a{40}; neo-agent-brain unreadable, expected b{40}/);
+
+            mkdirSync(path.join(root, 'node_modules'), {recursive: true});
+            writeFileSync(path.join(root, 'node_modules', '.package-lock.json'), lockOf({brain: ENGINE_B, engine: ENGINE_A}), 'utf8');
+            expect(() => assertStagedRevisions({cut: {brain: BRAIN_R, engine: ENGINE_A}, stageDir: root}), 'a contract package from another commit')
+                .toThrow(/neo-agent-brain c{40}, expected b{40}/);
+
+            writeFileSync(path.join(root, 'node_modules', '.package-lock.json'), lockOf({brain: BRAIN_R, engine: ENGINE_A}), 'utf8');
+            expect(() => assertStagedRevisions({cut: {brain: BRAIN_R, engine: ENGINE_A}, stageDir: root})).not.toThrow()
         } finally {
             await rm(root, {force: true, recursive: true})
         }
