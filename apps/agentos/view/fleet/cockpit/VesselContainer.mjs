@@ -456,16 +456,11 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * @summary Resolve the live {@link AgentOS.view.fleet.detail.Container} instance wherever it
-     * currently renders — the projected tree while docked, the owner's handle while vesseled. A
-     * vessel-mounted pane lives in the popup's view tree, out of this cockpit's `down()` /
-     * `getReference` reach, so every detail consumer (record mutation, selection reconciliation,
-     * the card→detail drill) routes through this accessor — the windowed inspector stays as live
-     * as the docked one.
+     * @summary Resolve existing Detail by vessel ownership or declared identity, including parked panes, without creating one.
      * @returns {Neo.container.Base|null} The detail pane, or `null` before its first materialization.
      */
     getAgentDetailPane() {
-        return this.vesselPane('detail') || this.getReference('agent-detail')
+        return this.vesselPane('detail') || Neo.get(this.getPaneDeclaration('detail')?.id) || null
     }
 
     /**
