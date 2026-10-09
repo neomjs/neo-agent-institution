@@ -1,5 +1,6 @@
 import Button                  from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container               from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import GraphNodeSource         from '../../../util/GraphNodeSource.mjs';
 import ObservatoryRelationList from './ObservatoryRelationList.mjs';
 import ViewerTime              from '../../../util/ViewerTime.mjs';
 
@@ -137,6 +138,44 @@ class ObservatorySelectionContainer extends Container {
             flex     : 1,
             reference: 'observatory-relations'
         }]
+    }
+
+    /**
+     * @summary The selected node as the scene has it, for this section: the qualified id, a label other than the id,
+     * the kind, the state, attribution and last activity the read carries (each `null` where it does not), the rank
+     * while the current route holds the node, its relations in the read and how many of them list, and its source
+     * ({@link AgentOS.util.GraphNodeSource#sourceOf}). `null` while nothing is selected.
+     * @param {Object} pane The Observatory pane's state
+     * @param {Number} pane.listBudget
+     * @param {Object} pane.scene
+     * @param {String|null} pane.selectedId
+     * @returns {Object|null}
+     */
+    static factsOf({listBudget, scene, selectedId}) {
+        const index = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1;
+
+        if (index < 0) {
+            return null
+        }
+
+        const
+            node      = scene.nodes[index],
+            relations = scene.edges.reduce((sum, pair) => sum + (pair.includes(index) ? 1 : 0), 0);
+
+        return {
+            assignedTo     : node.assignedTo,
+            authoredBy     : node.authoredBy,
+            id             : node.id,
+            kind           : node.kind ?? null,
+            label          : node.label && node.label !== node.id ? node.label : null,
+            lastActivityAt : node.lastActivityAt,
+            memoryOf       : node.memoryOf,
+            rank           : node.rank ?? null,
+            relations,
+            relationsListed: Math.min(relations, listBudget),
+            source         : GraphNodeSource.sourceOf(node),
+            state          : node.state
+        }
     }
 
     /**

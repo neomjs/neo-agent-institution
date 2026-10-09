@@ -1577,10 +1577,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(node(0)).toBeVisible();
         expect(await top('.fm-observatory-view-row >> nth=0')).toBe(viewTop);
         await node(1).click();
-        await expect(label).toHaveText('Golden Path currency on the cockpit');
+        await expect(label).toHaveText('Currency line reads the admission');
         expect(await outlineOf(node(1))).toBe('none');
         await page.keyboard.press('ArrowDown');
-        await expect(label).toHaveText('REM digests the backlog before the next cut');
+        await expect(label).toHaveText('The release notes sweep the merges since the last cut');
         expect(await outlineOf(node(2))).toBe('solid');
 
         // Escape backs out one step at a time: the selection first, then the lens
