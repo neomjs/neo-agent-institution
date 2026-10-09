@@ -27,7 +27,7 @@ import TargetBinding               from '../../../util/TargetBinding.mjs';
  * unavailable fallback (never a fabricated success), and only the newest generation writes.
  *
  * @class AgentOS.view.fleet.cockpit.Controller
- * @extends AgentOS.view.fleet.cockpit.ReadingSurfacesController
+ * @extends AgentOS.view.fleet.cockpit.FleetBatchController
  */
 class Controller extends FleetBatchController {
     static config = {

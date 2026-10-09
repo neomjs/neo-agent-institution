@@ -364,7 +364,7 @@ class LivenessController extends ViewerWakeController {
             return
         }
 
-        TargetBinding.retireRoster(me, {store, grid, profileId});
+        TargetBinding.retireRoster(me, {store, grid, profileId}) && me.onRosterRetired();
 
         try {
             me.publishConnection('grid', {pending: true});
@@ -429,6 +429,14 @@ class LivenessController extends ViewerWakeController {
      * @protected
      */
     onRosterSettled() {}
+
+    /**
+     * @summary The roster was retired for another target: the bridge in hand belongs to a profile
+     * other than the rows the store held, and the store emptied. The batch layer drops an armed stop
+     * here; this layer adds nothing.
+     * @protected
+     */
+    onRosterRetired() {}
 
     /**
      * @summary The Brain-health read owner's pull — the daemon surface on the liveness cadence.

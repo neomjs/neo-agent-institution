@@ -33,7 +33,9 @@ class FleetBatchController extends ReadingSurfacesController {
     /** @member {Object|null} startFleetBatch=null Token fencing late summaries from older batches, in either direction. */
     startFleetBatch = null
     /**
-     * The fleet-wide stop's two-press state: the plan the first press showed, `null` while not armed.
+     * The fleet-wide stop's two-press state: the plan the first press showed, bound to the Fleet it
+     * was shown for — `{plan, profileId, store}` — and `null` while not armed. The second press
+     * sends only while that binding and the plan still hold ({@link #isStopArmCurrent}).
      * @member {Object|null} stopFleetArmed=null
      * @protected
      */
@@ -117,11 +119,37 @@ class FleetBatchController extends ReadingSurfacesController {
     onRosterSettled() {
         const me = this;
 
-        if (me.stopFleetArmed && FleetStartPlan.stopPlanKey(FleetStartPlan.partitionFleetStop(me.getRosterRecords())) !== FleetStartPlan.stopPlanKey(me.stopFleetArmed)) {
+        if (me.stopFleetArmed && !me.isStopArmCurrent(me.stopFleetArmed, FleetStartPlan.partitionFleetStop(me.getRosterRecords()))) {
             me.disarmStopFleet()
         }
 
         me.renderFleetButton()
+    }
+
+    /**
+     * @summary The roster was retired for another target (a replaced bridge or profile): an armed
+     * stop was shown for the old Fleet and goes with it, nothing sent.
+     * @protected
+     */
+    onRosterRetired() {
+        this.disarmStopFleet()
+    }
+
+    /**
+     * @summary Whether an armed stop may still send: the bridge's profile and the roster store are
+     * the ones the first press bound, and the fresh partition's eligible set is the plan the operator
+     * saw. A card's own pending action, a settled roster that differs, or a replaced target all fail it.
+     * @param {{plan: Object, profileId: String|null, store: Object|null}} armed
+     * @param {{eligible: Object[], excluded: Object[]}} fresh The partition of the current roster.
+     * @returns {Boolean}
+     * @protected
+     */
+    isStopArmCurrent(armed, fresh) {
+        const me = this;
+
+        return armed.profileId === me.bridgeProfileId
+            && armed.store === me.resolveFleetRosterStore()
+            && FleetStartPlan.stopPlanKey(fresh) === FleetStartPlan.stopPlanKey(armed.plan)
     }
 
     /**
@@ -208,9 +236,12 @@ class FleetBatchController extends ReadingSurfacesController {
      * shows the plan — the up, eligible fleet by name and every exclusion with its reason — the chip
      * becomes the second press, and nothing is sent; the second press, inside the armed window, sends
      * one stop intent per planned seat through the card's own verb and the summary reads
-     * `N stopped · M excluded`. A roster whose plan differs, the window's end or a fleet start take the
-     * first press back; a press during a running stop batch joins it.
-     * @returns {Object|Promise<Object>} The plan on the first press, the batch summary on the second.
+     * `N stopped · M excluded`. The second press sends only for the Fleet and the plan the first press
+     * showed: a replaced target, a retired roster, a settled roster whose plan differs, a seat whose
+     * own action is pending, the window's end or a fleet start take the first press back with nothing
+     * sent; a press during a running stop batch joins it.
+     * @returns {Object|Promise<Object>|null} The plan on the first press, the batch summary on the
+     * second, `null` when the second press found its confirmation stale and withdrew it.
      */
     onStopFleet() {
         const me = this;
@@ -220,7 +251,7 @@ class FleetBatchController extends ReadingSurfacesController {
         if (!me.stopFleetArmed) {
             const plan = FleetStartPlan.partitionFleetStop(me.getRosterRecords());
 
-            me.stopFleetArmed    = plan;
+            me.stopFleetArmed    = {plan, profileId: me.bridgeProfileId, store: me.resolveFleetRosterStore()};
             me.stopFleetArmTimer = setTimeout(() => me.disarmStopFleet(), me.stopFleetArmMs);
             me.renderSummarySlot(FleetStartPlan.renderFleetStopPlan(plan));
             me.renderFleetButton();
@@ -228,12 +259,18 @@ class FleetBatchController extends ReadingSurfacesController {
             return plan
         }
 
-        const plan = me.stopFleetArmed;
+        // the confirmation is re-read against the Fleet as it is now, before anything is sent
+        const fresh = FleetStartPlan.partitionFleetStop(me.getRosterRecords());
+
+        if (!me.isStopArmCurrent(me.stopFleetArmed, fresh)) {
+            me.disarmStopFleet();
+            return null
+        }
 
         clearTimeout(me.stopFleetArmTimer);
         me.stopFleetArmTimer = null;
         me.stopFleetArmed    = null;
-        me.stopFleetPromise  = me.executeStopFleetBatch(plan).finally(() => {
+        me.stopFleetPromise  = me.executeStopFleetBatch(fresh).finally(() => {
             me.stopFleetPromise = null;
             me.renderFleetButton()
         });

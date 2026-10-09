@@ -354,13 +354,13 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     7194ed7270a8f6d925c71495ab47dc3efa2f0020
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    c51549085fc8e42e7359096809390e60752c445d
+    e952c7bfcbb9bde1bbb9f4a54e0439b6aecfda41
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
-    06c1038530e0023886db475a2b54306dc345b10d
+    6ec1b625af0d4be491d0395a15d3c7af37ac3ec3
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    f1efdf27d4649810bf9b1ab49345ce1ead4ead8b
+    9f4a8edf735ad6e9b27847ae5f5a08ddd6586901
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     a15fe77799d5ec278139537ba0be8fd0f0e8c9f4

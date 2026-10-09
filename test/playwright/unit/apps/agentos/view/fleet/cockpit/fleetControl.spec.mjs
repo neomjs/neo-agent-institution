@@ -110,7 +110,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             expect(plan.eligible.map(record => record.agentId)).toEqual(['ada', 'euclid']);
             expect(calls).toEqual([]);
             expect(lines.at(-1)).toEqual({text: 'Stop fleet · 2 seats: ada, euclid · 1 excluded', detail: expect.stringContaining('vega: already down')});
-            expect(controller.stopFleetArmed).toBe(plan);
+            expect(controller.stopFleetArmed.plan).toBe(plan);
 
             // the second press: one stop intent per planned seat, the summary in the stop direction
             const summary = await controller.onStopFleet();
@@ -233,6 +233,102 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             controller.onFleetButton();
             await controller.onFleetButton();
             expect(calls).toEqual(['ada', 'euclid'])
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('the second press is bound to the Fleet it confirmed: a replaced profile or a retired roster withdraws the arm before any Stop is sent, and nothing of the old plan reaches the new bridge', async () => {
+        const
+            calls      = [],
+            records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
+            store      = {items: records, get: id => store.items.find(record => record.agentId === id)},
+            button     = fakeButton(),
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {stopAgent: agentId => (calls.push(agentId), Promise.resolve({state: 'off'}))}};
+
+        Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
+        controller.resolveFleetRosterStore = () => store;
+        controller.getReference            = name => ({'fleet-grid': {store}, 'fleet-button': button})[name] ?? null;
+        controller.refreshRosterOnSettle   = settledOk => settledOk;
+        controller.renderStartSummary      = () => {};
+        controller.renderSummarySlot       = () => {};
+        controller.stopFleetArmMs          = 10000;
+
+        try {
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            expect(controller.stopFleetArmed).toMatchObject({profileId: 'profile-a', store});
+
+            // the real switch retires the roster before the new bridge is read: the arm goes with it
+            controller.bridgeProfileId = 'profile-b';
+            store.items = [];
+            controller.onRosterRetired();
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(calls).toEqual([]);
+
+            // the same switch without the retirement hook: the second press re-reads the target and sends nothing
+            store.items = records;
+            controller.bridgeProfileId = 'profile-a';
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            controller.bridgeProfileId = 'profile-b';
+            expect(controller.onFleetButton()).toBeNull();
+            expect(calls).toEqual([]);
+            expect(controller.stopFleetArmed).toBeNull();
+
+            // the unchanged target and plan still send one Stop per planned seat
+            controller.bridgeProfileId = 'profile-a';
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            await controller.onFleetButton();
+            expect(calls).toEqual(['ada', 'euclid'])
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('the second press re-reads eligibility: a seat whose own Stop is pending has left the plan, so the stale confirmation is withdrawn and no duplicate Stop is sent', async () => {
+        const
+            calls      = [],
+            held       = [],
+            records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
+            store      = {items: records, get: id => store.items.find(record => record.agentId === id)},
+            button     = fakeButton(),
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {stopAgent: agentId => { calls.push(agentId); return new Promise(resolve => held.push(() => resolve({state: 'off'}))) }}};
+
+        Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
+        controller.resolveFleetRosterStore = () => store;
+        controller.getReference            = name => ({'fleet-grid': {store}, 'fleet-button': button})[name] ?? null;
+        controller.refreshRosterOnSettle   = settledOk => settledOk;
+        controller.renderStartSummary      = () => {};
+        controller.renderSummarySlot       = () => {};
+        // the prototype harness runs no field initializers: the arm's window is the production one
+        controller.stopFleetArmMs          = 10000;
+
+        try {
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            expect(controller.stopFleetArmed).not.toBeNull();
+
+            // the card's own Stop: the adapter writes `pending` before the bridge answers
+            const card = controller.requestFleetLifecycle({action: 'stop', agentId: 'ada'}, records[0]);
+
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(records[0].pendingAction).toBe('stop');
+            expect(calls).toEqual(['ada']);
+
+            // the second press before any roster settles: withdrawn, nothing more sent, the plan re-read
+            expect(controller.onFleetButton()).toBeNull();
+            expect(calls).toEqual(['ada']);
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(button.text).toBe('Stop fleet · 1');
+
+            held.forEach(release => release());
+            await card
         } finally {
             delete globalThis.AgentOS?.fleet
         }
