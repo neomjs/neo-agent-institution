@@ -5,10 +5,11 @@ import Container from '../../../../../node_modules/neo.mjs/src/container/Base.mj
  * @summary The Observatory's View section: the controls that choose what the scene draws, each
  * labelled by the question it answers rather than by its algorithm. The wells follow the roadmap (the Brain's
  * strategic anchors) or the hubs (the read's best-connected nodes); Attention brightens what drew attention in the
- * stated window; Golden Path draws the route; Messages brings agent mail into the scene; Outside wells draws the
- * nodes no well reached. A pressed control is a drawn choice. A route the Golden Path read withholds reads
+ * stated window; Route draws the Golden Path's route; Messages brings agent mail into the scene; Outside wells draws
+ * the nodes no well reached. A pressed control is a drawn choice. A route the Golden Path read withholds reads
  * withheld in its own control, without a hover, and the reason sits in the control's detail; the control still
- * draws or drops the route the graph read carries.
+ * draws or drops the route the graph read carries. Each control is named by what it does: the Golden Path is the
+ * dock pane the route illustrates, never this section's word.
  *
  * The pane owns the state: it wires the controls' handlers and hands the section its state through {@link #sync}.
  * @class AgentOS.view.fleet.goldenpath.ObservatoryViewContainer
@@ -83,7 +84,7 @@ class ObservatoryViewContainer extends Container {
                 module   : Button,
                 flex     : 'none',
                 reference: 'route-toggle',
-                text     : 'Golden Path',
+                text     : 'Route',
                 ui       : 'ghost'
             }, {
                 module   : Button,
@@ -101,6 +102,16 @@ class ObservatoryViewContainer extends Container {
                 ui       : 'ghost'
             }]
         }]
+    }
+
+    /**
+     * @summary What the Observatory's head calls the geography the scene drew: the wells by what they gather
+     * around, as this section's controls name them, or the topology's communities, which no control offers.
+     * @param {String|null} geography The scene's drawn geography
+     * @returns {String|null} `null` for no drawn geography
+     */
+    static titleOf(geography) {
+        return {communities: 'Communities', density: 'Hub wells', strategic: 'Roadmap wells'}[geography] ?? null
     }
 
     /**
@@ -135,7 +146,7 @@ class ObservatoryViewContainer extends Container {
 
         me.getReference('heat-toggle').tooltip = `Brighten what drew attention in the last ${heatDays} day${heatDays === 1 ? '' : 's'}: open work, memories and gaps`;
         me.getReference('route-toggle').set({
-            text   : routeWithheld ? 'Golden Path · withheld' : 'Golden Path',
+            text   : routeWithheld ? 'Route · withheld' : 'Route',
             tooltip: routeWithheld
                 ? `The Golden Path read withholds the route (${routeWithheld}); the route drawn is the one the graph read carries`
                 : 'Draw the Golden Path route over the graph'
