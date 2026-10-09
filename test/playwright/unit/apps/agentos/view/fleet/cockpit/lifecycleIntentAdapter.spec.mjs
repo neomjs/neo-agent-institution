@@ -455,4 +455,53 @@ test.describe('fleetLifecycleIntentAdapter — lifecycleIntent → registry brid
         expect(FleetLifecycleIntentAdapter.sanitizeControlReason(reason)).toBe(reason);
         expect(FleetLifecycleIntentAdapter.sanitizeControlReason('PAT=github_pat_x stored')).toBe('[redacted] stored')
     });
+
+    test('Skip is a side request: it never claims the Start\'s pending verb, so the Start\'s own answer still settles the card (#616)', async () => {
+        const
+            record = createRecord(),
+            start  = deferred(),
+            calls  = [],
+            bridge = {
+                startAgent           : () => start.promise,
+                skipAgentDependencies: agentId => { calls.push(agentId); return Promise.resolve({id: agentId, skippedStarts: 1}) }
+            },
+            starting = FleetLifecycleIntentAdapter.handleFleetLifecycleIntent({action: 'start', agentId: 'vega'}, record, {bridge, timeoutMs: -1});
+
+        await flushMicrotasks();
+        expect(record.pendingAction).toBe('start');
+
+        expect(await FleetLifecycleIntentAdapter.handleSkipIntent({agentId: 'vega'}, {bridge})).toEqual({reason: null, state: 'requested'});
+        expect(calls).toEqual(['vega']);
+        // the pending verb is still the Start's
+        expect(record.pendingAction).toBe('start');
+
+        start.resolve({id: 'vega', state: 'running'});
+        expect((await starting).status).toBe('settled');
+        expect(record.pendingAction).toBeNull()
+    });
+
+    test('Skip reads none when nothing was left, unavailable without the verb or on a refusal, and unanswered on a timeout (#616)', async () => {
+        const answer = result => ({skipAgentDependencies: () => result});
+
+        expect(await FleetLifecycleIntentAdapter.handleSkipIntent({agentId: 'vega'}, {bridge: answer(Promise.resolve({id: 'vega', skippedStarts: 0}))}))
+            .toEqual({reason: 'no install was still running', state: 'none'});
+
+        // an older pin's wire has no verb at all: the pane offers no Skip, and a call says why
+        expect(FleetLifecycleIntentAdapter.canSkip({startAgent() {}})).toBe(false);
+        expect(FleetLifecycleIntentAdapter.canSkip(null)).toBe(false);
+        expect(await FleetLifecycleIntentAdapter.handleSkipIntent({agentId: 'vega'}, {bridge: {startAgent() {}}}))
+            .toEqual({reason: 'this Fleet does not offer Skip', state: 'unavailable'});
+
+        // a newer wire against an older Fleet: the server refuses the method, in its words, redacted
+        expect(await FleetLifecycleIntentAdapter.handleSkipIntent({agentId: 'vega'}, {bridge: answer(Promise.reject(new Error("fleet: unknown method 'skipAgentDependencies' (token=abc)")))}))
+            .toEqual({reason: "fleet: unknown method 'skipAgentDependencies' ([redacted]", state: 'unavailable'});
+
+        const timer = createTimer(), pending = FleetLifecycleIntentAdapter.handleSkipIntent({agentId: 'vega'}, {
+            bridge: answer(new Promise(() => {})), clearTimeoutFn: timer.clearTimeoutFn, setTimeoutFn: timer.setTimeoutFn, timeoutMs: 30000
+        });
+
+        await flushMicrotasks();
+        timer.timers[0].fn();
+        expect(await pending).toEqual({reason: 'the Fleet has not answered yet', state: 'unanswered'})
+    });
 });
