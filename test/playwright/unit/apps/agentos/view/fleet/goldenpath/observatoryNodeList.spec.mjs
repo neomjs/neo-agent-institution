@@ -15,10 +15,11 @@ setup({
     }
 });
 
-import {expect, test}      from '@playwright/test';
-import Neo                 from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core           from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import ObservatoryNodeList from '../../../../../../../../apps/agentos/view/fleet/goldenpath/ObservatoryNodeList.mjs';
+import {expect, test}                from '@playwright/test';
+import Neo                           from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core                     from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import ObservatoryNodeList           from '../../../../../../../../apps/agentos/view/fleet/goldenpath/ObservatoryNodeList.mjs';
+import ObservatoryNodesHeadContainer from '../../../../../../../../apps/agentos/view/fleet/goldenpath/ObservatoryNodesHeadContainer.mjs';
 
 const
     NOW   = Date.parse('2026-10-09T06:00:00.000Z'),
@@ -56,8 +57,12 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryNodeList — the order t
             .toEqual(['old-discussion', 'no-time', 'merged-pr', 'message', 'file', 'route-seed', 'moved-issue']);
     });
 
-    test('the title names the order, and how much of the read the list holds', () => {
-        expect(ObservatoryNodeList.titleOf({by: 'changed', listed: 7, total: 7})).toBe('Nodes · changed in the last 3 days first · then by activity');
-        expect(ObservatoryNodeList.titleOf({by: 'relations', listed: 150, total: 1981})).toBe('Nodes · by relations · 150 of 1,981 · relations reach the rest');
+    test('the head\'s chrome line says how much of the read the list holds, the line beneath it what leads', () => {
+        const head = ObservatoryNodesHeadContainer;
+
+        expect([head.titleOf({listed: 7, total: 7}), head.captionOf('changed', {listed: 7, total: 7})])
+            .toEqual(['Nodes', 'changed in the last 3 days first · then by activity']);
+        expect([head.titleOf({listed: 150, total: 1981}), head.captionOf('relations', {listed: 150, total: 1981})])
+            .toEqual(['Nodes · 150 of 1,981', 'by relations · most related first · relations reach the rest']);
     });
 });

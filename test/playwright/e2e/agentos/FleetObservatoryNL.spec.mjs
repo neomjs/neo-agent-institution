@@ -487,6 +487,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const
             {land, pane, settle} = await openObservatory(page, neuralLink),
             attribution = team(Date.now()),
+            caption     = pane.locator('.fm-observatory-nodes-caption'),
             labels      = pane.locator('.fm-observatory-node-list .fm-observatory-row-label'),
             nodesHead   = pane.getByRole('button', {name: /^Nodes/}),
             toggle      = pane.getByRole('button', {name: 'by relations', exact: true});
@@ -494,15 +495,17 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await land(read({nodes: NODES.map(node => ({...node, ...attribution[node.id]}))}));
         await settle();
 
-        // the read names peers, so Team opens first and Nodes keeps its head
+        // the read names peers, so Team opens first and Nodes keeps only its chrome line
+        await expect(caption, 'collapsed, the order waits with the list').toBeHidden();
         await nodesHead.click();
-        await expect(nodesHead).toHaveText('Nodes · changed in the last 3 days first · then by activity');
+        await expect(nodesHead).toHaveText('Nodes');
+        await expect(caption).toHaveText('changed in the last 3 days first · then by activity');
         await expect(labels, 'the work changed within the window, newest first, the closed issue among it; then by activity').toHaveText(['two hops out', 'first route item', 'third route item', 'second route item', 'Grace', 'Dock', 'no seed reaches']);
         await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
         await toggle.click();
         await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-        await expect(nodesHead).toHaveText('Nodes · by relations');
+        await expect(caption).toHaveText('by relations · most related first');
         await expect(labels, 'the most related first, ties in the scene\'s order').toHaveText(['first route item', 'Grace', 'Dock', 'second route item', 'two hops out', 'third route item', 'no seed reaches']);
 
         await toggle.click();

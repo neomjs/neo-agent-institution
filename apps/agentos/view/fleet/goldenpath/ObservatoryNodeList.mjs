@@ -5,7 +5,8 @@ import ObservatorySceneLayout from '../../../util/ObservatorySceneLayout.mjs';
  * @summary The Observatory's nodes as a list: the path to the scene and its selection that needs no canvas.
  * Every node of the bounded read is a row, each naming its route rank or its distance from the route, its label and
  * its kind, and under the team lens what it is to its peer, in the peer's hue. The list leads with what changed
- * ({@link #orderOf}), its title names the order ({@link #titleOf}), and the arrow keys move the selection. The owning
+ * ({@link #orderOf}), its section's head names the order ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodesHeadContainer}),
+ * and the arrow keys move the selection. The owning
  * {@link AgentOS.view.fleet.goldenpath.ObservatoryContainer} seats the store, chooses the order and keeps the
  * selection in step with the canvas; this list renders.
  *
@@ -65,24 +66,6 @@ class ObservatoryNodeList extends BaseList {
         return by === 'relations'
             ? indices.sort((a, b) => relations[b] - relations[a] || a - b)
             : indices.sort((a, b) => changed(b) - changed(a) || at(b) - at(a) || a - b)
-    }
-
-    /**
-     * @summary The Nodes title: the order in words, and how much of the read the list holds.
-     * @param {Object} options
-     * @param {'changed'|'relations'} options.by
-     * @param {Number} options.listed The rows the list holds
-     * @param {Number} options.total  The nodes the read holds
-     * @returns {String}
-     */
-    static titleOf({by, listed, total}) {
-        const days = ObservatorySceneLayout.attention.windowMs / 86400000;
-
-        return [
-            'Nodes',
-            by === 'relations' ? 'by relations' : `changed in the last ${days} day${days === 1 ? '' : 's'} first · then by activity`,
-            total > listed && `${listed.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} · relations reach the rest`
-        ].filter(Boolean).join(' · ')
     }
 
     /**

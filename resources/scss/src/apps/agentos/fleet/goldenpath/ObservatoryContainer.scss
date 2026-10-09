@@ -12,17 +12,17 @@
        chrome scale (Viewport.scss `.fm-pane-actions`), whose pressed state carries the choice; they lead their row,
        so the head's trailing-slot margin does not apply */
     .fm-observatory-peers-head,
-    .fm-observatory-nodes-head,
+    .fm-observatory-nodes-row,
     .fm-observatory-view-row,
     .fm-observatory-selected-actions {
         margin-left: 0;
     }
 
-    /* the Team head (the section's title, then the lens's Clear and the scope's All) and the Nodes head (the title
-       naming the order, then the order's toggle): the row draws the line above its section across its full width,
-       so the title inside it keeps none of its own */
+    /* the Team head (the section's title, then the lens's Clear and the scope's All) and the Nodes head's chrome line
+       (the title with its count, then the order's toggle): the row draws the line above its section across its full
+       width, so the title inside it keeps none of its own */
     .fm-observatory-peers-head,
-    .fm-observatory-nodes-head {
+    .fm-observatory-nodes-row {
         border-top   : thin solid var(--fm-line-soft);
         padding-right: var(--fm-space-3);
 
@@ -32,15 +32,16 @@
         }
     }
 
-    /* the Nodes title names its order in full, so it wraps beside the toggle instead of running under it, at the
-       detail scale's leading: the chrome scale's is for one line */
-    .fm-observatory-nodes-head .fm-observatory-side-title.neo-button {
-        text-align : left;
-        white-space: normal;
+    /* the Nodes list's order in words, under its chrome line in the detail role; a collapsed section keeps only the
+       chrome line */
+    .fm-observatory-nodes-caption {
+        color  : var(--fm-ink-dim);
+        font   : var(--fm-text-detail);
+        padding: 0 var(--fm-space-3) var(--fm-space-1);
+    }
 
-        .neo-button-text {
-            line-height: 1.4;
-        }
+    .fm-observatory-nodes-head:has(.fm-observatory-section-head[aria-expanded="false"]) .fm-observatory-nodes-caption {
+        display: none;
     }
 
     .fm-observatory-view-row {

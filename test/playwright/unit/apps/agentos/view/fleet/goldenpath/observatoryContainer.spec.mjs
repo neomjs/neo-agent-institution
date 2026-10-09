@@ -218,7 +218,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.envelope   = graphRead();
 
         expect(ids()).toEqual(['pr-101']);
-        expect(title('observatory-nodes-title')).toBe('Nodes · changed in the last 3 days first · then by activity · 1 of 7 · relations reach the rest');
+        expect([title('observatory-nodes-title'), title('observatory-nodes-caption')]).toEqual(['Nodes · 1 of 7', 'changed in the last 3 days first · then by activity · relations reach the rest']);
 
         pane.onNodeSelect({node: {id: q('pr-101')}});
         expect(rowsOf(pane)).toHaveLength(1);
@@ -245,7 +245,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.listBudget = 500;
         pane.envelope   = graphRead({completeness: 'truncated'}, {snapshotId: 'snap-8b21'});
         expect(ids()).toHaveLength(7);
-        expect(title('observatory-nodes-title')).toBe('Nodes · changed in the last 3 days first · then by activity');
+        expect([title('observatory-nodes-title'), title('observatory-nodes-caption')]).toEqual(['Nodes', 'changed in the last 3 days first · then by activity']);
         expect(relationsTitle(pane)).toBe('Relations · 2');
 
         pane.destroy()
@@ -256,7 +256,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
             pane   = createPane(),
             toggle = pane.getReference('observatory-nodes-order'),
             ids    = () => pane.nodeStore.items.map(({id}) => id.replace('neomjs/neo#', '')),
-            state  = () => [pane.getReference('observatory-nodes-title').text, toggle.pressed, toggle.vdom['aria-pressed']];
+            state  = () => [pane.getReference('observatory-nodes-title').text, pane.getReference('observatory-nodes-caption').text, toggle.pressed, toggle.vdom['aria-pressed']];
 
         // the ripple measures the rendered button, which the unit harness has none of
         toggle.useRippleEffect = false;
@@ -265,11 +265,11 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.envelope   = teamRead();
 
         expect(ids(), 'the newest change leads, though the layout places it sixth').toEqual(['issue-404', 'pr-101']);
-        expect(state()).toEqual(['Nodes · changed in the last 3 days first · then by activity · 2 of 7 · relations reach the rest', false, 'false']);
+        expect(state()).toEqual(['Nodes · 2 of 7', 'changed in the last 3 days first · then by activity · relations reach the rest', false, 'false']);
 
         toggle.onClick({});
         expect(ids()).toEqual(['pr-101', 'agent-grace']);
-        expect(state()).toEqual(['Nodes · by relations · 2 of 7 · relations reach the rest', true, 'true']);
+        expect(state()).toEqual(['Nodes · 2 of 7', 'by relations · most related first · relations reach the rest', true, 'true']);
 
         pane.onNodeSelect({node: {id: q('issue-404')}});
         expect(ids(), 'a selection the order leaves out takes the one extra row').toEqual(['pr-101', 'agent-grace', 'issue-404']);
@@ -277,7 +277,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         toggle.onClick({});
         expect(ids(), 'back to what changed, which lists the selection itself').toEqual(['issue-404', 'pr-101']);
         expect(pane.selectedId).toBe(q('issue-404'));
-        expect(state()[1]).toBe(false);
+        expect(state()[2]).toBe(false);
 
         pane.destroy()
     });
