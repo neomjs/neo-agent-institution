@@ -133,6 +133,18 @@ class Controller extends ReadingSurfacesController {
     /** @member {Object|null} startFleetBatch=null Token fencing late summaries from older batches. */
     startFleetBatch = null
     /**
+     * The fleet-wide stop's two-press state: the plan the first press showed, `null` while not armed.
+     * @member {Object|null} stopFleetArmed=null
+     * @protected
+     */
+    stopFleetArmed = null
+    /**
+     * The active fleet-stop batch — repeated presses join it until its summary settled.
+     * @member {Promise<Object>|null} stopFleetPromise=null
+     * @protected
+     */
+    stopFleetPromise = null
+    /**
      * Read-fence + in-flight accounting + owner-held snapshot for the tasks surface.
      * @member {Number} tasksReadGeneration=0
      * @protected
@@ -499,6 +511,9 @@ class Controller extends ReadingSurfacesController {
     onStartFleet() {
         const me = this;
 
+        // a start press takes a stop's first press back
+        me.stopFleetArmed = null;
+
         if (!me.startFleetPromise) {
             me.startFleetPromise = me.executeStartFleetBatch().finally(() => {
                 me.startFleetPromise = null
@@ -549,6 +564,78 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
+     * @summary The fleet-wide stop is a two-press (#618). The first press arms it: the summary slot
+     * shows the plan — the up, eligible fleet it would stop and every exclusion with its reason — and
+     * nothing is sent; the second press, while armed, sends one stop intent per planned seat through
+     * the card's own verb and the summary reads `N stopped · M excluded`. A fleet start takes the
+     * first press back; a press during a running stop batch joins it.
+     * @returns {Object|Promise<Object>} The plan on the first press, the batch summary on the second.
+     */
+    onStopFleet() {
+        const me = this;
+
+        if (me.stopFleetPromise) return me.stopFleetPromise;
+
+        if (!me.stopFleetArmed) {
+            const plan = FleetStartPlan.partitionFleetStop(me.getRosterRecords());
+
+            me.stopFleetArmed = plan;
+            me.renderStartSummary({...FleetStartPlan.summarizeFleetStart(plan, []), rejected: [], started: plan.eligible.length}, 'to stop — press Stop fleet again to send');
+
+            return plan
+        }
+
+        const plan = me.stopFleetArmed;
+
+        me.stopFleetArmed   = null;
+        me.stopFleetPromise = me.executeStopFleetBatch(plan).finally(() => {
+            me.stopFleetPromise = null
+        });
+
+        return me.stopFleetPromise
+    }
+
+    /**
+     * @summary Stop the planned seats and re-poll once after their initial answers — the mirror of
+     * {@link #executeStartFleetBatch}, sharing its batch token so a newer batch of either direction
+     * retires an older summary's writer.
+     * @param {{eligible: Object[], excluded: Object[]}} plan The armed plan
+     * @returns {Promise<Object>} The outcome summary.
+     * @protected
+     */
+    async executeStopFleetBatch(plan) {
+        const
+            me      = this,
+            batch   = me.startFleetBatch = {},
+            profile = me.bridgeProfileId;
+
+        me.renderStartSummary(null);
+
+        const results = await Promise.all(plan.eligible.map(record =>
+            me.requestFleetLifecycle({action: 'stop', agentId: record.agentId}, record)
+        ));
+
+        const summary = FleetStartPlan.summarizeFleetStart(plan, results);
+
+        if (!me.isDestroyed && me.startFleetBatch === batch && me.bridgeProfileId === profile) {
+            me.renderStartSummary(summary, 'stopped')
+        }
+
+        results.forEach((result, index) => {
+            result.settlement?.then(answer => {
+                if (me.startFleetBatch === batch && answer.isCurrent()) {
+                    results[index] = answer;
+                    me.renderStartSummary(FleetStartPlan.summarizeFleetStart(plan, results), 'stopped')
+                }
+            })
+        });
+
+        await me.refreshRosterOnSettle(Promise.resolve(true), () => results.some(FleetLifecycleIntentAdapter.rosterMayRead));
+
+        return summary
+    }
+
+    /**
      * @summary The full roster truth for fleet-level actions: the grid store's records (a folded
      * idle card is still a member); the rendered-cards fallback covers compositions without the
      * grid store reference.
@@ -561,11 +648,12 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
-     * @summary Write the fleet-start outcome into the chrome summary slot — counts as text,
-     * per-member reasons on the title; hidden again when cleared.
+     * @summary Write a fleet batch's outcome (or a stop's armed plan) into the chrome summary slot —
+     * counts as text, per-member reasons on the title; hidden again when cleared.
      * @param {Object|null} summary
+     * @param {String} [verb='started'] The direction's word: `started`, `stopped`, or the armed plan's instruction
      */
-    renderStartSummary(summary) {
+    renderStartSummary(summary, verb = 'started') {
         const slot = this.getReference('fleet-start-summary');
 
         if (!slot) return;
@@ -575,7 +663,7 @@ class Controller extends ReadingSurfacesController {
             return
         }
 
-        const {detail, text} = FleetStartPlan.renderFleetStartSummary(summary);
+        const {detail, text} = FleetStartPlan.renderFleetStartSummary(summary, verb);
 
         slot.vdom.title = detail;
         slot.set({hidden: false, text})

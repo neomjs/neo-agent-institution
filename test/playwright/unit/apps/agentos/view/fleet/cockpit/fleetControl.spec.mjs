@@ -66,6 +66,63 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         expect(ada.writes.some(write => write.controlReason?.kind === 'unauthorized')).toBe(true)
     });
 
+    test('onStopFleet is a two-press: the first press renders the plan and sends nothing; the second sends one stop intent per planned seat and the summary reads N stopped; a fleet start takes the first press back (#618 AC-3)', async () => {
+        const
+            calls      = [],
+            records    = ['ada', 'euclid', 'vega'].map((agentId, index) => ({
+                agentId,
+                controlReason: null,
+                pendingAction: null,
+                sources      : wiredSources(),
+                state        : index < 2 ? 'ok' : 'off',
+                set(values) { Object.assign(this, values) }
+            })),
+            summaries  = [],
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                stopAgent(agentId) {
+                    calls.push(agentId);
+                    return Promise.resolve({state: 'off'})
+                }
+            }
+        };
+
+        controller.getReference          = name => name === 'fleet-grid' ? {store: {items: records}} : null;
+        controller.refreshRosterOnSettle = settledOk => settledOk;
+        controller.renderStartSummary    = (summary, verb) => summaries.push({summary, verb});
+
+        try {
+            // the first press: the plan in the summary slot, nothing sent
+            const plan = controller.onStopFleet();
+
+            expect(plan.eligible.map(record => record.agentId)).toEqual(['ada', 'euclid']);
+            expect(calls).toEqual([]);
+            expect(summaries.at(-1).verb).toContain('press');
+            expect(summaries.at(-1).summary).toMatchObject({started: 2, excluded: [{agentId: 'vega', reason: expect.stringContaining('already down')}]});
+            expect(controller.stopFleetArmed).toBe(plan);
+
+            // the second press: one stop intent per planned seat, the summary in the stop direction
+            const summary = await controller.onStopFleet();
+
+            expect(calls).toEqual(['ada', 'euclid']);
+            expect(summary.started).toBe(2);
+            expect(summaries.some(({summary, verb}) => verb === 'stopped' && summary?.started === 2)).toBe(true);
+            expect(controller.stopFleetPromise).toBeNull();
+            expect(controller.stopFleetArmed).toBeNull();
+
+            // a fleet start takes the first press back
+            controller.executeStartFleetBatch = async () => ({});
+            controller.onStopFleet();
+            expect(controller.stopFleetArmed).not.toBeNull();
+            await controller.onStartFleet();
+            expect(controller.stopFleetArmed).toBeNull()
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
     test('getRosterRecords treats a present empty Store as authoritative and falls back to cards only when the Store composition is absent', () => {
         const
             staleCard  = {ntype: 'fm-agent-card', record: {agentId: 'stale'}},
