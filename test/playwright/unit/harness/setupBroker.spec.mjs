@@ -698,7 +698,7 @@ const rowOf = (reply, id) => reply.evaluation?.steps.find(step => step.id === id
  * @returns {Promise<void>}
  */
 async function toTheWitness({broker}) {
-    for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
+    for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
         expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
     }
 }
@@ -715,7 +715,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         expect(record.target, 'the run is bound to it, with nothing bound by hand').toEqual(profile);
         expect(record.history, 'bound when it was created: a first run retires nothing').toEqual([]);
 
-        for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
             expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
         }
 
@@ -857,7 +857,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
 
         await consented(run);
 
-        for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
             expect(rowOf(await run.broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok', reason: 'observed; not performed by this run'})
         }
 
@@ -872,7 +872,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
 
         await consented(run);
 
-        for (const effectId of ['write-secrets', 'write-env', 'compose-up']) {
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
             expect((await run.broker.effect(trusted, {effectId})).ok, effectId).toBe(true)
         }
 

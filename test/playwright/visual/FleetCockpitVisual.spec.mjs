@@ -1798,7 +1798,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card-light.png')
     });
 
-    test('the setup card\'s Create door — the cold recipe projected on the pinned host: three question blocks on one left edge, the token open; the ledger under Details, twelve rows in two channels; the chrome\'s progress line; the front at 720 px; both skins', async ({page}) => {
+    test('the setup card\'s Create door — the cold recipe projected on the pinned host: three question blocks on one left edge, the token open; the ledger under Details, the recipe\'s rows in two channels; the chrome\'s progress line; the front at 720 px; both skins', async ({page}) => {
         // the vessel's seam, installed before the app boots: a packaged, unconfigured shell whose
         // setup channels reach the real broker over the pinned Brain, so the cockpit runs its real
         // mount path and every row is the recipe's own answer
@@ -1816,7 +1816,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/);
         await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-next/);
         await expect(card.locator('.fm-setup-steps'), 'the ledger is folded').toHaveCount(0);
-        await expect(page.locator('.agent-setup-progress')).toHaveText('2 of 12 observed ok · next: preset');
+        await expect(page.locator('.agent-setup-progress')).toHaveText(`${expected.filter(status => status === 'ok').length} of ${expected.length} observed ok · next: preset`);
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(300);
 
@@ -1838,7 +1838,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         // Details: the recipe's rows, every status in two channels — the word carries it beside the glyph
         await card.locator('.fm-setup-details-toggle').click();
-        await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(12);
+        await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(expected.length);
 
         const paint = await page.evaluate(() => {
             const
@@ -1905,7 +1905,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await chip('provider-key', 'open window').click();
         await expect(row('provider-key')).toHaveClass(/is-ok/);
 
-        for (const id of ['write-secrets', 'write-env', 'compose-up']) {
+        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
             await chip(id, 'run').click();
             await expect(row(id)).toHaveClass(/is-ok/)
         }

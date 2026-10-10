@@ -28,6 +28,15 @@ export const BRAIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.ur
 export const TRUSTED = Object.freeze({sender: 'trusted'});
 
 /**
+ * The plane's forge-connection CLI, as the Brain runs it inside the Fleet service (`hostEffects.FORGE_CLI`), and
+ * the forge the pinned plane declares — what the recipe's `register-forge` row registers and reads back.
+ * @type {String}
+ */
+export const FORGE_CLI = 'ai/scripts/fleet/forgeConnections.mjs';
+/** @type {Readonly<{authProvider: String, endpoint: String}>} */
+export const FORGE_DECLARED = Object.freeze({authProvider: 'github', endpoint: 'https://api.github.com'});
+
+/**
  * What a placement probe reads on two machines: one every local preset fits with headroom, and a
  * 32 GiB laptop under other use that fits none of them.
  * @type {Object}
@@ -56,7 +65,7 @@ const tempDir = () => mkdtempSync(path.join(tmpdir(), 'pinned-setup-'));
 export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDir(), configSourcePath = path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), machine = MACHINES.roomy, running = null, served = null} = {}) {
     const
         real    = await loadSetupModules({runtimeRoot: BRAIN_ROOT}),
-        world   = {commands: [], dropWrite: false, recallLands: false, refuseWrite: false, rows: []},
+        world   = {commands: [], dropWrite: false, forgeCalls: [], recallLands: false, refuseWrite: false, rows: []},
         plane   = {
             addMemory  : async content => {
                 if (world.refuseWrite) {
@@ -77,7 +86,38 @@ export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDi
             recall     : async () => ({results: world.recallLands ? world.rows : []}),
             recentTurns: async () => ({turns: world.rows, count: world.rows.length, nextCursor: null})
         },
+        // the plane's forge-connection registry, as its CLI answers inside the Fleet service: the canonical
+        // `status` shape the recipe's `register-forge` row reads, and the two mutations a run performs
+        // (`init`, `register`) — scripted, so the row's own observer and effect run their real code against it
+        // a plane that already runs when the host is scripted (`running: true`) was set up before this run,
+        // so its registry already binds the declared forge: the row adopts it, performed by nobody here
+        forge   = running
+            ? {state: 'ok', binding: {connectionId: 'forge-0', authProvider: FORGE_DECLARED.authProvider}}
+            : {state: 'absent', binding: null},
+        forgeAnswer = args => {
+            const command = args[args.indexOf(FORGE_CLI) + 1];
+
+            world.forgeCalls.push(command);
+
+            switch (command) {
+                case 'status':
+                    return {ok: true, dataDir: '/app/.neo-ai-data', declared: FORGE_DECLARED, declaredReason: null, state: forge.state, reason: null, binding: forge.binding, tombstoned: false};
+                case 'init':
+                    forge.state = 'ok';
+                    return {ok: true, applied: true, version: 1};
+                case 'register':
+                    forge.binding = {connectionId: 'forge-1', authProvider: FORGE_DECLARED.authProvider};
+                    return {ok: true, connectionId: 'forge-1', endpoint: FORGE_DECLARED.endpoint, authProvider: FORGE_DECLARED.authProvider};
+                default:
+                    return {ok: false, refused: 'unscripted', reason: `the pinned host scripts no '${command}'`}
+            }
+        },
         run     = async (command, args = []) => {
+            // the registry's CLI is the plane answering, not a command asked of the host: the tests count those
+            if (args.includes(FORGE_CLI)) {
+                return {stdout: JSON.stringify(forgeAnswer(args)), stderr: ''}
+            }
+
             world.commands.push([command, ...args].join(' '));
 
             return {stdout: '', stderr: ''}
