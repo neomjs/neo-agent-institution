@@ -1,5 +1,6 @@
 import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import DragAffordances   from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/DragAffordances.mjs';
+import Placement         from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/Placement.mjs';
 import WorkspaceDocument from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
 import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs';
 import VesselPark        from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/VesselPark.mjs';
@@ -255,15 +256,17 @@ class VesselContainer extends Workspace {
 
     /**
      * @summary Admit a click pop-out with the pane's designed composition when one exists;
-     * otherwise preserve the engine's measured geometry and the caller's descriptor.
+     * otherwise use the engine's measured pane. A click's proxy is that pane measurement, so
+     * carry it as sourceRect for the common size contract without mutating the caller's descriptor.
      * @param {Object} data The engine's admission descriptor, including itemId and proxyRect.
      * @returns {Promise<Boolean>}
      * @protected
      */
     async admitDockPopOut(data) {
-        const composition = VesselContainer.vesselCompositions[data.itemId];
+        const composition = VesselContainer.vesselCompositions[data.itemId],
+              rect        = composition ? {...composition} : data.proxyRect;
 
-        return super.admitDockPopOut(composition ? {...data, proxyRect: {...composition}} : data)
+        return super.admitDockPopOut({...data, proxyRect: rect, sourceRect: rect})
     }
 
     /**
@@ -520,7 +523,7 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * The platform half of the engine's admission: opens the vessel window for a gesture tear-out
+     * @summary The platform half of the engine's admission: opens the vessel window for a gesture tear-out
      * or a click pop-out, reusing the SAME widget-childapp shell for both (an empty pane host —
      * the engine reparents the live pane on connect). The Group's reserved slot rides the window
      * as its `topologyIdentity`: that is how the connecting window binds to this admission, so the
@@ -529,14 +532,18 @@ class VesselContainer extends Workspace {
      * throws), and any refused precondition — an item already vessel-owned or in flight, an
      * unresolvable live pane (placeholder items) — or falsy/throwing acquisition returns `null`,
      * degrading the gesture to its in-window fallback with zero vessel state.
+     * The source pane supplies the OUTER window size through the engine's shared resolver,
+     * bounded by the initiating window's screen; the drag proxy supplies position only.
+     * Missing size uses the engine fallback, and no chrome is added to the pane's footprint.
      * @param {Object} request
      * @param {String} request.itemId
      * @param {Object} request.proxyRect
+     * @param {Object|null} [request.sourceRect=null] The pane measurement or click composition.
      * @param {Object} request.topologyIdentity The Group slot reserved for this admission.
      * @returns {Promise<{popupHeight: Number, popupWidth: Number, windowName: String}|null>}
      * @protected
      */
-    async openTearOutVessel({itemId, proxyRect, topologyIdentity}) {
+    async openTearOutVessel({itemId, proxyRect, sourceRect=null, topologyIdentity}) {
         let me         = this,
             windowName = `fm-tearout-${itemId}-${me.id}`;
 
@@ -550,8 +557,7 @@ class VesselContainer extends Workspace {
                 firstWindowId   = Object.keys(windowConfigs)[0],
                 {basePath}      = windowConfigs[firstWindowId],
                 winData         = await Neo.Main.getWindowData({windowId: me.windowId}),
-                width           = Math.max(Math.round(proxyRect?.width  || 480), 320),
-                height          = Math.max(Math.round(proxyRect?.height || 360), 240),
+                {height, width} = Placement.resolveVesselSize({screen: winData.screen, sourceRect}),
                 left            = Math.round((proxyRect?.x ?? 120) + winData.screenLeft),
                 top             = Math.round((proxyRect?.y ?? 120) + (winData.outerHeight - winData.innerHeight) + winData.screenTop),
                 opened          = await Neo.Main.windowOpen({

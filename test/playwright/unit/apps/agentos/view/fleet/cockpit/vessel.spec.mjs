@@ -28,9 +28,10 @@ import {createShellProvider} from './shellProvider.mjs';
  * @param {Boolean|Function} [options.openResult=true]
  * @param {Boolean|Function} [options.closeResult=true] The platform's close answer — a Boolean, or a
  *     function of the call returning one (or throwing).
+ * @param {Object|null} [options.screen=null] The initiating window's available screen bounds.
  * @returns {Object} spy state + `restore()`.
  */
-function installWindowVessel({openResult = true, closeResult = true} = {}) {
+function installWindowVessel({openResult = true, closeResult = true, screen = null} = {}) {
     let previous = {
             getByPath    : Neo.Main.getByPath,
             getWindowData: Neo.Main.getWindowData,
@@ -43,7 +44,7 @@ function installWindowVessel({openResult = true, closeResult = true} = {}) {
     Neo.windowConfigs = {'unit-window': {basePath: './'}};
 
     Neo.Main.getByPath     = async () => null;
-    Neo.Main.getWindowData = async () => ({innerHeight: 900, outerHeight: 960, screenLeft: 10, screenTop: 20});
+    Neo.Main.getWindowData = async () => ({innerHeight: 900, outerHeight: 960, screen, screenLeft: 10, screenTop: 20});
     Neo.Main.windowOpen    = data => {
         state.openCalls.push(data);
         return typeof openResult === 'function' ? openResult(data) : Promise.resolve(openResult)
@@ -232,7 +233,10 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         vessel = installWindowVessel();
 
         const identity = {groupId: 'g1', workspaceKey: 'popup:stream', generationToken: 7},
-              opened   = await cockpit.openTearOutVessel({itemId: 'stream', proxyRect: {x: 40, y: 50, width: 640, height: 420}, topologyIdentity: identity});
+              opened   = await cockpit.openTearOutVessel({
+                  itemId: 'stream', proxyRect: {x: 40, y: 50, width: 100, height: 25},
+                  sourceRect: {width: 640, height: 420}, topologyIdentity: identity
+              });
 
         expect(opened).toEqual({popupHeight: 420, popupWidth: 640, windowName: `fm-tearout-stream-${cockpit.id}`});
         expect(vessel.openCalls).toHaveLength(1);
@@ -246,12 +250,32 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         expect(call.windowFeatures).toBe('height=420,left=50,top=130,width=640');
 
         // the floors: a tiny or missing rect never opens an unusable window
-        const floored = await cockpit.openTearOutVessel({itemId: 'stream', proxyRect: {x: 0, y: 0, width: 100, height: 50}, topologyIdentity: identity});
+        const floored = await cockpit.openTearOutVessel({
+            itemId: 'stream', proxyRect: {x: 0, y: 0, width: 900, height: 600},
+            sourceRect: {width: 100, height: 50}, topologyIdentity: identity
+        });
 
         expect(floored).toEqual({popupHeight: 240, popupWidth: 320, windowName: `fm-tearout-stream-${cockpit.id}`});
 
         expect(await cockpit.closeTearOutVessel({itemId: 'stream', windowName: 'fm-tearout-stream-x'}), 'the platform confirmed the close').toBe(true);
         expect(vessel.closeCalls).toEqual([{names: ['fm-tearout-stream-x'], windowId: cockpit.windowId}])
+    });
+
+    test('vessel size uses the engine fallback and screen ceiling, never the drag proxy dimensions', async () => {
+        vessel = installWindowVessel({screen: {availWidth: 1000, availHeight: 700}});
+        const request = {
+            itemId: 'stream', proxyRect: {x: 40, y: 50, width: 100, height: 25}, topologyIdentity: {}
+        };
+
+        for (const sourceRect of [null, {width: NaN, height: -1}]) {
+            expect(await cockpit.openTearOutVessel({...request, sourceRect})).toMatchObject({popupWidth: 480, popupHeight: 360})
+        }
+
+        expect(await cockpit.openTearOutVessel({...request, sourceRect: {width: 900, height: 600}}))
+            .toMatchObject({popupWidth: 900, popupHeight: 600});
+        expect(await cockpit.openTearOutVessel({...request, sourceRect: {width: 1800, height: 1200}}))
+            .toMatchObject({popupWidth: 1000, popupHeight: 700});
+        expect(vessel.openCalls.at(-1).windowFeatures).toBe('height=700,left=50,top=130,width=1000')
     });
 
     test('closeTearOutVessel hands the platform\'s verdict to the Group unchanged — false stays false, a rejection propagates — never an inferred absence', async () => {
@@ -273,11 +297,23 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         cockpit.tearOutHandlers = handlers;
 
         expect(await cockpit.admitDockPopOut(descriptor)).toBe(true);
-        expect(calls[0][1]).toEqual({...descriptor, proxyRect: composition});
+        expect(calls[0][1]).toEqual({...descriptor, proxyRect: composition, sourceRect: composition});
         expect(descriptor.proxyRect, 'the caller keeps its measured descriptor').toBe(measured);
+        expect(descriptor.sourceRect, 'the caller is not mutated').toBeUndefined();
 
         expect(await cockpit.admitDockPopOut({itemId: 'stream', proxyRect: measured, sortZone: null})).toBe(true);
-        expect(calls[1][1].proxyRect, 'a pane without a composition keeps the engine measurement').toBe(measured)
+        expect(calls[1][1].proxyRect, 'a pane without a composition keeps the engine measurement').toBe(measured);
+        expect(calls[1][1].sourceRect, 'the click measurement supplies the common size contract').toBe(measured)
+    });
+
+    test('a pointer tear-out of Detail follows its measured pane, not the click-only composition', async () => {
+        await revealDetail();
+        vessel = installWindowVessel();
+
+        expect(await cockpit.openTearOutVessel({
+            itemId: 'detail', proxyRect: {x: 20, y: 30, width: 100, height: 25},
+            sourceRect: {width: 810, height: 520}, topologyIdentity: {}
+        })).toMatchObject({popupWidth: 810, popupHeight: 520})
     });
 
     test('ownership reads over the Group: owned, pending (admission · connection · in-flight vessel · held handle), or docked', () => {
@@ -445,7 +481,10 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         expect(result).toEqual({detached: true, errors: []});
         expect(calls.map(entry => entry[0]), 'admission first, the one commit at the terminal').toEqual(['exit', 'terminal']);
         // `sortZone: null` is the click's signature; the rect is the inspector's designed composition
-        expect(calls[0][1]).toEqual({itemId: 'detail', proxyRect: {x: 160, y: 120, width: 480, height: 640}, sortZone: null});
+        expect(calls[0][1]).toEqual({
+            itemId: 'detail', proxyRect: {x: 160, y: 120, width: 480, height: 640},
+            sourceRect: {x: 160, y: 120, width: 480, height: 640}, sortZone: null
+        });
         expect(calls[1][1]).toEqual({itemId: 'detail'});
         expect(WorkspaceDocument.findContainingTabsId(cockpit.dockModel, 'detail'), 'the detach committed: the item left the tree').toBeNull();
         expect(cockpit.dockModel.items.detail, 'detachItem keeps the catalog record').toBeTruthy();
