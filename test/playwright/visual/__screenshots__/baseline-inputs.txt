@@ -6,7 +6,7 @@ engine
     3f54c24fcc81f308ac3e25b00698b74e722632cb
 
 apps/agentos/CARD-CONTRACT.md
-    4a6a9c50440001141e733b164c25e9b067a061d0
+    b59a0a9c189a49d16077881c3a051e2d49e87da7
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -291,7 +291,7 @@ apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
 
 apps/agentos/util/SeatLaunchAdmission.mjs
-    b97ee9dab46cdc65fe4e89b6433b806bbb6b2e28
+    39e4acb0e63c7d7a0d98e74aab9c8f069f9c9f81
 
 apps/agentos/util/SeatModel.mjs
     5c11aa54560f60972c0f7652ab44561247e79a34
@@ -540,7 +540,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    2245d07fe9767b332134cc62d8be6f1c8079caf0
+    252131b5c5ec8d8d5ccd7b08e491f3ea604c3b6b
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     6be0a97126831188336d056730b994353b18fc3a

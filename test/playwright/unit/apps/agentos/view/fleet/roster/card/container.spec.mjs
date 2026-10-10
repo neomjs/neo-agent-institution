@@ -704,14 +704,103 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(status.hidden).toBe(false);
         expect(status.text).toBe('New Memory Core connection waiting');
         expect(status.vdom.title).toContain('plane endpoint unreachable');
-        expect(status.vdom.title).toContain('retries on its own');
+        expect(status.vdom.title).toContain('retries an unanswered proof');
         expect(status.vdom.title).not.toMatch(/proof-unavailable|plane-bearer/);
         expect(card.record.state).toBe('ok');
+
+        // a reason outside the contract's public diagnostics never reaches the card
+        applySet(card, {launchAdmission: {...snapshot, recent: [{...waiting, reason: 'UNRECOGNIZED_PROBE_SENTINEL'}]}});
+        expect(status.text).toBe('New Memory Core connection waiting');
+        expect(status.vdom.title).not.toMatch(/UNRECOGNIZED|\(/);
 
         applySet(card, {launchAdmission: {...snapshot, recent: [waiting, {
             at: new Date(Date.now() + 1000).toISOString(), server: 'memory-core', outcome: 'admitted', code: null, reason: null
         }]}});
         expect(status.hidden).toBe(true);
+        card.destroy()
+    });
+
+    test('the waiting words age on the card\'s own wait: at the launcher\'s budget they turn to not admitted with no record change; the wait retires with the words and with the card (#655)', async () => {
+        const
+            first      = Date.parse('2026-10-07T10:00:10.000Z'),
+            snapshot   = {
+                state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+                servers: [{key: 'memory-core', state: 'active', reason: null}], recent: []
+            },
+            unanswered = at => ({at: new Date(at).toISOString(), server: 'memory-core', outcome: 'refused', code: 'proof-unavailable', reason: 'plane endpoint unreachable'}),
+            waits      = [],
+            originalNow = Date.now;
+        let now = first + 59_000;
+
+        Date.now = () => now;
+        try {
+            const
+                card    = createCard({agentId: 'vega', state: 'ok', launchAdmission: snapshot}),
+                status  = card.getReference('control-status'),
+                restart = card.getReference('control-restart');
+
+            card.timeout = (ms, {signal} = {}) => new Promise((resolve, reject) => {
+                const wait = {ms, signal, resolve, reject};
+                waits.push(wait);
+                signal?.addEventListener('abort', () => reject(signal.reason), {once: true})
+            });
+
+            // three answers of one run: the wait is measured from the run's first answer, not its latest
+            applySet(card, {launchAdmission: {...snapshot, recent: [unanswered(first), unanswered(first + 30_000), unanswered(first + 59_000)]}});
+            expect(status.text).toBe('New Memory Core connection waiting');
+            expect(restart.vdom.title).toBeFalsy();
+            expect(waits).toHaveLength(1);
+            expect(waits[0].ms).toBe(1_000);
+
+            // the same line applied again arms no second wait
+            card.applyRecord();
+            expect(waits).toHaveLength(1);
+            expect(waits[0].signal.aborted).toBe(false);
+
+            const record = card.record;
+            now += 1_000;
+            waits[0].resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(card.record).toBe(record);
+            expect(status.text).toBe('New Memory Core connection not admitted');
+            expect(status.vdom.title).toContain('Restart this seat');
+            expect(restart.vdom.title).toContain('Restart this seat');
+            expect(waits).toHaveLength(1);
+
+            // a later admitted entry clears the words; a new run arms its own wait, retired with the card
+            applySet(card, {launchAdmission: {...snapshot, recent: [unanswered(first), {
+                at: new Date(now).toISOString(), server: 'memory-core', outcome: 'admitted', code: null, reason: null
+            }]}});
+            expect(status.hidden).toBe(true);
+            expect(waits).toHaveLength(1);
+            applySet(card, {launchAdmission: {...snapshot, recent: [unanswered(now)]}});
+            expect(status.text).toBe('New Memory Core connection waiting');
+            expect(waits).toHaveLength(2);
+            expect(waits[1].ms).toBe(60_000);
+            card.destroy();
+            expect(waits[1].signal.aborted).toBe(true)
+        } finally {
+            Date.now = originalNow
+        }
+    });
+
+    test('the injected clock ages the admission words too: past the budget they turn to not admitted with the record unchanged (#655)', () => {
+        const
+            first  = Date.parse('2026-10-07T10:00:10.000Z'),
+            card   = createCard({agentId: 'vega', state: 'ok', launchAdmission: {
+                state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+                servers: [{key: 'memory-core', state: 'active', reason: null}],
+                recent: [{at: new Date(first).toISOString(), server: 'memory-core', outcome: 'refused', code: 'proof-unavailable', reason: 'plane endpoint unreachable'}]
+            }}),
+            status = card.getReference('control-status'),
+            record = card.record;
+
+        card.now = first + 59_000;
+        expect(status.text).toBe('New Memory Core connection waiting');
+        card.now = first + 60_000;
+        expect(card.record).toBe(record);
+        expect(status.text).toBe('New Memory Core connection not admitted');
         card.destroy()
     });
 

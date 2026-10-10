@@ -6,6 +6,7 @@ import {
     LAUNCH_ADMISSION_REFUSALS   as REFUSALS,
     LAUNCH_ADMISSION_STATES     as STATES,
     MCP_SERVERS,
+    isLaunchAdmissionProofReason,
     mcpCatalogFor,
     resolveMcpMatrix
 } from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
@@ -51,9 +52,10 @@ class SeatLaunchAdmission extends Base {
     }
 
     /**
-     * How long a seat's own launcher keeps retrying an unanswered credential proof before it gives up:
+     * How long a seat's own launcher keeps retrying an unanswered credential proof after it starts:
      * the launcher's fixed protocol budget (`ai/mcp/client/fleetMcpLauncher.mjs`, `STARTUP_BUDGET_MS`),
-     * not a setting. The card reads a `proof-unavailable` entry older than this as given up.
+     * not a setting. The launcher starts before its first proof is answered, so a run of unanswered
+     * proofs whose first entry is older than this is past the budget for certain.
      * @member {Number} LAUNCH_STARTUP_BUDGET_MS=60000
      * @static
      */
@@ -62,7 +64,8 @@ class SeatLaunchAdmission extends Base {
     /**
      * @summary The compact card guidance for one launch-admission snapshot, or null when it has no
      * current operator-facing message. The roster and runtime gates prevent retained or inferred facts
-     * from being phrased as a live refusal.
+     * from being phrased as a live refusal. A line whose words change on their own names that instant
+     * as `until`, so the card can re-render then without a record change.
      * @param {Object|null} snapshot The roster row's Brain-owned `launchAdmission` value.
      * @param {Object} [options]
      * @param {String} options.rosterState Current grid source state.
@@ -70,7 +73,7 @@ class SeatLaunchAdmission extends Base {
      * @param {Object|null} [options.mcpSettings=null] Current public definition from the same roster row.
      * @param {Boolean} [options.canRestart=false] The existing lifecycle controls' restart verdict.
      * @param {Number} [options.now=Date.now()] The clock an unanswered proof's age is read against.
-     * @returns {{text:String, title:String, restart:Boolean}|null}
+     * @returns {{text:String, title:String, restart:Boolean, until:(Number|undefined)}|null}
      */
     static cardLine(snapshot, {rosterState, runtime, mcpSettings=null, canRestart=false, now=Date.now()} = {}) {
         if (rosterState !== 'live' || runtime?.state !== 'wired' || runtime?.confidence !== 'observed') {
@@ -116,8 +119,10 @@ class SeatLaunchAdmission extends Base {
 
         if (!Number.isFinite(since) || !Array.isArray(snapshot.recent)) return null;
 
-        // The issuer returns FIFO audit rows. Keep only each server's newest valid row so an
-        // admitted redemption clears that server's older credential warning.
+        // The issuer returns FIFO audit rows. Keep only each server's newest valid row, so an admitted
+        // redemption clears that server's older warning, and the first row of the server's current run
+        // of unanswered proofs: the launcher's retry budget dates from the run's start, never from its
+        // latest answer.
         const latestByServer = new Map();
 
         snapshot.recent.forEach((entry, index) => {
@@ -130,7 +135,11 @@ class SeatLaunchAdmission extends Base {
 
             if (!Number.isFinite(at) || at < since) return;
 
-            latestByServer.set(entry.server, {entry, index})
+            const
+                unanswered = entry.outcome === OUTCOMES.REFUSED && entry.code === REFUSALS.PROOF_UNAVAILABLE,
+                prior      = latestByServer.get(entry.server);
+
+            latestByServer.set(entry.server, {entry, index, first: unanswered ? prior?.first ?? entry : null})
         });
 
         const enabled = SeatLaunchAdmission.enabledServers(mcpSettings);
@@ -148,11 +157,11 @@ class SeatLaunchAdmission extends Base {
         if (!latestFailure) return SeatLaunchAdmission.serverLine(snapshot, enabled, canRestart);
 
         const
-            {entry} = latestFailure,
-            server  = SERVER_LABELS.get(entry.server) ?? 'MCP tool';
+            {entry, first} = latestFailure,
+            server         = SERVER_LABELS.get(entry.server) ?? 'MCP tool';
 
         if (entry.code === REFUSALS.PROOF_UNAVAILABLE) {
-            return SeatLaunchAdmission.waitingLine(entry, server, {canRestart, now})
+            return SeatLaunchAdmission.waitingLine(entry, first, server, {canRestart, now})
         }
 
         const
@@ -167,39 +176,42 @@ class SeatLaunchAdmission extends Base {
     }
 
     /**
-     * @summary The words for a proof the plane did not answer (`proof-unavailable`): the seat's launcher
-     * is still retrying within its budget, or it gave up. The entry's `reason` is the issuer's: either
-     * the producer's bounded public diagnostic, printed as it is, or the credential's kind, named — the
-     * card parses neither. A restart is offered only once the launcher has given up, and only when the
-     * lifecycle controls allow one.
-     * @param {Object} entry The audit entry, `{at, server, outcome, code, reason}`.
+     * @summary The words for a run of proofs the plane did not answer (`proof-unavailable`). The run's
+     * first entry dates the launcher's fixed retry budget: a run younger than the budget reads as waiting
+     * and names the instant that changes; an older one reads as not admitted, with a restart hint when the
+     * lifecycle controls allow one. The entry's `reason` is the issuer's: the credential's kind, named, or
+     * one of the contract's public proof diagnostics, printed as it is; anything else is omitted. Neither
+     * phase claims what the launcher or the seat's tools are doing now.
+     * @param {Object} entry The run's latest audit entry, `{at, server, outcome, code, reason}`.
+     * @param {Object} first The run's first audit entry.
      * @param {String} server The server's label.
      * @param {Object} options
      * @param {Boolean} options.canRestart
      * @param {Number} options.now
-     * @returns {{text:String, title:String, restart:Boolean}}
+     * @returns {{text:String, title:String, restart:Boolean, until:(Number|undefined)}}
      * @protected
      */
-    static waitingLine(entry, server, {canRestart, now}) {
+    static waitingLine(entry, first, server, {canRestart, now}) {
         const
             named      = CREDENTIAL_KINDS.has(entry.reason),
             credential = credentialWords(named ? entry.reason : null),
-            diagnostic = !named && typeof entry.reason === 'string' && entry.reason.trim() ? ` (${entry.reason.trim()})` : '',
-            age        = now - Date.parse(entry.at),
-            gaveUp     = Number.isFinite(age) && age >= SeatLaunchAdmission.LAUNCH_STARTUP_BUDGET_MS,
+            diagnostic = isLaunchAdmissionProofReason(entry.reason) ? ` (${entry.reason})` : '',
+            until      = Date.parse(first.at) + SeatLaunchAdmission.LAUNCH_STARTUP_BUDGET_MS,
+            gaveUp     = now >= until,
             restart    = gaveUp && canRestart === true,
             proof      = `${credential[0].toUpperCase()}${credential.slice(1)} proof for ${server} went unanswered${diagnostic}`;
 
         return gaveUp
             ? {
                 restart,
-                text : `New ${server} connection not made`,
-                title: `${proof}, and the seat's launcher gave up after about a minute. Existing tools may still work.${restart ? ' Restart this seat to try the connection again.' : ''}`
+                text : `New ${server} connection not admitted`,
+                title: `${proof} for longer than the seat's launcher retries, about a minute, so it no longer retries this connection. Existing tools may still work.${restart ? ' Restart this seat to try the connection again.' : ''}`
             }
             : {
                 restart: false,
+                until,
                 text   : `New ${server} connection waiting`,
-                title  : `${proof}. The seat's launcher retries on its own for about a minute. Existing tools may still work.`
+                title  : `${proof}. The seat's launcher retries an unanswered proof for about a minute after it starts. Existing tools may still work.`
             }
     }
 
