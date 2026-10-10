@@ -318,4 +318,53 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'b'}, {agentId: 'a'}]})).toBe(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}, {agentId: 'b'}]}));
         expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}]})).not.toBe(FleetStartPlan.stopPlanKey({eligible: []}))
     });
+
+    test('waves: consecutive groups in roster order; a size below 1 or not an integer reads as 1; no records, no wave (#654 AC-1)', () => {
+        const eight = ['ada', 'grace', 'vega', 'mnemo', 'euclid', 'emmy', 'sophie', 'clio'].map(agentId => ({agentId}));
+
+        const ids = waves => waves.map(wave => wave.map(({agentId}) => agentId));
+
+        expect(ids(FleetStartPlan.waves(eight, 2))).toEqual([['ada', 'grace'], ['vega', 'mnemo'], ['euclid', 'emmy'], ['sophie', 'clio']]);
+        expect(ids(FleetStartPlan.waves(eight, 3))).toEqual([['ada', 'grace', 'vega'], ['mnemo', 'euclid', 'emmy'], ['sophie', 'clio']]);
+        expect(ids(FleetStartPlan.waves(eight, 1))).toEqual(eight.map(({agentId}) => [agentId]));
+        expect(ids(FleetStartPlan.waves(eight, 8))).toEqual([eight.map(({agentId}) => agentId)]);
+        expect(ids(FleetStartPlan.waves(eight))).toHaveLength(4);
+
+        [0, -1, NaN, 1.5, null, '2'].forEach(size => {
+            expect(FleetStartPlan.waves(eight.slice(0, 3), size), `size ${size} reads as one by one`).toHaveLength(3)
+        });
+
+        expect(FleetStartPlan.waves([], 2)).toEqual([]);
+        expect(FleetStartPlan.waves(null, 2)).toEqual([])
+    });
+
+    test('a batch still sending reports its unsent seats as pending — never as rejected — and the running line counts them (#654 AC-2)', () => {
+        const partition = FleetStartPlan.partitionFleetStart([
+            {agentId: 'ada',   state: 'off', sources: wiredRuntime()},
+            {agentId: 'grace', state: 'off', sources: wiredRuntime()},
+            {agentId: 'vega',  state: 'off', sources: wiredRuntime()},
+            {agentId: 'mnemo', state: 'off', sources: wiredRuntime()},
+            {agentId: 'up',    state: 'ok',  sources: wiredRuntime()}
+        ]);
+
+        // the first wave answered, the second not sent yet
+        const running = FleetStartPlan.summarizeFleetStart(partition, [{ok: true, status: 'settled'}, {ok: false, status: 'rejected', controlReason: {reason: 'the seat refused'}}]);
+
+        expect(running.started).toBe(1);
+        expect(running.rejected).toEqual([{agentId: 'grace', reason: 'the seat refused'}]);
+        expect(running.pending).toEqual([{agentId: 'vega', reason: 'pending — a later wave'}, {agentId: 'mnemo', reason: 'pending — a later wave'}]);
+        expect(running.unknown).toEqual([]);
+        expect(running.attempted).toBe(4);
+
+        const line = FleetStartPlan.renderFleetStartSummary(running);
+
+        expect(line.text).toBe('1 started · 2 pending · 1 rejected · 1 excluded');
+        expect(line.detail.split('\n')).toEqual(['vega: pending — a later wave', 'mnemo: pending — a later wave', 'grace: the seat refused', "up: already up — session state 'ok'"]);
+
+        // every wave answered: no pending word anywhere
+        const done = FleetStartPlan.summarizeFleetStart(partition, [{ok: true}, {ok: true}, {ok: true}, {ok: false, status: 'timeout', controlReason: {reason: 'start timed out after 30000ms'}}]);
+
+        expect(done.pending).toEqual([]);
+        expect(FleetStartPlan.renderFleetStartSummary(done).text).toBe('3 started · 1 UNKNOWN · 1 excluded')
+    });
 });

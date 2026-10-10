@@ -33,6 +33,14 @@ class FleetBatchController extends ReadingSurfacesController {
     /** @member {Object|null} startFleetBatch=null Token fencing late summaries from older batches, in either direction. */
     startFleetBatch = null
     /**
+     * How many seats one fleet start sends at a time. The next wave leaves once the previous wave's
+     * intents have answered — settled, refused, or timed out on the adapter's honesty bound — so the
+     * Fleet prepares, the plane proves and the host boots a bounded number of seats at once. `1` is
+     * one by one.
+     * @member {Number} startFleetWaveSize=2
+     */
+    startFleetWaveSize = 2
+    /**
      * The fleet-wide stop's two-press state: the plan the first press showed, bound to the Fleet it
      * was shown for — `{plan, profileId, store}` — and `null` while not armed. The second press
      * sends only while that binding and the plan still hold ({@link #isStopArmCurrent}).
@@ -128,10 +136,13 @@ class FleetBatchController extends ReadingSurfacesController {
 
     /**
      * @summary The roster was retired for another target (a replaced bridge or profile): an armed
-     * stop was shown for the old Fleet and goes with it, nothing sent.
+     * stop was shown for the old Fleet and goes with it, nothing sent; a running batch loses its
+     * token, so it sends no further wave and writes no further line — even if the same profile id
+     * comes back later, the batch was the retired roster's.
      * @protected
      */
     onRosterRetired() {
+        this.startFleetBatch = null;
         this.disarmStopFleet()
     }
 
@@ -192,8 +203,15 @@ class FleetBatchController extends ReadingSurfacesController {
     }
 
     /**
-     * @summary Start eligible records and re-poll once after their initial answers. Current late
-     * answers update the batch summary; a newer batch retires that summary's writer.
+     * @summary Start eligible records in waves ({@link FleetStartPlan.waves}, {@link #startFleetWaveSize})
+     * and re-poll once after their answers: one wave's intents leave together, the next wave once they
+     * have answered (settled, refused, or timed out on the adapter's bound), and between waves the
+     * chrome line counts the unsent seats as pending. Each wave reads its seats again as they are when
+     * it leaves: a seat whose own Start left meanwhile, or that came up, is not sent twice — its result
+     * reads `superseded` with the partition's reason. A newer batch, a retired roster, a replaced Fleet
+     * or a destroyed controller retires the batch between waves: no further intent leaves, and the line
+     * it still owned is its last. An earlier wave's late answer updates the line as soon as it lands,
+     * while this batch owns the slot; a newer batch retires that writer.
      * @returns {Promise<Object>} The outcome summary.
      * @protected
      */
@@ -203,28 +221,45 @@ class FleetBatchController extends ReadingSurfacesController {
             records = me.getRosterRecords(),
             plan    = FleetStartPlan.partitionFleetStart(records),
             batch   = me.startFleetBatch = {},
-            profile = me.bridgeProfileId;
-
-        me.renderStartSummary(null);
-
-        const results = await Promise.all(plan.eligible.map(record =>
-            me.requestFleetLifecycle({action: 'start', agentId: record.agentId}, record)
-        ));
-
-        const summary = FleetStartPlan.summarizeFleetStart(plan, results);
-
-        if (!me.isDestroyed && me.startFleetBatch === batch && me.bridgeProfileId === profile) {
-            me.renderStartSummary(summary)
-        }
-
-        results.forEach((result, index) => {
-            result.settlement?.then(answer => {
+            profile = me.bridgeProfileId,
+            current = () => !me.isDestroyed && me.startFleetBatch === batch && me.bridgeProfileId === profile,
+            results = [],
+            // an earlier wave's late answer updates the line while later waves are still leaving — only
+            // while this batch owns the slot
+            watch   = (result, index) => result.settlement?.then(answer => {
                 if (me.startFleetBatch === batch && answer.isCurrent()) {
                     results[index] = answer;
                     me.renderStartSummary(FleetStartPlan.summarizeFleetStart(plan, results))
                 }
-            })
-        });
+            });
+
+        me.renderStartSummary(null);
+
+        for (const wave of FleetStartPlan.waves(plan.eligible, me.startFleetWaveSize)) {
+            if (results.length > 0 && !current()) break;
+
+            // the wave's seats are read again as they are now: one whose own Start left meanwhile, or
+            // that came up, is not sent twice — the batch's intent for it is superseded by what happened
+            const superseded = new Map(FleetStartPlan.partitionFleetStart(wave).excluded.map(({record, reason}) => [record, reason]));
+
+            const answers = await Promise.all(wave.map(record => superseded.has(record)
+                ? {accepted: false, action: 'start', method: null, ok: false, status: 'superseded', controlReason: FleetLifecycleIntentAdapter.createControlReason('start', 'superseded', superseded.get(record))}
+                : me.requestFleetLifecycle({action: 'start', agentId: record.agentId}, record)
+            ));
+
+            answers.forEach((answer, offset) => watch(answer, results.length + offset));
+            results.push(...answers);
+
+            if (results.length < plan.eligible.length && current()) {
+                me.renderStartSummary(FleetStartPlan.summarizeFleetStart(plan, results))
+            }
+        }
+
+        const summary = FleetStartPlan.summarizeFleetStart(plan, results);
+
+        if (current()) {
+            me.renderStartSummary(summary)
+        }
 
         await me.refreshRosterOnSettle(Promise.resolve(true), () => results.some(FleetLifecycleIntentAdapter.rosterMayRead));
 

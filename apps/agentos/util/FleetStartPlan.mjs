@@ -109,20 +109,46 @@ class FleetStartPlan extends Base {
     }
 
     /**
+     * @summary Split the eligible records into the consecutive groups one fleet start sends at a
+     * time — the bounded burst a press puts on the Fleet (preparations, spawns), the plane (readiness
+     * probes, launch-admission proofs) and the host (harness boots). Roster order is kept, so a
+     * batch's results stay index-aligned with the partition; a size below 1 or not an integer reads
+     * as 1 (one by one, the safe direction); no records, no wave.
+     * @param {Object[]|null} records Eligible records in roster order ({@link partitionFleetStart}).
+     * @param {Number} [size=2] Seats per wave.
+     * @returns {Object[][]}
+     */
+    static waves(records, size = 2) {
+        const
+            rows  = records ?? [],
+            step  = Number.isInteger(size) && size > 0 ? size : 1,
+            waves = [];
+
+        for (let index = 0; index < rows.length; index += step) {
+            waves.push(rows.slice(index, index + step))
+        }
+
+        return waves
+    }
+
+    /**
      * @summary Fold the partition + the per-record C2 adapter results into the honest outcome
-     * summary: started / UNKNOWN-with-reasons / rejected-with-reasons / excluded-with-reasons, in
-     * each bucket's roster order.
+     * summary: started / pending / UNKNOWN-with-reasons / rejected-with-reasons /
+     * excluded-with-reasons, in each bucket's roster order.
      * A non-`ok` result keeps its terminal kind visible (`rejected` / `timeout` / `unauthorized` —
      * the adapter's terminal vocabulary), because a timeout is an UNKNOWN outcome, not a
-     * failure the operator may silently retry.
+     * failure the operator may silently retry. A record without a result yet is `pending`: a batch
+     * running in waves ({@link waves}) has not sent it, which is neither a refusal nor an outcome.
      * @param {{eligible: Object[], excluded: Object[]}} partition From {@link partitionFleetStart}.
-     * @param {Object[]} results Per-eligible-record results from `handleFleetLifecycleIntent`, index-aligned.
-     * @returns {{started: Number, unknown: Object[], rejected: Object[], excluded: Object[], attempted: Number, total: Number}}
-     * `unknown` / `rejected` / `excluded` entries are `{agentId, reason}` pairs in roster order.
+     * @param {Object[]} results Per-eligible-record results from `handleFleetLifecycleIntent`,
+     *     index-aligned; shorter than `eligible` while a batch is still sending.
+     * @returns {{started: Number, pending: Object[], unknown: Object[], rejected: Object[], excluded: Object[], attempted: Number, total: Number}}
+     * `pending` / `unknown` / `rejected` / `excluded` entries are `{agentId, reason}` pairs in roster order.
      */
     static summarizeFleetStart(partition, results) {
         const
             {eligible, excluded} = partition,
+            pending              = [],
             rejected             = [],
             unknown              = [];
 
@@ -131,12 +157,14 @@ class FleetStartPlan extends Base {
         eligible.forEach((record, index) => {
             const result = results?.[index];
 
-            if (result?.ok) {
+            if (result == null) {
+                pending.push({agentId: record.agentId, reason: 'pending — a later wave'})
+            } else if (result.ok) {
                 started++
             } else {
                 const
-                    kind   = result?.status ?? 'rejected',
-                    reason = result?.controlReason?.reason ?? `start ${kind}`;
+                    kind   = result.status ?? 'rejected',
+                    reason = result.controlReason?.reason ?? `start ${kind}`;
 
                 const entry = {agentId: record.agentId, reason: kind === 'rejected' ? reason : `${kind}: ${reason}`};
 
@@ -147,6 +175,7 @@ class FleetStartPlan extends Base {
         return {
             attempted: eligible.length,
             excluded : excluded.map(({agentId, reason}) => ({agentId, reason})),
+            pending,
             rejected,
             started,
             total    : eligible.length + excluded.length,
@@ -277,10 +306,11 @@ class FleetStartPlan extends Base {
     /**
      * @summary Render the summary as the compact chrome line + the reachable per-member reasons.
      * Pure string building: `text` is the at-a-glance state
-     * ("3 started · 1 UNKNOWN · 1 rejected · 2 excluded"); `detail` lists every
-     * unknown/rejected/excluded member with its reason, one per line — the "reasons reachable from
-     * the summary" contract, carried as the summary element's title. The verb names the direction:
-     * `started` for a fleet start, `stopped` for a fleet stop.
+     * ("3 started · 1 UNKNOWN · 1 rejected · 2 excluded"; "1 started · 3 pending · 2 excluded" while a
+     * batch is still sending its waves); `detail` lists every pending/unknown/rejected/excluded member
+     * with its reason, one per line — the "reasons reachable from the summary" contract, carried as the
+     * summary element's title. The verb names the direction: `started` for a fleet start, `stopped`
+     * for a fleet stop.
      * @param {Object} summary From {@link summarizeFleetStart}.
      * @param {String} [verb='started']
      * @returns {{text: String, detail: String}}
@@ -290,10 +320,12 @@ class FleetStartPlan extends Base {
             parts  = [`${summary.started} ${verb}`],
             detail = [];
 
+        summary.pending?.length && parts.push(`${summary.pending.length} pending`);
         summary.unknown.length  && parts.push(`${summary.unknown.length} UNKNOWN`);
         summary.rejected.length && parts.push(`${summary.rejected.length} rejected`);
         summary.excluded.length && parts.push(`${summary.excluded.length} excluded`);
 
+        summary.pending?.forEach(({agentId, reason}) => detail.push(`${agentId}: ${reason}`));
         summary.unknown.forEach(({agentId, reason}) => detail.push(`${agentId}: ${reason}`));
         summary.rejected.forEach(({agentId, reason}) => detail.push(`${agentId}: ${reason}`));
         summary.excluded.forEach(({agentId, reason}) => detail.push(`${agentId ?? '(guest)'}: ${reason}`));
