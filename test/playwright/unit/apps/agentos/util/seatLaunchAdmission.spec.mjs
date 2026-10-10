@@ -44,15 +44,15 @@ test.describe('AgentOS.util.SeatLaunchAdmission', () => {
         });
     });
 
-    test('a run older than the launcher\'s budget reads as not admitted, with the restart hint only when the lifecycle controls allow one (#655 AC-1)', () => {
+    test('a run older than the launcher\'s budget reads as still unanswered, with the restart hint only when the lifecycle controls allow one (#655 AC-1)', () => {
         const
             old   = snapshot([entry('proof-unavailable', 'plane endpoint unreachable')]),
             budget = start + LAUNCH_STARTUP_BUDGET_MS;
 
         expect(SeatLaunchAdmission.cardLine(old, {...live, canRestart: true, now: budget})).toEqual({
             restart: true,
-            text   : 'New Memory Core connection not admitted',
-            title  : "The tool credential proof for Memory Core went unanswered (plane endpoint unreachable) for longer than the seat's launcher retries, about a minute, so it no longer retries this connection. Existing tools may still work. Restart this seat to try the connection again."
+            text   : 'New Memory Core connection still unanswered',
+            title  : "The tool credential proof for Memory Core went unanswered (plane endpoint unreachable) for longer than one launcher's retry budget, about a minute. Existing tools may still work. Restart this seat to try the connection again."
         });
 
         const noRestart = SeatLaunchAdmission.cardLine(old, {...live, canRestart: false, now: budget});
@@ -66,7 +66,7 @@ test.describe('AgentOS.util.SeatLaunchAdmission', () => {
         const run = snapshot([later(0), later(30_000), later(59_000)]);
 
         // the latest answer is a second old, the run a minute: past the budget
-        expect(SeatLaunchAdmission.cardLine(run, {...live, canRestart: true, now: start + 60_000}).text).toBe('New Memory Core connection not admitted');
+        expect(SeatLaunchAdmission.cardLine(run, {...live, canRestart: true, now: start + 60_000}).text).toBe('New Memory Core connection still unanswered');
         expect(SeatLaunchAdmission.cardLine(run, {...live, now: start + 59_500})).toMatchObject({
             text : 'New Memory Core connection waiting',
             until: start + LAUNCH_STARTUP_BUDGET_MS

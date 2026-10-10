@@ -6,7 +6,7 @@ engine
     3f54c24fcc81f308ac3e25b00698b74e722632cb
 
 apps/agentos/CARD-CONTRACT.md
-    b59a0a9c189a49d16077881c3a051e2d49e87da7
+    2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -291,7 +291,7 @@ apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
 
 apps/agentos/util/SeatLaunchAdmission.mjs
-    39e4acb0e63c7d7a0d98e74aab9c8f069f9c9f81
+    e0c8497c5790587b2f737d1ee1e383678f24a877
 
 apps/agentos/util/SeatModel.mjs
     5c11aa54560f60972c0f7652ab44561247e79a34

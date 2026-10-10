@@ -52,10 +52,12 @@ class SeatLaunchAdmission extends Base {
     }
 
     /**
-     * How long a seat's own launcher keeps retrying an unanswered credential proof after it starts:
-     * the launcher's fixed protocol budget (`ai/mcp/client/fleetMcpLauncher.mjs`, `STARTUP_BUDGET_MS`),
-     * not a setting. The launcher starts before its first proof is answered, so a run of unanswered
-     * proofs whose first entry is older than this is past the budget for certain.
+     * How long one launcher keeps retrying an unanswered credential proof after it starts: the
+     * launcher's fixed protocol budget (`ai/mcp/client/fleetMcpLauncher.mjs`, `STARTUP_BUDGET_MS`), not
+     * a setting. A launcher starts before its first proof is answered, so a run of unanswered proofs
+     * whose first entry is older than this has outlasted one launcher's budget. Desktop may have started
+     * a later launcher under the same generation, each with its own budget, so the card advises a restart
+     * past this age and asserts nothing about retries.
      * @member {Number} LAUNCH_STARTUP_BUDGET_MS=60000
      * @static
      */
@@ -177,11 +179,12 @@ class SeatLaunchAdmission extends Base {
 
     /**
      * @summary The words for a run of proofs the plane did not answer (`proof-unavailable`). The run's
-     * first entry dates the launcher's fixed retry budget: a run younger than the budget reads as waiting
-     * and names the instant that changes; an older one reads as not admitted, with a restart hint when the
-     * lifecycle controls allow one. The entry's `reason` is the issuer's: the credential's kind, named, or
-     * one of the contract's public proof diagnostics, printed as it is; anything else is omitted. Neither
-     * phase claims what the launcher or the seat's tools are doing now.
+     * first entry dates one launcher's fixed retry budget: a run younger than the budget reads as waiting
+     * and names the instant that changes; an older one reads as still unanswered, with restart advice when
+     * the lifecycle controls allow one. The entry's `reason` is the issuer's: the credential's kind, named,
+     * or one of the contract's public proof diagnostics, printed as it is; anything else is omitted. Neither
+     * phase claims what a launcher or the seat's tools are doing now: Desktop may start a later launcher
+     * under the same generation, with its own budget, so the words observe the run's duration and advise.
      * @param {Object} entry The run's latest audit entry, `{at, server, outcome, code, reason}`.
      * @param {Object} first The run's first audit entry.
      * @param {String} server The server's label.
@@ -197,15 +200,15 @@ class SeatLaunchAdmission extends Base {
             credential = credentialWords(named ? entry.reason : null),
             diagnostic = isLaunchAdmissionProofReason(entry.reason) ? ` (${entry.reason})` : '',
             until      = Date.parse(first.at) + SeatLaunchAdmission.LAUNCH_STARTUP_BUDGET_MS,
-            gaveUp     = now >= until,
-            restart    = gaveUp && canRestart === true,
+            overBudget = now >= until,
+            restart    = overBudget && canRestart === true,
             proof      = `${credential[0].toUpperCase()}${credential.slice(1)} proof for ${server} went unanswered${diagnostic}`;
 
-        return gaveUp
+        return overBudget
             ? {
                 restart,
-                text : `New ${server} connection not admitted`,
-                title: `${proof} for longer than the seat's launcher retries, about a minute, so it no longer retries this connection. Existing tools may still work.${restart ? ' Restart this seat to try the connection again.' : ''}`
+                text : `New ${server} connection still unanswered`,
+                title: `${proof} for longer than one launcher's retry budget, about a minute. Existing tools may still work.${restart ? ' Restart this seat to try the connection again.' : ''}`
             }
             : {
                 restart: false,

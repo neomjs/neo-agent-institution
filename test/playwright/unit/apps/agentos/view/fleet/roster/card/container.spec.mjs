@@ -720,7 +720,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('the waiting words age on the card\'s own wait: at the launcher\'s budget they turn to not admitted with no record change; the wait retires with the words and with the card (#655)', async () => {
+    test('the waiting words age on the card\'s own wait: at the launcher\'s budget they turn to still unanswered with no record change; the wait retires with the words and with the card (#655)', async () => {
         const
             first      = Date.parse('2026-10-07T10:00:10.000Z'),
             snapshot   = {
@@ -763,7 +763,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             await Promise.resolve();
             await Promise.resolve();
             expect(card.record).toBe(record);
-            expect(status.text).toBe('New Memory Core connection not admitted');
+            expect(status.text).toBe('New Memory Core connection still unanswered');
             expect(status.vdom.title).toContain('Restart this seat');
             expect(restart.vdom.title).toContain('Restart this seat');
             expect(waits).toHaveLength(1);
@@ -785,7 +785,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         }
     });
 
-    test('the injected clock ages the admission words too: past the budget they turn to not admitted with the record unchanged (#655)', () => {
+    test('the injected clock ages the admission words too: past the budget they turn to still unanswered with the record unchanged (#655)', () => {
         const
             first  = Date.parse('2026-10-07T10:00:10.000Z'),
             card   = createCard({agentId: 'vega', state: 'ok', launchAdmission: {
@@ -800,7 +800,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(status.text).toBe('New Memory Core connection waiting');
         card.now = first + 60_000;
         expect(card.record).toBe(record);
-        expect(status.text).toBe('New Memory Core connection not admitted');
+        expect(status.text).toBe('New Memory Core connection still unanswered');
         card.destroy()
     });
 
