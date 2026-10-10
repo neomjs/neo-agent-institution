@@ -389,6 +389,17 @@ class AgentCard extends Container {
     laneAgeAbortController = null
 
     /**
+     * Owns the one wait for the instant the admission words change on their own (the end of the
+     * launcher's retry budget for an unanswered proof), retired with the words and with the card;
+     * `admissionUntil` is that instant, so an unchanged line arms no second wait.
+     * @member {AbortController|null} admissionAgeAbortController=null
+     * @protected
+     */
+    admissionAgeAbortController = null
+    /** @member {Number|null} admissionUntil=null @protected */
+    admissionUntil = null
+
+    /**
      * @summary Split a long lane into a short context head + a preserved distinguishing tail with an
      * elided middle. Two lanes sharing a prefix (the narrow-density falsifier) still distinguish by
      * their tail. A lane short enough for the two-line clamp is returned whole (no elision).
@@ -459,13 +470,14 @@ class AgentCard extends Container {
     }
 
     /**
-     * Triggered when the injected wall clock advances; the lane ages without a roster record change.
+     * Triggered when the injected wall clock advances; the lane and the admission words age without a
+     * roster record change.
      * @param {Number|null} value
      * @param {Number|null} oldValue
      * @protected
      */
     afterSetNow(value, oldValue) {
-        this.isConstructed && this.refreshLaneLine()
+        this.isConstructed && this.applyRecord()
     }
 
     /**
@@ -571,13 +583,55 @@ class AgentCard extends Container {
     }
 
     /**
-     * Base.timeout is destroyed with the instance; abort the lane loop first so its owner token and
-     * re-seat path settle together with the card.
+     * @summary Re-applies the record at the instant the admission words change on their own: the end
+     * of the launcher's retry budget for an unanswered proof. One wait per instant, fired or pending;
+     * a changed or absent instant retires it.
+     * @param {Number|null} until The instant the current admission line names, or null.
+     * @param {Number} now The clock the wait is measured from.
+     * @protected
+     */
+    scheduleAdmissionAging(until, now) {
+        const me = this;
+
+        if (until === me.admissionUntil) return;
+
+        me.stopAdmissionAging();
+        me.admissionUntil = until;
+
+        if (until === null) return;
+
+        const controller = new AbortController();
+
+        me.admissionAgeAbortController = controller;
+        me.timeout(Math.max(0, until - now), {signal: controller.signal}).then(() => {
+            if (me.isDestroyed || controller.signal.aborted || me.admissionAgeAbortController !== controller) return;
+
+            me.admissionAgeAbortController = null;
+            me.applyRecord()
+        }).catch(error => {
+            // Base.timeout rejects on destroy; the abort signal rejects when the words or the card retire.
+            if (!controller.signal.aborted && error !== Neo.isDestroyed) throw error
+        })
+    }
+
+    /** @summary Cancels the admission wait when its words or the card are retired. @protected */
+    stopAdmissionAging() {
+        this.admissionAgeAbortController?.abort();
+        this.admissionAgeAbortController = null;
+        this.admissionUntil = null
+    }
+
+    /**
+     * Base.timeout is destroyed with the instance; abort the card's own waits first so their owner
+     * tokens and re-seat paths settle together with the card.
      * @param {Boolean} value
      * @protected
      */
     afterSetIsDestroying(value) {
-        value && this.stopLaneAging()
+        if (value) {
+            this.stopLaneAging();
+            this.stopAdmissionAging()
+        }
     }
 
     /**
@@ -600,6 +654,7 @@ class AgentCard extends Container {
 
         if (!record) {
             me.stopLaneAging();
+            me.stopAdmissionAging();
             return
         }
 
@@ -859,8 +914,10 @@ class AgentCard extends Container {
             // a start the Fleet refused for the declared model says so in the design read's words: the
             // recorded cause, shown only while this cockpit's own last outcome is that same refusal
             modelRefusal = !pendingAction && !preparation && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
+            now           = Number.isFinite(me.now) ? me.now : Date.now(),
             admissionLine = recordState !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal)
                 ? SeatLaunchAdmission.cardLine(record.launchAdmission, {
+                    now,
                     canRestart : !disabled && recordState !== 'off',
                     mcpSettings: record.mcpSettings,
                     rosterState: me.rosterState,
@@ -871,6 +928,9 @@ class AgentCard extends Container {
             // nothing; opening the session folder is the first-launch step, so it speaks first
             skillsLine    = resolved.state !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal || admissionLine || sessionLine)
                 ? SeatDependencies.cardLine(record.dependencyOutcomes, record.repoSlug) : null;
+
+        // admission words that change on their own name their instant; the card re-applies the record then
+        me.scheduleAdmissionAging(admissionLine?.until ?? null, now);
 
         restart.changeVdomRootKey('title', admissionLine?.restart ? admissionLine.title : null);
 
