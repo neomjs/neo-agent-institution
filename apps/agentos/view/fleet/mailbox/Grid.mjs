@@ -71,12 +71,6 @@ class Grid extends GridContainer {
          */
         autoDestroyStore: false,
         /**
-         * Selection follows message keys while each projection creates fresh record instances.
-         * @member {Boolean} useInternalId=false
-         * @reactive
-         */
-        useInternalId: false,
-        /**
          * A click or Up/Down selects one message, through the View's own row model; the pane opens
          * its detail. Selecting writes nothing. The thread toggle selects nothing
          * ({@link AgentOS.view.fleet.mailbox.RowModel}).
