@@ -485,8 +485,8 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
     });
 
     /**
-     * A wave batch over a recording bridge whose answers are held until released — the harness Sophie's
-     * #656 falsifier used (her probe of 2026-10-10): three seats, waves of two, a profile the test can retire.
+     * A wave batch over a recording bridge whose answers are held until released: three seats, waves of
+     * two, a profile the test can retire — the harness the concurrency arms below share.
      */
     const waveFixture = () => {
         const
