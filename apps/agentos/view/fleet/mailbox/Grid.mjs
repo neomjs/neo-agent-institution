@@ -71,6 +71,12 @@ class Grid extends GridContainer {
          */
         autoDestroyStore: false,
         /**
+         * Selection follows message keys while each projection creates fresh record instances.
+         * @member {Boolean} useInternalId=false
+         * @reactive
+         */
+        useInternalId: false,
+        /**
          * A click or Up/Down selects one message, through the View's own row model; the pane opens
          * its detail. Selecting writes nothing. The thread toggle selects nothing
          * ({@link AgentOS.view.fleet.mailbox.RowModel}).
@@ -184,10 +190,12 @@ class Grid extends GridContainer {
      * because every run creates new record identities, the pooled cells re-seat without any
      * version choreography.
      * @param {Object[]} bags Plain row objects (already carrying `threadCollapsed` view state).
+     * @param {Object} [options={}] Store data-assignment options.
+     * @param {Boolean} [options.continuation=false] Older pages retain the grid's reading position.
      */
-    applyBags(bags) {
+    applyBags(bags, options={}) {
         this.stampThreadFacts(bags);
-        this.store.data = bags
+        this.store.setData(bags, options)
     }
 
     /**
