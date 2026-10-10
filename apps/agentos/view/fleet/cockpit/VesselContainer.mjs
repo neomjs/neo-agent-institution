@@ -1,10 +1,10 @@
-import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import DragAffordances   from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/DragAffordances.mjs';
-import Placement         from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/Placement.mjs';
-import WorkspaceDocument from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
-import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs';
-import VesselPark        from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/VesselPark.mjs';
-import {createDockVesselProxyEmbodiment} from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/VesselEmbodiment.mjs';
+import Button                from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import DragAffordances       from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/DragAffordances.mjs';
+import Placement             from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/Placement.mjs';
+import WorkspaceDocument     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
+import Workspace             from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs';
+import VesselPark            from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/VesselPark.mjs';
+import VesselProxyEmbodiment from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/VesselProxyEmbodiment.mjs';
 
 /**
  * @summary The cockpit's vessel + window-chrome layer — every pop-out / tear-out / return
@@ -63,7 +63,7 @@ class VesselContainer extends Workspace {
      * @protected
      */
     dragAffordances = null
-    /** @member {Object|null} vesselProxyEmbodiment=null */
+    /** @member {Neo.dashboard.dock.window.VesselProxyEmbodiment|null} vesselProxyEmbodiment=null */
     vesselProxyEmbodiment = null
     /** @member {Neo.dashboard.dock.window.VesselPark|null} nativeVesselParkHandlers=null */
     nativeVesselParkHandlers = null
@@ -205,7 +205,7 @@ class VesselContainer extends Workspace {
             owner     : me,
             preview   : me.getReference('dock-preview')
         });
-        me.vesselProxyEmbodiment = createDockVesselProxyEmbodiment({
+        me.vesselProxyEmbodiment = Neo.create(VesselProxyEmbodiment, {
             resolvePane: itemId => me.vesselPane(itemId) || me.findProjectedDockPane(itemId),
             resolveProxyConfig: ({sourceSortZone, targetWindowId}) => {
                 const
