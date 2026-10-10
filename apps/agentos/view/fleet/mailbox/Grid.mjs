@@ -184,10 +184,12 @@ class Grid extends GridContainer {
      * because every run creates new record identities, the pooled cells re-seat without any
      * version choreography.
      * @param {Object[]} bags Plain row objects (already carrying `threadCollapsed` view state).
+     * @param {Object} [options={}] Store data-assignment options.
+     * @param {Boolean} [options.continuation=false] Older pages retain the grid's reading position.
      */
-    applyBags(bags) {
+    applyBags(bags, options={}) {
         this.stampThreadFacts(bags);
-        this.store.data = bags
+        this.store.setData(bags, options)
     }
 
     /**

@@ -144,3 +144,150 @@ test.describe('AgentOS operator mailbox — one window at boot, the next at the 
         }
     })
 });
+
+test('older pages preserve the visible reading anchor, thread facts and selected detail', async ({page, neuralLink}) => {
+    await neuralLink.routeConfig(page, config => ({
+        ...config,
+        themes     : ['neo-theme-neo-dark', 'neo-theme-neo-light'],
+        useAiClient: true
+    }));
+    await page.goto('/test/playwright/component/apps/empty-viewport/index.html');
+    await expect(page.locator('#component-test-viewport')).toBeVisible();
+
+    const
+        app        = await neuralLink.connectToApp(),
+        capturedAt = '2026-10-10T12:00:00.000Z',
+        rows       = Array.from({length: 150}, (_, i) => ({
+            ...corpus[0],
+            messageId   : `MESSAGE:reading-${i}`,
+            subject     : `Reading message ${i}`,
+            sentAt      : new Date(Date.parse(capturedAt) - i * 1000).toISOString(),
+            partOfThread: [0, 1, 51].includes(i) ? 'THREAD:expanded' : [2, 3, 50, 100].includes(i) ? 'THREAD:collapsed' : null
+        })),
+        snapshot = (offset, values=rows.slice(offset, offset + WINDOW)) => ({
+            capability: {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', capturedAt, reason: null},
+            admission : {state: 'granted', viewerIdentity: '@tobiu', subjectAgentId: '@neo-opus-vega', checkedAt: capturedAt, reason: null},
+            rows      : values,
+            page      : {limit: WINDOW, offset, count: values.length, hasMore: offset + WINDOW < rows.length}
+        }),
+        created = await page.evaluate(config => Neo.worker.App.createNeoInstance(config), {
+            importPath: '../../../../apps/agentos/view/fleet/mailbox/Container.mjs',
+            ntype     : 'fm-mailbox-pane',
+            parentId  : 'component-test-viewport',
+            height    : 600,
+            record    : {agentId: 'vega', githubUsername: 'neo-opus-vega'},
+            snapshot  : snapshot(0)
+        });
+
+    expect(created.success).toBe(true);
+
+    try {
+        await expect(page.locator('.fm-mail-subject').first()).toHaveText('Reading message 0');
+        const [grid] = await app.queryComponent({ntype: 'fm-mailbox-grid'}, ['store', 'view', 'body']);
+        const {store, view, body} = grid.properties;
+        const scroller = page.locator(`[id="${view.id}"]`);
+        const paneState = () => app.getComponent(created.id, ['selectedMessageId', 'pendingOffset']);
+
+        expect((await paneState()).pendingOffset).toBeNull();
+        expect((await app.inspectStore(store.id, 150)).count).toBe(48);
+
+        await scroller.evaluate(element => { element.scrollTop = 1 });
+        await page.locator('.fm-mail-row').filter({has: page.getByText('Reading message 0', {exact: true})})
+            .locator('.fm-mail-thread-toggle').dispatchEvent('click');
+        await expect(page.locator('.fm-mail-thread-toggle').first()).toHaveText('collapse thread');
+        await expect.poll(async () => (await app.inspectStore(store.id, 150)).count).toBe(49);
+        await expect.poll(() => scroller.evaluate(element => element.scrollTop)).toBe(0);
+
+        for (const offset of [50, 100]) {
+            await scroller.evaluate(element => { element.scrollTop = element.scrollHeight });
+            await expect.poll(async () => (await paneState()).pendingOffset).toBe(offset);
+            await expect.poll(async () => (await app.getComponent(body.id, ['startIndex'])).startIndex).toBeGreaterThan(35);
+
+            const anchor = await scroller.evaluate(element => {
+                const top = element.getBoundingClientRect().top;
+                const row = [...element.querySelectorAll('.neo-grid-row')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).find(row => {
+                    const rect = row.getBoundingClientRect();
+                    return rect.bottom > top && rect.top < top + element.clientHeight && row.querySelector('.fm-mail-subject')
+                });
+                return {subject: row.querySelector('.fm-mail-subject').textContent, offset: row.getBoundingClientRect().top - top, scrollTop: element.scrollTop}
+            });
+
+            if (offset === 50) {
+                await page.getByText(anchor.subject, {exact: true}).dispatchEvent('click');
+                await expect.poll(async () => (await paneState()).selectedMessageId).toBe(`MESSAGE:reading-${anchor.subject.split(' ').at(-1)}`)
+            }
+
+            const selectedId = (await paneState()).selectedMessageId;
+            await scroller.evaluate((element, subject) => {
+                window.mailboxFrames = [];
+                window.mailboxSampling = true;
+                const sample = () => {
+                    const row = [...element.querySelectorAll('.neo-grid-row')].find(row => row.querySelector('.fm-mail-subject')?.textContent === subject);
+                    window.mailboxFrames.push({
+                        scrollTop: element.scrollTop,
+                        offset   : row ? row.getBoundingClientRect().top - element.getBoundingClientRect().top : null
+                    });
+                    if (window.mailboxSampling) requestAnimationFrame(sample)
+                };
+                requestAnimationFrame(sample)
+            }, anchor.subject);
+
+            await app.setProperties(created.id, {snapshot: snapshot(offset)});
+            await expect.poll(async () => (await app.inspectStore(store.id, 150)).count).toBe(offset === 50 ? 98 : 147);
+
+            // Observe every paint through the body's deferred reset window, including the frames
+            // between projection and settlement; a final-position-only assertion misses a jump back.
+            const frames = await page.evaluate(() => new Promise(resolve => {
+                const until = performance.now() + 200;
+                const finish = () => {
+                    if (performance.now() < until) return requestAnimationFrame(finish);
+                    window.mailboxSampling = false;
+                    resolve(window.mailboxFrames)
+                };
+                requestAnimationFrame(finish)
+            }));
+            expect(frames.length).toBeGreaterThan(1);
+            for (const frame of frames) {
+                expect(frame.scrollTop).toBe(anchor.scrollTop);
+                expect(frame.offset).not.toBeNull();
+                expect(Math.abs(frame.offset - anchor.offset)).toBeLessThan(1)
+            }
+
+            const held = await app.inspectStore(store.id, 150);
+            expect(new Set(held.items.map(item => item.messageId)).size).toBe(held.count);
+            expect(held.items.every(item => item.status === 'unread')).toBe(true);
+            const rendered = await scroller.locator('.fm-mail-subject:visible').allTextContents();
+            expect(new Set(rendered).size).toBe(rendered.length);
+            expect(rendered.every(subject => held.items.some(item => item.subject === subject))).toBe(true);
+            expect(held.items.find(item => item.messageId === 'MESSAGE:reading-0').threadFacts).toMatchObject({isHead: true, collapsed: false, hiddenCount: 2});
+            expect(held.items.find(item => item.messageId === 'MESSAGE:reading-2').threadFacts).toMatchObject({isHead: true, collapsed: true, hiddenCount: offset === 50 ? 2 : 3});
+            expect((await paneState()).selectedMessageId).toBe(selectedId);
+            expect((await paneState()).pendingOffset).toBeNull();
+            const selection = (await app.getComponent(view.id, ['rowSelectionModel'])).rowSelectionModel;
+            expect(selection.selectedRows).toHaveLength(1);
+            const selectedRecord = await app.callMethod(store.id, 'get', [selection.selectedRows[0]]);
+            expect(selectedRecord?.messageId).toBe(selectedId);
+            const [detail] = await app.queryComponent({reference: 'mailbox-detail'}, ['row', 'hidden']);
+            expect(detail.properties.hidden).toBe(false);
+            expect(detail.properties.row.messageId).toBe(selectedId)
+        }
+
+        await app.setProperties(created.id, {snapshot: snapshot(0, [rows[149]])});
+        await expect.poll(async () => (await app.inspectStore(store.id)).count).toBe(1);
+        await expect.poll(() => scroller.evaluate(element => element.scrollTop)).toBe(0);
+        expect((await paneState()).selectedMessageId).toBeNull();
+        expect((await app.getComponent(view.id, ['rowSelectionModel'])).rowSelectionModel.selectedRows).toEqual([]);
+        const [detail] = await app.queryComponent({reference: 'mailbox-detail'}, ['row', 'hidden']);
+        expect(detail.properties.hidden).toBe(true);
+        expect(detail.properties.row).toBeNull();
+
+        await page.getByText(rows[149].subject, {exact: true}).dispatchEvent('click');
+        await expect.poll(async () => (await paneState()).selectedMessageId).toBe(rows[149].messageId);
+        await app.setProperties(created.id, {record: {agentId: 'other', githubUsername: 'another-resident'}});
+        await expect.poll(async () => (await app.inspectStore(store.id)).count).toBe(0);
+        expect((await paneState()).selectedMessageId).toBeNull();
+        expect((await app.getComponent(view.id, ['rowSelectionModel'])).rowSelectionModel.selectedRows).toEqual([])
+    } finally {
+        await page.evaluate(id => Neo.worker.App.destroyNeoInstance(id), created.id)
+    }
+});

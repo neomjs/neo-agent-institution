@@ -764,6 +764,36 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the open message (#551)'
         pane.destroy()
     });
 
+    test('older pages and first-page refreshes rebind selection without reading or writing the message again', () => {
+        const pane  = createPane(), asked = [], writes = [],
+              grid  = pane.getReference('mailbox-rows'),
+              model = grid.view.rowSelectionModel;
+
+        pane.on('messageOpen', data => asked.push(data.messageId));
+        ['markReadRequest', 'replyRequest', 'resolveRequest'].forEach(name => pane.on(name, () => writes.push(name)));
+        pane.snapshot = wiredSnapshot([row({messageId: 'MESSAGE:a'})], {limit: 50, offset: 0, count: 1, hasMore: true});
+        const original = pane.store.get('MESSAGE:a');
+
+        model.selectRow(grid.view.getRecordId(original));
+        open(pane, 'MESSAGE:a');
+        for (const offset of [50, 0]) {
+            const previous = pane.store.get('MESSAGE:a'),
+                  rows = offset ? [row({messageId: 'MESSAGE:b'})] :
+                      [row({messageId: 'MESSAGE:a', status: 'read'}), row({messageId: 'MESSAGE:b'})];
+
+            pane.snapshot = wiredSnapshot(rows, {limit: 50, offset, count: rows.length, hasMore: false});
+
+            expect(pane.store.get('MESSAGE:a')).not.toBe(previous);
+            expect(model.selectedRows).toHaveLength(1);
+            expect(pane.store.get(model.selectedRows[0])).toBe(pane.store.get('MESSAGE:a'));
+            expect(pane.getReference('mailbox-detail').row.messageId).toBe('MESSAGE:a');
+            expect(asked).toEqual(['MESSAGE:a']);
+            expect(writes).toEqual([])
+        }
+
+        pane.destroy()
+    });
+
     test('the open message follows a refresh: its new status reaches the detail, and a refresh that drops it closes the detail', () => {
         const pane = createPane(), detail = pane.getReference('mailbox-detail');
 

@@ -657,7 +657,7 @@ class MailboxPane extends Container {
                 // a thread never hides an open question: the open view lists each one on its own row
                 projected = rows ? source.rows.map(row => me.view === 'open' ? {...row, partOfThread: null, threadCollapsed: false} : {...row, threadCollapsed: true}) : [];
 
-            rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected);
+            rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected, {continuation: extend});
             me.projectedFingerprint = fingerprint;
             me.projectedView        = rows ? me.view : null;
             me.emptyWindows         = rows && !projected.length ? me.emptyWindows + 1 : 0
@@ -687,10 +687,19 @@ class MailboxPane extends Container {
         me.getReference('mailbox-body').hidden = !shown;
         rowsGrid.hidden = !shown;
 
-        // the open message follows the refresh: its row's new status reaches the detail, and a
-        // message the refresh no longer lists closes it
-        if (me.selectedMessageId && !me.store.get(me.selectedMessageId)) {
-            me.selectedMessageId = null
+        // The pane owns the message key; the grid selects the fresh record each projection creates.
+        if (me.selectedMessageId) {
+            const record = me.store.get(me.selectedMessageId),
+                  model  = rowsGrid.view.rowSelectionModel;
+
+            if (record) {
+                const id = rowsGrid.view.getRecordId(record);
+
+                model.isSelectedRow(id) || model.selectRow(id)
+            } else {
+                model.deselectAllRows();
+                me.selectedMessageId = null
+            }
         }
 
         me.applyDetail()
