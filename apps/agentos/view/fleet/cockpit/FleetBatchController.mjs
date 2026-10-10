@@ -33,6 +33,14 @@ class FleetBatchController extends ReadingSurfacesController {
     /** @member {Object|null} startFleetBatch=null Token fencing late summaries from older batches, in either direction. */
     startFleetBatch = null
     /**
+     * How many seats one fleet start sends at a time. The next wave leaves once the previous wave's
+     * intents have answered — settled, refused, or timed out on the adapter's honesty bound — so the
+     * Fleet prepares, the plane proves and the host boots a bounded number of seats at once. `1` is
+     * one by one.
+     * @member {Number} startFleetWaveSize=2
+     */
+    startFleetWaveSize = 2
+    /**
      * The fleet-wide stop's two-press state: the plan the first press showed, bound to the Fleet it
      * was shown for — `{plan, profileId, store}` — and `null` while not armed. The second press
      * sends only while that binding and the plan still hold ({@link #isStopArmCurrent}).
@@ -192,8 +200,12 @@ class FleetBatchController extends ReadingSurfacesController {
     }
 
     /**
-     * @summary Start eligible records and re-poll once after their initial answers. Current late
-     * answers update the batch summary; a newer batch retires that summary's writer.
+     * @summary Start eligible records in waves ({@link FleetStartPlan.waves}, {@link #startFleetWaveSize})
+     * and re-poll once after their answers: one wave's intents leave together, the next wave once they
+     * have answered, and between waves the chrome line counts the unsent seats as pending. A newer
+     * batch, a replaced Fleet or a destroyed controller retires the batch between waves: no further
+     * intent leaves, and the line it still owned is its last. Current late answers update the batch
+     * summary; a newer batch retires that summary's writer.
      * @returns {Promise<Object>} The outcome summary.
      * @protected
      */
@@ -203,17 +215,27 @@ class FleetBatchController extends ReadingSurfacesController {
             records = me.getRosterRecords(),
             plan    = FleetStartPlan.partitionFleetStart(records),
             batch   = me.startFleetBatch = {},
-            profile = me.bridgeProfileId;
+            profile = me.bridgeProfileId,
+            current = () => !me.isDestroyed && me.startFleetBatch === batch && me.bridgeProfileId === profile,
+            results = [];
 
         me.renderStartSummary(null);
 
-        const results = await Promise.all(plan.eligible.map(record =>
-            me.requestFleetLifecycle({action: 'start', agentId: record.agentId}, record)
-        ));
+        for (const wave of FleetStartPlan.waves(plan.eligible, me.startFleetWaveSize)) {
+            if (results.length > 0 && !current()) break;
+
+            results.push(...await Promise.all(wave.map(record =>
+                me.requestFleetLifecycle({action: 'start', agentId: record.agentId}, record)
+            )));
+
+            if (results.length < plan.eligible.length && current()) {
+                me.renderStartSummary(FleetStartPlan.summarizeFleetStart(plan, results))
+            }
+        }
 
         const summary = FleetStartPlan.summarizeFleetStart(plan, results);
 
-        if (!me.isDestroyed && me.startFleetBatch === batch && me.bridgeProfileId === profile) {
+        if (current()) {
             me.renderStartSummary(summary)
         }
 

@@ -418,6 +418,71 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         }
     });
 
+    test('a fleet start sends its seats in waves: the next wave leaves once the previous one answered, the running line counts the rest as pending, and a retired batch sends no further wave (#654 AC-3)', async () => {
+        const
+            calls    = [],
+            releases = new Map(),
+            records  = ['ada', 'grace', 'vega', 'mnemo', 'euclid'].map(agentId => ({
+                agentId,
+                controlReason: null,
+                pendingAction: null,
+                sources      : wiredSources(),
+                state        : 'off',
+                set(values) { Object.assign(this, values) }
+            })),
+            summaries  = [],
+            controller = Object.create(FleetCockpitController.prototype),
+            settle     = async (ticks = 12) => { for (let tick = 0; tick < ticks; tick++) await Promise.resolve() };
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                startAgent(agentId) {
+                    calls.push(agentId);
+                    return new Promise(resolve => releases.set(agentId, resolve))
+                }
+            }
+        };
+
+        controller.startFleetWaveSize    = 2;
+        controller.getReference          = name => name === 'fleet-grid' ? {store: {items: records}} : null;
+        controller.refreshRosterOnSettle = settledOk => settledOk;
+        controller.renderStartSummary    = summary => summaries.push(summary);
+
+        try {
+            const batch = controller.onStartFleet();
+
+            await settle();
+
+            expect(calls, 'the first wave leaves alone').toEqual(['ada', 'grace']);
+
+            releases.get('ada')({state: 'running'});
+            releases.get('grace')({state: 'running'});
+            await settle();
+
+            expect(calls, 'the second wave leaves once the first answered').toEqual(['ada', 'grace', 'vega', 'mnemo']);
+
+            const running = summaries.filter(Boolean).at(-1);
+
+            expect(running.started).toBe(2);
+            expect(running.pending.map(({agentId}) => agentId), 'the unsent seats read pending, not rejected').toEqual(['vega', 'mnemo', 'euclid']);
+            expect(running.rejected).toEqual([]);
+
+            // a newer batch owns the slot: the third wave never leaves, and this batch writes no further line
+            controller.startFleetBatch = {};
+            releases.get('vega')({state: 'running'});
+            releases.get('mnemo')({state: 'running'});
+
+            const summary = await batch;
+
+            expect(calls).toEqual(['ada', 'grace', 'vega', 'mnemo']);
+            expect(summary.started).toBe(4);
+            expect(summary.pending.map(({agentId}) => agentId)).toEqual(['euclid']);
+            expect(summaries.filter(Boolean)).toHaveLength(1)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
     test('the next fleet activation excludes a timeout-bearing member instead of silently retrying an unknown operation', async () => {
         const
             calls  = [],
