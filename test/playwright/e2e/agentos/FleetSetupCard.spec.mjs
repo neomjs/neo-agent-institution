@@ -54,8 +54,12 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         await card.locator('.fm-setup-details-toggle').click();
         await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(TOTAL, {timeout: 30000});
         await expect(card.locator('.fm-setup-steps .neo-list-item').first()).toHaveClass(/is-ok/);
-        await expect(card.locator('.fm-setup-steps .neo-list-item').nth(before('served-plane')).locator('.fm-setup-step-reason')).toHaveText('connect ECONNREFUSED 127.0.0.1:3102');
-        await expect(card.locator('.fm-setup-steps .neo-list-item').nth(8).locator('.fm-setup-step-status')).toHaveText('unknown');
+        // the served-plane row by its place in the recipe, for both its words: a positional index would
+        // read the neighbouring row once the recipe grows, and two `unknown` rows would hide the swap
+        const servedPlane = card.locator('.fm-setup-steps .neo-list-item').nth(before('served-plane'));
+
+        await expect(servedPlane.locator('.fm-setup-step-reason')).toHaveText('connect ECONNREFUSED 127.0.0.1:3102');
+        await expect(servedPlane.locator('.fm-setup-step-status')).toHaveText('unknown');
 
         // where it runs reads the placement and the table before anything is answered: the recommendation
         // in the recipe's words, the budgets as its help, the choices folded until the block opens
