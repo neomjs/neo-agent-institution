@@ -14,7 +14,23 @@ const
     VALID_STATES       = new Set(Object.values(STATES)),
     VALID_OUTCOMES     = new Set(Object.values(OUTCOMES)),
     CREDENTIAL_REFUSAL = new Set([REFUSALS.CREDENTIAL_MISSING, REFUSALS.CREDENTIAL_UNPROVEN]),
+    // the refusals the card words: the two credential verdicts, and a proof the plane did not answer
+    WORDED_REFUSAL     = new Set([...CREDENTIAL_REFUSAL, REFUSALS.PROOF_UNAVAILABLE]),
+    CREDENTIAL_KINDS   = new Set(Object.values(CREDENTIALS)),
     SERVER_LABELS      = new Map(MCP_SERVERS.map(({key, label}) => [key, label]));
+
+/**
+ * @summary The credential a refusal entry names, in the card's words.
+ * @param {*} kind A `LAUNCH_ADMISSION_CREDENTIALS` value, or anything else.
+ * @returns {String}
+ */
+function credentialWords(kind) {
+    return kind === CREDENTIALS.SEAT_PAT
+        ? "the seat's repository credential"
+        : kind === CREDENTIALS.PLANE_BEARER
+            ? "the seat's plane credential"
+            : 'the tool credential'
+}
 
 /** @summary Whether a wire value is a non-array object. @param {*} value @returns {Boolean} */
 function isObject(value) {
@@ -35,6 +51,15 @@ class SeatLaunchAdmission extends Base {
     }
 
     /**
+     * How long a seat's own launcher keeps retrying an unanswered credential proof before it gives up:
+     * the launcher's fixed protocol budget (`ai/mcp/client/fleetMcpLauncher.mjs`, `STARTUP_BUDGET_MS`),
+     * not a setting. The card reads a `proof-unavailable` entry older than this as given up.
+     * @member {Number} LAUNCH_STARTUP_BUDGET_MS=60000
+     * @static
+     */
+    static LAUNCH_STARTUP_BUDGET_MS = 60000
+
+    /**
      * @summary The compact card guidance for one launch-admission snapshot, or null when it has no
      * current operator-facing message. The roster and runtime gates prevent retained or inferred facts
      * from being phrased as a live refusal.
@@ -44,9 +69,10 @@ class SeatLaunchAdmission extends Base {
      * @param {Object} options.runtime Normalized `SourceHealth` runtime fact.
      * @param {Object|null} [options.mcpSettings=null] Current public definition from the same roster row.
      * @param {Boolean} [options.canRestart=false] The existing lifecycle controls' restart verdict.
+     * @param {Number} [options.now=Date.now()] The clock an unanswered proof's age is read against.
      * @returns {{text:String, title:String, restart:Boolean}|null}
      */
-    static cardLine(snapshot, {rosterState, runtime, mcpSettings=null, canRestart=false} = {}) {
+    static cardLine(snapshot, {rosterState, runtime, mcpSettings=null, canRestart=false, now=Date.now()} = {}) {
         if (rosterState !== 'live' || runtime?.state !== 'wired' || runtime?.confidence !== 'observed') {
             return null
         }
@@ -113,7 +139,7 @@ class SeatLaunchAdmission extends Base {
         for (const row of latestByServer.values()) {
             const {entry, index} = row;
 
-            if (enabled?.[entry.server] !== false && entry.outcome === OUTCOMES.REFUSED && CREDENTIAL_REFUSAL.has(entry.code) &&
+            if (enabled?.[entry.server] !== false && entry.outcome === OUTCOMES.REFUSED && WORDED_REFUSAL.has(entry.code) &&
                 (!latestFailure || index > latestFailure.index)) {
                 latestFailure = row
             }
@@ -122,19 +148,59 @@ class SeatLaunchAdmission extends Base {
         if (!latestFailure) return SeatLaunchAdmission.serverLine(snapshot, enabled, canRestart);
 
         const
-            server       = SERVER_LABELS.get(latestFailure.entry.server) ?? 'MCP tool',
-            credential   = latestFailure.entry.reason === CREDENTIALS.SEAT_PAT
-                ? "the seat's repository credential"
-                : latestFailure.entry.reason === CREDENTIALS.PLANE_BEARER
-                    ? "the seat's plane credential"
-                    : 'the tool credential',
-            problem      = latestFailure.entry.code === REFUSALS.CREDENTIAL_MISSING ? 'is missing' : 'could not be verified';
+            {entry} = latestFailure,
+            server  = SERVER_LABELS.get(entry.server) ?? 'MCP tool';
+
+        if (entry.code === REFUSALS.PROOF_UNAVAILABLE) {
+            return SeatLaunchAdmission.waitingLine(entry, server, {canRestart, now})
+        }
+
+        const
+            credential = credentialWords(entry.reason),
+            problem    = entry.code === REFUSALS.CREDENTIAL_MISSING ? 'is missing' : 'could not be verified';
 
         return {
             restart: false,
             text   : `New ${server} connection refused`,
             title  : `${credential[0].toUpperCase()}${credential.slice(1)} ${problem} for ${server}. Existing tools may still work. Credential repair is not available in this cockpit; restarting will not repair it.`
         }
+    }
+
+    /**
+     * @summary The words for a proof the plane did not answer (`proof-unavailable`): the seat's launcher
+     * is still retrying within its budget, or it gave up. The entry's `reason` is the issuer's: either
+     * the producer's bounded public diagnostic, printed as it is, or the credential's kind, named — the
+     * card parses neither. A restart is offered only once the launcher has given up, and only when the
+     * lifecycle controls allow one.
+     * @param {Object} entry The audit entry, `{at, server, outcome, code, reason}`.
+     * @param {String} server The server's label.
+     * @param {Object} options
+     * @param {Boolean} options.canRestart
+     * @param {Number} options.now
+     * @returns {{text:String, title:String, restart:Boolean}}
+     * @protected
+     */
+    static waitingLine(entry, server, {canRestart, now}) {
+        const
+            named      = CREDENTIAL_KINDS.has(entry.reason),
+            credential = credentialWords(named ? entry.reason : null),
+            diagnostic = !named && typeof entry.reason === 'string' && entry.reason.trim() ? ` (${entry.reason.trim()})` : '',
+            age        = now - Date.parse(entry.at),
+            gaveUp     = Number.isFinite(age) && age >= SeatLaunchAdmission.LAUNCH_STARTUP_BUDGET_MS,
+            restart    = gaveUp && canRestart === true,
+            proof      = `${credential[0].toUpperCase()}${credential.slice(1)} proof for ${server} went unanswered${diagnostic}`;
+
+        return gaveUp
+            ? {
+                restart,
+                text : `New ${server} connection not made`,
+                title: `${proof}, and the seat's launcher gave up after about a minute. Existing tools may still work.${restart ? ' Restart this seat to try the connection again.' : ''}`
+            }
+            : {
+                restart: false,
+                text   : `New ${server} connection waiting`,
+                title  : `${proof}. The seat's launcher retries on its own for about a minute. Existing tools may still work.`
+            }
     }
 
     /**

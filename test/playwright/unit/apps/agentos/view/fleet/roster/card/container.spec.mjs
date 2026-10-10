@@ -692,6 +692,29 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a proof the plane did not answer reads as waiting on the card, with the producer\'s diagnostic and no raw code; a later admitted entry clears it (#655)', () => {
+        const snapshot = {
+            state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+            servers: [{key: 'memory-core', state: 'active', reason: null}], recent: []
+        }, card = createCard({agentId: 'vega', state: 'ok', launchAdmission: snapshot}),
+           status = card.getReference('control-status'),
+           waiting = {at: new Date().toISOString(), server: 'memory-core', outcome: 'refused', code: 'proof-unavailable', reason: 'plane endpoint unreachable'};
+
+        applySet(card, {launchAdmission: {...snapshot, recent: [waiting]}});
+        expect(status.hidden).toBe(false);
+        expect(status.text).toBe('New Memory Core connection waiting');
+        expect(status.vdom.title).toContain('plane endpoint unreachable');
+        expect(status.vdom.title).toContain('retries on its own');
+        expect(status.vdom.title).not.toMatch(/proof-unavailable|plane-bearer/);
+        expect(card.record.state).toBe('ok');
+
+        applySet(card, {launchAdmission: {...snapshot, recent: [waiting, {
+            at: new Date(Date.now() + 1000).toISOString(), server: 'memory-core', outcome: 'admitted', code: null, reason: null
+        }]}});
+        expect(status.hidden).toBe(true);
+        card.destroy()
+    });
+
 
     test('enabled per-server revocation is distinct from an intentionally disabled MCP server', async () => {
         const {default: RosterRow} = await import('../../../../../../../../../apps/agentos/util/RosterRow.mjs'),

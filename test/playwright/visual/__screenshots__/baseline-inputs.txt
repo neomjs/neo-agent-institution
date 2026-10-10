@@ -3,10 +3,10 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    6c1e478f9d866fcbd5a1c369bd7e489af4eb23c4
+    3f54c24fcc81f308ac3e25b00698b74e722632cb
 
 apps/agentos/CARD-CONTRACT.md
-    23432af0a32a6d79eb8f38f21f40e24f68aa09e5
+    4a6a9c50440001141e733b164c25e9b067a061d0
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -291,7 +291,7 @@ apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
 
 apps/agentos/util/SeatLaunchAdmission.mjs
-    04babfa856bc9101c290294a98465170c8fe4dcd
+    b97ee9dab46cdc65fe4e89b6433b806bbb6b2e28
 
 apps/agentos/util/SeatModel.mjs
     5c11aa54560f60972c0f7652ab44561247e79a34
