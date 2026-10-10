@@ -957,6 +957,36 @@ test.describe('operator mailbox — cadence, held wire and the real projection',
         expect(opens).toEqual(['MESSAGE:base'])
     });
 
+    test('every host config hook sees the complete successful read outcome', async () => {
+        const publishedAt = NOW + 1000,
+              answer = wiredSnapshot([row({messageId: 'MESSAGE:coherent'})]),
+              {controller, host, pane} = fixture({fleetMailboxMirror: async () => answer}),
+              samples = [], originalNow = Date.now;
+        answer.capability.capturedAt = new Date(publishedAt).toISOString();
+        host.readFailed = true;
+
+        ['afterSetNow', 'afterSetReadFailed', 'afterSetSnapshot'].forEach(hook => {
+            const original = host[hook];
+            host[hook] = function(...args) {
+                samples.push({hook, now: this.now, readFailed: this.readFailed,
+                    capturedAt: this.snapshot?.capability?.capturedAt,
+                    messageId: this.snapshot?.rows[0]?.messageId});
+                return original.apply(this, args)
+            }
+        });
+
+        Date.now = () => publishedAt;
+        try {
+            await controller.loadOperatorInbox();
+            expect(samples.map(sample => sample.hook).sort()).toEqual(['afterSetNow', 'afterSetReadFailed', 'afterSetSnapshot']);
+            samples.forEach(sample => expect(sample).toMatchObject({now: publishedAt, readFailed: false,
+                capturedAt: answer.capability.capturedAt, messageId: 'MESSAGE:coherent'}));
+            expect(pane.store.get('MESSAGE:coherent')).toBeTruthy()
+        } finally {
+            Date.now = originalNow
+        }
+    });
+
     test('timeout retains one actual wire while clock ticks age rows, then a later read recovers', async () => {
         let release, calls = 0;
         const recovered = wiredSnapshot([row({messageId: 'MESSAGE:recovered'})]),

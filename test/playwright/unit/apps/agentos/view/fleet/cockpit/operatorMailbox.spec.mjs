@@ -55,7 +55,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
     // a fake owner for the read seam: a spy pane, an owner-held identity, the generation counter, and the
     // last-known snapshot — exactly the surface `loadOperatorInbox` reads and writes.
     const makeReadOwner = ({subject = 'NODE:operator', priorSnapshot = null, generation = 0, isDestroyed = false} = {}) => {
-        const pane    = {snapshot: priorSnapshot},
+        const pane    = {snapshot: priorSnapshot, set(values) {Object.assign(this, values)}},
               cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
                   component                  : {getOperatorMailboxPane: () => pane, livenessReadTimeout: 1000},
                   operatorProfileId          : null,

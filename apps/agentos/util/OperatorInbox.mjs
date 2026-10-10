@@ -154,9 +154,8 @@ class OperatorInbox extends Base {
 
                 open || (owner.operatorSnapshot = answer);
                 if (live) {
-                    live.readFailed = refused || (!open && answer?.capability?.state !== 'wired');
-                    live.now = Date.now();
-                    live[open ? 'questions' : 'snapshot'] = answer
+                    live.set({now: Date.now(), readFailed: refused || (!open && answer?.capability?.state !== 'wired'),
+                        [open ? 'questions' : 'snapshot']: answer})
                 }
             }
         } catch (error) {

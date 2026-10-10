@@ -270,7 +270,7 @@ apps/agentos/util/OpenWorkSeat.mjs
     9cdbd64f758822ab9ed015e8f28790bcbe5600a4
 
 apps/agentos/util/OperatorInbox.mjs
-    07f3f9f7c7e018da0a66d32b85c1ccb34f5b3f37
+    94980a6be9a77c2c1eeb830c16bcef54281d3370
 
 apps/agentos/util/Participation.mjs
     797b9190ad13733d77313600d936b586d1c3ced7
