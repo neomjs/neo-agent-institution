@@ -17,6 +17,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                     '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {wiredSources} from './cockpitFakes.mjs';
+import FleetLifecycleIntentAdapter from '../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs';
 
 /**
  * Covers the cockpit's whole-fleet control: `onStartFleet` fans a start intent out to
@@ -479,6 +480,147 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             expect(summary.pending.map(({agentId}) => agentId)).toEqual(['euclid']);
             expect(summaries.filter(Boolean)).toHaveLength(1)
         } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    /**
+     * A wave batch over a recording bridge whose answers are held until released — the harness Sophie's
+     * #656 falsifier used (her probe of 2026-10-10): three seats, waves of two, a profile the test can retire.
+     */
+    const waveFixture = () => {
+        const
+            records  = ['a', 'b', 'c'].map(agentId => ({
+                agentId,
+                controlReason: null,
+                pendingAction: null,
+                sources      : wiredSources(),
+                state        : 'off',
+                set(values) { Object.assign(this, values) }
+            })),
+            store      = {items: records, get(id) { return this.items.find(record => record.agentId === id) }, clear() { this.items = [] }},
+            calls      = [],
+            held       = [],
+            summaries  = [],
+            controller = Object.create(FleetCockpitController.prototype),
+            release    = id => held.filter(item => item.agentId === id).forEach(item => item.resolve({state: 'running'})),
+            waitFor    = async (test, label) => {
+                const end = Date.now() + 2000;
+                while (!test() && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 2));
+                expect(test(), label).toBe(true)
+            };
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                startAgent(agentId) {
+                    calls.push(agentId);
+                    return new Promise(resolve => held.push({agentId, resolve}))
+                }
+            }
+        };
+
+        Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
+        controller.startFleetWaveSize      = 2;
+        controller.getReference            = name => name === 'fleet-grid' ? {store} : null;
+        controller.resolveFleetRosterStore = () => store;
+        controller.refreshRosterOnSettle   = settledOk => settledOk;
+        controller.renderStartSummary      = summary => summaries.push(summary && structuredClone(summary));
+
+        return {calls, controller, records, release, store, summaries, waitFor}
+    };
+
+    test('a seat its own card starts while an earlier wave is held is not sent twice by the batch: its slot reads superseded with the partition\'s reason, the card\'s own Start stands (#654, falsifier 1)', async () => {
+        const {calls, controller, records, release, waitFor} = waveFixture();
+
+        try {
+            const batch = controller.onStartFleet();
+
+            await waitFor(() => calls.length === 2, 'the first wave left');
+            expect(records[2].pendingAction).toBeNull();
+
+            const card = controller.requestFleetLifecycle({action: 'start', agentId: 'c'}, records[2]);
+
+            await waitFor(() => calls.length === 3, 'the card\'s own Start left');
+            expect(records[2].pendingAction).toBe('start');
+
+            release('a');
+            release('b');
+
+            const summary = await batch;
+
+            expect(calls, 'c left once, through its card').toEqual(['a', 'b', 'c']);
+            expect(summary.started).toBe(2);
+            expect(summary.rejected).toEqual([{agentId: 'c', reason: "superseded: 'start' round-trip already in flight"}]);
+
+            release('c');
+            expect((await card).ok).toBe(true)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('a retired roster ends the batch even when the same profile id returns: no further wave leaves, no further line is written (#654, falsifier 2)', async () => {
+        const {calls, controller, release, store, summaries, waitFor} = waveFixture();
+
+        try {
+            const batch = controller.onStartFleet();
+
+            await waitFor(() => calls.length === 2, 'the first wave left');
+
+            // the liveness layer's retirement path: the store is cleared, the controller told; then A again
+            controller.bridgeProfileId = 'profile-b';
+            store.clear();
+            controller.onRosterRetired();
+            controller.bridgeProfileId = 'profile-a';
+
+            release('a');
+            release('b');
+
+            const summary = await batch;
+
+            expect(calls, 'the third seat never left').toEqual(['a', 'b']);
+            // the retired roster's own answers are superseded by the adapter (their records left the store)
+            expect(summary.started).toBe(0);
+            expect(summary.rejected.map(({agentId, reason}) => `${agentId}:${reason.split(':')[0]}`)).toEqual(['a:superseded', 'b:superseded']);
+            expect(summary.pending.map(({agentId}) => agentId)).toEqual(['c']);
+            expect(summaries.filter(Boolean), 'the retired batch wrote no line').toHaveLength(0)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('an earlier wave\'s late answers land on the running line while the next wave is still held, not after it (#654, falsifier 3)', async () => {
+        const
+            {calls, controller, records, release, summaries, waitFor} = waveFixture(),
+            original = FleetLifecycleIntentAdapter.handleFleetLifecycleIntent;
+
+        // the first wave's intents time out at once on the adapter's bound; the third seat's never does
+        FleetLifecycleIntentAdapter.handleFleetLifecycleIntent = function(intent, record, options) {
+            return original.call(this, intent, record, {...options, timeoutMs: intent.agentId === 'c' ? -1 : 5})
+        };
+
+        try {
+            const batch = controller.onStartFleet();
+
+            await waitFor(() => calls.length === 3, 'the second wave left after the timeout answers');
+
+            release('a');
+            release('b');
+            await waitFor(() => records[0].controlReason === null && records[1].controlReason === null, 'the late answers landed on the records');
+
+            const running = summaries.filter(Boolean).at(-1);
+
+            expect(running.started, 'the line counts the late answers while c is held').toBe(2);
+            expect(running.unknown).toEqual([]);
+            expect(running.pending.map(({agentId}) => agentId)).toEqual(['c']);
+
+            release('c');
+
+            const summary = await batch;
+
+            expect(summary.started).toBe(3)
+        } finally {
+            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent = original;
             delete globalThis.AgentOS?.fleet
         }
     });

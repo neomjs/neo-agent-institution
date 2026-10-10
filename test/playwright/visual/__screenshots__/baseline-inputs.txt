@@ -360,7 +360,7 @@ apps/agentos/view/fleet/cockpit/Controller.mjs
     c78ed8e6833636fca19da7dc96d0df6b4b4db458
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
-    0e43752b4b716d51c5136cf929178c1f43f19a9c
+    54f1d887e6a3a8e28d5082ba997c7193fa65d32e
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     9f4a8edf735ad6e9b27847ae5f5a08ddd6586901
