@@ -730,7 +730,9 @@ class LivenessController extends ViewerWakeController {
             me      = this,
             cockpit = me.component;
 
-        if (me.livenessHidden) return;
+        if (me.livenessHidden || me.isDestroyed) return;
+
+        cockpit.getOperatorMailboxPane()?.set({now});
 
         const {launch, dueAt} = LivenessCadence.plan(me.livenessSchedule, {
             cap      : cockpit.maxReadsInFlight,

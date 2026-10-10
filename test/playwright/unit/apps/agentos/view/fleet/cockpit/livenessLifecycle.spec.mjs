@@ -27,7 +27,7 @@ import {
     FLEET_WIRE_RESPONSE_STATES
 } from 'neo-agent-brain/fleet-contract';
 
-const EVERY_PASS = Object.freeze({activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0});
+const EVERY_PASS = Object.freeze({activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0, openWork: 0, operatorInbox: 0});
 
 /**
  * The liveness owner's LIFECYCLE witness. A transition matrix proves the owner tells the truth while
@@ -73,7 +73,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             deploymentStateReadInFlight: 0,
             // the view-owned cadence configs live on the component seat now; a zero interval makes
             // every read due on every pass, so these balance fixtures drive each seam per tick
-            component              : {livenessCadence: EVERY_PASS, livenessPollInterval: 50, maxReadsInFlight: 2, getStateProvider: () => null},
+            component              : {livenessCadence: EVERY_PASS, livenessPollInterval: 50, maxReadsInFlight: 2,
+                getOperatorMailboxPane: () => null, getStateProvider: () => null},
             gridReadGeneration     : 0,
             gridReadInFlight       : 0,
             isDestroyed            : false,
@@ -82,6 +83,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             streamReadInFlight     : 0,
             tasksReadGeneration    : 0,
             tasksReadInFlight      : 0,
+            openWorkReadInFlight   : 0,
             loadActivity() { this.polls++; return Promise.resolve() },
             // the third seam counts separately: the wire-read expectations stay untouched by it
             loadBrainHealth() { this.brainReads++; return Promise.resolve() },
@@ -90,6 +92,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             loadTasks()    { return Promise.resolve() },
             loadDeploymentState() { return Promise.resolve() },
             loadGoldenPath() { return Promise.resolve() },
+            loadOpenWork() { return Promise.resolve() },
+            refreshOperatorInbox() { return Promise.resolve() },
             // the wake rebind seam launches no wire read — modeled as a plain no-op so the
             // wire-read balance assertions stay exact
             ensureViewerWakeStream() {},
@@ -671,23 +675,26 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
     const makeCadenceHost = () => {
         const
             host     = makeTimerHost(),
-            launched = {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0},
-            ticks    = [];
+            launched = {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0, openWork: 0, operatorInbox: 0},
+            ticks    = [],
+            mailboxTicks = [],
+            mailbox = {set({now}) { mailboxTicks.push(now) }};
 
         host.component.livenessCadence  = LivenessCadence.DEFAULT_INTERVALS;
         host.component.windowId         = 7;
         host.component.getStateProvider = () => ({setData: ({systemTickAt}) => ticks.push(systemTickAt)});
+        host.component.getOperatorMailboxPane = () => mailbox;
 
         Object.keys(launched).forEach(key => {
             host[LivenessCadence.READS[key].load] = () => { launched[key]++; return Promise.resolve() }
         });
 
-        return {host, launched, ticks}
+        return {host, launched, ticks, mailboxTicks}
     };
 
     test('each read comes due on its own interval, never on the shared pass', () => {
         const
-            {host, launched, ticks} = makeCadenceHost(),
+            {host, launched, ticks, mailboxTicks} = makeCadenceHost(),
             originalSetInterval     = globalThis.setInterval;
 
         globalThis.setInterval = () => 1;
@@ -698,20 +705,22 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             const start = Date.now();
 
             expect(launched, 'arming the owner is the Brain and plane pictures\' first read')
-                .toEqual({activity: 0, roster: 0, brainHealth: 1, tasks: 0, deploymentState: 1});
+                .toEqual({activity: 0, roster: 0, brainHealth: 1, tasks: 0, deploymentState: 1, openWork: 0, operatorInbox: 0});
 
             host.onLivenessTick(start + 15000);
 
             expect(launched.activity + launched.roster + launched.tasks, 'a 15 s pass issues nothing a minute-scale read owns').toBe(0);
             expect(ticks, 'a pass that launches no deployment read still ages the retained picture').toHaveLength(1);
+            expect(mailboxTicks, 'the inbox clock advances before its first poll is due').toEqual([start + 15000]);
 
             host.onLivenessTick(start + 60000);
 
-            expect(launched).toEqual({activity: 1, roster: 1, brainHealth: 1, tasks: 0, deploymentState: 1});
+            expect(launched).toEqual({activity: 1, roster: 1, brainHealth: 1, tasks: 0, deploymentState: 1, openWork: 1, operatorInbox: 1});
 
             host.onLivenessTick(start + 120000);
 
-            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2})
+            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2, openWork: 2, operatorInbox: 2});
+            expect(mailboxTicks).toEqual([start + 15000, start + 60000, start + 120000])
         } finally {
             globalThis.setInterval = originalSetInterval;
             host.livenessTimerId   = null
@@ -720,36 +729,71 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
 
     test('a hidden cockpit launches nothing; visibility returning launches what fell due, once', () => {
         const
-            {host, launched}    = makeCadenceHost(),
-            originalSetInterval = globalThis.setInterval;
+            {host, launched, mailboxTicks} = makeCadenceHost(),
+            originalSetInterval = globalThis.setInterval,
+            originalNow         = Date.now;
+
+        let now = 2_000_000_000_000;
 
         globalThis.setInterval = () => 1;
+        Date.now = () => now;
 
         try {
             host.startLiveness();
 
-            const start = Date.now();
+            const start = now;
 
             host.onLivenessVisibility({hidden: true, windowId: 8});
             host.onLivenessTick(start + 60000);
 
             expect(launched.roster, 'another window hiding pauses nothing here').toBe(1);
+            expect(mailboxTicks).toEqual([start + 60000]);
 
             host.onLivenessVisibility({hidden: true, windowId: 7});
             host.onLivenessTick(start + 120000);
             host.onLivenessTick(start + 180000);
 
             expect(launched.roster, 'hidden, the owner issues no read').toBe(1);
+            expect(mailboxTicks, 'hidden passes do not publish to the mailbox').toEqual([start + 60000]);
 
             // everything fell due while hidden
             host.livenessSchedule = LivenessCadence.create(start - 120000, LivenessCadence.DEFAULT_INTERVALS);
+            now = start + 180000;
             host.onLivenessVisibility({hidden: false, windowId: 7});
 
-            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2})
+            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2, openWork: 2, operatorInbox: 2});
+            expect(mailboxTicks, 'resume immediately publishes the current clock').toEqual([start + 60000, now]);
+
+            host.onLivenessVisibility({hidden: false, windowId: 7});
+            expect(launched.operatorInbox, 'a repeated visible event does not repeat the due read').toBe(2)
         } finally {
             globalThis.setInterval = originalSetInterval;
+            Date.now              = originalNow;
             host.livenessTimerId   = null
         }
+    });
+
+    test('a capped inbox still ages on each visible pass; a destroyed owner neither reads nor clocks', () => {
+        const {host, launched, mailboxTicks} = makeCadenceHost(),
+              now = Date.now();
+
+        host.livenessSchedule = LivenessCadence.create(now - 60000, LivenessCadence.DEFAULT_INTERVALS);
+        host.operatorInbox = {readInFlight: 1};
+        host.streamReadInFlight = 1;
+
+        host.onLivenessTick(now);
+        host.onLivenessTick(now + 15000);
+
+        expect(launched.operatorInbox, 'one wire fills the inbox cap').toBe(0);
+        expect(launched.activity, 'the sibling still has its second slot').toBe(1);
+        expect(mailboxTicks, 'a held wire cannot freeze the freshness clock').toEqual([now, now + 15000]);
+
+        host.isDestroyed = true;
+        host.onLivenessTick(now + 120000);
+
+        expect(launched.operatorInbox).toBe(0);
+        expect(launched.activity).toBe(1);
+        expect(mailboxTicks).toEqual([now, now + 15000])
     });
 
     /**

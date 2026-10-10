@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    9e48135295d846870f2bf4947e2ba80115e01da4
+    ec9aac12fd513d79cbfe3674ffb36eddcabea219
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -252,7 +252,7 @@ apps/agentos/util/KindRegistry.mjs
     b33024720f4b84257113f91ea0664f7be2e26081
 
 apps/agentos/util/LivenessCadence.mjs
-    427251ad9f71485ebf30c33c752f27989544532a
+    9318283e0b989c808ec0b83a86eee5a10fa60a4a
 
 apps/agentos/util/NameSlot.mjs
     3fe98fcc20425319dc01e37d905079564c308f3f
@@ -270,7 +270,7 @@ apps/agentos/util/OpenWorkSeat.mjs
     9cdbd64f758822ab9ed015e8f28790bcbe5600a4
 
 apps/agentos/util/OperatorInbox.mjs
-    5356be7e090cf5501f2be4ec5beabfad1bf30bcb
+    94980a6be9a77c2c1eeb830c16bcef54281d3370
 
 apps/agentos/util/Participation.mjs
     797b9190ad13733d77313600d936b586d1c3ced7
@@ -309,7 +309,7 @@ apps/agentos/util/SpineBanner.mjs
     5c8346c1813f76b88af81eb48f57147c2f9a917e
 
 apps/agentos/util/TargetBinding.mjs
-    1db44f05d8a0d6f95150eb17cc5633fd7f26e334
+    0596cd2547fa26a970deb05717299b918eb9025c
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -357,13 +357,13 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     7194ed7270a8f6d925c71495ab47dc3efa2f0020
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    c78ed8e6833636fca19da7dc96d0df6b4b4db458
+    3a76d1c441be399cfede11cef87b309bdbfec374
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     54f1d887e6a3a8e28d5082ba997c7193fa65d32e
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    9f4a8edf735ad6e9b27847ae5f5a08ddd6586901
+    f28a65507cd6b42932afd5392daba6ff666702c1
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     e6b47fefe7ccfa53fe13b0dd0df3856ce1a8a433
@@ -471,7 +471,7 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    908328e98cb60a1d87b97c3ef4fb982f296f754c
+    5fa7bb74cbad982a6b8c66b705fc4861f54b60bc
 
 apps/agentos/view/fleet/mailbox/DetailContainer.mjs
     7cb0fd434d049f5baed1c2d0717aad6ec42bd71e
@@ -480,7 +480,7 @@ apps/agentos/view/fleet/mailbox/Grid.mjs
     6abcc6af119f951ae8443ef866fa1cd701521e3b
 
 apps/agentos/view/fleet/mailbox/OperatorContainer.mjs
-    348ac0afa1ec06d012cb99e6e716e7c043f278aa
+    6b2f6dbb0f02dc66b6fa94b7ca6fa04bacd9e6a6
 
 apps/agentos/view/fleet/mailbox/RecipientChip.mjs
     eb2c5727a9a2dc3af3183d0b218b0be686607e5a

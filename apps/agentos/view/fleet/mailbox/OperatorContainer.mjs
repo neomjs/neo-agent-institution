@@ -138,6 +138,18 @@ class OperatorMailbox extends Container {
          */
         questions_: null,
         /**
+         * The cockpit's cadence clock, forwarded without a snapshot projection.
+         * @member {Number|null} now_=null
+         * @reactive
+         */
+        now_: null,
+        /**
+         * The current list's latest read outcome; retained rows cannot look fresh after failure.
+         * @member {Boolean} readFailed_=false
+         * @reactive
+         */
+        readFailed_: false,
+        /**
          * The open-question count the chip shows, bound to the provider's `questions` block
          * `{count, reason, state}`, the one Home's line counts.
          * @member {Object|null} questionCount_=null
@@ -217,7 +229,7 @@ class OperatorMailbox extends Container {
         if (inbox) {
             me.record   && (inbox.record   = me.record);
             me.snapshot && (inbox.snapshot = me.snapshot);
-            inbox.set({questions: me.questions, view: me.view})
+            inbox.set({now: me.now, questions: me.questions, readFailed: me.readFailed, view: me.view})
         }
         form && me.recipientOptions?.length && (form.recipientOptions = me.recipientOptions);
         me.applyIdentityPosture();
@@ -421,6 +433,34 @@ class OperatorMailbox extends Container {
     }
 
     /**
+     * @summary Forward the cadence clock to the inbox's freshness-only projection.
+     * @param {Number|null} value
+     * @param {Number|null} oldValue
+     * @protected
+     */
+    afterSetNow(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').now = value)
+    }
+
+    /**
+     * @summary Forward the owner's failure marker without replacing retained rows.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetReadFailed(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').readFailed = value)
+    }
+
+    /**
+     * @summary Ask the inbox whether an automatic refresh can preserve its reading window.
+     * @returns {Boolean}
+     */
+    canRefreshFirstPage() {
+        return this.getReference('operator-inbox-pane').canRefreshFirstPage()
+    }
+
+    /**
      * Triggered after the provider's open-question count changed — the chip recounts.
      * @param {Object|null} value
      * @param {Object|null} oldValue
@@ -478,11 +518,16 @@ class OperatorMailbox extends Container {
     }
 
     /**
-     * @summary The `all mail` chip's handler.
+     * @summary The `all mail` chip's handler; selecting it again explicitly returns to the first
+     * window after automatic refresh deferred an older reading window.
      * @protected
      */
     onAllMailClick() {
-        this.view = 'all'
+        if (this.view !== 'all') {
+            this.view = 'all'
+        } else if (this.record) {
+            this.onInboxPageRequest({offset: 0})
+        }
     }
 
     /**

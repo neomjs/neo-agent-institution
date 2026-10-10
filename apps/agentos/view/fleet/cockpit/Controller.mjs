@@ -85,6 +85,12 @@ class Controller extends FleetBatchController {
      */
     operatorInboxReadGeneration = 0
     /**
+     * The lazily created inbox reader, destroyed with this cockpit.
+     * @member {AgentOS.util.OperatorInbox|null} operatorInbox=null
+     * @protected
+     */
+    operatorInbox = null
+    /**
      * Read-fence for the open message's body: a read that settles after another message opened lands
      * nowhere.
      * @member {Number} operatorMessageReadGeneration=0
@@ -849,7 +855,37 @@ class Controller extends FleetBatchController {
      * @protected
      */
     loadOperatorInbox(params = {}) {
-        return OperatorInbox.read(this, params)
+        if (this.isDestroyed) return Promise.resolve();
+        this.operatorInbox ||= Neo.create(OperatorInbox, {owner: this});
+        return this.operatorInbox.read(params)
+    }
+
+    /**
+     * @summary The shared cadence's first-window read; no queued work while a wire is held.
+     * @returns {Promise<void>}
+     * @protected
+     */
+    refreshOperatorInbox() {
+        return this.loadOperatorInbox({automatic: true, offset: 0})
+    }
+
+    /**
+     * @summary Unsettled inbox wires, including a wire whose bounded wait already timed out.
+     * @returns {Number}
+     * @protected
+     */
+    get operatorInboxReadInFlight() {
+        return this.operatorInbox?.readInFlight ?? 0
+    }
+
+    /**
+     * @summary Destroy the owned inbox reader before retiring the cockpit's liveness owner.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        this.operatorInbox?.destroy();
+        this.operatorInbox = null;
+        super.destroy(...args)
     }
 
     /* ── the liveness reads (provider-written surfaces; the banner + chrome bind) ── */

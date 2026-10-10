@@ -44,6 +44,15 @@ test.describe('AgentOS OperatorMailbox — the operator mailbox surface (#15377)
         box.destroy()
     });
 
+    test('the selected all-mail chip can explicitly return an older reading window to the first page', () => {
+        const box = createBox({record: {agentIdentityNodeId: '@tobiu', githubUsername: 'tobiu'}}), requests = [];
+        box.on('inboxPageRequest', data => requests.push(data.offset));
+        box.onAllMailClick();
+        expect(box.view).toBe('all');
+        expect(requests).toEqual([0]);
+        box.destroy()
+    });
+
     test('relays the compose intent to the owner — re-sourced to the container, not the form', () => {
         const box = createBox();
 

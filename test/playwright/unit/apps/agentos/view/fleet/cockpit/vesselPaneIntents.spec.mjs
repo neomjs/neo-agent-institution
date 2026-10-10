@@ -282,8 +282,8 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
 
     test('loadOperatorInbox admits on the call-time pane but writes into the WRITE-time pane', async () => {
         const
-            oldPane    = {},
-            newPane    = {},
+            oldPane    = {set(values) {Object.assign(this, values)}},
+            newPane    = {set(values) {Object.assign(this, values)}},
             previousNs = globalThis.AgentOS;
 
         let releaseRead,
@@ -302,6 +302,8 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
             });
 
             const read = me.loadOperatorInbox({offset: 0});
+
+            await Promise.resolve(); // the bounded read invokes the wire inside its tracked promise
 
             currentPane = newPane;
 

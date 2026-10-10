@@ -12,7 +12,7 @@ import TargetBinding from './TargetBinding.mjs';
  * inbox re-read that follows. A write that settles after a profile switch lands nowhere.
  *
  * The cockpit controller owns the state (`operatorInboxReadGeneration`, `operatorMessageReadGeneration`, the
- * bridge); this class reads and writes it, like {@link AgentOS.util.OpenWorkRead}.
+ * bridge). Its owned instance serializes list reads; compose and detail routing use the same controller.
  * @class AgentOS.util.OperatorInbox
  * @extends Neo.core.Base
  */
@@ -22,8 +22,26 @@ class OperatorInbox extends Base {
          * @member {String} className='AgentOS.util.OperatorInbox'
          * @protected
          */
-        className: 'AgentOS.util.OperatorInbox'
+        className: 'AgentOS.util.OperatorInbox',
+        /**
+         * The cockpit creating and destroying this read owner.
+         * @member {Object|null} owner=null
+         */
+        owner: null
     }
+
+    /**
+     * Actual unsettled wire count; a bounded-read timeout does not release it.
+     * @member {Number} readInFlight=0
+     */
+    readInFlight = 0
+
+    /**
+     * At most one latest explicit read intent waits behind the wire; cadence never queues.
+     * @member {Object|null} queuedRead=null
+     * @protected
+     */
+    queuedRead = null
 
     /**
      * @summary WRITE: route one operator-composed message — one target, several (fan-out, one
@@ -72,18 +90,23 @@ class OperatorInbox extends Base {
      * @summary READ-OBSERVE: one window of the list the operator mailbox shows: all mail from the mirror
      * (`fleetMailboxMirror`, held as the owner's `operatorSnapshot`), or in the open view the operator's open
      * questions (`fleetOwnQuestions`). The gate IS the honest outcome (no pane / no bound subject / no verb →
-     * the pane's `unobserved` state stands); a throwing bridge KEEPS the last-known list, so the pane never
-     * renders "no mail" for a read that did not happen. One fence serves both lists, bumped before the gate:
-     * a switch supersedes the other list's read in flight, and a refused intent still invalidates older reads.
+     * the pane's `unobserved` state stands); a throwing bridge keeps the last-known list with a stale marker.
+     * One fence serves both lists: a switch supersedes the other list's read in flight, and a refused intent
+     * invalidates older reads. Explicit reads coalesce behind one wire; automatic reads never queue.
      * A bridge bound to another profile first retires the held identity and window, so no page is read as the
      * previous instance's viewer.
-     * @param {Object} owner The cockpit controller
      * @param {Object} [params]
      * @param {Number} [params.offset=0]
+     * @param {Boolean} [params.automatic=false] Defer first-window replacement while reading older rows.
      * @returns {Promise<void>}
      */
-    static async read(owner, {offset = 0} = {}) {
+    async read({offset = 0, automatic = false} = {}) {
+        const me = this;
+        if (me.isDestroyed) return;
+        const {owner} = me;
+        if (owner.isDestroyed) return;
         const {bridge} = owner;
+        if (automatic && (me.readInFlight || owner.livenessHidden)) return;
 
         TargetBinding.retireOperatorMailbox(owner, {profileId: owner.bridgeProfileId});
 
@@ -91,24 +114,80 @@ class OperatorInbox extends Base {
             mailbox    = owner.component.getOperatorMailboxPane(),
             subject    = owner.operatorRecord?.agentIdentityNodeId,
             open       = mailbox?.view === 'open',
-            generation = ++owner.operatorInboxReadGeneration;
+            profileId  = owner.bridgeProfileId,
+            generation = ++owner.operatorInboxReadGeneration,
+            current    = () => !me.isDestroyed && !owner.isDestroyed && generation === owner.operatorInboxReadGeneration &&
+                owner.bridge === bridge && owner.bridgeProfileId === profileId && owner.operatorRecord?.agentIdentityNodeId === subject &&
+                (owner.component.getOperatorMailboxPane()?.view === 'open') === open;
 
         if (!mailbox || !subject || typeof bridge?.[open ? 'fleetOwnQuestions' : 'fleetMailboxMirror'] !== 'function') {
             return
         }
 
-        try {
-            const answer = open ? await bridge.fleetOwnQuestions({offset}) : await bridge.fleetMailboxMirror({subjectAgentId: subject, offset});
+        if (automatic && !mailbox.canRefreshFirstPage()) return;
 
-            if (generation === owner.operatorInboxReadGeneration && !owner.isDestroyed) {
-                const live = owner.component.getOperatorMailboxPane();
+        if (me.readInFlight) {
+            if (!me.queuedRead) {
+                me.queuedRead = {};
+                me.queuedRead.promise = new Promise(resolve => { me.queuedRead.resolve = resolve })
+            }
+            Object.assign(me.queuedRead, {params: {offset}, current});
+            return owner.boundedRead(me.queuedRead.promise, () => {}).catch(() => {
+                if (current()) {
+                    const live = owner.component.getOperatorMailboxPane();
+                    if (live) live.readFailed = true
+                }
+            })
+        }
+
+        try {
+            me.readInFlight++;
+            const answer = await owner.boundedRead(Promise.resolve().then(() => open
+                ? bridge.fleetOwnQuestions({offset})
+                : bridge.fleetMailboxMirror({subjectAgentId: subject, offset})), () => me.onWireSettled());
+
+            if (current()) {
+                // A revoked admission must clear rows even if the operator scrolled during this read.
+                const live = owner.component.getOperatorMailboxPane(),
+                      refused = open ? answer?.state !== 'ok' : answer?.admission?.state !== 'granted';
+                if (automatic && !refused && live && !live.canRefreshFirstPage()) return;
 
                 open || (owner.operatorSnapshot = answer);
-                live && (live[open ? 'questions' : 'snapshot'] = answer)
+                if (live) {
+                    live.set({now: Date.now(), readFailed: refused || (!open && answer?.capability?.state !== 'wired'),
+                        [open ? 'questions' : 'snapshot']: answer})
+                }
             }
         } catch (error) {
-            // fail-closed: the last-known list stays
+            if (current()) {
+                const live = owner.component.getOperatorMailboxPane();
+                if (live) live.readFailed = true
+            }
         }
+    }
+
+    /**
+     * @summary Release the actual wire and service one latest explicit intent if its binding survives.
+     * @protected
+     */
+    onWireSettled() {
+        if (this.isDestroyed) return;
+        this.readInFlight--;
+        const queued = this.queuedRead;
+        this.queuedRead = null;
+        if (queued) {
+            queued.current() ? this.read(queued.params).then(queued.resolve) : queued.resolve()
+        }
+    }
+
+    /**
+     * @summary Retire the queued intent with the creating cockpit; late wires cannot publish or read again.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        this.queuedRead?.resolve();
+        this.queuedRead = null;
+        super.destroy(...args)
     }
 
     /**

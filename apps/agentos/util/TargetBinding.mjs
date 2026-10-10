@@ -149,7 +149,7 @@ class TargetBinding extends Base {
         owner.operatorSnapshot        = null;
         owner.operatorInboxReadGeneration++;
 
-        owner.component.getOperatorMailboxPane()?.set({composeOutcome: null, identityPosture: null, questions: null, record: null, snapshot: null});
+        owner.component.getOperatorMailboxPane()?.set({composeOutcome: null, identityPosture: null, questions: null, readFailed: false, record: null, snapshot: null});
 
         return true
     }
