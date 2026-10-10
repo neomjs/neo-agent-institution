@@ -57,7 +57,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
     const makeReadOwner = ({subject = 'NODE:operator', priorSnapshot = null, generation = 0, isDestroyed = false} = {}) => {
         const pane    = {snapshot: priorSnapshot},
               cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
-                  component                  : {getOperatorMailboxPane: () => pane},
+                  component                  : {getOperatorMailboxPane: () => pane, livenessReadTimeout: 1000},
                   operatorProfileId          : null,
                   operatorRecord             : subject ? {agentIdentityNodeId: subject} : null,
                   operatorSnapshot           : priorSnapshot,
@@ -268,10 +268,12 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         const {pane, cockpit} = makeReadOwner(),
               allMail         = cockpit.loadOperatorInbox({offset: 0});
 
+        await Promise.resolve(); // the tracked wire invokes the bridge inside its promise chain
         pane.view = 'open';
-        await cockpit.loadOperatorInbox({offset: 0});
+        const questions = cockpit.loadOperatorInbox({offset: 0});
+        expect(cockpit.operatorInboxReadInFlight, 'the new view queues behind the one real wire').toBe(1);
         release();
-        await allMail;
+        await Promise.all([allMail, questions]);
 
         expect(pane.snapshot, 'the superseded all-mail window never lands').toBe(null);
         expect(pane.questions.state).toBe('ok')
@@ -423,7 +425,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         const
             mail     = {rows: ['a:mail']},
             operator = {agentIdentityNodeId: '@op', githubUsername: 'op'},
-            retired  = {composeOutcome: null, identityPosture: null, questions: null, record: null, snapshot: null},
+            retired  = {composeOutcome: null, identityPosture: null, questions: null, readFailed: false, record: null, snapshot: null},
             flush    = () => new Promise(resolve => setTimeout(resolve, 0)),
             // the identity and window profile A answered, held the way a real controller holds them
             heldByA  = (fields = {}) => {

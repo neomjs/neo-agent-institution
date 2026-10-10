@@ -158,6 +158,12 @@ class MailboxPane extends Container {
          */
         now_: null,
         /**
+         * The owner's latest read failed; retained rows are stale even inside their TTL.
+         * @member {Boolean} readFailed_=false
+         * @reactive
+         */
+        readFailed_: false,
+        /**
          * Which entry the open message's detail renders ({@link AgentOS.view.fleet.mailbox.DetailContainer#entry}):
          * `observer` is read-only; the host that owns its inbox sets `own`.
          * @member {'own'|'observer'} detailEntry_='observer'
@@ -508,7 +514,41 @@ class MailboxPane extends Container {
      * @protected
      */
     afterSetNow(value, oldValue) {
-        this.isConstructed && this.applySnapshot()
+        this.isConstructed && this.applyFreshness()
+    }
+
+    /**
+     * @summary Reclassify retained data after the owner's read outcome changes.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetReadFailed(value, oldValue) {
+        this.isConstructed && this.applyFreshness()
+    }
+
+    /**
+     * @summary Age the held observation without projecting rows or issuing a page intent.
+     * @protected
+     */
+    applyFreshness() {
+        const source = this.listSource,
+              observedAt = this.view === 'open' ? source?.capturedAt : source?.capability?.capturedAt,
+              ledger = source ? {freshnessTtl: this.freshnessTtl, observedAt, stale: this.readFailed} : null,
+              {cls, label} = AgentFreshness.describePaneFreshness(AgentFreshness.classifyPaneFreshness(ledger, this.now ?? Date.now()));
+
+        this.getReference('mailbox-freshness').set({cls, text: label})
+    }
+
+    /**
+     * @summary Whether an automatic first-window replacement can leave the reading window intact.
+     * An extended corpus stays held until an explicit first-page intent; a pending page or a
+     * scrolled grid likewise defers replacement. The read owner checks again when its answer lands.
+     * @returns {Boolean}
+     */
+    canRefreshFirstPage() {
+        return this.pendingOffset === null && !(this.listSource?.page?.offset > 0) &&
+            !(this.getReference('mailbox-rows').body?.scrollTop > 0)
     }
 
     /**
@@ -630,14 +670,9 @@ class MailboxPane extends Container {
             state        = me.getPaneState(),
             rows         = state === 'rows',
             stateCmp     = me.getReference('mailbox-state'),
-            rowsGrid     = me.getReference('mailbox-rows'),
-            now          = me.now ?? Date.now(),
-            // one chip for both lists: each read's own capture time is its age
-            observedAt   = me.view === 'open' ? source?.capturedAt : source?.capability?.capturedAt,
-            ledger       = source ? {freshnessTtl: me.freshnessTtl, observedAt} : null,
-            {cls, label} = AgentFreshness.describePaneFreshness(AgentFreshness.classifyPaneFreshness(ledger, now));
+            rowsGrid     = me.getReference('mailbox-rows');
 
-        me.getReference('mailbox-freshness').set({cls, text: label});
+        me.applyFreshness();
 
         // Projection: the FIRST window replaces wholesale; a follow-up window (offset > 0) extends
         // the held corpus — the accumulation half of the no-paging contract (the buffered surface

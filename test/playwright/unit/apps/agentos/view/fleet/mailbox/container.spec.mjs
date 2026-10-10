@@ -20,6 +20,8 @@ import Neo             from '../../../../../../../../node_modules/neo.mjs/src/Ne
 import * as core       from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import InstanceManager from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import MailboxPane     from '../../../../../../../../apps/agentos/view/fleet/mailbox/Container.mjs';
+import OperatorMailbox from '../../../../../../../../apps/agentos/view/fleet/mailbox/OperatorContainer.mjs';
+import LivenessCadence from '../../../../../../../../apps/agentos/util/LivenessCadence.mjs';
 
 const CAPTURED_AT = '2026-07-16T12:00:00.000Z';
 const NOW         = Date.parse('2026-07-16T12:00:30.000Z');
@@ -66,6 +68,43 @@ function createPane(config = {}) {
 }
 
 test.describe('AgentOS.view.fleet.mailbox.Container — the read-only S1 mailbox mirror pane', () => {
+    test('clock ticks age a held open window without requesting another page', () => {
+        const pane = createPane({view: 'open', questions: {
+            state: 'ok', capturedAt: CAPTURED_AT, count: 1, rows: [],
+            page: {limit: 50, offset: 0, count: 0, hasMore: true}
+        }});
+        let requests = 0;
+
+        pane.on('pageRequest', () => requests++);
+        pane.pendingOffset = null;
+        const source = pane.questions;
+
+        try {
+            pane.now = NOW + 90000;
+            expect(pane.getReference('mailbox-freshness').cls).toContain('is-stale');
+            expect(requests, 'aging the label is not a page-read intent').toBe(0);
+            expect(pane.questions).toBe(source);
+            expect(pane.pendingOffset).toBe(null)
+        } finally {
+            pane.destroy()
+        }
+    });
+
+    test('a failed refresh keeps recent rows but cannot label them fresh', () => {
+        const snapshot = wiredSnapshot([row()]),
+              pane = createPane({snapshot, readFailed: true});
+
+        try {
+            expect(pane.getReference('mailbox-freshness').cls).toContain('is-stale');
+            expect(pane.store.getCount()).toBe(1);
+            expect(pane.snapshot.capability.capturedAt).toBe(CAPTURED_AT);
+            pane.readFailed = false;
+            expect(pane.getReference('mailbox-freshness').cls).toContain('is-fresh')
+        } finally {
+            pane.destroy()
+        }
+    });
+
     test('unobserved: no snapshot renders the honest not-wired state, never rows', () => {
         const pane = createPane();
 
@@ -847,5 +886,200 @@ test.describe('AgentOS.view.fleet.mailbox.Container — the open message (#551)'
         ]);
 
         pane.destroy()
+    });
+});
+
+test.describe('operator mailbox — cadence, held wire and the real projection', () => {
+    let Controller;
+    const fixtures = [];
+
+    test.beforeAll(async () => {
+        Controller = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default
+    });
+
+    const fixture = (bridge, snapshot = wiredSnapshot([row()])) => {
+        const host = Neo.create(OperatorMailbox, {appName, now: NOW, record: {agentIdentityNodeId: '@neo-opus-vega', githubUsername: 'neo-opus-vega'}, snapshot}),
+              pane = host.getReference('operator-inbox-pane'),
+              controller = Object.assign(Neo.create(Controller, {component: {
+                  isConstructed: false, on() {}, getOperatorMailboxPane: () => host, livenessReadTimeout: 30,
+                  livenessCadence: LivenessCadence.DEFAULT_INTERVALS, maxReadsInFlight: 2
+              }}), {
+                  operatorRecord: host.record, operatorProfileId: bridge.profileId ?? null,
+                  operatorSnapshot: host.snapshot, operatorInboxReadGeneration: 0,
+                  livenessHidden: false, isDestroyed: false,
+                  livenessSchedule: Object.fromEntries(Object.keys(LivenessCadence.READS).map(key => [key, key === 'operatorInbox' ? 0 : Infinity])),
+                  ensureViewerWakeStream() {}, tickSystemLane() {}
+              });
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: bridge};
+        fixtures.push({controller, host});
+        return {controller, host, pane}
+    };
+
+    test.afterEach(() => {
+        fixtures.splice(0).forEach(({controller, host}) => {
+            controller.isDestroyed || controller.destroy();
+            host.destroy()
+        });
+        delete globalThis.AgentOS.fleet
+    });
+
+    test('a due cadence read exposes new mail through the host and Store without a page gesture', async () => {
+        const calls = [], opens = [];
+        let answer = wiredSnapshot([
+            row({messageId: 'MESSAGE:new', sentAt: '2026-07-16T11:30:00.000Z'}), row(),
+            row({messageId: 'MESSAGE:h', partOfThread: 'THREAD:x'}),
+            row({messageId: 'MESSAGE:r', partOfThread: 'THREAD:x', sentAt: '2026-07-16T10:00:00.000Z'})
+        ]);
+        const {controller, pane} = fixture({fleetMailboxMirror: async params => {calls.push(params); return answer}}),
+              grid = pane.getReference('mailbox-rows'), selection = grid.view.rowSelectionModel;
+        pane.on('messageOpen', data => opens.push(data.messageId));
+        selection.onRowClick({record: pane.store.get('MESSAGE:base'), data: {path: []}});
+        const selected = pane.selectedMessageId;
+        expect(selected).toBe('MESSAGE:base');
+
+        controller.onLivenessTick(NOW);
+        await expect.poll(() => pane.store.get('MESSAGE:new')?.messageId).toBe('MESSAGE:new');
+        expect(calls).toEqual([{subjectAgentId: '@neo-opus-vega', offset: 0}]);
+        expect(pane.selectedMessageId).toBe(selected);
+        expect(selection.selectedRows.map(id => selection.getRowRecord(id)?.messageId)).toEqual(['MESSAGE:base']);
+        expect(opens, 'rebinding a fresh record does not open the message again').toEqual(['MESSAGE:base']);
+        expect(pane.getReference('mailbox-detail').hidden).toBe(false);
+        expect(pane.store.get('MESSAGE:h').threadFacts).toMatchObject({isHead: true, collapsed: true, hiddenCount: 1});
+        expect(pane.store.allItems.get('MESSAGE:r').threadFacts).toMatchObject({isHead: false, collapsed: true});
+        expect(new Set(pane.store.allItems.items.map(record => record.messageId)).size).toBe(4);
+
+        answer = wiredSnapshot([row({messageId: 'MESSAGE:new'})]);
+        controller.onLivenessTick(NOW + 60000);
+        await expect.poll(() => pane.selectedMessageId).toBe(null);
+        expect(selection.selectedRows).toEqual([]);
+        expect(pane.getReference('mailbox-detail').hidden).toBe(true);
+        expect(opens).toEqual(['MESSAGE:base'])
+    });
+
+    test('timeout retains one actual wire while clock ticks age rows, then a later read recovers', async () => {
+        let release, calls = 0;
+        const recovered = wiredSnapshot([row({messageId: 'MESSAGE:recovered'})]),
+              {controller, host, pane} = fixture({fleetMailboxMirror: () => {
+                  calls++;
+                  return calls === 1 ? new Promise(resolve => {release = resolve}) : Promise.resolve(recovered)
+              }}), prior = pane.snapshot;
+        await controller.refreshOperatorInbox();
+        expect(host.readFailed).toBe(true);
+        expect(pane.getReference('mailbox-freshness').cls).toContain('is-stale');
+        [NOW + 60000, NOW + 120000, NOW + 180000].forEach(now => controller.onLivenessTick(now));
+        expect(calls).toBe(1);
+        expect(controller.operatorInboxReadInFlight).toBe(1);
+        expect(pane.now).toBe(NOW + 180000);
+        release(wiredSnapshot([row({messageId: 'MESSAGE:late'})]));
+        await expect.poll(() => controller.operatorInboxReadInFlight).toBe(0);
+        expect(pane.snapshot).toBe(prior);
+        await controller.refreshOperatorInbox();
+        expect(calls).toBe(2);
+        expect(host.readFailed).toBe(false);
+        expect(pane.store.get('MESSAGE:recovered')).toBeTruthy()
+    });
+
+    test('automatic refresh defers for a pending page, an older window or a scrolled grid', async () => {
+        let calls = 0;
+        const {controller, pane} = fixture({fleetMailboxMirror: async () => {calls++; return wiredSnapshot([row()])}}),
+              prior = pane.snapshot, grid = pane.getReference('mailbox-rows');
+        pane.pendingOffset = 50;
+        await controller.refreshOperatorInbox();
+        pane.pendingOffset = null;
+        pane.snapshot = wiredSnapshot([row()], {limit: 50, offset: 50, count: 1});
+        await controller.refreshOperatorInbox();
+        pane.snapshot = prior;
+        grid.body.scrollTop = 100;
+        await controller.refreshOperatorInbox();
+        expect(calls).toBe(0);
+        await controller.loadOperatorInbox({offset: 0});
+        expect(calls, 'an explicit first-page intent remains available').toBe(1)
+    });
+
+    test('scrolling during the wire defers its answer and preserves the displayed observation', async () => {
+        let release;
+        const {controller, pane} = fixture({fleetMailboxMirror: () => new Promise(resolve => {release = resolve})}),
+              prior = pane.snapshot, priorOwner = controller.operatorSnapshot, read = controller.refreshOperatorInbox();
+        await Promise.resolve();
+        pane.getReference('mailbox-rows').body.scrollTop = 100;
+        release(wiredSnapshot([row({messageId: 'MESSAGE:new'})]));
+        await read;
+        expect(pane.snapshot).toBe(prior);
+        expect(controller.operatorSnapshot).toBe(priorOwner);
+        expect(pane.store.get('MESSAGE:new')).toBeFalsy()
+    });
+
+    test('a recent transport failure retains rows with stale presentation; recovery clears it', async () => {
+        let fail = true;
+        const recent = wiredSnapshot([row()]);
+        recent.capability.capturedAt = new Date().toISOString();
+        const {controller, pane} = fixture({fleetMailboxMirror: async () => {
+            if (fail) throw new Error('transport unavailable');
+            return {...recent, capability: {...recent.capability, capturedAt: new Date().toISOString()}}
+        }}, recent), prior = pane.snapshot;
+        await controller.refreshOperatorInbox();
+        expect(pane.store.getCount()).toBe(1);
+        expect(pane.snapshot).toBe(prior);
+        expect(pane.getReference('mailbox-freshness').cls).toContain('is-stale');
+        fail = false;
+        await controller.refreshOperatorInbox();
+        expect(pane.getReference('mailbox-freshness').cls).toContain('is-fresh')
+    });
+
+    test('a revoked admission clears retained rows even after scrolling during the read', async () => {
+        let release;
+        const {controller, pane} = fixture({fleetMailboxMirror: () => new Promise(resolve => {release = resolve})}),
+              read = controller.refreshOperatorInbox();
+        await Promise.resolve();
+        pane.getReference('mailbox-rows').body.scrollTop = 100;
+        release({capability: {state: 'degraded'}, admission: {state: 'denied', subjectAgentId: '@neo-opus-vega'}, rows: [], page: {offset: 0}});
+        await read;
+        expect(pane.getPaneState()).toBe('denied');
+        expect(pane.store.getCount()).toBe(0)
+    });
+
+    test('explicit requests coalesce behind one wire and only the latest page intent executes', async () => {
+        let release;
+        const calls = [], {controller, pane} = fixture({fleetMailboxMirror: params => {
+            calls.push(params.offset);
+            return calls.length === 1 ? new Promise(resolve => {release = resolve}) : Promise.resolve(wiredSnapshot([row()]))
+        }}), read = controller.loadOperatorInbox();
+        await Promise.resolve();
+        const older = controller.loadOperatorInbox({offset: 50}), latest = controller.loadOperatorInbox({offset: 100});
+        expect(calls).toEqual([0]);
+        release(wiredSnapshot([row({messageId: 'MESSAGE:superseded'})]));
+        await Promise.all([read, older, latest]);
+        expect(calls).toEqual([0, 100]);
+        expect(pane.store.get('MESSAGE:superseded')).toBeFalsy();
+        expect(controller.operatorInboxReadInFlight).toBe(0)
+    });
+
+    test('a destroyed reader drops queued work and late answers without touching retained data', async () => {
+        let release, calls = 0;
+        const {controller, pane} = fixture({fleetMailboxMirror: () => {
+            calls++;
+            return new Promise(resolve => {release = resolve})
+        }}), prior = pane.snapshot, read = controller.loadOperatorInbox();
+        await Promise.resolve();
+        const queued = controller.loadOperatorInbox({offset: 50});
+        controller.destroy();
+        release(wiredSnapshot([row({messageId: 'MESSAGE:late'})]));
+        await Promise.all([read, queued]);
+        controller.onLivenessTick(NOW + 120000);
+        expect(calls).toBe(1);
+        expect(pane.snapshot).toBe(prior)
+    });
+
+    test('a late rejection after real controller destruction retires quietly', async () => {
+        let reject;
+        const {controller, pane} = fixture({fleetMailboxMirror: () => new Promise((resolve, fail) => {reject = fail})}),
+              prior = pane.snapshot, read = controller.loadOperatorInbox();
+        await Promise.resolve();
+        controller.destroy();
+        expect(controller.component).toBeFalsy();
+        reject(new Error('late transport failure'));
+        await expect(read).resolves.toBeUndefined();
+        expect(pane.snapshot).toBe(prior)
     });
 });

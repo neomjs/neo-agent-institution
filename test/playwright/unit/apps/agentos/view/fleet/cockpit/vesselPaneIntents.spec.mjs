@@ -303,6 +303,8 @@ test.describe('FleetCockpit — vessel-fired pane intents + phase-blind owner pu
 
             const read = me.loadOperatorInbox({offset: 0});
 
+            await Promise.resolve(); // the bounded read invokes the wire inside its tracked promise
+
             currentPane = newPane;
 
             const snapshot = {capability: {state: 'wired'}, messages: []};
