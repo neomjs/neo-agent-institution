@@ -46,6 +46,21 @@ class SeatRepository extends Model {
             // the outcome's reason, credential-redacted by the Fleet
             name        : 'reason',
             defaultValue: null
+        }, {
+            // Accounts keeps checkout provenance separate from the dependency outcome above.
+            name        : 'checkout',
+            defaultValue: null
+        }, {
+            name        : 'dependency',
+            defaultValue: null
+        }, {
+            name        : 'retained',
+            type        : 'Boolean',
+            defaultValue: false
+        }, {
+            name        : 'canDelete',
+            type        : 'Boolean',
+            defaultValue: false
         }]
     }
 }

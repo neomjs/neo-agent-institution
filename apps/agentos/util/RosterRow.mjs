@@ -39,15 +39,16 @@ class RosterRow extends Base {
             // is a Fleet key (`vega`), a mailbox subject is an AgentIdentity node id
             // (`@neo-opus-vega`); comparing the wrong kind would never match, or match the wrong
             // resident. `null` = no identity authority: an honest "cannot verify"
-            githubUsername     : row.githubUsername ?? null,
-            engineTag          : row.engineTag ?? null,
-            family             : row.family ?? null,
+            githubUsername: row.githubUsername ?? null,
+            engineTag     : row.engineTag ?? null,
+            family        : row.family ?? null,
             // the launch-side facts the card's clone-path line reads: the harness key as the
             // registry holds it, and the working repository the Fleet derived before any launch.
             // `repoStatus` is null on a row the repo producer did not cover — honest null, no line
-            harnessType        : row.harnessType ?? null,
-            repoSlug           : row.repoStatus?.repoSlug ?? null,
-            repoPath           : row.repoStatus?.repoPath ?? null,
+            harnessType: row.harnessType ?? null,
+            repoSlug   : row.repoStatus?.repoSlug ?? null,
+            repoPath   : row.repoStatus?.repoPath ?? null,
+            repoStatus : row.repoStatus ?? null,
             // the last start's outcome per other repository, from the Fleet's launch record
             repoOutcomes       : row.repoOutcomes ?? null,
             // each checkout's dependency row from the latest start that reached its install
@@ -59,11 +60,11 @@ class RosterRow extends Base {
             // the model and effort a Codex seat's config is set to now
             harnessSettings    : row.harnessSettings ?? null,
             // where a running desktop seat's session opened, from the same record
-            sessionFolder      : row.sessionFolder ?? null,
-            launchAdmission    : row.launchAdmission ?? null,
-            mcpSettings        : row.agent && row.agent.id === row.id && Object.hasOwn(row.agent, 'mcpServers')
+            sessionFolder  : row.sessionFolder ?? null,
+            launchAdmission: row.launchAdmission ?? null,
+            mcpSettings    : row.agent && row.agent.id === row.id && Object.hasOwn(row.agent, 'mcpServers')
                 ? {forge: row.agent.forge, mcpServers: row.agent.mcpServers} : null,
-            launchable        : row.launchable ?? null,
+            launchable         : row.launchable ?? null,
             openLaneCount      : row.openLaneCount ?? null,
             laneLine           : row.laneLine ?? null,
             laneClaimedAt      : row.laneClaimedAt ?? null,

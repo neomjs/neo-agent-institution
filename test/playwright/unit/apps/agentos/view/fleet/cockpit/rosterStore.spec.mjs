@@ -10,9 +10,9 @@ setup({
     }
 });
 
-import {test, expect}                                                     from '@playwright/test';
-import Neo                                                                from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core                                                          from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import {test, expect} from '@playwright/test';
+import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                         '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
@@ -74,9 +74,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                   livenessReadTimeout   : 4000
               },
               controller = makeControllerFake(FleetCockpitController, {
-                  component              : view,
-                  getReference           : reference => reference === 'fleet-grid' ? grid : null,
-                  lastLiveRows           : null,
+                  component   : view,
+                  getReference: reference => reference === 'fleet-grid' ? grid : null,
+                  lastLiveRows: null,
                   // the provider-owned roster authority: in this fixture the grid's bound store IS
                   // the provider store, so the write path and the selection re-seat read one truth
                   resolveFleetRosterStore: () => grid?.store ?? null,
@@ -327,10 +327,11 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             sessionFolder  : null,
             launchAdmission: null,
             mcpSettings    : null,
-            repoPath: null,
-            repoSlug: null,
-            sources : liveSources(),
-            state   : 'ok',
+            repoPath       : null,
+            repoSlug       : null,
+            repoStatus     : null,
+            sources        : liveSources(),
+            state          : 'ok',
             // the S2 telltale axes: absent on this row → honest null, never a synthesized 'unknown'.
             // The view must not manufacture the taxonomy's unknown — that value means the PRODUCER
             // looked and could not see, which is a different fact from "this row carried no axis".
@@ -346,18 +347,18 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             claimedAt = '2026-10-02T15:30:00.000Z',
             lane      = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null},
             mapped    = FleetCockpitController.prototype.mapRosterRow({
-                id: 'resident-key', githubUsername: 'neo-gpt-sophie',
+                id      : 'resident-key', githubUsername: 'neo-gpt-sophie',
                 laneLine: 'Review the current lane stamp', laneClaimedAt: claimedAt,
-                sources: {...liveSources(), lane}
+                sources : {...liveSources(), lane}
             }),
             empty     = FleetCockpitController.prototype.mapRosterRow({
                 id: 'resident-without-claim', sources: {...liveSources(), lane}
             });
 
         expect(mapped).toMatchObject({
-            agentId: 'resident-key', githubUsername: 'neo-gpt-sophie',
+            agentId : 'resident-key', githubUsername: 'neo-gpt-sophie',
             laneLine: 'Review the current lane stamp', laneClaimedAt: claimedAt,
-            sources: {lane}
+            sources : {lane}
         });
         expect(empty).toMatchObject({laneLine: null, laneClaimedAt: null, sources: {lane}});
     });
@@ -368,8 +369,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             harnessType: 'claude-desktop',
             lifecycle  : {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
             // the repo producer's row as `inspectFleetRepos` shapes it: the path exists before any launch
-            repoStatus : {configured: true, repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-opus-ada/neomjs/neo', exists: true, isCheckout: true, state: 'ready', provisioningAction: null},
-            sources    : liveSources()
+            repoStatus: {configured: true, repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-opus-ada/neomjs/neo', exists: true, isCheckout: true, state: 'ready', provisioningAction: null},
+            sources   : liveSources()
         });
 
         expect(mapped).toMatchObject({
@@ -563,6 +564,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             mcpSettings        : null,
             repoPath           : null,
             repoSlug           : null,
+            repoStatus         : null,
             sources            : liveSources(),
             state              : 'ok',
             throttle           : null,
@@ -605,11 +607,11 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                 setState(values) { Object.assign(this.selectionState, values) }
             }, FleetCockpit),
             controller = makeControllerFake(FleetCockpitController, {
-                component              : view,
+                component        : view,
                 getReference,
-                lastLiveRows           : null,
-                memoriesTarget         : null,
-                reconcilingRoster      : false,
+                lastLiveRows     : null,
+                memoriesTarget   : null,
+                reconcilingRoster: false,
                 // the provider-owned roster authority — the SAME store the grid fake binds, so the
                 // write path, the listener latch and the selection re-seat all read one truth
                 resolveFleetRosterStore: () => store
@@ -701,8 +703,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('reconcileSelection (real Store): first-live clear/add re-seats a surviving selection onto the new instance', async () => {
-        const store              = Neo.create(FleetRoster, {data: []}),
-              setCalls           = [],
+        const store    = Neo.create(FleetRoster, {data: []}),
+              setCalls = [],
               // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
               detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 4, detail);
@@ -736,8 +738,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('reconcileSelection (real Store): a later empty snapshot clears a removed resident to the honest empty state', async () => {
-        const store              = Neo.create(FleetRoster, {data: []}),
-              setCalls           = [],
+        const store    = Neo.create(FleetRoster, {data: []}),
+              setCalls = [],
               // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
               detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 5, detail);
@@ -761,8 +763,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('reconcileSelection (real Store): a surviving same-instance reconcile is a no-op (mutation path owns it)', async () => {
-        const store              = Neo.create(FleetRoster, {data: []}),
-              setCalls           = [],
+        const store    = Neo.create(FleetRoster, {data: []}),
+              setCalls = [],
               // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
               detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 6, detail);

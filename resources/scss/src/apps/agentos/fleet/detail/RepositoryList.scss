@@ -46,6 +46,7 @@
         }
     }
 
+    .fm-repo-fact,
     .fm-repo-reason {
         color        : var(--fm-ink-dim);
         flex-basis   : 100%;
@@ -58,6 +59,7 @@
         }
     }
 
+    .fm-repo-delete,
     .fm-repo-remove {
         background   : var(--fm-panel-2);
         border       : 1px solid var(--fm-line);

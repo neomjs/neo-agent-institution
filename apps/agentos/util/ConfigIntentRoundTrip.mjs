@@ -85,6 +85,20 @@ class ConfigIntentRoundTrip extends Base {
     }
 
     /**
+     * @summary Capture the current definition instance and its shared intent authority for a
+     * follow-up operation. A replacement record or any newer save retires the receipt.
+     * @param {Neo.data.Store} store
+     * @param {String} agentId
+     * @returns {Function} Whether this exact record and intent still own the operation.
+     */
+    static captureIntentAuthority(store, agentId) {
+        const record = store?.get(agentId), authority = record && RECORD_GENERATIONS.get(record);
+
+        return () => Boolean(record && !store.isDestroyed && store.get(agentId) === record &&
+            RECORD_GENERATIONS.get(record) === authority)
+    }
+
+    /**
      * @summary Run one configuration round-trip and render its truth through the caller's sink.
      * @param {Object}        config
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam) — the DI discipline shared with `addAgentFlow`.
@@ -92,7 +106,7 @@ class ConfigIntentRoundTrip extends Base {
      * @param {Object|null}   [config.owner]          The calling view — an opaque identity token for cross-owner supersede honesty. Omitting it degrades stale drops to silent.
      * @param {Function}      config.setSaveStatus    `(agentId, state, reason, detail)` — the caller's ephemeral status sink; states: `pending|accepted|rejected|superseded` (`superseded` is non-terminal and must not latch). A `rejected` the Fleet itself answered carries `detail.code`, the Fleet's code for it or null; an unreachable or invalid answer carries no detail.
      * @param {Neo.data.Store|null} config.store      The shared definitions store — record resolution, the arbitration keys, and the write-generation bump all derive from it.
-     * @returns {Promise<void>}
+     * @returns {Promise<Object|undefined>} Only an admitted readback returns `{agent, isCurrent}`.
      */
     static async runConfigIntentRoundTrip({
         bridgeResolver = null,
@@ -223,7 +237,8 @@ class ConfigIntentRoundTrip extends Base {
                 // only the RESPONSE mutates the durable Body projection. A withdrawn model, effort or memory
                 // consent is absent from the canonical readback, so it clears rather than outliving its withdrawal
                 record.set({memoryImport: null, model: null, reasoningEffort: null, ...agent});
-                setSaveStatus(agentId, 'accepted', 'Configuration saved.')
+                setSaveStatus(agentId, 'accepted', 'Configuration saved.');
+                return {agent, isCurrent: () => !staleAuthority() && !store.isDestroyed && store.get(agentId) === record}
             } else if (outcome?.status === 'rejected') {
                 setSaveStatus(agentId, 'rejected', outcome.reason || 'Configuration was rejected.', {code: outcome.code ?? null})
             } else {
