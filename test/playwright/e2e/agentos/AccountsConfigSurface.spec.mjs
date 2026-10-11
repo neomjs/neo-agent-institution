@@ -1,9 +1,9 @@
-import {test, expect, landAgentDefinitions, loadAgentOsModule, loadNeuralLinkModules} from '../../fixtures.mjs';
-import {authenticatedFleetOptions, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
-import {listHarnessProducts}                                     from 'neo-agent-brain/fleet-contract';
-import fs                                                        from 'fs';
-import os                                                        from 'os';
-import path                                                      from 'path';
+import {test, expect, landAgentDefinitions, loadAgentOsModule, loadNeuralLinkModules}                            from '../../fixtures.mjs';
+import {authenticatedFleetOptions, fleetE2EFailure, fleetE2ESuccess, reloadRoster, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
+import {listHarnessProducts}                                                                                     from 'neo-agent-brain/fleet-contract';
+import fs                                                                                                        from 'fs';
+import os                                                                                                        from 'os';
+import path                                                                                                      from 'path';
 
 const [
     {NeuralLink_DataService},
@@ -43,8 +43,8 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
         await page.getByRole('tab', {name: 'Accounts', exact: true}).click();
 
         const
-            panel = page.locator('.agent-panel-accounts'),
-            [accounts] = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id', 'parentId']),
+            panel       = page.locator('.agent-panel-accounts'),
+            [accounts]  = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id', 'parentId']),
             dashboardId = accounts.properties.parentId;
         await expect(panel).toBeVisible();
         await expect.poll(async () => (await app.getComponent(dashboardId, ['sortZone.id']))['sortZone.id']).toBeTruthy();
@@ -57,8 +57,8 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
         ]) {
             await target.scrollIntoViewIfNeeded();
             const box = await target.boundingBox(), before = await panel.boundingBox();
-            const x = whitespace ? box.x + box.width - 4 : box.x + 4;
-            const y = box.y + (whitespace ? box.height - 12 : box.height / 2);
+            const x   = whitespace ? box.x + box.width - 4 : box.x + 4;
+            const y   = box.y + (whitespace ? box.height - 12 : box.height / 2);
             await page.evaluate(() => getSelection().removeAllRanges());
             await page.mouse.move(x, y);
             await page.mouse.down();
@@ -102,8 +102,8 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
         await page.setViewportSize({width: 1400, height: 700});
         const handle = panel.locator('.fm-accounts-drag-handle');
         await handle.scrollIntoViewIfNeeded();
-        const box = await handle.boundingBox();
-        const motion = app.observeMotion([accounts.properties.id], 800, 50);
+        const box          = await handle.boundingBox();
+        const motion       = app.observeMotion([accounts.properties.id], 800, 50);
         const popupPromise = page.waitForEvent('popup', {timeout: 15000});
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         await page.mouse.down();
@@ -452,6 +452,74 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             server && await new Promise(resolve => server.close(resolve));
             FleetRegistryService.dataDir = priorDataDir;
             fs.rmSync(tmpDir, {recursive: true, force: true})
+        }
+    });
+
+    test('a running seat prepares now, unlists, sees a delete refusal, then retires the checkout (#642)', async ({page, neuralLink}, testInfo) => {
+        const id         = 'repository-witness', extra = 'example/new-repository', requests = [];
+        let   repos      = [], allowDelete = false;
+        const definition = {id, githubUsername: id, harnessType: 'codex', metadata: {repo: {repoSlug: 'example/work'}, repos: []}};
+        const options    = authenticatedFleetOptions({dispatch: async request => {
+            requests.push(request);
+            switch (request.method) {
+                case 'listAgents': return fleetE2ESuccess([definition]);
+                case 'fleetRoster': return fleetE2ESuccess({rows: [{
+                    id, displayName: 'Repository Witness', family: 'gpt', avatarUrl: '', repoOutcomes: repos,
+                    dependencyOutcomes: [{repoSlug: 'example/work', state: 'installed'}],
+                    lifecycle         : {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
+                    sources           : {runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}}
+                }]});
+                case 'setRepos':
+                    definition.metadata.repos = request.params.repos;
+                    return fleetE2ESuccess({status: 'accepted', agent: definition});
+                case 'prepareRepos':
+                    repos = [...new Map([...repos, ...definition.metadata.repos.map(repo => ({...repo, state: 'prepared', via: 'prepare', at: '2026-10-11T03:00:00Z'}))]
+                        .map(row => [row.repoSlug, row])).values()];
+                    return fleetE2ESuccess({state: 'complete', repos});
+                case 'removeRepoCheckout':
+                    if (!allowDelete) return fleetE2ESuccess({removed: false, reason: 'The checkout contains unpushed commits.'});
+                    repos = repos.filter(row => row.repoSlug !== request.params.repoSlug);
+                    return fleetE2ESuccess({removed: true});
+                case 'fleetActivity': return fleetE2ESuccess({capability: {source: 'fleet:test', state: 'wired', confidence: 'observed'}, events: []});
+                default: return fleetE2EFailure('not supplied by repository witness')
+            }
+        }});
+        const server = await startFleetBridgeServer(options);
+        try {
+            await page.goto('/apps/agentos/index.html');
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+            const app = await neuralLink.connectToApp('AgentOS');
+            await wireAuthenticatedFleetBridge({app, fleetUrl: `http://127.0.0.1:${server.address().port}/fleet`, bearerToken: options.bearerToken});
+            await reloadRoster(app);
+            await page.getByRole('tab', {name: 'Accounts', exact: true}).click();
+            const [accounts] = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id']);
+            await app.callMethod(accounts.properties.id, 'loadAgentDefinitions');
+            const [component] = await app.queryComponent({className: 'AgentOS.view.fleet.detail.AgentReposContainer'}, ['id']);
+            const card        = page.locator('.fm-agent-repos-card'), row = card.locator('.neo-list-item').filter({hasText: extra});
+            await card.getByRole('textbox', {name: 'Add a repository', exact: true}).fill(extra);
+            await card.locator('.fm-repos-add-button').click();
+            await expect(row).toContainText('checkout ready · now');
+            await expect(row).toContainText('skills at the next Start');
+            expect(requests.filter(row => ['setRepos', 'prepareRepos'].includes(row.method)).map(row => row.method)).toEqual(['setRepos', 'prepareRepos']);
+            expect(await app.callMethod(component.properties.id, 'getCheckoutRows')).toMatchObject([{repoSlug: extra, via: 'prepare'}]);
+            await row.locator('.fm-repo-remove').click();
+            await expect(row).toContainText('checkout kept on disk');
+            await expect(row).toContainText('skills unverified');
+            await expect(row).not.toContainText('skills at the next Start');
+            await expect(card.getByRole('button', {name: `Delete checkout ${extra}`, exact: true})).toBeEnabled();
+            await row.locator('.fm-repo-delete').click();
+            await expect(row).toContainText('The checkout contains unpushed commits.');
+            await page.setViewportSize({width: 1100, height: 700});
+            await card.screenshot({path: testInfo.outputPath('repositories-refusal.png')});
+            await testInfo.attach('repositories-refusal', {path: testInfo.outputPath('repositories-refusal.png'), contentType: 'image/png'});
+            allowDelete = true;
+            await row.locator('.fm-repo-delete').click();
+            await expect(row).toHaveCount(0);
+            await reloadRoster(app);
+            expect(await app.callMethod(component.properties.id, 'getCheckoutRows')).toEqual([]);
+            expect(requests.some(row => ['startAgent', 'stopAgent', 'restartAgent'].includes(row.method))).toBe(false)
+        } finally {
+            await new Promise(resolve => server.close(resolve))
         }
     });
 

@@ -126,6 +126,10 @@ class FleetAgent extends Model {
             name        : 'repoPath',
             defaultValue: null
         }, {
+            // The working checkout's filesystem observation; additional repositories use repoOutcomes.
+            name        : 'repoStatus',
+            defaultValue: null
+        }, {
             // the last start's outcome for each of the seat's other repositories,
             // `[{repoSlug, state: 'prepared' | 'failed', reason?}]`, kept on the Fleet's launch record
             // (the roster DTO's `repoOutcomes`), so it outlives a roster read and an app reload. A new

@@ -6,27 +6,28 @@ setup({
     }
 });
 
-import {test, expect}  from '@playwright/test';
-import fs              from 'fs';
-import path            from 'path';
-import {fileURLToPath} from 'url';
-import Neo             from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core       from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import DataStore       from '../../../../../node_modules/neo.mjs/src/data/Store.mjs';
-import StateProvider   from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
-import Instance        from '../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
-import Accounts        from '../../../../../apps/agentos/view/accounts/Panel.mjs';
-import AddAgentForm    from '../../../../../apps/agentos/view/fleet/instances/AddAgentForm.mjs';
+import {test, expect}   from '@playwright/test';
+import fs               from 'fs';
+import path             from 'path';
+import {fileURLToPath}  from 'url';
+import Neo              from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core        from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import DataStore        from '../../../../../node_modules/neo.mjs/src/data/Store.mjs';
+import StateProvider    from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import Instance         from '../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
+import Accounts         from '../../../../../apps/agentos/view/accounts/Panel.mjs';
+import AddAgentForm     from '../../../../../apps/agentos/view/fleet/instances/AddAgentForm.mjs';
 import TestFleetTenants from '../../../../../apps/agentos/store/FleetTenants.mjs';
+import FleetRoster      from '../../../../../apps/agentos/store/FleetRoster.mjs';
 
-import ConfigIntentRoundTrip from '../../../../../apps/agentos/util/ConfigIntentRoundTrip.mjs';
+import ConfigIntentRoundTrip                                    from '../../../../../apps/agentos/util/ConfigIntentRoundTrip.mjs';
 import {mcpCatalogFor, normalizeMcpOverrides, resolveMcpMatrix} from 'neo-agent-brain/fleet-contract';
 
 const
-    __filename = fileURLToPath(import.meta.url),
-    __dirname  = path.dirname(__filename),
-    repoRoot   = path.resolve(__dirname, '../../../../..'),
-    viewPath   = path.join(repoRoot, 'apps/agentos/view/accounts/Panel.mjs'),
+    __filename     = fileURLToPath(import.meta.url),
+    __dirname      = path.dirname(__filename),
+    repoRoot       = path.resolve(__dirname, '../../../../..'),
+    viewPath       = path.join(repoRoot, 'apps/agentos/view/accounts/Panel.mjs'),
     controllerPath = path.join(repoRoot, 'apps/agentos/view/accounts/Controller.mjs');
 
 let AgentDefinition, Store;
@@ -78,6 +79,204 @@ const createAccounts = async config => {
     return view
 };
 
+test.describe('Accounts live repository operations (#642)', () => {
+    const working = {repoSlug: 'example/work'}, extra = {repoSlug: 'example/extra'};
+
+    /** @summary Mount real binding owners and release them after one asynchronous witness. */
+    const withRepositories = async run => {
+        const definitions = makeAgentStore([
+            {id: 'ada', githubUsername: 'ada', metadata: {repo: working, repos: []}},
+            {id: 'vega', githubUsername: 'vega', metadata: {repo: working, repos: []}}
+        ]);
+        const roster = Neo.create(FleetRoster, {data: [{agentId: 'ada', state: 'ok', repoOutcomes: [
+            {...extra, state: 'prepared', via: 'prepare', at: '2026-10-11T03:00:00Z'}
+        ]}]});
+        const prior = globalThis.AgentOS;
+        let view;
+        try {
+            globalThis.AgentOS = {...prior, fleet: {}};
+            view = await createAccounts({agentDefinitionsStore: definitions, fleetRosterStore: roster});
+            await view.ready();
+            view.selectedAgentId = 'ada';
+            const card   = view.getReference('agent-repos-card'), controller = view.getController();
+            const bridge = {
+                setRepos          : async ({id, repos}) => ({status: 'accepted', agent: {id, metadata: {repo: working, repos}}}),
+                removeRepoCheckout: async () => ({removed: false, reason: 'changed files'})
+            };
+            globalThis.AgentOS = {...prior, fleet: {registryBridge: bridge}};
+            card.refresh();
+            await run({view, card, controller, definitions, roster, bridge})
+        } finally {
+            globalThis.AgentOS = prior;
+            view?.destroy(); definitions.destroy(); roster.destroy()
+        }
+    };
+
+    for (const [result, words] of [
+        [{state: 'at-start', repos: []}, 'clones at the next Start'],
+        [{state: 'identity-unavailable', repos: [], reason: 'launch identity unavailable'}, 'launch identity unavailable'],
+        [{state: 'superseded', repos: [{repoSlug: 'example/new', state: 'prepared'}]}, 'the launch changed'],
+        [null, 'unconfirmed · the next status says'],
+        ['throw', 'unconfirmed · the next status says'],
+        ['unsupported', 'Configuration saved.']
+    ]) {
+        test(`preparation answer ${result?.state ?? result} preserves the accepted declaration`, async () => withRepositories(async ({card, controller, definitions, bridge}) => {
+            bridge.prepareRepos = async () => {
+                if (result === 'throw') throw new Error('private transport detail');
+                if (result === 'unsupported') throw Object.assign(new Error('old server'), {fleetWireState: 'unsupported-method'});
+                return result
+            };
+            await controller.onAgentReposIntent({id: 'ada', repos: [{repoSlug: 'example/new'}]});
+            expect(definitions.get('ada')['metadata.repos']).toEqual([{repoSlug: 'example/new'}]);
+            expect(card.getReference('repos-status').text).toBe(words);
+            expect(card.getReference('repo-list').store.get('example/new').checkout.text).not.toContain('ready');
+            expect(JSON.stringify(card.vdom)).not.toContain('private transport detail')
+        }))
+    }
+
+    test('rejected saves and stopped seats never prepare; a missing verb leaves the save accepted', async () => withRepositories(async ({card, controller, definitions, roster, bridge}) => {
+        let calls = 0;
+        bridge.prepareRepos = async () => {calls++; return {state: 'complete', repos: []}};
+        const accepted = bridge.setRepos;
+        bridge.setRepos = async () => ({status: 'rejected', reason: 'invalid repository'});
+        await controller.onAgentReposIntent({id: 'ada', repos: [extra]});
+        expect(definitions.get('ada')['metadata.repos']).toEqual([]);
+        bridge.setRepos = accepted;
+        roster.get('ada').state = 'off';
+        await controller.onAgentReposIntent({id: 'ada', repos: [extra]});
+        expect(calls).toBe(0);
+        expect(card.getReference('repos-status').text).toBe('clones at the next Start');
+        roster.get('ada').state = 'ok';
+        delete bridge.prepareRepos;
+        await controller.onAgentReposIntent({id: 'ada', repos: [extra]});
+        expect(card.getReference('repos-status').text).toBe('Configuration saved.')
+    }));
+
+    for (const reason of ['changed files', 'unpushed commits', 'a stash', 'ignored files']) {
+        test(`delete refusal retains the row and its reason: ${reason}`, async () => withRepositories(async ({card, controller, bridge}) => {
+            let payload;
+            bridge.removeRepoCheckout = async value => {payload = value; return {removed: false, reason}};
+            expect(card.getReference('repo-list').store.get(extra.repoSlug).dependency.text).toBe('skills unverified');
+            await controller.onDeleteCheckout({id: 'ada', repoSlug: extra.repoSlug, force: true});
+            expect(payload).toEqual({id: 'ada', repoSlug: extra.repoSlug});
+            expect(card.getReference('repo-list').store.get(extra.repoSlug).retained).toBe(true);
+            expect(JSON.stringify(card.getReference('repo-list').vdom)).toContain(reason)
+        }))
+    }
+
+    test('successful deletion retires the row; old dependency history cannot recreate it', async () => withRepositories(async ({card, controller, roster, bridge}) => {
+        roster.get('ada').set({dependencyOutcomes: [{...extra, state: 'installed'}]});
+        bridge.removeRepoCheckout = async () => ({removed: true, repoPath: '/not-rendered'});
+        await controller.onDeleteCheckout({id: 'ada', repoSlug: extra.repoSlug});
+        expect(card.getReference('repo-list').store.get(extra.repoSlug)).toBeNull();
+        roster.get('ada').set({repoOutcomes: []});
+        expect(card.checkoutReceipt).toBeNull();
+        expect(card.getReference('repo-list').store.get(extra.repoSlug)).toBeNull();
+        expect(JSON.stringify(card.vdom)).not.toContain('/not-rendered')
+    }));
+
+    for (const action of ['prepare', 'delete']) {
+        test(`${action} held reply cannot overwrite a newer checkout observation`, async () => withRepositories(async ({card, controller, roster, bridge}) => {
+            let resolve;
+            bridge[action === 'prepare' ? 'prepareRepos' : 'removeRepoCheckout'] = () => new Promise(done => {resolve = done});
+            const pending = action === 'prepare'
+                ? controller.onAgentReposIntent({id: 'ada', repos: [extra]})
+                : controller.onDeleteCheckout({id: 'ada', repoSlug: extra.repoSlug});
+            await Promise.resolve(); await Promise.resolve();
+            roster.get('ada').set({repoOutcomes: [{...extra, state: 'prepared', via: 'prepare', at: '2026-10-11T04:00:00Z'}]});
+            resolve(action === 'prepare'
+                ? {state: 'complete', repos: [{...extra, state: 'failed', reason: 'older failure'}]}
+                : {removed: true});
+            await pending;
+            expect(card.getReference('repo-list').store.get(extra.repoSlug)).not.toBeNull();
+            expect(JSON.stringify(card.vdom)).not.toContain('older failure');
+            expect(card.checkoutReceipt).toBeNull();
+            expect(card.getReference('repos-status').text).toBe('repository status changed · refreshing')
+        }))
+    }
+
+    for (const action of ['prepare', 'delete']) {
+        for (const interruption of ['A-B-A', 'definitions-store', 'roster-store', 'destroy', 'other-owner-save', 'same-owner-save']) {
+            test(`${action} reply is fenced after ${interruption}`, async () => withRepositories(async ({view, card, controller, definitions, bridge}) => {
+                let resolve, replacement;
+                const method = action === 'prepare' ? 'prepareRepos' : 'removeRepoCheckout';
+                bridge[method] = () => new Promise(done => {resolve = done});
+                const pending = action === 'prepare'
+                    ? controller.onAgentReposIntent({id: 'ada', repos: [extra]})
+                    : controller.onDeleteCheckout({id: 'ada', repoSlug: extra.repoSlug});
+                await Promise.resolve(); await Promise.resolve();
+                expect(typeof resolve).toBe('function');
+                let   paints = 0, refreshes = 0;
+                const paint  = card.setRepositoryStatus.bind(card);
+                card.setRepositoryStatus = (...args) => {paints++; return paint(...args)};
+                view.on('repositoryOperationSettled', () => refreshes++);
+                if (interruption === 'A-B-A') {
+                    view.selectedAgentId = 'vega'; view.selectedAgentId = 'ada'
+                } else if (interruption === 'definitions-store') {
+                    replacement = makeAgentStore([{id: 'ada', metadata: {repo: working, repos: []}}]);
+                    view.agentDefinitionsStore = replacement
+                } else if (interruption === 'roster-store') {
+                    replacement = Neo.create(FleetRoster);
+                    view.fleetRosterStore = replacement
+                } else if (interruption === 'destroy') {
+                    view.destroy()
+                } else if (interruption === 'same-owner-save') {
+                    delete bridge.prepareRepos;
+                    await controller.onAgentReposIntent({id: 'ada', repos: []});
+                    paints = 0
+                } else {
+                    await ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+                        intent: {id: 'ada', harnessType: 'codex'}, owner: {}, store: definitions,
+                        setSaveStatus() {}, bridgeResolver: () => ({configureAgent: async () => ({status: 'rejected', reason: 'newer'})})
+                    })
+                }
+                resolve(action === 'prepare' ? {state: 'complete', repos: [{...extra, state: 'prepared', via: 'prepare'}]} : {removed: true});
+                await pending;
+                expect(refreshes).toBe(0);
+                expect(paints).toBe(interruption === 'other-owner-save' ? 1 : 0);
+                if (interruption === 'other-owner-save') expect(card.repositoryStatus.state).toBe('superseded');
+                replacement?.destroy()
+            }))
+        }
+    }
+
+    test('prepares only after accepted readback and keeps checkout and dependency facts separate', async () => {
+        const definitions = makeAgentStore([{id: 'ada', githubUsername: 'ada', metadata: {repo: working, repos: []}}]);
+        const roster      = Neo.create(FleetRoster, {data: [{agentId: 'ada', state: 'ok', repoOutcomes: []}]});
+        const prior       = globalThis.AgentOS, calls = [];
+        let view, resolveSave;
+        try {
+            view = await createAccounts({agentDefinitionsStore: definitions, fleetRosterStore: roster});
+            await view.ready();
+            view.selectedAgentId = 'ada';
+            expect(view.getReference('agent-repos-card').record?.id).toBe('ada');
+            expect(view.getReference('agent-repos-card').rosterStore?.get('ada')?.state).toBe('ok');
+            globalThis.AgentOS = {fleet: {registryBridge: {
+                setRepos    : intent => new Promise(resolve => {calls.push(intent); resolveSave = resolve}),
+                prepareRepos: async intent => {
+                    calls.push(intent);
+                    expect(definitions.get('ada')['metadata.repos']).toEqual([extra]);
+                    return {state: 'complete', repos: [{...extra, state: 'prepared', via: 'prepare', at: '2026-10-11T03:00:00Z'}]}
+                }
+            }}};
+            const pending = view.getController().onAgentReposIntent({id: 'ada', repos: [extra]});
+            expect(calls).toEqual([{id: 'ada', repos: [extra]}]);
+            resolveSave({status: 'accepted', agent: {id: 'ada', metadata: {repo: working, repos: [extra]}}});
+            await pending;
+            expect(calls).toEqual([{id: 'ada', repos: [extra]}, {id: 'ada'}]);
+            const card = view.getReference('agent-repos-card');
+            expect(card.getReference('repos-heading').text).toBe('Repositories');
+            const content = JSON.stringify(card.getReference('repo-list').vdom);
+            expect(content).toContain('checkout ready · now');
+            expect(content).toContain('skills at the next Start');
+            expect(content).not.toContain('skills prepared')
+        } finally {
+            globalThis.AgentOS = prior;
+            view?.destroy(); definitions.destroy(); roster.destroy()
+        }
+    });
+});
+
 test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', () => {
     test('the view mounts the shared AddAgentForm and keeps no form of its own', () => {
         const
@@ -98,7 +297,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
 
     test('the Accounts panel forwards bound Agent OS changes to its mounted card', async () => {
         const definitions = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]);
-        const view = await createAccounts({
+        const view        = await createAccounts({
             agentDefinitionsStore: definitions,
             fleetTenantsStore    : testFleetTenantsStore,
             instanceStore        : testInstanceStore,
@@ -107,8 +306,8 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
             shellPlaneBase       : 'http://127.0.0.1:3102'
         });
         const
-            card     = view.getReference('agent-config-card'),
-            cardId   = card.id;
+            card   = view.getReference('agent-config-card'),
+            cardId = card.id;
 
         expect(card.agentDefinitionsStore).toBe(definitions);
         expect(card.boundProfileId).toBe('fleet-a');
@@ -154,7 +353,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
 
     test('a definition the readback guard refuses is neither written nor re-fired', async () => {
         const
-            store = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]),
+            store   = makeAgentStore([{id: 'a', githubUsername: 'a', harnessType: 'codex'}]),
             invalid = [
                 {agent: {id: 'echo', githubUsername: 'echo', harnessType: 'codex', credential: 'ghp_must_not_land'}},
                 {agent: {id: 'no-harness', githubUsername: 'no-harness'}},
@@ -341,7 +540,7 @@ test.describe('AgentOS.view.accounts.Panel — the one add-agent form (#245)', (
 
     test('identity setup writes only the registry\'s public definition to the shared roster', () => {
         const
-            source = fs.readFileSync(viewPath, 'utf8'),
+            source           = fs.readFileSync(viewPath, 'utf8'),
             controllerSource = fs.readFileSync(controllerPath, 'utf8');
 
         // upsert goes through the provider-bound roster store with the form's readback, behind the
@@ -892,7 +1091,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
 
         card.on('configIntent', intent => intents.push(intent));
 
-        const find = (node, id) => node?.id === id ? node : (node?.cn || []).reduce((hit, child) => hit || find(child, id), null);
+        const find      = (node, id) => node?.id === id ? node : (node?.cn || []).reduce((hit, child) => hit || find(child, id), null);
         const buttonIds = () => {
             const collect = (node, ids=[]) => {
                 node?.id?.startsWith(`${card.id}__`) && node.tag === 'button' && ids.push(node.id);
@@ -1004,7 +1203,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{
                 id: 'ada', githubUsername: 'ada', harnessType: 'codex'
             }, {
-                id: 'sophie', githubUsername: 'sophie', displayName: 'Sophie', harnessType: 'codex',
+                id       : 'sophie', githubUsername: 'sophie', displayName: 'Sophie', harnessType: 'codex',
                 mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'}
             }]}),
             tenants = Neo.create(FleetTenants, {data: [{
@@ -1053,8 +1252,8 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
 
         // A same-agent canonical readback keeps the editor open; switching to another identity closes it.
         card.record = {
-            id: 'ada', githubUsername: 'ada', harnessType: 'codex',
-            mcpTarget: {kind: 'tenant', tenantId: 'tenant-a'},
+            id        : 'ada', githubUsername: 'ada', harnessType: 'codex',
+            mcpTarget : {kind: 'tenant', tenantId: 'tenant-a'},
             statusText: 'canonical refresh'
         };
         expect(card.connectionEditing).toBe(true);
@@ -1071,7 +1270,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
     test('an empty but unhydrated definitions Store cannot authorize a new saved-tenant target', () => {
         const
             definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition}),
-            tenants = Neo.create(FleetTenants, {data: [{
+            tenants     = Neo.create(FleetTenants, {data: [{
                 id: 'tenant-a', endpoint: 'https://tenant-a.example.com', status: 'connected'
             }, {
                 id: 'tenant-b', endpoint: 'https://tenant-b.example.com', status: 'connected'
@@ -1080,7 +1279,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             card = Neo.create(AgentConfigCard, {
                 record,
                 agentDefinitionsStore: definitions,
-                tenantStore: tenants
+                tenantStore          : tenants
             }),
             intents = [],
             find = (node, id) => node?.id === id ? node : (node?.cn || []).reduce((hit, child) => hit || find(child, id), null),
@@ -1111,7 +1310,7 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
     test('the local target is non-actionable when no bound Agent OS is available', () => {
         const
             store = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{
-                id: 'ada', githubUsername: 'ada', harnessType: 'codex',
+                id       : 'ada', githubUsername: 'ada', harnessType: 'codex',
                 mcpTarget: {kind: 'tenant', tenantId: 'saved-a'}
             }]}),
             tenants = Neo.create(FleetTenants, {data: []}),
@@ -1203,9 +1402,9 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             // Stores are present before the bridge, so construction-time reads fail closed.
             view = await createAccounts({agentDefinitionsStore: store});
             const
-                controller   = view.getController(),
-                card         = view.getReference('agent-config-card'),
-                saveStatuses = [],
+                controller    = view.getController(),
+                card          = view.getReference('agent-config-card'),
+                saveStatuses  = [],
                 setSaveStatus = card.setSaveStatus.bind(card);
 
             card.setSaveStatus = (...args) => {
@@ -1433,23 +1632,23 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
 
     test('a replaced definitions or tenant Store rejects the old in-flight read', async () => {
         const
-            definitions = makeAgentStore([{id: 'kept-definition', githubUsername: 'kept', harnessType: 'codex'}]),
+            definitions     = makeAgentStore([{id: 'kept-definition', githubUsername: 'kept', harnessType: 'codex'}]),
             nextDefinitions = makeAgentStore([{id: 'replacement-definition', githubUsername: 'replacement', harnessType: 'codex'}]),
-            tenants = Neo.create(FleetTenants, {data: [{id: 'kept-tenant', endpoint: 'https://kept.example.com', status: 'connected'}]}),
-            nextTenants = Neo.create(FleetTenants, {data: [{id: 'replacement-tenant', endpoint: 'https://replacement.example.com', status: 'connected'}]}),
-            pending = [],
-            priorAgentOS = globalThis.AgentOS;
+            tenants         = Neo.create(FleetTenants, {data: [{id: 'kept-tenant', endpoint: 'https://kept.example.com', status: 'connected'}]}),
+            nextTenants     = Neo.create(FleetTenants, {data: [{id: 'replacement-tenant', endpoint: 'https://replacement.example.com', status: 'connected'}]}),
+            pending         = [],
+            priorAgentOS    = globalThis.AgentOS;
         let view;
 
         try {
             view = await createAccounts({agentDefinitionsStore: definitions, fleetTenantsStore: tenants});
             globalThis.AgentOS = {fleet: {registryBridge: {
-                listAgents: () => new Promise(resolve => pending.push({kind: 'definitions', resolve})),
+                listAgents : () => new Promise(resolve => pending.push({kind: 'definitions', resolve})),
                 listTenants: () => new Promise(resolve => pending.push({kind: 'tenants', resolve}))
             }}};
 
             const oldDefinitionsRead = view.getController().loadAgentDefinitions();
-            const oldTenantsRead = view.getController().loadFleetTenants();
+            const oldTenantsRead     = view.getController().loadFleetTenants();
             await Promise.resolve();
 
             // Let the binding hooks observe the new provider Stores without launching extra reads.
@@ -1482,8 +1681,8 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
 
     test('a replacement Store retires pending statuses for matching agent ids', async () => {
         const
-            store = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
-            replacement = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
+            store        = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
+            replacement  = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
             priorAgentOS = globalThis.AgentOS;
         let view, resolveConfig, resolveRepos;
 
@@ -1491,12 +1690,12 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             view = await createAccounts({agentDefinitionsStore: store});
             globalThis.AgentOS = {fleet: {registryBridge: {
                 configureAgent: () => new Promise(resolve => resolveConfig = resolve),
-                setRepos: () => new Promise(resolve => resolveRepos = resolve)
+                setRepos      : () => new Promise(resolve => resolveRepos = resolve)
             }}};
 
             const controller = view.getController();
-            const config = controller.onAgentConfigIntent({id: 'ada', harnessType: 'native-neo'});
-            const repos = controller.onAgentReposIntent({id: 'ada', repos: []});
+            const config     = controller.onAgentConfigIntent({id: 'ada', harnessType: 'native-neo'});
+            const repos      = controller.onAgentReposIntent({id: 'ada', repos: []});
             expect(view.agentConfigSaveStatuses.get('ada').state).toBe('pending');
             expect(view.agentReposSaveStatuses.get('ada').state).toBe('pending');
 
@@ -1521,31 +1720,31 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
 
     test('destroyed owner discards pending reads and never paints a late save status', async () => {
         const
-            definitions = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
-            tenants = Neo.create(FleetTenants, {data: [{id: 'kept-tenant', endpoint: 'https://kept.example.com', status: 'connected'}]}),
+            definitions  = makeAgentStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex'}]),
+            tenants      = Neo.create(FleetTenants, {data: [{id: 'kept-tenant', endpoint: 'https://kept.example.com', status: 'connected'}]}),
             priorAgentOS = globalThis.AgentOS;
         let view, resolveAgents, resolveTenants, resolveConfig;
 
         try {
             view = await createAccounts({agentDefinitionsStore: definitions, fleetTenantsStore: tenants});
             globalThis.AgentOS = {fleet: {registryBridge: {
-                listAgents: () => new Promise(resolve => resolveAgents = resolve),
-                listTenants: () => new Promise(resolve => resolveTenants = resolve),
+                listAgents    : () => new Promise(resolve => resolveAgents = resolve),
+                listTenants   : () => new Promise(resolve => resolveTenants = resolve),
                 configureAgent: () => new Promise(resolve => resolveConfig = resolve)
             }}};
 
-            const controller = view.getController();
+            const controller     = view.getController();
             const configStatuses = [];
-            const card = view.getReference('agent-config-card');
-            const setSaveStatus = card.setSaveStatus.bind(card);
+            const card           = view.getReference('agent-config-card');
+            const setSaveStatus  = card.setSaveStatus.bind(card);
             card.setSaveStatus = (...args) => {
                 configStatuses.push(args);
                 setSaveStatus(...args)
             };
 
             const definitionsRead = controller.loadAgentDefinitions();
-            const tenantsRead = controller.loadFleetTenants();
-            const configSave = controller.onAgentConfigIntent({id: 'ada', harnessType: 'native-neo'});
+            const tenantsRead     = controller.loadFleetTenants();
+            const configSave      = controller.onAgentConfigIntent({id: 'ada', harnessType: 'native-neo'});
             expect(configStatuses.map(entry => entry[1])).toEqual(['pending']);
 
             view.destroy();

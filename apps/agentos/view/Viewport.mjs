@@ -1,22 +1,22 @@
-import Accounts           from './accounts/Panel.mjs';
-import AgentDefinitions   from '../store/AgentDefinitions.mjs';
-import BaseViewport       from '../../../node_modules/neo.mjs/src/container/Viewport.mjs';
-import Dashboard          from '../../../node_modules/neo.mjs/src/dashboard/Container.mjs';
+import Accounts            from './accounts/Panel.mjs';
+import AgentDefinitions    from '../store/AgentDefinitions.mjs';
+import BaseViewport        from '../../../node_modules/neo.mjs/src/container/Viewport.mjs';
+import Dashboard           from '../../../node_modules/neo.mjs/src/dashboard/Container.mjs';
 import DeploymentStateRead from '../util/DeploymentStateRead.mjs';
-import FleetAwaitingMerge from '../store/FleetAwaitingMerge.mjs';
-import FleetCockpit       from './fleet/cockpit/Container.mjs';
-import FleetInstances     from '../store/FleetInstances.mjs';
-import FleetRoster        from '../store/FleetRoster.mjs';
-import FleetTenants       from '../store/FleetTenants.mjs';
-import GoldenPathEnvelope from '../util/GoldenPathEnvelope.mjs';
-import GraphSceneEnvelope from '../util/GraphSceneEnvelope.mjs';
-import HomeView           from './home/Container.mjs';
-import InstanceSwitcher   from './fleet/instances/SwitcherButton.mjs';
-import ObservatoryPane    from './fleet/goldenpath/ObservatoryContainer.mjs';
-import StateProvider      from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
-import SystemView         from './system/Container.mjs';
-import TabContainer       from '../../../node_modules/neo.mjs/src/tab/Container.mjs';
-import ViewportController from './ViewportController.mjs';
+import FleetAwaitingMerge  from '../store/FleetAwaitingMerge.mjs';
+import FleetCockpit        from './fleet/cockpit/Container.mjs';
+import FleetInstances      from '../store/FleetInstances.mjs';
+import FleetRoster         from '../store/FleetRoster.mjs';
+import FleetTenants        from '../store/FleetTenants.mjs';
+import GoldenPathEnvelope  from '../util/GoldenPathEnvelope.mjs';
+import GraphSceneEnvelope  from '../util/GraphSceneEnvelope.mjs';
+import HomeView            from './home/Container.mjs';
+import InstanceSwitcher    from './fleet/instances/SwitcherButton.mjs';
+import ObservatoryPane     from './fleet/goldenpath/ObservatoryContainer.mjs';
+import StateProvider       from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import SystemView          from './system/Container.mjs';
+import TabContainer        from '../../../node_modules/neo.mjs/src/tab/Container.mjs';
+import ViewportController  from './ViewportController.mjs';
 
 /**
  * @summary A keeper-rail tab header. Its tooltip opens to the icon's right (`l-r`), clear of the rail; the
@@ -214,11 +214,11 @@ class Viewport extends BaseViewport {
                 }
             }]
         }, {
-            module               : TabContainer,
-            cls                  : ['agent-shell'],
-            flex                 : 1,
-            reference            : 'shell',
-            tabBarPosition       : 'left',
+            module        : TabContainer,
+            cls           : ['agent-shell'],
+            flex          : 1,
+            reference     : 'shell',
+            tabBarPosition: 'left',
             // the icon rail marks its active place with a pressed button: no indicator, no strip beside it
             tabStrip             : {hidden: true},
             useActiveTabIndicator: false,
@@ -253,17 +253,20 @@ class Viewport extends BaseViewport {
             }, {
                 // Accounts is likewise a dashboard.Panel — its own dashboard.Container host so the
                 // identity panel keeps the pop-out affordance and stays structurally idiomatic.
-                module   : Dashboard,
-                cls      : ['agent-accounts-dashboard'],
-                header   : railHeader('fa-solid fa-id-badge', '/accounts', 'Accounts'),
-                popupUrl : 'apps/agentos/childapps/widget/index.html',
-                sortGroup: 'neo-connected-dashboard',
+                module        : Dashboard,
+                cls           : ['agent-accounts-dashboard'],
+                header        : railHeader('fa-solid fa-id-badge', '/accounts', 'Accounts'),
+                popupUrl      : 'apps/agentos/childapps/widget/index.html',
+                sortGroup     : 'neo-connected-dashboard',
                 sortZoneConfig: {dragHandleSelector: '.fm-accounts-drag-handle'},
 
                 items: [{
                     module   : Accounts,
                     flex     : 1,
-                    listeners: {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'},
+                    listeners: {
+                        agentDefinitionAccepted   : 'up.onAgentDefinitionAccepted',
+                        repositoryOperationSettled: 'up.onRepositoryOperationSettled'
+                    },
                     reference: 'accounts'
                 }]
             }, {
@@ -309,6 +312,11 @@ class Viewport extends BaseViewport {
         await cockpit.loadRoster();
 
         return true
+    }
+
+    /** @summary Reconcile checkout effects through the existing roster-read owner. @returns {Promise<*>|undefined} */
+    onRepositoryOperationSettled() {
+        return this.getReference('fleet-cockpit')?.loadRoster()
     }
 }
 
