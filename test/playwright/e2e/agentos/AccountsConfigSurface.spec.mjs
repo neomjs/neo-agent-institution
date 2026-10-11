@@ -504,6 +504,8 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             expect(await app.callMethod(component.properties.id, 'getCheckoutRows')).toMatchObject([{repoSlug: extra, via: 'prepare'}]);
             await row.locator('.fm-repo-remove').click();
             await expect(row).toContainText('checkout kept on disk');
+            await expect(row).toContainText('skills unverified');
+            await expect(row).not.toContainText('skills at the next Start');
             await expect(card.getByRole('button', {name: `Delete checkout ${extra}`, exact: true})).toBeEnabled();
             await row.locator('.fm-repo-delete').click();
             await expect(row).toContainText('The checkout contains unpushed commits.');

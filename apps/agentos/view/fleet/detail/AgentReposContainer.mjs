@@ -397,7 +397,7 @@ class AgentReposCard extends Container {
         const skills = dependency ? {
             text : labels[state], reason: dependency.reason, state,
             title: state === 'installing' ? SeatDependencies.liveLine(this.rosterStore?.get(this.record?.id)?.dependencyOutcomes)?.text : 'At the last Start'
-        } : clone?.state === 'prepared' && clone.via !== 'prepare'
+        } : clone?.state === 'prepared' && (repo.retained || clone.via !== 'prepare')
             ? {text: 'skills unverified', reason: 'no dependency install reported'}
             : {text: 'skills at the next Start'};
 

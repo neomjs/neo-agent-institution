@@ -89,7 +89,7 @@ test.describe('Accounts live repository operations (#642)', () => {
             {id: 'vega', githubUsername: 'vega', metadata: {repo: working, repos: []}}
         ]);
         const roster = Neo.create(FleetRoster, {data: [{agentId: 'ada', state: 'ok', repoOutcomes: [
-            {...extra, state: 'prepared', via: 'start'}
+            {...extra, state: 'prepared', via: 'prepare', at: '2026-10-11T03:00:00Z'}
         ]}]});
         const prior = globalThis.AgentOS;
         let view;
@@ -156,6 +156,7 @@ test.describe('Accounts live repository operations (#642)', () => {
         test(`delete refusal retains the row and its reason: ${reason}`, async () => withRepositories(async ({card, controller, bridge}) => {
             let payload;
             bridge.removeRepoCheckout = async value => {payload = value; return {removed: false, reason}};
+            expect(card.getReference('repo-list').store.get(extra.repoSlug).dependency.text).toBe('skills unverified');
             await controller.onDeleteCheckout({id: 'ada', repoSlug: extra.repoSlug, force: true});
             expect(payload).toEqual({id: 'ada', repoSlug: extra.repoSlug});
             expect(card.getReference('repo-list').store.get(extra.repoSlug).retained).toBe(true);
