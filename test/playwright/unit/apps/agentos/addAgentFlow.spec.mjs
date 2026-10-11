@@ -304,6 +304,40 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(await read(null)).toEqual({state: 'offline', reason: AddAgentFlow.FLEET_OFFLINE_REASON})
     });
 
+    test('#603: selected-seat discovery carries its id; Add Agent keeps the no-argument call', async () => {
+        const calls = [], bridge = {fleetMemoryCandidates: async (...args) => {
+            calls.push(args);
+            return {capability: {state: 'wired'}, scope: {kind: 'seat', id: 'seat-a'}, candidates: CANDIDATES}
+        }};
+
+        expect(await AddAgentFlow.readMemoryCandidates({id: 'seat-a', bridgeResolver: () => bridge}))
+            .toEqual({state: 'candidates', candidates: CANDIDATES});
+        expect(calls).toEqual([[{id: 'seat-a'}]]);
+        await AddAgentFlow.readMemoryCandidates({bridgeResolver: () => bridge});
+        expect(calls[1]).toEqual([])
+    });
+
+    test('#603: only the selected scope can report candidates or none; legacy and mismatched answers stay unavailable', async () => {
+        const read = answer => AddAgentFlow.readMemoryCandidates({id: 'seat-a', bridgeResolver: () => ({
+            fleetMemoryCandidates: async () => answer
+        })});
+
+        for (const scope of [undefined, {kind: 'seat', id: 'seat-b'}, {kind: 'global', id: 'seat-a'}]) {
+            for (const candidates of [[], CANDIDATES]) {
+                const result = await read({capability: {state: 'wired'}, scope, candidates});
+
+                expect(result.state).toBe('unavailable');
+                expect(result.reason).toBeTruthy();
+                expect(AddAgentFlow.memoryImportFor({discovery: result, choice: null}).valid).toBe(false)
+            }
+        }
+
+        expect(await read({capability: {state: 'wired'}, scope: {kind: 'seat', id: 'seat-a'}, candidates: []}))
+            .toEqual({state: 'none'});
+        expect(await read({capability: {state: 'unavailable', reason: 'source unreadable'}, scope: {kind: 'seat', id: 'seat-a'}, candidates: []}))
+            .toEqual({state: 'unavailable', reason: 'this Agent OS cannot look for it yet', detail: 'source unreadable'})
+    });
+
     test('the memoryImport a submission sends: none only when nothing exists or the empty row is chosen, a candidate only when chosen (#521 AC-3)', () => {
         const
             none        = {state: 'none'},
@@ -539,8 +573,8 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         const form = Neo.create(AddAgentForm, {
             appName       : 'AgentOSAddAgentFlowTest',
             bridgeResolver: () => ({
-                credentialIngress    : 'shell',
-                defineAgent          : async payload => {
+                credentialIngress: 'shell',
+                defineAgent      : async payload => {
                     received = payload;
                     return cleanReadback()
                 },
@@ -1011,7 +1045,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — the added seat\'s c
     test('AC-2: the define stands before the identity is read, and a failed derivation mounts the row inline', async () => {
         let release;
         const
-            held = new Promise(resolve => {release = resolve}),
+            held                    = new Promise(resolve => {release = resolve}),
             {form, accepted, reads} = mountForm([missing], {fleetSeatGitIdentity: async ({id}) => {
                 reads.push(id);
                 return held

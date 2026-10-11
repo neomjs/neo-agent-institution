@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    ec9aac12fd513d79cbfe3674ffb36eddcabea219
+    d75cc68543d2bc19d9c37760d5de1ed87cc426e8
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -201,7 +201,7 @@ apps/agentos/store/ViewerWakeFeed.mjs
     2416a3352de08dc4fa72d503913c6450a6f8dab6
 
 apps/agentos/util/AddAgentFlow.mjs
-    e559b7525af76dfdc083ee9060f57730b2dc0630
+    a64e705527f9f7a4d27101682e499bd110ffb93e
 
 apps/agentos/util/AgentFreshness.mjs
     82ac3c17912b1cb8b6fcae46662b0701f238e87e
@@ -393,7 +393,7 @@ apps/agentos/view/fleet/detail/Container.mjs
     29e547f24a38f5a366126d45617c5d8c5d0a9e17
 
 apps/agentos/view/fleet/detail/Controller.mjs
-    02777db58ca553744c879ed66250eb6e34aee10a
+    297458d5cd5d9fb46aa7d4cc108e7326aba5d18c
 
 apps/agentos/view/fleet/detail/ParticipationContainer.mjs
     e54cdc8929444ac46fe943ca17b6021d28c61375

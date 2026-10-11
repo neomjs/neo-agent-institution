@@ -210,7 +210,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             repoPath = '/Users/x/agents/vega/neomjs/neo',
             observed = '/Users/x/Desktop/scratch',
             detail   = createDetail({
-                agentId: 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok',
+                agentId      : 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok',
                 sessionFolder: {state: 'wrong', expected: repoPath, observed}
             }),
             part     = reference => detail.down({reference}),
@@ -686,12 +686,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     test('the lane source uses the roster observation stamp while the body ages the lane claim itself', () => {
         const detail = createDetail({
-            agentId: 'vega',
-            laneLine: 'working on #418',
+            agentId      : 'vega',
+            laneLine     : 'working on #418',
             laneClaimedAt: new Date(NOW - 120_000).toISOString(),
             openLaneCount: 17,
-            sources: {...observedSources, lane: observedLane},
-            state: 'ok'
+            sources      : {...observedSources, lane: observedLane},
+            state        : 'ok'
         }, {rosterObservedAt: NOW - 10_000});
 
         // With no explicit lane ledger, the wired lane fact derives its pill age from roster admission.
@@ -708,14 +708,14 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     test('an explicit lane pane ledger outranks the roster source for freshness only', () => {
         const detail = createDetail({
-            agentId: 'vega',
-            laneLine: 'working on #418',
+            agentId      : 'vega',
+            laneLine     : 'working on #418',
             laneClaimedAt: new Date(NOW - 120_000).toISOString(),
             openLaneCount: 1,
-            sources: {...observedSources, lane: observedLane},
-            state: 'ok'
+            sources      : {...observedSources, lane: observedLane},
+            state        : 'ok'
         }, {
-            paneLedgers: {lane: {observedAt: new Date(NOW - 20_000).toISOString(), freshnessTtl: 30_000}},
+            paneLedgers     : {lane: {observedAt: new Date(NOW - 20_000).toISOString(), freshnessTtl: 30_000}},
             rosterObservedAt: NOW - 40 * 60_000
         });
 
@@ -927,9 +927,9 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         stores.push(definitions);
 
         const
-            detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
-            card   = detail.getReference('config-pane'),
-            result = deferred(),
+            detail  = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+            card    = detail.getReference('config-pane'),
+            result  = deferred(),
             intents = [];
 
         // AgentOS is the APP NAMESPACE — deleting it would unregister every AgentOS.* class for
@@ -1104,7 +1104,8 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         const
             priorFleet = globalThis.AgentOS?.fleet,
-            intents    = [];
+            intents    = [],
+            reads      = [];
 
         let refuse = null, unreachable = false;
 
@@ -1120,9 +1121,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                     ? {status: 'rejected', ...refuse}
                     : {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop', memoryImport: `${intent.memoryImport}/`}}
             },
-            fleetMemoryCandidates: async () => ({capability: {state: 'wired'}, candidates: [
-                {family: 'claude', source, name: 'github-neomjs-neo', notes: 918, lastChanged: null}
-            ]}),
+            fleetMemoryCandidates: async params => {
+                reads.push(params);
+                return {capability: {state: 'wired'}, scope: {kind: 'seat', id: 'ada'}, candidates: [
+                    {family: 'claude', source, name: 'github-neomjs-neo', notes: 918, lastChanged: null}
+                ]}
+            },
             fleetSeatGitIdentity : async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
         }};
 
@@ -1137,6 +1141,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
             row.onChangeClick();
             await expect.poll(() => row.discovery?.state).toBe('candidates');
+            expect(reads).toEqual([{id: 'ada'}]);
             // one candidate is preselected, as in Add
             expect(row.choice).toBe(source);
 
@@ -1177,6 +1182,66 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             globalThis.AgentOS.fleet = priorFleet
         }
     });
+
+    for (const transition of ['other seat', 'seat round trip', 'harness round trip', 'store replacement', 'newer read', 'destroy']) {
+        test(`#603: a memory reply cannot survive ${transition}`, async () => {
+            const
+                data        = [{id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop'}, {id: 'eos', githubUsername: 'eos', harnessType: 'codex-desktop'}],
+                definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data}),
+                priorFleet  = globalThis.AgentOS?.fleet,
+                reads       = [],
+                answer      = {capability: {state: 'wired'}, scope: {kind: 'seat', id: 'ada'}, candidates: [
+                    {family: 'codex', source: '/fixture/ada/harness/codex-desktop/codex-home/memories', name: 'ada', notes: 1, lastChanged: null}
+                ]};
+            stores.push(definitions);
+            globalThis.AgentOS ??= {};
+            globalThis.AgentOS.fleet = {registryBridge: {
+                fleetMemoryCandidates: () => { const held = deferred(); reads.push(held); return held.promise },
+                fleetSeatGitIdentity : async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+            }};
+
+            let detail;
+
+            try {
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: definitions});
+                const row = detail.getReference('seat-memory');
+                await detail.ready();
+
+                const first = detail.controller.readSeatMemory();
+                reads[0].resolve(answer);
+                await first;
+                expect(row.discovery).toEqual({state: 'candidates', candidates: answer.candidates});
+
+                const late = detail.controller.readSeatMemory();
+
+                if (transition === 'other seat' || transition === 'seat round trip') {
+                    detail.record = makeRecord({agentId: 'eos', displayName: 'Eos', state: 'off'});
+                    if (transition === 'seat round trip') detail.record = makeRecord({agentId: 'ada', displayName: 'Ada', state: 'off'})
+                } else if (transition === 'harness round trip') {
+                    definitions.get('ada').set({harnessType: 'claude-code'});
+                    definitions.get('ada').set({harnessType: 'codex-desktop'})
+                } else if (transition === 'store replacement') {
+                    const replacement = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data});
+                    stores.push(replacement);
+                    detail.agentDefinitions = replacement
+                } else if (transition === 'newer read') {
+                    const latest = detail.controller.readSeatMemory();
+                    reads[2].resolve({...answer, candidates: []});
+                    await latest
+                } else {
+                    detail.destroy()
+                }
+
+                const before = row.discovery;
+                reads[1].resolve(answer);
+                await late;
+                expect(row.discovery).toEqual(before)
+            } finally {
+                detail?.destroy();
+                globalThis.AgentOS.fleet = priorFleet
+            }
+        })
+    }
 
     test('#559: a catalog read or a declaration answers only the seat and harness it started for', async () => {
         const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
@@ -1551,7 +1616,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         // The response belongs to the old shared Store; this inspector now renders the replacement.
         const originalRefresh = card.refresh;
-        let refreshes = 0;
+        let   refreshes       = 0;
         card.refresh = function(...args) {
             refreshes++;
             return originalRefresh.apply(this, args)
@@ -1583,9 +1648,9 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         ]});
         stores.push(definitions);
 
-        const first = createDetail({agentId: 'ada'}, {agentDefinitions: definitions});
+        const first  = createDetail({agentId: 'ada'}, {agentDefinitions: definitions});
         const second = createDetail({agentId: 'ada'}, {agentDefinitions: definitions});
-        const waits = [], priorFleet = globalThis.AgentOS?.fleet;
+        const waits  = [], priorFleet = globalThis.AgentOS?.fleet;
         globalThis.AgentOS.fleet = {registryBridge: {configureAgent: () => {
             const wait = deferred();
             waits.push(wait);
@@ -1651,11 +1716,11 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     test('the controller ages the pane on schedule, keeps scheduling with no record, and stops after destroy', async () => {
         const
-            scheduled = [],
-            ticks = [],
+            scheduled       = [],
+            ticks           = [],
             originalTimeout = Object.getOwnPropertyDescriptor(AgentDetailController.prototype, 'timeout'),
-            originalStart = AgentDetailController.prototype.startFreshnessAging,
-            originalNow = Date.now;
+            originalStart   = AgentDetailController.prototype.startFreshnessAging,
+            originalNow     = Date.now;
         let clock = NOW;
 
         Date.now = () => clock;
@@ -1674,12 +1739,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         try {
             detail = createDetail({agentId: 'vega', state: 'ok'}, {
-                now: null,
+                now        : null,
                 paneLedgers: {lane: {observedAt: new Date(NOW - 10_000).toISOString(), freshnessTtl: 30_000}}
             });
 
-            const controller = detail.getController();
-            let refreshes = 0;
+            const controller     = detail.getController();
+            let   refreshes      = 0;
             const applyFreshness = detail.applyPaneFreshness;
 
             detail.applyPaneFreshness = function(...args) {
