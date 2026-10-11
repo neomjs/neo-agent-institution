@@ -226,11 +226,12 @@ class AddAgentFlow extends Base {
     }
 
     /**
-     * @summary Ask the Fleet which existing agents' memory an added seat could continue, as one typed
+     * @summary Ask the Fleet which existing agents' memory an added or selected seat could continue, as one typed
      * outcome. Only a wired read with no candidates says no memory exists. A fleet that answers without
      * a list (an unwired source, a refused, degraded or failed read, a shapeless answer) is
      * `unavailable`: unknown, never empty. A fleet that cannot be reached is `offline`: nothing can be
      * added then, so there is no memory question to ask.
+     * A selected seat requires its scope echo; an older Fleet's global answer cannot establish its memory choice.
      *
      * Outcome shapes:
      * - `{state: 'none'}` — the host holds no memory to import; the seat records `memoryImport: 'none'`.
@@ -239,10 +240,11 @@ class AddAgentFlow extends Base {
      *   operator's words; `detail` is the producer's own words, or null.
      * - `{state: 'offline', reason}` — no fleet answered; the form asks again on submit.
      * @param {Object}        [config]
+     * @param {String}        [config.id] Selected seat; omitted for Add Agent's global discovery.
      * @param {Function|null} [config.bridgeResolver] Injected bridge resolver (defaults to the global seam).
      * @returns {Promise<Object>} One outcome — this function never throws.
      */
-    static async readMemoryCandidates({bridgeResolver=null}={}) {
+    static async readMemoryCandidates({bridgeResolver=null, id}={}) {
         const bridge = AddAgentFlow.resolveRegistryBridge(bridgeResolver);
 
         if (!bridge) {
@@ -256,7 +258,7 @@ class AddAgentFlow extends Base {
         let answer;
 
         try {
-            answer = await bridge.fleetMemoryCandidates()
+            answer = await (id === undefined ? bridge.fleetMemoryCandidates() : bridge.fleetMemoryCandidates({id}))
         } catch (error) {
             // a refused or failed answer keeps the wire's words as detail; a transport failure is no answer
             return error?.fleetWireState && error.message
@@ -266,6 +268,10 @@ class AddAgentFlow extends Base {
 
         if (answer?.capability?.state !== 'wired') {
             return {state: 'unavailable', reason: 'this Agent OS cannot look for it yet', detail: answer?.capability?.reason || null}
+        }
+
+        if (id !== undefined && (answer.scope?.kind !== 'seat' || answer.scope.id !== id)) {
+            return {state: 'unavailable', reason: 'the Agent OS did not confirm memory for this seat', detail: null}
         }
 
         if (!Array.isArray(answer.candidates) || answer.candidates.some(candidate => typeof candidate?.source !== 'string' || !candidate.source)) {

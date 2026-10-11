@@ -64,6 +64,13 @@ class Controller extends ComponentController {
         me.observeConfig(card, 'record', (value, oldValue) => {
             value?.id !== oldValue?.id && me.readGitIdentity()
         });
+        // Returning to the same seat or harness must not revive its earlier pending memory read.
+        me.observeConfig(me.getReference('seat-model'), 'seat', (value, oldValue) => {
+            if (value?.id !== oldValue?.id || value?.harnessType !== oldValue?.harnessType) {
+                me.memoryRequest++;
+                me.getReference('seat-memory').set({closed: false, discovery: null, editing: false, status: {state: 'idle', reason: ''}})
+            }
+        });
         me.onDefinitionsStoreChange(me.component.agentDefinitions, null);
         // a seat the card showed before this subscription existed is read once here
         (card.record?.id ?? null) !== me.identityAgentId && me.readGitIdentity();
@@ -146,9 +153,9 @@ class Controller extends ComponentController {
         const request = ++me.identityRequest;
 
         return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-            intent: {id: agentId, ...pair},
-            owner : row,
-            store : me.component.agentDefinitions,
+            intent       : {id: agentId, ...pair},
+            owner        : row,
+            store        : me.component.agentDefinitions,
             setSaveStatus: (id, state, reason) => {
                 if (request !== me.identityRequest || me.isDestroyed || row.isDestroyed) {
                     return
@@ -287,9 +294,9 @@ class Controller extends ComponentController {
 
         // the write lands on its Store whatever is shown by then; only its feedback is bound to the group
         return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-            intent: {id: binding.id, [field]: value},
-            owner : row,
-            store : binding.store,
+            intent       : {id: binding.id, [field]: value},
+            owner        : row,
+            store        : binding.store,
             setSaveStatus: (id, state, reason) => {
                 if (request !== me.seatRequest || me.isDestroyed || row.isDestroyed || !me.holdsSeatBinding(binding)) {
                     return
@@ -303,7 +310,7 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary Ask the Fleet which agents' memory the shown seat could continue, into the Memory row, for its choice.
+     * @summary Ask the Fleet for the shown seat's scoped memory candidates; only its current binding may paint the row.
      * @returns {Promise<void>}
      */
     async readSeatMemory() {
@@ -317,7 +324,7 @@ class Controller extends ComponentController {
 
         row.discovery = {state: 'reading'};
 
-        const discovery = await AddAgentFlow.readMemoryCandidates();
+        const discovery = await AddAgentFlow.readMemoryCandidates({id: binding.id});
 
         if (request === me.memoryRequest && !me.isDestroyed && !row.isDestroyed && me.holdsSeatBinding(binding)) {
             row.discovery = discovery
@@ -347,9 +354,9 @@ class Controller extends ComponentController {
         const request = ++me.memoryRequest;
 
         return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
-            intent: {id: binding.id, memoryImport},
-            owner : row,
-            store : binding.store,
+            intent       : {id: binding.id, memoryImport},
+            owner        : row,
+            store        : binding.store,
             setSaveStatus: (id, state, reason, detail) => {
                 if (request !== me.memoryRequest || me.isDestroyed || row.isDestroyed || !me.holdsSeatBinding(binding)) {
                     return
@@ -381,7 +388,7 @@ class Controller extends ComponentController {
 
         return ConfigIntentRoundTrip.runConfigIntentRoundTrip({
             intent,
-            owner: me,
+            owner        : me,
             store,
             setSaveStatus: (agentId, state, reason) => {
                 if (!me.isDestroyed && !component.isDestroying && !component.isDestroyed &&
