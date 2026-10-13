@@ -26,6 +26,7 @@ import os                  from 'node:os';
 import path                from 'node:path';
 import {fileURLToPath}     from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
+import {materializeRuntimeGeneration} from './runtimeGeneration.mjs';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -101,6 +102,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
         steps        = [],
         warnings     = [],
         custody      = phase => custodyDir && steps.push({type: 'custody', phase, dir: custodyDir}),
+        generation   = bundle => custodyDir && steps.push({type: 'runtime', bundle, directory: path.join(custodyDir, 'brain', 'runtime')}),
         quit         = () => {
             if (running.length) {
                 steps.push({type: 'quit', bundle: installed.path, paths: running});
@@ -135,6 +137,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
         const to = installed.exists ? rollback.path : installed.path;
 
         quit();
+        generation(installed.exists ? installed.path : parked.path);
         steps.push({type: 'rename', from: parked.path, to});
         steps.push({type: 'verify', path: installed.path, receipt: installed.exists ? installed.receipt : parked.receipt});
         custody('compare');
@@ -158,6 +161,9 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
         // Equal receipts are the idempotence key: a chained `npm run dist && npm run install:mac`
         // must not rotate the rollback slot for a build that is already in place.
         if (installed.exists && isDeepStrictEqual(installed.receipt, artifact.receipt)) {
+            // A receipt match cannot hide different bytes, or skip first-run materialisation.
+            generation(installed.path);
+            generation(artifact.path);
             return {ok: true, steps, warnings, note: `${installed.path} already carries this receipt; nothing to replace.`}
         }
     }
@@ -165,6 +171,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
     quit();
 
     if (mode === 'restore') {
+        generation(rollback.path);
         // Three renames swap the two slots, so a second --restore returns to the start.
         const parkedPath = parked?.path ?? `${installed.path}.restoring`;
 
@@ -182,6 +189,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
         // applications folder.
         steps.push({type: 'stage', from: artifact.path, to: staged});
         steps.push({type: 'verify', path: staged, receipt: artifact.receipt});
+        generation(staged);
 
         if (installed.exists) {
             rollback.exists && steps.push({type: 'remove', path: rollback.path});
@@ -208,10 +216,15 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
  * @param {Function} [options.runFn=run] Child-process seam (`ditto`, `osascript`, `open`); tests inject it
  * @param {Function} [options.runningFn] Process census the quit step polls; defaults to the real `ps` reader
  * @param {Number} [options.quitTimeoutMs=30000]
- * @returns {{custody: {before: String|null, after: String|null}|null}}
+ * @param {Function} [options.materializeFn=materializeRuntimeGeneration] Verified runtime publisher.
+ * @returns {Promise<{custody: Object|null, generation: Object|null}>}
  */
-export function executePlan(steps, {runFn = run, runningFn = () => runningHarnessPaths(), quitTimeoutMs = 30000} = {}) {
+export async function executePlan(steps, {
+    runFn = run, runningFn = () => runningHarnessPaths(), quitTimeoutMs = 30000,
+    materializeFn = materializeRuntimeGeneration
+} = {}) {
     const custody = {before: undefined, after: undefined};
+    let generation = null;
 
     for (const step of steps) {
         try {
@@ -243,6 +256,14 @@ export function executePlan(steps, {runFn = run, runningFn = () => runningHarnes
                 case 'remove':
                     fs.rmSync(step.path, {force: true, recursive: true});
                     break;
+                case 'runtime':
+                    generation = await materializeFn({
+                        bundlePath: step.bundle,
+                        runtimeRoot: path.dirname(path.join(step.bundle, RECEIPT_RELATIVE_PATH)),
+                        executable: path.join(step.bundle, 'Contents', 'MacOS', APP_NAME),
+                        directory: step.directory
+                    });
+                    break;
                 case 'rename':
                     fs.mkdirSync(path.dirname(step.to), {recursive: true});
                     fs.renameSync(step.from, step.to);
@@ -266,7 +287,7 @@ export function executePlan(steps, {runFn = run, runningFn = () => runningHarnes
         }
     }
 
-    return {custody: custody.before === undefined ? null : custody}
+    return {custody: custody.before === undefined ? null : custody, generation}
 }
 
 /**
@@ -535,6 +556,7 @@ export function describeStep(step) {
         case 'remove' : return `remove  ${step.path}`;
         case 'rename' : return `move    ${step.from}\n     →  ${step.to}`;
         case 'verify' : return `verify  ${step.path} carries "${describeReceipt(step.receipt)}"`;
+        case 'runtime': return `prepare verified runtime from ${step.bundle}\n     →  ${step.directory}`;
         case 'open'   : return `open    ${step.path}`;
         default       : return step.type
     }
@@ -615,10 +637,11 @@ async function main() {
 
     console.log('');
 
-    const {custody} = executePlan(plan.steps);
+    const {custody, generation} = await executePlan(plan.steps);
 
     console.log(`\n${describeSlot('installed', readSlot(installed.path), 'absent')}`);
     console.log(describeSlot('rollback', readSlot(rollback.path), 'empty'));
+    generation && console.log(`runtime    ${generation.id}\n           ${generation.directory}`);
     custody && console.log(`${'custody'.padEnd(10)} ${custodyDir}\n           ${custody.before === null ? 'absent' : `unchanged (${custody.before.slice(0, 12)})`}`)
 }
 

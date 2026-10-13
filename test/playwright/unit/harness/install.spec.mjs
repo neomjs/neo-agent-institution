@@ -266,32 +266,32 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         rmSync(root, {force: true, recursive: true})
     });
 
-    test('install then restore: the applications folder holds one bundle throughout, the displaced build sits in the rollback slot, and a restore swaps them back', () => {
+    test('install then restore: the applications folder holds one bundle throughout, the displaced build sits in the rollback slot, and a restore swaps them back', async () => {
         const calls = [];
 
         writeBundle(installed, OLD);
         writeBundle(artifact, NEW);
 
-        executePlan(planInstall(slots()).steps, {runFn: runFn(calls)});
+        await executePlan(planInstall(slots()).steps, {runFn: runFn(calls)});
 
         expect(readdirSync(applications)).toEqual([`${APP_NAME}.app`]);
         expect(readSlot(installed).receipt).toEqual(NEW);
         expect(readSlot(rollback).receipt).toEqual(OLD);
         expect(calls.map(call => call.command)).toEqual(['ditto']);
 
-        executePlan(planInstall({...slots(), mode: 'restore'}).steps, {runFn: runFn(calls)});
+        await executePlan(planInstall({...slots(), mode: 'restore'}).steps, {runFn: runFn(calls)});
 
         expect(readdirSync(applications)).toEqual([`${APP_NAME}.app`]);
         expect(readSlot(installed).receipt).toEqual(OLD);
         expect(readSlot(rollback).receipt).toEqual(NEW);
 
         // A second restore returns to the start.
-        executePlan(planInstall({...slots(), mode: 'restore'}).steps, {runFn: runFn(calls)});
+        await executePlan(planInstall({...slots(), mode: 'restore'}).steps, {runFn: runFn(calls)});
         expect(readSlot(installed).receipt).toEqual(NEW);
         expect(readSlot(rollback).receipt).toEqual(OLD)
     });
 
-    test('a copy that lands without the artifact\'s receipt fails at the staged verify, and both slots still hold what they held', () => {
+    test('a copy that lands without the artifact\'s receipt fails at the staged verify, and both slots still hold what they held', async () => {
         writeBundle(installed, OLD);
         writeBundle(rollback, PREVIOUS);
         writeBundle(artifact, NEW);
@@ -300,14 +300,14 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
             command === 'ditto' && writeBundle(args[1], receipt('1970-01-01T00:00:00.000Z'))
         };
 
-        expect(() => executePlan(planInstall(slots()).steps, {runFn: corrupting}))
-            .toThrow(/failed at "verify .*\.installing .*expected "staged 2026-10-02/);
+        await expect(executePlan(planInstall(slots()).steps, {runFn: corrupting}))
+            .rejects.toThrow(/failed at "verify .*\.installing .*expected "staged 2026-10-02/);
 
         expect(readSlot(installed).receipt).toEqual(OLD);
         expect(readSlot(rollback).receipt).toEqual(PREVIOUS)
     });
 
-    test('a restore interrupted at either rename boundary is completed by the next run from what it finds on disk, and nothing is lost', () => {
+    test('a restore interrupted at either rename boundary is completed by the next run from what it finds on disk, and nothing is lost', async () => {
         const calls = [];
 
         // After the first rename: installed empty, the bundle parked, the rollback untouched.
@@ -316,13 +316,13 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
 
         let plan = planInstall({...slots(), mode: 'restore'});
 
-        executePlan(plan.steps.slice(0, 1), {runFn: runFn(calls)});
+        await executePlan(plan.steps.slice(0, 1), {runFn: runFn(calls)});
         expect(readSlot(installed).exists).toBe(false);
         expect(readSlot(parked).receipt).toEqual(NEW);
 
         plan = planInstall({...slots(), mode: 'restore'});
         expect(plan.note).toContain('completes it');
-        executePlan(plan.steps, {runFn: runFn(calls)});
+        await executePlan(plan.steps, {runFn: runFn(calls)});
 
         expect(readSlot(installed).receipt).toEqual(NEW);
         expect(readSlot(rollback).receipt).toEqual(OLD);
@@ -330,13 +330,13 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
 
         // After the second rename: the restore is in place, the parked bundle has no slot yet.
         plan = planInstall({...slots(), mode: 'restore'});
-        executePlan(plan.steps.slice(0, 2), {runFn: runFn(calls)});
+        await executePlan(plan.steps.slice(0, 2), {runFn: runFn(calls)});
         expect(readSlot(installed).receipt).toEqual(OLD);
         expect(readSlot(rollback).exists).toBe(false);
         expect(readSlot(parked).receipt).toEqual(NEW);
 
         plan = planInstall({...slots(), mode: 'restore'});
-        executePlan(plan.steps, {runFn: runFn(calls)});
+        await executePlan(plan.steps, {runFn: runFn(calls)});
 
         expect(readSlot(installed).receipt).toEqual(OLD);
         expect(readSlot(rollback).receipt).toEqual(NEW);
@@ -344,7 +344,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         expect(readdirSync(applications)).toEqual([`${APP_NAME}.app`])
     });
 
-    test('the custody baseline is taken after the app\'s own shutdown write, and a change during the replacement stops the run before --open', () => {
+    test('the custody baseline is taken after the app\'s own shutdown write, and a change during the replacement stops the run before --open', async () => {
         writeBundle(installed, OLD);
         writeBundle(artifact, NEW);
         writeCustody();
@@ -358,7 +358,8 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
 
         let plan = planInstall({...slots(), running, flags: {quit: true, open: true}, custodyDir: userData});
 
-        const {custody: digest} = executePlan(plan.steps, {runFn: quiet, runningFn: gone});
+        const materializeFn = async () => ({id: 'fixture'});
+        const {custody: digest} = await executePlan(plan.steps, {runFn: quiet, runningFn: gone, materializeFn});
 
         expect(digest.before).toBe(digest.after);
         expect(shutdownWrite.map(call => call.command)).toEqual(['osascript', 'ditto', 'open']);
@@ -373,7 +374,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         writeBundle(artifact, receipt('2026-10-03T07:00:00.000Z', 'eeeeeee5555555'));
         plan = planInstall({...slots(), flags: {open: true}, custodyDir: userData});
 
-        expect(() => executePlan(plan.steps, {runFn: tampering})).toThrow(/failed at "compare the custody set.*changed while the app was stopped/);
+        await expect(executePlan(plan.steps, {runFn: tampering, materializeFn})).rejects.toThrow(/failed at "compare the custody set.*changed while the app was stopped/);
         expect(installerWrite.map(call => call.command)).not.toContain('open')
     });
 
