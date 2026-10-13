@@ -8,7 +8,22 @@ import Base           from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 const KIND_WORDS = Object.freeze({
     'red'              : 'red',
     'changes-requested': 'changes requested',
-    'review-due'       : 'review due'
+    'rebase'           : 'rebase required',
+    'review-due'       : 'review due',
+    'route-review'     : 'request review',
+    'unknown'          : 'next action unknown'
+});
+
+/**
+ * @summary Translate the producer's action names into this shared display vocabulary, without selecting a holder.
+ * @type {Object}
+ */
+const DISPLAY_KIND = Object.freeze({
+    'repair-ci'      : 'red',
+    'address-changes': 'changes-requested',
+    'rebase'         : 'rebase',
+    'review'         : 'review-due',
+    'route-review'   : 'route-review'
 });
 
 /**
@@ -37,8 +52,8 @@ const PANE_WORDS = Object.freeze({
  * the operator's queue is the fleet head's awaiting-merge button, and an unknown holder is nobody's to act
  * on yet.
  *
- * Worst first: a red head (the author's) outranks a change request (the author's), which outranks a
- * review due (a requested reviewer's).
+ * Worst first: red, requested changes, rebase, review due, reviewer routing, then an unknown action.
+ * Explicit producer kinds own these words; only an absent field uses the legacy role/CI vocabulary.
  *
  * The chip keeps the open-lane badge's rule: nothing held is no chip, never "0 PRs", and an unanswered or
  * unavailable read is no chip either. Unknown never poses as zero. The Agent Detail lists the same rows
@@ -60,15 +75,21 @@ class OpenWorkSeat extends Base {
     }
 
     /**
-     * @summary The kind of one open-work row for one seat, or `null` when the seat does not hold it.
-     * @param {Object} row          One `fleetOpenWork` row summary (`{ci, holder: {role, ids}, ...}`).
+     * @summary The display kind for the named holder. Unknown string kinds remain held with neutral
+     * wording; explicit null/non-string kinds are not actionable. Only an absent kind uses the legacy contract.
+     * @param {Object} row          One `fleetOpenWork` row summary (`{ci, holder: {role, ids, kind}, ...}`).
      * @param {String} seatIdentity The seat's identity, e.g. `@neo-opus-ada`.
-     * @returns {String|null} `red`, `changes-requested`, `review-due` or `null`.
+     * @returns {String|null} A key in `KIND_WORDS`, or `null` when no supported seat action is declared.
      */
     static kindOf(row, seatIdentity) {
-        const {role, ids} = row?.holder ?? {};
+        const holder = row?.holder ?? {}, {role, ids, kind} = holder;
 
-        if (!Array.isArray(ids) || !ids.includes(seatIdentity)) return null;
+        if (!['author', 'reviewer'].includes(role) || !Array.isArray(ids) || !ids.includes(seatIdentity)) return null;
+
+        if (Object.hasOwn(holder, 'kind')) {
+            if (typeof kind !== 'string') return null;
+            return Object.hasOwn(DISPLAY_KIND, kind) ? DISPLAY_KIND[kind] : 'unknown'
+        }
 
         if (role === 'author')   return row.ci === 'red' ? 'red' : 'changes-requested';
         if (role === 'reviewer') return 'review-due';
@@ -185,16 +206,16 @@ class OpenWorkSeat extends Base {
 
         const
             {count, observedAt, stale, worst} = openWork,
-            word  = KIND_WORDS[worst],
-            prs   = count === 1 ? 'pull request' : 'pull requests',
-            ageMs = stale && observedAt ? now - Date.parse(observedAt) : NaN,
-            age   = Number.isFinite(ageMs) ? ` · observed ${AgentFreshness.formatAge(ageMs)}` : '';
+            word                              = KIND_WORDS[worst],
+            prs                               = count === 1 ? 'pull request' : 'pull requests',
+            ageMs                             = stale && observedAt ? now - Date.parse(observedAt) : NaN,
+            age                               = Number.isFinite(ageMs) ? ` · observed ${AgentFreshness.formatAge(ageMs)}` : '';
 
         return {
             hidden   : false,
             stale,
             text     : `${count} ${count === 1 ? 'PR' : 'PRs'} · ${word}`,
-            ariaLabel: `Open work: ${count} ${prs} waiting on this seat, worst ${word}${stale ? ', stale' : ''}.`,
+            ariaLabel: `Open work: ${count} ${prs} waiting on this seat, worst: ${word}${stale ? ', stale' : ''}.`,
             title    : `${count} ${prs} waiting on this seat · worst: ${word}${stale ? ' · stale' : ''}${age}`
         }
     }

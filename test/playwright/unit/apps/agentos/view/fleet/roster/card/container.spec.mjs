@@ -346,7 +346,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
 
         expect(chip().hidden).toBe(false);
         expect(chip().text).toBe('2 PRs · red');
-        expect(chip().vdom['aria-label']).toBe('Open work: 2 pull requests waiting on this seat, worst red.');
+        expect(chip().vdom['aria-label']).toBe('Open work: 2 pull requests waiting on this seat, worst: red.');
         expect(chip().vdom.title).toBe('2 pull requests waiting on this seat · worst: red');
         expect(chip().cls).not.toContain('is-stale');
 
@@ -367,7 +367,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
 
         expect(chip.cls).toContain('is-stale');
         expect(chip.text).toBe('1 PR · review due');
-        expect(chip.vdom['aria-label']).toBe('Open work: 1 pull request waiting on this seat, worst review due, stale.');
+        expect(chip.vdom['aria-label']).toBe('Open work: 1 pull request waiting on this seat, worst: review due, stale.');
 
         card.destroy()
     });
