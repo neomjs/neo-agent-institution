@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    a852b8ca6e886eb32d583867259a24360f90a92c
+    d52f0e3d0b02c5a92a42f88e33693ad288dc29ad
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -267,7 +267,7 @@ apps/agentos/util/OpenWorkRead.mjs
     18f67a1a242f338cfef956172cb16df9aa4137ac
 
 apps/agentos/util/OpenWorkSeat.mjs
-    9cdbd64f758822ab9ed015e8f28790bcbe5600a4
+    319c556f887ea34bac7bc313dd18dc5be9cf2850
 
 apps/agentos/util/OperatorInbox.mjs
     94980a6be9a77c2c1eeb830c16bcef54281d3370
