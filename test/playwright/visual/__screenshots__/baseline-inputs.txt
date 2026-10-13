@@ -267,7 +267,7 @@ apps/agentos/util/OpenWorkRead.mjs
     18f67a1a242f338cfef956172cb16df9aa4137ac
 
 apps/agentos/util/OpenWorkSeat.mjs
-    319c556f887ea34bac7bc313dd18dc5be9cf2850
+    a9f145e5d8f5dd64023627883806241471d04e97
 
 apps/agentos/util/OperatorInbox.mjs
     94980a6be9a77c2c1eeb830c16bcef54281d3370

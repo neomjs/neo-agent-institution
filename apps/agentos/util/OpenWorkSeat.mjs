@@ -10,7 +10,8 @@ const KIND_WORDS = Object.freeze({
     'changes-requested': 'changes requested',
     'rebase'           : 'rebase required',
     'review-due'       : 'review due',
-    'route-review'     : 'request review'
+    'route-review'     : 'request review',
+    'unknown'          : 'next action unknown'
 });
 
 /**
@@ -51,8 +52,8 @@ const PANE_WORDS = Object.freeze({
  * the operator's queue is the fleet head's awaiting-merge button, and an unknown holder is nobody's to act
  * on yet.
  *
- * Worst first: red, requested changes, rebase, review due, then reviewer routing. Explicit producer
- * kinds own these words; only a producer that omits the field uses the legacy role/CI vocabulary.
+ * Worst first: red, requested changes, rebase, review due, reviewer routing, then an unknown action.
+ * Explicit producer kinds own these words; only an absent field uses the legacy role/CI vocabulary.
  *
  * The chip keeps the open-lane badge's rule: nothing held is no chip, never "0 PRs", and an unanswered or
  * unavailable read is no chip either. Unknown never poses as zero. The Agent Detail lists the same rows
@@ -74,8 +75,8 @@ class OpenWorkSeat extends Base {
     }
 
     /**
-     * @summary The display kind for the named holder. Unsupported explicit kinds are not actionable;
-     * only an absent kind falls back to the older producer's role/CI contract.
+     * @summary The display kind for the named holder. Unknown string kinds remain held with neutral
+     * wording; explicit null/non-string kinds are not actionable. Only an absent kind uses the legacy contract.
      * @param {Object} row          One `fleetOpenWork` row summary (`{ci, holder: {role, ids, kind}, ...}`).
      * @param {String} seatIdentity The seat's identity, e.g. `@neo-opus-ada`.
      * @returns {String|null} A key in `KIND_WORDS`, or `null` when no supported seat action is declared.
@@ -86,7 +87,8 @@ class OpenWorkSeat extends Base {
         if (!['author', 'reviewer'].includes(role) || !Array.isArray(ids) || !ids.includes(seatIdentity)) return null;
 
         if (Object.hasOwn(holder, 'kind')) {
-            return typeof kind === 'string' && Object.hasOwn(DISPLAY_KIND, kind) ? DISPLAY_KIND[kind] : null
+            if (typeof kind !== 'string') return null;
+            return Object.hasOwn(DISPLAY_KIND, kind) ? DISPLAY_KIND[kind] : 'unknown'
         }
 
         if (role === 'author')   return row.ci === 'red' ? 'red' : 'changes-requested';
@@ -213,7 +215,7 @@ class OpenWorkSeat extends Base {
             hidden   : false,
             stale,
             text     : `${count} ${count === 1 ? 'PR' : 'PRs'} · ${word}`,
-            ariaLabel: `Open work: ${count} ${prs} waiting on this seat, worst ${word}${stale ? ', stale' : ''}.`,
+            ariaLabel: `Open work: ${count} ${prs} waiting on this seat, worst: ${word}${stale ? ', stale' : ''}.`,
             title    : `${count} ${prs} waiting on this seat · worst: ${word}${stale ? ' · stale' : ''}${age}`
         }
     }

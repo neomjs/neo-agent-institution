@@ -57,14 +57,33 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
 
             expect(entry.kind, kind).toBe(displayKind);
             expect(chip.text, kind).toBe(`1 PR · ${words}`);
-            expect(chip.ariaLabel, kind).toBe(`Open work: 1 pull request waiting on this seat, worst ${words}.`);
+            expect(chip.ariaLabel, kind).toBe(`Open work: 1 pull request waiting on this seat, worst: ${words}.`);
             expect(chip.title, kind).toBe(`1 pull request waiting on this seat · worst: ${words}`);
             expect(detail.line, kind).toBe(`${role} · ${words} · observed 3m ago`)
         })
     });
 
-    test('unsupported explicit kinds and non-seat holders never invent an actionable row', () => {
-        const unsupported = [null, undefined, '', 'future-action', 'constructor', '__proto__'];
+    test('unsupported string kinds remain held and counted, with neutral words below known actions', () => {
+        ['', 'future-action', 'constructor', '__proto__'].forEach(kind => {
+            const unknown = row(2, {kind, role: 'author', ids: [ada]}, {ci: 'green'}),
+                red       = row(1, {kind: 'repair-ci', role: 'author', ids: [ada]}, {ci: 'red'}),
+                answer    = held([unknown, red]),
+                entries   = OpenWorkSeat.held(answer, ada).rows,
+                summary   = OpenWorkSeat.summarize(answer, ada);
+
+            expect(OpenWorkSeat.kindOf(unknown, ada), kind).toBe('unknown');
+            expect(entries.map(entry => entry.kind), kind).toEqual(['red', 'unknown']);
+            expect(summary, kind).toMatchObject({count: 2, worst: 'red'});
+            expect(OpenWorkSeat.describe(summary).text, kind).toBe('2 PRs · red');
+            expect(OpenWorkSeat.describe(summary).ariaLabel, kind).toBe('Open work: 2 pull requests waiting on this seat, worst: red.');
+            expect(OpenWorkSeat.describeRow(entries[1]).line, kind).toBe('author · next action unknown');
+            expect(OpenWorkSeat.describe(OpenWorkSeat.summarize(held([unknown]), ada)).text, kind)
+                .toBe('1 PR · next action unknown')
+        })
+    });
+
+    test('explicit null or non-string kinds and non-seat holders never invent an actionable row', () => {
+        const unsupported = [null, undefined, false, 1, {}, []];
 
         unsupported.forEach(kind => {
             const value = row(1, {kind, role: 'author', ids: [ada]}, {ci: 'green'});
@@ -88,13 +107,14 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
             rebase       = row(3, {role: 'author', kind: 'rebase', ids: [ada]}, {ci: 'green', stale: true, observedAt}),
             changes      = row(2, {role: 'author', kind: 'address-changes', ids: [ada]}, {ci: 'green'}),
             repair       = row(1, {role: 'author', kind: 'repair-ci', ids: [ada]}, {ci: 'red'}),
-            answer       = held([routing, rebase, changes, repair], [review, rebase]),
+            unknown      = row(6, {role: 'author', kind: 'future-action', ids: [ada]}),
+            answer       = held([unknown, routing, rebase, changes, repair], [review, rebase]),
             entries      = OpenWorkSeat.held(answer, ada),
             summary      = OpenWorkSeat.summarize(answer, ada);
 
-        expect(entries.rows.map(entry => entry.kind)).toEqual(['red', 'changes-requested', 'rebase', 'review-due', 'route-review']);
-        expect(summary).toEqual({count: 5, worst: 'red', stale: true, observedAt});
-        expect(OpenWorkSeat.describe(summary, now).title).toBe('5 pull requests waiting on this seat · worst: red · stale · observed 20m ago');
+        expect(entries.rows.map(entry => entry.kind)).toEqual(['red', 'changes-requested', 'rebase', 'review-due', 'route-review', 'unknown']);
+        expect(summary).toEqual({count: 6, worst: 'red', stale: true, observedAt});
+        expect(OpenWorkSeat.describe(summary, now).title).toBe('6 pull requests waiting on this seat · worst: red · stale · observed 20m ago');
         expect(OpenWorkSeat.describeRow(entries.rows[2], now).line).toBe('author · rebase required · observed 20m ago · stale');
         expect(OpenWorkSeat.describeRow(entries.rows[4], now).line).toBe('author · request review')
     });
@@ -189,7 +209,7 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
             hidden   : false,
             stale    : false,
             text     : '1 PR · review due',
-            ariaLabel: 'Open work: 1 pull request waiting on this seat, worst review due.',
+            ariaLabel: 'Open work: 1 pull request waiting on this seat, worst: review due.',
             title    : '1 pull request waiting on this seat · worst: review due'
         });
 
@@ -199,6 +219,6 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
         expect(stale.text).toBe('3 PRs · red');
         expect(stale.stale).toBe(true);
         expect(stale.title).toBe('3 pull requests waiting on this seat · worst: red · stale · observed 7m ago');
-        expect(stale.ariaLabel).toBe('Open work: 3 pull requests waiting on this seat, worst red, stale.')
+        expect(stale.ariaLabel).toBe('Open work: 3 pull requests waiting on this seat, worst: red, stale.')
     });
 });
