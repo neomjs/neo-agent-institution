@@ -131,13 +131,14 @@ class AgentReposCard extends Container {
     deleteUnavailable = false
 
     /**
-     * @summary Listen for the rows' Remove clicks and render the first state.
+     * @summary Wire repository input and row actions, then render the first state.
      * @param {...*} args
      */
     onConstructed(...args) {
         super.onConstructed(...args);
 
         this.getReference('repo-list').on({removeRepository: this.onRemoveRepository, deleteCheckout: this.onDeleteCheckout, scope: this});
+        this.getReference('field-repo').addDomListeners({keydown: this.onRepoKeyDown, scope: this});
         this.refresh()
     }
 
@@ -279,6 +280,11 @@ class AgentReposCard extends Container {
         if (record && repoSlug && !me.isPending()) {
             me.fire('configIntent', {id: record.id, repos: [...me.getOtherRepos(), {repoSlug}]})
         }
+    }
+
+    /** @summary Enter in the repository field uses the guarded Add action. @param {Object} data */
+    onRepoKeyDown({key}) {
+        key === 'Enter' && this.onAddClick()
     }
 
     /**
