@@ -109,6 +109,10 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         expect(first.generation.directory).toBe(path.join(await fs.realpath(userData), 'brain', 'runtime', runtimeGenerationIdentity(receipt()).id));
         expect(first.runtimeRoot).toBe(first.generation.runtimeRoot);
         expect(first.executable).toBe(first.generation.executable);
+        expect(first.launchArgs).toEqual([`--neo-runtime-generation=${first.generation.directory}`]);
+        await expect(runtimeVerifier.bindCurrentRuntime({
+            args: first.launchArgs, runtimeRoot: first.runtimeRoot, executable: first.executable
+        })).resolves.toEqual({runtimeRoot: first.runtimeRoot, executable: first.executable, generation: first.generation});
         expect(first.executable.startsWith(await fs.realpath(input.bundlePath))).toBe(false);
         expect(second).toEqual(first);
         expect(probes).toBe(1);
@@ -202,7 +206,7 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
                         'const state = globalThis.bootWitness; export const app = {isPackaged:true, getPath: name => name === "userData" ? state.profile : "/tmp", setPath:(name,value) => {if(name === "userData") state.profile=value;}, setAppLogsPath:() => {} };' +
                         'export const protocol = {registerSchemesAsPrivileged:() => {state.scheme=true;}}; export const BrowserWindow={},ipcMain={},Menu={},nativeImage={},safeStorage={},session={},shell={},Tray={};';
                         else if (url.endsWith('/runtimeGeneration.mjs')) source =
-                            'export async function loadRuntimeGenerationVerifier(){return {fixture:true};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
+                            'export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
                     else if (url.endsWith('/mainLog.mjs')) source = 'export const carriesSecret=()=>false, createMainLog=()=>({install(){}});';
                     else if (leaf(url)) {
                         state.imports.push(url);

@@ -1162,6 +1162,7 @@ async function bootProductBrain() {
 
         const fleet = startBrainChild({
             entry   : FLEET_SERVER_ENTRY,
+            args    : launcherRuntime.launchArgs,
             env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
             onLog   : line => {fleetLastLine = line; brainLog(line)},
             repoRoot: agentosRuntimeRoot
@@ -1220,7 +1221,8 @@ async function bootUiFleetTransport() {
         repoRoot           : agentosRuntimeRoot,
         spawn              : ({fleetPort}) => startBrainChild({
             entry   : FLEET_SERVER_ENTRY,
-            env     : {NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
+            args    : launcherRuntime.launchArgs,
+            env     : {...(app.isPackaged ? {ELECTRON_RUN_AS_NODE: '1'} : {}), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
             onLog   : brainLog,
             repoRoot: agentosRuntimeRoot
         })
@@ -1278,6 +1280,7 @@ async function bootSmokeBrain() {
         orchestrator = plan.startOrchestrator ? startBrainChild({entry: ORCHESTRATOR_ENTRY, env: profile, onLog: brainLog, repoRoot: agentosRuntimeRoot}) : null,
         fleet        = startBrainChild({
             entry: FLEET_SERVER_ENTRY,
+            args : launcherRuntime.launchArgs,
             env  : profile,
             onLog: line => {
                 fleetLastLine = line;

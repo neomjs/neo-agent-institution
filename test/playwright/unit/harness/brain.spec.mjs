@@ -920,12 +920,12 @@ test.describe('harness brain lifecycle', () => {
         writeFileSync(path.join(workDir, 'entry.mjs'), 'process.stdout.write(JSON.stringify(process.argv.slice(2))); setTimeout(() => {}, 5000)');
 
         const
-            child   = startBrainChild({entry: 'entry.mjs', ownershipTokenFn: () => 'marker-token', repoRoot: workDir}),
+            child   = startBrainChild({entry: 'entry.mjs', args: ['--neo-runtime-generation=/generation with spaces'], ownershipTokenFn: () => 'marker-token', repoRoot: workDir}),
             [argv]  = await once(child.stdout, 'data'),
             command = execFileSync('ps', ['-o', 'command=', '-p', String(child.pid)], {encoding: 'utf8'});
 
         try {
-            expect(JSON.parse(String(argv))).toEqual([]);
+            expect(JSON.parse(String(argv))).toEqual(['--neo-runtime-generation=/generation with spaces']);
             expect(command).toContain(`${path.join(workDir, 'entry.mjs')} --neo-harness-owner=marker-token`)
         } finally {
             await stopBrainChild(child, {graceMs: 1000})

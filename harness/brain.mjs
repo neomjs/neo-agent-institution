@@ -81,7 +81,7 @@ export function resolveAgentOsRuntimeRoot(env = process.env) {
  * @param {String} [options.executable] Packaged executable to copy and verify.
  * @param {String} [options.userData] Already-selected Electron profile root.
  * @param {Function} [options.materialize=materializeRuntimeGeneration] Runtime publisher.
- * @returns {Promise<{runtimeRoot: String|null, executable: String, generation: Object|null}>}
+ * @returns {Promise<{runtimeRoot: String|null, executable: String, generation: Object|null, launchArgs: String[]}>}
  */
 export async function resolveLauncherRuntime({
     brainMode, env = process.env, packaged, packagedOrganismRoot = null,
@@ -91,18 +91,21 @@ export async function resolveLauncherRuntime({
         if (typeof userData !== 'string' || !path.isAbsolute(userData)) {
             throw new TypeError('Packaged runtime selection requires the selected absolute userData root.')
         }
+        const verifier = await loadRuntimeGenerationVerifier({bundlePath, runtimeRoot: packagedOrganismRoot});
         const generation = await materialize({
             bundlePath, runtimeRoot: packagedOrganismRoot, executable,
             directory: path.join(userData, 'brain', 'runtime'),
-            verifier: await loadRuntimeGenerationVerifier({bundlePath, runtimeRoot: packagedOrganismRoot})
+            verifier
         });
-        return {runtimeRoot: generation.runtimeRoot, executable: generation.executable, generation}
+        return {runtimeRoot: generation.runtimeRoot, executable: generation.executable, generation,
+            launchArgs: verifier.runtimeGenerationArguments(generation)}
     }
 
     return {
         runtimeRoot: brainMode || env.NEO_AGENTOS_RUNTIME_ROOT !== undefined ? resolveAgentOsRuntimeRoot(env) : null,
         executable : env.NEO_HARNESS_NODE_BIN || 'node',
-        generation : null
+        generation : null,
+        launchArgs : []
     }
 }
 
@@ -886,13 +889,12 @@ function forwardLines(child, onLog) {
 }
 
 /**
- * @summary Spawns one supervised system-Node child DETACHED into its own process group — the
- * teardown boundary that owns every descendant. System Node is deliberate (the Arm-B core): the
- * repo's native modules are built for the system ABI, and `ELECTRON_RUN_AS_NODE` children would
- * carry Electron's ABI back into the same conflict.
+ * @summary Spawns one supervised child in its own process group. Checkout mode uses system Node;
+ * packaged mode selects the verified generation's executable and supplies its Node-mode environment.
  * @param {Object} options
  * @param {String}   options.repoRoot Repo root (cwd for the child).
  * @param {String}   options.entry Entry script, repo-relative.
+ * @param {String[]} [options.args=[]] Script arguments, preserved after the private ownership marker.
  * @param {Object}   [options.env] Env fragment merged over process.env. It can add or override an
  *     inherited variable, never remove one, so a fragment builder that must keep an inherited value away
  *     from the child has to decide it by what it exports, not by deleting.
@@ -904,6 +906,7 @@ function forwardLines(child, onLog) {
 export function startBrainChild({
     repoRoot,
     entry,
+    args = [],
     env = {},
     onLog,
     ownershipTokenFn = randomUUID,
@@ -933,8 +936,11 @@ export function startBrainChild({
     if (typeof ownershipToken !== 'string' || ownershipToken.length === 0 || /\s/.test(ownershipToken)) {
         throw new TypeError('ownershipTokenFn must return a non-empty token without whitespace')
     }
+    if (!Array.isArray(args) || args.some(arg => typeof arg !== 'string' || arg.startsWith('--neo-harness-owner='))) {
+        throw new TypeError('args must be script strings without a second ownership marker')
+    }
 
-    const child = spawnFn(nodeBin(), ['--import', OWNER_MARKER_STRIP, absoluteEntry, `--neo-harness-owner=${ownershipToken}`], {
+    const child = spawnFn(nodeBin(), ['--import', OWNER_MARKER_STRIP, absoluteEntry, `--neo-harness-owner=${ownershipToken}`, ...args], {
         cwd     : absoluteRepoRoot,
         detached: true,
         env     : {...process.env, ...env, PATH: `${binPaths.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ''}`},

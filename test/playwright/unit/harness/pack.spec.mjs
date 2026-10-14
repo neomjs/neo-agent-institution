@@ -998,12 +998,12 @@ test.describe('harness pack stage', () => {
     // relative value is an error in every shape.
     test('checkout runtime remains explicit, with a UI-only boot when no Brain root is supplied', async () => {
         await expect(resolveLauncherRuntime({brainMode: true, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false}))
-            .resolves.toEqual({runtimeRoot: '/abs/brain', executable: 'node', generation: null});
+            .resolves.toEqual({runtimeRoot: '/abs/brain', executable: 'node', generation: null, launchArgs: []});
         await expect(resolveLauncherRuntime({brainMode: true, env: {}, packaged: false})).rejects.toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
         await expect(resolveLauncherRuntime({brainMode: false, env: {}, packaged: false}))
-            .resolves.toEqual({runtimeRoot: null, executable: 'node', generation: null});
+            .resolves.toEqual({runtimeRoot: null, executable: 'node', generation: null, launchArgs: []});
         await expect(resolveLauncherRuntime({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain', NEO_HARNESS_NODE_BIN: '/explicit/node'}, packaged: false}))
-            .resolves.toEqual({runtimeRoot: '/abs/brain', executable: '/explicit/node', generation: null});
+            .resolves.toEqual({runtimeRoot: '/abs/brain', executable: '/explicit/node', generation: null, launchArgs: []});
         await expect(resolveLauncherRuntime({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: 'brain'}, packaged: false})).rejects.toThrow(/absolute/)
     });
 

@@ -70,7 +70,7 @@ export async function loadRuntimeGenerationVerifier({bundlePath, runtimeRoot}) {
 
 /** @summary Requires the trusted caller's complete format/verifier namespace, without a target-tree fallback. */
 function assertVerifier(verifier) {
-    const functions = ['runtimeGenerationIdentity', 'readRuntimeGeneration', 'inventoryRuntimePayload',
+    const functions = ['runtimeGenerationIdentity', 'runtimeGenerationArguments', 'readRuntimeGeneration', 'inventoryRuntimePayload',
         'runtimeGenerationDescriptor', 'createRuntimeGenerationRecord', 'completeRuntimeGenerationRecord'];
     if (!verifier || functions.some(name => typeof verifier[name] !== 'function') ||
         typeof verifier.RUNTIME_GENERATION_RECORD !== 'string' || typeof verifier.RUNTIME_GENERATION_PAYLOAD !== 'string') {
