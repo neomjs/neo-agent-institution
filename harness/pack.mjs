@@ -204,6 +204,12 @@ export function resolvePackRoots({env = process.env, productRoot = repoRoot} = {
         }
     }
 
+    const verifier = readPackageJson(brainRoot).exports?.['./runtime-generation'];
+    if (typeof verifier !== 'string' || !verifier.startsWith('./') || verifier.split('/').includes('..') ||
+        !fs.existsSync(path.join(brainRoot, verifier))) {
+        throw new Error('pack: the Brain root has no runtime-generation verifier export — refusing to stage')
+    }
+
     return {brainRoot, enginePackageRoot, productRoot: resolvedProduct}
 }
 

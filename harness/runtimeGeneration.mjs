@@ -1,62 +1,29 @@
 import {execFile}                         from 'node:child_process';
-import {createHash}                       from 'node:crypto';
-import {constants, createReadStream}      from 'node:fs';
+import {constants}                       from 'node:fs';
 import fs                                 from 'node:fs/promises';
 import path                               from 'node:path';
 import {promisify}                        from 'node:util';
+import {pathToFileURL}                    from 'node:url';
+import {createRequire}                    from 'node:module';
 
 /**
  * @module harness/runtimeGeneration
  * @summary Publishes verified package execution copies outside the replaceable app bundle.
- * The host lifecycle owns seat references and retirement; this module owns payload identity,
- * integrity and atomic publication only. A generation is never repaired or overwritten in place.
+ * The host owns copying, probing and publication. Its assembled Brain supplies the single manifest
+ * format and read-only verifier. A generation is never repaired or overwritten in place.
  */
 
-const
-    RECORD = 'generation.json',
-    PAYLOAD = 'host.runtime',
-    execute = promisify(execFile);
+const execute = promisify(execFile);
 
 /** @summary Creates a named refusal without turning an unknown binding into a fallback. */
 function refusal(code, detail, cause) {
     return Object.assign(new Error(code + ': ' + detail, cause ? {cause} : undefined), {code})
 }
 
-/** @summary Hashes one canonical manifest or identity serialization. */
-function hash(value) {
-    return createHash('sha256').update(value).digest('hex')
-}
-
-/**
- * @summary Derives the ADR's package identity, excluding location and staging timestamps.
- * @param {Object} receipt The embedded organism-build-info.json record.
- * @returns {{id: String, identity: String[]}}
- */
-export function runtimeGenerationIdentity(receipt) {
-    const identity = ['product', 'brain', 'engine'].map(owner => receipt?.owners?.[owner]?.revision);
-    identity.push(receipt?.electronVersion);
-
-    if (identity.slice(0, 3).some(value => typeof value !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(value)) ||
-        typeof identity[3] !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(identity[3])) {
-        throw refusal('runtime-receipt-invalid', 'complete product, Brain, Engine revisions and Electron version are required')
-    }
-
-    return {id: hash(JSON.stringify(identity)), identity}
-}
-
 /** @summary Tests containment without accepting sibling paths with a shared string prefix. */
 function inside(root, target) {
     const relative = path.relative(root, target);
     return relative === '' || !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep)
-}
-
-/** @summary Resolves a manifest-relative binding, rejecting traversal and alternate spellings. */
-function binding(root, relative) {
-    if (typeof relative !== 'string' || path.isAbsolute(relative) ||
-        path.normalize(relative) !== relative || !inside(root, path.resolve(root, relative))) {
-        throw refusal('runtime-binding-invalid', 'runtime bindings must be canonical relative paths')
-    }
-    return path.resolve(root, relative)
 }
 
 /** @summary Reads a record; a missing or malformed record is never inferred from directory contents. */
@@ -69,50 +36,46 @@ async function readJson(file) {
 }
 
 /**
- * @summary Inventories bytes, permission modes and verbatim internal links in deterministic order.
- * @param {String} root Payload root, never followed through a symlink.
- * @param {Boolean} readonlyMode Compare a source tree as it will be sealed.
- * @returns {Promise<{entries: Array, digest: String}>}
+ * @summary Loads verification only from the source package's assembled, revision-bound Brain.
+ * The retained generation under test is never an import root, and escaping source links refuse.
+ * @param {Object} options Explicit package and assembled organism roots.
+ * @returns {Promise<Object>} The source package's verifier and manifest-format namespace.
  */
-async function inventory(root, readonlyMode = false) {
-    const entries = [];
-
-    /** @summary Visits one entry without following directory symlinks. */
-    async function visit(relative) {
-        const file = path.join(root, relative), stat = await fs.lstat(file);
-        if (stat.isSymbolicLink()) {
-            const target = await fs.readlink(file);
-            if (path.isAbsolute(target) || !inside(root, await fs.realpath(file))) {
-                throw refusal('runtime-payload-invalid', relative + ' has a non-relocatable link')
-            }
-            entries.push([relative, 'link', target]);
-            return
-        }
-        if (stat.mode & 0o7000) throw refusal('runtime-payload-invalid', relative + ' has special permission bits');
-        const mode = stat.mode & (readonlyMode ? 0o555 : 0o777);
-        if (stat.isDirectory()) {
-            entries.push([relative, 'directory', mode]);
-            for (const name of (await fs.readdir(file)).sort()) await visit(path.join(relative, name));
-        } else if (stat.isFile()) {
-            const digest = createHash('sha256');
-            for await (const chunk of createReadStream(file)) digest.update(chunk);
-            const after = await fs.lstat(file);
-            if (after.ino !== stat.ino || after.size !== stat.size || after.mode !== stat.mode || after.mtimeMs !== stat.mtimeMs) {
-                throw refusal('runtime-payload-changed', relative + ' changed while being read')
-            }
-            entries.push([relative, 'file', mode, stat.size, digest.digest('hex')]);
-        } else {
-            throw refusal('runtime-payload-invalid', relative + ' is neither a file, directory nor internal link')
-        }
+export async function loadRuntimeGenerationVerifier({bundlePath, runtimeRoot}) {
+    const source = await fs.realpath(bundlePath), root = await fs.realpath(runtimeRoot);
+    if (!inside(source, root)) throw refusal('runtime-verifier-invalid', 'the verifier must belong to the source package');
+    const receipt = await readJson(path.join(root, 'organism-build-info.json'));
+    const revision = receipt?.owners?.brain?.revision;
+    if (typeof revision !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) {
+        throw refusal('runtime-verifier-invalid', 'the source package has no complete Brain revision')
     }
-
+    const manifest = await readJson(path.join(root, 'package.json'));
+    if (!manifest.dependencies?.['neo-agent-brain']?.endsWith('#' + revision)) {
+        throw refusal('runtime-verifier-invalid', 'the assembled Brain dependency does not match the package receipt')
+    }
+    let verifier;
     try {
-        await visit('');
+        const require = createRequire(path.join(root, 'package.json'));
+        const file = await fs.realpath(require.resolve('neo-agent-brain/runtime-generation'));
+        if (!inside(path.join(root, 'node_modules/neo-agent-brain'), file)) {
+            throw refusal('runtime-verifier-invalid', 'the verifier escapes the assembled Brain dependency')
+        }
+        verifier = await import(pathToFileURL(file).href + '?brain=' + revision);
     } catch (cause) {
-        if (cause.code?.startsWith('runtime-')) throw cause;
-        throw refusal('runtime-payload-invalid', 'payload cannot be fully inventoried', cause)
+        throw refusal('runtime-verifier-invalid', 'the assembled Brain verifier could not be loaded', cause)
     }
-    return {entries, digest: hash(JSON.stringify(entries))}
+    assertVerifier(verifier);
+    return verifier
+}
+
+/** @summary Requires the trusted caller's complete format/verifier namespace, without a target-tree fallback. */
+function assertVerifier(verifier) {
+    const functions = ['runtimeGenerationIdentity', 'readRuntimeGeneration', 'inventoryRuntimePayload',
+        'runtimeGenerationDescriptor', 'createRuntimeGenerationRecord', 'completeRuntimeGenerationRecord'];
+    if (!verifier || functions.some(name => typeof verifier[name] !== 'function') ||
+        typeof verifier.RUNTIME_GENERATION_RECORD !== 'string' || typeof verifier.RUNTIME_GENERATION_PAYLOAD !== 'string') {
+        throw refusal('runtime-verifier-invalid', 'the trusted host supplied no compatible generation format')
+    }
 }
 
 /** @summary Makes copied files read-only, sealing child directories before their parents. */
@@ -134,59 +97,6 @@ async function discardStage(root) {
     }
     await unlock(root);
     await fs.rm(root, {recursive: true, force: true})
-}
-
-/** @summary Exposes distinct generation-directory, organism-root and executable authorities. */
-function descriptor(directory, record) {
-    const payload = path.join(directory, PAYLOAD);
-    return Object.freeze({
-        id           : record.id,
-        identity     : Object.freeze([...record.identity]),
-        directory,
-        runtimeRoot  : binding(payload, record.runtimeRelativePath),
-        executable   : binding(payload, record.executableRelativePath),
-        payloadDigest: record.payloadDigest,
-        createdAt    : record.createdAt,
-        compatibility: Object.freeze({...record.compatibility})
-    })
-}
-
-/**
- * @summary Verifies a published generation before returning any executable binding.
- * @param {Object} options
- * @param {String} options.directory Generation directory, whose basename is its identity.
- * @param {String} [options.platform=process.platform]
- * @param {String} [options.arch=process.arch]
- * @returns {Promise<Object|null>} Null only when the whole directory is absent.
- */
-export async function readRuntimeGeneration({directory, platform = process.platform, arch = process.arch}) {
-    let stat;
-    try { stat = await fs.lstat(directory) } catch (error) { if (error.code === 'ENOENT') return null; throw error }
-    if (!stat.isDirectory() || stat.isSymbolicLink() || stat.mode & 0o222) {
-        throw refusal('runtime-generation-invalid', 'the published directory is not sealed')
-    }
-    const record = await readJson(path.join(directory, RECORD));
-    if (record.version !== 1 || !Array.isArray(record.identity) || record.identity.length !== 4 ||
-        record.id !== path.basename(directory) || record.id !== hash(JSON.stringify(record.identity)) ||
-        !/^[a-f0-9]{64}$/u.test(record.payloadDigest ?? '') || typeof record.createdAt !== 'string') {
-        throw refusal('runtime-record-invalid', 'generation identity or manifest header is inconsistent')
-    }
-    if (record.compatibility?.platform !== platform || record.compatibility?.arch !== arch ||
-        record.compatibility?.electronVersion !== record.identity[3]) {
-        throw refusal('runtime-compatibility-failed', 'generation is not verified for this host and Electron version')
-    }
-    const result = descriptor(directory, record);
-    const payload = await inventory(path.join(directory, PAYLOAD));
-    if (payload.digest !== record.payloadDigest || JSON.stringify(payload.entries) !== JSON.stringify(record.entries)) {
-        throw refusal('runtime-integrity-failed', 'published bytes, modes or links differ from their manifest')
-    }
-    const actual = runtimeGenerationIdentity(await readJson(path.join(result.runtimeRoot, 'organism-build-info.json')));
-    const executable = await fs.stat(result.executable);
-    if (actual.id !== record.id || !executable.isFile() || !(executable.mode & 0o111) ||
-        !(await fs.stat(result.runtimeRoot)).isDirectory()) {
-        throw refusal('runtime-binding-invalid', 'receipt, runtime or executable does not match the generation')
-    }
-    return result
 }
 
 /**
@@ -230,6 +140,7 @@ export async function probeRuntimeGeneration(candidate) {
  * @param {String} options.runtimeRoot Organism root inside that package.
  * @param {String} options.executable Node-capable executable inside that package.
  * @param {String} options.directory Host-owned runtime-generation parent directory.
+ * @param {Object} options.verifier Namespace from the current trusted host, never the copy target.
  * @param {String} [options.platform=process.platform]
  * @param {String} [options.arch=process.arch]
  * @param {Function} [options.probe=probeRuntimeGeneration] Compatibility probe, injectable for fixtures.
@@ -237,7 +148,7 @@ export async function probeRuntimeGeneration(candidate) {
  * @returns {Promise<Object>} Verified published descriptor; never a staging or bundle fallback.
  */
 export async function materializeRuntimeGeneration({
-    bundlePath, runtimeRoot, executable, directory,
+    bundlePath, runtimeRoot, executable, directory, verifier,
     platform = process.platform, arch = process.arch, probe = probeRuntimeGeneration, now = () => new Date()
 }) {
     if ([bundlePath, runtimeRoot, executable, directory].some(value => typeof value !== 'string' || !path.isAbsolute(value))) {
@@ -248,6 +159,13 @@ export async function materializeRuntimeGeneration({
     if (!inside(source, sourceRuntime) || !inside(source, sourceExecutable) || inside(source, path.resolve(directory))) {
         throw refusal('runtime-binding-invalid', 'source bindings must stay inside the package and destination outside it')
     }
+    assertVerifier(verifier);
+    const {
+        runtimeGenerationIdentity, readRuntimeGeneration,
+        inventoryRuntimePayload: inventory, runtimeGenerationDescriptor: descriptor,
+        createRuntimeGenerationRecord, completeRuntimeGenerationRecord,
+        RUNTIME_GENERATION_RECORD: RECORD, RUNTIME_GENERATION_PAYLOAD: PAYLOAD
+    } = verifier;
     const identity = runtimeGenerationIdentity(await readJson(path.join(sourceRuntime, 'organism-build-info.json')));
     const sourceStat = await fs.stat(sourceExecutable);
     if (!sourceStat.isFile() || !(sourceStat.mode & 0o111) || !(await fs.stat(sourceRuntime)).isDirectory()) {
@@ -272,11 +190,11 @@ export async function materializeRuntimeGeneration({
         await seal(payload, expected.entries);
         const copied = await inventory(payload);
         if (copied.digest !== expected.digest) throw refusal('runtime-integrity-failed', 'the copied payload does not match its source manifest');
-        const record = {
-            version: 1, ...identity, payloadDigest: copied.digest, entries: copied.entries,
+        let record = createRuntimeGenerationRecord({
+            identity, payload: copied,
             runtimeRelativePath: path.relative(source, sourceRuntime) || '.',
             executableRelativePath: path.relative(source, sourceExecutable), createdAt: now().toISOString()
-        };
+        });
         const candidate = descriptor(stage, record);
         let observed;
         try { observed = await probe(candidate) } catch (cause) {
@@ -286,9 +204,7 @@ export async function materializeRuntimeGeneration({
             observed?.electronVersion !== identity.identity[3]) {
             throw refusal('runtime-compatibility-failed', 'copied executable does not match the target platform, architecture or Electron version')
         }
-        record.compatibility = Object.fromEntries(
-            ['platform', 'arch', 'electronVersion', 'nodeVersion', 'moduleAbi'].map(key => [key, observed[key]])
-        );
+        record = completeRuntimeGenerationRecord(record, observed);
         if ((await inventory(payload)).digest !== copied.digest) throw refusal('runtime-integrity-failed', 'the probe changed the sealed payload');
         await fs.writeFile(path.join(stage, RECORD), JSON.stringify(record) + '\n', {mode: 0o400});
         await fs.chmod(stage, 0o500);

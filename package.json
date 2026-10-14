@@ -66,7 +66,7 @@
         "watch-themes": "node ./node_modules/neo.mjs/buildScripts/helpers/watchThemes.mjs"
     },
     "dependencies": {
-        "neo-agent-brain": "github:neomjs/neo-agent-brain#dev",
+        "neo-agent-brain": "github:neomjs/neo-agent-brain#3cda2ba4084cd5deefa470a54afd02a13dc7e0e6",
         "neo.mjs": "github:neomjs/neo#dev"
     },
     "devDependencies": {

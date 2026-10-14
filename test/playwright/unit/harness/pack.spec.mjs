@@ -307,7 +307,8 @@ test.describe('harness pack stage', () => {
         writeFileSync(path.join(product, 'node_modules', 'neo.mjs', ENGINE_THEME_BUILD), 'export default {}', 'utf8');
         mkdirSync(path.join(brain, 'ai'), {recursive: true});
         mkdirSync(path.join(brain, 'src'), {recursive: true});
-        writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0'}), 'utf8');
+        writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0', exports: {'./runtime-generation': './ai/runtimeGeneration.mjs'}}), 'utf8');
+        writeFileSync(path.join(brain, 'ai/runtimeGeneration.mjs'), 'export const fixture = true;', 'utf8');
 
         return {brain, product, root}
     };
@@ -328,6 +329,10 @@ test.describe('harness pack stage', () => {
             // a root without its markers is named, never guessed around
             expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: root}, productRoot: product})).toThrow(/brain root .* carries no package\.json/);
             expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: root})).toThrow(/product root .* carries no apps\/agentos/);
+
+            await rm(path.join(brain, 'ai/runtimeGeneration.mjs'));
+            expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product})).toThrow(/no runtime-generation verifier export/);
+            writeFileSync(path.join(brain, 'ai/runtimeGeneration.mjs'), 'export const fixture = true;', 'utf8');
 
             // the Engine owner is proven too: the theme builder the stage runs lives in the pinned
             // package, and a product root without an installed Engine fails before any mutation
@@ -397,7 +402,7 @@ test.describe('harness pack stage', () => {
                 'neo-agent-brain'              : 'github:neomjs/neo-agent-brain#dev',
                 'neo.mjs'                      : 'github:neomjs/neo#dev'
             }}), 'utf8');
-            writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0', dependencies: {'@chroma-core/default-embed': '^0.1.0'}}), 'utf8');
+            writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0', exports: {'./runtime-generation': './ai/runtimeGeneration.mjs'}, dependencies: {'@chroma-core/default-embed': '^0.1.0'}}), 'utf8');
 
             return {brain, product, root}
         };
@@ -530,7 +535,7 @@ test.describe('harness pack stage', () => {
                 roots             = resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product}),
                 {copied, scanned} = stageOwners({roots, stageDir});
 
-            expect(copied.brain.sort()).toEqual(['ai/x.mjs', 'src/evolution/rem.mjs']);
+            expect(copied.brain.sort()).toEqual(['ai/runtimeGeneration.mjs', 'ai/x.mjs', 'src/evolution/rem.mjs']);
             expect(copied.product.sort()).toEqual(['resources/images/logo/neo_logo_primary.svg', 'resources/theme-map.json', 'src/MicroLoader.mjs']);
             expect(scanned).toEqual({brain: ['brain-only-pkg'], product: ['product-only-pkg']});
             expect(buildOrganismManifest({brainPackageJson, productPackageJson, scanned, supplemental: NO_SUPPLEMENTAL}).dependencies)

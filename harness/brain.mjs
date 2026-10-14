@@ -34,7 +34,7 @@ import net                             from 'node:net';
 import path                            from 'node:path';
 import {pathToFileURL}                 from 'node:url';
 import {carriesSecret}                 from './mainLog.mjs';
-import {materializeRuntimeGeneration} from './runtimeGeneration.mjs';
+import {loadRuntimeGenerationVerifier, materializeRuntimeGeneration} from './runtimeGeneration.mjs';
 
 export const ORCHESTRATOR_ENTRY = 'ai/daemons/orchestrator/daemon.mjs';
 export const FLEET_SERVER_ENTRY = 'ai/services/fleet/devFleetServer.mjs';
@@ -93,7 +93,8 @@ export async function resolveLauncherRuntime({
         }
         const generation = await materialize({
             bundlePath, runtimeRoot: packagedOrganismRoot, executable,
-            directory: path.join(userData, 'brain', 'runtime')
+            directory: path.join(userData, 'brain', 'runtime'),
+            verifier: await loadRuntimeGenerationVerifier({bundlePath, runtimeRoot: packagedOrganismRoot})
         });
         return {runtimeRoot: generation.runtimeRoot, executable: generation.executable, generation}
     }

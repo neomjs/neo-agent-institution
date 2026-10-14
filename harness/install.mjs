@@ -27,6 +27,7 @@ import path                from 'node:path';
 import {fileURLToPath}     from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {materializeRuntimeGeneration} from './runtimeGeneration.mjs';
+import * as runtimeVerifier from 'neo-agent-brain/runtime-generation';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -261,7 +262,8 @@ export async function executePlan(steps, {
                         bundlePath: step.bundle,
                         runtimeRoot: path.dirname(path.join(step.bundle, RECEIPT_RELATIVE_PATH)),
                         executable: path.join(step.bundle, 'Contents', 'MacOS', APP_NAME),
-                        directory: step.directory
+                        directory: step.directory,
+                        verifier: runtimeVerifier
                     });
                     break;
                 case 'rename':

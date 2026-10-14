@@ -6,15 +6,21 @@ import {tmpdir}                           from 'node:os';
 import path                               from 'node:path';
 import {pathToFileURL}                    from 'node:url';
 import {promisify}                        from 'node:util';
+import {createRequire}                    from 'node:module';
+import * as runtimeVerifier              from 'neo-agent-brain/runtime-generation';
 import {resolveLauncherRuntime}          from '../../../../harness/brain.mjs';
 import {executePlan, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
 import {
-    materializeRuntimeGeneration,
+    loadRuntimeGenerationVerifier,
+    materializeRuntimeGeneration
+} from '../../../../harness/runtimeGeneration.mjs';
+import {
     readRuntimeGeneration,
     runtimeGenerationIdentity
-} from '../../../../harness/runtimeGeneration.mjs';
+} from 'neo-agent-brain/runtime-generation';
 
 const
+    verifierFile = createRequire(import.meta.url).resolve('neo-agent-brain/runtime-generation'),
     receipt = () => ({
         electronVersion: '43.5.0',
         owners: Object.fromEntries(['product', 'brain', 'engine'].map((name, index) =>
@@ -31,12 +37,23 @@ async function fixture(root, info = receipt()) {
     const runtimeRoot = path.join(bundlePath, 'Contents', 'Resources', 'organism');
     const executable = path.join(bundlePath, 'Contents', 'MacOS', 'Neo Harness');
     await fs.mkdir(path.join(runtimeRoot, 'ai', 'mcp', 'client'), {recursive: true});
+    await fs.mkdir(path.join(runtimeRoot, 'ai', 'services', 'fleet'), {recursive: true});
+    await fs.copyFile(verifierFile, path.join(runtimeRoot, 'ai', 'services', 'fleet', 'runtimeGeneration.mjs'));
+    const brainPackage = path.join(runtimeRoot, 'node_modules', 'neo-agent-brain');
+    await fs.mkdir(path.join(brainPackage, 'ai/services/fleet'), {recursive: true});
+    await fs.copyFile(verifierFile, path.join(brainPackage, 'ai/services/fleet/runtimeGeneration.mjs'));
+    await fs.writeFile(path.join(brainPackage, 'package.json'), JSON.stringify({
+        name: 'neo-agent-brain', type: 'module', exports: {'./runtime-generation': './ai/services/fleet/runtimeGeneration.mjs'}
+    }));
+    await fs.writeFile(path.join(runtimeRoot, 'package.json'), JSON.stringify({
+        dependencies: {'neo-agent-brain': 'github:neomjs/neo-agent-brain#' + info.owners.brain.revision}
+    }));
     await fs.mkdir(path.dirname(executable), {recursive: true});
     await fs.writeFile(path.join(runtimeRoot, 'organism-build-info.json'), JSON.stringify(info));
     await fs.writeFile(path.join(runtimeRoot, 'ai', 'mcp', 'client', 'fleetMcpLauncher.mjs'), 'export const launcher = true;\n');
     await fs.writeFile(executable, 'fixture executable\n', {mode: 0o755});
     await fs.symlink('Resources/organism', path.join(bundlePath, 'Contents', 'runtime-link'));
-    return {bundlePath, runtimeRoot, executable, directory: path.join(root, 'runtime'), probe: compatible}
+    return {bundlePath, runtimeRoot, executable, directory: path.join(root, 'runtime'), probe: compatible, verifier: runtimeVerifier}
 }
 
 /** @summary Unlocks only fixture directories, leaving symlinks untraversed during cleanup. */
@@ -98,6 +115,48 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         await expect(fs.stat(path.join(root, 'installed-userData'))).rejects.toMatchObject({code: 'ENOENT'});
     });
 
+    test('the verifier comes from the assembled source package, never an external checkout or escaping source link', async () => {
+        const input = await fixture(root), outside = await fixture(path.join(root, 'outside'));
+        await expect(loadRuntimeGenerationVerifier({bundlePath: input.bundlePath, runtimeRoot: outside.runtimeRoot}))
+            .rejects.toMatchObject({code: 'runtime-verifier-invalid'});
+        const file = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain/ai/services/fleet/runtimeGeneration.mjs');
+        await fs.unlink(file);
+        await fs.symlink(verifierFile, file);
+        await expect(loadRuntimeGenerationVerifier(input)).rejects.toMatchObject({code: 'runtime-verifier-invalid'});
+        await expect(materializeRuntimeGeneration(input)).rejects.toMatchObject({code: 'runtime-payload-invalid'});
+    });
+
+    test('an older package with no verifier is still copied and checked by the current trusted host', async () => {
+        const input = await fixture(root);
+        await fs.unlink(path.join(input.runtimeRoot, 'ai/services/fleet/runtimeGeneration.mjs'));
+        await fs.rm(path.join(input.runtimeRoot, 'node_modules/neo-agent-brain'), {recursive: true});
+        const result = await materializeRuntimeGeneration(input);
+        expect(await readRuntimeGeneration({directory: result.directory})).toEqual(result);
+        await expect(materializeRuntimeGeneration({...input, verifier: undefined}))
+            .rejects.toMatchObject({code: 'runtime-verifier-invalid'});
+    });
+
+    test('a current source package whose Brain dependency disagrees with its receipt is refused', async () => {
+        const input = await fixture(root);
+        await fs.writeFile(path.join(input.runtimeRoot, 'package.json'), JSON.stringify({
+            dependencies: {'neo-agent-brain': 'github:neomjs/neo-agent-brain#' + 'f'.repeat(40)}
+        }));
+        await expect(loadRuntimeGenerationVerifier(input)).rejects.toMatchObject({code: 'runtime-verifier-invalid'});
+    });
+
+    test('a retained always-pass verifier cannot hide a changed executable from the trusted source verifier', async () => {
+        const input = await fixture(root), first = await materializeRuntimeGeneration(input);
+        const file = path.join(first.runtimeRoot, 'node_modules/neo-agent-brain/ai/services/fleet/runtimeGeneration.mjs');
+        await fs.chmod(file, 0o644);
+        await fs.writeFile(file, 'globalThis.badRetainedVerifier=true;export async function readRuntimeGeneration(){return {approved:true}}');
+        await fs.chmod(file, 0o444);
+        await fs.chmod(first.executable, 0o755);
+        await fs.writeFile(first.executable, 'changed executable');
+        await fs.chmod(first.executable, 0o555);
+        await expect(materializeRuntimeGeneration(input)).rejects.toMatchObject({code: 'runtime-integrity-failed'});
+        expect(globalThis.badRetainedVerifier).toBeUndefined();
+    });
+
     test('packaged boot refuses a missing profile or a failed publication without returning bundle bindings', async () => {
         const input = await fixture(root), calls = [];
         const options = {
@@ -142,8 +201,8 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
                     if (url === 'boot-witness:electron') source =
                         'const state = globalThis.bootWitness; export const app = {isPackaged:true, getPath: name => name === "userData" ? state.profile : "/tmp", setPath:(name,value) => {if(name === "userData") state.profile=value;}, setAppLogsPath:() => {} };' +
                         'export const protocol = {registerSchemesAsPrivileged:() => {state.scheme=true;}}; export const BrowserWindow={},ipcMain={},Menu={},nativeImage={},safeStorage={},session={},shell={},Tray={};';
-                    else if (url.endsWith('/runtimeGeneration.mjs')) source =
-                        'export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
+                        else if (url.endsWith('/runtimeGeneration.mjs')) source =
+                            'export async function loadRuntimeGenerationVerifier(){return {fixture:true};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
                     else if (url.endsWith('/mainLog.mjs')) source = 'export const carriesSecret=()=>false, createMainLog=()=>({install(){}});';
                     else if (leaf(url)) {
                         state.imports.push(url);
