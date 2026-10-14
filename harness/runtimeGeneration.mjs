@@ -1,10 +1,11 @@
-import {execFile}      from 'node:child_process';
-import {constants}     from 'node:fs';
-import fs              from 'node:fs/promises';
-import path            from 'node:path';
-import {promisify}     from 'node:util';
-import {pathToFileURL} from 'node:url';
-import {createRequire} from 'node:module';
+import {execFile}            from 'node:child_process';
+import {constants}           from 'node:fs';
+import fs                    from 'node:fs/promises';
+import path                  from 'node:path';
+import {promisify}           from 'node:util';
+import {pathToFileURL}       from 'node:url';
+import {createRequire}       from 'node:module';
+import {isAdmissionSnapshot} from 'neo-agent-brain/launch-admission-journal';
 
 /**
  * @module harness/runtimeGeneration
@@ -138,6 +139,44 @@ export async function probeRuntimeGeneration(candidate) {
         return result
     } catch (cause) {
         throw refusal('runtime-compatibility-failed', 'the copied executable/native-module probe did not complete', cause)
+    }
+}
+
+/**
+ * @summary Checks whether the copied destination can read the complete non-secret handoff snapshot.
+ * This executes its format reader for compatibility only. The current trusted verifier still owns
+ * payload integrity; this child neither opens custody nor acquires an issuer or admission capability.
+ * @param {Object} candidate Verified runtime descriptor with its own executable and organism root.
+ * @param {Object} snapshot Closed snapshot inspected through the current trusted journal owner.
+ * @returns {Promise<true>} Refuses unsupported, malformed, escaped or non-completing destinations.
+ */
+export async function probeRuntimeRecovery(candidate, snapshot) {
+    if (!isAdmissionSnapshot(snapshot)) throw refusal('runtime-recovery-incompatible', 'the source handoff snapshot is invalid');
+    const source = [
+        '(async () => {',
+        "const fs=require('node:fs'),path=require('node:path');",
+        'const root=fs.realpathSync(process.argv[1]);',
+        "const load=require('node:module').createRequire(path.join(root,'package.json'));",
+        "const file=fs.realpathSync(load.resolve('neo-agent-brain/launch-admission-journal'));",
+        "const relative=path.relative(path.join(root,'node_modules','neo-agent-brain'),file);",
+        "if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep))throw Error('reader escapes destination');",
+        "const reader=await import(require('node:url').pathToFileURL(file).href);",
+        "const snapshot=JSON.parse(fs.readFileSync(0,'utf8'));",
+        "const compatible=typeof reader.isAdmissionSnapshot==='function'&&reader.isAdmissionSnapshot(snapshot)===true;",
+        'console.log(JSON.stringify({compatible}));',
+        '})().catch(()=>{process.exitCode=1;});'
+    ].join('\n');
+    try {
+        const pending = execute(candidate.executable, ['-e', source, candidate.runtimeRoot], {
+            cwd: candidate.runtimeRoot, env: {ELECTRON_RUN_AS_NODE: '1'}, timeout: 30000, maxBuffer: 65536
+        });
+        pending.child.stdin.on('error', () => {});
+        pending.child.stdin.end(JSON.stringify(snapshot));
+        const {stdout} = await pending, result = JSON.parse(stdout.trim());
+        if (!result || Object.keys(result).join(',') !== 'compatible' || result.compatible !== true) throw Error('snapshot not accepted');
+        return true;
+    } catch (cause) {
+        throw refusal('runtime-recovery-incompatible', 'the destination cannot read the complete handoff snapshot', cause);
     }
 }
 

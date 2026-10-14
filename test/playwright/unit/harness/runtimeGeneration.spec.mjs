@@ -13,7 +13,8 @@ import {executePlan as executePlanImpl, planInstall, readSlot, runningHarnessPat
 import {
     loadRuntimeGenerationVerifier,
     materializeRuntimeGeneration,
-    probeRuntimeGeneration
+    probeRuntimeGeneration,
+    probeRuntimeRecovery
 } from '../../../../harness/runtimeGeneration.mjs';
 import {
     readRuntimeGeneration,
@@ -504,6 +505,45 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         const winner = results.find(result => result.status === 'fulfilled').value;
         expect(await readRuntimeGeneration({directory: winner.directory})).toEqual(winner);
         expect(await fs.readdir(first.directory)).toEqual([winner.id]);
+    });
+
+    test('the destination parser receives the complete snapshot and incompatible readers refuse', async () => {
+        const input        = await fixture(root), brain = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain');
+        const manifestFile = path.join(brain, 'package.json'), manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+        manifest.exports['./launch-admission-journal'] = './ai/services/fleet/launchAdmissionJournal.mjs';
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        const codec    = path.join(brain, 'ai/services/fleet/launchAdmissionJournal.mjs');
+        const snapshot = {version: 6, seats: [], generations: [{
+            id                : 'original-generation', agentId: 'original-seat', identity: 'original-seat', state: 'revoked', reason: null,
+            reservedAt        : null, activatedAt: null, revokedAt: null, definitionHash: 'a'.repeat(64), runtime: null,
+            credentialBindings: {}, residentBindings: {}, servers: [{
+                key: 'github-workflow', grantId: 'original-grant', state: 'revoked', reason: null, capabilityHash: 'b'.repeat(64)
+            }]
+        }]};
+        await fs.writeFile(codec, `export function isAdmissionSnapshot(value) {
+            return value.version === 6 && value.generations[0].agentId === 'original-seat' &&
+                value.generations[0].servers[0].capabilityHash === '${'b'.repeat(64)}';
+        }`);
+        // Host Node isolates the copied parser/stdio contract; the materializer owns native execution closure.
+        const candidate = {runtimeRoot: input.runtimeRoot, executable: process.execPath};
+        await expect(probeRuntimeRecovery(candidate, snapshot)).resolves.toBe(true);
+        await fs.writeFile(codec, 'export function isAdmissionSnapshot(value) { return value.version === 999; }');
+        await expect(probeRuntimeRecovery(candidate, snapshot)).rejects.toMatchObject({code: 'runtime-recovery-incompatible'});
+        await fs.writeFile(codec, 'export const unknownFormat = true;');
+        await expect(probeRuntimeRecovery(candidate, snapshot)).rejects.toMatchObject({code: 'runtime-recovery-incompatible'});
+    });
+
+    test('a destination parser escaping its assembled Brain package is never imported', async () => {
+        const input        = await fixture(root), brain = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain');
+        const manifestFile = path.join(brain, 'package.json'), manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+        manifest.exports['./launch-admission-journal'] = './ai/services/fleet/launchAdmissionJournal.mjs';
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        const outside = path.join(root, 'outside.mjs'), marker = path.join(root, 'unexpected-import');
+        await fs.writeFile(outside, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, 'unexpected'); export const isAdmissionSnapshot=()=>true;`);
+        await fs.symlink(outside, path.join(brain, 'ai/services/fleet/launchAdmissionJournal.mjs'));
+        await expect(probeRuntimeRecovery({runtimeRoot: input.runtimeRoot, executable: process.execPath},
+            {version: 6, generations: [], seats: []})).rejects.toMatchObject({code: 'runtime-recovery-incompatible'});
+        expect(await fs.stat(marker).then(() => true, () => false)).toBe(false);
     });
 
     test('a changed binding in a complete record cannot escape the payload', async () => {
