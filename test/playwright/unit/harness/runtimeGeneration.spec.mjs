@@ -1,8 +1,12 @@
 import {expect, test}                    from '@playwright/test';
+import {execFile}                         from 'node:child_process';
 import {cpSync}                          from 'node:fs';
 import fs                                 from 'node:fs/promises';
 import {tmpdir}                           from 'node:os';
 import path                               from 'node:path';
+import {pathToFileURL}                    from 'node:url';
+import {promisify}                        from 'node:util';
+import {resolveLauncherRuntime}          from '../../../../harness/brain.mjs';
 import {executePlan, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
 import {
     materializeRuntimeGeneration,
@@ -74,6 +78,100 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
     let root;
     test.beforeEach(async () => { root = await fs.mkdtemp(path.join(tmpdir(), 'runtime-generation-')); });
     test.afterEach(async () => { await cleanup(root); });
+
+    test('first-run boot publishes in the selected profile and reuses the verified executable', async () => {
+        const input = await fixture(root), userData = path.join(root, 'diagnostic', 'userData');
+        let probes = 0;
+        const options = {
+            packaged: true, brainMode: true, env: {NEO_HARNESS_NODE_BIN: '/unverified/node'},
+            bundlePath: input.bundlePath, packagedOrganismRoot: input.runtimeRoot,
+            executable: input.executable, userData,
+            materialize: selected => materializeRuntimeGeneration({...selected, probe: () => { probes++; return compatible(); }})
+        };
+        const first = await resolveLauncherRuntime(options), second = await resolveLauncherRuntime(options);
+        expect(first.generation.directory).toBe(path.join(await fs.realpath(userData), 'brain', 'runtime', runtimeGenerationIdentity(receipt()).id));
+        expect(first.runtimeRoot).toBe(first.generation.runtimeRoot);
+        expect(first.executable).toBe(first.generation.executable);
+        expect(first.executable.startsWith(await fs.realpath(input.bundlePath))).toBe(false);
+        expect(second).toEqual(first);
+        expect(probes).toBe(1);
+        await expect(fs.stat(path.join(root, 'installed-userData'))).rejects.toMatchObject({code: 'ENOENT'});
+    });
+
+    test('packaged boot refuses a missing profile or a failed publication without returning bundle bindings', async () => {
+        const input = await fixture(root), calls = [];
+        const options = {
+            packaged: true, brainMode: true, bundlePath: input.bundlePath,
+            packagedOrganismRoot: input.runtimeRoot, executable: input.executable,
+            materialize: selected => { calls.push(selected); throw Error('runtime-integrity-failed'); }
+        };
+        await expect(resolveLauncherRuntime(options)).rejects.toThrow(/absolute userData/);
+        expect(calls).toEqual([]);
+        await expect(resolveLauncherRuntime({...options, userData: path.join(root, 'userData')}))
+            .rejects.toThrow('runtime-integrity-failed');
+        expect(calls).toHaveLength(1);
+    });
+
+    test('actual packaged main selects diagnostic custody before publication and imports private contracts from that generation', async () => {
+        const main = new URL('../../../../harness/main.mjs', import.meta.url).href;
+        const script = `
+            import {registerHooks} from 'node:module';
+            import path from 'node:path';
+            const root = process.argv[1];
+            process.resourcesPath ??= path.join(root, 'Neo Harness.app', 'Contents', 'Resources');
+            Object.assign(process.env, {
+                NEO_HARNESS_SMOKE: '1', NEO_HARNESS_BRAIN: '1', NEO_HARNESS_SMOKE_PLANE: '0',
+                NEO_HARNESS_SMOKE_HOLD: '0', NEO_HARNESS_BRAIN_ROOT: path.join(root, 'diagnostic')
+            });
+            const state = globalThis.bootWitness = {
+                profile: path.join(root, 'installed-userData'), resourcesPath: process.resourcesPath, imports: [], scheme: false,
+                generation: {id: 'verified-fixture', runtimeRoot: path.join(root, 'generation', 'organism'), executable: path.join(root, 'generation', 'host')}
+            };
+            const privateIdentity = '/ai/graph/normalizeAgentIdentityNodeId.mjs';
+            const privateLaunch = '/ai/services/fleet/fleetLaunchContract.mjs';
+            const publicWire = '/node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
+            const leaf = url => [privateIdentity, privateLaunch, publicWire].find(suffix => url.endsWith(suffix));
+            registerHooks({
+                resolve(specifier, context, next) {
+                    if (specifier === 'electron') return {url: 'boot-witness:electron', shortCircuit: true};
+                    if (leaf(specifier)) return {url: specifier, shortCircuit: true};
+                    return next(specifier, context);
+                },
+                load(url, context, next) {
+                    let source;
+                    if (url === 'boot-witness:electron') source =
+                        'const state = globalThis.bootWitness; export const app = {isPackaged:true, getPath: name => name === "userData" ? state.profile : "/tmp", setPath:(name,value) => {if(name === "userData") state.profile=value;}, setAppLogsPath:() => {} };' +
+                        'export const protocol = {registerSchemesAsPrivileged:() => {state.scheme=true;}}; export const BrowserWindow={},ipcMain={},Menu={},nativeImage={},safeStorage={},session={},shell={},Tray={};';
+                    else if (url.endsWith('/runtimeGeneration.mjs')) source =
+                        'export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
+                    else if (url.endsWith('/mainLog.mjs')) source = 'export const carriesSecret=()=>false, createMainLog=()=>({install(){}});';
+                    else if (leaf(url)) {
+                        state.imports.push(url);
+                        if (url.endsWith(privateIdentity)) source = 'export const normalizeAgentIdentityNodeId=()=>{};';
+                        else if (url.endsWith(privateLaunch)) source = 'export const FLEET_CREDENTIAL_METHODS=[],probeExistingFleetServer=()=>{},resolveFleetBearer=()=>{throw Error("boot-witness-complete")};';
+                        else source = 'export const FLEET_WIRE_METHODS=[],FLEET_WIRE_RESPONSE_STATES=[],createFleetWireOffer=()=>{},createFleetWireRequest=()=>{},createFleetWireResponse=()=>{},inspectFleetWireResponse=()=>{};';
+                    }
+                    return source === undefined ? next(url, context) : {format:'module',source,shortCircuit:true};
+                }
+            });
+            try { await import(${JSON.stringify(main)}); throw Error('boot witness did not stop'); }
+            catch (error) { if (error.message !== 'boot-witness-complete') throw error; }
+            console.log(JSON.stringify(state));
+        `;
+        const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script, root], {timeout: 10000});
+        const witness = JSON.parse(stdout.trim());
+        const profile = path.join(root, 'diagnostic', 'userData');
+        expect(witness.publication).toMatchObject({
+            profile, scheme: true,
+            input: {directory: path.join(profile, 'brain', 'runtime'), bundlePath: path.resolve(witness.resourcesPath, '..', '..')}
+        });
+        expect(witness.imports.filter(url => !url.includes('/node_modules/'))).toEqual(expect.arrayContaining([
+            pathToFileURL(path.join(root, 'generation/organism/ai/graph/normalizeAgentIdentityNodeId.mjs')).href,
+            pathToFileURL(path.join(root, 'generation/organism/ai/services/fleet/fleetLaunchContract.mjs')).href
+        ]));
+        expect(witness.imports.find(url => url.includes('/node_modules/')))
+            .toContain('/Neo%20Harness.app/Contents/Resources/organism/node_modules/');
+    });
 
     test('full receipt identity separates packages sharing the product revision', () => {
         const first = receipt(), changed = receipt();

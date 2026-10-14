@@ -55,7 +55,7 @@ import {
     probePort,
     registerOwnedChild,
     resolveBrainMode,
-    resolveLauncherRuntimeRoot,
+    resolveLauncherRuntime,
     resolveUiFleetTransport,
     resolveBrainPaths,
     resolveProductBrainPlan,
@@ -112,15 +112,6 @@ const
     // A walker's held run (`NEO_HARNESS_SMOKE_HOLD=1`): the fixture-plane arm only, refused anywhere else.
     smokeHold             = resolveSmokeHold({env: process.env, smokePlaneMode}),
     planeSafeStorage      = smokePlaneMode ? createSmokeSafeStorage() : safeStorage,
-    // Brain executables resolve through their own explicit runtime root in checkout mode; the
-    // packaged artifact supplies one assembled organism root; a checkout with the Brain leg OFF and
-    // no root boots as the UI alone — no root, no contracts, no transport (the resolver's rule).
-    agentosRuntimeRoot    = resolveLauncherRuntimeRoot({brainMode, env: process.env, packaged: packagedMode, packagedOrganismRoot}),
-    fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot}) : null,
-    // ONE main-owned secret per Electron boot. It crosses only into the Fleet child environment
-    // and main-process Authorization headers; preload/renderer/App-Worker receive no getter or byte.
-    // `null` when this boot carries no transport: nothing to protect, nothing to censor.
-    fleetBearerToken = fleetRuntimeContracts ? fleetRuntimeContracts.resolveFleetBearer({suppliedToken: process.env.NEO_FLEET_BEARER}) : null,
     smokeState       = {
         assetFailures : new Set(),
         assetsSeen    : new Set(),
@@ -146,6 +137,7 @@ smokeRoot && app.setPath('userData', path.join(smokeRoot, 'userData'));
 
 let
     brainBootPromise = Promise.resolve(null),
+    fleetBearerToken = null,
     resolveHarnessAsset,
     // The shell's transport-boot fact for the cockpit banner — attached to every brain-health
     // answer so the renderer can name WHICH shell case is live instead of guessing "offline".
@@ -179,6 +171,26 @@ try {
     console.error(`HARNESS_MAIN_LOG_UNAVAILABLE ${error?.message ?? error}`)
 }
 
+protocol.registerSchemesAsPrivileged([
+    {scheme: 'app', privileges: {standard: true, secure: true, supportFetchAPI: true}}
+]);
+
+// Select the profile before publishing a runtime, and the runtime before importing private contracts.
+const launcherRuntime = await resolveLauncherRuntime({
+    brainMode, env: process.env, packaged: packagedMode, packagedOrganismRoot,
+    bundlePath: packagedMode ? path.resolve(process.resourcesPath, '..', '..') : undefined,
+    executable: process.execPath,
+    userData  : app.getPath('userData')
+}).catch(error => {
+    console.error(`HARNESS_RUNTIME_REFUSED ${error.code ?? error.name}: ${error.message}`);
+    throw error
+});
+const agentosRuntimeRoot = launcherRuntime.runtimeRoot;
+const fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot}) : null;
+
+// This main-owned bearer crosses only into the Fleet child and authenticated main-process requests.
+fleetBearerToken = fleetRuntimeContracts ? fleetRuntimeContracts.resolveFleetBearer({suppliedToken: process.env.NEO_FLEET_BEARER}) : null;
+
 /**
  * @summary Normalizes a settled transport/Brain boot outcome into the wire-safe banner fact.
  *
@@ -202,15 +214,10 @@ function normalizeTransportFact(boot) {
     }
 }
 
-// Packaged mode: every parent-side child spawn (Brain children, the config resolver) runs on the
-// bundled Electron runtime — the packaged env fragments add ELECTRON_RUN_AS_NODE per child.
-if (packagedMode && !process.env.NEO_HARNESS_NODE_BIN) {
-    process.env.NEO_HARNESS_NODE_BIN = process.execPath
+// Packaged child execution always uses the verified generation, including the config resolver.
+if (packagedMode) {
+    process.env.NEO_HARNESS_NODE_BIN = launcherRuntime.executable
 }
-
-protocol.registerSchemesAsPrivileged([
-    {scheme: 'app', privileges: {standard: true, secure: true, supportFetchAPI: true}}
-]);
 
 /**
  * @summary Returns the renderer flags that are explicit invariants for every harness window.
@@ -1025,7 +1032,7 @@ function registerBrainChild(entry) {
 async function bootProductBrain() {
     // Packaged mode: the organism ships read-only(ish), so every mutable path moves to the
     // per-user data root, and Brain children (plus shebang grandchildren via the organism's node
-    // shim) run on the BUNDLED Electron runtime — a stranger's machine carries no Node. A plane the
+    // shim) run on the verified generation's Electron runtime. A plane the
     // user attached from the cockpit joins as the env the launcher would export; set env still wins.
     const storedPlane = packagedMode ? readPlaneConfig({dir: app.getPath('userData'), safeStorage}) : null;
 
@@ -1037,7 +1044,7 @@ async function bootProductBrain() {
         brainBaseEnv = {
             ...buildPackagedBrainEnv({backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
             ELECTRON_RUN_AS_NODE    : '1',
-            NEO_HARNESS_ELECTRON_BIN: process.execPath
+            NEO_HARNESS_ELECTRON_BIN: launcherRuntime.executable
         };
 
     // A consented move of the seats settles first: before the first-launch choice reads the root record, and
@@ -1083,7 +1090,7 @@ async function bootProductBrain() {
             ...buildPackagedBrainEnv({agentsRoot: seatRoot.record?.root, backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
             ...planeFragment,
             ELECTRON_RUN_AS_NODE    : '1',
-            NEO_HARNESS_ELECTRON_BIN: process.execPath
+            NEO_HARNESS_ELECTRON_BIN: launcherRuntime.executable
         }
         : {};
 
@@ -1242,7 +1249,7 @@ async function bootSmokeBrain() {
         isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
         [chromaPort, fleetPort] = await Promise.all([allocatePort(), allocatePort()]),
-        runtimeEnv              = packagedMode ? {ELECTRON_RUN_AS_NODE: '1', NEO_HARNESS_ELECTRON_BIN: process.execPath} : {},
+        runtimeEnv              = packagedMode ? {ELECTRON_RUN_AS_NODE: '1', NEO_HARNESS_ELECTRON_BIN: launcherRuntime.executable} : {},
         planeEnv                = smokePlaneMode
             ? await attachSmokePlane({isolationRoot, runtimeEnv})
             : {NEO_FLEET_PLANE_BASE: '', NEO_FLEET_PLANE_BEARER: ''},

@@ -28,7 +28,7 @@ import {
     stageOwners,
     themeBuildArgv
 } from '../../../../harness/pack.mjs';
-import {buildPackagedBrainEnv, resolveBrainMode, resolveLauncherRuntimeRoot} from '../../../../harness/brain.mjs';
+import {buildPackagedBrainEnv, resolveBrainMode, resolveLauncherRuntime} from '../../../../harness/brain.mjs';
 import path                                                                  from 'node:path';
 
 /**
@@ -150,6 +150,7 @@ test.describe('harness pack stage', () => {
             'main.mjs',
             'mainLog.mjs',
             'planeConfig.mjs',
+            'runtimeGeneration.mjs',
             'seatRootBroker.mjs',
             'seatRootMove.mjs',
             'seatRootRecord.mjs',
@@ -990,13 +991,15 @@ test.describe('harness pack stage', () => {
     // The launcher-ordering half: a checkout with the Brain leg off must boot without a Brain root
     // and without loading a Brain contract; the root stays required while the leg is on, and a
     // relative value is an error in every shape.
-    test('resolveLauncherRuntimeRoot: packaged → the organism root; Brain on → the absolute checkout, required; Brain off → the supplied root or none, relative never', () => {
-        expect(resolveLauncherRuntimeRoot({brainMode: true, env: {}, packaged: true, packagedOrganismRoot: '/app/organism'})).toBe('/app/organism');
-        expect(resolveLauncherRuntimeRoot({brainMode: true, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false})).toBe('/abs/brain');
-        expect(() => resolveLauncherRuntimeRoot({brainMode: true, env: {}, packaged: false})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
-        expect(resolveLauncherRuntimeRoot({brainMode: false, env: {}, packaged: false})).toBeNull();
-        expect(resolveLauncherRuntimeRoot({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false})).toBe('/abs/brain');
-        expect(() => resolveLauncherRuntimeRoot({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: 'brain'}, packaged: false})).toThrow(/absolute/)
+    test('checkout runtime remains explicit, with a UI-only boot when no Brain root is supplied', async () => {
+        await expect(resolveLauncherRuntime({brainMode: true, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false}))
+            .resolves.toEqual({runtimeRoot: '/abs/brain', executable: 'node', generation: null});
+        await expect(resolveLauncherRuntime({brainMode: true, env: {}, packaged: false})).rejects.toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
+        await expect(resolveLauncherRuntime({brainMode: false, env: {}, packaged: false}))
+            .resolves.toEqual({runtimeRoot: null, executable: 'node', generation: null});
+        await expect(resolveLauncherRuntime({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain', NEO_HARNESS_NODE_BIN: '/explicit/node'}, packaged: false}))
+            .resolves.toEqual({runtimeRoot: '/abs/brain', executable: '/explicit/node', generation: null});
+        await expect(resolveLauncherRuntime({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: 'brain'}, packaged: false})).rejects.toThrow(/absolute/)
     });
 
     // The security stop-line: a checkout's gitignored config overlay (which CAN carry hand-edited
