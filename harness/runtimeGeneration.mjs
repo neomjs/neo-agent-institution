@@ -1,10 +1,10 @@
-import {execFile}                         from 'node:child_process';
-import {constants}                       from 'node:fs';
-import fs                                 from 'node:fs/promises';
-import path                               from 'node:path';
-import {promisify}                        from 'node:util';
-import {pathToFileURL}                    from 'node:url';
-import {createRequire}                    from 'node:module';
+import {execFile}      from 'node:child_process';
+import {constants}     from 'node:fs';
+import fs              from 'node:fs/promises';
+import path            from 'node:path';
+import {promisify}     from 'node:util';
+import {pathToFileURL} from 'node:url';
+import {createRequire} from 'node:module';
 
 /**
  * @module harness/runtimeGeneration
@@ -44,7 +44,7 @@ async function readJson(file) {
 export async function loadRuntimeGenerationVerifier({bundlePath, runtimeRoot}) {
     const source = await fs.realpath(bundlePath), root = await fs.realpath(runtimeRoot);
     if (!inside(source, root)) throw refusal('runtime-verifier-invalid', 'the verifier must belong to the source package');
-    const receipt = await readJson(path.join(root, 'organism-build-info.json'));
+    const receipt  = await readJson(path.join(root, 'organism-build-info.json'));
     const revision = receipt?.owners?.brain?.revision;
     if (typeof revision !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) {
         throw refusal('runtime-verifier-invalid', 'the source package has no complete Brain revision')
@@ -56,7 +56,7 @@ export async function loadRuntimeGenerationVerifier({bundlePath, runtimeRoot}) {
     let verifier;
     try {
         const require = createRequire(path.join(root, 'package.json'));
-        const file = await fs.realpath(require.resolve('neo-agent-brain/runtime-generation'));
+        const file    = await fs.realpath(require.resolve('neo-agent-brain/runtime-generation'));
         if (!inside(path.join(root, 'node_modules/neo-agent-brain'), file)) {
             throw refusal('runtime-verifier-invalid', 'the verifier escapes the assembled Brain dependency')
         }
@@ -73,7 +73,8 @@ function assertVerifier(verifier) {
     const functions = ['runtimeGenerationIdentity', 'runtimeGenerationArguments', 'readRuntimeGeneration', 'inventoryRuntimePayload',
         'runtimeGenerationDescriptor', 'createRuntimeGenerationRecord', 'completeRuntimeGenerationRecord'];
     if (!verifier || functions.some(name => typeof verifier[name] !== 'function') ||
-        typeof verifier.RUNTIME_GENERATION_RECORD !== 'string' || typeof verifier.RUNTIME_GENERATION_PAYLOAD !== 'string') {
+        typeof verifier.RUNTIME_GENERATION_RECORD !== 'string' || typeof verifier.RUNTIME_GENERATION_PAYLOAD !== 'string' ||
+        typeof verifier.LAUNCH_ADMISSION_PROTOCOL !== 'string') {
         throw refusal('runtime-verifier-invalid', 'the trusted host supplied no compatible generation format')
     }
 }
@@ -107,16 +108,22 @@ async function discardStage(root) {
  */
 export async function probeRuntimeGeneration(candidate) {
     const source = [
+        "(async () => {",
         "const fs = require('node:fs'), path = require('node:path');",
         "const root = fs.realpathSync(process.argv[1]);",
         "const load = require('node:module').createRequire(path.join(root, 'package.json'));",
         "const Database = load('better-sqlite3'), db = new Database(':memory:');",
         "if (db.prepare('select 42 as value').get().value !== 42) throw Error('native addon failed');",
         "db.close();",
+        "const protocolModule = fs.realpathSync(load.resolve('./ai/services/fleet/mcpLaunchAdmission.mjs'));",
+        "const protocolRelative = path.relative(root, protocolModule);",
+        "if (path.isAbsolute(protocolRelative) || protocolRelative === '..' || protocolRelative.startsWith('..' + path.sep)) throw Error('protocol escapes the copied runtime');",
+        "const {LAUNCH_ADMISSION_PROTOCOL: launchProtocol} = await import(require('node:url').pathToFileURL(protocolModule).href);",
         "console.log(JSON.stringify({platform:process.platform,arch:process.arch,",
         "electronVersion:process.versions.electron,nodeVersion:process.versions.node,",
         "moduleAbi:process.versions.modules,executable:fs.realpathSync(process.execPath),",
-        "runtimeRoot:root,launcher:fs.realpathSync(load.resolve('./ai/mcp/client/fleetMcpLauncher.mjs'))}));"
+        "runtimeRoot:root,launchProtocol,protocolModule,launcher:fs.realpathSync(load.resolve('./ai/mcp/client/fleetMcpLauncher.mjs'))}));",
+        "})().catch(() => { process.exitCode = 1; });"
     ].join('\n');
     try {
         const {stdout} = await execute(candidate.executable, ['-e', source, candidate.runtimeRoot], {
@@ -124,7 +131,8 @@ export async function probeRuntimeGeneration(candidate) {
         });
         const result = JSON.parse(stdout.trim());
         if (result.executable !== await fs.realpath(candidate.executable) ||
-            result.runtimeRoot !== await fs.realpath(candidate.runtimeRoot) || !inside(result.runtimeRoot, result.launcher)) {
+            result.runtimeRoot !== await fs.realpath(candidate.runtimeRoot) || !inside(result.runtimeRoot, result.launcher) ||
+            !inside(result.runtimeRoot, result.protocolModule)) {
             throw new Error('the probe resolved code outside its copied binding')
         }
         return result
@@ -154,7 +162,7 @@ export async function materializeRuntimeGeneration({
     if ([bundlePath, runtimeRoot, executable, directory].some(value => typeof value !== 'string' || !path.isAbsolute(value))) {
         throw refusal('runtime-binding-invalid', 'package, runtime, executable and destination must be explicit absolute paths')
     }
-    const source = await fs.realpath(bundlePath);
+    const source        = await fs.realpath(bundlePath);
     const sourceRuntime = await fs.realpath(runtimeRoot), sourceExecutable = await fs.realpath(executable);
     if (!inside(source, sourceRuntime) || !inside(source, sourceExecutable) || inside(source, path.resolve(directory))) {
         throw refusal('runtime-binding-invalid', 'source bindings must stay inside the package and destination outside it')
@@ -166,7 +174,7 @@ export async function materializeRuntimeGeneration({
         createRuntimeGenerationRecord, completeRuntimeGenerationRecord,
         RUNTIME_GENERATION_RECORD: RECORD, RUNTIME_GENERATION_PAYLOAD: PAYLOAD
     } = verifier;
-    const identity = runtimeGenerationIdentity(await readJson(path.join(sourceRuntime, 'organism-build-info.json')));
+    const identity   = runtimeGenerationIdentity(await readJson(path.join(sourceRuntime, 'organism-build-info.json')));
     const sourceStat = await fs.stat(sourceExecutable);
     if (!sourceStat.isFile() || !(sourceStat.mode & 0o111) || !(await fs.stat(sourceRuntime)).isDirectory()) {
         throw refusal('runtime-binding-invalid', 'the source runtime or executable is not usable')
@@ -176,7 +184,7 @@ export async function materializeRuntimeGeneration({
     if (!parent.isDirectory() || parent.isSymbolicLink()) throw refusal('runtime-generation-invalid', 'generation parent is not a real directory');
     directory = await fs.realpath(directory);
     if (inside(source, directory)) throw refusal('runtime-binding-invalid', 'resolved generation parent is inside the source package');
-    const target = path.join(directory, identity.id);
+    const target   = path.join(directory, identity.id);
     const expected = await inventory(source, true);
     const existing = await readRuntimeGeneration({directory: target, platform, arch});
     if (existing) {
@@ -192,7 +200,7 @@ export async function materializeRuntimeGeneration({
         if (copied.digest !== expected.digest) throw refusal('runtime-integrity-failed', 'the copied payload does not match its source manifest');
         let record = createRuntimeGenerationRecord({
             identity, payload: copied,
-            runtimeRelativePath: path.relative(source, sourceRuntime) || '.',
+            runtimeRelativePath   : path.relative(source, sourceRuntime) || '.',
             executableRelativePath: path.relative(source, sourceExecutable), createdAt: now().toISOString()
         });
         const candidate = descriptor(stage, record);
@@ -201,8 +209,8 @@ export async function materializeRuntimeGeneration({
             throw refusal('runtime-compatibility-failed', 'copied runtime probe failed', cause)
         }
         if (observed?.platform !== platform || observed?.arch !== arch ||
-            observed?.electronVersion !== identity.identity[3]) {
-            throw refusal('runtime-compatibility-failed', 'copied executable does not match the target platform, architecture or Electron version')
+            observed?.electronVersion !== identity.identity[3] || observed?.launchProtocol !== verifier.LAUNCH_ADMISSION_PROTOCOL) {
+            throw refusal('runtime-compatibility-failed', 'copied runtime does not match the target platform, architecture, Electron or launch protocol')
         }
         record = completeRuntimeGenerationRecord(record, observed);
         if ((await inventory(payload)).digest !== copied.digest) throw refusal('runtime-integrity-failed', 'the probe changed the sealed payload');
