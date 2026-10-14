@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    ec9aac12fd513d79cbfe3674ffb36eddcabea219
+    92ebff6cc37da0aac6d09669aa46f4ceb95c2bd8
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -231,7 +231,7 @@ apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     cb0e7ab85ae87e83f5c685cc4d3927c9f73dc1f0
 
 apps/agentos/util/FleetStartPlan.mjs
-    a2b97810cc62f93f8330643c15d6ccd6ceb8b129
+    b0bcf8871a67ddbb788be554ccd6639d182f587d
 
 apps/agentos/util/FloatingMenuTheme.mjs
     84b03b77166b024f051b7aeb611873323c0e5cfb
@@ -810,7 +810,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    9f5ac9458077958c76656fca0ccec803a1f3f9dc
+    719b70b682033541266e8f50d2f1bd656e27138d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -879,7 +879,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-revie
     953e0837238b8df176e0b206e0231fc4b3105db5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
-    ac6ad9ae857aaa4b3172d5e7e4adc13b5a5f54a4
+    9bc3568987b7854fbcd8ccc0b8d762be5b0c366d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation-light.png
     a956a5fd4f9879cd74e242d7ff6f338d09cb110b

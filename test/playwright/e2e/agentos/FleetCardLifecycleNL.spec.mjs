@@ -264,31 +264,31 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
             await expect(button).toHaveText('Stop fleet · 1', {timeout: 15000});
             await expect(button.locator('.fa-stop')).toBeVisible();
             await expect(button).toBeEnabled();
-            await expect(summary).toHaveText('1 started');
+            await expect(summary).toHaveText('1\u00a0started');
 
             // Individual controls must replace the fleet command's receipt with current state.
             const toggle = page.locator('.fm-fleet-cards .fm-card-control-verbs button').first();
             await toggle.click();
             await expect(button).toHaveText('Start fleet · 1', {timeout: 15000});
-            await expect(summary).toHaveText('0 started');
+            await expect(summary).toHaveText('0\u00a0started');
             expect((await getRosterRecord(app)).state).toBe('off');
 
             await toggle.click();
             await expect(button).toHaveText('Stop fleet · 1', {timeout: 15000});
-            await expect(summary).toHaveText('1 started');
+            await expect(summary).toHaveText('1\u00a0started');
             expect((await getRosterRecord(app)).state).toBe('ok');
             expect(stops()).toHaveLength(1);
 
             // the first Stop press: the plan where the summaries live, the chip the second press, nothing sent
             await button.click();
             await expect(button).toHaveText('Stop fleet · press again');
-            await expect(summary).toHaveText('Stop fleet · 1 seat: Lifecycle Witness');
+            await expect(summary).toHaveText('Stop fleet · 1\u00a0seat: Lifecycle Witness');
             expect(stops()).toHaveLength(1);
 
             // the second press sends one stop per planned seat; the re-poll re-words the button
             await button.click();
             await expect(button).toHaveText('Start fleet · 1', {timeout: 15000});
-            await expect(summary).toHaveText('0 started');
+            await expect(summary).toHaveText('0\u00a0started');
             expect(stops()).toHaveLength(2);
             expectMinimalLifecyclePayload(stops()[1], 'stopAgent');
             expect(JSON.stringify(fleet.requests)).not.toMatch(/credential|github_pat|bearer/i)
@@ -306,16 +306,16 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
                   summary = page.locator('.fm-fleet-start-summary');
 
             await expect(button).toHaveText('Stop fleet · 8');
-            await expect(summary).toHaveText('8 started · 4 excluded');
+            await expect(summary).toHaveText('8\u00a0started · 4\u00a0excluded');
 
             const unbenchedId = fleet.unbench();
             await reloadRoster(app);
 
             await expect(button).toHaveText('Start fleet · 1');
-            await expect(summary).toHaveText('8 started · 3 excluded');
+            await expect(summary).toHaveText('8\u00a0started · 3\u00a0excluded');
             expect((await getRosterRecord(app, unbenchedId))).toMatchObject({state: 'off', participationStatus: 'active'});
             const [header] = await app.queryComponent({reference: 'fleet-start-summary'}, ['text']);
-            expect(header.properties.text).toBe('8 started · 3 excluded');
+            expect(header.properties.text).toBe('8\u00a0started · 3\u00a0excluded');
             expect(fleet.requests.filter(request => ['startAgent', 'stopAgent'].includes(request.method))).toHaveLength(0);
 
             for (const width of [1280, 800, 560]) {
@@ -370,7 +370,7 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
             expect(record.state).toBe('off');
             expect(record.pendingAction ?? null).toBeNull();
             expect(record.controlReason).toMatchObject({action: 'start', kind: 'rejected'});
-            await expect(page.locator('.fm-fleet-start-summary')).toHaveText('0 started');
+            await expect(page.locator('.fm-fleet-start-summary')).toHaveText('0\u00a0started');
             await expect(page.locator('.fm-fleet-start-summary')).toHaveAttribute('title', /start rejected by lifecycle witness/);
 
             expect(JSON.stringify(fleet.requests)).not.toMatch(/credential|github_pat|bearer/i)

@@ -675,6 +675,21 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             }
         }
 
+        const countSegments = await page.locator('.fm-fleet-start-summary').evaluate(element => {
+            const node = element.firstChild, text = node.textContent;
+            let offset = 0;
+
+            return text.split(' · ').map(segment => {
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + segment.length);
+                offset += segment.length + 3;
+                return {segment, lines: range.getClientRects().length}
+            })
+        });
+
+        expect(countSegments.length).toBeGreaterThan(1);
+        expect(countSegments.every(segment => segment.lines === 1), 'each count and its word stay on one line').toBe(true);
         await expect(page).toHaveScreenshot('cockpit-vessel-314.png')
     });
 

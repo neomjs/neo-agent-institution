@@ -339,9 +339,9 @@ class FleetStartPlan extends Base {
     static renderFleetStopPlan(plan) {
         const
             names = plan.eligible.map(record => record.displayName ?? record.agentId),
-            parts = [`Stop fleet · ${names.length} seat${names.length === 1 ? '' : 's'}: ${names.join(', ')}`];
+            parts = [`Stop fleet · ${names.length}\u00a0seat${names.length === 1 ? '' : 's'}: ${names.join(', ')}`];
 
-        plan.excluded.length && parts.push(`${plan.excluded.length} excluded`);
+        plan.excluded.length && parts.push(`${plan.excluded.length}\u00a0excluded`);
 
         return {
             detail: plan.excluded.map(({agentId, reason}) => `${agentId ?? '(guest)'}: ${reason}`).join('\n'),
@@ -367,20 +367,20 @@ class FleetStartPlan extends Base {
      * batch is still sending its waves); `detail` lists every pending/unknown/rejected/excluded member
      * with its reason, one per line — the "reasons reachable from the summary" contract, carried as the
      * summary element's title. The verb names the direction: `started` for a fleet start, `stopped`
-     * for a fleet stop.
+     * for a fleet stop. Count-label pairs stay together when the chrome wraps between segments.
      * @param {Object} summary From {@link summarizeFleetStart}.
      * @param {String} [verb='started']
      * @returns {{text: String, detail: String}}
      */
     static renderFleetStartSummary(summary, verb = 'started') {
         const
-            parts  = [`${summary.started} ${verb}`],
+            parts  = [`${summary.started}\u00a0${verb}`],
             detail = [];
 
-        summary.pending?.length && parts.push(`${summary.pending.length} pending`);
-        summary.unknown.length  && parts.push(`${summary.unknown.length} UNKNOWN`);
-        summary.rejected.length && parts.push(`${summary.rejected.length} rejected`);
-        summary.excluded.length && parts.push(`${summary.excluded.length} excluded`);
+        summary.pending?.length && parts.push(`${summary.pending.length}\u00a0pending`);
+        summary.unknown.length  && parts.push(`${summary.unknown.length}\u00a0UNKNOWN`);
+        summary.rejected.length && parts.push(`${summary.rejected.length}\u00a0rejected`);
+        summary.excluded.length && parts.push(`${summary.excluded.length}\u00a0excluded`);
 
         summary.pending?.forEach(({agentId, reason}) => detail.push(`${agentId}: ${reason}`));
         summary.unknown.forEach(({agentId, reason}) => detail.push(`${agentId}: ${reason}`));

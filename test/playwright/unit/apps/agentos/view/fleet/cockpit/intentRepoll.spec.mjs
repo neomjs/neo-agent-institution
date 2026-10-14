@@ -456,7 +456,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
 
             expect(summary.unknown).toHaveLength(1);
             expect(summaries.at(-1).unknown).toHaveLength(1);
-            expect(lines.at(-1).text).toContain('1 UNKNOWN');
+            expect(lines.at(-1).text).toContain('1\u00a0UNKNOWN');
             expect(store.get('vega').state).toBe('off');
             expect(rosterReads).toBe(1);
 
@@ -467,7 +467,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
             await result.settlement;
 
             expect(store.get('vega').state).toBe('ok');
-            expect(lines.at(-1).text).toBe('1 started');
+            expect(lines.at(-1).text).toBe('1\u00a0started');
             expect(summary.unknown).toHaveLength(1);
             expect(rosterReads).toBe(2)
         });
