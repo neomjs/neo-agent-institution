@@ -19,15 +19,15 @@
 // `planInstall` is pure and unit-specced; `executePlan` is the thin shell around `rename(2)`,
 // `ditto` and `osascript`, with the child-process runner injectable like pack.mjs's `runFn`.
 
-import {execFileSync}      from 'node:child_process';
-import {createHash}        from 'node:crypto';
-import fs                  from 'node:fs';
-import os                  from 'node:os';
-import path                from 'node:path';
-import {fileURLToPath}     from 'node:url';
-import {isDeepStrictEqual} from 'node:util';
+import {execFileSync}                 from 'node:child_process';
+import {createHash}                   from 'node:crypto';
+import fs                             from 'node:fs';
+import os                             from 'node:os';
+import path                           from 'node:path';
+import {fileURLToPath}                from 'node:url';
+import {isDeepStrictEqual}            from 'node:util';
 import {materializeRuntimeGeneration} from './runtimeGeneration.mjs';
-import * as runtimeVerifier from 'neo-agent-brain/runtime-generation';
+import * as runtimeVerifier           from 'neo-agent-brain/runtime-generation';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -114,6 +114,17 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
             custody('baseline')
         };
 
+    /** @summary Carries the observed package slots into execution instead of silently replanning a stale update. */
+    const finish = note => {
+        if (steps.length) {
+            const slots = [installed, rollback, parked ?? {path: `${installed.path}.restoring`, exists: false, receipt: null}];
+            if (mode === 'install' && !parked?.exists) slots.push(artifact);
+            steps.unshift({type: 'bind-slots', slots: structuredClone(slots),
+                requireStopped: steps.some(step => ['stage', 'remove', 'rename'].includes(step.type))});
+        }
+        return {ok: true, steps, warnings, ...(note ? {note} : {})};
+    };
+
     if (offCanonical.length) {
         return refusal('running-off-canonical', [
             `A ${APP_NAME} is running from outside ${installed.path}; this leg only replaces the canonical bundle:`,
@@ -129,6 +140,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
     }
 
     if (parked?.exists) {
+        if (!parked.receipt) return refusal('parked-receipt-missing', ['The interrupted slot has no readable package receipt.']);
         if (installed.exists && rollback.exists) {
             return refusal('interrupted-restore-ambiguous', [
                 `An interrupted restore left ${parked.path} beside a filled installed slot and a filled rollback slot; move one by hand before running again.`
@@ -143,13 +155,14 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
         steps.push({type: 'verify', path: installed.path, receipt: installed.exists ? installed.receipt : parked.receipt});
         custody('compare');
 
-        return {ok: true, steps, warnings, note: `An interrupted restore left ${parked.path}; this run only completes it (→ ${to}). Re-run for a swap.`}
+        return finish(`An interrupted restore left ${parked.path}; this run only completes it (→ ${to}). Re-run for a swap.`)
     }
 
     if (mode === 'restore') {
         if (!rollback.exists) {
             return refusal('rollback-missing', [`No rollback bundle at ${rollback.path}.`])
         }
+        if (!rollback.receipt) return refusal('rollback-receipt-missing', ['The rollback slot has no readable package receipt.']);
     } else {
         if (!artifact.exists) {
             return refusal('artifact-missing', [`No bundle at ${artifact.path}; run \`npm run dist\` first.`])
@@ -165,7 +178,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
             // A receipt match cannot hide different bytes, or skip first-run materialisation.
             generation(installed.path);
             generation(artifact.path);
-            return {ok: true, steps, warnings, note: `${installed.path} already carries this receipt; nothing to replace.`}
+            return finish(`${installed.path} already carries this receipt; nothing to replace.`)
         }
     }
 
@@ -205,7 +218,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
     custody('compare');
     flags.open && steps.push({type: 'open', path: installed.path});
 
-    return {ok: true, steps, warnings}
+    return finish()
 }
 
 /**
@@ -224,13 +237,45 @@ export async function executePlan(steps, {
     runFn = run, runningFn = () => runningHarnessPaths(), quitTimeoutMs = 30000,
     materializeFn = materializeRuntimeGeneration
 } = {}) {
-    const custody = {before: undefined, after: undefined};
-    let generation = null;
+    const custody    = {before: undefined, after: undefined};
+    let   generation = null, bindings = null, requireStopped = false;
+
+    /** @summary Checks the original plan plus this executor's own completed slot moves. */
+    function verifyBindings() {
+        if (!bindings) throw new Error('package slot bindings are missing from the install plan');
+        for (const expected of bindings.values()) {
+            if (!isDeepStrictEqual(readSlot(expected.path), expected)) {
+                throw new Error(`planned package slot changed: ${expected.path}; rebuild the plan before retrying`);
+            }
+        }
+    }
+
+    /** @summary A stopped census and current slots are required before any destructive slot action. */
+    function beforeMutation() {
+        verifyBindings();
+        if (requireStopped && runningFn().length) throw new Error('bundle users appeared after planning or Quit; refusing package mutation');
+    }
+
+    /** @summary Advances only a slot change this plan performed; foreign changes never become its new baseline. */
+    function moveBinding(from, to) {
+        const source = bindings.get(from);
+        if (!source?.exists) throw new Error('planned source slot is unavailable');
+        bindings.set(to, {...source, path: to});
+        bindings.set(from, {path: from, exists: false, receipt: null});
+    }
 
     for (const step of steps) {
         try {
+            if (['stage', 'remove', 'runtime', 'rename', 'open'].includes(step.type)) beforeMutation();
             switch (step.type) {
+                case 'bind-slots':
+                    if (bindings) throw new Error('install plan contains multiple slot bindings');
+                    bindings = new Map(step.slots.map(slot => [slot.path, structuredClone(slot)]));
+                    requireStopped = step.requireStopped;
+                    verifyBindings();
+                    break;
                 case 'quit':
+                    verifyBindings();
                     // Through the app's own lifecycle, never a signal: quit drains its owned Brain
                     // children, not detached desktop seats. The census still waits for all bundle users.
                     // Addressed by PATH, not bundle identifier: development builds share the identifier,
@@ -253,26 +298,31 @@ export async function executePlan(steps, {
                 case 'stage':
                     fs.rmSync(step.to, {force: true, recursive: true});
                     runFn('ditto', [step.from, step.to]);
+                    bindings.set(step.to, {...bindings.get(step.from), path: step.to});
                     break;
                 case 'remove':
                     fs.rmSync(step.path, {force: true, recursive: true});
+                    bindings.set(step.path, {path: step.path, exists: false, receipt: null});
                     break;
                 case 'runtime':
                     generation = await materializeFn({
-                        bundlePath: step.bundle,
+                        bundlePath : step.bundle,
                         runtimeRoot: path.dirname(path.join(step.bundle, RECEIPT_RELATIVE_PATH)),
-                        executable: path.join(step.bundle, 'Contents', 'MacOS', APP_NAME),
-                        directory: step.directory,
-                        verifier: runtimeVerifier
+                        executable : path.join(step.bundle, 'Contents', 'MacOS', APP_NAME),
+                        directory  : step.directory,
+                        verifier   : runtimeVerifier
                     });
+                    beforeMutation();
                     break;
                 case 'rename':
                     fs.mkdirSync(path.dirname(step.to), {recursive: true});
                     fs.renameSync(step.from, step.to);
+                    moveBinding(step.from, step.to);
                     break;
                 case 'verify': {
-                    const found = readSlot(step.path).receipt;
+                    const slot = readSlot(step.path), found = slot.receipt;
 
+                    if (!slot.exists || !found || !step.receipt) throw new Error('complete package receipts are required for verification');
                     if (!isDeepStrictEqual(found, step.receipt)) {
                         throw new Error(`carries "${describeReceipt(found)}", expected "${describeReceipt(step.receipt)}"`)
                     }
@@ -289,6 +339,7 @@ export async function executePlan(steps, {
         }
     }
 
+    if (bindings) verifyBindings();
     return {custody: custody.before === undefined ? null : custody, generation}
 }
 
@@ -399,8 +450,8 @@ export function parseInstallArgs(argv) {
  */
 export function custodyDigest(userDataDir) {
     const
-        hash     = createHash('sha256'),
-        feed     = (label, bytes) => {
+        hash = createHash('sha256'),
+        feed = (label, bytes) => {
             hash.update(`${label}\0`);
             bytes !== null && hash.update(bytes);
             hash.update('\0')
@@ -552,6 +603,7 @@ function refusal(reason, detail) {
  */
 export function describeStep(step) {
     switch (step.type) {
+        case 'bind-slots': return 'verify the planned package-slot bindings';
         case 'quit'   : return `quit    ${APP_NAME} (${processCount(step.paths)})`;
         case 'custody': return `${step.phase === 'baseline' ? 'hash   ' : 'compare'} the custody set under ${step.dir} (plane record · fleet root · seat presence)`;
         case 'stage'  : return `copy    ${step.from}\n     →  ${step.to}`;

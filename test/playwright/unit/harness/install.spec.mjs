@@ -1,12 +1,12 @@
-import {expect, test}                                                       from '@playwright/test';
+import {expect, test}                                                                    from '@playwright/test';
 import {cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
-import {tmpdir}                                                             from 'node:os';
-import path                                                                 from 'node:path';
+import {tmpdir}                                                                          from 'node:os';
+import path                                                                              from 'node:path';
 import {
     APP_NAME,
     custodyDigest,
     describeReceipt,
-    executePlan,
+    executePlan as executePlanImpl,
     legacyCopies,
     PEER_QUIT_WARNING,
     planInstall,
@@ -58,7 +58,11 @@ const
         parked   : slot(PARKED, null),
         rollback : slot(ROLLBACK, null)
     }),
-    types     = plan => plan.steps.map(step => step.type);
+    operations = plan => plan.steps.filter(step => step.type !== 'bind-slots'),
+    types      = plan => operations(plan).map(step => step.type);
+
+/** @summary Isolates the process census while retaining the real executor and filesystem operations. */
+const executePlan = (steps, options = {}) => executePlanImpl(steps, {runningFn: () => [], ...options});
 
 test.describe('harness/install.mjs — the plan', () => {
     test('a running Neo Harness is a refusal by default, and the refusal carries the peer warning', () => {
@@ -106,8 +110,8 @@ test.describe('harness/install.mjs — the plan', () => {
 
         expect(plan.ok).toBe(true);
         expect(order.slice(0, 2)).toEqual(['quit', 'custody']);
-        expect(plan.steps[0]).toEqual({type: 'quit', bundle: INSTALLED, paths: [MAIN_EXE]});
-        expect(plan.steps[1]).toEqual({type: 'custody', phase: 'baseline', dir: CUSTODY});
+        expect(operations(plan)[0]).toEqual({type: 'quit', bundle: INSTALLED, paths: [MAIN_EXE]});
+        expect(operations(plan)[1]).toEqual({type: 'custody', phase: 'baseline', dir: CUSTODY});
         expect(order.slice(-2)).toEqual(['custody', 'open']);
         expect(plan.steps.at(-2)).toEqual({type: 'custody', phase: 'compare', dir: CUSTODY});
         expect(plan.warnings).toEqual([PEER_QUIT_WARNING])
@@ -116,7 +120,7 @@ test.describe('harness/install.mjs — the plan', () => {
     test('a first install stages beside the destination, verifies the copy there, and renames into place; nothing else is touched', () => {
         const plan = planInstall({...baseInput(), installed: slot(INSTALLED, null)});
 
-        expect(plan.steps).toEqual([
+        expect(operations(plan)).toEqual([
             {type: 'stage',  from: ARTIFACT, to: STAGED},
             {type: 'verify', path: STAGED, receipt: NEW},
             {type: 'rename', from: STAGED, to: INSTALLED},
@@ -129,7 +133,7 @@ test.describe('harness/install.mjs — the plan', () => {
             plan    = planInstall({...baseInput(), rollback: slot(ROLLBACK, PREVIOUS)}),
             targets = plan.steps.filter(step => step.to).map(step => step.to);
 
-        expect(plan.steps).toEqual([
+        expect(operations(plan)).toEqual([
             {type: 'stage',  from: ARTIFACT, to: STAGED},
             {type: 'verify', path: STAGED, receipt: NEW},
             {type: 'remove', path: ROLLBACK},
@@ -158,7 +162,7 @@ test.describe('harness/install.mjs — the plan', () => {
     test('--restore swaps the two slots with three renames and verifies the rollback receipt; an empty slot refuses', () => {
         const plan = planInstall({...baseInput(), mode: 'restore', rollback: slot(ROLLBACK, PREVIOUS)});
 
-        expect(plan.steps).toEqual([
+        expect(operations(plan)).toEqual([
             {type: 'rename', from: INSTALLED, to: PARKED},
             {type: 'rename', from: ROLLBACK, to: INSTALLED},
             {type: 'rename', from: PARKED, to: ROLLBACK},
@@ -172,7 +176,7 @@ test.describe('harness/install.mjs — the plan', () => {
         // Interrupted after the first rename: the installed slot is empty, the bundle goes back.
         const back = planInstall({...baseInput(), mode: 'restore', installed: slot(INSTALLED, null), parked: slot(PARKED, NEW), rollback: slot(ROLLBACK, PREVIOUS)});
 
-        expect(back.steps).toEqual([
+        expect(operations(back)).toEqual([
             {type: 'rename', from: PARKED, to: INSTALLED},
             {type: 'verify', path: INSTALLED, receipt: NEW}
         ]);
@@ -181,7 +185,7 @@ test.describe('harness/install.mjs — the plan', () => {
         // Interrupted after the second rename: the restore is in place, the parked bundle becomes the rollback.
         const forward = planInstall({...baseInput(), mode: 'install', installed: slot(INSTALLED, PREVIOUS), parked: slot(PARKED, NEW)});
 
-        expect(forward.steps).toEqual([
+        expect(operations(forward)).toEqual([
             {type: 'rename', from: PARKED, to: ROLLBACK},
             {type: 'verify', path: INSTALLED, receipt: PREVIOUS}
         ]);
@@ -316,7 +320,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
 
         let plan = planInstall({...slots(), mode: 'restore'});
 
-        await executePlan(plan.steps.slice(0, 1), {runFn: runFn(calls)});
+        await executePlan(plan.steps.slice(0, 2), {runFn: runFn(calls)});
         expect(readSlot(installed).exists).toBe(false);
         expect(readSlot(parked).receipt).toEqual(NEW);
 
@@ -330,7 +334,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
 
         // After the second rename: the restore is in place, the parked bundle has no slot yet.
         plan = planInstall({...slots(), mode: 'restore'});
-        await executePlan(plan.steps.slice(0, 2), {runFn: runFn(calls)});
+        await executePlan(plan.steps.slice(0, 3), {runFn: runFn(calls)});
         expect(readSlot(installed).receipt).toEqual(OLD);
         expect(readSlot(rollback).exists).toBe(false);
         expect(readSlot(parked).receipt).toEqual(NEW);
@@ -358,7 +362,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
 
         let plan = planInstall({...slots(), running, flags: {quit: true, open: true}, custodyDir: userData});
 
-        const materializeFn = async () => ({id: 'fixture'});
+        const materializeFn     = async () => ({id: 'fixture'});
         const {custody: digest} = await executePlan(plan.steps, {runFn: quiet, runningFn: gone, materializeFn});
 
         expect(digest.before).toBe(digest.after);
@@ -458,6 +462,80 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         expect(rootLinkedBefore, 'a linked fleet root is a custody member').not.toBeNull();
         writeFileSync(path.join(root, 'foreign-fleet', 'registry.json'), '{"agents":{"x":1}}');
         expect(custodyDigest(rootLinked), 'a linked fleet root is not entered').toBe(rootLinkedBefore)
+    });
+
+    test('a second plan from the same predecessor refuses before staging cleanup or slot mutation', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        writeBundle(rollback, PREVIOUS);
+        const first = planInstall(slots()), second = planInstall(slots());
+        await executePlan(first.steps, {runFn: runFn([])});
+        const staged = `${installed}.installing`;
+        writeBundle(staged, PREVIOUS);
+        const before = slots(), calls = [];
+        await expect(executePlan(second.steps, {runFn: runFn(calls)})).rejects.toThrow(/planned package slot changed/);
+        expect(calls).toEqual([]);
+        expect(slots()).toEqual(before);
+        expect(readSlot(staged).receipt).toEqual(PREVIOUS);
+    });
+
+    test('a slot changed during asynchronous materialization refuses before any package rotation', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        writeBundle(rollback, PREVIOUS);
+        const plan = planInstall({...slots(), custodyDir: userData, flags: {open: true}}), calls = [];
+        await expect(executePlan(plan.steps, {runFn: runFn(calls), materializeFn: async () => {
+            await Promise.resolve();
+            writeBundle(installed, PREVIOUS);
+            return {id: 'fixture'};
+        }})).rejects.toThrow(/planned package slot changed/);
+        expect(readSlot(installed).receipt).toEqual(PREVIOUS);
+        expect(readSlot(rollback).receipt).toEqual(PREVIOUS);
+        expect(calls.map(call => call.command)).toEqual(['ditto']);
+    });
+
+    test('stale restore and interrupted-restore plans refuse without changing their completed result', async () => {
+        writeBundle(installed, NEW);
+        writeBundle(rollback, OLD);
+        let first = planInstall({...slots(), mode: 'restore'}), stale = structuredClone(first);
+        await executePlan(first.steps, {runFn: runFn([])});
+        let before = slots();
+        await expect(executePlan(stale.steps, {runFn: runFn([])})).rejects.toThrow(/planned package slot changed/);
+        expect(slots()).toEqual(before);
+
+        rmSync(installed, {recursive: true});
+        writeBundle(parked, OLD);
+        first = planInstall({...slots(), mode: 'restore'});
+        stale = structuredClone(first);
+        await executePlan(first.steps, {runFn: runFn([])});
+        before = slots();
+        await expect(executePlan(stale.steps, {runFn: runFn([])})).rejects.toThrow(/planned package slot changed/);
+        expect(slots()).toEqual(before);
+    });
+
+    test('a bundle process appearing after Quit refuses before staging cleanup', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        const staged = `${installed}.installing`;
+        writeBundle(staged, PREVIOUS);
+        const running = [path.join(installed, 'Contents/MacOS', APP_NAME)];
+        const plan    = planInstall({...slots(), running, flags: {quit: true, open: true}}), calls = [];
+        let   reads   = 0;
+        await expect(executePlan(plan.steps, {runFn: runFn(calls), runningFn: () => ++reads === 1 ? [] : running}))
+            .rejects.toThrow(/bundle users appeared/);
+        expect(calls.map(call => call.command)).toEqual(['osascript']);
+        expect(readSlot(installed).receipt).toEqual(OLD);
+        expect(readSlot(staged).receipt).toEqual(PREVIOUS);
+    });
+
+    test('missing receipts cannot authorize restore, interrupted recovery or an absent-slot verification', async () => {
+        writeBundle(installed, OLD);
+        mkdirSync(rollback, {recursive: true});
+        expect(planInstall({...slots(), mode: 'restore'})).toMatchObject({ok: false, reason: 'rollback-receipt-missing'});
+        mkdirSync(parked, {recursive: true});
+        expect(planInstall({...slots(), mode: 'restore'})).toMatchObject({ok: false, reason: 'parked-receipt-missing'});
+        await expect(executePlan([{type: 'verify', path: path.join(root, 'absent.app'), receipt: null}]))
+            .rejects.toThrow(/complete package receipts are required/);
     });
 
     test('legacyCopies lists only the hand-copied previous-* siblings; resolveArtifactPath requires exactly one mac* bundle', () => {

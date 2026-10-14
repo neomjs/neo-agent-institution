@@ -1,15 +1,15 @@
-import {expect, test}                                            from '@playwright/test';
-import {execFile}                                                from 'node:child_process';
-import {cpSync}                                                  from 'node:fs';
-import fs                                                        from 'node:fs/promises';
-import {tmpdir}                                                  from 'node:os';
-import path                                                      from 'node:path';
-import {pathToFileURL}                                           from 'node:url';
-import {promisify}                                               from 'node:util';
-import {createRequire}                                           from 'node:module';
-import * as runtimeVerifier                                      from 'neo-agent-brain/runtime-generation';
-import {resolveLauncherRuntime}                                  from '../../../../harness/brain.mjs';
-import {executePlan, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
+import {expect, test}                                                               from '@playwright/test';
+import {execFile}                                                                   from 'node:child_process';
+import {cpSync}                                                                     from 'node:fs';
+import fs                                                                           from 'node:fs/promises';
+import {tmpdir}                                                                     from 'node:os';
+import path                                                                         from 'node:path';
+import {pathToFileURL}                                                              from 'node:url';
+import {promisify}                                                                  from 'node:util';
+import {createRequire}                                                              from 'node:module';
+import * as runtimeVerifier                                                         from 'neo-agent-brain/runtime-generation';
+import {resolveLauncherRuntime}                                                     from '../../../../harness/brain.mjs';
+import {executePlan as executePlanImpl, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
 import {
     loadRuntimeGenerationVerifier,
     materializeRuntimeGeneration,
@@ -19,6 +19,9 @@ import {
     readRuntimeGeneration,
     runtimeGenerationIdentity
 } from 'neo-agent-brain/runtime-generation';
+
+/** @summary Keeps disposable package fixtures independent of the host's running Fleet processes. */
+const executePlan = (steps, options = {}) => executePlanImpl(steps, {runningFn: () => [], ...options});
 
 const
     verifierFile = createRequire(import.meta.url).resolve('neo-agent-brain/runtime-generation'),
