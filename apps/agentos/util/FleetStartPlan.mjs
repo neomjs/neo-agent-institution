@@ -271,6 +271,63 @@ class FleetStartPlan extends Base {
     }
 
     /**
+     * @summary Project the current roster cohorts, independently of a previous batch's results.
+     * Eligibility remains owned by the start/stop partitions. A ready stopped seat is not excluded;
+     * pending and unknown evidence keep their own buckets instead of becoming stopped or running.
+     * @param {Object[]|null} records Admitted FleetAgent records.
+     * @returns {{text: String, detail: String}|null} Current counts and member reasons, or no observed roster.
+     */
+    static renderFleetState(records) {
+        const rows = (records ?? []).filter(Boolean);
+
+        if (!rows.length) return null;
+
+        const start = FleetStartPlan.partitionFleetStart(rows),
+              stop = FleetStartPlan.partitionFleetStop(rows),
+              ready = new Set(start.eligible),
+              up = new Set(stop.eligible),
+              startReasons = new Map(start.excluded.map(entry => [entry.record, entry.reason])),
+              stopReasons = new Map(stop.excluded.map(entry => [entry.record, entry.reason])),
+              summary = {started: up.size, pending: [], unknown: [], rejected: [], excluded: []},
+              detail = [];
+
+        rows.forEach(record => {
+            const agentId = record.agentId ?? '(guest)';
+
+            if (record.controlReason?.kind !== 'timeout' && record.controlReason?.reason) {
+                detail.push(`${agentId}: ${record.controlReason.reason}`)
+            }
+
+            if (up.has(record)) return;
+
+            if (ready.has(record)) {
+                detail.push(`${agentId}: ready to start`);
+                return
+            }
+
+            const excluded = !record.agentId || (record.participationStatus != null && record.participationStatus !== 'active'),
+                  startEntry = {agentId, reason: startReasons.get(record)},
+                  stopEntry = {agentId, reason: stopReasons.get(record)};
+
+            if (excluded) {
+                summary.excluded.push(startEntry)
+            } else if (record.pendingAction) {
+                summary.pending.push(stopEntry)
+            } else if ((record.participationStatus == null && record.participationRead?.state === 'unread') || record.controlReason?.kind === 'timeout' ||
+                       SourceHealth.normalizeFleetSources(record.sources).runtime.state !== 'wired') {
+                summary.unknown.push(stopEntry)
+            } else {
+                summary.excluded.push(startEntry)
+            }
+        });
+
+        const line = FleetStartPlan.renderFleetStartSummary(summary);
+
+        line.detail = [line.detail, ...detail].filter(Boolean).join('\n');
+        return line
+    }
+
+    /**
      * @summary The armed stop's plan as the chrome line the first press renders where the batch
      * summaries live: `Stop fleet · 8 seats: Ada, Grace, … · 4 excluded` — the eligible seats
      * by display name in roster order, the exclusions counted in the text and worded one per line in

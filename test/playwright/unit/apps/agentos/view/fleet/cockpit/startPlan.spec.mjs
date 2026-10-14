@@ -34,6 +34,26 @@ const wiredRuntime = (confidence = 'observed') => ({
 
 test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => {
 
+    test('live state keeps Stop uncertainty distinct from a family that cannot Start', () => {
+        const record = {agentId: 'native-up', state: 'ok', sources: wiredRuntime(), launchable: false, pendingAction: 'stop'};
+        const pending = FleetStartPlan.renderFleetState([record]);
+
+        expect(pending.text).toBe('0 started · 1 pending');
+        expect(pending.detail).toContain("'stop' round-trip");
+        expect(pending.detail).not.toContain('not launchable');
+
+        record.pendingAction = null;
+        record.controlReason = {kind: 'timeout', action: 'stop'};
+        const unknown = FleetStartPlan.renderFleetState([record]);
+
+        expect(unknown.text).toBe('0 started · 1 UNKNOWN');
+        expect(unknown.detail).toContain("'stop' outcome unknown");
+        expect(unknown.detail).not.toContain('not launchable');
+
+        record.controlReason = null;
+        expect(FleetStartPlan.renderFleetState([record]).text).toBe('1 started')
+    });
+
     test('partition: every exclusion is wire-derived and carries its reason; the down fleet is what starts', () => {
         const records = [
             {agentId: 'vega',   state: 'off',  sources: wiredRuntime()},                // eligible — wired down
