@@ -498,14 +498,19 @@ class Controller extends FleetBatchController {
     /* ── the fleet batches live on FleetBatchController; the roster truth they read stays here ── */
 
     /**
-     * @summary The full, unfiltered roster truth for fleet actions and counts: folded or filtered
-     * cards remain members. The rendered-cards fallback covers compositions without a grid store.
+     * @summary Full roster truth for fleet actions and counts, in visible grid order followed by
+     * filtered members. Folded cards remain members; without a grid, fall back to rendered cards.
      * @returns {Object[]}
      */
     getRosterRecords() {
         const store = this.getReference('fleet-grid')?.store;
 
-        return store ? [...((store.allItems ?? store).items ?? [])] : this.getAgentCards().map(card => card.record).filter(Boolean)
+        if (!store) return this.getAgentCards().map(card => card.record).filter(Boolean);
+
+        const records = [...(store.items ?? [])],
+              visible = new Set(records);
+
+        return [...records, ...(store.allItems?.items ?? []).filter(record => !visible.has(record))]
     }
 
     /**

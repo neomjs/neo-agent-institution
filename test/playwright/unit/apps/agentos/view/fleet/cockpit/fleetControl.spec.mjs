@@ -104,13 +104,14 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             participationStatus: index < 9 ? 'active' : 'operator_benched'
         })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
               controller = Object.create(FleetCockpitController.prototype),
-              store = {items: records.slice(0, 8), allItems: {items: records}};
+              store = {items: records.slice(0, 8).reverse(), allItems: {items: records}};
 
         controller.getReference = name => ({'fleet-grid': {store}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
         controller.onRosterSettled();
 
         expect(button.text).toBe('Start fleet · 1');
-        expect(slot.text).toBe('8 started · 3 excluded')
+        expect(slot.text).toBe('8 started · 3 excluded');
+        expect(controller.getRosterRecords()).toEqual([...store.items, ...records.slice(8)])
     });
 
     test('a matching armed stop cohort refreshes excluded membership and reasons without extending confirmation or sending Stop', () => {

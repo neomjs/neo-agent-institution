@@ -2288,7 +2288,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         }
     });
 
-    test('the fleet button reads the plan it would run (#618): the plain verb with its reason on the title, Start fleet · 4 with the summary empty, Stop fleet · 8, and Stop fleet · press again with the plan where the summaries live', async ({page}) => {
+    test('the fleet button reads its next plan beside current counts: Start fleet · 4, Stop fleet · 8, and armed Stop with the confirmation plan', async ({page}) => {
         await bootSettledCockpit(page);
 
         const
@@ -2312,17 +2312,18 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(button).toHaveText('Start fleet');
         await expect(button).toHaveAttribute('title', /not wired/);
 
-        // four of the eight active seats down: the plan is a start of four, the summary line empty
+        // four active seats up and four ready: current counts accompany the next start plan
         await landFleetRoster(page, live(index => index % 2 ? 'off' : 'ok'));
         await expect(button).toHaveText('Start fleet · 4');
         await expect(button).not.toHaveAttribute('title', /./);
-        await expect(summary).toBeHidden();
+        await expect(summary).toHaveText('4 started · 3 excluded');
         await settle();
         await expect(button).toHaveScreenshot('fleet-button-start-4.png');
 
         // every active seat up: the plan is a stop of eight
         await landFleetRoster(page, live(() => 'ok'));
         await expect(button).toHaveText('Stop fleet · 8');
+        await expect(summary).toHaveText('8 started · 3 excluded');
         await settle();
         await expect(button).toHaveScreenshot('fleet-button-stop-8.png');
 

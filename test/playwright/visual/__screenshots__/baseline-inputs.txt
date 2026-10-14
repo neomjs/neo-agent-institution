@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    d52f0e3d0b02c5a92a42f88e33693ad288dc29ad
+    ec9aac12fd513d79cbfe3674ffb36eddcabea219
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -231,7 +231,7 @@ apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     cb0e7ab85ae87e83f5c685cc4d3927c9f73dc1f0
 
 apps/agentos/util/FleetStartPlan.mjs
-    bb0910da103a9ca9f0be66aa408c50fa9aba65be
+    a2b97810cc62f93f8330643c15d6ccd6ceb8b129
 
 apps/agentos/util/FloatingMenuTheme.mjs
     84b03b77166b024f051b7aeb611873323c0e5cfb
@@ -357,10 +357,10 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     7194ed7270a8f6d925c71495ab47dc3efa2f0020
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    3a76d1c441be399cfede11cef87b309bdbfec374
+    1dc615cc64e2b5b59bf87034d5ffe735c30dce56
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
-    54f1d887e6a3a8e28d5082ba997c7193fa65d32e
+    49cee569caaf2192f62d91cbb7297a32c34c534f
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     f28a65507cd6b42932afd5392daba6ff666702c1
@@ -774,43 +774,43 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs
     b90320a6be25d268aca236e30afb5c77a639aca7
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-319-chromium-darwin.png
-    eb3d526db80697f28b54ec221ee866c2ee5f2f08
+    e7e02da777071456e5bef7a7703f64dff49a4ab9
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-320-chromium-darwin.png
-    a6582a697f692d3bed175a8b65cfc5d0a0ed6a6a
+    bfdb7ad74af750711aa2581897c1841a3119d579
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-328-chromium-darwin.png
-    5fc2b5c2ef86229a10d2bef472ed00cad7d64183
+    81f404ba9db715f5b0fc8b3dc0d54b64c3e4b42f
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-narrow-294-chromium-darwin.png
-    8e6008548e3ddbf28a0c20a7739fb331a617114e
+    d3e0977a579b956c76990d46fb5c74ce01bc7e09
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-regular-360-chromium-darwin.png
-    8f1770b84991691dc433fc536ac4a9b2e5b35ae2
+    06b45c7ba1c8b711082726c98ca3b782a0190b58
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-roomy-720-chromium-darwin.png
-    95a75eec737240a577bd06f4dae67aa9687afd3a
+    181b8eddcdc80aac75508ff1afd8e9f70993bd33
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-319-chromium-darwin.png
-    176031e34ec233cb1d51ed145a30937034151215
+    75ce0387098c84868ca68a7204e216e55f1c9db5
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-320-chromium-darwin.png
-    e7cc9c333d72d6c1b34d0071b01d60d863f11be5
+    44c750d6db28f8deaaeaf7ba915962bb7912679b
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-328-chromium-darwin.png
-    c8aa366f7902300047a53be3bf06ac0d8af2d7ec
+    025ba2e45253877a27c644b976f41cca3c6b511a
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-narrow-294-chromium-darwin.png
-    c566d26bf94b0d2655d397b640e83ca295ae9e3b
+    a4238c376735f898f7b80e52cdb75872dbdc1452
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-regular-360-chromium-darwin.png
-    6f82f21ec972f6e1a9780b03b7165e7eaf6e90e1
+    482996b09cebd080c3b2656b6e31caf3ce800e5a
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-roomy-720-chromium-darwin.png
-    e71aea247eacde5adb77fb60a74942d01a9fc86e
+    8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    003d4b46bc172a6e7276950b4a13f1985d102249
+    9f5ac9458077958c76656fca0ccec803a1f3f9dc
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -876,10 +876,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-inter
     b96303e4bf8941214bad189b16e2d2b47e57b64e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
-    56d38bb976369da93d06918ca3e6b62290c9c3f1
+    953e0837238b8df176e0b206e0231fc4b3105db5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
-    34d9b53a07c872affae112105380b1679bb79373
+    ac6ad9ae857aaa4b3172d5e7e4adc13b5a5f54a4
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation-light.png
     a956a5fd4f9879cd74e242d7ff6f338d09cb110b
