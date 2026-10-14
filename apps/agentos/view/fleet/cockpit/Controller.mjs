@@ -208,9 +208,18 @@ class Controller extends FleetBatchController {
     onAgentLifecycleIntent(data) {
         const card = Neo.getComponent(data.source);
 
-        return card && this.requestFleetLifecycle(data, card.record).then(result =>
-            this.refreshRosterOnSettle(Promise.resolve(FleetLifecycleIntentAdapter.rosterMayRead(result)), result.isCurrent)
-        )
+        if (!card) return card;
+
+        this.disarmStopFleet();
+
+        const request = this.requestFleetLifecycle(data, card.record);
+
+        this.renderFleetState();
+
+        return request.then(result => {
+            this.renderFleetState();
+            return this.refreshRosterOnSettle(Promise.resolve(FleetLifecycleIntentAdapter.rosterMayRead(result)), result.isCurrent)
+        })
     }
 
     /**
@@ -489,15 +498,19 @@ class Controller extends FleetBatchController {
     /* ── the fleet batches live on FleetBatchController; the roster truth they read stays here ── */
 
     /**
-     * @summary The full roster truth for fleet-level actions: the grid store's records (a folded
-     * idle card is still a member); the rendered-cards fallback covers compositions without the
-     * grid store reference.
+     * @summary Full roster truth for fleet actions and counts, in visible grid order followed by
+     * filtered members. Folded cards remain members; without a grid, fall back to rendered cards.
      * @returns {Object[]}
      */
     getRosterRecords() {
         const store = this.getReference('fleet-grid')?.store;
 
-        return store ? [...(store.items ?? [])] : this.getAgentCards().map(card => card.record).filter(Boolean)
+        if (!store) return this.getAgentCards().map(card => card.record).filter(Boolean);
+
+        const records = [...(store.items ?? [])],
+              visible = new Set(records);
+
+        return [...records, ...(store.allItems?.items ?? []).filter(record => !visible.has(record))]
     }
 
     /**

@@ -52,6 +52,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
     const makeController = calls => {
         const controller = Object.create(FleetCockpitController.prototype);
         controller.loadRoster = () => { calls.push(1) };
+        controller.getReference = () => null;
         return controller
     };
 
@@ -440,7 +441,10 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
               },
               {controller, store} = await makeLiveRoster(bridge);
 
-        controller.renderStartSummary = summary => summaries.push(summary);
+        const lines = [], originalRender = controller.renderStartSummary.bind(controller);
+
+        controller.renderStartSummary = summary => { summaries.push(summary); originalRender(summary) };
+        controller.renderSummarySlot = line => lines.push(line);
 
         await withFastLifecycleDeadline(async ({calls, fire}) => {
             const batch = controller.onStartFleet();
@@ -452,6 +456,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
 
             expect(summary.unknown).toHaveLength(1);
             expect(summaries.at(-1).unknown).toHaveLength(1);
+            expect(lines.at(-1).text).toContain('1\u00a0UNKNOWN');
             expect(store.get('vega').state).toBe('off');
             expect(rosterReads).toBe(1);
 
@@ -462,7 +467,8 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
             await result.settlement;
 
             expect(store.get('vega').state).toBe('ok');
-            expect(summaries.at(-1)).toMatchObject({started: 1, unknown: [], rejected: [], excluded: []});
+            expect(lines.at(-1).text).toBe('1\u00a0started');
+            expect(summary.unknown).toHaveLength(1);
             expect(rosterReads).toBe(2)
         });
 

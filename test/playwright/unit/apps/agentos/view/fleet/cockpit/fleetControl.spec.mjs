@@ -47,6 +47,104 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         ])
     });
 
+    test('a changed settled roster replaces the previous fleet result with eight current started seats', () => {
+        const records = Array.from({length: 12}, (_, index) => ({
+            agentId: `seat-${index}`, sources: wiredSources(), state: index < 4 ? 'ok' : 'off',
+            participationStatus: index < 8 ? 'active' : 'operator_benched',
+            set(values) { Object.assign(this, values) }
+        })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype);
+
+        controller.getReference = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.renderStartSummary({started: 4, unknown: [], rejected: [], excluded: records.slice(4).map(record => ({agentId: record.agentId, reason: 'excluded'}))});
+        expect(slot.hidden).toBe(false);
+
+        records.slice(0, 8).forEach(record => record.set({state: 'ok'}));
+        controller.onRosterSettled();
+
+        expect(button.text).toBe('Stop fleet · 8');
+        expect(slot).toMatchObject({hidden: false, text: '8\u00a0started · 4\u00a0excluded'})
+    });
+
+    test('an unchanged roster keeps current counts and a retired target clears them', () => {
+        const record = {agentId: 'seat-a', sources: wiredSources(), state: 'ok'},
+              button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype);
+
+        controller.getReference = name => ({'fleet-grid': {store: {items: [record]}}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.renderStartSummary({started: 1, unknown: [], rejected: [], excluded: []});
+        controller.onRosterSettled();
+        expect(slot.hidden).toBe(false);
+        expect(slot.text).toBe('1\u00a0started');
+
+        controller.onRosterRetired();
+        expect(slot).toMatchObject({hidden: true, text: ''})
+    });
+
+    test('unbenching a stopped seat changes excluded from four to three and offers one fleet start', () => {
+        const records = Array.from({length: 12}, (_, index) => ({
+            agentId: `seat-${index}`, sources: wiredSources(), state: index < 8 ? 'ok' : 'off',
+            participationStatus: index < 8 ? 'active' : 'operator_benched',
+            set(values) { Object.assign(this, values) }
+        })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype);
+
+        controller.getReference = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.renderStartSummary({started: 8, unknown: [], rejected: [], excluded: records.slice(8).map(record => ({agentId: record.agentId, reason: 'not active'}))});
+        records[8].set({participationStatus: 'active'});
+        controller.onRosterSettled();
+
+        expect(button.text).toBe('Start fleet · 1');
+        expect(slot).toMatchObject({hidden: false, text: '8\u00a0started · 3\u00a0excluded'})
+    });
+
+    test('fleet status and its button use full membership when the visible roster hides stopped and benched seats', () => {
+        const records = Array.from({length: 12}, (_, index) => ({
+            agentId: `seat-${index}`, sources: wiredSources(), state: index < 8 ? 'ok' : 'off',
+            participationStatus: index < 9 ? 'active' : 'operator_benched'
+        })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype),
+              store = {items: records.slice(0, 8).reverse(), allItems: {items: records}};
+
+        controller.getReference = name => ({'fleet-grid': {store}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.onRosterSettled();
+
+        expect(button.text).toBe('Start fleet · 1');
+        expect(slot.text).toBe('8\u00a0started · 3\u00a0excluded');
+        expect(controller.getRosterRecords()).toEqual([...store.items, ...records.slice(8)])
+    });
+
+    test('a matching armed stop cohort refreshes excluded membership and reasons without extending confirmation or sending Stop', () => {
+        const records = [
+            {agentId: 'up', state: 'ok', sources: wiredSources()},
+            {agentId: 'bench', state: 'off', sources: wiredSources(), participationStatus: 'operator_benched'}
+        ], slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype),
+              store = {items: records}, calls = [];
+
+        controller.getReference = name => ({'fleet-grid': {store}, 'fleet-start-summary': slot})[name] ?? null;
+        controller.resolveFleetRosterStore = () => store;
+        controller.requestFleetLifecycle = intent => calls.push(intent);
+
+        try {
+            controller.onStopFleet();
+            const timer = controller.stopFleetArmTimer;
+            expect(slot.text).toContain('1\u00a0excluded');
+
+            records[1].participationStatus = 'temporarily_unreachable';
+            records.push({agentId: 'new-bench', state: 'off', sources: wiredSources(), participationStatus: 'operator_benched'});
+            controller.onRosterSettled();
+
+            expect(slot.text).toContain('2\u00a0excluded');
+            expect(slot.vdom.title).toContain("bench: not active — authoritative participation status 'temporarily_unreachable'");
+            expect(controller.stopFleetArmed.plan.excluded).toHaveLength(2);
+            expect(controller.stopFleetArmTimer).toBe(timer);
+            expect(calls).toEqual([])
+        } finally {
+            controller.disarmStopFleet()
+        }
+    });
+
     test('onStartFleet fans out start to every resident card via the C2 adapter (fold skipped; no bridge → fail-closed per card, never optimistic)', () => {
         // The fleet-start button drives the round-trip directly (the cockpit owns the wire): it
         // enumerates the rendered cards — the collapsed-idle fold is filtered by ntype — and dispatches a
@@ -110,7 +208,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
             expect(plan.eligible.map(record => record.agentId)).toEqual(['ada', 'euclid']);
             expect(calls).toEqual([]);
-            expect(lines.at(-1)).toEqual({text: 'Stop fleet · 2 seats: ada, euclid · 1 excluded', detail: expect.stringContaining('vega: already down')});
+            expect(lines.at(-1)).toEqual({text: 'Stop fleet · 2\u00a0seats: ada, euclid · 1\u00a0excluded', detail: expect.stringContaining('vega: already down')});
             expect(controller.stopFleetArmed.plan).toBe(plan);
 
             // the second press: one stop intent per planned seat, the summary in the stop direction
@@ -209,7 +307,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             controller.onFleetButton();
             expect(calls).toEqual([]);
             expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · press again'});
-            expect(lines.at(-1)).toEqual({detail: '', text: 'Stop fleet · 2 seats: Ada, Euclid'});
+            expect(lines.at(-1)).toEqual({detail: '', text: 'Stop fleet · 2\u00a0seats: Ada, Euclid'});
 
             // a settled roster whose plan matches keeps the arm; one whose plan differs takes it back
             controller.onRosterSettled();
@@ -217,7 +315,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             records[1].set({state: 'off'});
             controller.onRosterSettled();
             expect(controller.stopFleetArmed).toBeNull();
-            expect(lines.at(-1)).toBeNull();
+            expect(lines.at(-1)).toMatchObject({text: '1\u00a0started', detail: expect.stringContaining('euclid: ready to start')});
             expect(button.text).toBe('Start fleet · 1');
 
             // armed again with both up: the window's end takes it back, the button reads its plan
@@ -529,6 +627,34 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         return {calls, controller, records, release, store, summaries, waitFor}
     };
 
+    test('a retired target\'s unresolved batch does not suppress the replacement roster or restore its historical line', async () => {
+        const {calls, controller, release, store, waitFor} = waveFixture(),
+              slot = {vdom: {}, set(values) { Object.assign(this, values) }};
+
+        controller.getReference = name => ({'fleet-grid': {store}, 'fleet-start-summary': slot})[name] ?? null;
+
+        try {
+            const batch = controller.onStartFleet();
+            await waitFor(() => calls.length === 2, 'the old target has unresolved requests');
+            store.clear();
+            controller.onRosterRetired();
+            controller.bridgeProfileId = 'profile-b';
+            store.items = [{agentId: 'new-target', state: 'ok', sources: wiredSources()}];
+            controller.onRosterSettled();
+
+            expect(controller.startFleetPromise).not.toBeNull();
+            expect(slot).toMatchObject({hidden: false, text: '1\u00a0started'});
+            release('a');
+            release('b');
+            await batch;
+
+            expect(slot).toMatchObject({hidden: false, text: '1\u00a0started'});
+            expect(calls).toEqual(['a', 'b'])
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
     test('a seat its own card starts while an earlier wave is held is not sent twice by the batch: its slot reads superseded with the partition\'s reason, the card\'s own Start stands (#654, falsifier 1)', async () => {
         const {calls, controller, records, release, waitFor} = waveFixture();
 
@@ -678,8 +804,9 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             unwired     = mkRecord({agentId: 'silent', state: 'off'}),   // no sources → runtime normalizes not-wired
             slot        = {
                 sets: [],
+                titles: [],
                 vdom: {},
-                set(values) { this.sets.push(values) },
+                set(values) { this.sets.push(values); this.titles.push(this.vdom.title) },
                 update() {}
             };
 
@@ -715,12 +842,12 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         expect(slot.sets[0]).toEqual({hidden: true, text: ''});
         expect(slot.sets[1].hidden).toBe(false);
         expect(slot.sets[1].text).toContain('rejected');
-        expect(slot.sets[1].text).toContain('6 excluded');
-        expect(slot.vdom.title).toContain('native: not launchable');
-        expect(slot.vdom.title).toContain("ada: already up — session state 'ok'");
-        expect(slot.vdom.title).toContain("gemini: not active — authoritative participation status 'operator_benched'");
-        expect(slot.vdom.title).toContain("flaky: not active — authoritative participation status 'temporarily_unreachable'");
-        expect(slot.vdom.title).toContain("silent: runtime source 'not-wired'")
+        expect(slot.sets[1].text).toContain('6\u00a0excluded');
+        expect(slot.titles[1]).toContain('native: not launchable');
+        expect(slot.titles[1]).toContain("ada: already up — session state 'ok'");
+        expect(slot.titles[1]).toContain("gemini: not active — authoritative participation status 'operator_benched'");
+        expect(slot.titles[1]).toContain("flaky: not active — authoritative participation status 'temporarily_unreachable'");
+        expect(slot.titles[1]).toContain("silent: runtime source 'not-wired'")
     });
 
     test('onAgentLifecycleIntent resolves the firing card + drives the C2 adapter — no bridge → fail-closed onto the card record, never optimistic', () => {
@@ -738,6 +865,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         try {
             const controller = Object.create(FleetCockpitController.prototype);
+            controller.getReference = () => null;
             controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'fm-card-x'})
         } finally {
             Neo.getComponent = origGet
