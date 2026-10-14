@@ -14,15 +14,19 @@ import {
     loadRuntimeGenerationVerifier,
     materializeRuntimeGeneration,
     probeRuntimeGeneration,
-    probeRuntimeRecovery
+    probeRuntimeRecovery as probeRuntimeRecoveryImpl
 } from '../../../../harness/runtimeGeneration.mjs';
 import {
     readRuntimeGeneration,
     runtimeGenerationIdentity
 } from 'neo-agent-brain/runtime-generation';
+import {isAdmissionSnapshot} from 'neo-agent-brain/launch-admission-journal';
 
 /** @summary Keeps disposable package fixtures independent of the host's running Fleet processes. */
 const executePlan = (steps, options = {}) => executePlanImpl(steps, {runningFn: () => [], ...options});
+
+/** @summary The fixture supplies the current trusted codec explicitly, just as the packaged owner must. */
+const probeRuntimeRecovery = (candidate, snapshot) => probeRuntimeRecoveryImpl(candidate, snapshot, {validateSnapshot: isAdmissionSnapshot});
 
 const
     verifierFile = createRequire(import.meta.url).resolve('neo-agent-brain/runtime-generation'),
@@ -507,6 +511,16 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         expect(await fs.readdir(first.directory)).toEqual([winner.id]);
     });
 
+    test('the packaged runtime owner imports without a checkout-level Brain dependency', async () => {
+        const shell = path.join(root, 'isolated-shell'), file = path.join(shell, 'runtimeGeneration.mjs');
+        await fs.mkdir(shell);
+        await fs.copyFile(new URL('../../../../harness/runtimeGeneration.mjs', import.meta.url), file);
+        const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e',
+            `const owner=await import(${JSON.stringify(pathToFileURL(file).href)}); console.log(typeof owner.probeRuntimeRecovery);`
+        ], {cwd: shell, env: {}});
+        expect(stdout.trim()).toBe('function');
+    });
+
     test('the destination parser receives the complete snapshot and incompatible readers refuse', async () => {
         const input        = await fixture(root), brain = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain');
         const manifestFile = path.join(brain, 'package.json'), manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
@@ -526,6 +540,7 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         }`);
         // Host Node isolates the copied parser/stdio contract; the materializer owns native execution closure.
         const candidate = {runtimeRoot: input.runtimeRoot, executable: process.execPath};
+        await expect(probeRuntimeRecoveryImpl(candidate, snapshot)).rejects.toThrow(/trusted source snapshot codec is required/);
         await expect(probeRuntimeRecovery(candidate, snapshot)).resolves.toBe(true);
         await fs.writeFile(codec, 'export function isAdmissionSnapshot(value) { return value.version === 999; }');
         await expect(probeRuntimeRecovery(candidate, snapshot)).rejects.toMatchObject({code: 'runtime-recovery-incompatible'});

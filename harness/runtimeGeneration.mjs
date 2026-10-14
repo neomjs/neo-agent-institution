@@ -1,11 +1,10 @@
-import {execFile}            from 'node:child_process';
-import {constants}           from 'node:fs';
-import fs                    from 'node:fs/promises';
-import path                  from 'node:path';
-import {promisify}           from 'node:util';
-import {pathToFileURL}       from 'node:url';
-import {createRequire}       from 'node:module';
-import {isAdmissionSnapshot} from 'neo-agent-brain/launch-admission-journal';
+import {execFile}      from 'node:child_process';
+import {constants}     from 'node:fs';
+import fs              from 'node:fs/promises';
+import path            from 'node:path';
+import {promisify}     from 'node:util';
+import {pathToFileURL} from 'node:url';
+import {createRequire} from 'node:module';
 
 /**
  * @module harness/runtimeGeneration
@@ -148,10 +147,15 @@ export async function probeRuntimeGeneration(candidate) {
  * payload integrity; this child neither opens custody nor acquires an issuer or admission capability.
  * @param {Object} candidate Verified runtime descriptor with its own executable and organism root.
  * @param {Object} snapshot Closed snapshot inspected through the current trusted journal owner.
+ * @param {Object} options
+ * @param {Function} options.validateSnapshot Codec loaded by the trusted source owner, never the candidate.
  * @returns {Promise<true>} Refuses unsupported, malformed, escaped or non-completing destinations.
  */
-export async function probeRuntimeRecovery(candidate, snapshot) {
-    if (!isAdmissionSnapshot(snapshot)) throw refusal('runtime-recovery-incompatible', 'the source handoff snapshot is invalid');
+export async function probeRuntimeRecovery(candidate, snapshot, {validateSnapshot} = {}) {
+    if (typeof validateSnapshot !== 'function') throw refusal('runtime-recovery-incompatible', 'a trusted source snapshot codec is required');
+    let valid = false;
+    try { valid = validateSnapshot(snapshot) === true } catch {}
+    if (!valid) throw refusal('runtime-recovery-incompatible', 'the source handoff snapshot is invalid');
     const source = [
         '(async () => {',
         "const fs=require('node:fs'),path=require('node:path');",
