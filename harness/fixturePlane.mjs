@@ -1,8 +1,8 @@
-import crypto          from 'node:crypto';
-import fs              from 'node:fs';
-import http            from 'node:http';
-import path            from 'node:path';
-import {pathToFileURL} from 'node:url';
+import crypto                                                             from 'node:crypto';
+import fs                                                                 from 'node:fs';
+import http                                                               from 'node:http';
+import path                                                               from 'node:path';
+import {pathToFileURL}                                                    from 'node:url';
 import {allocatePort, awaitPortListening, runBrainScript, stopBrainChild} from './brain.mjs';
 import {probePlaneBearerClass, probePlaneCredential, writePlaneConfig}    from './planeConfig.mjs';
 
@@ -69,10 +69,9 @@ export function createSmokeSafeStorage() {
 }
 
 /**
- * @summary Places every plane member the Memory Core claims under one root: its own members and the
- * Tier-1 ones, the set its boot asserts (Brain `BaseServer.collectMemberEntries`). Each member's
- * default is rebased from the Brain's plane data root. A relocated plane must name every member, or
- * the server's coherence check refuses it.
+ * @summary Places every declared member of the fixture's Tier-1 and MCP server configs under one
+ * root. Imported services must not write their mutable state into the sealed runtime.
+ * Each member's default is rebased from the Brain's plane data root.
  * @param {Object} options
  * @param {String} options.repoRoot The Brain runtime root.
  * @param {String} options.planeRoot
@@ -87,17 +86,20 @@ export async function resolvePlaneMemberEnv({repoRoot, planeRoot, env = {}, runS
             "import Neo from 'neo.mjs/src/Neo.mjs';",
             "import * as core from 'neo.mjs/src/core/_export.mjs';",
             "import InstanceManager from 'neo.mjs/src/manager/Instance.mjs';",
+            "import './ai/config.template.mjs';",
             "import Tier1, {PLANE_MEMBER_PATHS as tier1Paths} from './ai/configBase.mjs';",
             "import MemoryCore, {PLANE_MEMBER_PATHS as memoryCorePaths} from './ai/mcp/server/memory-core/configBase.mjs';",
+            "import KnowledgeBase, {PLANE_MEMBER_PATHS as knowledgeBasePaths} from './ai/mcp/server/knowledge-base/configBase.mjs';",
+            "import NeuralLink, {PLANE_MEMBER_PATHS as neuralLinkPaths} from './ai/mcp/server/neural-link/configBase.mjs';",
             "import {resolvePlaneDataRoot} from './ai/planeConfig.mjs';",
             "const leaf = (base, memberPath) => memberPath.split('.').reduce((node, key) => node?.[key], base.config.data);",
             "process.stdout.write(JSON.stringify({",
             "    anchor : resolvePlaneDataRoot({rootDir: process.cwd()}),",
-            "    members: [[MemoryCore, memoryCorePaths], [Tier1, tier1Paths]].flatMap(([base, paths]) =>",
+            "    members: [[MemoryCore, memoryCorePaths], [KnowledgeBase, knowledgeBasePaths], [NeuralLink, neuralLinkPaths], [Tier1, tier1Paths]].flatMap(([base, paths]) =>",
             "        paths.map(memberPath => ({default: leaf(base, memberPath)?.default, env: leaf(base, memberPath)?.env, path: memberPath})))",
             "}));"
         ].join('\n'),
-        {anchor, members} = await runScript({env, label: 'plane member resolver', repoRoot, script}),
+        {anchor, members} = await runScript({env: {...env, NEO_PLANE_DATA_ROOT: planeRoot}, label: 'plane member resolver', repoRoot, script}),
         placed            = {NEO_PLANE_DATA_ROOT: planeRoot};
 
     for (const member of members) {
@@ -287,14 +289,14 @@ export async function startFixturePlane({repoRoot, isolationRoot, recordDir, saf
     const env = {
         ...members,
         ...runtimeEnv,
-        MCP_HTTP_PORT       : String(mcpPort),
-        NEO_AGENT_IDENTITY  : FIXTURE_IDENTITY,
-        NEO_AUTH_MODE       : 'seat-token',
+        MCP_HTTP_PORT     : String(mcpPort),
+        NEO_AGENT_IDENTITY: FIXTURE_IDENTITY,
+        NEO_AUTH_MODE     : 'seat-token',
         // an allocated port no Chroma serves: the plane admits and answers without its vector store
-        NEO_CHROMA_PORT     : String(chromaPort),
-        NEO_MCP_LISTEN_HOST : '127.0.0.1',
-        NEO_PLANE_ID        : FIXTURE_PLANE_ID,
-        NEO_TRANSPORT       : 'streamable-http',
+        NEO_CHROMA_PORT    : String(chromaPort),
+        NEO_MCP_LISTEN_HOST: '127.0.0.1',
+        NEO_PLANE_ID       : FIXTURE_PLANE_ID,
+        NEO_TRANSPORT      : 'streamable-http',
         // a real plane's graph is a file; the unit-test switch would swap it for one in memory
         UNIT_TEST_MODE      : ''
     };
