@@ -1,15 +1,15 @@
-import {expect, test}                                                               from '@playwright/test';
-import {execFile}                                                                   from 'node:child_process';
-import {cpSync}                                                                     from 'node:fs';
-import fs                                                                           from 'node:fs/promises';
-import {tmpdir}                                                                     from 'node:os';
-import path                                                                         from 'node:path';
-import {pathToFileURL}                                                              from 'node:url';
-import {promisify}                                                                  from 'node:util';
-import {createRequire}                                                              from 'node:module';
-import * as runtimeVerifier                                                         from 'neo-agent-brain/runtime-generation';
-import {resolveLauncherRuntime}                                                     from '../../../../harness/brain.mjs';
-import {executePlan as executePlanImpl, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
+import {expect, test}                                                                                                                 from '@playwright/test';
+import {execFile}                                                                                                                     from 'node:child_process';
+import {cpSync}                                                                                                                       from 'node:fs';
+import fs                                                                                                                             from 'node:fs/promises';
+import {tmpdir}                                                                                                                       from 'node:os';
+import path                                                                                                                           from 'node:path';
+import {pathToFileURL}                                                                                                                from 'node:url';
+import {promisify}                                                                                                                    from 'node:util';
+import {createRequire}                                                                                                                from 'node:module';
+import * as runtimeVerifier                                                                                                           from 'neo-agent-brain/runtime-generation';
+import {resolveLauncherRuntime}                                                                                                       from '../../../../harness/brain.mjs';
+import {executePlan as executePlanImpl, holdInstallTransaction, prepareInstallContinuity, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
 import {
     loadRuntimeGenerationVerifier,
     inspectRuntimeSupport,
@@ -25,7 +25,7 @@ import {isAdmissionSnapshot} from 'neo-agent-brain/launch-admission-journal';
 
 /** @summary Keeps disposable package fixtures independent of the host's running Fleet processes. */
 const executePlan = (steps, options = {}) => executePlanImpl(steps, {
-    runningFn: () => [], continuityFn: async () => ({hold: () => null}), ...options
+    runningFn: () => [], continuityFn: async () => ({hold: () => null}), transactionFn: () => null, ...options
 });
 
 /** @summary The fixture supplies the current trusted codec explicitly, just as the packaged owner must. */
@@ -336,6 +336,32 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         expect(readSlot(slots.installed.path).receipt).toEqual(slots.installed.receipt);
         expect(readSlot(slots.rollback.path).receipt).toEqual(slots.artifact.receipt);
         expect(await readRuntimeGeneration({directory: installed.generation.directory})).toEqual(installed.generation);
+    });
+
+    test('a published runtime left by a failed first install is retained recovery state on retry', async () => {
+        root = await fs.realpath(root);
+        const artifact  = await fixture(path.join(root, 'artifact'));
+        const installed = path.join(root, 'Applications/Neo Harness.app');
+        const slots     = {artifact: readSlot(artifact.bundlePath), installed: readSlot(installed),
+            rollback: readSlot(path.join(root, 'rollback/Neo Harness.rollback')), custodyDir: path.join(root, 'userData')};
+        const continuityFn  = step => prepareInstallContinuity(step, {inspectSupport: async () => ({kind: 'generation'})});
+        const transactionFn = () => holdInstallTransaction({directory: path.join(root, 'installer')});
+        let published;
+        await expect(executePlan(planInstall(slots).steps, {continuityFn, transactionFn, runFn: copyBundle,
+            materializeFn: async input => {
+                published = await materializeRuntimeGeneration({...input, probe: compatible});
+                await fs.writeFile(path.join(artifact.runtimeRoot, 'organism-build-info.json'), JSON.stringify({...receipt(), changed: true}));
+                return published;
+            }
+        })).rejects.toThrow(/planned package slot changed/);
+        expect(readSlot(installed).exists).toBe(false);
+        expect(await readRuntimeGeneration({directory: published.directory})).toEqual(published);
+        const calls = [];
+        await expect(executePlan(planInstall({...slots, artifact: readSlot(artifact.bundlePath)}).steps,
+            {continuityFn, transactionFn, runFn: command => calls.push(command)})).rejects.toThrow(/managed custody remains/);
+        expect(calls).toEqual([]);
+        expect(await readRuntimeGeneration({directory: published.directory})).toEqual(published);
+        expect(await fs.readdir(path.join(slots.custodyDir, 'brain/fleet/launch-admission'))).toEqual([]);
     });
 
     test('runtime failure preserves installed and rollback slots and never opens the app', async () => {

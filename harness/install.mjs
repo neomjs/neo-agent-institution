@@ -30,6 +30,8 @@ import {inspectRuntimeSupport, materializeRuntimeGeneration, probeRuntimeRecover
 import * as runtimeVerifier                                                                                      from 'neo-agent-brain/runtime-generation';
 import {holdLaunchAdmissionHandoff, holdLaunchAdmissionVacancy, isAdmissionSnapshot, readLaunchAdmissionJournal} from 'neo-agent-brain/launch-admission-journal';
 
+import {holdFileLease} from 'neo-agent-brain/file-lease';
+
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 
 export const APP_NAME = 'Neo Harness';
@@ -59,6 +61,32 @@ export const DEFAULT_APPLICATIONS_DIR = '/Applications';
 export const DEFAULT_USER_DATA_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'neo-harness');
 export const DEFAULT_ROLLBACK_DIR  = path.join(DEFAULT_USER_DATA_DIR, 'rollback');
 export const DEFAULT_ROLLBACK_PATH = path.join(DEFAULT_ROLLBACK_DIR, ROLLBACK_BUNDLE_NAME);
+
+/** One installer transaction namespace for the OS account, independent of every CLI path and seat HOME. */
+export const DEFAULT_INSTALL_TRANSACTION_DIR = path.join(os.userInfo().homedir, 'Library', 'Application Support', 'neo-harness', 'installer');
+
+/**
+ * @summary Serializes cooperating installers for this host account, including shared recovery slots.
+ * A single transaction lease covers all application, staging, parked and rollback paths even when
+ * two plans use different userData roots or path aliases. It does not fence a legacy app process;
+ * the issuer guard and fresh bundle-process census remain independent requirements.
+ * @param {Object} [options]
+ * @param {String} [options.directory=DEFAULT_INSTALL_TRANSACTION_DIR] Isolated fixture seam, never a CLI flag.
+ * @returns {{assertCurrent:Function, release:Function}} Protected lease with observed release.
+ */
+export function holdInstallTransaction({directory = DEFAULT_INSTALL_TRANSACTION_DIR} = {}) {
+    if (!path.isAbsolute(directory || '')) throw new Error('installer transaction directory must be absolute');
+    for (let ancestor = directory; ; ancestor = path.dirname(ancestor)) {
+        try {
+            if (!fs.lstatSync(ancestor).isDirectory() || fs.realpathSync(ancestor) !== path.resolve(ancestor)) {
+                throw new Error('installer transaction directory is redirected');
+            }
+            break;
+        } catch (error) { if (error.code !== 'ENOENT') throw error }
+    }
+    fs.mkdirSync(directory, {recursive: true, mode: 0o700});
+    return holdFileLease({directory, filename: 'package.lock', owner: 'neo-harness-installer'});
+}
 
 /**
  * The custody set the leg proves it left alone: the plane record at the userData root and the
@@ -339,16 +367,18 @@ function assertFirstInstallCustody(userDataDir, {held = false} = {}) {
  * @param {Function} [options.continuityFn=prepareInstallContinuity] Source-owned journal preparation.
  * @param {Function} [options.recoveryFn=probeRuntimeRecovery] Destination snapshot compatibility probe.
  * @param {Function} [options.verifyRuntimeFn=runtimeVerifier.readRuntimeGeneration] Trusted payload verifier.
+ * @param {Function} [options.transactionFn=holdInstallTransaction] Host-account package transaction guard.
  * @returns {Promise<{custody: Object|null, generation: Object|null}>}
  */
 export async function executePlan(steps, {
     runFn = run, runningFn = () => runningHarnessPaths(), quitTimeoutMs = 30000,
     materializeFn = materializeRuntimeGeneration, continuityFn = prepareInstallContinuity,
-    recoveryFn = probeRuntimeRecovery, verifyRuntimeFn = runtimeVerifier.readRuntimeGeneration
+    recoveryFn = probeRuntimeRecovery, verifyRuntimeFn = runtimeVerifier.readRuntimeGeneration,
+    transactionFn = holdInstallTransaction
 } = {}) {
     const custody    = {before: undefined, after: undefined};
     let   generation = null, bindings = null, requireStopped = false;
-    let   continuity = null, guard = null;
+    let   continuity = null, guard = null, transaction = null;
 
     /** @summary Checks the original plan plus this executor's own completed slot moves. */
     function verifyBindings() {
@@ -362,6 +392,7 @@ export async function executePlan(steps, {
 
     /** @summary A stopped census and current slots are required before any destructive slot action. */
     function beforeMutation() {
+        transaction?.assertCurrent();
         if (requireStopped && !guard) {
             if (!continuity) throw new Error('update continuity was not prepared');
             guard = continuity.hold();
@@ -371,6 +402,19 @@ export async function executePlan(steps, {
         if (requireStopped && runningFn().length) throw new Error('bundle users appeared after planning or Quit; refusing package mutation');
         guard?.assertCurrent();
         verifyBindings();
+    }
+
+    /** @summary Attempts both releases even if one fails, and never launches after an unproved release. */
+    function releaseExclusion() {
+        const failures = [];
+        for (const [held, clear] of [[guard, () => { guard = null }], [transaction, () => { transaction = null }]]) {
+            if (!held) continue;
+            try {
+                if (held.release() !== true) throw new Error('installer exclusion release is unproved; app was not launched');
+                clear();
+            } catch (error) { failures.push(error) }
+        }
+        if (failures.length) throw new AggregateError(failures, failures.map(error => error.message).join('; '));
     }
 
     /** @summary Advances only a slot change this plan performed; foreign changes never become its new baseline. */
@@ -388,15 +432,19 @@ export async function executePlan(steps, {
                 switch (step.type) {
                     case 'bind-slots':
                         if (bindings) throw new Error('install plan contains multiple slot bindings');
+                        transaction = transactionFn();
+                        transaction?.assertCurrent();
                         bindings = new Map(step.slots.map(slot => [slot.path, structuredClone(slot)]));
                         requireStopped = step.requireStopped;
                         verifyBindings();
                         if (requireStopped) {
                             continuity = await continuityFn(step);
+                            transaction?.assertCurrent();
                             verifyBindings();
                         }
                         break;
                     case 'quit':
+                        transaction?.assertCurrent();
                         verifyBindings();
                         // Through the app's own lifecycle, never a signal: quit drains its owned Brain
                         // children, not detached desktop seats. The census still waits for all bundle users.
@@ -463,9 +511,8 @@ export async function executePlan(steps, {
                     case 'open':
                         if (guard) {
                             if (custody.before === undefined || custody.after !== custody.before) throw new Error('custody comparison must complete before launch');
-                            if (guard.release() !== true) throw new Error('update exclusion release is unproved; app was not launched');
-                            guard = null;
                         }
+                        releaseExclusion();
                         runFn('open', ['-a', step.path]);
                         break;
                     default:
@@ -479,7 +526,7 @@ export async function executePlan(steps, {
         if (bindings) verifyBindings();
         return {custody: custody.before === undefined ? null : custody, generation}
     } finally {
-        if (guard && guard.release() !== true) throw new Error('update exclusion release is unproved; app was not launched');
+        releaseExclusion();
     }
 }
 

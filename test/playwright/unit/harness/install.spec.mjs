@@ -1,12 +1,16 @@
 import {expect, test}                                                                                  from '@playwright/test';
 import {cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import fs                                                                                              from 'node:fs';
-import {tmpdir}                                                                                        from 'node:os';
+import {tmpdir, userInfo}                                                                              from 'node:os';
 import path                                                                                            from 'node:path';
+import {spawn}                                                                                         from 'node:child_process';
+import {once}                                                                                          from 'node:events';
 import {
     APP_NAME,
     custodyDigest,
     inspectManagedCustody,
+    holdInstallTransaction,
+    DEFAULT_INSTALL_TRANSACTION_DIR,
     describeReceipt,
     executePlan as executePlanImpl,
     legacyCopies,
@@ -68,7 +72,7 @@ const
 
 /** @summary Isolates the process census while retaining the real executor and filesystem operations. */
 const executePlan = (steps, options = {}) => executePlanImpl(steps, {
-    runningFn: () => [], continuityFn: async () => ({hold: () => null}), ...options
+    runningFn: () => [], continuityFn: async () => ({hold: () => null}), transactionFn: () => null, ...options
 });
 
 test.describe('harness/install.mjs — the plan', () => {
@@ -261,6 +265,8 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
     const admissionDirectory = () => path.join(custody, 'launch-admission');
     const openIssuer         = () => openLaunchAdmissionJournal({directory: admissionDirectory(),
         validateSnapshot: isAdmissionSnapshot, emptySnapshot: snapshot});
+    const transactionDirectory = () => path.join(root, 'account-installer');
+    const transactionFn        = () => holdInstallTransaction({directory: transactionDirectory()});
 
     /** `ditto` stands in as a recursive copy; the install leg's own writes are real renames. */
     const runFn = (calls, hooks = {}) => (command, args) => {
@@ -599,6 +605,61 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         expect(readSlot(installed).receipt).toEqual(OLD);
     });
 
+    test('a separate installer process excludes all path variants before staging cleanup', async () => {
+        expect(DEFAULT_INSTALL_TRANSACTION_DIR).toBe(path.join(userInfo().homedir, 'Library', 'Application Support', 'neo-harness', 'installer'));
+        writeBundle(artifact, NEW);
+        mkdirSync(applications, {recursive: true});
+        const alias = path.join(root, 'applications-alias');
+        symlinkSync(applications, alias);
+        const firstPlan = planInstall({...slots(), custodyDir: userData});
+        const program   = `
+            import fs from 'node:fs';
+            const api = await import(process.argv[1]);
+            const input = JSON.parse(process.argv[2]);
+            try {
+                await api.executePlan(input.steps, {
+                    runningFn: () => [],
+                    transactionFn: () => api.holdInstallTransaction({directory: input.transactionDirectory}),
+                    continuityFn: step => api.prepareInstallContinuity(step, {inspectSupport: async () => ({kind:'generation'})}),
+                    runFn(command, args) { if(command !== 'ditto') throw Error('unexpected child command'); fs.cpSync(args[0],args[1],{recursive:true}); },
+                    materializeFn: async () => {
+                        process.send({phase:'holding'});
+                        await new Promise(resolve => process.once('message',resolve));
+                        return {directory:input.transactionDirectory};
+                    }
+                });
+                process.disconnect();
+            } catch(error) { process.send({error:error.message}); process.exitCode=1; process.disconnect(); }
+        `;
+        const child = spawn(process.execPath, ['--input-type=module', '-e', program,
+            new URL('../../../../harness/install.mjs', import.meta.url).href,
+            JSON.stringify({steps: firstPlan.steps, transactionDirectory: transactionDirectory()})], {env: {}, stdio: ['ignore', 'ignore', 'pipe', 'ipc']});
+        const exited = once(child, 'exit');
+        let   stderr = '';
+        child.stderr.on('data', chunk => { stderr += chunk });
+        try {
+            expect((await once(child, 'message'))[0]).toEqual({phase: 'holding'});
+            expect(readSlot(`${installed}.installing`).receipt).toEqual(NEW);
+            for (const installedPath of [installed, path.join(alias, `${APP_NAME}.app`), path.join(root, 'different-app', `${APP_NAME}.app`)]) {
+                const calls = [];
+                const plan  = planInstall({...slots(), installed: readSlot(installedPath),
+                    parked: readSlot(`${installedPath}.restoring`), custodyDir: path.join(root, 'other-userData')});
+                await expect(executePlan(plan.steps, {transactionFn, continuityFn: prepareContinuity, runFn: runFn(calls)}))
+                    .rejects.toThrow(/lease .*held/);
+                expect(calls).toEqual([]);
+                expect(readSlot(`${installed}.installing`).receipt).toEqual(NEW);
+            }
+            child.send('continue');
+            expect((await exited)[0], stderr).toBe(0);
+            expect(readSlot(installed).receipt).toEqual(NEW);
+            expect(transactionFn().release()).toBe(true);
+            await expect(executePlan(firstPlan.steps, {transactionFn, continuityFn: prepareContinuity, runFn: runFn([])}))
+                .rejects.toThrow(/planned package slot changed/);
+        } finally {
+            if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited }
+        }
+    });
+
     test('first-install exclusion leaves no synthetic handoff and tolerates only structural retry residue', async () => {
         writeBundle(artifact, NEW);
         const plan  = planInstall({...slots(), custodyDir: userData, flags: {open: true}}), calls = [];
@@ -737,11 +798,12 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
             running: [path.join(installed, 'Contents/MacOS', APP_NAME)], flags: {quit: true, open: true}});
         try {
             const result = await executePlan(plan.steps, {
+                transactionFn,
                 continuityFn: prepareContinuity,
                 runFn       : runFn(calls, {
-                    osascript: () => { events.push('quit'); first.handoff(snapshot) },
+                    osascript: () => { events.push('quit'); expect(transactionFn).toThrow(/held/); first.handoff(snapshot) },
                     ditto    : () => { events.push('copy'); expect(() => openIssuer()).toThrow() },
-                    open     : () => { events.push('open'); successor = openIssuer(); expect(successor.previous.handoffProved).toBe(true) }
+                    open     : () => { events.push('open'); expect(transactionFn().release()).toBe(true); successor = openIssuer(); expect(successor.previous.handoffProved).toBe(true) }
                 }),
                 materializeFn: async () => {
                     events.push('materialize');
@@ -838,12 +900,36 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
                         return {...held, release: () => { throw Error('fixture update-release-unproved') }};
                     }};
                 },
+                transactionFn,
                 runFn     : runFn(calls), materializeFn: async () => ({directory: root}),
                 recoveryFn: async () => {}, verifyRuntimeFn: async () => ({directory: root})
             })).rejects.toThrow(/update-release-unproved/);
             expect(readSlot(installed).receipt).toEqual(NEW);
             expect(calls.some(row => row.command === 'open')).toBe(false);
             expect(() => openIssuer()).toThrow();
+            expect(transactionFn().release()).toBe(true);
+        } finally { held?.release(); first.close() }
+    });
+
+    test('failed package-lock release suppresses launch while still releasing the issuer guard', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        const first = openIssuer(), calls = [];
+        first.handoff(snapshot);
+        let held;
+        try {
+            await expect(executePlan(planInstall({...slots(), custodyDir: userData, flags: {open: true}}).steps, {
+                continuityFn: prepareContinuity,
+                transactionFn() { held = transactionFn(); return {...held, release: () => { throw Error('fixture package release unproved') }} },
+                runFn     : runFn(calls), materializeFn: async () => ({directory: root}),
+                recoveryFn: async () => {}, verifyRuntimeFn: async () => ({directory: root})
+            })).rejects.toThrow(/package release unproved/);
+            expect(calls.some(row => row.command === 'open')).toBe(false);
+            expect(readSlot(installed).receipt).toEqual(NEW);
+            expect(transactionFn).toThrow(/held/);
+            const successor = openIssuer();
+            expect(successor.previous.handoffProved).toBe(true);
+            successor.close();
         } finally { held?.release(); first.close() }
     });
 
