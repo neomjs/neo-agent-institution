@@ -77,17 +77,26 @@ The installer's census includes every process executing from a `Neo Harness….a
 registered copy); it does not stop detached desktop harnesses. A process using a different bundle
 path is refused with or without `--quit`.
 
-An ordinary FM restart is different from replacing its bundle. Some local MCP launchers and
-servers currently use the bundle's executable and scripts, even when their service connection is
-to an external Agent OS. Repositories and profiles outside FM do not remove that file dependency.
-If those processes remain alive after FM quits, the installer refuses before replacement. Treat
-that as the current bundle-use limitation, not a request to change detached harness lifetime or
-bypass the guard. Any separately planned seat shutdown requires a checkpoint and an explicit
-Stop or harness quit; `--open` only reopens FM and does not prove a stopped seat resumed.
+Generation-capable builds copy and verify their execution payload under
+`<userData>/brain/runtime/<generation-id>/` before serving Fleet or starting seats. The host
+holds a read-only reference for its lifetime, and each managed Start retains its original runtime
+and admission binding. Replacing the installed package does not migrate a surviving seat.
+Older seats may still execute launchers or MCP servers from the replaceable bundle; the installer
+continues to refuse those holders. Repositories and profiles outside FM do not remove that file
+dependency. Any separately planned seat shutdown requires a checkpoint and an explicit Stop or
+harness quit; `--open` only reopens FM and does not prove a stopped seat resumed.
 
-The leg never writes the application's userData (`~/Library/Application Support/neo-harness/`:
-the saved plane record, the `brain/fleet/` custody files, encrypted credentials). Its only reads
-there hash the custody set twice — the plane record (`plane.json`, `plane-bearer.bin`,
+The installer publishes its installed, rollback and interrupted-restore slot record before
+opening the successor. Normal packaged FM maintenance retires only verified generations whose
+complete admission snapshot and process census prove no holder, excluding new reference
+acquisition throughout the decision. Installed and rollback packages, retained prior locations,
+the current host, seats, remaining children and unknown evidence prevent removal. An interrupted
+removal resumes only from its private, inode-bound retirement receipt.
+
+The leg does not rewrite the saved plane record, the `brain/fleet/` custody files or encrypted
+credentials under `~/Library/Application Support/neo-harness/`. It publishes runtime copies and
+package-slot evidence separately from that custody set. It hashes the custody set twice — the
+plane record (`plane.json`, `plane-bearer.bin`,
 `seat-root.json`) and `brain/fleet/`'s own files (registry, credentials, keys, tenants), plus the
 names of the seats under `brain/fleet/agents/` — once after the app has stopped, once after the
 slots moved and before any `--open`; a difference stops the run with the app down and nothing
@@ -135,6 +144,29 @@ replacement, verify the saved-plane boot separately: the smoke's isolated transp
 establish admission to the operator's real Agent OS. Retain the observed source states and any
 failures in the delivery receipt. Installation success must not conceal a remaining live-data
 defect.
+
+### Reading and changing a seat's runtime
+
+Select a roster seat and open **Agent detail → Status → Runtime**. Its current binding (or last
+released / unverified binding), **Next Start**, and **Installed** are separate facts. Next Start
+comes from the connected Fleet owner; Installed comes from a fresh read of the installer-owned
+slot. A reused older Fleet may report different values. **Show generation IDs** expands the
+complete opaque identities without guessing source revisions from them. Missing or unavailable
+readback stays unreported or last reported.
+
+**Restart on installed generation** is offered when the observed installed identity matches that
+owner's Next Start and the seat needs migration or has an unverified binding. It uses the existing
+lifecycle control with the displayed identity as a precondition: Fleet refuses a mismatch before
+Stop, and checks again before Start. If the target changes during cleanup, the seat can already be
+stopped when the new Start is refused. The UI reports the refusal; it never retries without the
+precondition or treats a completed request as proof of migration. The next observed held pin
+establishes the resulting runtime. Ordinary roster Start and Restart retain their existing behavior.
+
+The installed continuity acceptance remains tracked on
+[Institution #12](https://github.com/neomjs/neo-agent-institution/issues/12): surviving seats,
+a later MCP-child reconnect without restarting them, an operator-paced explicit restart, rollback,
+eligible retirement and unknown-liveness retention. Source checks and package smoke do not replace
+those witnesses or authorize an uncoordinated update.
 
 ## Run
 

@@ -57,6 +57,7 @@ class Controller extends ComponentController {
             card = me.getReference('config-pane');
 
         card.on({configIntent: me.onConfigIntent, scope: me});
+        me.getReference('seat-runtime').on({lifecycleIntent: me.onRuntimeLifecycleIntent, scope: me});
         me.getReference('identity-row').on({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model').on({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
         me.getReference('seat-memory').on({declareSeatMemory: me.onDeclareSeatMemory, readSeatMemory: me.readSeatMemory, scope: me});
@@ -87,6 +88,7 @@ class Controller extends ComponentController {
 
         me.component.agentDefinitions?.un(me.getDefinitionsStoreListeners());
         me.getReference('config-pane')?.un({configIntent: me.onConfigIntent, scope: me});
+        me.getReference('seat-runtime')?.un({lifecycleIntent: me.onRuntimeLifecycleIntent, scope: me});
         me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model')?.un({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
         me.getReference('seat-memory')?.un({declareSeatMemory: me.onDeclareSeatMemory, readSeatMemory: me.readSeatMemory, scope: me});
@@ -95,6 +97,12 @@ class Controller extends ComponentController {
         me.memoryRequest++;
         me.seatRequest++;
         super.destroy(...args)
+    }
+
+    /** @summary Relays a matching selected-seat intent without replacing its displayed target. */
+    onRuntimeLifecycleIntent({agentId, expectedRuntimeGeneration}) {
+        if (!agentId || agentId !== this.component.record?.agentId) return;
+        this.component.fire('lifecycleIntent', {action: 'restart', agentId, expectedRuntimeGeneration});
     }
 
     /**

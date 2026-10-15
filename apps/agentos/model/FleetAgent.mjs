@@ -173,6 +173,18 @@ class FleetAgent extends Model {
             name        : 'launchAdmission',
             defaultValue: null
         }, {
+            // The original Start's generation and held/released/unknown pin, never inferred from installed state.
+            name        : 'runtimeGeneration',
+            defaultValue: null
+        }, {
+            // The connected Fleet's observation of the installer-owned package slot, separate from its boot selection.
+            name        : 'installedGeneration',
+            defaultValue: null
+        }, {
+            // The connected Fleet's verified boot runtime selected for the next provisioned Start.
+            name        : 'nextRuntimeGeneration',
+            defaultValue: null
+        }, {
             // Current public MCP intent from the same roster DTO; null means not read, while
             // mcpServers:null inside a present snapshot follows the canonical catalog defaults.
             name        : 'mcpSettings',

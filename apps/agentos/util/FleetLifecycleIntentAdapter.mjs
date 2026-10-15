@@ -117,6 +117,7 @@ class FleetLifecycleIntentAdapter extends Base {
      * unavailable; no answer within the timeout reads as unanswered, since its outcome is unknown.
      * @param {Object} intent
      * @param {String} intent.agentId Durable fleet agent id.
+     * @param {String} [intent.expectedRuntimeGeneration] Exact target for a guarded restart; never weakened to an id-only request.
      * @param {Object} [options]
      * @param {Object|null} [options.bridge=getFleetRegistryBridge()] Test seam or injected registry bridge.
      * @param {Number} [options.timeoutMs=30000]
@@ -276,7 +277,9 @@ class FleetLifecycleIntentAdapter extends Base {
         let answer;
 
         // Observe the operation itself: Promise.race only bounds how long the caller waits.
-        const settlement = Promise.resolve().then(() => bridge[method](agentId)).then(
+        const params = action === 'restart' && Object.hasOwn(intent, 'expectedRuntimeGeneration')
+            ? {agentId, expectedRuntimeGeneration: intent.expectedRuntimeGeneration} : agentId;
+        const settlement = Promise.resolve().then(() => bridge[method](params)).then(
             result => answer = complete(result, result?.status === 'rejected'
                 ? FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', result.reason) : null),
             error => answer = complete(null, FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', error?.message))

@@ -13,7 +13,6 @@ import {isDeepStrictEqual} from 'node:util';
 export const PACKAGE_SLOTS_RECORD = '.package-slots.json';
 export const PACKAGE_RECEIPT_PATH = path.join('Contents', 'Resources', 'organism', 'organism-build-info.json');
 export const DEFAULT_INSTALL_TRANSACTION_DIR = path.join(os.userInfo().homedir, 'Library', 'Application Support', 'neo-harness', 'installer');
-const MAX_RECORD_BYTES = 262144, MAX_SLOTS = 64;
 
 /** @summary Requires one canonical absolute path, including for absent slots. */
 function absolute(value) {
@@ -63,47 +62,14 @@ export function inspectPackageSlot(bundlePath, {fileSystem = fs} = {}) {
     return {path: bundlePath, exists: true, receipt: JSON.parse(fileSystem.readFileSync(file, 'utf8'))};
 }
 
-/** @summary Validates bounded location metadata; generation identity stays owned by the trusted verifier. */
-function validateRecord(record, directory, verifier) {
-    if (!record || Object.keys(record).sort().join(',') !== 'completedAt,completionId,directory,selectedPaths,slots,version' ||
-        record.version !== 1 || record.directory !== directory ||
-        !/^[a-f0-9-]{36}$/.test(record.completionId) || !Number.isFinite(Date.parse(record.completedAt)) ||
-        !Array.isArray(record.selectedPaths) || record.selectedPaths.length !== 3 ||
-        !Array.isArray(record.slots) || record.slots.length < 3 || record.slots.length > MAX_SLOTS ||
-        new Set(record.selectedPaths).size !== 3 || new Set(record.slots.map(slot => slot?.path)).size !== record.slots.length) {
-        throw Error('package slot record is invalid');
-    }
-    for (const slot of record.slots) {
-        if (!slot || Object.keys(slot).sort().join(',') !== 'exists,path,receipt' || !absolute(slot.path) ||
-            typeof slot.exists !== 'boolean' || (!slot.exists && slot.receipt !== null)) throw Error('package slot binding is invalid');
-        if (slot.exists) verifier.runtimeGenerationIdentity(slot.receipt);
-    }
-    if (record.selectedPaths.some(selected => !record.slots.some(slot => slot.path === selected))) throw Error('selected package slot is missing');
-    return record;
-}
-
 /**
- * @summary Reads owner-only location evidence; null means unrecorded, never no protected packages.
- * @param {Object} options Canonical generation directory and current trusted runtime verifier.
- * @returns {Object|null} Verified record structure, still requiring fresh slot observation.
+ * @summary Reads installer location evidence through the current trusted Brain's shared codec.
+ * @param {Object} options Canonical generation directory, verifier and optional filesystem seam.
+ * @returns {Object|null} Record structure, still requiring fresh package observation.
  */
-export function readPackageSlotRecord({directory, verifier, fileSystem = fs}) {
-    const file = path.join(directory, PACKAGE_SLOTS_RECORD);
-    let before;
-    try { before = fileSystem.lstatSync(file, {bigint: true}) } catch (error) { if (error.code === 'ENOENT') return null; throw error }
-    if (!absolute(directory) || fileSystem.realpathSync(directory) !== directory || !before.isFile() ||
-        before.uid !== BigInt(process.getuid()) || before.mode & 0o077n || before.nlink !== 1n ||
-        before.size > BigInt(MAX_RECORD_BYTES)) throw Error('package slot record custody is invalid');
-    const descriptor = fileSystem.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-    try {
-        const opened = fileSystem.fstatSync(descriptor, {bigint: true});
-        const source = fileSystem.readFileSync(descriptor, 'utf8');
-        const after  = fileSystem.lstatSync(file, {bigint: true});
-        if ([opened, after].some(stat => ['dev', 'ino', 'mode', 'uid', 'size', 'mtimeNs', 'ctimeNs'].some(key => stat[key] !== before[key]))) {
-            throw Error('package slot record changed while reading');
-        }
-        return validateRecord(JSON.parse(source), directory, verifier);
-    } finally { fileSystem.closeSync(descriptor) }
+export function readPackageSlotRecord({verifier, ...options}) {
+    if (typeof verifier?.readPackageSlotRecord !== 'function') throw Error('package-slot-codec-unavailable');
+    return verifier.readPackageSlotRecord(options);
 }
 
 /**
@@ -130,11 +96,11 @@ export function publishPackageSlots({directory, slots, packageGuard, referenceGu
         if (!isDeepStrictEqual(observed, slot)) throw Error('prior package slot changed outside the selected transaction');
         retained.push(slot);
     }
-    const record = validateRecord({version: 1, directory, selectedPaths, slots: retained,
-        completedAt: now().toISOString(), completionId: randomUUID()}, directory, verifier);
+    const record = verifier.validatePackageSlotRecord({version: 1, directory, selectedPaths, slots: retained,
+        completedAt: now().toISOString(), completionId: randomUUID()}, directory);
     const source = JSON.stringify(record) + '\n';
-    if (Buffer.byteLength(source) > MAX_RECORD_BYTES) throw Error('package slot record exceeds its bound');
-    const file = path.join(directory, PACKAGE_SLOTS_RECORD), temporary = file + '.' + record.completionId;
+    if (Buffer.byteLength(source) > verifier.MAX_PACKAGE_SLOT_BYTES) throw Error('package slot record exceeds its bound');
+    const file = path.join(directory, verifier.PACKAGE_SLOTS_RECORD), temporary = file + '.' + record.completionId;
     try {
         const descriptor = fileSystem.openSync(temporary, 'wx', 0o600);
         try {

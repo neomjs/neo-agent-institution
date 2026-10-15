@@ -63,6 +63,14 @@ const flushMicrotasks = async () => {
 };
 
 test.describe('fleetLifecycleIntentAdapter — lifecycleIntent → registry bridge → record state (#14889)', () => {
+    test('an exact restart carries its target as one wire payload and never falls back to an id-only retry', async () => {
+        const record = createRecord(), calls = [], expectedRuntimeGeneration = 'a'.repeat(64);
+        const bridge = {restartAgent: async params => { calls.push(params); return {status: 'rejected', reason: 'Runtime target changed.'} }};
+        const result = await FleetLifecycleIntentAdapter.handleFleetLifecycleIntent({action: 'restart', agentId: 'seat', expectedRuntimeGeneration}, record, {bridge});
+        expect(calls).toEqual([{agentId: 'seat', expectedRuntimeGeneration}]);
+        expect(result.status).toBe('rejected');
+        expect(record.controlReason.reason).toBe('Runtime target changed.');
+    });
     test('maps start/stop/restart intents to existing bridge verbs with agentId-only payloads', async () => {
         const
             record = createRecord({controlReason: {action: 'stop', kind: 'rejected', reason: 'old failure'}}),
