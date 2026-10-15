@@ -95,7 +95,7 @@
         font: var(--fm-text-micro);
         padding: var(--fm-space-1);
         &:focus-visible { outline: 1px solid var(--fm-signal); }
-        &:disabled { cursor: wait; }
+        &[aria-busy="true"] { cursor: wait; }
     }
 
     .fm-stage-outcome {

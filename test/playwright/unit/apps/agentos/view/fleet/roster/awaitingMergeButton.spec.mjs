@@ -234,7 +234,9 @@ test.describe('AwaitingMergeButton — the fleet head\'s merge queue', () => {
 
         try {
             await expect.poll(() => Boolean(button.menuList)).toBe(true);
-            const menu = button.menuList, record = store.get('neomjs/neo-agent-brain#59'), item = menu.createItem(record, 1);
+            const menu = button.menuList, record = store.get('neomjs/neo-agent-brain#59'), item = menu.createItem(record, 1),
+                action = content => content.cn.find(node => node['data-action'] === 'stage'),
+                initialAction = action(menu.createItemContent(record));
             button.on('stageRequest', ({recordId}) => requests.push(recordId));
             menu._hidden = false;
             menu.unmount = () => { closed.push(true); menu._hidden = true };
@@ -250,16 +252,39 @@ test.describe('AwaitingMergeButton — the fleet head\'s merge queue', () => {
 
             button.stageOutcome = {recordId: requests[0], state: 'opening', message: 'Opening this Brain record…'};
             const addressed = menu.createItemContent(record), other = menu.createItemContent(store.get('neomjs/neo#59'));
-            expect(addressed.cn.find(node => node['data-action'] === 'stage').disabled).toBe(true);
+            expect(action(addressed).id).toBe(initialAction.id);
+            expect(action(addressed).id).toBeTruthy();
+            expect(action(addressed)['aria-disabled']).toBe('true');
+            expect(action(addressed)['aria-busy']).toBe('true');
+            expect(action(addressed), 'native disabled would blur the focused action and dismiss its menu').not.toHaveProperty('disabled');
             expect(addressed.cn.find(node => node.role === 'status').text).toBe('Opening this Brain record…');
-            expect(other.cn.find(node => node['data-action'] === 'stage').disabled).toBe(false);
+            expect(action(other)['aria-disabled']).toBeNull();
+            expect(action(other)['aria-busy']).toBeNull();
+            expect(action(other)).not.toHaveProperty('disabled');
             expect(other.cn.some(node => node.role === 'status')).toBe(false);
             expect(closed, 'feedback re-renders its row without dismissing the menu').toEqual([]);
+
+            menu.onItemClick(item, {path: [{data: {action: 'stage'}}]});
+            expect(requests, 'the busy row ignores a repeated activation').toEqual(['neomjs/neo-agent-brain#59']);
+            menu.onItemClick(menu.createItem(store.get('neomjs/neo#59'), 0), {path: [{data: {action: 'stage'}}]});
+            expect(requests, 'the addressed busy state does not suppress another row').toEqual(['neomjs/neo-agent-brain#59', 'neomjs/neo#59']);
+
+            button.stageOutcome = {recordId: requests[0], state: 'unavailable', message: 'Stage popup was denied.'};
+            const unavailable = menu.createItemContent(record);
+            expect(action(unavailable).id, 'opening and unavailable repaint the same action address').toBe(initialAction.id);
+            expect(action(unavailable)['aria-disabled']).toBeNull();
+            expect(action(unavailable)['aria-busy']).toBeNull();
+            expect(action(unavailable)).not.toHaveProperty('disabled');
+            expect(unavailable.cn.find(node => node.role === 'status').text).toBe('Stage popup was denied.');
+            expect(unavailable.cn.find(node => node.role === 'status').id).toBe(addressed.cn.find(node => node.role === 'status').id);
+            expect(closed, 'a denied result remains in the open menu').toEqual([]);
+            menu.onItemClick(item, {path: [{data: {action: 'stage'}}]});
+            expect(requests, 'a settled refusal allows retrying the same row').toEqual(['neomjs/neo-agent-brain#59', 'neomjs/neo#59', 'neomjs/neo-agent-brain#59']);
 
             expect(addressed.cn[0].href).toBe('https://github.com/neomjs/neo-agent-brain/pull/59');
             menu.onItemClick(item, {path: [{tagName: 'A'}]});
             expect(closed, 'the primary forge row retains its dismissal path').toEqual([true]);
-            expect(requests).toHaveLength(1)
+            expect(requests).toHaveLength(3)
         } finally {
             head.destroy();
             store.destroy()

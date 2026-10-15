@@ -103,7 +103,8 @@ class AwaitingMergeMenuList extends MenuList {
                 ...(record.stale ? [{tag: 'span', cls: ['fm-awaiting-merge-stale'], text: 'stale'}] : []),
                 ...(this.stageEnabled ? [{id: `${this.id}__stage-${this.store.getInternalId(record)}`, tag: 'button', type: 'button', role: 'menuitem',
                     cls: ['fm-stage-open'], text: 'Open in Stage', 'data-action': 'stage',
-                    disabled: this.stageOutcome?.recordId === record.id && this.stageOutcome.state === 'opening'}] : []),
+                    'aria-disabled': this.stageOutcome?.recordId === record.id && this.stageOutcome.state === 'opening' ? 'true' : null,
+                    'aria-busy': this.stageOutcome?.recordId === record.id && this.stageOutcome.state === 'opening' ? 'true' : null}] : []),
                 ...(this.stageOutcome?.recordId === record.id && this.stageOutcome.message ?
                     [{id: `${this.id}__outcome-${this.store.getInternalId(record)}`, tag: 'span', cls: ['fm-stage-outcome'], role: 'status', text: this.stageOutcome.message}] : [])
             ]
@@ -119,7 +120,12 @@ class AwaitingMergeMenuList extends MenuList {
         if (this.stageEnabled && data.path.some(item => item.data?.action === 'stage')) {
             const id = this.getItemRecordId(node.id),
                 record = this.useInternalId ? this.store.getByInternalId(id) : this.store.get(id);
-            record && this.fire('stageRequest', {recordId: this.store.getKey(record)});
+            if (record) {
+                const recordId = this.store.getKey(record);
+                if (this.stageOutcome?.recordId !== recordId || this.stageOutcome.state !== 'opening') {
+                    this.fire('stageRequest', {recordId})
+                }
+            }
             return
         }
         this.unmount()
