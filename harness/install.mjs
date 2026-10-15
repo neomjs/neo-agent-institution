@@ -19,16 +19,16 @@
 // `planInstall` is pure and unit-specced; `executePlan` is the thin shell around `rename(2)`,
 // `ditto` and `osascript`, with the child-process runner injectable like pack.mjs's `runFn`.
 
-import {execFileSync}                                                                from 'node:child_process';
-import {createHash}                                                                  from 'node:crypto';
-import fs                                                                            from 'node:fs';
-import os                                                                            from 'node:os';
-import path                                                                          from 'node:path';
-import {fileURLToPath}                                                               from 'node:url';
-import {isDeepStrictEqual}                                                           from 'node:util';
-import {inspectRuntimeSupport, materializeRuntimeGeneration, probeRuntimeRecovery}   from './runtimeGeneration.mjs';
-import * as runtimeVerifier                                                          from 'neo-agent-brain/runtime-generation';
-import {holdLaunchAdmissionHandoff, isAdmissionSnapshot, readLaunchAdmissionJournal} from 'neo-agent-brain/launch-admission-journal';
+import {execFileSync}                                                                                            from 'node:child_process';
+import {createHash}                                                                                              from 'node:crypto';
+import fs                                                                                                        from 'node:fs';
+import os                                                                                                        from 'node:os';
+import path                                                                                                      from 'node:path';
+import {fileURLToPath}                                                                                           from 'node:url';
+import {isDeepStrictEqual}                                                                                       from 'node:util';
+import {inspectRuntimeSupport, materializeRuntimeGeneration, probeRuntimeRecovery}                               from './runtimeGeneration.mjs';
+import * as runtimeVerifier                                                                                      from 'neo-agent-brain/runtime-generation';
+import {holdLaunchAdmissionHandoff, holdLaunchAdmissionVacancy, isAdmissionSnapshot, readLaunchAdmissionJournal} from 'neo-agent-brain/launch-admission-journal';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -152,8 +152,12 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
             const slots = [installed, rollback, parked ?? {path: `${installed.path}.restoring`, exists: false, receipt: null}];
             if (mode === 'install' && !parked?.exists) slots.push(artifact);
             steps.unshift({type: 'bind-slots', slots: structuredClone(slots), custodyDir,
-                sourceBundle  : [installed, parked, rollback].find(slot => slot?.exists)?.path ?? null,
-                requireStopped: steps.some(step => ['stage', 'remove', 'rename'].includes(step.type))});
+                sourceBundle     : [installed, parked, rollback].find(slot => slot?.exists)?.path ?? null,
+                destinationBundle: parked?.exists ? (installed.exists ? installed.path : parked.path)
+                    : mode === 'restore' ? rollback.path : artifact.path,
+                legacyMigration: flags.legacyMigration === true,
+                requireStopped : steps.some(step => ['stage', 'remove', 'rename'].includes(step.type))});
+            if (flags.legacyMigration) warnings.push('Legacy migration is discontinuous: checkpoint and Stop all seats before installation, then Start them again.');
         }
         return {ok: true, steps, warnings, ...(note ? {note} : {})};
     };
@@ -256,29 +260,70 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
 
 /**
  * @summary Binds the current issuer before Quit without consuming its handoff or changing custody.
- * A capable package must have a readable journal even when the app is already stopped. Legacy and
- * first-install paths require their own exclusion protocol; neither is inferred from missing records.
- * @param {Object} binding Planned source bundle and absolute custodyDir.
+ * A capable source must have a readable journal even when stopped. First install proves absence of
+ * managed records under vacancy exclusion; legacy migration requires explicit discontinuous intent.
+ * @param {Object} binding Planned source/destination bundles, custodyDir and legacyMigration intent.
  * @param {Object} [options]
  * @param {Function} [options.inspectSupport=inspectRuntimeSupport] Receipt-bound capability inspection.
  * @returns {Promise<{hold:Function}>} Acquire the sealed predecessor after ordinary Quit completes.
  */
-export async function prepareInstallContinuity({sourceBundle, custodyDir}, {inspectSupport = inspectRuntimeSupport} = {}) {
+export async function prepareInstallContinuity({sourceBundle, destinationBundle, custodyDir, legacyMigration = false}, {inspectSupport = inspectRuntimeSupport} = {}) {
     if (!path.isAbsolute(custodyDir || '')) throw new Error('update continuity requires an explicit userData root');
-    if (!sourceBundle) {
-        const custody = inspectManagedCustody(custodyDir);
-        throw new Error(custody.state === 'absent' ? 'first-install exclusion is not established'
-            : 'managed custody remains without a source package; recovery is required');
-    }
-    const support = await inspectSupport({bundlePath: sourceBundle,
-        runtimeRoot: path.dirname(path.join(sourceBundle, RECEIPT_RELATIVE_PATH)), verifier: runtimeVerifier});
-    if (support.kind !== 'generation') throw new Error('legacy migration requires an explicit discontinuous migration path');
+    const inspect = bundlePath => inspectSupport({bundlePath,
+        runtimeRoot: path.dirname(path.join(bundlePath, RECEIPT_RELATIVE_PATH)), verifier: runtimeVerifier});
+    const support       = sourceBundle ? await inspect(sourceBundle) : null;
+    const target        = await inspect(destinationBundle);
+    const discontinuous = support?.kind === 'legacy' || target.kind === 'legacy';
+    if (discontinuous && !legacyMigration) throw new Error('legacy migration requires explicit --legacy-migration intent');
     const directory = path.join(custodyDir, CUSTODY_FLEET_DIR, 'launch-admission');
     const observed  = readLaunchAdmissionJournal({directory});
-    if (!observed) throw new Error('generation-capable source has no admission journal; update refused');
-    const {issuer, epoch} = observed.state;
-    if (observed.fence.issuer !== issuer || observed.fence.epoch !== epoch) throw new Error('admission predecessor is already fenced');
-    return {hold: () => holdLaunchAdmissionHandoff({directory, expected: {issuer, epoch}})};
+    if (!observed && support?.kind === 'generation') throw new Error('generation-capable source has no admission journal; update refused');
+    if (!sourceBundle) {
+        if (observed) throw new Error('admission custody remains without a source package; recovery is required');
+        assertFirstInstallCustody(custodyDir);
+    }
+    const expected = observed ? {issuer: observed.state.issuer, epoch: observed.state.epoch} : null;
+    if (expected && (observed.fence.issuer !== expected.issuer || observed.fence.epoch !== expected.epoch)) {
+        throw new Error('admission predecessor is already fenced');
+    }
+    return {hold() {
+        const held = expected ? holdLaunchAdmissionHandoff({directory, expected}) : holdLaunchAdmissionVacancy({directory});
+        try {
+            if (!sourceBundle) assertFirstInstallCustody(custodyDir, {held: true});
+            if (discontinuous && held.evidence) {
+                const snapshot = held.evidence.state.snapshot;
+                if (!snapshot.seats.every(row => ['stopped', 'exited'].includes(row.state) && !row.ownershipUnresolved && !row.cleanupUnresolved) ||
+                    !snapshot.generations.every(row => row.state === 'revoked' && row.servers.every(server => server.state === 'revoked'))) {
+                    throw new Error('legacy migration requires terminal original Starts and revoked grants');
+                }
+            }
+            return {...held, requiresRecovery: target.kind === 'generation'};
+        } catch (error) {
+            held.release();
+            throw error;
+        }
+    }};
+}
+
+/**
+ * @summary Refuses every managed record, retained runtime or unknown path before first install.
+ * Empty Fleet/journal directories are structural retry residue. Under exclusion the only permitted
+ * journal entry is this guard's issuer lock; no app, issuer, seat or plane history is inferred away.
+ */
+function assertFirstInstallCustody(userDataDir, {held = false} = {}) {
+    const observation = inspectManagedCustody(userDataDir);
+    if (observation.state === 'unknown' || observation.locations.some(row => row.path !== CUSTODY_FLEET_DIR && row.kind !== 'absent')) {
+        throw new Error('managed custody remains without a source package; recovery is required');
+    }
+    const fleet = observation.locations.find(row => row.path === CUSTODY_FLEET_DIR);
+    if (fleet.kind === 'absent') return;
+    const directory = path.join(userDataDir, CUSTODY_FLEET_DIR);
+    if (fleet.kind !== 'directory' || fs.readdirSync(directory).some(name => name !== 'launch-admission')) {
+        throw new Error('managed Fleet custody remains without a source package; recovery is required');
+    }
+    if (held && fs.readdirSync(path.join(directory, 'launch-admission')).some(name => name !== 'issuer.lock')) {
+        throw new Error('unknown admission custody prevents first install');
+    }
 }
 
 /**
@@ -392,7 +437,9 @@ export async function executePlan(steps, {
                         });
                         beforeMutation();
                         if (guard?.evidence) {
-                            await recoveryFn(generation, guard.evidence.state.snapshot, {validateSnapshot: isAdmissionSnapshot});
+                            if (guard.requiresRecovery !== false) {
+                                await recoveryFn(generation, guard.evidence.state.snapshot, {validateSnapshot: isAdmissionSnapshot});
+                            }
                             beforeMutation();
                             const verified = await verifyRuntimeFn({directory: generation.directory});
                             beforeMutation();
@@ -502,6 +549,7 @@ export function parseInstallArgs(argv) {
         applicationsDir: DEFAULT_APPLICATIONS_DIR,
         artifactPath   : null,
         dryRun         : false,
+        legacyMigration: false,
         mode           : 'install',
         open           : false,
         quit           : false,
@@ -517,6 +565,7 @@ export function parseInstallArgs(argv) {
             case '--applications-dir': options.applicationsDir = argv[++i]; break;
             case '--artifact'        : options.artifactPath    = argv[++i]; break;
             case '--dry-run'         : options.dryRun          = true;      break;
+            case '--legacy-migration': options.legacyMigration = true;     break;
             case '--open'            : options.open            = true;      break;
             case '--quit'            : options.quit            = true;      break;
             case '--restore'         : options.mode            = 'restore'; break;
@@ -719,6 +768,7 @@ function printUsage() {
     console.log(`  --quit       Ask a running ${APP_NAME} to quit first. Without it a running app is a refusal.`);
     console.log('  --open       Launch the installed bundle afterwards (never after a failed custody comparison).');
     console.log('  --restore    Swap the rollback slot back into place (a second --restore undoes it).');
+    console.log('  --legacy-migration  Explicit discontinuous Stop-all/install/Start path for a recognized legacy package.');
     console.log('  --dry-run    Print the plan and the receipts; change nothing.')
 }
 
@@ -748,7 +798,7 @@ async function main() {
         artifact   = options.mode === 'install' ? readSlot(options.artifactPath ?? resolveArtifactPath()) : null,
         running    = runningHarnessPaths(),
         legacy     = legacyCopies(options.applicationsDir),
-        plan       = planInstall({artifact, custodyDir, flags: {open: options.open, quit: options.quit}, installed, mode: options.mode, parked, rollback, running});
+        plan       = planInstall({artifact, custodyDir, flags: {open: options.open, quit: options.quit, legacyMigration: options.legacyMigration}, installed, mode: options.mode, parked, rollback, running});
 
     console.log(describeSlot('installed', installed, 'absent'));
     console.log(describeSlot('rollback', rollback, 'empty'));

@@ -12,6 +12,7 @@ import {
     legacyCopies,
     PEER_QUIT_WARNING,
     planInstall,
+    parseInstallArgs,
     prepareInstallContinuity,
     readSlot,
     RECEIPT_RELATIVE_PATH,
@@ -581,23 +582,149 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         expect(readdirSync(userData)).toEqual(before);
     });
 
-    test('production continuity never infers a legacy or first install from a missing journal', async () => {
+    test('production continuity never infers legacy from a missing capable-source journal', async () => {
         writeBundle(installed, OLD);
         writeBundle(artifact, NEW);
         const calls = [];
-        const plan  = planInstall({...slots(), custodyDir: userData, running: [MAIN_EXE.replace(INSTALLED, installed)], flags: {quit: true}});
+        const plan  = planInstall({...slots(), custodyDir: userData, running: [MAIN_EXE.replace(INSTALLED, installed)], flags: {quit: true, legacyMigration: true}});
         await expect(executePlan(plan.steps, {runFn: runFn(calls), continuityFn: prepareContinuity}))
             .rejects.toThrow(/generation-capable source has no admission journal/);
         expect(calls).toEqual([]);
-        await expect(prepareInstallContinuity({sourceBundle: installed, custodyDir: userData}, {
+        await expect(prepareInstallContinuity({sourceBundle: installed, destinationBundle: artifact, custodyDir: userData}, {
             inspectSupport: async () => ({kind: 'legacy'})
-        })).rejects.toThrow(/explicit discontinuous migration/);
-        await expect(prepareInstallContinuity({sourceBundle: null, custodyDir: userData}))
-            .rejects.toThrow(/first-install exclusion/);
+        })).rejects.toThrow(/explicit --legacy-migration/);
         mkdirSync(path.join(userData, 'brain/runtime/retained'), {recursive: true});
-        await expect(prepareInstallContinuity({sourceBundle: null, custodyDir: userData}))
+        await expect(prepareContinuity({sourceBundle: null, destinationBundle: artifact, custodyDir: userData}))
             .rejects.toThrow(/managed custody remains/);
         expect(readSlot(installed).receipt).toEqual(OLD);
+    });
+
+    test('first-install exclusion leaves no synthetic handoff and tolerates only structural retry residue', async () => {
+        writeBundle(artifact, NEW);
+        const plan  = planInstall({...slots(), custodyDir: userData, flags: {open: true}}), calls = [];
+        const first = (await prepareContinuity(plan.steps[0])).hold();
+        expect(first.evidence).toBeNull();
+        expect(() => openIssuer()).toThrow();
+        first.release();
+        await executePlan(plan.steps, {continuityFn: prepareContinuity,
+            runFn: runFn(calls), materializeFn: async () => ({directory: root})});
+        expect(readSlot(installed).receipt).toEqual(NEW);
+        expect(readLaunchAdmissionJournal({directory: admissionDirectory()})).toBeNull();
+        expect(readdirSync(admissionDirectory())).toEqual([]);
+        expect(calls.map(row => row.command)).toEqual(['ditto', 'open']);
+    });
+
+    test('first-install eligibility is rechecked under exclusion and refuses unknown Fleet records', async () => {
+        writeBundle(artifact, NEW);
+        const prepared = await prepareContinuity(planInstall({...slots(), custodyDir: userData}).steps[0]);
+        mkdirSync(custody, {recursive: true});
+        writeFileSync(path.join(custody, 'registry.json'), '{}');
+        expect(() => prepared.hold()).toThrow(/managed Fleet custody/);
+        expect(readSlot(installed).exists).toBe(false);
+        expect(fs.existsSync(path.join(admissionDirectory(), 'issuer.lock'))).toBe(false);
+        rmSync(path.join(custody, 'registry.json'));
+        writeFileSync(path.join(admissionDirectory(), 'unclassified-record'), '{}');
+        expect(() => prepared.hold()).toThrow(/unknown admission custody/);
+        expect(fs.existsSync(path.join(admissionDirectory(), 'unclassified-record'))).toBe(true);
+    });
+
+    test('recognized legacy migration requires explicit intent and preserves custody without issuing a handoff', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        writeCustody();
+        const before       = custodyDigest(userData), calls = [];
+        const continuityFn = step => prepareInstallContinuity(step, {inspectSupport: async ({bundlePath}) => ({kind: bundlePath === installed ? 'legacy' : 'generation'})});
+        await expect(executePlan(planInstall({...slots(), custodyDir: userData}).steps, {continuityFn, runFn: runFn(calls)})).rejects.toThrow(/--legacy-migration/);
+        expect(calls).toEqual([]);
+        const options = parseInstallArgs(['--legacy-migration']);
+        expect(options.legacyMigration).toBe(true);
+        expect(options.unknown).toEqual([]);
+        const plan = planInstall({...slots(), custodyDir: userData, flags: {legacyMigration: true}});
+        expect(plan.warnings.join(' ')).toContain('discontinuous');
+        await executePlan(plan.steps, {continuityFn, runFn: runFn(calls), materializeFn: async () => ({directory: root})});
+        expect(readSlot(installed).receipt).toEqual(NEW);
+        expect(readLaunchAdmissionJournal({directory: admissionDirectory()})).toBeNull();
+        // Exclusion adds an empty structural directory; the original custody bytes stay untouched.
+        rmSync(admissionDirectory(), {recursive: true});
+        expect(custodyDigest(userData)).toBe(before);
+    });
+
+    test('legacy rollback requires sealed revocations and preserves the journal and retained roots', async () => {
+        writeBundle(installed, NEW);
+        writeBundle(rollback, OLD);
+        const revoked = {version: 6, seats: [], generations: [{
+            id                : 'g', agentId: 'seat', identity: 'seat-login', state: 'revoked', reason: 'stop-requested',
+            reservedAt        : null, activatedAt: null, revokedAt: null, definitionHash: 'a'.repeat(64), runtime: null,
+            credentialBindings: {}, residentBindings: {},
+            servers           : [{key: 'memory-core', grantId: 'grant', state: 'revoked', reason: 'stop-requested', capabilityHash: 'b'.repeat(64)}]
+        }]};
+        expect(isAdmissionSnapshot(revoked)).toBe(true);
+        const first = openIssuer();
+        first.handoff(revoked);
+        const bytes = fs.readFileSync(path.join(admissionDirectory(), 'issuer.json'), 'utf8');
+        mkdirSync(path.join(userData, 'brain/runtime/retained'), {recursive: true});
+        const plan         = planInstall({...slots(), custodyDir: userData, mode: 'restore', flags: {legacyMigration: true}});
+        const continuityFn = step => prepareInstallContinuity(step, {inspectSupport: async ({bundlePath}) => ({kind: bundlePath === rollback ? 'legacy' : 'generation'})});
+        try {
+            await executePlan(plan.steps, {continuityFn, runFn: runFn([]), materializeFn: async () => ({directory: root}),
+                recoveryFn     : async () => { throw Error('legacy must not claim codec compatibility') },
+                verifyRuntimeFn: async () => ({directory: root})});
+            expect(readSlot(installed).receipt).toEqual(OLD);
+            expect(fs.readFileSync(path.join(admissionDirectory(), 'issuer.json'), 'utf8')).toBe(bytes);
+            expect(fs.existsSync(path.join(userData, 'brain/runtime/retained'))).toBe(true);
+        } finally { first.close() }
+    });
+
+    test('legacy rollback accepts only terminal original Starts with resolved ownership and cleanup', async () => {
+        writeBundle(installed, NEW);
+        writeBundle(rollback, OLD);
+        const id    = 'a'.repeat(64), directory = `/runtime/${id}`;
+        const start = {version: 2, agentId: 'seat', identity: 'seat-login', harnessType: 'codex-desktop',
+            pid              : 42, pidStartedAt: 'Wed Oct 14 10:00:00 2026', startedAt: '2026-10-14T08:00:00Z',
+            cwd              : '/managed/seat/repo', instanceHome: '/managed/seat/profile', launchCommand: '/apps/harness',
+            launchInterpreter: null, profileArg: null, leaseRequired: true,
+            runtime          : {id, directory, runtimeRoot: `${directory}/host.runtime/organism`,
+                executable: `${directory}/host.runtime/node`, payloadDigest: 'b'.repeat(64)},
+            planSha256     : 'c'.repeat(64), profile: null, admissionGeneration: null,
+            bridgeAuthority: {version: 1, source: 'registry-file', registryRoot: '/registry', publicKeySha256: 'd'.repeat(64)}, targets: []};
+        const binding = planInstall({...slots(), custodyDir: userData, mode: 'restore', flags: {legacyMigration: true}}).steps[0];
+        for (const [state, ownershipUnresolved, cleanupUnresolved, accepted] of [
+            ['running', false, false, false], ['stopping', false, false, false], ['failed', false, false, false],
+            ['unavailable', false, false, false], ['stopped', true, false, false], ['exited', false, true, false],
+            ['stopped', false, false, true], ['exited', false, false, true]
+        ]) {
+            const value = {version: 6, generations: [], seats: [{start, state, ownershipUnresolved, cleanupUnresolved}]};
+            expect(isAdmissionSnapshot(value)).toBe(true);
+            const issuer = openIssuer();
+            issuer.handoff(value);
+            try {
+                const prepared = await prepareInstallContinuity(binding,
+                    {inspectSupport: async ({bundlePath}) => ({kind: bundlePath === rollback ? 'legacy' : 'generation'})});
+                if (accepted) prepared.hold().release();
+                else expect(() => prepared.hold()).toThrow(/terminal original Starts/);
+                expect(readLaunchAdmissionJournal({directory: admissionDirectory()}).state.snapshot).toEqual(value);
+            } finally { issuer.close() }
+        }
+    });
+
+    test('a sealed but active grant cannot enter legacy rollback', async () => {
+        writeBundle(installed, NEW);
+        writeBundle(rollback, OLD);
+        const active = {version: 6, seats: [], generations: [{
+            id                : 'g', agentId: 'seat', identity: 'seat-login', state: 'active', reason: null,
+            reservedAt        : null, activatedAt: null, revokedAt: null, definitionHash: 'a'.repeat(64), runtime: null,
+            credentialBindings: {}, residentBindings: {}, servers: []
+        }]};
+        const first = openIssuer(), calls = [];
+        first.handoff(active);
+        const plan = planInstall({...slots(), custodyDir: userData, mode: 'restore', flags: {legacyMigration: true}});
+        try {
+            await expect(executePlan(plan.steps, {runFn: runFn(calls), continuityFn: step => prepareInstallContinuity(step,
+                {inspectSupport: async ({bundlePath}) => ({kind: bundlePath === rollback ? 'legacy' : 'generation'})})}))
+                .rejects.toThrow(/terminal original Starts and revoked grants/);
+            expect(calls).toEqual([]);
+            expect(readSlot(installed).receipt).toEqual(NEW);
+        } finally { first.close() }
     });
 
     test('an update holds the original issuer through copy and async probes, then releases before open', async () => {
