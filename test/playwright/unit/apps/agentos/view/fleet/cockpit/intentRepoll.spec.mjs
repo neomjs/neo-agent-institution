@@ -10,9 +10,9 @@ setup({
     }
 });
 
-import {test, expect}                                                         from '@playwright/test';
-import Neo                                                                    from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core                                                              from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import {test, expect} from '@playwright/test';
+import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                             '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
@@ -52,6 +52,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
     const makeController = calls => {
         const controller = Object.create(FleetCockpitController.prototype);
         controller.loadRoster = () => { calls.push(1) };
+        controller.getReference = () => null;
         return controller
     };
 
@@ -334,9 +335,9 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
                   livenessReadTimeout   : 4000
               },
               controller = makeControllerFake(FleetCockpitController, {
-                  component              : view,
-                  getReference           : reference => reference === 'fleet-grid' ? {adapterState: 'cold', store} : null,
-                  lastLiveRows           : null,
+                  component   : view,
+                  getReference: reference => reference === 'fleet-grid' ? {adapterState: 'cold', store} : null,
+                  lastLiveRows: null,
                   // the provider-owned roster authority — the same REAL store the grid binds
                   resolveFleetRosterStore: () => store
               });
@@ -440,7 +441,10 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
               },
               {controller, store} = await makeLiveRoster(bridge);
 
-        controller.renderStartSummary = summary => summaries.push(summary);
+        const lines = [], originalRender = controller.renderStartSummary.bind(controller);
+
+        controller.renderStartSummary = summary => { summaries.push(summary); originalRender(summary) };
+        controller.renderSummarySlot = line => lines.push(line);
 
         await withFastLifecycleDeadline(async ({calls, fire}) => {
             const batch = controller.onStartFleet();
@@ -452,6 +456,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
 
             expect(summary.unknown).toHaveLength(1);
             expect(summaries.at(-1).unknown).toHaveLength(1);
+            expect(lines.at(-1).text).toContain('1\u00a0UNKNOWN');
             expect(store.get('vega').state).toBe('off');
             expect(rosterReads).toBe(1);
 
@@ -462,7 +467,8 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
             await result.settlement;
 
             expect(store.get('vega').state).toBe('ok');
-            expect(summaries.at(-1)).toMatchObject({started: 1, unknown: [], rejected: [], excluded: []});
+            expect(lines.at(-1).text).toBe('1\u00a0started');
+            expect(summary.unknown).toHaveLength(1);
             expect(rosterReads).toBe(2)
         });
 

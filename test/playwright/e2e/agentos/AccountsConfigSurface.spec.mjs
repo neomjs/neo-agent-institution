@@ -426,17 +426,18 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             await expect(rows.first()).toContainText('neomjs/neo');
             await expect(rows.first()).toContainText('Working');
 
-            // an add crosses the wire as one setRepos with the whole list, and the readback renders it
+            // Enter crosses the wire as one setRepos with the whole list, and the readback renders it
             await field.fill(extra);
-            await add.dispatchEvent('click');
+            await field.press('Enter');
             await expect(status).toHaveClass(/is-accepted/);
             await expect(rows).toHaveCount(2);
+            await expect(field).toHaveValue('');
             expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([{repoSlug: extra, cloneUrl: `https://github.com/${extra}.git`}]);
 
             // a refused list shows the Fleet's own reason, keeps the typed slug, and the rows keep
             // what the registry holds
             await field.fill(extra);
-            await add.dispatchEvent('click');
+            await field.press('Enter');
             await expect(status).toHaveClass(/is-rejected/);
             await expect(status).toHaveText('a repository is listed twice.');
             await expect(field).toHaveValue(extra);
@@ -447,7 +448,14 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             await rows.filter({hasText: extra}).locator('.fm-repo-remove').dispatchEvent('click');
             await expect(status).toHaveClass(/is-accepted/);
             await expect(rows).toHaveCount(1);
-            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([])
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([]);
+
+            // The existing button path remains available beside the keyboard shortcut.
+            await field.fill(extra);
+            await add.dispatchEvent('click');
+            await expect(status).toHaveClass(/is-accepted/);
+            await expect(rows).toHaveCount(2);
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([{repoSlug: extra, cloneUrl: `https://github.com/${extra}.git`}])
         } finally {
             server && await new Promise(resolve => server.close(resolve));
             FleetRegistryService.dataDir = priorDataDir;

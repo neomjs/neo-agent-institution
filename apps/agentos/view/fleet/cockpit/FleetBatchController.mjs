@@ -121,17 +121,26 @@ class FleetBatchController extends ReadingSurfacesController {
 
     /**
      * @summary The roster settled — the liveness layer's one admit path. An armed stop whose plan the
-     * fresh roster no longer matches is taken back, nothing sent; then the button reads its plan.
+     * fresh roster no longer matches is taken back, nothing sent. A matching arm refreshes its
+     * excluded reasons without extending confirmation; otherwise the header shows current state.
      * @protected
      */
     onRosterSettled() {
         const me = this;
 
-        if (me.stopFleetArmed && !me.isStopArmCurrent(me.stopFleetArmed, FleetStartPlan.partitionFleetStop(me.getRosterRecords()))) {
-            me.disarmStopFleet()
+        if (me.stopFleetArmed) {
+            const fresh = FleetStartPlan.partitionFleetStop(me.getRosterRecords());
+
+            if (me.isStopArmCurrent(me.stopFleetArmed, fresh)) {
+                me.stopFleetArmed.plan = fresh;
+                me.renderSummarySlot(FleetStartPlan.renderFleetStopPlan(fresh))
+            } else {
+                me.disarmStopFleet()
+            }
         }
 
-        me.renderFleetButton()
+        me.renderFleetButton();
+        me.renderFleetState()
     }
 
     /**
@@ -143,7 +152,8 @@ class FleetBatchController extends ReadingSurfacesController {
      */
     onRosterRetired() {
         this.startFleetBatch = null;
-        this.disarmStopFleet()
+        this.disarmStopFleet();
+        this.renderSummarySlot(null)
     }
 
     /**
@@ -164,8 +174,8 @@ class FleetBatchController extends ReadingSurfacesController {
     }
 
     /**
-     * @summary Take the first press back: the armed plan and its window go, the summary slot clears,
-     * the button reads its plan again.
+     * @summary Take the first press back: the armed plan and its window go; current roster counts
+     * and the button's plan reclaim the header.
      * @protected
      */
     disarmStopFleet() {
@@ -177,8 +187,8 @@ class FleetBatchController extends ReadingSurfacesController {
         if (!me.stopFleetArmed || me.isDestroyed) return;
 
         me.stopFleetArmed = null;
-        me.renderSummarySlot(null);
-        me.renderFleetButton()
+        me.renderFleetButton();
+        me.renderFleetState()
     }
 
     /**
@@ -194,7 +204,8 @@ class FleetBatchController extends ReadingSurfacesController {
         if (!me.startFleetPromise) {
             me.startFleetPromise = me.executeStartFleetBatch().finally(() => {
                 me.startFleetPromise = null;
-                me.renderFleetButton()
+                me.renderFleetButton();
+                me.renderFleetState()
             });
             me.renderFleetButton()
         }
@@ -286,6 +297,7 @@ class FleetBatchController extends ReadingSurfacesController {
         if (!me.stopFleetArmed) {
             const plan = FleetStartPlan.partitionFleetStop(me.getRosterRecords());
 
+            me.startFleetBatch = null;
             me.stopFleetArmed    = {plan, profileId: me.bridgeProfileId, store: me.resolveFleetRosterStore()};
             me.stopFleetArmTimer = setTimeout(() => me.disarmStopFleet(), me.stopFleetArmMs);
             me.renderSummarySlot(FleetStartPlan.renderFleetStopPlan(plan));
@@ -307,7 +319,8 @@ class FleetBatchController extends ReadingSurfacesController {
         me.stopFleetArmed    = null;
         me.stopFleetPromise  = me.executeStopFleetBatch(fresh).finally(() => {
             me.stopFleetPromise = null;
-            me.renderFleetButton()
+            me.renderFleetButton();
+            me.renderFleetState()
         });
         me.renderFleetButton();
 
@@ -355,13 +368,31 @@ class FleetBatchController extends ReadingSurfacesController {
     }
 
     /**
+     * @summary Return the header to current roster state after an operation or confirmation yields its slot.
+     * Retiring the batch token prevents an older late answer from replacing that live projection.
+     * @protected
+     */
+    renderFleetState() {
+        const me = this;
+
+        if (me.isDestroyed || me.stopFleetArmed || (me.startFleetBatch && (me.startFleetPromise || me.stopFleetPromise))) return;
+
+        me.startFleetBatch = null;
+        me.renderSummarySlot(FleetStartPlan.renderFleetState(me.getRosterRecords()))
+    }
+
+    /**
      * @summary Write a fleet batch's outcome into the chrome summary slot — counts as text, per-member
-     * reasons on the title; hidden again when cleared.
+     * reasons on the title. Its operation label distinguishes temporary feedback from current counts.
      * @param {Object|null} summary
      * @param {String} [verb='started'] The direction's word: `started` or `stopped`
      */
     renderStartSummary(summary, verb = 'started') {
-        this.renderSummarySlot(summary && FleetStartPlan.renderFleetStartSummary(summary, verb))
+        const line = summary && FleetStartPlan.renderFleetStartSummary(summary, verb);
+
+        if (line) line.text = `Fleet ${verb === 'stopped' ? 'stop' : 'start'} · ${line.text}`;
+
+        this.renderSummarySlot(line)
     }
 
     /**
@@ -377,6 +408,7 @@ class FleetBatchController extends ReadingSurfacesController {
         if (!slot) return;
 
         if (!line) {
+            delete slot.vdom.title;
             slot.set({hidden: true, text: ''});
             return
         }

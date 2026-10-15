@@ -34,6 +34,26 @@ const wiredRuntime = (confidence = 'observed') => ({
 
 test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => {
 
+    test('live state keeps Stop uncertainty distinct from a family that cannot Start', () => {
+        const record  = {agentId: 'native-up', state: 'ok', sources: wiredRuntime(), launchable: false, pendingAction: 'stop'};
+        const pending = FleetStartPlan.renderFleetState([record]);
+
+        expect(pending.text).toBe('0\u00a0started · 1\u00a0pending');
+        expect(pending.detail).toContain("'stop' round-trip");
+        expect(pending.detail).not.toContain('not launchable');
+
+        record.pendingAction = null;
+        record.controlReason = {kind: 'timeout', action: 'stop'};
+        const unknown = FleetStartPlan.renderFleetState([record]);
+
+        expect(unknown.text).toBe('0\u00a0started · 1\u00a0UNKNOWN');
+        expect(unknown.detail).toContain("'stop' outcome unknown");
+        expect(unknown.detail).not.toContain('not launchable');
+
+        record.controlReason = null;
+        expect(FleetStartPlan.renderFleetState([record]).text).toBe('1\u00a0started')
+    });
+
     test('partition: every exclusion is wire-derived and carries its reason; the down fleet is what starts', () => {
         const records = [
             {agentId: 'vega',   state: 'off',  sources: wiredRuntime()},                // eligible — wired down
@@ -245,7 +265,7 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
             unknown  : [{agentId: 'euclid', reason: 'timeout: start timed out after 30000ms'}]
         });
 
-        expect(text).toBe('2 started · 1 UNKNOWN · 1 rejected · 1 excluded');
+        expect(text).toBe('2\u00a0started · 1\u00a0UNKNOWN · 1\u00a0rejected · 1\u00a0excluded');
         expect(detail).toContain('euclid: timeout: start timed out after 30000ms');
         expect(detail).toContain('ada: missing credential');
         expect(detail).toContain('(guest): guest — no fleet definition to start');
@@ -253,7 +273,7 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         // the quiet batch: everything started, nothing to explain
         const clean = FleetStartPlan.renderFleetStartSummary({attempted: 2, excluded: [], rejected: [], started: 2, total: 2, unknown: []});
 
-        expect(clean.text).toBe('2 started');
+        expect(clean.text).toBe('2\u00a0started');
         expect(clean.detail).toBe('')
     });
 
@@ -280,8 +300,8 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
 
     test('the fleet button reads the plan it would run: Start fleet · n while anything eligible is down, Stop fleet · n only when nothing is left to start, the plain label with its reason when no plan can be computed (#618 AC-1)', () => {
         const
-            up   = id => ({agentId: id, state: 'ok',  sources: wiredRuntime()}),
-            down = id => ({agentId: id, state: 'off', sources: wiredRuntime()}),
+            up    = id => ({agentId: id, state: 'ok',  sources: wiredRuntime()}),
+            down  = id => ({agentId: id, state: 'off', sources: wiredRuntime()}),
             eight = ['ada', 'grace', 'vega', 'sophie', 'emmy', 'euclid', 'clio', 'fable'];
 
         expect(FleetStartPlan.describeFleetButton([...eight.slice(0, 4).map(up), ...eight.slice(4).map(down)]))
@@ -303,8 +323,8 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
             partition = {eligible: [{agentId: 'ada'}, {agentId: 'grace'}], excluded: [{agentId: 'vega', reason: 'already down — session state \'off\''}]},
             summary   = FleetStartPlan.summarizeFleetStart(partition, [{ok: true}, {ok: false, status: 'rejected', controlReason: {reason: 'the seat refused'}}]);
 
-        expect(FleetStartPlan.renderFleetStartSummary(summary, 'stopped')).toEqual({text: '1 stopped · 1 rejected · 1 excluded', detail: 'grace: the seat refused\nvega: already down — session state \'off\''});
-        expect(FleetStartPlan.renderFleetStartSummary(summary).text, 'the default verb is unchanged').toBe('1 started · 1 rejected · 1 excluded')
+        expect(FleetStartPlan.renderFleetStartSummary(summary, 'stopped')).toEqual({text: '1\u00a0stopped · 1\u00a0rejected · 1\u00a0excluded', detail: 'grace: the seat refused\nvega: already down — session state \'off\''});
+        expect(FleetStartPlan.renderFleetStartSummary(summary).text, 'the default verb is unchanged').toBe('1\u00a0started · 1\u00a0rejected · 1\u00a0excluded')
     });
 
     test('the armed stop renders where the summaries live: the eligible seats by name in roster order, the exclusions counted and reachable; a plan\'s key is its eligible set (#618 AC-4)', () => {
@@ -313,8 +333,8 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
             excluded: [{agentId: 'neo-gemini-pro', reason: 'not active — authoritative participation status \'operator_benched\''}]
         };
 
-        expect(FleetStartPlan.renderFleetStopPlan(plan)).toEqual({detail: 'neo-gemini-pro: not active — authoritative participation status \'operator_benched\'', text: 'Stop fleet · 2 seats: Ada, neo-gpt · 1 excluded'});
-        expect(FleetStartPlan.renderFleetStopPlan({eligible: [{agentId: 'ada', displayName: 'Ada'}], excluded: []})).toEqual({detail: '', text: 'Stop fleet · 1 seat: Ada'});
+        expect(FleetStartPlan.renderFleetStopPlan(plan)).toEqual({detail: 'neo-gemini-pro: not active — authoritative participation status \'operator_benched\'', text: 'Stop fleet · 2\u00a0seats: Ada, neo-gpt · 1\u00a0excluded'});
+        expect(FleetStartPlan.renderFleetStopPlan({eligible: [{agentId: 'ada', displayName: 'Ada'}], excluded: []})).toEqual({detail: '', text: 'Stop fleet · 1\u00a0seat: Ada'});
         expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'b'}, {agentId: 'a'}]})).toBe(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}, {agentId: 'b'}]}));
         expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}]})).not.toBe(FleetStartPlan.stopPlanKey({eligible: []}))
     });
@@ -358,13 +378,13 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
 
         const line = FleetStartPlan.renderFleetStartSummary(running);
 
-        expect(line.text).toBe('1 started · 2 pending · 1 rejected · 1 excluded');
+        expect(line.text).toBe('1\u00a0started · 2\u00a0pending · 1\u00a0rejected · 1\u00a0excluded');
         expect(line.detail.split('\n')).toEqual(['vega: pending — a later wave', 'mnemo: pending — a later wave', 'grace: the seat refused', "up: already up — session state 'ok'"]);
 
         // every wave answered: no pending word anywhere
         const done = FleetStartPlan.summarizeFleetStart(partition, [{ok: true}, {ok: true}, {ok: true}, {ok: false, status: 'timeout', controlReason: {reason: 'start timed out after 30000ms'}}]);
 
         expect(done.pending).toEqual([]);
-        expect(FleetStartPlan.renderFleetStartSummary(done).text).toBe('3 started · 1 UNKNOWN · 1 excluded')
+        expect(FleetStartPlan.renderFleetStartSummary(done).text).toBe('3\u00a0started · 1\u00a0UNKNOWN · 1\u00a0excluded')
     });
 });
