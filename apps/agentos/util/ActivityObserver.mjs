@@ -23,8 +23,9 @@ const ACTIVITY_OBSERVERS = Object.freeze({
  * `observation.admissionKey`. A live answer under another admission empties the feed before its page lands, so no
  * row, count, continuation or open message of the old one survives. An answer whose A2A half admitted nothing
  * empties the expansion and reads unavailable. Older pages follow the held continuation, never a count of retained
- * rows, and land only under the admission that issued it. An open message is read under the same selector and
- * lands only while that admission holds.
+ * rows, and land only under the admission that issued it; one that reports another admission retires the feed and
+ * reads it again. A live page that more arrivals outran reopens the rows below it from its own continuation. An open
+ * message is read under the same selector and lands only while that admission holds.
  *
  * The cockpit controller owns the state (`activityAdmissionKey`, `activityContinuation`,
  * `activityMessageReadGeneration`). The provider owns the mode (`activityMode`) and the published observation
@@ -43,7 +44,9 @@ class ActivityObserver extends Base {
 
     /**
      * @summary Admit the metadata of an older observer page. The page lands only under the admission that
-     * issued the continuation, and the continuation then advances to the page's own.
+     * issued the continuation, and the continuation then advances to the page's own. A page reaches here only
+     * while the feed that asked for it holds, so one that reports another valid admission means the admission
+     * moved under the held rows: the feed is retired like a live answer's would be, and read again.
      * @param {Object} owner    The cockpit controller
      * @param {Object} answer   The page's answer, `{a2a}`
      * @param {Object} selector The selector the read sent
@@ -53,6 +56,11 @@ class ActivityObserver extends Base {
         const observation = ActivityObserver.observationOf(a2a, selector);
 
         if (observation?.admissionKey !== owner.activityAdmissionKey) {
+            if (observation) {
+                TargetBinding.clearActivity(owner, {rows: false});
+                owner.loadActivity()
+            }
+
             return false
         }
 
@@ -64,9 +72,10 @@ class ActivityObserver extends Base {
 
     /**
      * @summary Admit the A2A half of one live observer answer before its page lands, and return what may land.
-     * Under the held admission the page merges. Under another, or the first, the feed is retired so the page
-     * replaces it in one transaction ({@link AgentOS.util.TargetBinding#clearActivity}), and the answer's
-     * continuation becomes the held one. Without a valid observation of the requested scope (a refused or
+     * Under the held admission the page merges, and the held continuation keeps the reader's place unless more
+     * arrived than the page carries ({@link #reachesHeldRows}). Under another admission, or the first, the feed is
+     * retired so the page replaces it in one transaction ({@link AgentOS.util.TargetBinding#clearActivity}), and the
+     * answer's continuation becomes the held one. Without a valid observation of the requested scope (a refused or
      * failed A2A read, or a plane that answers no observer read) the expansion goes the same way, only the
      * other sources' facts land, and the A2A half reads unavailable.
      * @param {Object}      owner          The cockpit controller
@@ -95,6 +104,8 @@ class ActivityObserver extends Base {
         if (observation.admissionKey !== owner.activityAdmissionKey) {
             TargetBinding.clearActivity(owner, {rows: false});
             owner.activityAdmissionKey = observation.admissionKey;
+            owner.activityContinuation = a2a.continuation ?? null
+        } else if (!ActivityObserver.reachesHeldRows(owner, events)) {
             owner.activityContinuation = a2a.continuation ?? null
         }
 
@@ -186,6 +197,24 @@ class ActivityObserver extends Base {
             write({code: error?.code ?? null, messageId, reason: error?.message || 'the message could not be read',
                 state: error?.code === 'MAILBOX_OBSERVER_NOT_ADMITTED' || error?.fleetConnectionState === 'refused' ? 'refused' : 'unavailable'})
         }
+    }
+
+    /**
+     * @summary Whether a live page under the held admission reaches the rows the feed already holds. When it
+     * does, the held continuation still follows on from them, and arrivals shift in only rows that ids dedupe.
+     * When none of its A2A rows is held, more arrived than one page carries, and the rows between the page and
+     * the held ones are reachable only from the page's own continuation.
+     * @param {Object}   owner  The cockpit controller
+     * @param {Object[]} events The live page
+     * @returns {Boolean}
+     * @protected
+     */
+    static reachesHeldRows(owner, events) {
+        const
+            store = owner.resolveFleetActivityEventsStore(),
+            rows  = events.filter(event => event?.source === FLEET_COCKPIT_SOURCES.a2a);
+
+        return !rows.length || rows.some(event => store?.get(event.eventId))
     }
 
     /**

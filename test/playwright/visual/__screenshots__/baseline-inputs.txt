@@ -201,7 +201,7 @@ apps/agentos/store/ViewerWakeFeed.mjs
     2416a3352de08dc4fa72d503913c6450a6f8dab6
 
 apps/agentos/util/ActivityObserver.mjs
-    e5d31fad731b723ca4a766c04c20203a6c03a878
+    b4f09987693a90cac0f205c92bc59e9de5fda99c
 
 apps/agentos/util/AddAgentFlow.mjs
     a64e705527f9f7a4d27101682e499bd110ffb93e

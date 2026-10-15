@@ -235,15 +235,77 @@ test.describe('FleetCockpit — the Activity feed observes All A2A and involves 
         expect(heldIds()).toEqual(['a2a:MESSAGE:60', 'a2a:MESSAGE:50', 'a2a:MESSAGE:30'])
     });
 
-    test('an older page under another admission never lands, and leaves the continuation where it was', async () => {
-        const host = makeHost();
+    test('an older page under another admission retires the feed and reads it again: nothing of the old admission survives', async () => {
+        const
+            host    = makeHost(),
+            clamped = {clamped: true, key: 'key-2', policy: 'private'},
+            written = [];
 
-        serve(params => !params.slots ? answer([mailbox(60, 59)], a2aOf()) : answer([mailbox(50, 50)], a2aOf({key: 'key-2', offset: 100})));
+        let live = 0, releaseBody, releaseLive;
+
+        serve(params => params.slots
+            ? answer([mailbox(50, 50)], a2aOf({...clamped, offset: 100}))
+            : ++live === 1
+                ? {...answer([mailbox(60, 59)], a2aOf()), counts: [{scope: 'all', source: 'memory-core:mailbox', total: 1}]}
+                : new Promise(resolve => { releaseLive = resolve }),
+            {fleetOwnMessage: () => new Promise(resolve => { releaseBody = resolve })});
         await host.loadActivity();
 
+        Object.defineProperty(host.stream, 'messageRead', {set: value => written.push(value)});
+        const opened = host.onActivityMessageOpen({messageId: 'MESSAGE:60'});
+
+        // the policy narrowed before the older page answered
         await expect(host.loadActivityHistory()).resolves.toBeNull();
-        expect(heldIds()).toEqual(['a2a:MESSAGE:60']);
-        expect(host.activityContinuation).toEqual({slots: ['a2a'], offset: 50})
+        expect(host.activityAdmissionKey).toBeNull();
+        expect(host.activityContinuation).toBeNull();
+        expect(host.data).toMatchObject({activityCounts: [], streamAdapterState: 'cold', streamHistoryExhausted: false});
+        expect(host.stream.adapterState, 'a cold stream shows no row and closes its detail').toBe('cold');
+        expect(reads.map(read => read.slots ?? 'live'), 'the feed is read again at once').toEqual(['live', ['a2a'], 'live']);
+
+        releaseBody({body: 'the words', messageId: 'MESSAGE:60', observation: {admissionKey: 'key-1'}, subject: 'message 60'});
+        await opened;
+        expect(written.map(read => read.state), 'the old admission\'s body never shows').toEqual(['loading']);
+
+        releaseLive(answer([mailbox(61, 58)], a2aOf(clamped)));
+        await expect.poll(() => host.activityAdmissionKey).toBe('key-2');
+        expect(heldIds(), 'the new admission\'s page replaces the old rows').toEqual(['a2a:MESSAGE:61']);
+        expect(host.data.activityObservation).toMatchObject({clamped: true, policy: 'private', state: 'admitted'})
+    });
+
+    test('a live page the arrivals outran opens the rows below it from its own continuation', async () => {
+        const host = makeHost();
+
+        let live = 0;
+
+        serve(params => params.slots
+            ? answer([mailbox(5, 5), mailbox(4, 4)], a2aOf({offset: 4}))
+            : ++live === 1
+                ? answer([mailbox(2, 2), mailbox(1, 1)], a2aOf({offset: null}))
+                : answer([mailbox(9, 9), mailbox(8, 8)], a2aOf({offset: 2})));
+        await host.loadActivity();
+        expect(host.data.streamHistoryExhausted, 'the first population ended on its first page').toBe(true);
+
+        // more arrived than one page carries: messages 7 to 3 sit between the new page and the held rows
+        await host.loadActivity();
+        expect(host.activityContinuation).toEqual({slots: ['a2a'], offset: 2});
+        expect(host.data.streamHistoryExhausted).toBe(false);
+
+        await expect(host.loadActivityHistory()).resolves.toMatchObject({added: 2});
+        expect(reads.at(-1)).toEqual({limit: 50, observer: ALL, offset: 2, slots: ['a2a']})
+    });
+
+    test('a live page that reaches the held rows keeps the reader\'s place in a stable population', async () => {
+        const host = makeHost();
+
+        serve(params => params.slots
+            ? answer([mailbox(50, 50)], a2aOf({offset: 100}))
+            : answer([mailbox(60, 59)], a2aOf()));
+        await host.loadActivity();
+        await host.loadActivityHistory();
+        expect(host.activityContinuation.offset).toBe(100);
+
+        await host.loadActivity();
+        expect(host.activityContinuation, 'the page read again does not send the reader back to its first page').toEqual({slots: ['a2a'], offset: 100})
     });
 
     test('an observer page that adds nothing never stalls the next one: its continuation still moved', async () => {
