@@ -1,10 +1,10 @@
-import {execFile}      from 'node:child_process';
-import {constants}     from 'node:fs';
-import fs              from 'node:fs/promises';
-import path            from 'node:path';
-import {promisify}     from 'node:util';
-import {pathToFileURL} from 'node:url';
-import {createRequire} from 'node:module';
+import {execFile}                     from 'node:child_process';
+import {constants}                    from 'node:fs';
+import fs                             from 'node:fs/promises';
+import path                           from 'node:path';
+import {isDeepStrictEqual, promisify} from 'node:util';
+import {pathToFileURL}                from 'node:url';
+import {createRequire}                from 'node:module';
 
 /**
  * @module harness/runtimeGeneration
@@ -13,7 +13,9 @@ import {createRequire} from 'node:module';
  * format and read-only verifier. A generation is never repaired or overwritten in place.
  */
 
-const execute = promisify(execFile);
+const execute            = promisify(execFile);
+const VERIFIER_FUNCTIONS = ['runtimeGenerationIdentity', 'runtimeGenerationArguments', 'readRuntimeGeneration', 'inventoryRuntimePayload',
+    'runtimeGenerationDescriptor', 'createRuntimeGenerationRecord', 'completeRuntimeGenerationRecord'];
 
 /** @summary Creates a named refusal without turning an unknown binding into a fallback. */
 function refusal(code, detail, cause) {
@@ -36,23 +38,42 @@ async function readJson(file) {
 }
 
 /**
- * @summary Loads verification only from the source package's assembled, revision-bound Brain.
- * The retained generation under test is never an import root, and escaping source links refuse.
+ * @summary Binds package metadata to its declared assembled Brain without loading its code.
+ * Package metadata must stay inside its owner root; an escaped link cannot supply that binding.
  * @param {Object} options Explicit package and assembled organism roots.
- * @returns {Promise<Object>} The source package's verifier and manifest-format namespace.
+ * @returns {Promise<Object>} The observed receipt, dependency binding and Brain manifest.
  */
-export async function loadRuntimeGenerationVerifier({bundlePath, runtimeRoot}) {
+async function packagedBrainBinding({bundlePath, runtimeRoot}) {
     const source = await fs.realpath(bundlePath), root = await fs.realpath(runtimeRoot);
     if (!inside(source, root)) throw refusal('runtime-verifier-invalid', 'the verifier must belong to the source package');
-    const receipt  = await readJson(path.join(root, 'organism-build-info.json'));
+    const receipt  = await readBoundJson(root, 'organism-build-info.json');
     const revision = receipt?.owners?.brain?.revision;
     if (typeof revision !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) {
         throw refusal('runtime-verifier-invalid', 'the source package has no complete Brain revision')
     }
-    const manifest = await readJson(path.join(root, 'package.json'));
+    const manifest = await readBoundJson(root, 'package.json');
     if (!manifest.dependencies?.['neo-agent-brain']?.endsWith('#' + revision)) {
         throw refusal('runtime-verifier-invalid', 'the assembled Brain dependency does not match the package receipt')
     }
+    const brain = await readBoundJson(path.join(root, 'node_modules/neo-agent-brain'), 'package.json');
+    if (brain.name !== 'neo-agent-brain') throw refusal('runtime-verifier-invalid', 'the assembled dependency is not the declared Brain');
+    return {root, revision, receipt, dependency: manifest.dependencies['neo-agent-brain'], brain};
+}
+
+/** @summary Reads package metadata only after its resolved file stays inside the declared owner root. */
+async function readBoundJson(root, name) {
+    const file = await fs.realpath(path.join(root, name));
+    if (!inside(root, file)) throw refusal('runtime-verifier-invalid', 'package metadata escapes its owner root');
+    return readJson(file);
+}
+
+/**
+ * @summary Loads the current source package's single runtime format/verifier implementation.
+ * @param {Object} options Explicit package and assembled organism roots.
+ * @returns {Promise<Object>} Trusted source namespace, never a retained target's self-verifier.
+ */
+export async function loadRuntimeGenerationVerifier(options) {
+    const {root, revision} = await packagedBrainBinding(options);
     let verifier;
     try {
         const require = createRequire(path.join(root, 'package.json'));
@@ -70,12 +91,62 @@ export async function loadRuntimeGenerationVerifier({bundlePath, runtimeRoot}) {
 
 /** @summary Requires the trusted caller's complete format/verifier namespace, without a target-tree fallback. */
 function assertVerifier(verifier) {
-    const functions = ['runtimeGenerationIdentity', 'runtimeGenerationArguments', 'readRuntimeGeneration', 'inventoryRuntimePayload',
-        'runtimeGenerationDescriptor', 'createRuntimeGenerationRecord', 'completeRuntimeGenerationRecord'];
-    if (!verifier || functions.some(name => typeof verifier[name] !== 'function') ||
+    if (!verifier || VERIFIER_FUNCTIONS.some(name => typeof verifier[name] !== 'function') ||
         typeof verifier.RUNTIME_GENERATION_RECORD !== 'string' || typeof verifier.RUNTIME_GENERATION_PAYLOAD !== 'string' ||
         typeof verifier.LAUNCH_ADMISSION_PROTOCOL !== 'string') {
         throw refusal('runtime-verifier-invalid', 'the trusted host supplied no compatible generation format')
+    }
+}
+
+/**
+ * @summary Classifies a receipt-bound package's advertised API without treating failed discovery as legacy.
+ * Legacy is the recognized pre-generation public export contract. A partial, unknown or unloadable
+ * contract refuses. Isolated inspection returns data only; it never supplies the installer's verifier.
+ * @param {Object} options
+ * @param {String} options.bundlePath Package to inspect.
+ * @param {String} options.runtimeRoot Its assembled organism root.
+ * @param {Object} options.verifier The current trusted owner's runtime format namespace.
+ * @returns {Promise<{kind:String, packageIdentity:Object}>} Advertised support, not runtime continuity.
+ */
+export async function inspectRuntimeSupport({verifier, ...options}) {
+    assertVerifier(verifier);
+    try {
+        const binding         = await packagedBrainBinding(options), exports = binding.brain.exports;
+        const packageIdentity = verifier.runtimeGenerationIdentity(binding.receipt);
+        if (!exports || typeof exports !== 'object' || Array.isArray(exports) ||
+            typeof exports['./fleet-contract'] !== 'string' || exports['./package.json'] !== './package.json') throw Error('unknown exports');
+        const keys = Object.keys(exports).sort();
+        const kind = keys.join(',') === './fleet-contract,./package.json' ? 'legacy'
+            : typeof exports['./runtime-generation'] === 'string' && typeof exports['./launch-admission-journal'] === 'string' ? 'generation' : null;
+        if (!kind || keys.some(key => key.includes('*') || key === '.')) throw Error('unknown exports');
+        const source = [
+            '(async()=>{',
+            "const fs=require('node:fs'),path=require('node:path'),url=require('node:url');",
+            'const root=fs.realpathSync(process.argv[1]),kind=process.argv[2];',
+            "const load=require('node:module').createRequire(path.join(root,'package.json'));",
+            "async function contract(name){const file=fs.realpathSync(load.resolve('neo-agent-brain/'+name));",
+            "const relative=path.relative(path.join(root,'node_modules/neo-agent-brain'),file);",
+            "if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep))throw Error('contract escapes package');",
+            'return import(url.pathToFileURL(file).href);}',
+            "const wire=await contract('fleet-contract');",
+            "let valid=Array.isArray(wire.FLEET_WIRE_PROTOCOL_VERSIONS)&&wire.FLEET_WIRE_PROTOCOL_VERSIONS.includes(1)&&",
+            "typeof wire.createFleetWireOffer==='function'&&typeof wire.selectFleetWireContract==='function';",
+            "if(kind==='generation'){const runtime=await contract('runtime-generation'),journal=await contract('launch-admission-journal');",
+            `valid=valid&&${JSON.stringify(VERIFIER_FUNCTIONS)}.every(name=>typeof runtime[name]==='function')&&`,
+            "['RUNTIME_GENERATION_RECORD','RUNTIME_GENERATION_PAYLOAD','LAUNCH_ADMISSION_PROTOCOL'].every(name=>typeof runtime[name]==='string')&&",
+            "['readLaunchAdmissionJournal','holdLaunchAdmissionHandoff','isAdmissionSnapshot'].every(name=>typeof journal[name]==='function');}",
+            'console.log(JSON.stringify({valid}));',
+            '})().catch(()=>{process.exitCode=1;});'
+        ].join('\n');
+        const {stdout} = await execute(process.execPath, ['--permission', '--allow-fs-read=' + binding.root, '-e', source, binding.root, kind], {
+            cwd: binding.root, env: {ELECTRON_RUN_AS_NODE: '1'}, timeout: 30000, maxBuffer: 65536
+        });
+        const observed = JSON.parse(stdout.trim());
+        if (!observed || Object.keys(observed).join(',') !== 'valid' || observed.valid !== true ||
+            !isDeepStrictEqual(binding, await packagedBrainBinding(options))) throw Error('unproved or changed contract');
+        return Object.freeze({kind, packageIdentity: Object.freeze({id: packageIdentity.id, identity: Object.freeze([...packageIdentity.identity])})});
+    } catch (cause) {
+        throw refusal('runtime-capability-unknown', 'the receipt-bound package contract could not be classified', cause);
     }
 }
 

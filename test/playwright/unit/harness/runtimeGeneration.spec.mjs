@@ -12,6 +12,7 @@ import {resolveLauncherRuntime}                                                 
 import {executePlan as executePlanImpl, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
 import {
     loadRuntimeGenerationVerifier,
+    inspectRuntimeSupport,
     materializeRuntimeGeneration,
     probeRuntimeGeneration,
     probeRuntimeRecovery as probeRuntimeRecoveryImpl
@@ -509,6 +510,61 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         const winner = results.find(result => result.status === 'fulfilled').value;
         expect(await readRuntimeGeneration({directory: winner.directory})).toEqual(winner);
         expect(await fs.readdir(first.directory)).toEqual([winner.id]);
+    });
+
+    test('package support is bound to an explicit loadable export contract, not to journal absence', async () => {
+        const input         = await fixture(root), brain = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain');
+        const manifestFile  = path.join(brain, 'package.json');
+        const manifest      = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+        const runtimeExport = manifest.exports['./runtime-generation'];
+        manifest.exports = {'./fleet-contract': './src/fleet/contract/index.mjs', './package.json': './package.json'};
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        await fs.writeFile(path.join(brain, 'src/fleet/contract/index.mjs'),
+            'export const FLEET_WIRE_PROTOCOL_VERSIONS=[1]; export const createFleetWireOffer=()=>({}); export const selectFleetWireContract=()=>({});');
+        await expect(inspectRuntimeSupport(input)).resolves.toEqual({kind: 'legacy', packageIdentity: runtimeGenerationIdentity(receipt())});
+
+        manifest.exports['./unclassified'] = './unknown.mjs';
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        await expect(inspectRuntimeSupport(input)).rejects.toMatchObject({code: 'runtime-capability-unknown'});
+        delete manifest.exports['./unclassified'];
+
+        manifest.exports['./runtime-generation'] = runtimeExport;
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        await expect(inspectRuntimeSupport(input)).rejects.toMatchObject({code: 'runtime-capability-unknown'});
+
+        manifest.exports['./launch-admission-journal'] = './ai/services/fleet/launchAdmissionJournal.mjs';
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        const journal = path.join(brain, 'ai/services/fleet/launchAdmissionJournal.mjs');
+        await fs.writeFile(journal, 'export const readLaunchAdmissionJournal=()=>null, holdLaunchAdmissionHandoff=()=>null, isAdmissionSnapshot=()=>false;');
+        await expect(inspectRuntimeSupport(input)).resolves.toMatchObject({kind: 'generation'});
+        await fs.rm(journal);
+        await expect(inspectRuntimeSupport(input)).rejects.toMatchObject({code: 'runtime-capability-unknown'});
+    });
+
+    test('failed contract imports and mismatched package receipts remain unknown', async () => {
+        const input        = await fixture(root), brain = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain');
+        const manifestFile = path.join(brain, 'package.json'), manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+        manifest.exports = {'./fleet-contract': './src/fleet/contract/index.mjs', './package.json': './package.json'};
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        const contract = path.join(brain, 'src/fleet/contract/index.mjs');
+        await fs.writeFile(contract, "throw Error('fixture import failure');");
+        await expect(inspectRuntimeSupport(input)).rejects.toMatchObject({code: 'runtime-capability-unknown'});
+        await fs.writeFile(contract, 'export const FLEET_WIRE_PROTOCOL_VERSIONS=[1]; export const createFleetWireOffer=()=>({}); export const selectFleetWireContract=()=>({});');
+        const owner = path.join(input.runtimeRoot, 'package.json');
+        await fs.writeFile(owner, JSON.stringify({dependencies: {'neo-agent-brain': 'github:neomjs/neo-agent-brain#' + 'f'.repeat(40)}}));
+        await expect(inspectRuntimeSupport(input)).rejects.toMatchObject({code: 'runtime-capability-unknown'});
+    });
+
+    test('contract inspection denies a package attempting a write', async () => {
+        const input        = await fixture(root), brain = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain');
+        const manifestFile = path.join(brain, 'package.json'), manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+        manifest.exports = {'./fleet-contract': './src/fleet/contract/index.mjs', './package.json': './package.json'};
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        const marker = path.join(input.runtimeRoot, 'unexpected-write');
+        await fs.writeFile(path.join(brain, 'src/fleet/contract/index.mjs'),
+            `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, 'unexpected'); export const FLEET_WIRE_PROTOCOL_VERSIONS=[1]; export const createFleetWireOffer=()=>({}); export const selectFleetWireContract=()=>({});`);
+        await expect(inspectRuntimeSupport(input)).rejects.toMatchObject({code: 'runtime-capability-unknown'});
+        expect(await fs.stat(marker).then(() => true, () => false)).toBe(false);
     });
 
     test('the packaged runtime owner imports without a checkout-level Brain dependency', async () => {
