@@ -13,6 +13,7 @@ import {executePlan as executePlanImpl, holdInstallTransaction, prepareInstallCo
 import {
     loadRuntimeGenerationVerifier,
     inspectRuntimeSupport,
+    inspectRuntimeGenerationProcesses,
     materializeRuntimeGeneration,
     probeRuntimeGeneration,
     probeRuntimeRecovery as probeRuntimeRecoveryImpl
@@ -108,6 +109,108 @@ function copyBundle(command, args) {
     expect(command).toBe('ditto');
     cpSync(args[0], args[1], {recursive: true, verbatimSymlinks: true})
 }
+
+test.describe('harness/runtimeGeneration — process census', () => {
+    const directory = '/owned/runtime/' + 'a'.repeat(64), sibling = directory + '-foreign';
+    const birth     = 'Thu Oct 15 09:00:00 2026';
+    /** @summary Supplies a process table without command names, including the exact observation child. */
+    const table = (probe, rows = [[10, birth], [20, birth]]) =>
+        [...rows.map(([pid, start, state = 'S', uid = 501]) => `${pid} ${uid} ${state} ${start}`), `${probe} 501 R ${birth}`].join('\n');
+    /** @summary Uses real lsof NUL field boundaries, preserving embedded newlines in filenames. */
+    const mappings = rows => rows.map(([pid, files]) => `p${pid}\0\n` + files.map(name => `ftxt\0n${name}\0\n`).join('')).join('');
+    /** @summary Replays the three observations while retaining each execFile promise's child identity. */
+    async function inspect({before = table(91), after = table(93), mapped = mappings([[10, ['/usr/bin/node']],
+        [20, [directory + '/host.runtime/node']]]), fail = null, platform = 'darwin', probeIdentity = true} = {}) {
+        let   index  = 0;
+        const calls  = [], responses = [before, mapped, after];
+        const result = await inspectRuntimeGenerationProcesses({directories: [directory], uid: 501, platform,
+            executeFn(command, args, options) {
+                calls.push({command, args, options});
+                const current = index++, pending = current === fail
+                    ? Promise.reject(Object.assign(new Error('inspection failed'), {stdout: responses[current]}))
+                    : Promise.resolve({stdout: responses[current], stderr: ''});
+                if (probeIdentity) pending.child = {pid: 91 + current};
+                return pending;
+            }
+        });
+        return {result, calls};
+    }
+
+    test('loaded executable mapping finds a title-masked child without command-name filtering', async () => {
+        const {result, calls} = await inspect();
+        expect(result).toEqual({state: 'observed', reason: null,
+            processes: [{pid: 20, startedAt: birth, directories: [directory]}]});
+        expect(calls[0].args).toEqual(['-axo', 'pid=,uid=,stat=,lstart=']);
+        expect(calls[1].args).toEqual(['-nP', '-a', '-u', '501', '-d', 'txt', '-F0pfn']);
+        expect(calls.every(call => call.options.timeout > 0 && call.options.maxBuffer > 0)).toBe(true);
+    });
+
+    test('a surviving process omitted from loaded mappings makes absence unknown', async () => {
+        const {result} = await inspect({mapped: mappings([[10, ['/usr/bin/node']]])});
+        expect(result).toEqual({state: 'unknown', reason: 'process-census-incomplete', processes: []});
+    });
+
+    test('the explicit effective uid excludes privileged login processes owned by another account', async () => {
+        const rows     = [[10, birth], [20, birth], [30, birth, 'S', 0]];
+        const {result} = await inspect({before: table(91, rows), after: table(93, rows)});
+        expect(result.state).toBe('observed');
+        expect(result.processes).toHaveLength(1);
+    });
+
+    test('new and reused process identities during inspection make absence unknown', async () => {
+        for (const after of [table(93, [[10, birth], [20, birth], [30, birth]]),
+            table(93, [[10, birth], [20, 'Thu Oct 15 09:00:01 2026']])]) {
+            const {result} = await inspect({after});
+            expect(result.state).toBe('unknown');
+            expect(result.processes).toHaveLength(1);
+        }
+    });
+
+    test('a disappeared child does not prevent observing the remaining processes', async () => {
+        const {result} = await inspect({after: table(93, [[10, birth]]), mapped: mappings([[10, ['/usr/bin/node']]])});
+        expect(result).toEqual({state: 'observed', reason: null, processes: []});
+    });
+
+    test('inspection failure retains independently observed runtime mappings', async () => {
+        for (const fail of [0, 1, 2]) {
+            const {result} = await inspect({fail});
+            expect(result.state).toBe('unknown');
+            expect(result.reason).toBe('process-inspection-failed');
+            expect(result.processes[0].directories).toEqual([directory]);
+        }
+    });
+
+    test('malformed and truncated mapping output cannot erase an earlier positive observation', async () => {
+        for (const tail of ['bad-field\0\n', 'p30\0\nftxt\0n/incomplete']) {
+            const {result} = await inspect({mapped: mappings([[20, [directory + '/node']]]) + tail});
+            expect(result.state).toBe('unknown');
+            expect(result.reason).toBe('process-mappings-invalid');
+            expect(result.processes[0].directories).toEqual([directory]);
+        }
+    });
+
+    test('NUL parsing preserves filename newlines and directory containment rejects shared prefixes', async () => {
+        const {result} = await inspect({mapped: mappings([[10, [sibling + '/node']],
+            [20, ['/unrelated/file\np999\nftxt\nn' + directory + '/node']]])});
+        expect(result).toEqual({state: 'observed', reason: null, processes: []});
+    });
+
+    test('a zombie needs no mapping but missing probe identity refuses completeness', async () => {
+        const rows = [[10, birth], [20, birth, 'Z']];
+        expect((await inspect({before: table(91, rows), after: table(93, rows),
+            mapped: mappings([[10, ['/usr/bin/node']]])})).result.state).toBe('observed');
+        expect((await inspect({probeIdentity: false})).result.state).toBe('unknown');
+    });
+
+    test('unsupported hosts and malformed process tables retain rather than infer vacancy', async () => {
+        const unsupported = await inspect({platform: 'other'});
+        expect(unsupported.result.state).toBe('unknown');
+        expect(unsupported.calls).toHaveLength(0);
+        const {result} = await inspect({after: 'not a process table'});
+        expect(result.state).toBe('unknown');
+        expect(result.processes[0].directories).toEqual([directory]);
+    });
+});
 
 test.describe('harness/runtimeGeneration — verified package copies', () => {
     let root;

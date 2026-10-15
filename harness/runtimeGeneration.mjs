@@ -28,6 +28,108 @@ function inside(root, target) {
     return relative === '' || !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep)
 }
 
+/** @summary Reads a title-independent macOS process census, excluding only this probe's own child. */
+function runtimeProcessTable(text, probePid, uid) {
+    const rows = new Map();
+    for (const line of text.split('\n').filter(line => line.trim())) {
+        const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/);
+        if (!match || !Number.isSafeInteger(Number(match[1])) || rows.has(Number(match[1]))) {
+            throw new Error('process-table-invalid')
+        }
+        const pid = Number(match[1]);
+        if (Number(match[2]) !== uid || pid === probePid || match[3].startsWith('Z')) continue;
+        rows.set(pid, match[4]);
+    }
+    return rows
+}
+
+/** @summary Parses NUL-delimited loaded-file records without treating a filename's newline as a field. */
+function runtimeProcessMappings(text) {
+    const rows = new Map();
+    let   pid  = null, descriptor = null, valid = !text || /\0\n?$/.test(text);
+    for (const raw of text.split('\0')) {
+        const field = raw.startsWith('\n') ? raw.slice(1) : raw;
+        if (!field) continue;
+        if (/^p[1-9]\d*$/.test(field)) {
+            pid = Number(field.slice(1));
+            if (!Number.isSafeInteger(pid) || rows.has(pid)) {
+                valid = false; pid = null; continue
+            }
+            rows.set(pid, []);
+            descriptor = null;
+        } else if (field === 'ftxt' && pid !== null) {
+            descriptor = 'txt';
+        } else if (field.startsWith('n/') && pid !== null && descriptor === 'txt') {
+            rows.get(pid).push(field.slice(1));
+        } else {
+            valid = false; pid = null;
+        }
+    }
+    return {rows, valid}
+}
+
+/**
+ * @summary Observes the host account's loaded runtime files independently of mutable process titles.
+ * An uninspected survivor, changed birth token, new process, malformed output or failed tool makes
+ * absence unknown. Positive mappings remain in the result even when another part of the scan fails.
+ * The caller must still exclude new runtime references through its check/removal transaction.
+ * @param {Object} options
+ * @param {String[]} options.directories Verified canonical runtime-generation directories.
+ * @param {Number} [options.uid=process.geteuid()] Managed child processes' effective host account.
+ * @param {String} [options.platform=process.platform] Unsupported platforms retain all generations.
+ * @param {Function} [options.executeFn] Shell-free promisified execFile; its child identifies the probe.
+ * @returns {Promise<{state: String, reason: (String|null), processes: Object[]}>} Bounded non-secret census.
+ */
+export async function inspectRuntimeGenerationProcesses({
+    directories, uid = process.geteuid?.(), platform = process.platform, executeFn = execute
+}) {
+    if (!Array.isArray(directories) || directories.some(root => typeof root !== 'string' ||
+        !path.isAbsolute(root) || path.resolve(root) !== root) || new Set(directories).size !== directories.length ||
+        !Number.isSafeInteger(uid) || uid < 0) throw refusal('runtime-census-invalid', 'canonical directories and host uid are required');
+    const processes = [];
+    let   reason    = platform === 'darwin' ? null : 'process-platform-unsupported';
+    if (reason) return {state: 'unknown', reason, processes};
+
+    /** @summary Bounds each observation and retains partial stdout without turning failure into absence. */
+    async function observe(command, args) {
+        let pending;
+        try {
+            pending = executeFn(command, args, {encoding: 'utf8', timeout: 10000, maxBuffer: 16 * 1024 * 1024,
+                env: {PATH: '/usr/bin:/bin:/usr/sbin', LC_ALL: 'C', TZ: 'UTC'}});
+            const result = await pending;
+            return {text: String(result.stdout), pid: pending.child?.pid, ok: !String(result.stderr || '').trim()}
+        } catch (error) {
+            return {text: String(error.stdout || ''), pid: pending?.child?.pid, ok: false}
+        }
+    }
+
+    const before = await observe('/bin/ps', ['-axo', 'pid=,uid=,stat=,lstart=']);
+    const mapped = await observe('/usr/sbin/lsof', ['-nP', '-a', '-u', String(uid), '-d', 'txt', '-F0pfn']);
+    const after  = await observe('/bin/ps', ['-axo', 'pid=,uid=,stat=,lstart=']);
+    if (![before, mapped, after].every(row => row.ok)) reason = 'process-inspection-failed';
+    let first, last, files;
+    try { first = runtimeProcessTable(before.text, before.pid, uid); last = runtimeProcessTable(after.text, after.pid, uid); }
+    catch { reason ||= 'process-table-invalid' }
+    const parsed = runtimeProcessMappings(mapped.text);
+    files = parsed.rows;
+    if (!parsed.valid) reason ||= 'process-mappings-invalid';
+    if (files) {
+        for (const [pid, names] of files) {
+            const generations = directories.filter(root => names.some(name => inside(root, name)));
+            if (generations.length) processes.push({pid, startedAt: first?.get(pid) ?? null, directories: generations});
+        }
+    }
+    if (first && last && files) {
+        if (!first.size || !last.size || !Number.isSafeInteger(before.pid) || !Number.isSafeInteger(after.pid)) {
+            reason ||= 'process-census-incomplete';
+        }
+        for (const [pid, birth] of last) {
+            if (first.get(pid) !== birth || !files.get(pid)?.length) reason ||= 'process-census-incomplete';
+        }
+    }
+    return {state: reason ? 'unknown' : 'observed', reason, processes}
+}
+
 /** @summary Reads a record; a missing or malformed record is never inferred from directory contents. */
 async function readJson(file) {
     try {
