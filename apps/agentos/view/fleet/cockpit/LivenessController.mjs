@@ -1,4 +1,5 @@
 import ViewerWakeController        from './ViewerWakeController.mjs';
+import ActivityObserver            from '../../../util/ActivityObserver.mjs';
 import BrainHealthRead             from '../../../util/BrainHealthRead.mjs';
 import DeploymentStateRead         from '../../../util/DeploymentStateRead.mjs';
 import FleetAdmission              from '../../../util/FleetAdmission.mjs';
@@ -260,7 +261,9 @@ class LivenessController extends ViewerWakeController {
      * events survive, otherwise stale, preserving the adapter's own reason. An answered `not-wired`
      * retains its cause (a reachable
      * server with an unconfigured source is not an unreachable server), a torn answer keeps the
-     * cold surface silent. All state writes land on the provider; the banner renders itself.
+     * cold surface silent. All state writes land on the provider; the banner renders itself. An
+     * observer mode sends its selector ({@link AgentOS.util.ActivityObserver}), and its degraded answer
+     * always admits, so an A2A half that admitted nothing empties the expansion instead of staling it.
      * @protected
      */
     async loadActivity() {
@@ -271,7 +274,8 @@ class LivenessController extends ViewerWakeController {
             {bridge}   = me,
             provider   = me.component.getStateProvider(),
             generation = ++me.streamReadGeneration,
-            profileId  = bridge?.profileId ?? null;
+            profileId  = bridge?.profileId ?? null,
+            selector   = ActivityObserver.selectorOf(me);
 
         if (!store || typeof bridge?.fleetActivity !== 'function') {
             // no bridge/verb IS the cold truth; a never-wired surface's retained answered cause
@@ -290,8 +294,8 @@ class LivenessController extends ViewerWakeController {
             // invoked INSIDE the chain: a synchronous throw becomes a rejection of the tracked
             // promise, so the reject path owns the slot release (two sync throws would otherwise
             // consume the cap and suppress this surface forever)
-            const {capability, counts, events} = await me.boundedRead(
-                Promise.resolve().then(() => bridge.fleetActivity()),
+            const {a2a, capability, counts, events} = await me.boundedRead(
+                Promise.resolve().then(() => selector ? bridge.fleetActivity({observer: selector}) : bridge.fleetActivity()),
                 () => { me.streamReadInFlight-- }
             ) ?? {};
 
@@ -302,11 +306,11 @@ class LivenessController extends ViewerWakeController {
             }
 
             if (capability?.state === 'wired') {
-                me.admitActivity({counts, events, profileId})
+                me.admitActivity({a2a, counts, events, profileId, selector})
             } else if (capability?.state === 'degraded') {
                 const partialEvents = FleetAdmission.partialActivityEvents(events);
-                if (partialEvents.length) {
-                    me.admitActivity({counts, events: partialEvents, profileId, partial: true,
+                if (partialEvents.length || selector) {
+                    me.admitActivity({a2a, counts, events: partialEvents, profileId, partial: true, selector,
                         reason: me.toSafeDegradedReason(capability.reason)});
                     return
                 }

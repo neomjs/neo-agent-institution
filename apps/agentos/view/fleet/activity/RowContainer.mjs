@@ -2,7 +2,9 @@ import ActorChip  from './ActorChipComponent.mjs';
 import Component  from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import Container  from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import EventChip  from './EventChipComponent.mjs';
+import NeoArray   from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
 import ViewerTime from '../../../util/ViewerTime.mjs';
+import {FLEET_COCKPIT_SOURCES} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @summary The home repository whose conversations render bare (`#N`).
@@ -350,6 +352,12 @@ class RowContainer extends Container {
 
         textCell.vdom.title = getActivityObjectTitle(event);
         textCell.setSilent({text});
+
+        // a mailbox message is what an observer mode opens beside the list
+        const cls = me.cls;
+
+        NeoArray.toggle(cls, 'is-message', event?.source === FLEET_COCKPIT_SOURCES.a2a && !!event.payload?.messageId);
+        me.setSilent({cls});
 
         me.vdom['aria-label'] = [time?.text, event?.type, agentId, recipient?.text, text].filter(Boolean).join(' · ');
         me.updateDepth = 2;
