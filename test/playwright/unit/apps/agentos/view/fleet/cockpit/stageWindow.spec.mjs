@@ -297,7 +297,7 @@ test.describe('Fleet cockpit — optional Stage sibling lifetime', () => {
         expect(closeReads).toEqual([])
     });
 
-    test('a failed native-close observation grants no closure; a bound return retires only the owned sibling', async () => {
+    test('a failed native-close observation grants no closure; a bound return publishes closing before requesting its sibling close', async () => {
         Neo.Main.windowNativeIsClosed = async params => { closeReads.push(params); throw new Error('unread') };
         const pending = launcher.open(recordId), channel = channels[0];
         request(channel);
@@ -306,7 +306,12 @@ test.describe('Fleet cockpit — optional Stage sibling lifetime', () => {
         await expect.poll(() => closeReads.length, {timeout: 1000, intervals: [100]}).toBeGreaterThan(0);
         expect(state().state).toBe('painted');
         expect(launcher.active).not.toBeNull();
+        const atCloseRequest = [], close = Neo.Main.windowClose,
+            requested = {recordId, state: 'closing', message: 'Stage close requested.'};
+        Neo.Main.windowClose = params => { atCloseRequest.push({...state()}); return close(params) };
         message(channel, {type: 'return', token: channel.name.slice('neo-stage:'.length), windowId: childId});
+        expect(state(), 'return requests closure; it cannot claim a verified physical close').toEqual(requested);
+        expect(atCloseRequest, 'the addressed closing state precedes the ordinary Main close call').toEqual([requested]);
         expect(focuses, 'the child owns focusing its opener before sending this return').toEqual([]);
         expect(closes).toEqual([{names: opens[0].windowName, windowId}]);
         expect(channel.closed).toBe(true);

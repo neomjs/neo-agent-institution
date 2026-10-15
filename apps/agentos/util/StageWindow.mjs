@@ -136,6 +136,7 @@ class StageWindow extends Base {
             this.publish(launch.recordId, 'painted', 'Stage is showing this observation.');
             launch.resolve({state: 'painted', windowId: data.windowId});
         } else if (launch.childWindowId && data.windowId === launch.childWindowId && data.type === 'return') {
+            this.publish(launch.recordId, 'closing', 'Stage close requested.');
             this.retire()
         } else if (launch.childWindowId && data.windowId === launch.childWindowId && data.type === 'unavailable') {
             this.fail(launch, 'Stage could not draw this record. Check the sibling and try again.')
