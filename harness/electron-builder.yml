@@ -20,6 +20,7 @@ files:
     - fixturePlane.mjs
     - fleetCapability.mjs
     - mainLog.mjs
+    - packageSlots.mjs
     - planeConfig.mjs
     - preload.cjs
     - runtimeGeneration.mjs

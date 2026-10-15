@@ -67,12 +67,13 @@ const
         parked   : slot(PARKED, null),
         rollback : slot(ROLLBACK, null)
     }),
-    operations = plan => plan.steps.filter(step => step.type !== 'bind-slots'),
+    operations = plan => plan.steps.filter(step => !['bind-slots', 'publish-protection'].includes(step.type)),
     types      = plan => operations(plan).map(step => step.type);
 
 /** @summary Isolates the process census while retaining the real executor and filesystem operations. */
 const executePlan = (steps, options = {}) => executePlanImpl(steps, {
-    runningFn: () => [], continuityFn: async () => ({hold: () => null}), transactionFn: () => null, ...options
+    runningFn     : () => [], continuityFn: async () => ({hold: () => null}), transactionFn: () => null,
+    publishSlotsFn: () => null, ...options
 });
 
 test.describe('harness/install.mjs — the plan', () => {
@@ -124,7 +125,8 @@ test.describe('harness/install.mjs — the plan', () => {
         expect(operations(plan)[0]).toEqual({type: 'quit', bundle: INSTALLED, paths: [MAIN_EXE]});
         expect(operations(plan)[1]).toEqual({type: 'custody', phase: 'baseline', dir: CUSTODY});
         expect(order.slice(-2)).toEqual(['custody', 'open']);
-        expect(plan.steps.at(-2)).toEqual({type: 'custody', phase: 'compare', dir: CUSTODY});
+        expect(plan.steps.at(-3)).toEqual({type: 'custody', phase: 'compare', dir: CUSTODY});
+        expect(plan.steps.at(-2)).toEqual({type: 'publish-protection'});
         expect(plan.warnings).toEqual([PEER_QUIT_WARNING])
     });
 
@@ -619,6 +621,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
             try {
                 await api.executePlan(input.steps, {
                     runningFn: () => [],
+                    publishSlotsFn: () => null,
                     transactionFn: () => api.holdInstallTransaction({directory: input.transactionDirectory}),
                     continuityFn: step => api.prepareInstallContinuity(step, {inspectSupport: async () => ({kind:'generation'})}),
                     runFn(command, args) { if(command !== 'ditto') throw Error('unexpected child command'); fs.cpSync(args[0],args[1],{recursive:true}); },

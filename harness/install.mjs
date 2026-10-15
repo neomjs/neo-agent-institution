@@ -30,7 +30,11 @@ import {inspectRuntimeSupport, materializeRuntimeGeneration, probeRuntimeRecover
 import * as runtimeVerifier                                                                                      from 'neo-agent-brain/runtime-generation';
 import {holdLaunchAdmissionHandoff, holdLaunchAdmissionVacancy, isAdmissionSnapshot, readLaunchAdmissionJournal} from 'neo-agent-brain/launch-admission-journal';
 
-import {holdFileLease} from 'neo-agent-brain/file-lease';
+import {holdFileLease}                                                                                      from 'neo-agent-brain/file-lease';
+import * as runtimeReferences                                                                               from 'neo-agent-brain/runtime-generation-lease';
+import {DEFAULT_INSTALL_TRANSACTION_DIR, holdPackageTransaction, PACKAGE_RECEIPT_PATH, publishPackageSlots} from './packageSlots.mjs';
+
+export {DEFAULT_INSTALL_TRANSACTION_DIR} from './packageSlots.mjs';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -45,7 +49,7 @@ export const APP_NAME = 'Neo Harness';
 export const ROLLBACK_BUNDLE_NAME = `${APP_NAME}.rollback`;
 
 /** The organism receipt inside a bundle — the only identity a development build carries. */
-export const RECEIPT_RELATIVE_PATH = path.join('Contents', 'Resources', 'organism', 'organism-build-info.json');
+export const RECEIPT_RELATIVE_PATH = PACKAGE_RECEIPT_PATH;
 
 /** Where `npm run dist` leaves the unpacked bundle (electron-builder.yml `directories.output`); the arch segment varies. */
 export const DEFAULT_DIST_DIR = path.join(harnessDir, 'dist-artifacts');
@@ -62,9 +66,6 @@ export const DEFAULT_USER_DATA_DIR = path.join(os.homedir(), 'Library', 'Applica
 export const DEFAULT_ROLLBACK_DIR  = path.join(DEFAULT_USER_DATA_DIR, 'rollback');
 export const DEFAULT_ROLLBACK_PATH = path.join(DEFAULT_ROLLBACK_DIR, ROLLBACK_BUNDLE_NAME);
 
-/** One installer transaction namespace for the OS account, independent of every CLI path and seat HOME. */
-export const DEFAULT_INSTALL_TRANSACTION_DIR = path.join(os.userInfo().homedir, 'Library', 'Application Support', 'neo-harness', 'installer');
-
 /**
  * @summary Serializes cooperating installers for this host account, including shared recovery slots.
  * A single transaction lease covers all application, staging, parked and rollback paths even when
@@ -75,17 +76,7 @@ export const DEFAULT_INSTALL_TRANSACTION_DIR = path.join(os.userInfo().homedir, 
  * @returns {{assertCurrent:Function, release:Function}} Protected lease with observed release.
  */
 export function holdInstallTransaction({directory = DEFAULT_INSTALL_TRANSACTION_DIR} = {}) {
-    if (!path.isAbsolute(directory || '')) throw new Error('installer transaction directory must be absolute');
-    for (let ancestor = directory; ; ancestor = path.dirname(ancestor)) {
-        try {
-            if (!fs.lstatSync(ancestor).isDirectory() || fs.realpathSync(ancestor) !== path.resolve(ancestor)) {
-                throw new Error('installer transaction directory is redirected');
-            }
-            break;
-        } catch (error) { if (error.code !== 'ENOENT') throw error }
-    }
-    fs.mkdirSync(directory, {recursive: true, mode: 0o700});
-    return holdFileLease({directory, filename: 'package.lock', owner: 'neo-harness-installer'});
+    return holdPackageTransaction({directory, acquireLease: holdFileLease});
 }
 
 /**
@@ -180,12 +171,15 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
             const slots = [installed, rollback, parked ?? {path: `${installed.path}.restoring`, exists: false, receipt: null}];
             if (mode === 'install' && !parked?.exists) slots.push(artifact);
             steps.unshift({type: 'bind-slots', slots: structuredClone(slots), custodyDir,
+                protectionPaths  : slots.slice(0, 3).map(slot => slot.path),
                 sourceBundle     : [installed, parked, rollback].find(slot => slot?.exists)?.path ?? null,
                 destinationBundle: parked?.exists ? (installed.exists ? installed.path : parked.path)
                     : mode === 'restore' ? rollback.path : artifact.path,
                 legacyMigration: flags.legacyMigration === true,
                 requireStopped : steps.some(step => ['stage', 'remove', 'rename'].includes(step.type))});
             if (flags.legacyMigration) warnings.push('Legacy migration is discontinuous: checkpoint and Stop all seats before installation, then Start them again.');
+            const openIndex = steps.findIndex(step => step.type === 'open');
+            steps.splice(openIndex < 0 ? steps.length : openIndex, 0, {type: 'publish-protection'});
         }
         return {ok: true, steps, warnings, ...(note ? {note} : {})};
     };
@@ -368,17 +362,37 @@ function assertFirstInstallCustody(userDataDir, {held = false} = {}) {
  * @param {Function} [options.recoveryFn=probeRuntimeRecovery] Destination snapshot compatibility probe.
  * @param {Function} [options.verifyRuntimeFn=runtimeVerifier.readRuntimeGeneration] Trusted payload verifier.
  * @param {Function} [options.transactionFn=holdInstallTransaction] Host-account package transaction guard.
+ * @param {Function} [options.publishSlotsFn=publishPackageSlots] Durable installer-owned package protection.
  * @returns {Promise<{custody: Object|null, generation: Object|null}>}
  */
 export async function executePlan(steps, {
     runFn = run, runningFn = () => runningHarnessPaths(), quitTimeoutMs = 30000,
     materializeFn = materializeRuntimeGeneration, continuityFn = prepareInstallContinuity,
     recoveryFn = probeRuntimeRecovery, verifyRuntimeFn = runtimeVerifier.readRuntimeGeneration,
-    transactionFn = holdInstallTransaction
+    transactionFn = holdInstallTransaction, publishSlotsFn = publishPackageSlots
 } = {}) {
-    const custody    = {before: undefined, after: undefined};
-    let   generation = null, bindings = null, requireStopped = false;
-    let   continuity = null, guard = null, transaction = null;
+    const custody        = {before: undefined, after: undefined};
+    let   generation     = null, bindings = null, requireStopped = false;
+    let   continuity     = null, guard = null, transaction = null;
+    let   referenceGuard = null, runtimeDirectory = null, protectionPaths = null, protectionPublished = false;
+
+    /** @summary Acquires the second guard only after package ownership and any issuer handoff. */
+    async function holdReferences() {
+        if (!runtimeDirectory || referenceGuard) return;
+        fs.mkdirSync(runtimeDirectory, {recursive: true, mode: 0o700});
+        runtimeDirectory = fs.realpathSync(runtimeDirectory);
+        referenceGuard = await runtimeReferences.waitForRuntimeGenerationReferences({directory: runtimeDirectory});
+        beforeMutation();
+    }
+
+    /** @summary Completes durable slot protection before release/open, including no-op and restore plans. */
+    function publishProtection() {
+        if (!runtimeDirectory || protectionPublished) return;
+        beforeMutation();
+        publishSlotsFn({directory: runtimeDirectory, slots: protectionPaths.map(target => bindings.get(target)),
+            packageGuard: transaction, referenceGuard, references: runtimeReferences, verifier: runtimeVerifier});
+        protectionPublished = true;
+    }
 
     /** @summary Checks the original plan plus this executor's own completed slot moves. */
     function verifyBindings() {
@@ -398,16 +412,18 @@ export async function executePlan(steps, {
             guard = continuity.hold();
         }
         guard?.assertCurrent();
+        if (referenceGuard) runtimeReferences.assertRuntimeGenerationReferences(referenceGuard, runtimeDirectory);
         verifyBindings();
         if (requireStopped && runningFn().length) throw new Error('bundle users appeared after planning or Quit; refusing package mutation');
         guard?.assertCurrent();
         verifyBindings();
     }
 
-    /** @summary Attempts both releases even if one fails, and never launches after an unproved release. */
+    /** @summary Attempts every release even if one fails, and never launches after an unproved release. */
     function releaseExclusion() {
         const failures = [];
-        for (const [held, clear] of [[guard, () => { guard = null }], [transaction, () => { transaction = null }]]) {
+        for (const [held, clear] of [[referenceGuard, () => { referenceGuard = null }],
+            [guard, () => { guard = null }], [transaction, () => { transaction = null }]]) {
             if (!held) continue;
             try {
                 if (held.release() !== true) throw new Error('installer exclusion release is unproved; app was not launched');
@@ -428,7 +444,10 @@ export async function executePlan(steps, {
     try {
         for (const step of steps) {
             try {
-                if (['stage', 'remove', 'runtime', 'rename', 'open'].includes(step.type)) beforeMutation();
+                if (['stage', 'remove', 'runtime', 'rename', 'open'].includes(step.type)) {
+                    beforeMutation();
+                    if (runtimeDirectory && !referenceGuard) await holdReferences();
+                }
                 switch (step.type) {
                     case 'bind-slots':
                         if (bindings) throw new Error('install plan contains multiple slot bindings');
@@ -436,6 +455,8 @@ export async function executePlan(steps, {
                         transaction?.assertCurrent();
                         bindings = new Map(step.slots.map(slot => [slot.path, structuredClone(slot)]));
                         requireStopped = step.requireStopped;
+                        runtimeDirectory = step.custodyDir ? path.join(step.custodyDir, 'brain', 'runtime') : null;
+                        protectionPaths = step.protectionPaths;
                         verifyBindings();
                         if (requireStopped) {
                             continuity = await continuityFn(step);
@@ -481,7 +502,9 @@ export async function executePlan(steps, {
                             runtimeRoot: path.dirname(path.join(step.bundle, RECEIPT_RELATIVE_PATH)),
                             executable : path.join(step.bundle, 'Contents', 'MacOS', APP_NAME),
                             directory  : step.directory,
-                            verifier   : runtimeVerifier
+                            verifier   : runtimeVerifier,
+                            references : runtimeReferences,
+                            referenceGuard
                         });
                         beforeMutation();
                         if (guard?.evidence) {
@@ -512,8 +535,14 @@ export async function executePlan(steps, {
                         if (guard) {
                             if (custody.before === undefined || custody.after !== custody.before) throw new Error('custody comparison must complete before launch');
                         }
+                        if (runtimeDirectory && !protectionPublished) throw Error('package protection must complete before launch');
                         releaseExclusion();
                         runFn('open', ['-a', step.path]);
+                        break;
+                    case 'publish-protection':
+                        beforeMutation();
+                        await holdReferences();
+                        publishProtection();
                         break;
                     default:
                         throw new Error('unknown step')
@@ -523,7 +552,7 @@ export async function executePlan(steps, {
             }
         }
 
-        if (bindings) verifyBindings();
+        if (bindings && transaction) verifyBindings();
         return {custody: custody.before === undefined ? null : custody, generation}
     } finally {
         releaseExclusion();
@@ -793,6 +822,7 @@ function refusal(reason, detail) {
 export function describeStep(step) {
     switch (step.type) {
         case 'bind-slots': return 'verify the planned package-slot bindings';
+        case 'publish-protection': return 'record verified installed and rollback package protection';
         case 'quit'   : return `quit    ${APP_NAME} (${processCount(step.paths)})`;
         case 'custody': return `${step.phase === 'baseline' ? 'hash   ' : 'compare'} the custody set under ${step.dir} (plane record · fleet root · seat presence)`;
         case 'stage'  : return `copy    ${step.from}\n     →  ${step.to}`;

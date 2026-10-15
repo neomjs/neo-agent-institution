@@ -235,11 +235,27 @@ async function readBoundJson(root, name) {
  * @returns {Promise<Object>} Trusted source namespace, never a retained target's self-verifier.
  */
 export async function loadRuntimeGenerationVerifier(options) {
+    const verifier = await loadRuntimeContract(options, 'runtime-generation');
+    assertVerifier(verifier);
+    return verifier
+}
+
+/** @summary Loads the assembled source's reference owner without a checkout-level Brain import. */
+export async function loadRuntimeGenerationReferences(options) {
+    const references = await loadRuntimeContract(options, 'runtime-generation-lease');
+    if (['waitForRuntimeGenerationReferences', 'assertRuntimeGenerationReferences'].some(name => typeof references[name] !== 'function')) {
+        throw refusal('runtime-verifier-invalid', 'the assembled Brain has no compatible reference owner')
+    }
+    return references
+}
+
+/** @summary Resolves an explicit Brain contract inside the current receipt-bound source package. */
+async function loadRuntimeContract(options, name) {
     const {root, revision} = await packagedBrainBinding(options);
     let verifier;
     try {
         const require = createRequire(path.join(root, 'package.json'));
-        const file    = await fs.realpath(require.resolve('neo-agent-brain/runtime-generation'));
+        const file    = await fs.realpath(require.resolve('neo-agent-brain/' + name));
         if (!inside(path.join(root, 'node_modules/neo-agent-brain'), file)) {
             throw refusal('runtime-verifier-invalid', 'the verifier escapes the assembled Brain dependency')
         }
@@ -247,7 +263,6 @@ export async function loadRuntimeGenerationVerifier(options) {
     } catch (cause) {
         throw refusal('runtime-verifier-invalid', 'the assembled Brain verifier could not be loaded', cause)
     }
-    assertVerifier(verifier);
     return verifier
 }
 
@@ -425,6 +440,9 @@ export async function probeRuntimeRecovery(candidate, snapshot, {validateSnapsho
  * @param {String} options.executable Node-capable executable inside that package.
  * @param {String} options.directory Host-owned runtime-generation parent directory.
  * @param {Object} options.verifier Namespace from the current trusted host, never the copy target.
+ * @param {Object} options.references Trusted source's runtime-reference owner.
+ * @param {Object} [options.referenceGuard] An already-held same-parent guard, owned by the caller.
+ * @param {AbortSignal} [options.signal] Host lifecycle cancellation while waiting for exclusion.
  * @param {String} [options.platform=process.platform]
  * @param {String} [options.arch=process.arch]
  * @param {Function} [options.probe=probeRuntimeGeneration] Compatibility probe, injectable for fixtures.
@@ -432,7 +450,7 @@ export async function probeRuntimeRecovery(candidate, snapshot, {validateSnapsho
  * @returns {Promise<Object>} Verified published descriptor; never a staging or bundle fallback.
  */
 export async function materializeRuntimeGeneration({
-    bundlePath, runtimeRoot, executable, directory, verifier,
+    bundlePath, runtimeRoot, executable, directory, verifier, references, referenceGuard, signal,
     platform = process.platform, arch = process.arch, probe = probeRuntimeGeneration, now = () => new Date()
 }) {
     if ([bundlePath, runtimeRoot, executable, directory].some(value => typeof value !== 'string' || !path.isAbsolute(value))) {
@@ -460,56 +478,75 @@ export async function materializeRuntimeGeneration({
     if (!parent.isDirectory() || parent.isSymbolicLink()) throw refusal('runtime-generation-invalid', 'generation parent is not a real directory');
     directory = await fs.realpath(directory);
     if (inside(source, directory)) throw refusal('runtime-binding-invalid', 'resolved generation parent is inside the source package');
-    const target   = path.join(directory, identity.id);
-    const expected = await inventory(source, true);
-    const existing = await readRuntimeGeneration({directory: target, platform, arch});
-    if (existing) {
-        if (existing.payloadDigest !== expected.digest) throw refusal('non-reproducible-build', 'one package identity has different payload bytes, modes or links');
-        return existing
+    if (!references || typeof references.assertRuntimeGenerationReferences !== 'function' ||
+        typeof references.waitForRuntimeGenerationReferences !== 'function') {
+        throw refusal('runtime-reference-owner-missing', 'materialization requires the trusted reference owner');
     }
-    const stage = await fs.mkdtemp(path.join(directory, '.' + identity.id + '-'));
+    const guard = referenceGuard ?? await references.waitForRuntimeGenerationReferences({directory, signal});
     try {
-        const payload = path.join(stage, PAYLOAD);
-        await fs.cp(source, payload, {recursive: true, dereference: false, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE});
-        await seal(payload, expected.entries);
-        const copied = await inventory(payload);
-        if (copied.digest !== expected.digest) throw refusal('runtime-integrity-failed', 'the copied payload does not match its source manifest');
-        let record = createRuntimeGenerationRecord({
-            identity, payload: copied,
-            runtimeRelativePath   : path.relative(source, sourceRuntime) || '.',
-            executableRelativePath: path.relative(source, sourceExecutable), createdAt: now().toISOString()
-        });
-        const candidate = descriptor(stage, record);
-        let observed;
-        try { observed = await probe(candidate) } catch (cause) {
-            throw refusal('runtime-compatibility-failed', 'copied runtime probe failed', cause)
+        references.assertRuntimeGenerationReferences(guard, directory);
+        return await publish();
+    } finally {
+        if (!referenceGuard && guard.release() !== true) throw refusal('runtime-reference-release-unproved', 'publication exclusion was not released');
+    }
+
+    /** @summary Reads, probes and publishes while retirement and reference acquisition are excluded. */
+    async function publish() {
+        const target   = path.join(directory, identity.id);
+        const expected = await inventory(source, true);
+        const existing = await readRuntimeGeneration({directory: target, platform, arch});
+        if (existing) {
+            if (existing.payloadDigest !== expected.digest) throw refusal('non-reproducible-build', 'one package identity has different payload bytes, modes or links');
+            references.assertRuntimeGenerationReferences(guard, directory);
+            return existing
         }
-        if (observed?.platform !== platform || observed?.arch !== arch ||
-            observed?.electronVersion !== identity.identity[3] || observed?.launchProtocol !== verifier.LAUNCH_ADMISSION_PROTOCOL) {
-            throw refusal('runtime-compatibility-failed', 'copied runtime does not match the target platform, architecture, Electron or launch protocol')
-        }
-        record = completeRuntimeGenerationRecord(record, observed);
-        if ((await inventory(payload)).digest !== copied.digest) throw refusal('runtime-integrity-failed', 'the probe changed the sealed payload');
-        await fs.writeFile(path.join(stage, RECORD), JSON.stringify(record) + '\n', {mode: 0o400});
-        await fs.chmod(stage, 0o500);
+        const stage = await fs.mkdtemp(path.join(directory, '.' + identity.id + '-'));
         try {
-            await fs.rename(stage, target);
-        } catch (error) {
-            // macOS can report EACCES for a sealed winner, rather than ENOTEMPTY.
-            // Only a fully verified matching publication discharges a failed rename.
-            const winner = await readRuntimeGeneration({directory: target, platform, arch});
-            if (!winner) throw error;
-            if (winner.payloadDigest !== copied.digest) {
+            const payload = path.join(stage, PAYLOAD);
+            await fs.cp(source, payload, {recursive: true, dereference: false, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE});
+            await seal(payload, expected.entries);
+            const copied = await inventory(payload);
+            if (copied.digest !== expected.digest) throw refusal('runtime-integrity-failed', 'the copied payload does not match its source manifest');
+            let record = createRuntimeGenerationRecord({
+                identity, payload: copied,
+                runtimeRelativePath   : path.relative(source, sourceRuntime) || '.',
+                executableRelativePath: path.relative(source, sourceExecutable), createdAt: now().toISOString()
+            });
+            const candidate = descriptor(stage, record);
+            let observed;
+            try { observed = await probe(candidate) } catch (cause) {
+                throw refusal('runtime-compatibility-failed', 'copied runtime probe failed', cause)
+            }
+            if (observed?.platform !== platform || observed?.arch !== arch ||
+                observed?.electronVersion !== identity.identity[3] || observed?.launchProtocol !== verifier.LAUNCH_ADMISSION_PROTOCOL) {
+                throw refusal('runtime-compatibility-failed', 'copied runtime does not match the target platform, architecture, Electron or launch protocol')
+            }
+            record = completeRuntimeGenerationRecord(record, observed);
+            if ((await inventory(payload)).digest !== copied.digest) throw refusal('runtime-integrity-failed', 'the probe changed the sealed payload');
+            await fs.writeFile(path.join(stage, RECORD), JSON.stringify(record) + '\n', {mode: 0o400});
+            await fs.chmod(stage, 0o500);
+            references.assertRuntimeGenerationReferences(guard, directory);
+            try {
+                await fs.rename(stage, target);
+            } catch (error) {
+                // macOS can report EACCES for a sealed winner, rather than ENOTEMPTY.
+                // Only a fully verified matching publication discharges a failed rename.
+                const winner = await readRuntimeGeneration({directory: target, platform, arch});
+                if (!winner) throw error;
+                if (winner.payloadDigest !== copied.digest) {
+                    throw refusal('non-reproducible-build', 'a concurrent publication has another payload for this identity')
+                }
+                references.assertRuntimeGenerationReferences(guard, directory);
+                return winner
+            }
+            const published = await readRuntimeGeneration({directory: target, platform, arch});
+            if (!published || published.payloadDigest !== copied.digest) {
                 throw refusal('non-reproducible-build', 'a concurrent publication has another payload for this identity')
             }
-            return winner
+            references.assertRuntimeGenerationReferences(guard, directory);
+            return published
+        } finally {
+            await discardStage(stage)
         }
-        const published = await readRuntimeGeneration({directory: target, platform, arch});
-        if (!published || published.payloadDigest !== copied.digest) {
-            throw refusal('non-reproducible-build', 'a concurrent publication has another payload for this identity')
-        }
-        return published
-    } finally {
-        await discardStage(stage)
     }
 }

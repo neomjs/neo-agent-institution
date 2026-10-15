@@ -8,6 +8,8 @@ import {pathToFileURL}                                                          
 import {promisify}                                                                                                                    from 'node:util';
 import {createRequire}                                                                                                                from 'node:module';
 import * as runtimeVerifier                                                                                                           from 'neo-agent-brain/runtime-generation';
+import * as runtimeReferences                                                                                                         from 'neo-agent-brain/runtime-generation-lease';
+import {inspectPackageProtection, readPackageSlotRecord}                                                                              from '../../../../harness/packageSlots.mjs';
 import {resolveLauncherRuntime}                                                                                                       from '../../../../harness/brain.mjs';
 import {executePlan as executePlanImpl, holdInstallTransaction, prepareInstallContinuity, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
 import {
@@ -27,7 +29,8 @@ import {isAdmissionSnapshot, isRuntimeReferenceSnapshot, RUNTIME_REFERENCE_SNAPS
 
 /** @summary Keeps disposable package fixtures independent of the host's running Fleet processes. */
 const executePlan = (steps, options = {}) => executePlanImpl(steps, {
-    runningFn: () => [], continuityFn: async () => ({hold: () => null}), transactionFn: () => null, ...options
+    runningFn    : () => [], continuityFn: async () => ({hold: () => null}),
+    transactionFn: () => holdInstallTransaction({directory: path.join(steps[0].custodyDir, 'installer')}), ...options
 });
 
 /** @summary The fixture supplies the current trusted codec explicitly, just as the packaged owner must. */
@@ -63,8 +66,13 @@ async function fixture(root, info = receipt()) {
             path.join(base, 'src/fleet/contract/launchAdmission.mjs'));
     }
     await fs.writeFile(path.join(brainPackage, 'package.json'), JSON.stringify({
-        name: 'neo-agent-brain', type: 'module', exports: {'./runtime-generation': './ai/services/fleet/runtimeGeneration.mjs'}
+        name: 'neo-agent-brain', type: 'module', exports: {
+            './runtime-generation'      : './ai/services/fleet/runtimeGeneration.mjs',
+            './runtime-generation-lease': './references.mjs'
+        }
     }));
+    await fs.writeFile(path.join(brainPackage, 'references.mjs'), 'export * from ' + JSON.stringify(
+        pathToFileURL(createRequire(import.meta.url).resolve('neo-agent-brain/runtime-generation-lease')).href) + ';\n');
     await fs.writeFile(path.join(runtimeRoot, 'package.json'), JSON.stringify({
         dependencies: {'neo-agent-brain': 'github:neomjs/neo-agent-brain#' + info.owners.brain.revision}
     }));
@@ -73,7 +81,8 @@ async function fixture(root, info = receipt()) {
     await fs.writeFile(path.join(runtimeRoot, 'ai', 'mcp', 'client', 'fleetMcpLauncher.mjs'), 'export const launcher = true;\n');
     await fs.writeFile(executable, 'fixture executable\n', {mode: 0o755});
     await fs.symlink('Resources/organism', path.join(bundlePath, 'Contents', 'runtime-link'));
-    return {bundlePath, runtimeRoot, executable, directory: path.join(root, 'runtime'), probe: compatible, verifier: runtimeVerifier}
+    return {bundlePath, runtimeRoot, executable, directory: path.join(root, 'runtime'), probe: compatible,
+        verifier: runtimeVerifier, references: runtimeReferences}
 }
 
 /** @summary Unlocks only fixture directories, leaving symlinks untraversed during cleanup. */
@@ -307,8 +316,47 @@ test.describe('harness/runtimeGeneration — retention evidence', () => {
 
 test.describe('harness/runtimeGeneration — verified package copies', () => {
     let root;
-    test.beforeEach(async () => { root = await fs.mkdtemp(path.join(tmpdir(), 'runtime-generation-')); });
+    test.beforeEach(async () => { root = await fs.realpath(await fs.mkdtemp(path.join(tmpdir(), 'runtime-generation-'))); });
     test.afterEach(async () => { await cleanup(root); });
+
+    test('publication holds reference exclusion through its probe and releases before returning', async () => {
+        const input     = await fixture(root);
+        let   probed    = false;
+        const published = await materializeRuntimeGeneration({...input, probe: () => {
+            probed = true;
+            expect(() => runtimeReferences.holdRuntimeGenerationReferences({directory: input.directory})).toThrow(/held/);
+            return compatible();
+        }});
+        expect(probed).toBe(true);
+        expect(published.id).toBe(runtimeGenerationIdentity(receipt()).id);
+        expect(runtimeReferences.holdRuntimeGenerationReferences({directory: input.directory}).release()).toBe(true);
+    });
+
+    test('a caller-owned guard survives publication and unguarded owners refuse before copying', async () => {
+        const input = await fixture(root);
+        await fs.mkdir(input.directory, {mode: 0o700});
+        await expect(materializeRuntimeGeneration({...input, references: undefined})).rejects.toThrow(/reference owner/);
+        await expect(materializeRuntimeGeneration({...input, referenceGuard: {assertCurrent() {}}})).rejects.toThrow(/not guarded/);
+        const referenceGuard = runtimeReferences.holdRuntimeGenerationReferences({directory: input.directory});
+        try {
+            await materializeRuntimeGeneration({...input, referenceGuard});
+            runtimeReferences.assertRuntimeGenerationReferences(referenceGuard, input.directory);
+        } finally { expect(referenceGuard.release()).toBe(true) }
+    });
+
+    test('a canceled publication never probes or creates a generation while another actor holds the parent', async () => {
+        const input = await fixture(root), controller = new AbortController();
+        await fs.mkdir(input.directory, {mode: 0o700});
+        const held    = runtimeReferences.holdRuntimeGenerationReferences({directory: input.directory});
+        let   probes  = 0;
+        const pending = materializeRuntimeGeneration({...input, signal: controller.signal, probe: () => { probes++; return compatible() }});
+        controller.abort();
+        try {
+            await expect(pending).rejects.toThrow(/abort/i);
+            expect(probes).toBe(0);
+            expect((await fs.readdir(input.directory)).filter(name => /^[a-f0-9]{64}$/.test(name))).toEqual([]);
+        } finally { held.release() }
+    });
 
     test('first-run boot publishes in the selected profile and reuses the verified executable', async () => {
         const input   = await fixture(root), userData = path.join(root, 'diagnostic', 'userData');
@@ -420,7 +468,7 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
                         'const state = globalThis.bootWitness; export const app = {isPackaged:true, getPath: name => name === "userData" ? state.profile : "/tmp", setPath:(name,value) => {if(name === "userData") state.profile=value;}, setAppLogsPath:() => {} };' +
                         'export const protocol = {registerSchemesAsPrivileged:() => {state.scheme=true;}}; export const BrowserWindow={},ipcMain={},Menu={},nativeImage={},safeStorage={},session={},shell={},Tray={};';
                         else if (url.endsWith('/runtimeGeneration.mjs')) source =
-                            'export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
+                                'export async function loadRuntimeGenerationReferences(){return {fixture:true};} export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
                     else if (url.endsWith('/mainLog.mjs')) source = 'export const carriesSecret=()=>false, createMainLog=()=>({install(){}});';
                     else if (leaf(url)) {
                         state.imports.push(url);
@@ -532,7 +580,50 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         expect(readSlot(slots.installed.path).receipt).toEqual(slots.installed.receipt);
         expect(readSlot(slots.rollback.path).receipt).toEqual(slots.artifact.receipt);
         expect(await readRuntimeGeneration({directory: installed.generation.directory})).toEqual(installed.generation);
+        expect(inspectPackageProtection({directory: path.dirname(restored.generation.directory), verifier: runtimeVerifier})).toEqual({
+            state       : 'observed', reason: null,
+            protectedIds: [runtimeGenerationIdentity(slots.installed.receipt).id, runtimeGenerationIdentity(slots.artifact.receipt).id]
+        });
     });
+
+    test('the successor opens only after durable package protection and observed exclusion release', async () => {
+        const slots  = await installFixture(root), directory = path.join(slots.custodyDir, 'brain/runtime');
+        let   opened = false;
+        await executePlan(planInstall({...slots, flags: {open: true}}).steps, {
+            materializeFn: input => materializeRuntimeGeneration({...input, probe: compatible}),
+            runFn(command, args) {
+                if (command !== 'open') return copyBundle(command, args);
+                opened = true;
+                const protection = inspectPackageProtection({directory, verifier: runtimeVerifier});
+                expect(protection.state).toBe('observed');
+                expect(protection.protectedIds).toContain(runtimeGenerationIdentity(slots.artifact.receipt).id);
+                expect(holdInstallTransaction({directory: path.join(slots.custodyDir, 'installer')}).release()).toBe(true);
+                expect(runtimeReferences.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+            }
+        });
+        expect(opened).toBe(true);
+    });
+
+    for (const failure of ['interrupted-before-publication', 'publication-failed']) {
+        test(`${failure} retains prior evidence and never opens the successor`, async () => {
+            const slots   = await installFixture(root), directory = path.join(slots.custodyDir, 'brain/runtime');
+            const options = {runFn: copyBundle, materializeFn: input => materializeRuntimeGeneration({...input, probe: compatible})};
+            await executePlan(planInstall({...slots, artifact: slots.installed}).steps, options);
+            const prior = readPackageSlotRecord({directory, verifier: runtimeVerifier});
+            const plan  = planInstall({...slots, flags: {open: true}}), publication = plan.steps.findIndex(step => step.type === 'publish-protection');
+            if (failure === 'interrupted-before-publication') {
+                await executePlan(plan.steps.slice(0, publication), options);
+            } else {
+                await expect(executePlan(plan.steps, {...options, publishSlotsFn() { throw Error('fixture publication failed') }}))
+                    .rejects.toThrow(/fixture publication failed/);
+            }
+            expect(readPackageSlotRecord({directory, verifier: runtimeVerifier})).toEqual(prior);
+            expect(inspectPackageProtection({directory, verifier: runtimeVerifier}).state).toBe('unknown');
+            expect(readSlot(slots.installed.path).receipt).toEqual(slots.artifact.receipt);
+            await executePlan(planInstall({...slots, installed: readSlot(slots.installed.path), rollback: readSlot(slots.rollback.path)}).steps, options);
+            expect(inspectPackageProtection({directory, verifier: runtimeVerifier}).state).toBe('observed');
+        });
+    }
 
     test('a published runtime left by a failed first install is retained recovery state on retry', async () => {
         root = await fs.realpath(root);
@@ -698,19 +789,15 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
     });
 
     test('concurrent identical publishers converge without overwriting one another', async () => {
-        const input = await fixture(root);
-        let   ready = 0, release;
-        const gate  = new Promise(resolve => { release = resolve; });
-        const probe = async () => {
-            if (++ready === 2) release();
-            await gate;
-            return compatible()
-        };
+        const input           = await fixture(root);
+        let   probes          = 0;
+        const probe           = () => { probes++; return compatible() };
         const [first, second] = await Promise.all([
             materializeRuntimeGeneration({...input, probe}),
             materializeRuntimeGeneration({...input, probe})
         ]);
         expect(first).toEqual(second);
+        expect(probes).toBe(1);
         expect(await fs.readdir(input.directory)).toEqual([first.id]);
     });
 
@@ -718,18 +805,14 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         const first = await fixture(root), second = await fixture(path.join(root, 'other'));
         second.directory = first.directory;
         await fs.writeFile(second.executable, 'another payload\n');
-        let   ready = 0, release;
-        const gate  = new Promise(resolve => { release = resolve; });
-        const probe = async () => {
-            if (++ready === 2) release();
-            await gate;
-            return compatible()
-        };
+        let   probes  = 0;
+        const probe   = () => { probes++; return compatible() };
         const results = await Promise.allSettled([
             materializeRuntimeGeneration({...first, probe}),
             materializeRuntimeGeneration({...second, probe})
         ]);
         expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+        expect(probes).toBe(1);
         expect(results.find(result => result.status === 'rejected').reason.code).toBe('non-reproducible-build');
         const winner = results.find(result => result.status === 'fulfilled').value;
         expect(await readRuntimeGeneration({directory: winner.directory})).toEqual(winner);
