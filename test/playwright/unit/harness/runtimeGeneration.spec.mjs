@@ -24,7 +24,9 @@ import {
 import {isAdmissionSnapshot} from 'neo-agent-brain/launch-admission-journal';
 
 /** @summary Keeps disposable package fixtures independent of the host's running Fleet processes. */
-const executePlan = (steps, options = {}) => executePlanImpl(steps, {runningFn: () => [], ...options});
+const executePlan = (steps, options = {}) => executePlanImpl(steps, {
+    runningFn: () => [], continuityFn: async () => ({hold: () => null}), ...options
+});
 
 /** @summary The fixture supplies the current trusted codec explicitly, just as the packaged owner must. */
 const probeRuntimeRecovery = (candidate, snapshot) => probeRuntimeRecoveryImpl(candidate, snapshot, {validateSnapshot: isAdmissionSnapshot});

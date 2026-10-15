@@ -19,15 +19,16 @@
 // `planInstall` is pure and unit-specced; `executePlan` is the thin shell around `rename(2)`,
 // `ditto` and `osascript`, with the child-process runner injectable like pack.mjs's `runFn`.
 
-import {execFileSync}                 from 'node:child_process';
-import {createHash}                   from 'node:crypto';
-import fs                             from 'node:fs';
-import os                             from 'node:os';
-import path                           from 'node:path';
-import {fileURLToPath}                from 'node:url';
-import {isDeepStrictEqual}            from 'node:util';
-import {materializeRuntimeGeneration} from './runtimeGeneration.mjs';
-import * as runtimeVerifier           from 'neo-agent-brain/runtime-generation';
+import {execFileSync}                                                                from 'node:child_process';
+import {createHash}                                                                  from 'node:crypto';
+import fs                                                                            from 'node:fs';
+import os                                                                            from 'node:os';
+import path                                                                          from 'node:path';
+import {fileURLToPath}                                                               from 'node:url';
+import {isDeepStrictEqual}                                                           from 'node:util';
+import {inspectRuntimeSupport, materializeRuntimeGeneration, probeRuntimeRecovery}   from './runtimeGeneration.mjs';
+import * as runtimeVerifier                                                          from 'neo-agent-brain/runtime-generation';
+import {holdLaunchAdmissionHandoff, isAdmissionSnapshot, readLaunchAdmissionJournal} from 'neo-agent-brain/launch-admission-journal';
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -68,6 +69,37 @@ export const DEFAULT_ROLLBACK_PATH = path.join(DEFAULT_ROLLBACK_DIR, ROLLBACK_BU
 export const CUSTODY_PLANE_FILES = Object.freeze(['plane.json', 'plane-bearer.bin', 'seat-root.json']);
 export const CUSTODY_FLEET_DIR   = path.join('brain', 'fleet');
 export const CUSTODY_AGENTS_DIR  = 'agents';
+
+/**
+ * @summary Observes all managed custody locations without reading contents or following links.
+ * This is not a fleet-liveness proof. The installer revalidates the observation under exclusion;
+ * retained runtime generations count even though the ordinary custody digest excludes them.
+ * @param {String} userDataDir Explicit absolute target userData root.
+ * @param {Object} [options]
+ * @param {Object} [options.fileSystem=fs] Read-only filesystem seam.
+ * @returns {{state:String, locations:Object[]}} Absent, present or unknown; never a guessed empty fleet.
+ */
+export function inspectManagedCustody(userDataDir, {fileSystem = fs} = {}) {
+    if (typeof userDataDir !== 'string' || !path.isAbsolute(userDataDir)) throw new TypeError('an absolute userData root is required');
+    const locations = [...CUSTODY_PLANE_FILES, CUSTODY_FLEET_DIR, path.join('brain', 'runtime')].map(relative => {
+        const target  = path.resolve(userDataDir, relative), parsed = path.parse(target);
+        const parts   = path.relative(parsed.root, target).split(path.sep);
+        let   current = parsed.root;
+        for (let i = 0; i < parts.length; i++) {
+            current = path.join(current, parts[i]);
+            let stat;
+            try { stat = fileSystem.lstatSync(current) } catch (error) {
+                return {path: relative, kind: error.code === 'ENOENT' ? 'absent' : 'unknown'};
+            }
+            const last = i === parts.length - 1;
+            if (stat.isSymbolicLink()) return {path: relative, kind: last ? 'link' : 'unknown'};
+            if (!last && !stat.isDirectory()) return {path: relative, kind: 'unknown'};
+            if (last) return {path: relative, kind: stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : 'other'};
+        }
+    });
+    return {state: locations.some(row => row.kind === 'unknown') ? 'unknown'
+        : locations.some(row => row.kind !== 'absent') ? 'present' : 'absent', locations};
+}
 
 export const PEER_QUIT_WARNING =
     `Quitting ${APP_NAME} leaves detached desktop harnesses running. Their MCP processes may still use this bundle; ` +
@@ -119,7 +151,8 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
         if (steps.length) {
             const slots = [installed, rollback, parked ?? {path: `${installed.path}.restoring`, exists: false, receipt: null}];
             if (mode === 'install' && !parked?.exists) slots.push(artifact);
-            steps.unshift({type: 'bind-slots', slots: structuredClone(slots),
+            steps.unshift({type: 'bind-slots', slots: structuredClone(slots), custodyDir,
+                sourceBundle  : [installed, parked, rollback].find(slot => slot?.exists)?.path ?? null,
                 requireStopped: steps.some(step => ['stage', 'remove', 'rename'].includes(step.type))});
         }
         return {ok: true, steps, warnings, ...(note ? {note} : {})};
@@ -222,6 +255,33 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
 }
 
 /**
+ * @summary Binds the current issuer before Quit without consuming its handoff or changing custody.
+ * A capable package must have a readable journal even when the app is already stopped. Legacy and
+ * first-install paths require their own exclusion protocol; neither is inferred from missing records.
+ * @param {Object} binding Planned source bundle and absolute custodyDir.
+ * @param {Object} [options]
+ * @param {Function} [options.inspectSupport=inspectRuntimeSupport] Receipt-bound capability inspection.
+ * @returns {Promise<{hold:Function}>} Acquire the sealed predecessor after ordinary Quit completes.
+ */
+export async function prepareInstallContinuity({sourceBundle, custodyDir}, {inspectSupport = inspectRuntimeSupport} = {}) {
+    if (!path.isAbsolute(custodyDir || '')) throw new Error('update continuity requires an explicit userData root');
+    if (!sourceBundle) {
+        const custody = inspectManagedCustody(custodyDir);
+        throw new Error(custody.state === 'absent' ? 'first-install exclusion is not established'
+            : 'managed custody remains without a source package; recovery is required');
+    }
+    const support = await inspectSupport({bundlePath: sourceBundle,
+        runtimeRoot: path.dirname(path.join(sourceBundle, RECEIPT_RELATIVE_PATH)), verifier: runtimeVerifier});
+    if (support.kind !== 'generation') throw new Error('legacy migration requires an explicit discontinuous migration path');
+    const directory = path.join(custodyDir, CUSTODY_FLEET_DIR, 'launch-admission');
+    const observed  = readLaunchAdmissionJournal({directory});
+    if (!observed) throw new Error('generation-capable source has no admission journal; update refused');
+    const {issuer, epoch} = observed.state;
+    if (observed.fence.issuer !== issuer || observed.fence.epoch !== epoch) throw new Error('admission predecessor is already fenced');
+    return {hold: () => holdLaunchAdmissionHandoff({directory, expected: {issuer, epoch}})};
+}
+
+/**
  * @summary Runs the planned steps in order. The first failure stops the run; the error names the
  * step. Receipt verification turns "copied" into "installed", and the custody comparison turns
  * "replaced" into "replaced without touching the plane's custody files".
@@ -231,14 +291,19 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
  * @param {Function} [options.runningFn] Process census the quit step polls; defaults to the real `ps` reader
  * @param {Number} [options.quitTimeoutMs=30000]
  * @param {Function} [options.materializeFn=materializeRuntimeGeneration] Verified runtime publisher.
+ * @param {Function} [options.continuityFn=prepareInstallContinuity] Source-owned journal preparation.
+ * @param {Function} [options.recoveryFn=probeRuntimeRecovery] Destination snapshot compatibility probe.
+ * @param {Function} [options.verifyRuntimeFn=runtimeVerifier.readRuntimeGeneration] Trusted payload verifier.
  * @returns {Promise<{custody: Object|null, generation: Object|null}>}
  */
 export async function executePlan(steps, {
     runFn = run, runningFn = () => runningHarnessPaths(), quitTimeoutMs = 30000,
-    materializeFn = materializeRuntimeGeneration
+    materializeFn = materializeRuntimeGeneration, continuityFn = prepareInstallContinuity,
+    recoveryFn = probeRuntimeRecovery, verifyRuntimeFn = runtimeVerifier.readRuntimeGeneration
 } = {}) {
     const custody    = {before: undefined, after: undefined};
     let   generation = null, bindings = null, requireStopped = false;
+    let   continuity = null, guard = null;
 
     /** @summary Checks the original plan plus this executor's own completed slot moves. */
     function verifyBindings() {
@@ -252,8 +317,15 @@ export async function executePlan(steps, {
 
     /** @summary A stopped census and current slots are required before any destructive slot action. */
     function beforeMutation() {
+        if (requireStopped && !guard) {
+            if (!continuity) throw new Error('update continuity was not prepared');
+            guard = continuity.hold();
+        }
+        guard?.assertCurrent();
         verifyBindings();
         if (requireStopped && runningFn().length) throw new Error('bundle users appeared after planning or Quit; refusing package mutation');
+        guard?.assertCurrent();
+        verifyBindings();
     }
 
     /** @summary Advances only a slot change this plan performed; foreign changes never become its new baseline. */
@@ -264,83 +336,104 @@ export async function executePlan(steps, {
         bindings.set(from, {path: from, exists: false, receipt: null});
     }
 
-    for (const step of steps) {
-        try {
-            if (['stage', 'remove', 'runtime', 'rename', 'open'].includes(step.type)) beforeMutation();
-            switch (step.type) {
-                case 'bind-slots':
-                    if (bindings) throw new Error('install plan contains multiple slot bindings');
-                    bindings = new Map(step.slots.map(slot => [slot.path, structuredClone(slot)]));
-                    requireStopped = step.requireStopped;
-                    verifyBindings();
-                    break;
-                case 'quit':
-                    verifyBindings();
-                    // Through the app's own lifecycle, never a signal: quit drains its owned Brain
-                    // children, not detached desktop seats. The census still waits for all bundle users.
-                    // Addressed by PATH, not bundle identifier: development builds share the identifier,
-                    // so an id-based quit resolves through a Launch Services pick among every copy — and
-                    // AppleScript launches the copy it picked if that one is not running.
-                    runFn('osascript', ['-e', `tell application "${step.bundle}" to quit`]);
-                    waitUntilGone(runningFn, quitTimeoutMs);
-                    break;
-                case 'custody':
-                    if (step.phase === 'baseline') {
-                        custody.before = custodyDigest(step.dir)
-                    } else {
-                        custody.after = custodyDigest(step.dir);
-
-                        if (custody.after !== custody.before) {
-                            throw new Error(`the custody files under ${step.dir} (plane record, fleet root, seat presence) changed while the app was stopped; inspect them before launching`)
+    try {
+        for (const step of steps) {
+            try {
+                if (['stage', 'remove', 'runtime', 'rename', 'open'].includes(step.type)) beforeMutation();
+                switch (step.type) {
+                    case 'bind-slots':
+                        if (bindings) throw new Error('install plan contains multiple slot bindings');
+                        bindings = new Map(step.slots.map(slot => [slot.path, structuredClone(slot)]));
+                        requireStopped = step.requireStopped;
+                        verifyBindings();
+                        if (requireStopped) {
+                            continuity = await continuityFn(step);
+                            verifyBindings();
                         }
-                    }
-                    break;
-                case 'stage':
-                    fs.rmSync(step.to, {force: true, recursive: true});
-                    runFn('ditto', [step.from, step.to]);
-                    bindings.set(step.to, {...bindings.get(step.from), path: step.to});
-                    break;
-                case 'remove':
-                    fs.rmSync(step.path, {force: true, recursive: true});
-                    bindings.set(step.path, {path: step.path, exists: false, receipt: null});
-                    break;
-                case 'runtime':
-                    generation = await materializeFn({
-                        bundlePath : step.bundle,
-                        runtimeRoot: path.dirname(path.join(step.bundle, RECEIPT_RELATIVE_PATH)),
-                        executable : path.join(step.bundle, 'Contents', 'MacOS', APP_NAME),
-                        directory  : step.directory,
-                        verifier   : runtimeVerifier
-                    });
-                    beforeMutation();
-                    break;
-                case 'rename':
-                    fs.mkdirSync(path.dirname(step.to), {recursive: true});
-                    fs.renameSync(step.from, step.to);
-                    moveBinding(step.from, step.to);
-                    break;
-                case 'verify': {
-                    const slot = readSlot(step.path), found = slot.receipt;
+                        break;
+                    case 'quit':
+                        verifyBindings();
+                        // Through the app's own lifecycle, never a signal: quit drains its owned Brain
+                        // children, not detached desktop seats. The census still waits for all bundle users.
+                        // Addressed by PATH, not bundle identifier: development builds share the identifier,
+                        // so an id-based quit resolves through a Launch Services pick among every copy — and
+                        // AppleScript launches the copy it picked if that one is not running.
+                        runFn('osascript', ['-e', `tell application "${step.bundle}" to quit`]);
+                        waitUntilGone(runningFn, quitTimeoutMs);
+                        break;
+                    case 'custody':
+                        beforeMutation();
+                        if (step.phase === 'baseline') {
+                            custody.before = custodyDigest(step.dir)
+                        } else {
+                            custody.after = custodyDigest(step.dir);
 
-                    if (!slot.exists || !found || !step.receipt) throw new Error('complete package receipts are required for verification');
-                    if (!isDeepStrictEqual(found, step.receipt)) {
-                        throw new Error(`carries "${describeReceipt(found)}", expected "${describeReceipt(step.receipt)}"`)
+                            if (custody.after !== custody.before) {
+                                throw new Error(`the custody files under ${step.dir} (plane record, fleet root, seat presence) changed while the app was stopped; inspect them before launching`)
+                            }
+                        }
+                        break;
+                    case 'stage':
+                        fs.rmSync(step.to, {force: true, recursive: true});
+                        runFn('ditto', [step.from, step.to]);
+                        bindings.set(step.to, {...bindings.get(step.from), path: step.to});
+                        break;
+                    case 'remove':
+                        fs.rmSync(step.path, {force: true, recursive: true});
+                        bindings.set(step.path, {path: step.path, exists: false, receipt: null});
+                        break;
+                    case 'runtime':
+                        generation = await materializeFn({
+                            bundlePath : step.bundle,
+                            runtimeRoot: path.dirname(path.join(step.bundle, RECEIPT_RELATIVE_PATH)),
+                            executable : path.join(step.bundle, 'Contents', 'MacOS', APP_NAME),
+                            directory  : step.directory,
+                            verifier   : runtimeVerifier
+                        });
+                        beforeMutation();
+                        if (guard?.evidence) {
+                            await recoveryFn(generation, guard.evidence.state.snapshot, {validateSnapshot: isAdmissionSnapshot});
+                            beforeMutation();
+                            const verified = await verifyRuntimeFn({directory: generation.directory});
+                            beforeMutation();
+                            if (!isDeepStrictEqual(verified, generation)) throw new Error('destination runtime changed during compatibility verification');
+                        }
+                        break;
+                    case 'rename':
+                        fs.mkdirSync(path.dirname(step.to), {recursive: true});
+                        fs.renameSync(step.from, step.to);
+                        moveBinding(step.from, step.to);
+                        break;
+                    case 'verify': {
+                        const slot = readSlot(step.path), found = slot.receipt;
+
+                        if (!slot.exists || !found || !step.receipt) throw new Error('complete package receipts are required for verification');
+                        if (!isDeepStrictEqual(found, step.receipt)) {
+                            throw new Error(`carries "${describeReceipt(found)}", expected "${describeReceipt(step.receipt)}"`)
+                        }
+                        break
                     }
-                    break
+                    case 'open':
+                        if (guard) {
+                            if (custody.before === undefined || custody.after !== custody.before) throw new Error('custody comparison must complete before launch');
+                            if (guard.release() !== true) throw new Error('update exclusion release is unproved; app was not launched');
+                            guard = null;
+                        }
+                        runFn('open', ['-a', step.path]);
+                        break;
+                    default:
+                        throw new Error('unknown step')
                 }
-                case 'open':
-                    runFn('open', ['-a', step.path]);
-                    break;
-                default:
-                    throw new Error('unknown step')
+            } catch (error) {
+                throw new Error(`failed at "${describeStep(step).split('\n')[0].trim()}": ${error.message}`, {cause: error})
             }
-        } catch (error) {
-            throw new Error(`failed at "${describeStep(step).split('\n')[0].trim()}": ${error.message}`, {cause: error})
         }
-    }
 
-    if (bindings) verifyBindings();
-    return {custody: custody.before === undefined ? null : custody, generation}
+        if (bindings) verifyBindings();
+        return {custody: custody.before === undefined ? null : custody, generation}
+    } finally {
+        if (guard && guard.release() !== true) throw new Error('update exclusion release is unproved; app was not launched');
+    }
 }
 
 /**

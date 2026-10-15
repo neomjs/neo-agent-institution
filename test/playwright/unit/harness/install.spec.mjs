@@ -1,21 +1,25 @@
-import {expect, test}                                                                    from '@playwright/test';
-import {cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
-import {tmpdir}                                                                          from 'node:os';
-import path                                                                              from 'node:path';
+import {expect, test}                                                                                  from '@playwright/test';
+import {cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import fs                                                                                              from 'node:fs';
+import {tmpdir}                                                                                        from 'node:os';
+import path                                                                                            from 'node:path';
 import {
     APP_NAME,
     custodyDigest,
+    inspectManagedCustody,
     describeReceipt,
     executePlan as executePlanImpl,
     legacyCopies,
     PEER_QUIT_WARNING,
     planInstall,
+    prepareInstallContinuity,
     readSlot,
     RECEIPT_RELATIVE_PATH,
     resolveArtifactPath,
     ROLLBACK_BUNDLE_NAME,
     runningHarnessPaths
 } from '../../../../harness/install.mjs';
+import {isAdmissionSnapshot, openLaunchAdmissionJournal, readLaunchAdmissionJournal} from 'neo-agent-brain/launch-admission-journal';
 
 const
     APPLICATIONS = '/Applications',
@@ -62,7 +66,9 @@ const
     types      = plan => operations(plan).map(step => step.type);
 
 /** @summary Isolates the process census while retaining the real executor and filesystem operations. */
-const executePlan = (steps, options = {}) => executePlanImpl(steps, {runningFn: () => [], ...options});
+const executePlan = (steps, options = {}) => executePlanImpl(steps, {
+    runningFn: () => [], continuityFn: async () => ({hold: () => null}), ...options
+});
 
 test.describe('harness/install.mjs — the plan', () => {
     test('a running Neo Harness is a refusal by default, and the refusal carries the peer warning', () => {
@@ -248,6 +254,13 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
     /** The slots as the CLI reads them from disk, for a re-plan after an interruption. */
     const slots = () => ({artifact: readSlot(artifact), installed: readSlot(installed), parked: readSlot(parked), rollback: readSlot(rollback)});
 
+    /** @summary Uses the production journal with only the package capability probe replaced for tiny bundles. */
+    const prepareContinuity  = step => prepareInstallContinuity(step, {inspectSupport: async () => ({kind: 'generation'})});
+    const snapshot           = {version: 6, generations: [], seats: []};
+    const admissionDirectory = () => path.join(custody, 'launch-admission');
+    const openIssuer         = () => openLaunchAdmissionJournal({directory: admissionDirectory(),
+        validateSnapshot: isAdmissionSnapshot, emptySnapshot: snapshot});
+
     /** `ditto` stands in as a recursive copy; the install leg's own writes are real renames. */
     const runFn = (calls, hooks = {}) => (command, args) => {
         calls.push({args, command});
@@ -256,7 +269,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
     };
 
     test.beforeEach(() => {
-        root         = mkdtempSync(path.join(tmpdir(), 'install-leg-'));
+        root         = realpathSync(mkdtempSync(path.join(tmpdir(), 'install-leg-')));
         applications = path.join(root, 'Applications');
         userData     = path.join(root, 'userData');
         custody      = path.join(userData, 'brain', 'fleet');
@@ -536,6 +549,175 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         expect(planInstall({...slots(), mode: 'restore'})).toMatchObject({ok: false, reason: 'parked-receipt-missing'});
         await expect(executePlan([{type: 'verify', path: path.join(root, 'absent.app'), receipt: null}]))
             .rejects.toThrow(/complete package receipts are required/);
+    });
+
+    test('first-install custody observation includes retained runtimes omitted from the ordinary digest', () => {
+        expect(inspectManagedCustody(userData).state).toBe('absent');
+        expect(readSlot(installed).exists).toBe(false);
+        mkdirSync(path.join(userData, 'brain/runtime/retained-generation'), {recursive: true});
+        writeFileSync(path.join(userData, 'brain/runtime/retained-generation/generation.json'), '{"fixture":true}');
+        expect(custodyDigest(userData)).toBeNull();
+        expect(inspectManagedCustody(userData)).toMatchObject({state: 'present', locations: expect.arrayContaining([
+            {path: 'brain/runtime', kind: 'directory'}
+        ])});
+    });
+
+    test('linked or unreadable managed paths cannot appear absent and observation creates nothing', () => {
+        mkdirSync(userData);
+        const before = readdirSync(userData);
+        expect(inspectManagedCustody(userData).state).toBe('absent');
+        expect(readdirSync(userData)).toEqual(before);
+        symlinkSync(path.join(root, 'missing-brain'), path.join(userData, 'brain'));
+        expect(inspectManagedCustody(userData).state).toBe('unknown');
+        rmSync(path.join(userData, 'brain'));
+        const probe = inspectManagedCustody(userData, {fileSystem: {
+            ...fs,
+            lstatSync(file) {
+                if (file === path.join(userData, 'plane.json')) throw Object.assign(Error('fixture denied'), {code: 'EACCES'});
+                return fs.lstatSync(file);
+            }
+        }});
+        expect(probe.state).toBe('unknown');
+        expect(readdirSync(userData)).toEqual(before);
+    });
+
+    test('production continuity never infers a legacy or first install from a missing journal', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        const calls = [];
+        const plan  = planInstall({...slots(), custodyDir: userData, running: [MAIN_EXE.replace(INSTALLED, installed)], flags: {quit: true}});
+        await expect(executePlan(plan.steps, {runFn: runFn(calls), continuityFn: prepareContinuity}))
+            .rejects.toThrow(/generation-capable source has no admission journal/);
+        expect(calls).toEqual([]);
+        await expect(prepareInstallContinuity({sourceBundle: installed, custodyDir: userData}, {
+            inspectSupport: async () => ({kind: 'legacy'})
+        })).rejects.toThrow(/explicit discontinuous migration/);
+        await expect(prepareInstallContinuity({sourceBundle: null, custodyDir: userData}))
+            .rejects.toThrow(/first-install exclusion/);
+        mkdirSync(path.join(userData, 'brain/runtime/retained'), {recursive: true});
+        await expect(prepareInstallContinuity({sourceBundle: null, custodyDir: userData}))
+            .rejects.toThrow(/managed custody remains/);
+        expect(readSlot(installed).receipt).toEqual(OLD);
+    });
+
+    test('an update holds the original issuer through copy and async probes, then releases before open', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        const first = openIssuer(), calls = [], events = [];
+        let successor;
+        const candidate = {directory: path.join(root, 'fixture-runtime'), id: 'fixture-runtime'};
+        const plan      = planInstall({...slots(), custodyDir: userData,
+            running: [path.join(installed, 'Contents/MacOS', APP_NAME)], flags: {quit: true, open: true}});
+        try {
+            const result = await executePlan(plan.steps, {
+                continuityFn: prepareContinuity,
+                runFn       : runFn(calls, {
+                    osascript: () => { events.push('quit'); first.handoff(snapshot) },
+                    ditto    : () => { events.push('copy'); expect(() => openIssuer()).toThrow() },
+                    open     : () => { events.push('open'); successor = openIssuer(); expect(successor.previous.handoffProved).toBe(true) }
+                }),
+                materializeFn: async () => {
+                    events.push('materialize');
+                    expect(() => openIssuer()).toThrow();
+                    await Promise.resolve();
+                    return candidate;
+                },
+                recoveryFn: async (destination, captured, {validateSnapshot}) => {
+                    events.push('compatibility');
+                    expect(destination).toEqual(candidate);
+                    expect(captured).toEqual(snapshot);
+                    expect(validateSnapshot(captured)).toBe(true);
+                    expect(readLaunchAdmissionJournal({directory: admissionDirectory()}).state.snapshot).toEqual(snapshot);
+                    expect(() => openIssuer()).toThrow();
+                },
+                verifyRuntimeFn: async () => { events.push('integrity'); expect(() => openIssuer()).toThrow(); return {...candidate} }
+            });
+            expect(events).toEqual(['quit', 'copy', 'materialize', 'compatibility', 'integrity', 'open']);
+            expect(result.custody.before).toBe(result.custody.after);
+            expect(readSlot(installed).receipt).toEqual(NEW);
+            expect(readSlot(rollback).receipt).toEqual(OLD);
+        } finally { successor?.close(); first.close() }
+    });
+
+    for (const changedIssuer of [false, true]) {
+        test(`Quit with ${changedIssuer ? 'a successor issuer' : 'an unclean exit'} refuses before staging`, async () => {
+            writeBundle(installed, OLD);
+            writeBundle(artifact, NEW);
+            const first = openIssuer(), calls = [];
+            let successor;
+            const plan = planInstall({...slots(), custodyDir: userData,
+                running: [path.join(installed, 'Contents/MacOS', APP_NAME)], flags: {quit: true, open: true}});
+            try {
+                await expect(executePlan(plan.steps, {continuityFn: prepareContinuity, runFn: runFn(calls, {
+                    osascript: () => {
+                        if (changedIssuer) {
+                            first.handoff(snapshot);
+                            successor = openIssuer();
+                            successor.handoff(snapshot);
+                        } else first.close();
+                    }
+                })})).rejects.toThrow(changedIssuer ? /issuer-changed/ : /handoff-incomplete/);
+                expect(calls.map(row => row.command)).toEqual(['osascript']);
+                expect(readSlot(installed).receipt).toEqual(OLD);
+                expect(readSlot(`${installed}.installing`).exists).toBe(false);
+            } finally { successor?.close(); first.close() }
+        });
+    }
+
+    for (const failure of ['materialize', 'compatibility', 'integrity', 'handoff']) {
+        test(`${failure} failure leaves installed slots intact and releases update exclusion`, async () => {
+            writeBundle(installed, OLD);
+            writeBundle(artifact, NEW);
+            const first = openIssuer(), calls = [], candidate = {directory: path.join(root, 'fixture-runtime')};
+            first.handoff(snapshot);
+            const before = fs.readFileSync(path.join(admissionDirectory(), 'fence.json'), 'utf8');
+            try {
+                await expect(executePlan(planInstall({...slots(), custodyDir: userData, flags: {open: true}}).steps, {
+                    continuityFn : prepareContinuity, runFn: runFn(calls),
+                    materializeFn: async () => { if (failure === 'materialize') throw Error('fixture materialize'); return candidate },
+                    recoveryFn   : async () => {
+                        if (failure === 'compatibility') throw Error('fixture compatibility');
+                        if (failure === 'handoff') {
+                            const file   = path.join(admissionDirectory(), 'issuer.json');
+                            const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+                            writeFileSync(file, JSON.stringify({...record, phase: 'active', handoff: null}));
+                        }
+                    },
+                    verifyRuntimeFn: async () => failure === 'integrity' ? {...candidate, id: 'changed'} : candidate
+                })).rejects.toThrow(failure === 'handoff' ? /handoff-changed/ : failure === 'integrity' ? /runtime changed/ : /fixture/);
+                expect(calls.some(row => row.command === 'open')).toBe(false);
+                expect(readSlot(installed).receipt).toEqual(OLD);
+                expect(readSlot(rollback).exists).toBe(false);
+                expect(fs.readFileSync(path.join(admissionDirectory(), 'fence.json'), 'utf8')).toBe(before);
+                const successor = openIssuer();
+                expect(successor.previous.handoffProved).toBe(failure !== 'handoff');
+                successor.close();
+            } finally { first.close() }
+        });
+    }
+
+    test('unproved release prevents app launch even after a successful swap', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        const first = openIssuer(), calls = [];
+        first.handoff(snapshot);
+        let held;
+        try {
+            await expect(executePlan(planInstall({...slots(), custodyDir: userData, flags: {open: true}}).steps, {
+                continuityFn: async step => {
+                    const prepared = await prepareContinuity(step);
+                    return {hold() {
+                        held = prepared.hold();
+                        return {...held, release: () => { throw Error('fixture update-release-unproved') }};
+                    }};
+                },
+                runFn     : runFn(calls), materializeFn: async () => ({directory: root}),
+                recoveryFn: async () => {}, verifyRuntimeFn: async () => ({directory: root})
+            })).rejects.toThrow(/update-release-unproved/);
+            expect(readSlot(installed).receipt).toEqual(NEW);
+            expect(calls.some(row => row.command === 'open')).toBe(false);
+            expect(() => openIssuer()).toThrow();
+        } finally { held?.release(); first.close() }
     });
 
     test('legacyCopies lists only the hand-copied previous-* siblings; resolveArtifactPath requires exactly one mac* bundle', () => {
