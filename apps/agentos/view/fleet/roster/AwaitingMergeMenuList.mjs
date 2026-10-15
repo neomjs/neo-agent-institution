@@ -27,6 +27,16 @@ class AwaitingMergeMenuList extends MenuList {
          */
         autoDestroyStore: false,
         /**
+         * @member {Boolean} stageEnabled_=false Optional dev action.
+         * @reactive
+         */
+        stageEnabled_: false,
+        /**
+         * @member {Object|null} stageOutcome_=null Addressed launch feedback.
+         * @reactive
+         */
+        stageOutcome_: null,
+        /**
          * @member {Object} _vdom
          */
         _vdom: {
@@ -90,7 +100,13 @@ class AwaitingMergeMenuList extends MenuList {
             title: record.title ? `${ref} · ${record.title}` : href,
             cn   : [
                 {tag: 'a', cls: ['fm-awaiting-merge-ref'], href, rel: 'noopener', target: '_blank', text: record.title ? `#${record.number} · ${record.title}` : ref},
-                ...(record.stale ? [{tag: 'span', cls: ['fm-awaiting-merge-stale'], text: 'stale'}] : [])
+                ...(record.stale ? [{tag: 'span', cls: ['fm-awaiting-merge-stale'], text: 'stale'}] : []),
+                ...(this.stageEnabled ? [{id: `${this.id}__stage-${this.store.getInternalId(record)}`, tag: 'button', type: 'button', role: 'menuitem',
+                    cls: ['fm-stage-open'], text: 'Open in Stage', 'data-action': 'stage',
+                    'aria-disabled': this.stageOutcome?.recordId === record.id && this.stageOutcome.state === 'opening' ? 'true' : null,
+                    'aria-busy': this.stageOutcome?.recordId === record.id && this.stageOutcome.state === 'opening' ? 'true' : null}] : []),
+                ...(this.stageOutcome?.recordId === record.id && this.stageOutcome.message ?
+                    [{id: `${this.id}__outcome-${this.store.getInternalId(record)}`, tag: 'span', cls: ['fm-stage-outcome'], role: 'status', text: this.stageOutcome.message}] : [])
             ]
         }
     }
@@ -101,7 +117,30 @@ class AwaitingMergeMenuList extends MenuList {
      * @param {Object} data
      */
     onItemClick(node, data) {
+        if (this.stageEnabled && data.path.some(item => item.data?.action === 'stage')) {
+            const id = this.getItemRecordId(node.id),
+                record = this.useInternalId ? this.store.getByInternalId(id) : this.store.get(id);
+            if (record) {
+                const recordId = this.store.getKey(record);
+                if (this.stageOutcome?.recordId !== recordId || this.stageOutcome.state !== 'opening') {
+                    this.fire('stageRequest', {recordId})
+                }
+            }
+            return
+        }
         this.unmount()
+    }
+
+    /** @summary Repaints the optional action from its given capability and addressed result. */
+    afterSetStageEnabled() { this.isConstructed && this.createItems() }
+
+    /** @summary Repaints feedback without unmounting or stealing focus from the open menu. */
+    afterSetStageOutcome() { this.isConstructed && this.createItems() }
+
+    /** @summary Escape returns to this menu's exact trigger even after asynchronous row feedback. */
+    onKeyDownEscape(data) {
+        super.onKeyDownEscape(data);
+        this.parentComponent?.focus()
     }
 
     /**

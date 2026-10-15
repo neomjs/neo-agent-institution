@@ -247,6 +247,35 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(menu).toHaveScreenshot('fleet-head-merge-queue-open.png')
     });
 
+    test('the optional Stage entry stays inside the open merge queue, with the forge link primary; both skins', async ({page}) => {
+        await page.route('**/apps/agentos/neo-config.json', async route => {
+            const response = await route.fetch(), config = await response.json();
+            await route.fulfill({response, json: {...config, stageLaunchUrl: '/stage/'}})
+        });
+        await bootSettledCockpit(page);
+        await landFleetOpenWork(page, sampleOpenWork);
+
+        const menu = page.locator('.fm-awaiting-merge-menu'),
+            trigger = page.locator('.fm-fleet-head .fm-awaiting-merge'),
+            links = menu.locator('.fm-awaiting-merge-ref'),
+            actions = menu.locator('.fm-stage-open');
+
+        await expect(page.locator('.fm-stage-open')).toHaveCount(0);
+        await trigger.click();
+        await expect(actions).toHaveText(['Open in Stage', 'Open in Stage']);
+        await expect(links).toHaveText([/^#19499 · feat\(fleet\): a seat records/, 'neomjs/neo-agent-brain #799']);
+        await expect(links.nth(0)).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/19499');
+        await expect(links.nth(1)).toHaveAttribute('href', 'https://github.com/neomjs/neo-agent-brain/pull/799');
+        await expect(menu).toHaveScreenshot('fleet-head-merge-queue-stage-enabled.png');
+
+        await page.keyboard.press('Escape');
+        await expect(menu).toBeHidden();
+        await switchToLightSkin(page);
+        await trigger.click();
+        await expect(actions).toHaveText(['Open in Stage', 'Open in Stage']);
+        await expect(menu).toHaveScreenshot('fleet-head-merge-queue-stage-enabled-light.png')
+    });
+
     test('the Seat group reads derived, declared, the app\'s own, a declaration against what the config reads, and a refused start; the card reads that refusal as its reason; both skins (#559)', async ({page}) => {
         await page.setViewportSize({width: 1280, height: 800});
         await bootSettledCockpit(page);

@@ -92,6 +92,16 @@ class AwaitingMergeButton extends Button {
          */
         store_: null,
         /**
+         * @member {Boolean} stageEnabled_=false Optional dev action.
+         * @reactive
+         */
+        stageEnabled_: false,
+        /**
+         * @member {Object|null} stageOutcome_=null Addressed owner result.
+         * @reactive
+         */
+        stageOutcome_: null,
+        /**
          * @member {String} ui='ghost'
          * @reactive
          */
@@ -146,7 +156,10 @@ class AwaitingMergeButton extends Button {
         if (!me.menu && me.store) {
             me.menu = {
                 module: AwaitingMergeMenuList,
-                store : me.store
+                store : me.store,
+                stageEnabled: me.stageEnabled,
+                stageOutcome: me.stageOutcome,
+                listeners: {stageRequest: {fn: me.onStageRequest, scope: me}}
             }
         }
     }
@@ -157,11 +170,28 @@ class AwaitingMergeButton extends Button {
      * @param {AgentOS.view.fleet.roster.AwaitingMergeMenuList} menu
      */
     onMergeMenuReady(menu) {
+        menu.set({stageEnabled: this.stageEnabled, stageOutcome: this.stageOutcome});
         if (this.store && menu.store !== this.store) {
             menu.store = this.store
         }
 
         FloatingMenuTheme.sync(this, menu)
+    }
+
+    /** @summary The button forwards intent, retaining its existing open/focus/dismissal ownership. */
+    onStageRequest({recordId}) {
+        this.fire('stageRequest', {recordId})
+    }
+
+    /** @summary A capability replacement changes only the already-open menu's contribution. */
+    afterSetStageEnabled(value) {
+        this.menuList && (this.menuList.stageEnabled = value)
+    }
+
+    /** @summary Publishes launch feedback inside the initiating menu row. */
+    afterSetStageOutcome(value) {
+        this.menuList && (this.menuList.stageOutcome = value);
+        this.isConstructed && this.updateButton()
     }
 
     /**
@@ -216,14 +246,23 @@ class AwaitingMergeButton extends Button {
 
     /**
      * @summary Words the button from the read's state and the queue's rows: text, title, accessible
-     * name, visibility. An unavailable read is named but opens nothing, and a list left open when the
-     * queue stops being one closes.
+     * name, visibility. Addressed Stage feedback survives the last queue row without opening an empty
+     * menu. An idle empty queue earns no pixels, and a list left open when the queue empties closes.
      * @protected
      */
     updateButton() {
         let me    = this,
             queue = describeMergeQueue(me.openWork, me.store?.items ?? []),
             root  = me.getVdomRoot();
+
+        if (me.stageEnabled && me.stageOutcome?.recordId && me.stageOutcome.message) {
+            const outcome = me.stageOutcome;
+            queue.title = [queue.title, `${outcome.recordId}: ${outcome.message}`].filter(Boolean).join(' · ');
+            if (queue.hidden) {
+                queue.hidden = false;
+                queue.text = outcome.state === 'opening' ? 'Stage · opening' : 'Stage result'
+            }
+        }
 
         !queue.interactive && me.menuList && !me.menuList.hidden && me.menuList.unmount();
 

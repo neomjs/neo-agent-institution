@@ -21,6 +21,7 @@ import TasksPane              from '../tasks/Container.mjs';
 import CockpitStateProvider   from './StateProvider.mjs';
 import CockpitPerspectives    from '../../../util/CockpitPerspectives.mjs';
 import LivenessCadence        from '../../../util/LivenessCadence.mjs';
+import StageWindow            from '../../../util/StageWindow.mjs';
 
 /**
  * The bounded window (ms) a single liveness read gets before it is treated as a degrade.
@@ -127,13 +128,14 @@ class FleetCockpit extends VesselContainer {
                     adapterState      : data => data.gridAdapterState,
                     daemonFault       : data => data.daemonFault,
                     openWork          : data => data.openWork,
+                    stageOutcome      : data => data.stageLaunch,
                     presenceCapability: data => data.presenceCapability,
                     store             : 'stores.fleetRoster'
                 },
                 // the bootstrap CTA (an empty fleet's path to its first agent) and the selection
                 // seam's drill (the roster controller wrote the provider truth pair; this listener
                 // drives the detail reveal)
-                listeners: {addAgentRequest: 'onAddAgentRequest', agentSelect: 'onAgentSelect'}
+                listeners: {addAgentRequest: 'onAddAgentRequest', agentSelect: 'onAgentSelect', stageRequest: 'onStageRequest'}
             },
             stream: {
                 module   : ActivityStream,
@@ -821,7 +823,8 @@ class FleetCockpit extends VesselContainer {
             case 'fleet':
                 // the merge queue resolved imperatively, like the inspector's stores: a provider
                 // without it seats none, and the head's button stays hidden
-                seeds = {mergeQueueStore: me.resolveProviderStore('fleetAwaitingMerge')};
+                seeds = {mergeQueueStore: me.resolveProviderStore('fleetAwaitingMerge'),
+                    stageEnabled: !!StageWindow.entryUrl(Neo.windowConfigs?.[me.windowId] || Neo.config)};
                 break;
             case 'stream':
                 seeds = {actorDirectory: controller.buildActivityActorDirectory()};
