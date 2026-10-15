@@ -632,6 +632,44 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         await expect(probeRuntimeRecovery(candidate, snapshot)).rejects.toMatchObject({code: 'runtime-recovery-incompatible'});
     });
 
+    test('a newer native-profile binding cannot pass an older destination codec', async () => {
+        const source                                                                                                          = name => import(pathToFileURL(path.join(path.dirname(verifierFile), name)).href);
+        const [{createAntigravityLaunchBinding}, {generateAntigravityMcpFiles}, {createSeatRuntimeRecord}, {mintLaunchGrant}] = await Promise.all([
+            source('launchProfileCustody.mjs'), source('generateAntigravityMcpFiles.mjs'), source('seatRuntimeRecord.mjs'), source('mcpLaunchAdmission.mjs')
+        ]);
+        const input        = await fixture(root), brain = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain');
+        const manifestFile = path.join(brain, 'package.json'), manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+        manifest.exports['./launch-admission-journal'] = './ai/services/fleet/launchAdmissionJournal.mjs';
+        await fs.writeFile(manifestFile, JSON.stringify(manifest));
+        const codec  = path.join(brain, 'ai/services/fleet/launchAdmissionJournal.mjs');
+        const id     = 'a'.repeat(64), directory = `/runtime/${id}`, grant = mintLaunchGrant(), issuer = 'http://127.0.0.1:47123';
+        const record = {id: 'seat', harnessType: 'antigravity', pid: 42, pidStartedAt: 'Thu Oct 1 09:00:00 2026',
+            startedAt        : '2026-10-14T08:00:00Z', cwd: '/managed/seat/repo', instanceHome: '/managed/seat/profile',
+            launchCommand    : '/apps/antigravity', admissionGeneration: 'original-admission',
+            runtimeGeneration: {id, directory, runtimeRoot: `${directory}/host.runtime/organism`, executable: `${directory}/host.runtime/node`, payloadDigest: 'b'.repeat(64)},
+            bridgeAuthority  : {version: 1, source: 'registry-file', registryRoot: '/registry', publicKeySha256: 'c'.repeat(64)}};
+        const generated = generateAntigravityMcpFiles({profileHome: record.instanceHome, processEnvironment: {}, rows: {
+            'neo-mjs-memory-core': {command: record.runtimeGeneration.executable,
+                args: [path.join(record.runtimeGeneration.runtimeRoot, 'ai/mcp/client/fleetMcpLauncher.mjs'), '--server', 'memory-core'],
+                env : {NEO_AGENT_IDENTITY: 'seat-login', NEO_FLEET_LAUNCH_ISSUER: issuer, NEO_FLEET_LAUNCH_GRANT: grant.capability}}
+        }});
+        const profile  = createAntigravityLaunchBinding({identity: 'seat-login', issuer, instanceHome: record.instanceHome, workspaceRoot: record.cwd, files: generated.files});
+        const start    = createSeatRuntimeRecord({record, identity: 'seat-login', plan: [], leaseRequired: true, profile});
+        const snapshot = {version: 6, generations: [], seats: [{start, state: 'stopped', ownershipUnresolved: false, cleanupUnresolved: false}]};
+        expect(isAdmissionSnapshot(snapshot)).toBe(true);
+        const candidate = {runtimeRoot: input.runtimeRoot, executable: process.execPath};
+        // This fixture tests format compatibility, not recovery authority or the copied native closure.
+        await fs.writeFile(codec, 'export const isAdmissionSnapshot = value => value.seats.every(row => row.start.profile.version === 1);');
+        await expect(probeRuntimeRecovery(candidate, snapshot)).rejects.toMatchObject({code: 'runtime-recovery-incompatible'});
+        await fs.writeFile(codec, `export const isAdmissionSnapshot = value => {
+            const profile=value.seats[0].start.profile;
+            return profile.kind==='antigravity' && profile.workspaceRoot==='/managed/seat/repo' &&
+                profile.invokerSha256['memory-core']===${JSON.stringify(profile.invokerSha256['memory-core'])} &&
+                profile.grants['memory-core'].sha256===${JSON.stringify(profile.grants['memory-core'].sha256)};
+        };`);
+        await expect(probeRuntimeRecovery(candidate, snapshot)).resolves.toBe(true);
+    });
+
     test('a destination parser escaping its assembled Brain package is never imported', async () => {
         const input        = await fixture(root), brain = path.join(input.runtimeRoot, 'node_modules/neo-agent-brain');
         const manifestFile = path.join(brain, 'package.json'), manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
