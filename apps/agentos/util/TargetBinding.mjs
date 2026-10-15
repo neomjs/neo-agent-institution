@@ -6,7 +6,9 @@ import GraphSceneEnvelope from './GraphSceneEnvelope.mjs';
  * @summary The rule the cockpit's retained truth obeys: rows a store holds belong to the profile
  * whose answer produced them. `DeploymentStateRead` stamps its picture with the answering
  * `profileId`; this helper brings the roster, the activity feed, the graph scene and the operator's
- * own mailbox under the same rule, lifted beside the liveness owner (which holds the size bar). A read through a bridge bound to
+ * own mailbox under the same rule, lifted beside the liveness owner (which holds the size bar). The
+ * activity feed's clear also serves its other authorities, the Activity mode and the observer admission
+ * ({@link AgentOS.util.ActivityObserver}). A read through a bridge bound to
  * ANOTHER profile first retires the previous profile's truth — both stores empty, both surfaces read
  * `cold`, the graph leaf returns to unobserved, the roster-derived consumers re-snapshot —
  * so the new profile's first live answer is a first admission, and its failure shows its own cold
@@ -57,8 +59,7 @@ class TargetBinding extends Base {
 
     /**
      * @summary Retire the activity feed when the bridge in hand belongs to another profile than
-     * the events the store holds. The store empties and the header reads `not answered yet` until
-     * the new profile answers; the previous profile's counts go with its rows.
+     * the events the store holds ({@link #clearActivity}).
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Object} options
      * @param {Neo.data.Store} options.store The provider-owned activity store.
@@ -71,16 +72,46 @@ class TargetBinding extends Base {
             return false
         }
 
-        owner.activityWired     = false;
-        owner.activityProfileId = null;
-
-        store.clear();
-
-        // the old profile's exhausted mailbox is not the new one's
-        owner.publishConnection('stream', {data: {activityCounts: [], streamAdapterState: 'cold', streamDegradedReason: null, streamHistoryExhausted: false}});
-        stream && (stream.adapterState = 'cold');
+        TargetBinding.clearActivity(owner, {store, stream});
 
         return true
+    }
+
+    /**
+     * @summary Empty the activity feed for another authority: another profile, Activity mode or observer
+     * admission. The rows go with their counts and paging, so an older page in flight lands nowhere, and so do
+     * the observer's held admission and continuation. The header reads `not answered yet` until the new
+     * authority answers, and a cold stream shows no row.
+     *
+     * `rows: false` keeps the rows for the next admission, which replaces them in one Store transaction (the
+     * feed is no longer wired). A store that empties and refills before the buffered list's update lands keeps
+     * stale pooled rows in the DOM, and an observer's next answer can be that fast.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @param {Object} [options]
+     * @param {Neo.data.Store|null} [options.store] The provider-owned activity store.
+     * @param {Neo.component.Base|null} [options.stream] The held stream, if materialized.
+     * @param {Boolean} [options.rows=true] Empty the store now
+     */
+    static clearActivity(owner, {store = owner.resolveFleetActivityEventsStore(), stream = owner.getReference('activity-stream'), rows = true} = {}) {
+        owner.activityWired            = false;
+        owner.activityProfileId        = null;
+        owner.activityAdmissionKey     = null;
+        owner.activityContinuation     = null;
+        owner.activityHistoryFlight    = null;
+        owner.activityHistoryStalledAt = null;
+        owner.activityHistoryGeneration++;
+
+        rows && store?.clear();
+
+        // the old authority's exhausted mailbox and observation are not the new one's
+        owner.publishConnection('stream', {data: {
+            activityCounts        : [],
+            activityObservation   : {clamped: false, policy: null, reason: null, state: null},
+            streamAdapterState    : 'cold',
+            streamDegradedReason  : null,
+            streamHistoryExhausted: false
+        }});
+        stream && (stream.adapterState = 'cold')
     }
 
     /**

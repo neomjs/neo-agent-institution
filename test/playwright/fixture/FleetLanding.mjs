@@ -49,7 +49,8 @@ class FleetLanding extends Base {
          */
         openWork_: {[isDescriptor]: true, value: null, isEqual: () => false},
         /**
-         * A mailbox the cockpit reads, `{events}` newest first: set, it becomes the bridge's `fleetActivity`.
+         * A mailbox the cockpit reads, `{events, observers?}` newest first: set, it becomes the bridge's
+         * `fleetActivity`. `observers` maps an observer scope to its population, which an observer read pages.
          * @member {Object|null} mailbox_=null
          */
         mailbox_: {[isDescriptor]: true, value: null, isEqual: () => false},
@@ -65,6 +66,45 @@ class FleetLanding extends Base {
      * @member {Array<Object|null>} mailboxReads=[]
      */
     mailboxReads = []
+    /**
+     * The params of every message read the observed mailbox answered, in order.
+     * @member {Object[]} messageReads=[]
+     */
+    messageReads = []
+
+    /**
+     * @summary The admission a served observer population answers under, shaped as the Brain's.
+     * @param {String} scope
+     * @returns {Object}
+     */
+    static observationOf(scope) {
+        return {admissionKey: `e2e-${scope}`, clamped: false, planeId: 'plane-e2e', policy: 'team', scope, viewer: '@operator'}
+    }
+
+    /**
+     * @summary One page of a served observer population, shaped as the Brain's composed answer: its rows, the
+     * population's complete count, and the canonical continuation through the A2A slot.
+     * @param {Object[]} population Newest first
+     * @param {String} scope
+     * @param {Object} page `{limit, offset}`
+     * @returns {Object}
+     */
+    static observedPage(population, scope, {limit, offset}) {
+        const
+            rows = population.slice(offset, offset + limit),
+            next = offset + rows.length < population.length ? offset + rows.length : null;
+
+        return {
+            capability: {state: 'wired'},
+            counts    : [{source: 'memory-core:mailbox', scope: 'total', value: population.length, complete: true, capturedAt: new Date().toISOString()}],
+            events    : rows,
+            a2a       : {
+                observation : FleetLanding.observationOf(scope),
+                page        : {limit, nextOffset: next, offset, totalCount: population.length, truncated: next !== null},
+                continuation: next === null ? null : {slots: ['a2a'], offset: next}
+            }
+        }
+    }
 
     /**
      * The mounted cockpit's liveness owner.
@@ -116,7 +156,7 @@ class FleetLanding extends Base {
      * @param {Object|null} value
      */
     afterSetMailbox(value) {
-        value && this.serveMailbox(value.events)
+        value && this.serveMailbox(value.events, value.observers)
     }
 
     /**
@@ -185,24 +225,41 @@ class FleetLanding extends Base {
 
     /**
      * @summary Serves the events as the bridge's one verb: each read answers, wired, the page at its `offset`,
-     * so the live read (no params) gets the newest page and an older-page read the rows below. The cockpit
-     * guards every other verb, so they stay absent.
+     * so the live read (no params) gets the newest page and an older-page read the rows below. With
+     * `observers`, an observer read pages its scope's population instead ({@link #observedPage}), and the
+     * bridge answers its message reads in full under the same admission. The cockpit guards every other verb,
+     * so they stay absent.
      * @param {Object[]} events Newest first.
+     * @param {Object|null} [observers=null] Observer scope → population, newest first
      */
-    serveMailbox(events) {
+    serveMailbox(events, observers = null) {
         const me = this;
 
         me.mailboxReads = [];
+        me.messageReads = [];
 
         (AgentOS.fleet ??= {}).registryBridge = {
             profileId    : me.owner.bridge?.profileId ?? null,
             fleetActivity: async params => {
-                const {limit = 50, offset = 0} = params ?? {};
+                const {limit = 50, observer, offset = 0} = params ?? {};
 
                 me.mailboxReads.push(params ?? null);
 
-                return {capability: {state: 'wired'}, counts: [], events: events.slice(offset, offset + limit)}
-            }
+                return observer && observers
+                    ? FleetLanding.observedPage(observers[observer.scope] ?? [], observer.scope, {limit, offset})
+                    : {capability: {state: 'wired'}, counts: [], events: events.slice(offset, offset + limit)}
+            },
+            ...(observers && {
+                fleetOwnMessage: async params => {
+                    const row = Object.values(observers).flat().find(event => event.payload?.messageId === params.messageId);
+
+                    me.messageReads.push(params);
+
+                    return row
+                        ? {...row.payload, body: `the words of ${row.payload.subject}`, observation: FleetLanding.observationOf(params.observer?.scope)}
+                        : {reason: 'no such message', status: 'rejected'}
+                }
+            })
         }
     }
 
