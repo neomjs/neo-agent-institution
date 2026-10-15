@@ -186,7 +186,9 @@ const launcherRuntime = await resolveLauncherRuntime({
     userData  : app.getPath('userData')
 }).catch(error => {
     console.error(`HARNESS_RUNTIME_REFUSED ${error.code ?? error.name}: ${error.message}`);
-    throw error
+    app.exit(1);
+    // Keep module evaluation terminal until native exit; the later boot error boundary does not exist yet.
+    return new Promise(() => {})
 });
 const agentosRuntimeRoot = launcherRuntime.runtimeRoot;
 const fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot}) : null;

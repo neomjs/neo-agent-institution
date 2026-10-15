@@ -1,6 +1,6 @@
 import {execFile}                     from 'node:child_process';
 import {constants}                    from 'node:fs';
-import fs                             from 'node:fs/promises';
+import nodeFs                         from 'node:fs';
 import path                           from 'node:path';
 import {isDeepStrictEqual, promisify} from 'node:util';
 import {pathToFileURL}                from 'node:url';
@@ -14,6 +14,8 @@ import {createRequire}                from 'node:module';
  */
 
 const execute            = promisify(execFile);
+// Publication, sealing and removal operate on physical archives, matching the shared verifier.
+const fs                 = (process.versions.electron ? createRequire(import.meta.url)('original-fs') : nodeFs).promises;
 const VERIFIER_FUNCTIONS = ['runtimeGenerationIdentity', 'runtimeGenerationArguments', 'readRuntimeGeneration', 'inventoryRuntimePayload',
     'runtimeGenerationDescriptor', 'createRuntimeGenerationRecord', 'completeRuntimeGenerationRecord'];
 
