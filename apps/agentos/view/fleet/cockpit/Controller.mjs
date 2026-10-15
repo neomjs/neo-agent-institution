@@ -4,6 +4,7 @@ import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapt
 import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
 import OperatorInbox               from '../../../util/OperatorInbox.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
+import StageWindow                 from '../../../util/StageWindow.mjs';
 import TargetBinding               from '../../../util/TargetBinding.mjs';
 
 /**
@@ -167,6 +168,20 @@ class Controller extends FleetBatchController {
      * @protected
      */
     openWorkProfileId = null
+
+    /** @member {AgentOS.util.StageWindow|null} stageWindow=null Optional sibling launch owner. */
+    stageWindow = null
+
+    /**
+     * @summary Resolves the clicked queue key against this controller's held source snapshot.
+     * @param {Object} data
+     * @param {String} data.recordId
+     * @returns {Promise<Object>}
+     */
+    onStageRequest({recordId}) {
+        this.stageWindow ||= Neo.create(StageWindow, {owner: this});
+        return this.stageWindow.open(recordId)
+    }
     /**
      * Read-fence + owner-held snapshot for the wake-routes surface.
      * @member {Number} wakeRoutesReadGeneration=0
@@ -896,6 +911,8 @@ class Controller extends FleetBatchController {
      * @param {...*} args
      */
     destroy(...args) {
+        this.stageWindow?.destroy();
+        this.stageWindow = null;
         this.operatorInbox?.destroy();
         this.operatorInbox = null;
         super.destroy(...args)

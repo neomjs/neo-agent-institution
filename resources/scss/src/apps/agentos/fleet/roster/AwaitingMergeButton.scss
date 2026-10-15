@@ -63,6 +63,7 @@
         gap          : var(--fm-space-2);
         text-align   : left;
         white-space  : normal;
+        flex-wrap    : wrap;
     }
 
     // a title wraps to two lines at most; the row's tooltip carries the whole of it
@@ -83,5 +84,23 @@
         flex         : none;
         font         : var(--fm-text-micro);
         padding      : var(--fm-chip-pad-y) var(--fm-chip-pad-x);
+    }
+
+    .fm-stage-open {
+        background: transparent;
+        border: 1px solid var(--fm-line-soft);
+        border-radius: 4px;
+        color: var(--fm-ink);
+        cursor: pointer;
+        font: var(--fm-text-micro);
+        padding: var(--fm-space-1);
+        &:focus-visible { outline: 1px solid var(--fm-signal); }
+        &:disabled { cursor: wait; }
+    }
+
+    .fm-stage-outcome {
+        flex: 0 0 100%;
+        font: var(--fm-text-micro);
+        overflow-wrap: anywhere;
     }
 }

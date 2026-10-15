@@ -227,6 +227,45 @@ test.describe('AwaitingMergeButton — the fleet head\'s merge queue', () => {
         }
     });
 
+    test('the Stage action resolves an internal node ID to its exact Store key, keeps the menu open, and addresses only that row', async () => {
+        const store = Neo.create(FleetAwaitingMerge, {data: [pr(59), pr(59, {
+            repo: 'neomjs/neo-agent-brain', id: 'neomjs/neo-agent-brain#59'
+        })]}), {head, button} = createButton({openWork: ok, store, stageEnabled: true}), requests = [], closed = [];
+
+        try {
+            await expect.poll(() => Boolean(button.menuList)).toBe(true);
+            const menu = button.menuList, record = store.get('neomjs/neo-agent-brain#59'), item = menu.createItem(record, 1);
+            button.on('stageRequest', ({recordId}) => requests.push(recordId));
+            menu._hidden = false;
+            menu.unmount = () => { closed.push(true); menu._hidden = true };
+
+            expect(menu.useInternalId).toBe(true);
+            expect(menu.getItemRecordId(item.id)).toBe(store.getInternalId(record));
+            expect(menu.getItemRecordId(item.id)).not.toBe(record.id);
+            menu.onItemClick(item, {path: [{data: {action: 'stage'}}]});
+
+            expect(requests).toEqual(['neomjs/neo-agent-brain#59']);
+            expect(closed).toEqual([]);
+            expect(menu.hidden).toBe(false);
+
+            button.stageOutcome = {recordId: requests[0], state: 'opening', message: 'Opening this Brain record…'};
+            const addressed = menu.createItemContent(record), other = menu.createItemContent(store.get('neomjs/neo#59'));
+            expect(addressed.cn.find(node => node['data-action'] === 'stage').disabled).toBe(true);
+            expect(addressed.cn.find(node => node.role === 'status').text).toBe('Opening this Brain record…');
+            expect(other.cn.find(node => node['data-action'] === 'stage').disabled).toBe(false);
+            expect(other.cn.some(node => node.role === 'status')).toBe(false);
+            expect(closed, 'feedback re-renders its row without dismissing the menu').toEqual([]);
+
+            expect(addressed.cn[0].href).toBe('https://github.com/neomjs/neo-agent-brain/pull/59');
+            menu.onItemClick(item, {path: [{tagName: 'A'}]});
+            expect(closed, 'the primary forge row retains its dismissal path').toEqual([true]);
+            expect(requests).toHaveLength(1)
+        } finally {
+            head.destroy();
+            store.destroy()
+        }
+    });
+
     test('a caller outside the head opens the list only when there is one, and never closes an open one', async () => {
         const store          = Neo.create(FleetAwaitingMerge, {data: [pr(1)]}),
               {head, button} = createButton({openWork: ok, store}),
