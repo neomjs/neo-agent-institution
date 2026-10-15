@@ -71,13 +71,27 @@ async function landFleet(page, configs) {
 
 /**
  * @summary Serves a mailbox the mounted cockpit reads through its bridge: every `fleetActivity` read answers
- * the events' page at its offset. The spec reads the reads with `readMailboxReads` on `fm-fleet-landing`.
+ * the events' page at its offset, and an observer read its scope's population in `observers`, with the message
+ * reads to open them. The spec reads the reads with `readMailboxReads` on `fm-fleet-landing`, or with
+ * {@link readFleetMailboxReads} from the page.
  * @param {Object} page The Playwright page.
  * @param {Object[]} events The stream's snapshot shape, newest first.
+ * @param {Object|null} [observers=null] Observer scope → population, newest first.
  * @returns {Promise<void>}
  */
-export async function serveFleetMailbox(page, events) {
-    await landFleet(page, {mailbox: {events}})
+export async function serveFleetMailbox(page, events, observers = null) {
+    await landFleet(page, {mailbox: {events, observers}})
+}
+
+/**
+ * @summary The params of every read the served mailbox answered, read inside the App worker through the landing.
+ * @param {Object} page The Playwright page.
+ * @returns {Promise<{activity: Array<Object|null>, messages: Object[]}>}
+ */
+export async function readFleetMailboxReads(page) {
+    const [activity, messages] = await page.evaluate(() => Neo.worker.App.getConfigs({id: 'fm-fleet-landing', keys: ['mailboxReads', 'messageReads']}));
+
+    return {activity, messages}
 }
 
 /**

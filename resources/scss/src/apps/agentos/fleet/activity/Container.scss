@@ -53,6 +53,11 @@
         white-space: nowrap;
     }
 
+    // the mode chips wrap among themselves before any leaves a narrow pane
+    .fm-stream-modes {
+        max-width: 100%;
+    }
+
     // the sources' populations sit under the head, never in its count slot
     .fm-stream-sources {
         margin-bottom: var(--fm-space-2);
@@ -62,9 +67,37 @@
         }
     }
 
+    // an observer read's limit is a fact in the meta ink; its refusal reads in the wedged tone
+    .fm-stream-observer {
+        margin-bottom: var(--fm-space-2);
+
+        &.is-unavailable {
+            color: var(--fm-state-wedged);
+        }
+    }
+
+    /* the list beside the open message, the mailbox's reading split: the list two shares, the
+       detail one, the splitter resizing the list */
+    .fm-stream-body {
+        gap       : var(--fm-space-2);
+        min-height: 0;
+    }
+
+    /* a cold feed shows no row: a retired authority's rows wait, out of sight, for the next answer to
+       replace them; visibility keeps the pool's geometry */
+    .fm-stream-head.is-cold ~ .fm-stream-body {
+        visibility: hidden;
+    }
+
+    // an observer mode opens a message row beside the list
+    &.is-observing .fm-activity-list > .neo-list-item:has(.fm-activity-row.is-message) {
+        cursor: pointer;
+    }
+
     .fm-activity-list {
         background: transparent;
         min-height: 0;
+        min-width : 0;
         overflow  : auto;
 
         > .neo-list-item {
@@ -114,5 +147,33 @@
 @container fm-activity-stream (max-width: 560px) {
     .fm-activity-stream .fm-stream-head {
         font: var(--fm-text-micro);
+    }
+
+    /* narrow, the open message stacks under the list, never a squeezed pair; the splitter's drag
+       has no axis here */
+    .fm-activity-stream .fm-stream-body {
+        flex-direction: column !important;   /* beats the hbox layout's row */
+    }
+
+    .fm-activity-stream .fm-activity-list {
+        flex : 1 1 0% !important;   /* beats the wrapperStyle a wide-regime drag writes */
+        width: auto !important;
+    }
+
+    .fm-activity-stream .fm-stream-splitter {
+        display: none;
+    }
+
+    .fm-activity-stream .fm-mailbox-detail {
+        flex        : 0 1 auto !important;
+        padding-left: 0;
+        padding-top : var(--fm-space-2);
+        border-left : none;
+        border-top  : 1px solid var(--fm-line-soft);
+
+        // stacked, the body scrolls inside a capped height
+        .fm-mailbox-detail-body {
+            max-height: 40vh;
+        }
     }
 }

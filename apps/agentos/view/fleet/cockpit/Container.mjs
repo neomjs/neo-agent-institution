@@ -145,9 +145,11 @@ class FleetCockpit extends VesselContainer {
                     adapterState    : data => data.streamAdapterState,
                     counts          : data => data.activityCounts,
                     historyExhausted: data => data.streamHistoryExhausted,
+                    mode            : data => data.activityMode,
+                    observation     : data => data.activityObservation,
                     store           : 'stores.fleetActivityEvents'
                 },
-                listeners: {historyRequest: 'onActivityHistoryRequest'}
+                listeners: {historyRequest: 'onActivityHistoryRequest', messageOpen: 'onActivityMessageOpen', modeChange: 'onActivityModeChange'}
             },
             // south reading surfaces: per-agent session-summary recall, the WHAT axis of mission
             // control, the operator's own mailbox + compose surface, and the historical Bird-View

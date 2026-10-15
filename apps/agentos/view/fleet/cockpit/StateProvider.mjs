@@ -65,6 +65,20 @@ class StateProvider extends Provider {
              */
             activityCounts: [],
             /**
+             * The Activity feed's A2A population: the viewer's own `mailbox` (the ordinary feed, and the roster's
+             * lane source), or an explicit observer read, `involves-me` or `all` ({@link AgentOS.util.ActivityObserver}).
+             * Session view state, never persisted; the stream's head chips ask the controller to switch it.
+             * @member {'mailbox'|'involves-me'|'all'} activityMode='mailbox'
+             */
+            activityMode: 'mailbox',
+            /**
+             * What the observer read answered: `state` `admitted` or `unavailable` (`null` in the mailbox mode and
+             * before an answer), the effective sharing `policy`, whether the requested breadth was `clamped`, and an
+             * unavailable read's safe `reason`. Leaf-complete, because `setData` drills objects into leaf paths.
+             * @member {Object} activityObservation={clamped:false,policy:null,reason:null,state:null}
+             */
+            activityObservation: {clamped: false, policy: null, reason: null, state: null},
+            /**
              * The lifecycle owner's cause code while the Brain is not running (`organism-beside-plane`,
              * `plane-refused` or the kind the shell's plane probe told apart — `plane-unreachable`,
              * `plane-credential-refused`, `plane-not-a-plane`, `plane-identity-changed` —, `boot-not-ready`, …),

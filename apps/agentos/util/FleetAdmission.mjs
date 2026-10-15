@@ -1,5 +1,6 @@
-import Base          from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import TargetBinding from './TargetBinding.mjs';
+import ActivityObserver from './ActivityObserver.mjs';
+import Base             from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import TargetBinding    from './TargetBinding.mjs';
 import {FLEET_COCKPIT_EVENT_TYPES, FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
@@ -24,23 +25,31 @@ class FleetAdmission extends Base {
      * @summary Admits an answered activity feed: the events join the provider-owned store (the first
      * answer replaces, later ones merge), the feed is bound to the answering profile, and the surface
      * reads `live`, or `partial` with the failed source's reason. Counts retain their producer scope.
+     * An observer read's A2A admission comes first ({@link AgentOS.util.ActivityObserver#admitLive}): it
+     * can empty the feed, so its page replaces, and can withhold the A2A facts it did not admit.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Object} answer
      * @param {Object[]} answer.events The producer's bounded page
+     * @param {Object|null} [answer.a2a=null] The observer read's A2A metadata
      * @param {Object[]} [answer.counts=[]] The producer's fold counts
      * @param {String|null} [answer.profileId=null] The profile the answer belongs to
      * @param {Boolean} [answer.partial=false] A usable page from an incomplete composed read
      * @param {String|null} [answer.reason=null] Sanitized reason retained for a partial read
+     * @param {Object|null} [answer.selector=null] The observer selector the read sent, `null` for the mailbox
      */
-    static admitActivity(owner, {counts = [], events, profileId = null, partial = false, reason = null}) {
-        const store = owner.resolveFleetActivityEventsStore(), stream = owner.getReference('activity-stream'),
-              state = partial ? 'partial' : 'live';
+    static admitActivity(owner, {a2a = null, counts = [], events, profileId = null, partial = false, reason = null, selector = null}) {
+        const
+            store    = owner.resolveFleetActivityEventsStore(),
+            stream   = owner.getReference('activity-stream'),
+            state    = partial ? 'partial' : 'live',
+            answered = {counts: Array.isArray(counts) ? counts : [], events: Array.isArray(events) ? events : []},
+            admitted = selector ? ActivityObserver.admitLive(owner, {a2a, ...answered, reason}, selector) : answered;
 
-        store.ingestSnapshot(Array.isArray(events) ? events : [], {replace: !owner.activityWired});
+        store.ingestSnapshot(admitted.events, {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
         owner.publishConnection('stream', {data: {
-            activityCounts      : Array.isArray(counts) ? counts : [],
+            activityCounts      : admitted.counts,
             streamAdapterState  : state,
             streamDegradedReason: partial ? reason : null
         }});
