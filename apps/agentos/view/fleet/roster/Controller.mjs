@@ -57,6 +57,11 @@ class Controller extends ComponentController {
      */
     sortMode = 'online'
 
+    /** @summary Keeps the merge-menu intent on the roster's existing controller chain. */
+    onMergeMenuStageRequest({recordId}) {
+        this.component.fire('stageRequest', {recordId})
+    }
+
     /**
      * @summary Seat the roster's ordering + view filters on the (provider-owned) store,
      * idempotently: the DEFAULT sort is the shipped tier order expressed as sorters (`SORT_MODES`

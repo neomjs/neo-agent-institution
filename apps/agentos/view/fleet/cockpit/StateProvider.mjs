@@ -57,6 +57,8 @@ class StateProvider extends Provider {
          * @member {Object} data
          */
         data: {
+            /** @member {Object} stageLaunch One addressed optional-sibling outcome. */
+            stageLaunch: {recordId: null, state: null, message: null},
             /**
              * Live activity fold counts for the stream header, written by the activity read.
              * @member {Object[]} activityCounts=[]

@@ -308,6 +308,9 @@ apps/agentos/util/SourceHealth.mjs
 apps/agentos/util/SpineBanner.mjs
     5c8346c1813f76b88af81eb48f57147c2f9a917e
 
+apps/agentos/util/StageWindow.mjs
+    3a7d9e3626185ac8020073e9e926b7140a4a0b01
+
 apps/agentos/util/TargetBinding.mjs
     0596cd2547fa26a970deb05717299b918eb9025c
 
@@ -351,13 +354,13 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    70419a5cf6746ac2c1e78ae076856657dcc4d5d7
+    9709e55d8e62bd1d80db56ff88dbaa1d79730d9c
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     7194ed7270a8f6d925c71495ab47dc3efa2f0020
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    1dc615cc64e2b5b59bf87034d5ffe735c30dce56
+    446d1e7612d818232a2f544363236075a4e94ec6
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     49cee569caaf2192f62d91cbb7297a32c34c534f
@@ -372,7 +375,7 @@ apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    0ee80eb6bfaf204aaa65fea9fb51660785fb0cf2
+    5fa468a5f53c82b10732950e9dd7c53014765da3
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     ad086d9c1114f84d041f4de3b4f1075c8bb63cc9
@@ -522,16 +525,16 @@ apps/agentos/view/fleet/perspectives/Container.mjs
     f6548ca755ca9817cf13b8b7388cb62a0e8471e1
 
 apps/agentos/view/fleet/roster/AwaitingMergeButton.mjs
-    8cc19e2b4fd15fe3141f5af26613944e0c1c61cc
+    6c3cffe2189c0ab63e3014d112c2077994eaa456
 
 apps/agentos/view/fleet/roster/AwaitingMergeMenuList.mjs
-    f966017522bfd5a977c0561f72293032d8c6692c
+    5c3499cd781df301ddc8350970af30cd749dc7b3
 
 apps/agentos/view/fleet/roster/Container.mjs
-    a6f6f8a61427612cba00b5245e4b99de7c5ffeac
+    1aff7858d78c65cebb86d2dd06e92f15a91d190d
 
 apps/agentos/view/fleet/roster/Controller.mjs
-    9e6126021991ca47d823c6f44583d4f6a292bd26
+    21d320127b1d19797a28c81d0610fd638a594ff8
 
 apps/agentos/view/fleet/roster/List.mjs
     47fa2bf1689a7f41c0e8d14a90e832b250e58390
@@ -708,7 +711,7 @@ resources/scss/src/apps/agentos/fleet/perspectives/Container.scss
     ebd226f7f44bd6bca6a78ab5a361d051c093a660
 
 resources/scss/src/apps/agentos/fleet/roster/AwaitingMergeButton.scss
-    55ec6b2585cefdd96f8b805fa808723b56fce3fb
+    6a4805ff0ad0a8574c031a735fb570a10238b922
 
 resources/scss/src/apps/agentos/fleet/roster/Container.scss
     6d2873b22214c71368ae1e7352e1023eede8cc08
@@ -810,7 +813,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    719b70b682033541266e8f50d2f1bd656e27138d
+    3b8be1eaf16f130e2a45969e1333f3f5279ce91a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -949,6 +952,12 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-aw
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-open.png
     11b7728e5f7996be2db181b181e314e94752b654
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-stage-enabled-light.png
+    eff405dd1812e7854f648b2da3f131e0eff3b340
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-stage-enabled.png
+    5206eeab45caaf6d6cdc1862d951a4a453688154
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
     586b6e4567d30ecd2dc6a89bfa3103e3cb0070cd

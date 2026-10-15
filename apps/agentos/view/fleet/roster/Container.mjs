@@ -122,6 +122,16 @@ class FleetGrid extends Container {
          */
         openWork_: null,
         /**
+         * @member {Boolean} stageEnabled_=false Explicit development contribution.
+         * @reactive
+         */
+        stageEnabled_: false,
+        /**
+         * @member {Object|null} stageOutcome_=null Owner-published launch result.
+         * @reactive
+         */
+        stageOutcome_: null,
+        /**
          * The stable chrome over the animated list: the header (title · liveness marker · flex
          * spacer · live {@link HealthBar}), the sort/filter cluster, the
          * {@link AgentOS.view.fleet.roster.List} (the scroll owner), and the bootstrap CTA (design
@@ -158,7 +168,8 @@ class FleetGrid extends Container {
                 {ntype: 'component', flex: 1},
                 {module: HealthBar, reference: 'fleet-health', flex: 'none'},
                 // the operator's merge queue: approved, green, mergeable pull requests, after the bar
-                {module: AwaitingMerge, reference: 'awaiting-merge', flex: 'none'}
+                {module: AwaitingMerge, reference: 'awaiting-merge', flex: 'none',
+                    listeners: {stageRequest: 'onMergeMenuStageRequest'}}
             ]
         }, {
             // the operator's ordering + visibility levers, roster-owned (the cockpit top toolbar
@@ -246,7 +257,8 @@ class FleetGrid extends Container {
         // copy); the list renders it; the controller seats ordering + view filters on it
         me.getReference('fleet-health').store = me.store;
         me.getReference('roster-list').store  = me.store;
-        me.getReference('awaiting-merge').set({openWork: me.openWork, store: me.mergeQueueStore});
+        me.getReference('awaiting-merge').set({openWork: me.openWork, store: me.mergeQueueStore,
+            stageEnabled: me.stageEnabled, stageOutcome: me.stageOutcome});
         controller.seatViewOrdering(me.store);
 
         // a create-time capability envelope lands after the reference tree exists — explicitly,
@@ -347,6 +359,16 @@ class FleetGrid extends Container {
      */
     afterSetMergeQueueStore(value, oldValue) {
         this.isConstructed && (this.getReference('awaiting-merge').store = value)
+    }
+
+    /** @summary Relays the optional capability after the roster has constructed. */
+    afterSetStageEnabled(value) {
+        this.isConstructed && (this.getReference('awaiting-merge').stageEnabled = value)
+    }
+
+    /** @summary Relays the owner-published outcome to the open menu. */
+    afterSetStageOutcome(value) {
+        this.isConstructed && (this.getReference('awaiting-merge').stageOutcome = value)
     }
 
     /**
