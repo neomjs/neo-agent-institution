@@ -186,14 +186,6 @@ For privacy warnings during agent launch, see
 [macOS permissions](harness/README.md#macos-permissions-when-starting-an-agent), including the
 current effect of quitting FM on its launched peers.
 
-## Optional Stage development sibling
-
-A development host may set `stageLaunchUrl` to a Stage URL on the same origin. With that explicit capability, the existing awaiting-merge menu offers **Open in Stage** beside its forge link. Activation resolves the raw row and provenance together from the cockpit's held open-work answer. Omission leaves the normal FM interface unchanged.
-
-The sibling has its own App/Canvas workers. An ephemeral token-bound channel transfers JSON and waits for a context-specific completed draw; opening a window alone never reports success. Denied popups, absent Stage and refused loads retain an addressed result on the queue trigger and in the reopened row. Source replacement while opening, profile replacement, timeout and owner destruction retire the launch; ordinary native-window APIs retain close custody. No history reader, bundled sample substitution or installed extension loader is added.
-
-The matching Stage checkout provides `npm run dev:fleet -- --fleet-root /absolute/path/to/neo-agent-institution`, which serves both checkouts on one loopback origin and enables the capability in the served config only. See [Stage's supplied-record and dev-composition contract](https://github.com/neomjs/neo-stage#supplied-record-input). This does not change connection profiles or certify an installed extension.
-
 ## Read next
 
 - [The canonical Neo.mjs Introduction](https://github.com/neomjs/neo/blob/dev/learn/benefits/Introduction.md)
