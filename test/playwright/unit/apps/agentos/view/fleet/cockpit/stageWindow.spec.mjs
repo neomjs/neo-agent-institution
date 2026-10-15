@@ -219,6 +219,7 @@ test.describe('Fleet cockpit — optional Stage sibling lifetime', () => {
             paint(channel);
             expect(state().state).toBe('opening');
             expect(await Promise.race([pending, pause(1000).then(() => 'not-retired')])).toEqual({state: 'superseded'});
+            expect(state()).toMatchObject({recordId, state: 'superseded', message: 'Stage launch canceled: its source observation changed.'});
             expect(channel.closed).toBe(true);
             expect(launcher.active).toBeNull()
         })

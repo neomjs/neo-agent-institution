@@ -246,8 +246,8 @@ class AwaitingMergeButton extends Button {
 
     /**
      * @summary Words the button from the read's state and the queue's rows: text, title, accessible
-     * name, visibility. An unavailable read is named but opens nothing, and a list left open when the
-     * queue stops being one closes.
+     * name, visibility. Addressed Stage feedback survives the last queue row without opening an empty
+     * menu. An idle empty queue earns no pixels, and a list left open when the queue empties closes.
      * @protected
      */
     updateButton() {
@@ -255,7 +255,14 @@ class AwaitingMergeButton extends Button {
             queue = describeMergeQueue(me.openWork, me.store?.items ?? []),
             root  = me.getVdomRoot();
 
-        if (me.stageOutcome?.message) queue.title += ` · ${me.stageOutcome.recordId}: ${me.stageOutcome.message}`;
+        if (me.stageEnabled && me.stageOutcome?.recordId && me.stageOutcome.message) {
+            const outcome = me.stageOutcome;
+            queue.title = [queue.title, `${outcome.recordId}: ${outcome.message}`].filter(Boolean).join(' · ');
+            if (queue.hidden) {
+                queue.hidden = false;
+                queue.text = outcome.state === 'opening' ? 'Stage · opening' : 'Stage result'
+            }
+        }
 
         !queue.interactive && me.menuList && !me.menuList.hidden && me.menuList.unmount();
 

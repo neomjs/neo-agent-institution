@@ -79,7 +79,7 @@ class StageWindow extends Base {
             launch.channel.onmessage = ({data}) => me.receive(launch, data);
             launch.timer = setTimeout(() => me.fail(launch, 'Stage did not acknowledge a drawn record. Check its dev URL and reload the entry.'), me.launchTimeout);
             launch.monitor = setInterval(async () => {
-                if (!me.isCurrent(launch)) return me.retire();
+                if (!me.isCurrent(launch)) return me.active === launch && me.cancel();
                 if (launch.nativeRoute && !launch.checkingClose) {
                     launch.checkingClose = true;
                     try {
@@ -96,6 +96,7 @@ class StageWindow extends Base {
             Neo.Main.windowOpen({url: target.href, windowName: launch.windowName,
                 windowId, windowFeatures: 'width=1200,height=850', nativeCapabilities: {close: true, focus: true}}).then(opened => {
                 if (!me.isCurrent(launch)) {
+                    me.active === launch && me.cancel();
                     return Neo.Main.windowClose({names: launch.windowName, windowId})
                 }
                 if (!opened) me.fail(launch, 'Stage popup was denied. Allow this launch and try again.')
@@ -104,6 +105,15 @@ class StageWindow extends Base {
             me.fail(launch, 'Stage could not be opened. Check its dev URL and try again.')
         }
         return launch.promise
+    }
+
+    /**
+     * @summary Names a source replacement before releasing the launch and its pending feedback.
+     */
+    cancel() {
+        const launch = this.active;
+        launch && this.publish(launch.recordId, 'superseded', 'Stage launch canceled: its source observation changed.');
+        this.retire()
     }
 
     /**
@@ -165,7 +175,7 @@ class StageWindow extends Base {
      */
     fail(launch, message) {
         if (this.active !== launch) return;
-        if (!this.isCurrent(launch)) return this.retire();
+        if (!this.isCurrent(launch)) return this.cancel();
         this.publish(launch.recordId, 'unavailable', message);
         launch.resolve({state: 'unavailable'});
         this.retire()

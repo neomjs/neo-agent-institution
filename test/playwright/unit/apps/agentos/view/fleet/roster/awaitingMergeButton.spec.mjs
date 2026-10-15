@@ -227,6 +227,29 @@ test.describe('AwaitingMergeButton — the fleet head\'s merge queue', () => {
         }
     });
 
+    test('an addressed Stage result stays reachable after the last queue row leaves, while an idle empty queue stays hidden', async () => {
+        const store = Neo.create(FleetAwaitingMerge, {data: [pr(59)]}),
+            {head, button} = createButton({openWork: ok, store, stageEnabled: true});
+        try {
+            button.stageOutcome = {recordId: 'neomjs/neo#59', state: 'opening', message: 'Opening Stage…'};
+            store.data = [];
+            expect(button.hidden, 'the pending launch still has a reachable feedback owner').toBe(false);
+            expect(button.text).toBe('Stage · opening');
+            expect(button.vdom['aria-label']).toContain('neomjs/neo#59: Opening Stage…');
+            expect(button.vdom['aria-haspopup'], 'there is no queue menu to open').toBeNull();
+            button.stageOutcome = {recordId: 'neomjs/neo#59', state: 'superseded', message: 'Stage launch canceled: its source observation changed.'};
+            expect(button.hidden).toBe(false);
+            expect(button.text).toBe('Stage result');
+            expect(button.vdom.title).toContain('neomjs/neo#59: Stage launch canceled');
+            button.stageOutcome = null;
+            expect(button.hidden).toBe(true);
+            expect(button.vdom['aria-label']).toBeNull()
+        } finally {
+            head.destroy();
+            store.destroy()
+        }
+    });
+
     test('the Stage action resolves an internal node ID to its exact Store key, keeps the menu open, and addresses only that row', async () => {
         const store = Neo.create(FleetAwaitingMerge, {data: [pr(59), pr(59, {
             repo: 'neomjs/neo-agent-brain', id: 'neomjs/neo-agent-brain#59'
