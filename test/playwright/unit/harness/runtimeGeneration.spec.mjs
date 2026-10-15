@@ -14,6 +14,7 @@ import {
     loadRuntimeGenerationVerifier,
     inspectRuntimeSupport,
     inspectRuntimeGenerationProcesses,
+    classifyRuntimeGenerationRetention,
     materializeRuntimeGeneration,
     probeRuntimeGeneration,
     probeRuntimeRecovery as probeRuntimeRecoveryImpl
@@ -22,7 +23,7 @@ import {
     readRuntimeGeneration,
     runtimeGenerationIdentity
 } from 'neo-agent-brain/runtime-generation';
-import {isAdmissionSnapshot} from 'neo-agent-brain/launch-admission-journal';
+import {isAdmissionSnapshot, isRuntimeReferenceSnapshot, RUNTIME_REFERENCE_SNAPSHOT_VERSION} from 'neo-agent-brain/launch-admission-journal';
 
 /** @summary Keeps disposable package fixtures independent of the host's running Fleet processes. */
 const executePlan = (steps, options = {}) => executePlanImpl(steps, {
@@ -209,6 +210,98 @@ test.describe('harness/runtimeGeneration — process census', () => {
         const {result} = await inspect({after: 'not a process table'});
         expect(result.state).toBe('unknown');
         expect(result.processes[0].directories).toEqual([directory]);
+    });
+});
+
+test.describe('harness/runtimeGeneration — retention evidence', () => {
+    const id = 'a'.repeat(64), other = 'b'.repeat(64);
+    /** @summary Creates a complete pin in the actual persisted runtime format. */
+    const pin = (identity = id) => ({id: identity, directory: '/runtime/' + identity,
+        runtimeRoot: `/runtime/${identity}/host.runtime/organism`,
+        executable : `/runtime/${identity}/host.runtime/node`, payloadDigest: 'c'.repeat(64)});
+    /** @summary A real closed Start record exercises the production snapshot validator. */
+    const seat = (state = 'running', changes = {}) => ({state, ownershipUnresolved: false, cleanupUnresolved: false,
+        start: {version: 2, agentId: 'seat', identity: 'neo-gpt-sophie', harnessType: 'codex',
+            pid            : 42, pidStartedAt: 'Thu Oct 15 09:00:00 2026', startedAt: '2026-10-15T09:00:00.000Z',
+            cwd            : '/workspace', instanceHome: '/seat', launchCommand: '/harness', launchInterpreter: null,
+            profileArg     : null, leaseRequired: false, runtime: pin(), planSha256: 'd'.repeat(64),
+            profile        : null, admissionGeneration: null,
+            bridgeAuthority: {version: 1, source: 'registry-file', registryRoot: '/registry', publicKeySha256: 'e'.repeat(64)},
+            targets        : []}, ...changes});
+    /** @summary Represents a reserved or terminal reference using the production journal's full shape. */
+    const admission = (state = 'active', runtime = pin()) => ({id: 'grant-generation', agentId: 'seat',
+        identity          : 'neo-gpt-sophie', state, reason: null, reservedAt: '2026-10-15T09:00:00.000Z',
+        activatedAt       : null, revokedAt: null, definitionHash: 'f'.repeat(64), runtime,
+        credentialBindings: {}, residentBindings: {}, servers: []});
+    /** @summary Requires real codec acceptance before asking the host decision to classify a fixture. */
+    const evaluate = ({seats = [], generations = [], ...overrides} = {}) => {
+        const snapshot = {version: RUNTIME_REFERENCE_SNAPSHOT_VERSION, seats, generations};
+        expect(isAdmissionSnapshot(snapshot)).toBe(true);
+        return classifyRuntimeGenerationRetention({generation: pin(), protectedIds: [other], snapshot,
+            census            : {state: 'observed', reason: null, processes: []}, verifier: runtimeVerifier,
+            validateReferences: isRuntimeReferenceSnapshot, ...overrides});
+    };
+
+    test('zero children does not release an idle running seat pin', () => {
+        expect(evaluate({seats: [seat()]})).toEqual({eligible: false,
+            reasons: [{code: 'seat-pin-held', subject: 'seat'}]});
+    });
+
+    test('unknown ownership or cleanup retains even a terminal seat', () => {
+        for (const flags of [{ownershipUnresolved: true}, {cleanupUnresolved: true}]) {
+            expect(evaluate({seats: [seat('exited', flags)]})).toEqual({eligible: false,
+                reasons: [{code: 'seat-pin-unknown', subject: 'seat'}]});
+        }
+    });
+
+    test('only proved terminal seats and revoked admissions release their references', () => {
+        expect(evaluate({seats: [seat('exited')], generations: [admission('revoked')]}))
+            .toEqual({eligible: true, reasons: []});
+        for (const state of ['reserved', 'active', 'stale']) {
+            expect(evaluate({generations: [admission(state)]}).reasons)
+                .toContainEqual({code: 'admission-reference-held', subject: 'seat'});
+        }
+    });
+
+    test('installed, rollback and current-host protections prevent retirement', () => {
+        expect(evaluate({protectedIds: [other, id]})).toEqual({eligible: false, reasons: [{code: 'package-protected'}]});
+        for (const protectedIds of [null, [], [null], ['unknown']]) {
+            expect(evaluate({protectedIds}).reasons).toContainEqual({code: 'package-protection-unknown'});
+        }
+    });
+
+    test('a lingering child retains after the seat and admission ended', () => {
+        const result = evaluate({seats: [seat('stopped')], generations: [admission('revoked')],
+            census: {state: 'observed', reason: null, processes: [{pid: 42, directories: [pin().directory]}]}});
+        expect(result).toEqual({eligible: false, reasons: [{code: 'runtime-process-held', subject: 42}]});
+    });
+
+    test('unknown observations preserve independent package, seat and process holders', () => {
+        const result = evaluate({protectedIds: [id], seats: [seat()],
+            census: {state: 'unknown', reason: 'process-census-incomplete', processes: [{pid: 42, directories: [pin().directory]}]}});
+        expect(result.eligible).toBe(false);
+        expect(result.reasons).toEqual([{code: 'package-protected'}, {code: 'seat-pin-held', subject: 'seat'},
+            {code: 'process-census-unknown'}, {code: 'runtime-process-held', subject: 42}]);
+    });
+
+    test('missing or malformed reference evidence never turns into an empty census', () => {
+        for (const snapshot of [null, {version: 5, seats: [], generations: []}]) {
+            expect(evaluate({snapshot}).reasons).toContainEqual({code: 'runtime-references-unknown'});
+        }
+        expect(evaluate({generations: [admission('active', null)]}).reasons).toContainEqual({code: 'runtime-reference-invalid'});
+        expect(evaluate({census: null}).eligible).toBe(false);
+    });
+
+    test('a recoverable legacy snapshot cannot attest that its writer excludes new references', () => {
+        const legacy = {version: 6, seats: [], generations: []};
+        expect(isAdmissionSnapshot(legacy)).toBe(true);
+        expect(evaluate({snapshot: legacy})).toEqual({eligible: false, reasons: [{code: 'runtime-references-unknown'}]});
+    });
+
+    test('valid independent observations allow an unused generation while retaining other generations', () => {
+        const holder = seat(); holder.start.runtime = pin(other);
+        expect(evaluate({seats: [holder], generations: [admission('active', pin(other))]}))
+            .toEqual({eligible: true, reasons: []});
     });
 });
 
@@ -729,6 +822,8 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         const candidate = {runtimeRoot: input.runtimeRoot, executable: process.execPath};
         await expect(probeRuntimeRecoveryImpl(candidate, snapshot)).rejects.toThrow(/trusted source snapshot codec is required/);
         await expect(probeRuntimeRecovery(candidate, snapshot)).resolves.toBe(true);
+        await expect(probeRuntimeRecovery(candidate, {...snapshot, version: RUNTIME_REFERENCE_SNAPSHOT_VERSION}))
+            .rejects.toMatchObject({code: 'runtime-recovery-incompatible'});
         await fs.writeFile(codec, 'export function isAdmissionSnapshot(value) { return value.version === 999; }');
         await expect(probeRuntimeRecovery(candidate, snapshot)).rejects.toMatchObject({code: 'runtime-recovery-incompatible'});
         await fs.writeFile(codec, 'export const unknownFormat = true;');

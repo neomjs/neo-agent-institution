@@ -130,6 +130,66 @@ export async function inspectRuntimeGenerationProcesses({
     return {state: reason ? 'unknown' : 'observed', reason, processes}
 }
 
+/**
+ * @summary Classifies one verified generation against the existing lifecycle/admission evidence.
+ * A candidate is unused only when every observation is complete and no independent holder remains.
+ * The host must hold acquisition and package exclusion from these reads through removal.
+ * @param {Object} options
+ * @param {Object} options.generation Verified descriptor from the current trusted verifier.
+ * @param {String[]} options.protectedIds Observed installed, rollback and current-host identities.
+ * @param {Object} options.snapshot The existing journal's complete lifecycle/admission snapshot.
+ * @param {Object} options.census The title-independent host-process observation.
+ * @param {Object} options.verifier Current trusted runtime format namespace.
+ * @param {Function} options.validateReferences The journal owner's guarded-writer predicate, not its legacy recovery codec.
+ * @returns {{eligible: Boolean, reasons: Object[]}} Retention reasons, never removal authority by itself.
+ */
+export function classifyRuntimeGenerationRetention({generation, protectedIds, snapshot, census, verifier, validateReferences}) {
+    const reasons = [];
+    let pin;
+    try { pin = verifier.runtimeGenerationPin(generation); }
+    catch { return {eligible: false, reasons: [{code: 'runtime-unverified'}]} }
+    /** @summary Names each independent observation that prevents retirement. */
+    const retain = (code, subject) => reasons.push(subject === undefined ? {code} : {code, subject});
+    if (!Array.isArray(protectedIds) || !protectedIds.length || protectedIds.some(id => !/^[a-f0-9]{64}$/.test(id))) {
+        retain('package-protection-unknown');
+    }
+    if (Array.isArray(protectedIds) && protectedIds.includes(pin.id)) retain('package-protected');
+    let validReferences = false;
+    try { validReferences = validateReferences(snapshot) === true; } catch {}
+    if (!validReferences) retain('runtime-references-unknown');
+
+    /** @summary An inconsistent identity still retains a directory it names; malformed pins retain globally. */
+    function matches(reference) {
+        if (!verifier.isRuntimeGenerationPin(reference)) {
+            retain('runtime-reference-invalid');
+            return false;
+        }
+        return reference.id === pin.id || reference.directory === pin.directory;
+    }
+
+    for (const seat of Array.isArray(snapshot?.seats) ? snapshot.seats : []) {
+        if (!seat || typeof seat !== 'object') continue;
+        if (matches(seat.start?.runtime) && (!['stopped', 'exited'].includes(seat.state) ||
+            seat.ownershipUnresolved !== false || seat.cleanupUnresolved !== false)) {
+            retain(seat.ownershipUnresolved || seat.cleanupUnresolved || !['running', 'stopping'].includes(seat.state)
+                ? 'seat-pin-unknown' : 'seat-pin-held', seat.start.agentId);
+        }
+    }
+    for (const admission of Array.isArray(snapshot?.generations) ? snapshot.generations : []) {
+        if (!admission || typeof admission !== 'object' || admission.state === 'revoked') continue;
+        if (matches(admission.runtime)) retain('admission-reference-held', admission.agentId);
+    }
+    if (census?.state !== 'observed' || !Array.isArray(census.processes)) retain('process-census-unknown');
+    for (const process of Array.isArray(census?.processes) ? census.processes : []) {
+        if (!Number.isSafeInteger(process?.pid) || process.pid <= 0 || !Array.isArray(process.directories)) {
+            retain('process-census-unknown');
+        } else if (process.directories.includes(pin.directory)) {
+            retain('runtime-process-held', process.pid);
+        }
+    }
+    return {eligible: reasons.length === 0, reasons};
+}
+
 /** @summary Reads a record; a missing or malformed record is never inferred from directory contents. */
 async function readJson(file) {
     try {
