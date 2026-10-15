@@ -13,6 +13,7 @@ import {inspectPackageProtection, readPackageSlotRecord}                        
 import {resolveLauncherRuntime}                                                                                                       from '../../../../harness/brain.mjs';
 import {executePlan as executePlanImpl, holdInstallTransaction, prepareInstallContinuity, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
 import {
+    acquireHostRuntimeGeneration,
     loadRuntimeGenerationVerifier,
     inspectRuntimeSupport,
     inspectRuntimeGenerationProcesses,
@@ -151,13 +152,35 @@ test.describe('harness/runtimeGeneration — process census', () => {
         expect(result).toEqual({state: 'observed', reason: null,
             processes: [{pid: 20, startedAt: birth, directories: [directory]}]});
         expect(calls[0].args).toEqual(['-axo', 'pid=,uid=,stat=,lstart=']);
-        expect(calls[1].args).toEqual(['-nP', '-a', '-u', '501', '-d', 'txt', '-F0pfn']);
+        expect(calls[1].args).toEqual(['-nP', '-a', '-u', '501', '-F0pfn']);
         expect(calls.every(call => call.options.timeout > 0 && call.options.maxBuffer > 0)).toBe(true);
     });
 
     test('a surviving process omitted from loaded mappings makes absence unknown', async () => {
         const {result} = await inspect({mapped: mappings([[10, ['/usr/bin/node']]])});
         expect(result).toEqual({state: 'unknown', reason: 'process-census-incomplete', processes: []});
+    });
+
+    test('a childless host is retained by its open manifest while its executable is elsewhere', async () => {
+        const {result} = await inspect({mapped: mappings([[10, ['/usr/bin/node']], [20, ['/Applications/host']]]) +
+            `f11\0n${directory}/generation.json\0\n`});
+        expect(result).toEqual({state: 'observed', reason: null,
+            processes: [{pid: 20, startedAt: birth, directories: [directory]}]});
+    });
+
+    test('socket names and platform descriptor kinds do not obscure file references', async () => {
+        const {result} = await inspect({mapped: mappings([[10, ['/usr/bin/node']], [20, ['/Applications/host']]]) +
+            `f12\0n127.0.0.1:8083->127.0.0.1:9999\0\nf*000\0n${directory}/generation.json\0\nftwd\0n/working\0\nffp.\0n\0\n`});
+        expect(result.state).toBe('observed');
+        expect(result.processes).toEqual([{pid: 20, startedAt: birth, directories: [directory]}]);
+    });
+
+    test('a host-file positive cannot hide a missing executable observation for that same process', async () => {
+        const {result} = await inspect({mapped: mappings([[10, ['/usr/bin/node']]]) +
+            `p20\0\nf11\0n${directory}/generation.json\0\n`});
+        expect(result.state).toBe('unknown');
+        expect(result.reason).toBe('process-census-incomplete');
+        expect(result.processes).toEqual([{pid: 20, startedAt: birth, directories: [directory]}]);
     });
 
     test('the explicit effective uid excludes privileged login processes owned by another account', async () => {
@@ -319,6 +342,43 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
     test.beforeEach(async () => { root = await fs.realpath(await fs.mkdtemp(path.join(tmpdir(), 'runtime-generation-'))); });
     test.afterEach(async () => { await cleanup(root); });
 
+    test('host file acquisition spans publication and releases reference exclusion before child recovery', async () => {
+        const input   = await fixture(root);
+        let   guarded = false;
+        const lease   = await acquireHostRuntimeGeneration(input, {materialize: async options => {
+            const generation = await materializeRuntimeGeneration(options);
+            runtimeReferences.assertRuntimeGenerationReferences(options.referenceGuard, input.directory);
+            guarded = true;
+            return generation;
+        }});
+        try {
+            expect(guarded).toBe(true);
+            expect(runtimeReferences.holdRuntimeGenerationReferences({directory: input.directory}).release()).toBe(true);
+            const marker = path.join(lease.generation.directory, runtimeVerifier.RUNTIME_GENERATION_RECORD);
+            if (process.platform === 'darwin') {
+                const {stdout} = await promisify(execFile)('/usr/sbin/lsof', ['-nP', '-a', '-p', String(process.pid), '-F0pfn', marker]);
+                expect(stdout).toContain('n' + marker + '\0');
+            }
+        } finally { await lease.release() }
+        await expect(lease.release()).resolves.toBeUndefined();
+        if (process.platform === 'darwin') {
+            const marker = path.join(lease.generation.directory, runtimeVerifier.RUNTIME_GENERATION_RECORD);
+            await expect(promisify(execFile)('/usr/sbin/lsof', ['-nP', '-a', '-p', String(process.pid), '-F0pfn', marker]))
+                .rejects.toMatchObject({code: 1, stdout: ''});
+        }
+    });
+
+    test('host acquisition rejects a changed manifest and releases the acquisition guard', async () => {
+        const input = await fixture(root);
+        await expect(acquireHostRuntimeGeneration(input, {materialize: async options => {
+            const generation = await materializeRuntimeGeneration(options);
+            const marker     = path.join(generation.directory, runtimeVerifier.RUNTIME_GENERATION_RECORD);
+            await fs.chmod(marker, 0o600);
+            return generation;
+        }})).rejects.toThrow(/manifest custody/);
+        expect(runtimeReferences.holdRuntimeGenerationReferences({directory: input.directory}).release()).toBe(true);
+    });
+
     test('publication holds reference exclusion through its probe and releases before returning', async () => {
         const input     = await fixture(root);
         let   probed    = false;
@@ -376,7 +436,9 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
             args: first.launchArgs, runtimeRoot: first.runtimeRoot, executable: first.executable
         })).resolves.toEqual({runtimeRoot: first.runtimeRoot, executable: first.executable, generation: first.generation});
         expect(first.executable.startsWith(await fs.realpath(input.bundlePath))).toBe(false);
-        expect(second).toEqual(first);
+        expect({...second, release: null}).toEqual({...first, release: null});
+        await first.release();
+        await second.release();
         expect(probes).toBe(1);
         await expect(fs.stat(path.join(root, 'installed-userData'))).rejects.toMatchObject({code: 'ENOENT'});
     });
@@ -468,7 +530,7 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
                         'const state = globalThis.bootWitness; export const app = {isPackaged:true, getPath: name => name === "userData" ? state.profile : "/tmp", setPath:(name,value) => {if(name === "userData") state.profile=value;}, setAppLogsPath:() => {} };' +
                         'export const protocol = {registerSchemesAsPrivileged:() => {state.scheme=true;}}; export const BrowserWindow={},ipcMain={},Menu={},nativeImage={},safeStorage={},session={},shell={},Tray={};';
                         else if (url.endsWith('/runtimeGeneration.mjs')) source =
-                                'export async function loadRuntimeGenerationReferences(){return {fixture:true};} export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
+                                'export const classifyRuntimeGenerationRetention=()=>{},inspectRuntimeGenerationProcesses=()=>{},removeOwnedRuntimeTree=()=>{},loadRuntimeMaintenanceContracts=async()=>({}); export async function acquireHostRuntimeGeneration(options,{materialize}){return {generation:await materialize(options),release:async()=>{}};} export async function loadRuntimeGenerationReferences(){return {fixture:true};} export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
                     else if (url.endsWith('/mainLog.mjs')) source = 'export const carriesSecret=()=>false, createMainLog=()=>({install(){}});';
                     else if (leaf(url)) {
                         state.imports.push(url);

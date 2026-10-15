@@ -25,9 +25,11 @@ import {
     ROSTER_CROSSING_WINDOW_MS,
     computeFirstPaintVerdict
 } from './adapterWitness.mjs';
-import {createAppLifecycle}                                 from './appLifecycle.mjs';
-import {createCredentialPrompt}                             from './credentialPrompt.mjs';
-import {createAbsentFleetCapability, createFleetCapability} from './fleetCapability.mjs';
+import {createAppLifecycle}                                                                              from './appLifecycle.mjs';
+import {loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, loadRuntimeMaintenanceContracts} from './runtimeGeneration.mjs';
+import {retireRuntimeGenerations, startRuntimeMaintenance}                                               from './runtimeMaintenance.mjs';
+import {createCredentialPrompt}                                                                          from './credentialPrompt.mjs';
+import {createAbsentFleetCapability, createFleetCapability}                                              from './fleetCapability.mjs';
 import {
     APP_HOST,
     CONTENT_SECURITY_POLICY,
@@ -136,8 +138,9 @@ if (smokeHold.refusal) {
 smokeRoot && app.setPath('userData', path.join(smokeRoot, 'userData'));
 
 let
-    brainBootPromise = Promise.resolve(null),
-    fleetBearerToken = null,
+    brainBootPromise   = Promise.resolve(null),
+    runtimeMaintenance = null,
+    fleetBearerToken   = null,
     resolveHarnessAsset,
     // The shell's transport-boot fact for the cockpit banner — attached to every brain-health
     // answer so the renderer can name WHICH shell case is live instead of guessing "offline".
@@ -998,8 +1001,13 @@ const appLifecycle = createAppLifecycle({
     // Quit during boot waits for that bounded readiness contract before draining children. Without
     // this join, an early will-quit can observe an empty owner and a late spawn becomes an orphan.
     teardownBrain: async () => {
-        await brainBootPromise;
-        return teardownBrain()
+        try {
+            await brainBootPromise;
+            await runtimeMaintenance?.close();
+            return await teardownBrain()
+        } finally {
+            await launcherRuntime.release?.()
+        }
     }
 });
 
@@ -1544,6 +1552,31 @@ app.whenReady().then(async () => {
                     uiTransportFact = normalizeTransportFact(boot);
                     return boot
                 }));
+
+    if (packagedMode && !diagnosticMode) {
+        brainBootPromise = brainBootPromise.then(async boot => {
+            try {
+                const source                            = {bundlePath: path.resolve(process.resourcesPath, '..', '..'), runtimeRoot: packagedOrganismRoot};
+                const [verifier, references, contracts] = await Promise.all([
+                    loadRuntimeGenerationVerifier(source), loadRuntimeGenerationReferences(source), loadRuntimeMaintenanceContracts(source)
+                ]);
+                runtimeMaintenance = startRuntimeMaintenance(() => retireRuntimeGenerations({
+                    directory       : path.dirname(launcherRuntime.generation.directory), currentGeneration: launcherRuntime.generation,
+                    journalDirectory: path.join(app.getPath('userData'), 'brain', 'fleet', 'launch-admission'),
+                    verifier, references, ...contracts
+                }), {
+                    onResult: result => {
+                        const removed = result.generations.filter(row => row.state === 'removed');
+                        if (removed.length) console.log('HARNESS_RUNTIME_RETIRED ' + JSON.stringify(removed.map(row => row.id)));
+                    },
+                    onError: error => console.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + (error.code || error.message))
+                });
+            } catch (error) {
+                console.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + (error.code || error.message));
+            }
+            return boot;
+        });
+    }
 
     if (!smokeMode) {
         try {

@@ -26,15 +26,15 @@
 // the next canonical restart — see ProcessSupervisorService.reconcileSingletonPort), which is
 // exactly why parent-only teardown leaks: the group is the only boundary that owns the whole tree.
 
-import {execFile, execFileSync, spawn}                                                                from 'node:child_process';
-import {randomUUID}                                                                                   from 'node:crypto';
-import {once}                                                                                         from 'node:events';
-import fs                                                                                             from 'node:fs';
-import net                                                                                            from 'node:net';
-import path                                                                                           from 'node:path';
-import {pathToFileURL}                                                                                from 'node:url';
-import {carriesSecret}                                                                                from './mainLog.mjs';
-import {loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, materializeRuntimeGeneration} from './runtimeGeneration.mjs';
+import {execFile, execFileSync, spawn}                                                                                              from 'node:child_process';
+import {randomUUID}                                                                                                                 from 'node:crypto';
+import {once}                                                                                                                       from 'node:events';
+import fs                                                                                                                           from 'node:fs';
+import net                                                                                                                          from 'node:net';
+import path                                                                                                                         from 'node:path';
+import {pathToFileURL}                                                                                                              from 'node:url';
+import {carriesSecret}                                                                                                              from './mainLog.mjs';
+import {acquireHostRuntimeGeneration, loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, materializeRuntimeGeneration} from './runtimeGeneration.mjs';
 
 export const ORCHESTRATOR_ENTRY = 'ai/daemons/orchestrator/daemon.mjs';
 export const FLEET_SERVER_ENTRY = 'ai/services/fleet/devFleetServer.mjs';
@@ -81,7 +81,7 @@ export function resolveAgentOsRuntimeRoot(env = process.env) {
  * @param {String} [options.executable] Packaged executable to copy and verify.
  * @param {String} [options.userData] Already-selected Electron profile root.
  * @param {Function} [options.materialize=materializeRuntimeGeneration] Runtime publisher.
- * @returns {Promise<{runtimeRoot: String|null, executable: String, generation: Object|null, launchArgs: String[]}>}
+ * @returns {Promise<{runtimeRoot: (String|null), executable: String, generation: (Object|null), launchArgs: String[], release: (Function|undefined)}>}
  */
 export async function resolveLauncherRuntime({
     brainMode, env = process.env, packaged, packagedOrganismRoot = null,
@@ -93,13 +93,14 @@ export async function resolveLauncherRuntime({
         }
         const verifier   = await loadRuntimeGenerationVerifier({bundlePath, runtimeRoot: packagedOrganismRoot});
         const references = await loadRuntimeGenerationReferences({bundlePath, runtimeRoot: packagedOrganismRoot});
-        const generation = await materialize({
+        const lease      = await acquireHostRuntimeGeneration({
             bundlePath, runtimeRoot: packagedOrganismRoot, executable,
             directory: path.join(userData, 'brain', 'runtime'),
             verifier, references
-        });
+        }, {materialize});
+        const {generation} = lease;
         return {runtimeRoot: generation.runtimeRoot, executable: generation.executable, generation,
-            launchArgs: verifier.runtimeGenerationArguments(generation)}
+            launchArgs: verifier.runtimeGenerationArguments(generation), release: lease.release}
     }
 
     return {

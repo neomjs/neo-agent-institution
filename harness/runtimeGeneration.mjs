@@ -45,7 +45,7 @@ function runtimeProcessTable(text, probePid, uid) {
 
 /** @summary Parses NUL-delimited loaded-file records without treating a filename's newline as a field. */
 function runtimeProcessMappings(text) {
-    const rows = new Map();
+    const rows = new Map(), executables = new Set();
     let   pid  = null, descriptor = null, valid = !text || /\0\n?$/.test(text);
     for (const raw of text.split('\0')) {
         const field = raw.startsWith('\n') ? raw.slice(1) : raw;
@@ -57,19 +57,22 @@ function runtimeProcessMappings(text) {
             }
             rows.set(pid, []);
             descriptor = null;
-        } else if (field === 'ftxt' && pid !== null) {
-            descriptor = 'txt';
-        } else if (field.startsWith('n/') && pid !== null && descriptor === 'txt') {
-            rows.get(pid).push(field.slice(1));
+        } else if (/^f[\w.*-]+$/.test(field) && pid !== null) {
+            descriptor = field.slice(1);
+        } else if (field.startsWith('n') && pid !== null && descriptor !== null) {
+            if (field.startsWith('n/')) {
+                rows.get(pid).push(field.slice(1));
+                if (descriptor === 'txt') executables.add(pid);
+            }
         } else {
             valid = false; pid = null;
         }
     }
-    return {rows, valid}
+    return {rows, executables, valid}
 }
 
 /**
- * @summary Observes the host account's loaded runtime files independently of mutable process titles.
+ * @summary Observes the host account's loaded and open runtime files independently of mutable process titles.
  * An uninspected survivor, changed birth token, new process, malformed output or failed tool makes
  * absence unknown. Positive mappings remain in the result even when another part of the scan fails.
  * The caller must still exclude new runtime references through its check/removal transaction.
@@ -104,7 +107,7 @@ export async function inspectRuntimeGenerationProcesses({
     }
 
     const before = await observe('/bin/ps', ['-axo', 'pid=,uid=,stat=,lstart=']);
-    const mapped = await observe('/usr/sbin/lsof', ['-nP', '-a', '-u', String(uid), '-d', 'txt', '-F0pfn']);
+    const mapped = await observe('/usr/sbin/lsof', ['-nP', '-a', '-u', String(uid), '-F0pfn']);
     const after  = await observe('/bin/ps', ['-axo', 'pid=,uid=,stat=,lstart=']);
     if (![before, mapped, after].every(row => row.ok)) reason = 'process-inspection-failed';
     let first, last, files;
@@ -124,18 +127,64 @@ export async function inspectRuntimeGenerationProcesses({
             reason ||= 'process-census-incomplete';
         }
         for (const [pid, birth] of last) {
-            if (first.get(pid) !== birth || !files.get(pid)?.length) reason ||= 'process-census-incomplete';
+            if (first.get(pid) !== birth || !parsed.executables.has(pid)) reason ||= 'process-census-incomplete';
         }
     }
     return {state: reason ? 'unknown' : 'observed', reason, processes}
 }
 
 /**
- * @summary Classifies one verified generation against the existing lifecycle/admission evidence.
+ * @summary Pins a host's verified generation with an OS-held file, before releasing acquisition exclusion.
+ * The file descriptor spans delayed boot, private imports, transport reuse and childless hosts. It is
+ * visible to the process census and closes on host exit; it is not a second retention registry.
+ * @param {Object} options Same explicit source, verifier and reference owner as materialization.
+ * @param {Object} [dependencies]
+ * @param {Function} [dependencies.materialize=materializeRuntimeGeneration] Trusted publisher seam.
+ * @returns {Promise<{generation: Object, release: Function}>} The host owns release after teardown.
+ */
+export async function acquireHostRuntimeGeneration(options, {materialize = materializeRuntimeGeneration} = {}) {
+    if (typeof options.directory !== 'string' || !path.isAbsolute(options.directory)) throw refusal('runtime-binding-invalid', 'host runtime parent is required');
+    const source = await fs.realpath(options.bundlePath);
+    if (inside(source, path.resolve(options.directory))) throw refusal('runtime-binding-invalid', 'host runtime parent is inside its source package');
+    await fs.mkdir(options.directory, {recursive: true, mode: 0o700});
+    const directory = await fs.realpath(options.directory), references = options.references;
+    if (inside(source, directory)) throw refusal('runtime-binding-invalid', 'resolved host runtime parent is inside its source package');
+    const guard = await references.waitForRuntimeGenerationReferences({directory, signal: options.signal});
+    let handle, published = false;
+    try {
+        const generation = await materialize({...options, directory, referenceGuard: guard});
+        if (path.dirname(generation.directory) !== directory) throw refusal('runtime-host-binding-invalid', 'host pin escapes its guarded parent');
+        const file   = path.join(generation.directory, options.verifier.RUNTIME_GENERATION_RECORD);
+        const before = await fs.lstat(file, {bigint: true});
+        if (!before.isFile() || before.uid !== BigInt(process.getuid()) || before.nlink !== 1n || before.mode & 0o222n ||
+            await fs.realpath(file) !== file) throw refusal('runtime-host-binding-invalid', 'host manifest custody is not sealed');
+        handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+        const opened = await handle.stat({bigint: true});
+        const record = JSON.parse(await handle.readFile('utf8'));
+        const after  = await fs.lstat(file, {bigint: true});
+        if ([opened, after].some(stat => ['dev', 'ino', 'uid', 'mode', 'size', 'mtimeNs', 'ctimeNs'].some(key => stat[key] !== before[key])) ||
+            !isDeepStrictEqual(options.verifier.runtimeGenerationDescriptor(generation.directory, record), generation)) {
+            throw refusal('runtime-host-binding-invalid', 'host manifest changed during acquisition');
+        }
+        references.assertRuntimeGenerationReferences(guard, directory);
+        let closing;
+        const result = Object.freeze({generation, release() { return closing ||= handle.close() }});
+        if (guard.release() !== true) throw refusal('runtime-reference-release-unproved', 'host acquisition exclusion was not released');
+        published = true;
+        return result;
+    } finally {
+        if (!published) {
+            try { await handle?.close() } finally { guard.release() }
+        }
+    }
+}
+
+/**
+ * @summary Classifies a runtime pin against the existing lifecycle/admission evidence.
  * A candidate is unused only when every observation is complete and no independent holder remains.
- * The host must hold acquisition and package exclusion from these reads through removal.
+ * The host must verify the payload before removal and hold acquisition/package exclusion throughout.
  * @param {Object} options
- * @param {Object} options.generation Verified descriptor from the current trusted verifier.
+ * @param {Object} options.generation Descriptor or manifest pin; this decision does not establish payload integrity.
  * @param {String[]} options.protectedIds Observed installed, rollback and current-host identities.
  * @param {Object} options.snapshot The existing journal's complete lifecycle/admission snapshot.
  * @param {Object} options.census The title-independent host-process observation.
@@ -243,10 +292,20 @@ export async function loadRuntimeGenerationVerifier(options) {
 /** @summary Loads the assembled source's reference owner without a checkout-level Brain import. */
 export async function loadRuntimeGenerationReferences(options) {
     const references = await loadRuntimeContract(options, 'runtime-generation-lease');
-    if (['waitForRuntimeGenerationReferences', 'assertRuntimeGenerationReferences'].some(name => typeof references[name] !== 'function')) {
+    if (['holdRuntimeGenerationReferences', 'waitForRuntimeGenerationReferences', 'assertRuntimeGenerationReferences'].some(name => typeof references[name] !== 'function')) {
         throw refusal('runtime-verifier-invalid', 'the assembled Brain has no compatible reference owner')
     }
     return references
+}
+
+/** @summary Loads the current package's read-only journal codec and existing package-lease primitive. */
+export async function loadRuntimeMaintenanceContracts(options) {
+    const [journal, leases] = await Promise.all([
+        loadRuntimeContract(options, 'launch-admission-journal'), loadRuntimeContract(options, 'file-lease')
+    ]);
+    if (typeof journal.readLaunchAdmissionJournal !== 'function' || typeof journal.isRuntimeReferenceSnapshot !== 'function' ||
+        typeof leases.holdFileLease !== 'function') throw refusal('runtime-verifier-invalid', 'maintenance contracts are incomplete');
+    return {journal, leases};
 }
 
 /** @summary Resolves an explicit Brain contract inside the current receipt-bound source package. */
@@ -334,8 +393,12 @@ async function seal(root, entries) {
     }
 }
 
-/** @summary Removes only this invocation's staging tree, without following its symlinks. */
-async function discardStage(root) {
+/**
+ * @summary Removes only a caller-owned staging or committed retirement tree, without following symlinks.
+ * @param {String} root The caller's private tree, never a still-published generation.
+ * @returns {Promise<void>}
+ */
+export async function removeOwnedRuntimeTree(root) {
     /** @summary Restores directory write permission only within the owned staging tree. */
     async function unlock(file) {
         let stat;
@@ -546,7 +609,7 @@ export async function materializeRuntimeGeneration({
             references.assertRuntimeGenerationReferences(guard, directory);
             return published
         } finally {
-            await discardStage(stage)
+            await removeOwnedRuntimeTree(stage)
         }
     }
 }

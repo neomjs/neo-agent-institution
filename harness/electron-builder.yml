@@ -24,6 +24,7 @@ files:
     - planeConfig.mjs
     - preload.cjs
     - runtimeGeneration.mjs
+    - runtimeMaintenance.mjs
     - seatRootBroker.mjs
     - seatRootMove.mjs
     - seatRootRecord.mjs
