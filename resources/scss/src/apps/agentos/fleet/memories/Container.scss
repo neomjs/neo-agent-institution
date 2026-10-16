@@ -176,11 +176,16 @@
         border: 0;
     }
 
+    .neo-grid-body {
+        width: 100% !important;
+    }
+
     /* specificity, not order: the engine's lattice rule is `.neo-grid-body .neo-grid-row
        .neo-grid-cell` (three classes) and the per-class CSS load order is not a contract */
     .neo-grid-body .neo-grid-row .neo-grid-cell {
         border : 0;
         padding: 0;
+        width  : 100% !important;
     }
 
     /* a headerless designed list, not a data table: the single component column needs no header

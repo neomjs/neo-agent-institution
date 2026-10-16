@@ -83,7 +83,38 @@ class RowsGrid extends GridContainer {
     onConstructed(...args) {
         super.onConstructed(...args);
 
-        const me = this;
+        const
+            me    = this,
+            model = me.view.selectionModel;
+
+        if (model) {
+            const {onNavKeyRow, onRowClick, updateRows} = model;
+
+            model.updateRows = function(recordIds, silent = false) {
+                return updateRows.call(this, recordIds, silent || Boolean(this.silentRowUpdate))
+            };
+
+            model.onRowClick = function(event) {
+                if (event.data?.path?.some(node => node.cls?.includes('fm-memories-card-open'))) {
+                    return
+                }
+                this.silentRowUpdate = true;
+                try {
+                    return onRowClick.call(this, event)
+                } finally {
+                    this.silentRowUpdate = false
+                }
+            };
+
+            model.onNavKeyRow = function(step) {
+                this.silentRowUpdate = true;
+                try {
+                    return onNavKeyRow.call(this, step)
+                } finally {
+                    this.silentRowUpdate = false
+                }
+            }
+        }
 
         me.body.on('scrollEdge', me.onBodyScrollEdge, me);
         me.view.on({
@@ -94,6 +125,7 @@ class RowsGrid extends GridContainer {
     }
 
     /**
+     * @summary Batch the rail class, row height, and row lattice into one grid update.
      * @param {Boolean} value
      * @param {Boolean} oldValue
      */
@@ -101,8 +133,30 @@ class RowsGrid extends GridContainer {
         const me = this;
 
         if (oldValue !== undefined) {
+            const
+                {body}    = me,
+                wasSilent = me.silentVdomUpdate;
+
+            me.silentVdomUpdate = true;
+            me.updateDepth      = -1;
+
+            if (body) {
+                body.silentVdomUpdate   = true;
+                body.skipCreateViewData = true
+            }
+
             me.toggleCls('is-rail', value);
-            me.rowHeight = value ? me.railRowHeight : me.cardRowHeight
+            me.rowHeight = value ? me.railRowHeight : me.cardRowHeight;
+
+            if (body) {
+                body.availableHeight > 0 && body.updateAvailableRows();
+                body.skipCreateViewData = false;
+                body.items.length > 0 && body.createViewData(true, true);
+                body.silentVdomUpdate = false
+            }
+
+            me.silentVdomUpdate = wasSilent;
+            me.update()
         }
     }
 
@@ -110,7 +164,7 @@ class RowsGrid extends GridContainer {
      * @summary Clear the row selection without relaying it: the pane decides what the reader shows.
      */
     clearSelection() {
-        this.view.selectionModel?.deselectAllRows()
+        this.view.selectionModel?.deselectAllRows(true)
     }
 
     /**
