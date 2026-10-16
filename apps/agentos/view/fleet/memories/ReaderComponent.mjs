@@ -226,7 +226,7 @@ class ReaderComponent extends Component {
             iso      = ViewerTime.viewerTimeTitle(record.timestamp),
             metaBits = [
                 ViewerTime.formatViewerTime(record.timestamp)?.text ?? 'unknown time',
-                record.agentIdentity || null,
+                record.agentIdentity || record.target || me.reading?.target || null,
                 Number.isFinite(record.amountToolCalls) ? `${record.amountToolCalls} tool calls` : null
             ].filter(Boolean);
 

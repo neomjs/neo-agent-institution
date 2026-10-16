@@ -72,6 +72,7 @@ test.describe('Fleet memories SummaryRowComponent + TurnRowComponent — the ske
 
         expect(nodeBy(row, 'fm-memories-card-title').text).toBe('Mailbox grid conversion');
         expect(nodeBy(row, 'fm-memories-provenance').cls).toContain('is-derived');
+        expect(nodeBy(row, 'fm-memories-provenance').title).toBe('a summary made from the agent\'s own records');
 
         const open = nodeBy(row, 'fm-memories-card-open');
         expect(open.tag).toBe('button');
@@ -125,17 +126,20 @@ test.describe('Fleet memories SummaryRowComponent + TurnRowComponent — the ske
         row.destroy()
     });
 
-    test('the turn row without miniSummary: bounded response head IS the line, prompt secondary, T5 meta', () => {
-        const row = Neo.create(TurnRowComponent, {appName, rowData: {...baseTurn}});
+    test('the turn row without miniSummary: bounded response head IS the line, prompt secondary, T5 meta with authoring identity from record or drill target', () => {
+        const row = Neo.create(TurnRowComponent, {appName, rowData: {...baseTurn, target: '@neo-opus-grace'}});
 
         const meta = nodeBy(row, 'fm-memories-turn-meta');
-        expect(meta.text).toContain('@neo-fable-clio');
-        expect(meta.text).toContain('12 tool calls');
+        expect(meta.text).toMatch(/^.+ · @neo-fable-clio · 12 tool calls$/);
         expect(meta.title).toBe('2026-08-28T15:54:27.998Z');
 
         expect(nodeBy(row, 'fm-memories-turn-title')).toBeNull();
         expect(nodeBy(row, 'fm-memories-turn-response').text).toBe('The one data path landed; every battery is green.');
         expect(nodeBy(row, 'fm-memories-turn-prompt').text).toBe('prompt · continue the lane');
+
+        // when the wire carries no identity field on the turn record, the drill's target stands in
+        row.rowData = {...baseTurn, agentIdentity: null, target: '@neo-opus-grace'};
+        expect(nodeBy(row, 'fm-memories-turn-meta').text).toMatch(/^.+ · @neo-opus-grace · 12 tool calls$/);
 
         row.destroy()
     });

@@ -131,21 +131,39 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
         expect(pane.getReference('memories-splitter').hidden).toBe(true)
     });
 
-    test('a selected turn reads as prompt, thought and response, whole, with a copy action each', () => {
-        const {pane, reader, summaryGrid, turnGrid} = readyPane();
+    test('a selected turn reads as prompt, thought and response, whole, with a copy action each, and its meta carries the authoring identity from the record or the drill target', () => {
+        const {pane, reader, summaryGrid, turnGrid} = readyPane(),
+              turnWithoutIdentity                   = {...TURN, id: 't2', agentIdentity: undefined},
+              turnWithOwnIdentity                   = {...TURN, id: 't1', agentIdentity: '@neo-fable-clio'};
 
         pane.openSession({sessionId: 's1-session', title: 'Title s1'});
-        pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's1-session', page: {offset: 0}, turns: [TURN], total: 1};
+        pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's1-session', page: {offset: 0}, turns: [turnWithOwnIdentity, turnWithoutIdentity], total: 2};
 
         expect(texts(reader.vdom)).toContain('Select a turn to read it in full.');
+        expect(turnGrid.target).toBe('@neo-opus-grace');
 
+        // record with its own identity field renders it between time and tool-call count
         click(turnGrid, 0);
 
+        expect(nodesWith(reader.vdom, 'fm-memories-read-meta')[0].text).toMatch(/^.+ · @neo-fable-clio · 7 tool calls$/);
         expect(nodesWith(reader.vdom, 'fm-memories-read-label').map(node => node.text)).toEqual(['Prompt', 'Thought', 'Response']);
         expect(nodesWith(reader.vdom, 'fm-memories-read-text').map(node => node.text)).toEqual([TURN.prompt, TURN.thought, TURN.response]);
         expect(nodesWith(reader.vdom, 'fm-memories-read-copy').map(node => node['aria-label'])).toEqual(['Copy the prompt', 'Copy the thought', 'Copy the response']);
         expect(turnGrid.rail).toBe(true);
-        expect(summaryGrid.rail).toBe(false)
+        expect(summaryGrid.rail).toBe(false);
+
+        // record without an identity field on the wire renders the drill's target (@neo-opus-grace)
+        click(turnGrid, 1);
+
+        expect(nodesWith(reader.vdom, 'fm-memories-read-meta')[0].text).toMatch(/^.+ · @neo-opus-grace · 7 tool calls$/);
+
+        // show all renders both in list order: own identity on t1, drill target on t2
+        pane.controller.onShowAllClick();
+        const metas = nodesWith(reader.vdom, 'fm-memories-read-meta').map(node => node.text);
+        expect(metas[0]).toMatch(/^.+ · @neo-fable-clio · 7 tool calls$/);
+        expect(metas[1]).toMatch(/^.+ · @neo-opus-grace · 7 tool calls$/);
+
+        pane.destroy()
     });
 
     test('↑/↓ move the reading with the selection; Escape closes it and clears the selection', () => {

@@ -38,7 +38,7 @@ class TurnRowComponent extends Component {
         baseCls: ['fm-memories-turn-cell'],
         /**
          * The plain render bag: `{agentIdentity, amountToolCalls, miniSummary, prompt, response,
-         * timestamp}`. A fresh object per factory call.
+         * target, timestamp}`. A fresh object per factory call.
          * @member {Object|null} rowData_=null
          * @reactive
          */
@@ -82,7 +82,7 @@ class TurnRowComponent extends Component {
             prompt   = TurnRowComponent.boundProse(data.prompt, 240),
             metaBits = [
                 ViewerTime.formatViewerTime(data.timestamp)?.text ?? 'unknown time',
-                data.agentIdentity || null,
+                data.agentIdentity || data.target || null,
                 Number.isFinite(data.amountToolCalls) ? `${data.amountToolCalls} tool calls` : null
             ].filter(Boolean),
             children = [{

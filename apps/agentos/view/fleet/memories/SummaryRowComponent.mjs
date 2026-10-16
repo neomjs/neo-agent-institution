@@ -87,8 +87,9 @@ class SummaryRowComponent extends Component {
                     cls : ['fm-memories-card-title'],
                     text: data.title ?? 'Title unavailable for this session.'
                 }, {
-                    cls : ['fm-memories-provenance', 'is-derived'],
-                    text: 'derived'
+                    cls  : ['fm-memories-provenance', 'is-derived'],
+                    text : 'derived',
+                    title: 'a summary made from the agent\'s own records'
                 }, {
                     tag         : 'button',
                     type        : 'button',

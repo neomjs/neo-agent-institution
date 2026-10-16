@@ -110,7 +110,7 @@ function sessionMemoriesResult(params = {}) {
                 response   : 'The wake transport holds: both probes returned signed receipts, and the host replayed them in order.'
             },
             {
-                id: 'turn-1', sessionId, timestamp: '2026-08-02T19:10:00.000Z', agentIdentity: '@neo-opus-ada', amountToolCalls: 3,
+                id: 'turn-1', sessionId, timestamp: '2026-08-02T19:10:00.000Z', agentIdentity: null, amountToolCalls: 3,
                 miniSummary: null,
                 prompt     : 'Read the integrity contract.',
                 thought    : null,
@@ -434,6 +434,9 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             // ── the summary register ──
             await assertBareRegister('summary', '.fm-memories-summary-grid');
+            await expect(pane.locator('.fm-pane-head .fm-pane-meta')).toHaveText("Summaries are made at read time from the agent's own records; they are not the record.");
+            await expect(pane.locator('.fm-pane-head .fm-pane-meta')).toHaveAttribute('title', 'query-time · not authority');
+            await expect(pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-provenance.is-derived')).toHaveAttribute('title', "a summary made from the agent's own records");
 
             // the pointer over a card tints nothing (the engine's hover rule is re-bound to transparent)
             await pane.locator('.fm-memories-card').nth(1).hover();
@@ -450,6 +453,10 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await expect(pane.locator('.fm-memories-turn-cell')).toHaveCount(2, {timeout: 10000});
             await expect(pane.locator('.fm-memories-turn').nth(0)).toContainText('Wake transport verified end to end');
             await expect(pane.locator('.fm-memories-turn').nth(1)).not.toContainText('Response unavailable');
+            await expect(pane.locator('.fm-memories-drill-head .fm-memories-provenance.is-authored')).toHaveAttribute('title', "the agent's own prompt · thought · response");
+            await expect(pane.locator('.fm-memories-drill-legend')).toHaveText("authored records: the agent's own prompt · thought · response. derived: a summary made from them.");
+            expect((await pane.locator('.fm-memories-drill-legend').boundingBox()).y).toBeGreaterThanOrEqual((await pane.locator('.fm-memories-drill-title').boundingBox()).y + (await pane.locator('.fm-memories-drill-title').boundingBox()).height);
+            await expect(pane.locator('.fm-memories-turn').nth(1).locator('.fm-memories-turn-meta')).toContainText('@neo-opus-ada · 3 tool calls');
             await page.evaluate(() => document.fonts.ready);
 
             await assertBareRegister('turns', '.fm-memories-turn-grid');
@@ -460,6 +467,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             const reader = pane.locator('.fm-memories-reader');
 
+            await expect(reader.locator('.fm-memories-read-meta')).toContainText('@neo-opus-ada · 3 tool calls');
             await expect(reader.locator('.fm-memories-read-label')).toHaveText(['Prompt', 'Thought', 'Response']);
             await expect(reader.locator('.fm-memories-read-text')).toHaveText([
                 'Read the integrity contract.',
