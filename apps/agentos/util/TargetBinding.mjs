@@ -147,6 +147,28 @@ class TargetBinding extends Base {
     }
 
     /**
+     * @summary Retire the held recent turns when the bridge in hand belongs to another profile than the one
+     * that answered them. The Agent Detail's Thought stream returns to unobserved until the new profile
+     * answers for the seat shown, so one instance's turns never stand under another's name; the seat stays
+     * held, the read that calls this asks for it anew. That read has already taken its generation, which
+     * fences any earlier profile's read still in flight.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
+     * @param {Object} options
+     * @param {String|null} options.profileId The profile the bridge in hand is bound to.
+     * @returns {Boolean} whether a retirement happened
+     */
+    static retireRecentTurns(owner, {profileId}) {
+        if (!owner.recentTurnsSnapshot || owner.recentTurnsProfileId === profileId) {
+            return false
+        }
+
+        owner.recentTurnsSnapshot  = null;
+        owner.recentTurnsProfileId = null;
+
+        return true
+    }
+
+    /**
      * @summary Retire the graph scene when the bridge in hand belongs to another profile than the read
      * the leaf holds. The leaf returns to its unobserved declaration until the new profile answers, so
      * the Observatory never draws one instance's neighbourhood under another's name; its selection

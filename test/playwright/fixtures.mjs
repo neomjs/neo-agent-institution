@@ -160,6 +160,17 @@ export async function landFleetOpenWork(page, snapshot) {
 }
 
 /**
+ * @summary Lands one `fleetRecentTurns` envelope in the mounted cockpit as the owner's answer for the shown
+ * seat: the Agent Detail's Thought stream follows it when the envelope's `target` is the seat it shows.
+ * @param {Object} page The Playwright page.
+ * @param {Object} snapshot The envelope.
+ * @returns {Promise<void>}
+ */
+export async function landFleetRecentTurns(page, snapshot) {
+    await landFleet(page, {recentTurns: {snapshot}})
+}
+
+/**
  * @summary Lands the tests' sample fleet (`test/playwright/fixture/fleetSample.mjs`): eleven roster
  * cards and six activity events, as live answers. A spec that reads cards or events calls this after
  * the cockpit is visible; it resolves once the first card renders.

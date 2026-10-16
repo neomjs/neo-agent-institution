@@ -9,7 +9,9 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * health over minutes. Every one of them but the open work is a Memory Core call behind the fleet
  * server, so one shared fast tick made an open cockpit the plane's heaviest caller, and a slow plane
  * then queued every other seat behind it. The open work reads the fleet server's own producer, which
- * observes GitHub once a minute, so a faster read would only repeat its answer.
+ * observes GitHub once a minute, so a faster read would only repeat its answer. The shown seat's recent
+ * turns (the Agent Detail's Thought stream) read on the open work's interval and only while the detail
+ * shows a seat: an idle cockpit launches nothing for them.
  *
  * A due read still launches while an earlier one of its wires hangs, up to the in-flight cap: that
  * probe is what notices a recovered transport. The bounded read window is far shorter than any
@@ -33,7 +35,8 @@ class LivenessCadence extends Base {
         tasks          : 120000,
         deploymentState: 120000,
         openWork       : 60000,
-        operatorInbox  : 60000
+        operatorInbox  : 60000,
+        recentTurns    : 60000
     })
 
     /**
@@ -57,7 +60,8 @@ class LivenessCadence extends Base {
         tasks          : Object.freeze({load: 'loadTasks',           inFlight: 'tasksReadInFlight'}),
         deploymentState: Object.freeze({load: 'loadDeploymentState', inFlight: 'deploymentStateReadInFlight'}),
         openWork       : Object.freeze({load: 'loadOpenWork',        inFlight: 'openWorkReadInFlight'}),
-        operatorInbox  : Object.freeze({load: 'refreshOperatorInbox', inFlight: 'operatorInboxReadInFlight', cap: 1})
+        operatorInbox  : Object.freeze({load: 'refreshOperatorInbox', inFlight: 'operatorInboxReadInFlight', cap: 1}),
+        recentTurns    : Object.freeze({load: 'loadRecentTurns',     inFlight: 'recentTurnsReadInFlight'})
     })
 
     static config = {
