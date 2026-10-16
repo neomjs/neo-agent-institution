@@ -1885,5 +1885,72 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         // goldens witness the width modes. This spec owns the structural half — the verbs exist, stay in
         // flow, and stay visible regardless of lifecycle state.
         card.destroy()
+    });
+
+    test('a seat that exited without a Stop shows why on the card and its title, and an intentional Stop or subsequent Start clears it (#683)', () => {
+        const
+            exitedAt      = '2026-10-16T08:00:00.000Z',
+            now           = Date.parse('2026-10-16T08:02:00.000Z'),
+            harnessUpdate = {
+                state      : 'harness-update',
+                exitedAt,
+                logPath    : '/Users/ada/Library/Logs/Claude/main.log',
+                matchedLine: '2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall'
+            },
+            unknownNoMatch = {
+                state   : 'unknown',
+                exitedAt,
+                logPath : '/Users/ada/Library/Logs/Claude/main.log'
+            },
+            unknownUnreadable = {
+                state   : 'unknown',
+                exitedAt,
+                logPath : '/Users/ada/Library/Logs/Claude/main.log',
+                reason  : 'ENOENT: no such file or directory'
+            },
+            card      = createCard({agentId: 'ada', displayName: 'Ada', state: 'off', exitReason: harnessUpdate}),
+            cardState = () => card.down({reference: 'card-state'}),
+            status    = () => card.down({reference: 'control-status'});
+
+        card.now = now;
+
+        // AC-1: harness-update names the cause, the viewer-local + UTC time, and the next action;
+        // card-state title never claims "Fleet stopped its process", and the single matched line + path ride the title.
+        expect(cardState().text).toBe('offline');
+        expect(cardState().vdom.title).toBe('stopped · harness update');
+        expect(status().hidden).toBe(false);
+        expect(status().cls).toContain('is-exit-harness-update');
+        expect(card.cls).toContain('fm-control-live');
+        expect(status().text).toContain('stopped · harness update — Claude Desktop quit this seat to install its own update (');
+        expect(status().text).toContain('08:00:00Z). FM did not stop it, and nothing of its work was stopped on purpose.');
+        expect(status().text).toContain('Start the seat again once the update has finished. If Claude keeps quitting, close every Claude window first so the update can complete.');
+        expect(status().vdom.title).toContain('2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall (/Users/ada/Library/Logs/Claude/main.log)');
+
+        // AC-2: unknown with no matched line
+        applySet(card, {exitReason: unknownNoMatch});
+        expect(cardState().vdom.title).toBe('stopped · reason unknown');
+        expect(status().cls).toContain('is-exit-unknown');
+        expect(status().text).toContain('stopped · reason unknown — The seat\'s process exited at ');
+        expect(status().text).toContain('08:00:00Z without a Stop from FM, and its harness log names no reason. Start the seat. If it exits again, read its harness log before a third Start.');
+        expect(status().vdom.title).toContain('/Users/ada/Library/Logs/Claude/main.log');
+
+        // AC-2: unknown when the harness log could not be read
+        applySet(card, {exitReason: unknownUnreadable});
+        expect(status().text).toContain('without a Stop from FM, and its harness log could not be read: ENOENT: no such file or directory.');
+
+        // AC-3: an intentional Stop (exitReason: null) keeps "Fleet stopped its process" and hides the status row
+        applySet(card, {exitReason: null});
+        expect(cardState().vdom.title).toBe('Fleet stopped its process');
+        expect(status().hidden).toBe(true);
+        expect(card.cls).not.toContain('fm-control-live');
+
+        // AC-3: a subsequent Start clears the unplanned-exit wording
+        applySet(card, {exitReason: harnessUpdate});
+        expect(status().hidden).toBe(false);
+        applySet(card, {state: 'ok', exitReason: null});
+        expect(status().hidden).toBe(true);
+
+        card.destroy()
     })
 });
+

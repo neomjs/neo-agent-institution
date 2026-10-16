@@ -73,6 +73,7 @@ import NameSlot          from '../../../../util/NameSlot.mjs';
 import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
 import Participation     from '../../../../util/Participation.mjs';
 import SeatDependencies  from '../../../../util/SeatDependencies.mjs';
+import SeatExitReason    from '../../../../util/SeatExitReason.mjs';
 import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
 import SeatLaunchAdmission from '../../../../util/SeatLaunchAdmission.mjs';
 import SeatModel         from '../../../../util/SeatModel.mjs';
@@ -681,6 +682,8 @@ class AgentCard extends Container {
                     ? 'starting'
                     : resolved.state,
             reason        = pendingAction || preparation ? null : resolved.reason,
+            now           = Number.isFinite(me.now) ? me.now : Date.now(),
+            exitLine      = reason === 'stopped' ? SeatExitReason.cardLine(record.exitReason, {now}) : null,
             // severity = weight: the exceptional resolved states take ink + weight on the word
             hot           = displayState === 'wedged' || displayState === 'limited',
             // a confirmed preparation keeps the toggle open as Cancel start; it closes while a cancel is in flight
@@ -705,7 +708,7 @@ class AgentCard extends Container {
         // the word stays short enough for the narrowest card; what "stuck" means, and why a seat is
         // offline, ride its title, a benched seat's with the operator's date and reason (the detail pane
         // spells the reason out)
-        cardState.changeVdomRootKey('title', [stateMeaning(displayState, reason), reason === 'benched' ? Participation.detailOf(record) : null].filter(Boolean).join(' · ') || null);
+        cardState.changeVdomRootKey('title', [exitLine?.head ?? stateMeaning(displayState, reason), reason === 'benched' ? Participation.detailOf(record) : null].filter(Boolean).join(' · ') || null);
 
         // The presence band: session state says what the resident's PROCESS does;
         // presence says whether the SEAT is alive anywhere (the plane's who_is_online graph
@@ -830,18 +833,10 @@ class AgentCard extends Container {
         openWorkChip.changeVdomRootKey('aria-label', openWork.ariaLabel);
         openWorkChip.changeVdomRootKey('title', openWork.title);
 
-        // the source strip: ONE honest word-line, a PURE role=status — no ▸/disclosure affordance on a
-        // non-interactive node (selecting the item → detail IS the disclosure route). The level cls
-        // colours the ::before dot; summary.text is a controlled literal from summarizeAnsweredAbnormal.
-        // EXCEPTION-ONLY: nominal earns zero pixels (the cockpit's own doctrine, operator-falsified
-        // when this line rendered "all sources nominal" permanently) — the strip exists exactly when
-        // a source is abnormal and NAMES it; full facts stay reachable via the drill.
-        // Rendered as an inert `text` node, NEVER `html`: that literal is safe only because the
-        // summariser composes it from a frozen label map over a hardcoded key order, so `html` would
-        // make safety a property the summariser must preserve forever rather than one the card cannot
-        // get wrong — the same reason the lane above is a text node (escaping is forgettable; a text
-        // node is not). A later edit folding a source REASON into the summary is then inert by
-        // construction instead of an innerHTML path.
+        // the source strip: ONE honest word-line, a PURE role=status (selecting the item → detail IS
+        // the disclosure route). EXCEPTION-ONLY: nominal earns zero pixels; the strip exists only when
+        // a source is abnormal and NAMES it. Rendered as an inert `text` node, NEVER `html`, so safety
+        // is structural even if a later edit folds a source reason into the summary.
         const strip = me.getReference('source-strip');
 
         strip.set({
@@ -909,12 +904,11 @@ class AgentCard extends Container {
         // outranks even a live round-trip, because a live seat in the wrong folder is the failure
         // itself; "not opened yet" and "unknown" sit below one, which a live seat contradicts.
         const
-            wrongFolder  = record.sessionFolder?.state === 'wrong',
-            sessionLine  = wrongFolder || !(pendingAction || controlReason || preparation) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
+            wrongFolder   = record.sessionFolder?.state === 'wrong',
+            sessionLine   = wrongFolder || !(pendingAction || controlReason || preparation) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
             // a start the Fleet refused for the declared model says so in the design read's words: the
             // recorded cause, shown only while this cockpit's own last outcome is that same refusal
-            modelRefusal = !pendingAction && !preparation && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
-            now           = Number.isFinite(me.now) ? me.now : Date.now(),
+            modelRefusal  = !pendingAction && !preparation && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
             admissionLine = recordState !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal)
                 ? SeatLaunchAdmission.cardLine(record.launchAdmission, {
                     now,
@@ -938,7 +932,7 @@ class AgentCard extends Container {
         // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
         // row height at every card width — the lane stays reachable via line one, its middle elision
         // and the title.
-        me[(pendingAction || controlReason || preparation || sessionLine || modelRefusal || admissionLine || skillsLine) ? 'addCls' : 'removeCls']('fm-control-live');
+        me[(pendingAction || controlReason || preparation || sessionLine || modelRefusal || admissionLine || skillsLine || exitLine) ? 'addCls' : 'removeCls']('fm-control-live');
 
         // the runtime-source gating is already shown by the disabled controls + the source strip
         // ("RUN not nominal"), so the status line never duplicates it
@@ -958,7 +952,7 @@ class AgentCard extends Container {
                             : modelRefusal
                                 ? modelRefusal.text
                                 : !controlReason
-                                    ? admissionLine?.text ?? sessionLine?.text ?? skillsLine?.text ?? ''
+                                    ? exitLine?.text ?? admissionLine?.text ?? sessionLine?.text ?? skillsLine?.text ?? ''
                                     : controlReason.kind === 'timeout'
                                         ? `${controlReason.action}… no answer yet`
                                         : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
@@ -971,8 +965,8 @@ class AgentCard extends Container {
                 : '';
 
         controlStatus.set({
-            cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : []), ...(modelRefusal ? ['is-model-refused'] : [])],
-            hidden: !pendingAction && !controlReason && !preparation && !sessionLine && !modelRefusal && !admissionLine && !skillsLine,
+            cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : []), ...(modelRefusal ? ['is-model-refused'] : []), ...(exitLine && !controlReason && !wrongFolder && !modelRefusal ? [`is-exit-${exitLine.state}`] : [])],
+            hidden: !pendingAction && !controlReason && !preparation && !sessionLine && !modelRefusal && !admissionLine && !skillsLine && !exitLine,
             text  : controlStatusText
         });
         // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words; a preparing
@@ -985,7 +979,7 @@ class AgentCard extends Container {
                 ? preparation.title
                 : modelRefusal
                     ? modelRefusal.title + identityNote
-                    : admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
+                    : exitLine?.title ?? admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
 
         me.update()
     }
