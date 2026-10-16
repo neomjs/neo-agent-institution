@@ -55,7 +55,22 @@ export const ROSTER_STATE_LABELS = Object.freeze({
 export const STREAM_STATE_LABELS = Object.freeze({
     live: '● streaming', cold: 'not answered yet',
     stale: Object.freeze(['stale — reconnecting', 'unavailable']),
-    degraded: '● streaming', partial: 'partial — some sources unavailable'
+    degraded: '● streaming',
+    partial: Object.freeze([
+        'partial — some sources unavailable',
+        'partial — PR lanes unavailable',
+        'partial — PR lanes partial',
+        'partial — mailbox unavailable',
+        'partial — mailbox partial',
+        'partial — mailbox unavailable · PR lanes unavailable',
+        'partial — mailbox partial · PR lanes unavailable',
+        'partial — mailbox unavailable · PR lanes partial',
+        'partial — mailbox partial · PR lanes partial',
+        'partial — PR lanes unavailable · mailbox unavailable',
+        'partial — PR lanes partial · mailbox unavailable',
+        'partial — PR lanes unavailable · mailbox partial',
+        'partial — PR lanes partial · mailbox partial'
+    ])
 });
 
 /**

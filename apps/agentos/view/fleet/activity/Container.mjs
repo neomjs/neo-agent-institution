@@ -206,6 +206,12 @@ class ActivityStream extends Container {
          */
         counts_: [],
         /**
+         * Partial-feed guidance derived once from `capability.slots` by admission and bound from the provider.
+         * @member {Object|null} guidance_=null
+         * @reactive
+         */
+        guidance_: null,
+        /**
          * Whether the mailbox answered an older page with no row: the stream then stops asking.
          * @member {Boolean} historyExhausted_=false
          * @reactive
@@ -442,6 +448,11 @@ class ActivityStream extends Container {
     }
 
     /** @param {Object|null} value @param {Object|null} oldValue @protected */
+    afterSetGuidance(value, oldValue) {
+        this.isConstructed && this.updateHeader()
+    }
+
+    /** @param {Object|null} value @param {Object|null} oldValue @protected */
     afterSetObservation(value, oldValue) {
         this.isConstructed && this.updateHeader()
     }
@@ -665,7 +676,8 @@ class ActivityStream extends Container {
             retained   = me.adapterState === 'cold' ? 0 : me.store?.count ?? 0,
             dropped    = me.store?.droppedCount ?? 0,
             countView  = describeActivityCounts(me.counts, ACTIVITY_MODE_LABELS[me.mode]),
-            stateWord  = {cold: 'not answered yet', partial: 'partial — some sources unavailable',
+            stateWord  = {cold: 'not answered yet',
+                partial: (typeof me.guidance?.head === 'string' && me.guidance.head.trim()) || 'partial — some sources unavailable',
                 stale: retained ? 'stale — reconnecting' : 'unavailable'}[me.adapterState],
             stateCls   = {cold: 'is-cold', partial: 'is-partial', stale: 'is-stale'}[me.adapterState] ?? 'is-live',
             // cold and stale already say their rows are not current; only a live feed can mislead
@@ -709,7 +721,9 @@ class ActivityStream extends Container {
             retained
         });
 
-        stateCell.vdom.title = quiet?.title ?? null;
+        stateCell.vdom.title = me.adapterState === 'partial'
+            ? ((typeof me.guidance?.headTitle === 'string' && me.guidance.headTitle.trim()) || 'rechecks every 60 s · Recheck now is in the banner · no direct producer repair here')
+            : (quiet?.title ?? null);
         stateCell.text       = stateText
     }
 

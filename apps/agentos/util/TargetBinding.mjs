@@ -103,15 +103,26 @@ class TargetBinding extends Base {
 
         rows && store?.clear();
 
-        // the old authority's exhausted mailbox and observation are not the new one's
+        // the old authority's exhausted mailbox, guidance and observation are not the new one's
+        const guidance = {
+            head     : null,
+            headTitle: null,
+            missing  : null,
+            reason   : null,
+            recheck  : null,
+            remaining: null,
+            repair   : null,
+            summary  : null
+        };
         owner.publishConnection('stream', {data: {
             activityCounts        : [],
+            activityGuidance      : guidance,
             activityObservation   : {clamped: false, policy: null, reason: null, state: null},
             streamAdapterState    : 'cold',
             streamDegradedReason  : null,
             streamHistoryExhausted: false
         }});
-        stream && (stream.adapterState = 'cold')
+        stream && (typeof stream.set === 'function' ? stream.set({adapterState: 'cold', guidance}) : (stream.adapterState = 'cold', stream.guidance = guidance))
     }
 
     /**

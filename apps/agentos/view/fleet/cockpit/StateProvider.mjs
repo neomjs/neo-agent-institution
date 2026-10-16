@@ -14,7 +14,7 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
     daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason, cause: data.daemonCause},
     grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason, connection: data.gridConnection},
     plane    : {cause: data.planeCause},
-    stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection},
+    stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection, guidance: data.activityGuidance},
     transport: data.shellTransport
 });
 

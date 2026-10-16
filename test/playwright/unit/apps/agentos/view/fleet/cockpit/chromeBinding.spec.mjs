@@ -264,3 +264,166 @@ test('the deployment-state picture lands leaf-complete on the REAL parent provid
         parent.destroy()
     }
 });
+
+test('partial Activity guidance derives once from capability.slots onto banner, Recheck button, stream head, and parent provider, and clears on recovery or instance switch (#706)', async () => {
+    const
+        previousFleet = globalThis.AgentOS?.fleet,
+        parent        = createShellProvider(),
+        cockpit       = Neo.create(FleetCockpit, {
+            stateProvider: {
+                module: CockpitStateProvider,
+                parent,
+                stores: {
+                    fleetActivityEvents: {module: FleetActivityEvents},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
+                }
+            }
+        });
+
+    try {
+        await cockpit.refreshPromise;
+
+        const
+            provider  = cockpit.getStateProvider(),
+            banner    = cockpit.getReference('fleet-spine-banner'),
+            lead      = cockpit.getReference('fleet-spine-banner-lead'),
+            button    = cockpit.getReference('fleet-reconnect-button'),
+            stream    = cockpit.getReference('activity-stream'),
+            stateCell = stream.getReference('state');
+
+        provider.setData({gridAdapterState: 'live'});
+
+        // 1. PR lanes unavailable while mailbox is wired
+        installFleetBridge({
+            profileId: 'fleet-profile:v1:a',
+            send     : async () => createFleetWireResponse('ok', {
+                result: {
+                    capability: {
+                        state : 'degraded',
+                        reason: 'pr-lane: neo: ENOENT',
+                        slots : {
+                            a2a      : {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed'},
+                            'pr-lane': {source: 'github-workflow:pull-requests', state: 'degraded', confidence: 'unverified', reason: 'neo: ENOENT'}
+                        }
+                    },
+                    events: [{
+                        eventId   : 'a2a:MESSAGE:1',
+                        type      : 'a2a-activity',
+                        source    : 'memory-core:mailbox',
+                        confidence: 'observed',
+                        occurredAt: '2026-10-16T09:00:00.000Z',
+                        payload   : {subject: 'live mailbox row'}
+                    }]
+                }
+            })
+        });
+        await cockpit.getController().loadActivity();
+
+        expect(parent.data.activityGuidance).toEqual({
+            head     : 'partial — PR lanes unavailable',
+            headTitle: 'rechecks every 60 s · Recheck now is in the banner · no direct producer repair here',
+            missing  : 'PR lanes unavailable',
+            reason   : 'pr-lane: neo: ENOENT',
+            recheck  : 'rechecks every 60 s',
+            remaining: 'mailbox available',
+            repair   : 'none',
+            summary  : 'PR lanes unavailable · mailbox available'
+        });
+        expect(parent.getData('instanceState')).toBe('limited');
+        expect(banner.text).toBe('feed partial');
+        expect(lead.text).toBe('Activity feed partial — PR lanes unavailable · mailbox available');
+        expect(banner.vdom.title).toBe('Activity feed partial — PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT');
+        expect(button.hidden).toBe(false);
+        expect(button.text).toBe('Recheck');
+        expect(stateCell.text).toBe('partial — PR lanes unavailable');
+        expect(stateCell.vdom.title).toBe('rechecks every 60 s · Recheck now is in the banner · no direct producer repair here');
+
+        // 2. PR lanes partial (supplied some PR events while one repo failed)
+        installFleetBridge({
+            profileId: 'fleet-profile:v1:a',
+            send     : async () => createFleetWireResponse('ok', {
+                result: {
+                    capability: {
+                        state : 'degraded',
+                        reason: 'pr-lane: devindex: ENOENT',
+                        slots : {
+                            a2a      : {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed'},
+                            'pr-lane': {source: 'github-workflow:pull-requests', state: 'degraded', confidence: 'unverified', reason: 'devindex: ENOENT'}
+                        }
+                    },
+                    events: [{
+                        eventId   : 'github-workflow:pull-requests:706',
+                        type      : 'pr-activity',
+                        source    : 'github-workflow:pull-requests',
+                        confidence: 'observed',
+                        occurredAt: '2026-10-16T09:05:00.000Z',
+                        payload   : {number: 706, title: 'partial activity guidance'}
+                    }]
+                }
+            })
+        });
+        await cockpit.getController().loadActivity();
+
+        expect(parent.data.activityGuidance.summary).toBe('PR lanes partial · mailbox available');
+        expect(lead.text).toBe('Activity feed partial — PR lanes partial · mailbox available');
+        expect(stateCell.text).toBe('partial — PR lanes partial');
+
+        // 3. Recovery to wired clears partial guidance and hides the banner/button
+        installFleetBridge({
+            profileId: 'fleet-profile:v1:a',
+            send     : async () => createFleetWireResponse('ok', {
+                result: {capability: {state: 'wired'}, events: []}
+            })
+        });
+        await cockpit.getController().loadActivity();
+
+        expect(parent.data.activityGuidance.summary).toBeNull();
+        expect(parent.data.activityGuidance.head).toBeNull();
+        expect(parent.getData('instanceState')).toBe('ok');
+        expect(banner.hidden).toBe(true);
+        expect(button.hidden).toBe(true);
+        expect(stateCell.text).toBe('● streaming');
+        expect(stateCell.vdom.title).toBeNull();
+
+        // 4. Instance switch to an offline target clears partial guidance before the new read settles
+        installFleetBridge({
+            profileId: 'fleet-profile:v1:a',
+            send     : async () => createFleetWireResponse('ok', {
+                result: {
+                    capability: {
+                        state : 'degraded',
+                        reason: 'a2a: unavailable',
+                        slots : {
+                            a2a      : {source: 'memory-core:mailbox', state: 'degraded', confidence: 'unverified', reason: 'unavailable'},
+                            'pr-lane': {source: 'github-workflow:pull-requests', state: 'wired', confidence: 'observed'}
+                        }
+                    },
+                    events: [{
+                        eventId   : 'github-workflow:pull-requests:707',
+                        type      : 'pr-activity',
+                        source    : 'github-workflow:pull-requests',
+                        confidence: 'observed',
+                        occurredAt: '2026-10-16T09:10:00.000Z',
+                        payload   : {number: 707, title: 'surviving pr row'}
+                    }]
+                }
+            })
+        });
+        await cockpit.getController().loadActivity();
+        expect(parent.data.activityGuidance.summary).toBe('mailbox unavailable · PR lanes available');
+        expect(stateCell.text).toBe('partial — mailbox unavailable');
+
+        installFleetBridge({
+            profileId: 'fleet-profile:v1:b',
+            send     : async () => createFleetWireResponse('transport-failed', {error: 'connection refused'})
+        });
+        await cockpit.getController().loadActivity();
+        expect(parent.data.activityGuidance.summary, 'no partial guidance leaks to the switched instance').toBeNull();
+        expect(stateCell.text).toBe('not answered yet')
+    } finally {
+        cockpit.destroy();
+        parent.destroy();
+        previousFleet === undefined ? delete globalThis.AgentOS.fleet : globalThis.AgentOS.fleet = previousFleet
+    }
+});
+

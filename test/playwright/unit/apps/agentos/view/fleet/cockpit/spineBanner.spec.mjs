@@ -26,15 +26,39 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
 
     const STATES = ['cold', 'stale', 'live'];
 
-    test('partial activity names its source failure without claiming stale or fully live data', () => {
-        const result = SpineBanner.deriveSpineBanner({
+    test('partial activity names missing and available sources from guidance, falls back honestly, and offers Recheck without claiming stale data', () => {
+        const fallback = SpineBanner.deriveSpineBanner({
             grid: {state: 'live'}, stream: {state: 'partial', reason: 'pr-lane: unavailable'}
         });
-        expect(result.hidden).toBe(false);
-        expect(result.kind).toBe('degraded');
-        expect(result.text).toBe('feed partial');
-        expect(result.title).toContain('pr-lane: unavailable');
-        expect(result.title).not.toContain('last-known');
+        expect(fallback).toEqual({
+            action   : 'recheck',
+            ariaLabel: 'Activity feed partial — some sources unavailable · pr-lane: unavailable',
+            hidden   : false,
+            kind     : 'degraded',
+            lead     : 'Activity feed partial — some sources unavailable',
+            text     : 'feed partial',
+            title    : 'Activity feed partial — some sources unavailable · pr-lane: unavailable'
+        });
+
+        const guided = SpineBanner.deriveSpineBanner({
+            grid  : {state: 'live'},
+            stream: {
+                state   : 'partial',
+                reason  : 'pr-lane: neo: ENOENT',
+                guidance: {summary: 'PR lanes unavailable · mailbox available', reason: 'pr-lane: neo: ENOENT'}
+            }
+        });
+        expect(guided).toEqual({
+            action   : 'recheck',
+            ariaLabel: 'Activity feed partial — PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT',
+            hidden   : false,
+            kind     : 'degraded',
+            lead     : 'Activity feed partial — PR lanes unavailable · mailbox available',
+            text     : 'feed partial',
+            title    : 'Activity feed partial — PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT'
+        });
+        expect(guided.title).not.toContain('last-known');
+        expect(guided.title).not.toContain('complete');
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'cold'}, stream: {state: 'partial'}}).kind).toBe('cold');
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'stale'}, stream: {state: 'partial'}}).text).toBe('fleet degraded');
     });

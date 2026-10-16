@@ -189,7 +189,10 @@ export async function reloadRoster(app) {
  * @param {String} [options.issuesDir] The PR/lane slot's corpus; the fixture tree by default.
  * @returns {Promise<void>}
  */
-export async function wireRealFleetSources({listMessages = async () => [], issuesDir = FIXTURE_ISSUES_DIR} = {}) {
+export async function wireRealFleetSources({
+    listMessages = async () => ({messages: [], totalCount: 0, truncated: false, offset: 0}),
+    issuesDir    = FIXTURE_ISSUES_DIR
+} = {}) {
     // the Neo namespace devFleetServer's entry performs, so the bridge singletons construct
     await import('../../../../node_modules/neo.mjs/src/Neo.mjs');
     await import('../../../../node_modules/neo.mjs/src/core/_export.mjs');

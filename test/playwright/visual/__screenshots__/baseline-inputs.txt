@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    5829f5d407a8bd2153e373ea61112cecc6901f44
+    fe6ab42c75675a007bd9d7390fdc09afb4493f74
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -15,7 +15,7 @@ apps/agentos/VisualSystem.md
     5ab4fe754bd834a946a9da3bc8f96d28efa9ea96
 
 apps/agentos/app.mjs
-    de135da55e55406602ea090317f40c486dd25ea0
+    15ee159880412eba52bd3577a9b09e0e01b55fa8
 
 apps/agentos/canvas/Home.mjs
     392fe0571a68fbf6ae269cf6eb648ad607f768f2
@@ -228,7 +228,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    adfe4909053720cb147ececa338614bb2a651098
+    a000e93773db555b7d2aeaf908d2226f1c557871
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     19503b10d4a57dc614c777c226368fab8e031e2a
@@ -312,13 +312,13 @@ apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
 
 apps/agentos/util/SpineBanner.mjs
-    5c8346c1813f76b88af81eb48f57147c2f9a917e
+    fb169fff3d55ac1be8236bcd9e140d21580c7a9a
 
 apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
 
 apps/agentos/util/TargetBinding.mjs
-    2f01f533f88b46e309a0a5d8d70f8b408f4dc07a
+    32fc5ab19c0ec872747d921f0ef6b8b48df32624
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -330,7 +330,7 @@ apps/agentos/util/ViewerWakeTelltale.mjs
     31bff815feed1bf14ee4b9608168118f4621834a
 
 apps/agentos/view/Viewport.mjs
-    434cd2c6b5e6319c0bce17eefee84b41c987622c
+    64c270099d2189660a7c1bceb222b2cc718f776a
 
 apps/agentos/view/ViewportController.mjs
     6feec85e5b8f674b59da96373c813cd8d458a28d
@@ -348,7 +348,7 @@ apps/agentos/view/fleet/activity/ActorChipComponent.mjs
     1c56919c8f0feb284f2711d598592f3df910377f
 
 apps/agentos/view/fleet/activity/Container.mjs
-    1be4d0897b7e418fbf40bed7d5b889788fb3626c
+    5efa3ddb00212ef8a836a6c7faa15792f807a480
 
 apps/agentos/view/fleet/activity/EventChipComponent.mjs
     c36dac634fbb1cccaae121e947b5a41aae2149a7
@@ -360,10 +360,10 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    be84a2b885eb97984ffde58959c56211d8e0d52b
+    505468ee12b3407a0d9b9fc41ace9da916303864
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
-    7194ed7270a8f6d925c71495ab47dc3efa2f0020
+    d9cd2d635593a12df350d75f79cfbd4cbdaa172f
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     20bb4da202b4ef29ff5307ed134980b30dd9e9f2
@@ -372,7 +372,7 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     49cee569caaf2192f62d91cbb7297a32c34c534f
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    e22a062e5fd4486719321d15180d5b1764cf5753
+    e0a814ac1c449553aafecaca726ac260c12506c5
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     c8cb352785ae483806eb80b25adbf88e03a5f7ce
@@ -381,7 +381,7 @@ apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    487887bab1985084c9c61367ad768014c06c63e7
+    6a940ecd3111dc4f2a4a90361f3e32e3f6e2878d
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     ad086d9c1114f84d041f4de3b4f1075c8bb63cc9
@@ -474,10 +474,10 @@ apps/agentos/view/fleet/instances/MemoryCandidateList.mjs
     df15465f68dba54c841fa30fbf15bdcf84f6fcef
 
 apps/agentos/view/fleet/instances/MenuList.mjs
-    01f70510fc5587b1be5f5f27fb9dc11554c73936
+    ede6ea3da1843ae3ac4acd3066f4b3695ab4ad64
 
 apps/agentos/view/fleet/instances/SwitcherButton.mjs
-    85b41237b3f9c6326468d862efe72ca8a7ff3a19
+    32bda903623de2d532fb2373b52b3d7d8728220e
 
 apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076

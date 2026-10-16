@@ -281,7 +281,7 @@ class LivenessController extends ViewerWakeController {
             // no bridge/verb IS the cold truth; a never-wired surface's retained answered cause
             // must not outlive the bridge that answered it
             me.publishConnection('stream', {data: provider?.getData('streamAdapterState') === 'cold'
-                ? {streamDegradedReason: null} : {}});
+                ? {activityGuidance: FleetAdmission.blankActivityGuidance(), streamDegradedReason: null} : {}});
             return
         }
 
@@ -306,19 +306,21 @@ class LivenessController extends ViewerWakeController {
             }
 
             if (capability?.state === 'wired') {
-                me.admitActivity({a2a, counts, events, profileId, selector})
+                me.admitActivity({a2a, capability, counts, events, profileId, selector})
             } else if (capability?.state === 'degraded') {
                 const partialEvents = FleetAdmission.partialActivityEvents(events);
                 if (partialEvents.length || selector) {
-                    me.admitActivity({a2a, counts, events: partialEvents, profileId, partial: true, selector,
+                    me.admitActivity({a2a, capability, counts, events: partialEvents, profileId, partial: true, selector,
                         reason: me.toSafeDegradedReason(capability.reason)});
                     return
                 }
+                const guidance = FleetAdmission.blankActivityGuidance();
                 me.publishConnection('stream', {data: {
+                    activityGuidance    : guidance,
                     streamAdapterState  : 'stale',
                     streamDegradedReason: me.toSafeDegradedReason(capability.reason)
                 }});
-                stream && (stream.adapterState = 'stale')
+                stream && (stream.adapterState = 'stale', stream.guidance = guidance)
             } else if (capability) {
                 if (me.activityWired) {
                     me.degradeWiredSurface('stream', capability.reason ?? 'Activity source unavailable', stream);
@@ -327,10 +329,11 @@ class LivenessController extends ViewerWakeController {
                 // the producer ANSWERED not-wired: no events land (the feed stays cold) but an
                 // answer is not silence — retain the cause
                 me.publishConnection('stream', {data: {
+                    activityGuidance    : FleetAdmission.blankActivityGuidance(),
                     streamDegradedReason: me.toSafeDegradedReason(capability.reason)
                 }})
             } else {
-                me.publishConnection('stream')
+                me.publishConnection('stream', {data: me.activityWired ? {} : {activityGuidance: FleetAdmission.blankActivityGuidance()}})
             }
             // NO capability (torn/absent answer): the feed stays cold AND no reason — we learned
             // nothing, the banner falls back to generic copy rather than inventing a cause
@@ -522,13 +525,17 @@ class LivenessController extends ViewerWakeController {
 
         if (!provider) return;
 
-        const state = provider.getData(stateKey) === 'cold' ? 'cold' : 'stale';
+        const
+            state    = provider.getData(stateKey) === 'cold' ? 'cold' : 'stale',
+            guidance = surface === 'stream' ? FleetAdmission.blankActivityGuidance() : null;
         this.publishConnection(surface, {error, data: {
+            ...(guidance ? {activityGuidance: guidance} : {}),
             [stateKey]: state,
             // this surface's cause on this surface's field — never a shared slot a sibling clears
             [causeKey]: state === 'cold' ? null : this.toSafeDegradedReason(error)
         }});
 
+        consumer && guidance && (consumer.guidance = guidance);
         consumer && state === 'stale' && (consumer.adapterState = 'stale')
     }
 
