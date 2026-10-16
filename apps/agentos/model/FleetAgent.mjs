@@ -168,6 +168,12 @@ class FleetAgent extends Model {
             name        : 'sessionFolder',
             defaultValue: null
         }, {
+            // why a supervised seat exited without a Stop from Fleet Manager
+            // (`{state: 'harness-update'|'unknown', exitedAt, logPath?, matchedLine?, reason?}`, see
+            // AgentOS.util.SeatExitReason). Null for intentional Stops, running seats, and older Brains
+            name        : 'exitReason',
+            defaultValue: null
+        }, {
             // Issuer-owned native MCP generation and bounded audit; null before a producer answers.
             // Admission describes new children, never tool connectivity.
             name        : 'launchAdmission',

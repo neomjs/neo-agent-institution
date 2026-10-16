@@ -17,6 +17,7 @@ import HarnessChoice                        from '../../../util/HarnessChoice.mj
 import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
 import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
 import Participation                        from '../../../util/Participation.mjs';
+import SeatExitReason                       from '../../../util/SeatExitReason.mjs';
 import SeatModel                            from '../../../util/SeatModel.mjs';
 import SeatSessionFolder                    from '../../../util/SeatSessionFolder.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
@@ -736,18 +737,21 @@ class AgentDetail extends Container {
      */
     renderStateLedger(record, sources, display) {
         const
-            me     = this,
-            ledger = me.getReference('detail-ledger'),
-            rows   = [],
-            row    = (axis, word, tone, title) => rows.push(
+            me       = this,
+            ledger   = me.getReference('detail-ledger'),
+            exitLine = display.reason === 'stopped'
+                ? SeatExitReason.cardLine(record.exitReason, {now: Number.isFinite(me.now) ? me.now : Date.now()})
+                : null,
+            rows     = [],
+            row      = (axis, word, tone, title) => rows.push(
                 {tag: 'span', cls: ['fm-ledger-axis'], text: axis},
                 {tag: 'span', cls: ['fm-freshness', tone], text: word, ...(title ? {title} : {})}
             );
 
-        row('session', stateLabel(display.state, display.reason),
+        row('session', exitLine?.head ?? stateLabel(display.state, display.reason),
             display.state === 'ok' || display.state === 'idle' ? 'is-fresh'
                 : display.reason === 'unobserved' ? 'is-unobserved' : 'is-stale',
-            stateMeaning(display.state, display.reason));
+            exitLine?.title ?? stateMeaning(display.state, display.reason));
 
         const participation = Participation.stateOf(record);
 

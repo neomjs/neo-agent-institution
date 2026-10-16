@@ -110,3 +110,73 @@ test('Detail relays the exact target through its retained cockpit owner without 
     detail.getController().onRuntimeLifecycleIntent({agentId: 'previous-seat', expectedRuntimeGeneration: nextId});
     expect(intents).toHaveLength(1);
 });
+
+test('a stopped seat with exitReason shows the full Detail wording + matched log line in SeatRuntimeContainer and the session ledger row (#683)', () => {
+    const
+        exitedAt      = '2026-10-16T08:00:00.000Z',
+        harnessUpdate = {
+            state      : 'harness-update',
+            exitedAt,
+            logPath    : '/Users/ada/Library/Logs/Claude/main.log',
+            matchedLine: '2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall'
+        },
+        unknownReason = {
+            state   : 'unknown',
+            exitedAt,
+            logPath : '/Users/ada/Library/Logs/Claude/main.log',
+            reason  : 'EACCES: permission denied'
+        },
+        unknownNoLog = {
+            state: 'unknown',
+            exitedAt
+        },
+        record   = createRecord({state: 'off', exitReason: harnessUpdate}),
+        feedback = () => group.getReference('runtime-control-feedback');
+
+    group = Neo.create(SeatRuntimeContainer, {appName, record});
+    expect(feedback().hidden).toBe(false);
+    expect(feedback().text).toContain('stopped · harness update — Claude Desktop quit this seat to install its own update (');
+    expect(feedback().text).toContain('2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall (/Users/ada/Library/Logs/Claude/main.log)');
+
+    // Detail session ledger row shows "stopped · harness update" instead of "stopped" / "Fleet stopped its process"
+    detail = Neo.create(Detail, {appName, record});
+    const sessionRow = () => {
+        const cn = detail.getReference('detail-ledger').vdom.cn;
+        const idx = cn.findIndex(node => node.text === 'session');
+        return cn[idx + 1]
+    };
+    expect(sessionRow().text).toBe('stopped · harness update');
+    expect(sessionRow().title).toContain('2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall (/Users/ada/Library/Logs/Claude/main.log)');
+
+    // unknown exitReason with unreadable log
+    record.set({exitReason: unknownReason});
+    group.updateRecord(record);
+    detail.applyRecord();
+    expect(feedback().text).toContain('stopped · reason unknown — The seat\'s process exited at ');
+    expect(feedback().text).toContain('its harness log could not be read: EACCES: permission denied.');
+    expect(feedback().text).toContain('/Users/ada/Library/Logs/Claude/main.log');
+    expect(sessionRow().text).toBe('stopped · reason unknown');
+
+    // unknown exitReason with no logPath (non-Claude-Desktop harnesses)
+    record.set({exitReason: unknownNoLog});
+    group.updateRecord(record);
+    detail.applyRecord();
+    expect(feedback().text).toContain('08:00:00Z without a Stop from FM; Fleet Manager reads no harness log for this seat\'s harness yet. Start the seat. If it exits again, read its harness log before a third Start.');
+    expect(feedback().text).not.toContain('its harness log names no reason');
+    expect(feedback().text).not.toContain('/Users/');
+    expect(sessionRow().text).toBe('stopped · reason unknown');
+
+    // intentional Stop (exitReason: null) clears the feedback and restores "offline · stopped" / "Fleet stopped its process"
+    record.set({exitReason: null});
+    group.updateRecord(record);
+    detail.applyRecord();
+    expect(feedback().hidden).toBe(true);
+    expect(sessionRow().text).toBe('offline · stopped');
+    expect(sessionRow().title).toBe('Fleet stopped its process');
+
+    // subsequent Start (state: 'ok', exitReason: null) shows nothing in runtime-control-feedback
+    record.set({state: 'ok', exitReason: null});
+    group.updateRecord(record);
+    expect(feedback().hidden).toBe(true)
+});
+

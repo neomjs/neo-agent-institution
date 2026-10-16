@@ -61,6 +61,8 @@ class RosterRow extends Base {
             harnessSettings    : row.harnessSettings ?? null,
             // where a running desktop seat's session opened, from the same record
             sessionFolder        : row.sessionFolder ?? null,
+            // why a supervised seat exited without a Stop from Fleet Manager
+            exitReason           : row.exitReason ?? null,
             launchAdmission      : row.launchAdmission ?? null,
             runtimeGeneration    : row.runtimeGeneration ?? null,
             installedGeneration  : row.installedGeneration ?? null,

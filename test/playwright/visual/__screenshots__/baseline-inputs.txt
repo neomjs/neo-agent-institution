@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    9b267db46eb6446708d507339f737297f8d345f4
+    fe6ab42c75675a007bd9d7390fdc09afb4493f74
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    f4e574430604770912451eca3268ab2cf43da2b0
+    306cb9fa485da5b833b6a893a87c48bec8fb1192
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -285,10 +285,13 @@ apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
 
 apps/agentos/util/RosterRow.mjs
-    6bb658f3575f71f91c5ce691a8b00cd0a706b815
+    6b240a50eccb4752ede857ebc2d03d3578decc3a
 
 apps/agentos/util/SeatDependencies.mjs
     45f6624f0a0e8340c362b72399dcf9badba1e396
+
+apps/agentos/util/SeatExitReason.mjs
+    a7dab0197169a09e8179bd570fe7751eb1d0c7cb
 
 apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
@@ -396,7 +399,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     d86a7108784ffdc481e58cbb7f4f406323274492
 
 apps/agentos/view/fleet/detail/Container.mjs
-    acd459665460ed182e63d3293cc1637da632a111
+    c312b34f305e61d39b12cf8ec1d847907071f314
 
 apps/agentos/view/fleet/detail/Controller.mjs
     7255a3182110179151ad19efc5fe989946ec2671
@@ -420,7 +423,7 @@ apps/agentos/view/fleet/detail/SeatModelContainer.mjs
     8ea75cb81bb7bb73bf0c935c99458fd1699ca408
 
 apps/agentos/view/fleet/detail/SeatRuntimeContainer.mjs
-    08b905f506d0b48257bbf9cd0010573a302d79e0
+    69c0a29d692e952cd70ffcde83191c21c81bff4e
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
     e2b127838254f6fa5ab6512f19793c94aea2aa03
@@ -549,7 +552,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    252131b5c5ec8d8d5ccd7b08e491f3ea604c3b6b
+    22aa49d3b84f331b3ea345fdde517add3d96c694
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     6be0a97126831188336d056730b994353b18fc3a

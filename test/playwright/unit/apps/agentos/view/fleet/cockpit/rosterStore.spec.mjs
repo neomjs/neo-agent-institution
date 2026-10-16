@@ -326,6 +326,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             harnessSettings      : null,
             sessionFolder        : null,
             launchAdmission      : null,
+            exitReason           : null,
             runtimeGeneration    : null,
             nextRuntimeGeneration: null,
             installedGeneration  : null,
@@ -343,6 +344,20 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         });
 
         expect(mapped.sources.lane).toEqual(liveSources().lane)
+    });
+
+    test('mapRosterRow passes exitReason through whole when a seat exited without a Stop, and null otherwise (#683)', () => {
+        const exitReason = {
+            state      : 'harness-update',
+            exitedAt   : '2026-10-16T08:00:00.000Z',
+            logPath    : '/Users/ada/Library/Logs/Claude/main.log',
+            matchedLine: '2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall'
+        };
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', exitReason, lifecycle: {state: 'stopped'}, sources: liveSources()}).exitReason)
+            .toEqual(exitReason);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', lifecycle: {state: 'stopped'}, sources: liveSources()}).exitReason)
+            .toBeNull()
     });
 
     test('mapRosterRow carries the lane claim and its independent source fact; a wired page without a claim stays empty', () => {
@@ -425,7 +440,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).dependencyOutcomes).toBeNull()
     });
 
-    test('mapRosterRow passes where a desktop seat\'s session opened through whole — null on every other row (#522)', () => {
+    test('mapRosterRow passes where a desktop seat\'s session opened through whole — null on a row without one (#522)', () => {
         const sessionFolder = {state: 'wrong', expected: '/seats/ada/neomjs/neo', observed: '/Users/ada/elsewhere'};
 
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', sessionFolder, sources: liveSources()}).sessionFolder).toEqual(sessionFolder);
@@ -564,6 +579,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             harnessSettings      : null,
             sessionFolder        : null,
             launchAdmission      : null,
+            exitReason           : null,
             runtimeGeneration    : null,
             nextRuntimeGeneration: null,
             installedGeneration  : null,

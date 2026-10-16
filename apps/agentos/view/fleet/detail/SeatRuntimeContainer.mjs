@@ -1,6 +1,7 @@
-import Button       from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Container    from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import SourceHealth from '../../../util/SourceHealth.mjs';
+import Button         from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container      from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import SeatExitReason from '../../../util/SeatExitReason.mjs';
+import SourceHealth   from '../../../util/SourceHealth.mjs';
 
 /**
  * @class AgentOS.view.fleet.detail.SeatRuntimeContainer
@@ -108,7 +109,9 @@ class SeatRuntimeContainer extends Container {
         restart.set({hidden: !matched || record.state === 'off' || current?.pin === 'released' || currentId === nextId && current?.pin === 'held',
             disabled: !wired || !record.agentId || Boolean(record.pendingAction) || record.controlReason?.kind === 'unauthorized' ||
                 record.launchable === false || Boolean(record.launchRefusal)});
-        const feedback = record.pendingAction ? 'Lifecycle request in progress…' : record.controlReason?.reason || record.launchRefusal || '';
+        const exitText = wired && record.state === 'off' && record.participationStatus !== 'operator_benched'
+            ? SeatExitReason.detailText(record.exitReason) : null;
+        const feedback = record.pendingAction ? 'Lifecycle request in progress…' : record.controlReason?.reason || record.launchRefusal || exitText || '';
         this.getReference('runtime-control-feedback').set({hidden: !feedback, text: feedback});
         const hasIdentities = Boolean(currentId || nextId || installedId);
         this.getReference('show-runtime-ids').set({hidden: !hasIdentities,
