@@ -1,5 +1,5 @@
 import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Container.mjs';
-import RowModel      from '../../../../../node_modules/neo.mjs/src/selection/grid/RowModel.mjs';
+import RowModel      from './RowModel.mjs';
 
 /**
  * The memories pane's shared grid base — the view-layer conformance's law 0 ("mailbox surfaces,
@@ -83,38 +83,7 @@ class RowsGrid extends GridContainer {
     onConstructed(...args) {
         super.onConstructed(...args);
 
-        const
-            me    = this,
-            model = me.view.selectionModel;
-
-        if (model) {
-            const {onNavKeyRow, onRowClick, updateRows} = model;
-
-            model.updateRows = function(recordIds, silent = false) {
-                return updateRows.call(this, recordIds, silent || Boolean(this.silentRowUpdate))
-            };
-
-            model.onRowClick = function(event) {
-                if (event.data?.path?.some(node => node.cls?.includes('fm-memories-card-open'))) {
-                    return
-                }
-                this.silentRowUpdate = true;
-                try {
-                    return onRowClick.call(this, event)
-                } finally {
-                    this.silentRowUpdate = false
-                }
-            };
-
-            model.onNavKeyRow = function(step) {
-                this.silentRowUpdate = true;
-                try {
-                    return onNavKeyRow.call(this, step)
-                } finally {
-                    this.silentRowUpdate = false
-                }
-            }
-        }
+        const me = this;
 
         me.body.on('scrollEdge', me.onBodyScrollEdge, me);
         me.view.on({
@@ -133,9 +102,7 @@ class RowsGrid extends GridContainer {
         const me = this;
 
         if (oldValue !== undefined) {
-            const
-                {body}    = me,
-                wasSilent = me.silentVdomUpdate;
+            const {body} = me;
 
             me.silentVdomUpdate = true;
             me.updateDepth      = -1;
@@ -155,13 +122,15 @@ class RowsGrid extends GridContainer {
                 body.silentVdomUpdate = false
             }
 
-            me.silentVdomUpdate = wasSilent;
+            me.silentVdomUpdate = false;
             me.update()
         }
     }
 
     /**
      * @summary Clear the row selection without relaying it: the pane decides what the reader shows.
+     * Safe to pass `silent = true` because every caller's next step re-renders the rows
+     * (`applyBags([])` on target/drill switch, or `syncReader`'s rail switch after Escape).
      */
     clearSelection() {
         this.view.selectionModel?.deselectAllRows(true)

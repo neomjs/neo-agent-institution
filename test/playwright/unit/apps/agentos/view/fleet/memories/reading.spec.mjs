@@ -136,12 +136,18 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
             {pane, summaryGrid, turnGrid} = readyPane(),
             body                          = pane.getReference('memories-body'),
             list                          = pane.getReference('memories-list'),
+            willMerge                     = comp => {
+                for (let p = Neo.getComponent(comp.parentId), d = 1; p; p = Neo.getComponent(p.parentId), d++) {
+                    if (p.needsVdomUpdate && comp.canMergeUpdate(p.updateDepth, d)) return true
+                }
+                return false
+            },
             countTransactions             = (targets, fn) => {
                 let count = 0;
                 const originals = targets.map(target => {
                     const original = target.update;
                     target.update = function(...args) {
-                        if (!this.silentVdomUpdate && !this.mergeIntoParentUpdate()) {
+                        if (!this.silentVdomUpdate && !willMerge(this)) {
                             count++
                         }
                         return original.apply(this, args)
@@ -178,6 +184,19 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
         expect(countTransactions(turnTargets, () => click(turnGrid, 0))).toBe(1);
         expect(turnGrid.cls).toContain('is-rail');
         expect(turnGrid.rowHeight).toBe(64);
+
+        // Fallback when a descendant is already in flight (e.g. list from syncZones' hidden toggles):
+        // syncReader must not leave pane.needsVdomUpdate stuck true, or subsequent list updates get
+        // swallowed by mergeIntoParentUpdate() into the depth-1 pane (#715 RA-3).
+        pane.needsVdomUpdate = false;
+        Neo.manager.VDomUpdate.registerInFlightUpdate(list.id, -1);
+        try {
+            pane.controller.syncReader(true);
+            expect(pane.needsVdomUpdate).toBe(false);
+            expect(willMerge(list)).toBe(false)
+        } finally {
+            Neo.manager.VDomUpdate.unregisterInFlightUpdate(list.id)
+        }
 
         pane.destroy()
     });

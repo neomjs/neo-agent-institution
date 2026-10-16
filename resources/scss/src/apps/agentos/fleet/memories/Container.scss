@@ -176,6 +176,9 @@
         border: 0;
     }
 
+    /* defeat inline pixel widths written by the engine (passSizeToBody on the body and
+       Row#createVdom on the cell), which otherwise outlive their wrapper until onResize's
+       300-ms buffer when the list column narrows to its rail (#715) */
     .neo-grid-body {
         width: 100% !important;
     }

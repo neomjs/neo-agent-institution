@@ -125,6 +125,11 @@ class ReadingController extends ComponentController {
             showAll       = rows && component.showAll,
             reading       = showAll || Boolean(record),
             reader        = component.getReference('memories-reader'),
+            // When the pane or a descendant (e.g. memories-list from syncZones' hidden toggles) is
+            // already in flight, setting component.needsVdomUpdate = true and yielding at
+            // isChildUpdating() leaves needsVdomUpdate stuck on the deferred pane, causing
+            // subsequent child updates (such as list mounting turnGrid) to mergeIntoParentUpdate()
+            // into the deferred depth-1 pane instead of running their own full-tree mount.
             batching      = !component.isVdomUpdating && !Neo.manager.VDomUpdate.hasInFlightDescendants(component.id);
 
         if (me[idKey] !== null && !record) {
