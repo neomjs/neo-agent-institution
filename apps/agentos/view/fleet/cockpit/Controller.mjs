@@ -170,36 +170,13 @@ class Controller extends FleetBatchController {
      */
     openWorkProfileId = null
     /**
-     * Read-fence + in-flight accounting + owner-held answer for the shown seat's recent turns (the Agent
-     * Detail's Thought stream), with the profile that answered it and the seat it was asked for: an instance
-     * switch retires the answer ({@link AgentOS.util.TargetBinding#retireRecentTurns}), a seat switch
-     * retargets the read and a cleared selection drops it ({@link AgentOS.util.RecentTurnsRead}).
-     * @member {Number} recentTurnsReadGeneration=0
+     * The lazily created recent-turns reader (the Agent Detail's Thought stream), destroyed with this
+     * cockpit; it holds the read's fence, in-flight count, held answer, answering profile and seat
+     * ({@link AgentOS.util.RecentTurnsRead}).
+     * @member {AgentOS.util.RecentTurnsRead|null} recentTurnsReader=null
      * @protected
      */
-    recentTurnsReadGeneration = 0
-    /**
-     * @member {Number} recentTurnsReadInFlight=0
-     * @protected
-     */
-    recentTurnsReadInFlight = 0
-    /**
-     * @member {Object|null} recentTurnsSnapshot=null
-     * @protected
-     */
-    recentTurnsSnapshot = null
-    /**
-     * @member {String|null} recentTurnsProfileId=null
-     * @protected
-     */
-    recentTurnsProfileId = null
-    /**
-     * The seat the Thought stream reads for, the selected resident's `@githubUsername`; `null` while no
-     * seat with a mailbox identity is shown, and then the cadence asks nothing.
-     * @member {String|null} recentTurnsTarget=null
-     * @protected
-     */
-    recentTurnsTarget = null
+    recentTurnsReader = null
 
     /** @member {AgentOS.util.StageWindow|null} stageWindow=null Optional sibling launch owner. */
     stageWindow = null
@@ -547,9 +524,9 @@ class Controller extends FleetBatchController {
         // nothing new; no seat, or one the roster names no identity for, drops the held stream so no
         // other seat's turns wait under the next record
         if (!identity) {
-            RecentTurnsRead.clear(me)
-        } else if (identity !== me.recentTurnsTarget) {
-            RecentTurnsRead.load(me, {agentIdentity: identity})
+            me.recentTurnsReader?.clear()
+        } else if (identity !== me.recentTurnsReader?.target) {
+            me.loadRecentTurns({agentIdentity: identity})
         }
     }
 
@@ -820,13 +797,15 @@ class Controller extends FleetBatchController {
 
     /**
      * @summary READ-OBSERVE: the shown seat's newest public turn summaries, the Agent Detail's Thought
-     * stream ({@link AgentOS.util.RecentTurnsRead#load}) — one read when a seat is first shown, one per
+     * stream ({@link AgentOS.util.RecentTurnsRead#read}) — one read when a seat is first shown, one per
      * liveness cadence pass while it stays shown, never per roster row.
      * @param {Object} [params] `{agentIdentity}` retargets the read; none re-reads the seat shown.
      * @returns {Promise<Object|null>} The envelope, or `null` when no seat is shown.
      */
     loadRecentTurns(params = {}) {
-        return RecentTurnsRead.load(this, params)
+        if (this.isDestroyed) return Promise.resolve(null);
+        this.recentTurnsReader ||= Neo.create(RecentTurnsRead, {owner: this});
+        return this.recentTurnsReader.read(params)
     }
 
     /**
@@ -835,7 +814,16 @@ class Controller extends FleetBatchController {
      * @param {String|null} [profileId] The profile the answering bridge is bound to.
      */
     admitRecentTurns(snapshot, profileId = this.bridge?.profileId ?? null) {
-        RecentTurnsRead.admit(this, snapshot, profileId)
+        (this.recentTurnsReader ||= Neo.create(RecentTurnsRead, {owner: this})).admit(snapshot, profileId)
+    }
+
+    /**
+     * @summary The reader's unsettled wires, the liveness cadence's in-flight count for this read.
+     * @returns {Number}
+     * @protected
+     */
+    get recentTurnsReadInFlight() {
+        return this.recentTurnsReader?.readInFlight ?? 0
     }
 
     /**
@@ -970,7 +958,7 @@ class Controller extends FleetBatchController {
     }
 
     /**
-     * @summary Destroy the owned inbox reader before retiring the cockpit's liveness owner.
+     * @summary Destroy the owned inbox and recent-turns readers before retiring the cockpit's liveness owner.
      * @param {...*} args
      */
     destroy(...args) {
@@ -978,6 +966,8 @@ class Controller extends FleetBatchController {
         this.stageWindow = null;
         this.operatorInbox?.destroy();
         this.operatorInbox = null;
+        this.recentTurnsReader?.destroy();
+        this.recentTurnsReader = null;
         super.destroy(...args)
     }
 

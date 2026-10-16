@@ -2,19 +2,19 @@ import Base          from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import TargetBinding from './TargetBinding.mjs';
 
 /**
- * @summary The Fleet cockpit's recent-turns read: the shown seat's newest public turn summaries — the Agent
+ * @summary The Fleet cockpit's recent-turns reader: the shown seat's newest public turn summaries — the Agent
  * Detail's Thought stream — from the fleet server's recency source through the `fleetRecentTurns` verb.
  *
  * It keeps the open-work read's laws: in-flight accounting the liveness cadence reads, a generation fence so
  * the latest read wins, a typed unavailable envelope when the verb is absent or the read throws (never an
  * empty stream), and target binding — a read through another profile's bridge first retires the held answer
- * ({@link AgentOS.util.TargetBinding#retireRecentTurns}). The seat is the second binding: the owner holds
+ * ({@link AgentOS.util.TargetBinding#retireRecentTurns}). The seat is the second binding: the reader holds
  * the seat the detail shows, a read without one asks nothing, an answer lands only while that seat is still
  * the one asked for, and the envelope carries its `target`, so the pane shows nothing asked for another seat.
  *
- * The cockpit controller owns the state (`recentTurnsReadGeneration`, `recentTurnsReadInFlight`,
- * `recentTurnsSnapshot`, `recentTurnsProfileId`, `recentTurnsTarget`); this class reads and writes it, and
- * pushes every change of the held answer to the live detail pane ({@link #project}).
+ * The cockpit controller creates and destroys its one instance (the operator inbox's shape) and relays the
+ * cadence's and the landing's calls; the reader holds the state and pushes every change of the held answer
+ * to the live detail pane ({@link #project}).
  * @class AgentOS.util.RecentTurnsRead
  * @extends Neo.core.Base
  */
@@ -31,8 +31,42 @@ class RecentTurnsRead extends Base {
          * @member {String} className='AgentOS.util.RecentTurnsRead'
          * @protected
          */
-        className: 'AgentOS.util.RecentTurnsRead'
+        className: 'AgentOS.util.RecentTurnsRead',
+        /**
+         * The cockpit controller creating and destroying this reader; the bridge and the live pane are
+         * reached through it.
+         * @member {Object|null} owner=null
+         */
+        owner: null
     }
+
+    /**
+     * The read fence: only the newest read admits.
+     * @member {Number} generation=0
+     * @protected
+     */
+    generation = 0
+    /**
+     * The profile whose bridge answered the held snapshot.
+     * @member {String|null} profileId=null
+     */
+    profileId = null
+    /**
+     * Unsettled wire reads, the liveness cadence's in-flight count.
+     * @member {Number} readInFlight=0
+     */
+    readInFlight = 0
+    /**
+     * The held answer, or `null` while none landed.
+     * @member {Object|null} snapshot=null
+     */
+    snapshot = null
+    /**
+     * The seat the stream reads for, the shown resident's `@githubUsername`; `null` while no seat with a
+     * mailbox identity is shown, and then the cadence asks nothing.
+     * @member {String|null} target=null
+     */
+    target = null
 
     /**
      * @summary The envelope that stands for an answer the plane did not give, in the Brain's own shape.
@@ -60,10 +94,9 @@ class RecentTurnsRead extends Base {
     /**
      * @summary Push the held answer to the live detail pane, whatever phase it is in (docked, vesseled, in
      * flight home); a pane not yet materialized reads the answer from its seeds instead.
-     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      */
-    static project(owner) {
-        owner.component?.getAgentDetailPane?.()?.set({recentTurns: owner.recentTurnsSnapshot})
+    project() {
+        this.owner?.component?.getAgentDetailPane?.()?.set({recentTurns: this.snapshot})
     }
 
     /**
@@ -71,23 +104,24 @@ class RecentTurnsRead extends Base {
      * newer read started and the seat is still the one shown meanwhile. `agentIdentity` retargets the read
      * (a newly shown seat); without it the read re-asks for the seat held (the cadence), and with no seat
      * held it asks nothing.
-     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      * @param {Object} [params] `{agentIdentity}`
      * @returns {Promise<Object|null>} The envelope, or `null` when no seat is shown.
      */
-    static async load(owner, params = {}) {
+    async read(params = {}) {
         const
-            {bridge}   = owner,
+            me         = this,
+            {owner}    = me,
+            bridge     = owner?.bridge,
             profileId  = bridge?.profileId ?? null,
-            generation = ++owner.recentTurnsReadGeneration;
+            generation = ++me.generation;
 
-        TargetBinding.retireRecentTurns(owner, {profileId}) && RecentTurnsRead.project(owner);
+        TargetBinding.retireRecentTurns(me, {profileId}) && me.project();
 
         if (params.agentIdentity) {
-            owner.recentTurnsTarget = params.agentIdentity
+            me.target = params.agentIdentity
         }
 
-        const target = owner.recentTurnsTarget;
+        const {target} = me;
 
         if (!target) {
             return null
@@ -95,7 +129,7 @@ class RecentTurnsRead extends Base {
 
         let snapshot;
 
-        owner.recentTurnsReadInFlight++;
+        me.readInFlight++;
 
         try {
             if (typeof bridge?.fleetRecentTurns !== 'function') {
@@ -108,51 +142,62 @@ class RecentTurnsRead extends Base {
                 }
             }
         } finally {
-            owner.recentTurnsReadInFlight--
+            me.readInFlight--
         }
 
-        if (generation === owner.recentTurnsReadGeneration && !owner.isDestroyed && owner.recentTurnsTarget === target) {
-            RecentTurnsRead.admit(owner, snapshot, profileId)
+        if (generation === me.generation && !me.isDestroyed && !owner?.isDestroyed && me.target === target) {
+            me.admit(snapshot, profileId)
         }
 
         return snapshot
     }
 
     /**
-     * @summary Admit one answer as the owner-held snapshot, with the profile that answered it. Advancing the
-     * read generation prevents a read already in flight from replacing it.
-     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
+     * @summary Admit one answer as the held snapshot, with the profile that answered it. Advancing the fence
+     * prevents a read already in flight from replacing it.
      * @param {Object|null} snapshot One `fleetRecentTurns` envelope or the unobserved state.
      * @param {String|null} profileId The profile the answering bridge is bound to.
      */
-    static admit(owner, snapshot, profileId) {
-        owner.recentTurnsReadGeneration++;
-        owner.recentTurnsSnapshot  = snapshot;
-        owner.recentTurnsProfileId = profileId;
+    admit(snapshot, profileId) {
+        const me = this;
 
-        RecentTurnsRead.project(owner)
+        me.generation++;
+        me.snapshot  = snapshot;
+        me.profileId = profileId;
+
+        me.project()
     }
 
     /**
      * @summary Drop the held stream and its seat — TERMINAL for in-flight reads: the fence bump makes a read
      * landing after the clear unwanted, so no seat's turns wait under the next record. Nothing held and no
      * seat asked for is nothing to clear.
-     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      * @returns {Boolean} whether anything was dropped
      */
-    static clear(owner) {
-        if (!owner.recentTurnsSnapshot && !owner.recentTurnsTarget) {
+    clear() {
+        const me = this;
+
+        if (!me.snapshot && !me.target) {
             return false
         }
 
-        owner.recentTurnsReadGeneration++;
-        owner.recentTurnsSnapshot  = null;
-        owner.recentTurnsProfileId = null;
-        owner.recentTurnsTarget    = null;
+        me.generation++;
+        me.snapshot  = null;
+        me.profileId = null;
+        me.target    = null;
 
-        RecentTurnsRead.project(owner);
+        me.project();
 
         return true
+    }
+
+    /**
+     * @summary A reply still on its way finds no fence of its own.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        this.generation++;
+        super.destroy(...args)
     }
 }
 

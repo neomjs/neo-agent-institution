@@ -291,7 +291,7 @@ apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
 
 apps/agentos/util/RecentTurnsRead.mjs
-    293b3e9f20c028c0d46ee85f930ade2ad921fb02
+    7b85fc2aa5be9a86ca898dda6dbc5ed8b18de2c4
 
 apps/agentos/util/RosterRow.mjs
     6b240a50eccb4752ede857ebc2d03d3578decc3a
@@ -327,7 +327,7 @@ apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
 
 apps/agentos/util/TargetBinding.mjs
-    886bd9b2cff5b5581f131da2acd969c8ab2b034a
+    f2d896eb8a75207b9a966266c2c31c3f12e23989
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -369,13 +369,13 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    235b1afe0f7eca23acea962bc80981b53dffd801
+    d967c1873a913f1a2ad60f7d599a388bd92a3d92
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     d9cd2d635593a12df350d75f79cfbd4cbdaa172f
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    a9b7878b7e1ef6f2bb4d4e03da8377dcec6b8c19
+    c016a8c7eea1bc9ff013b2a30871c8f3d36a5fc0
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     49cee569caaf2192f62d91cbb7297a32c34c534f
@@ -408,7 +408,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     d86a7108784ffdc481e58cbb7f4f406323274492
 
 apps/agentos/view/fleet/detail/Container.mjs
-    7fd7cc033a4595deb6c79339d020f27486a77c8a
+    11fb623113d1eba9765b2be1ae9d4dfc7004c5eb
 
 apps/agentos/view/fleet/detail/Controller.mjs
     7255a3182110179151ad19efc5fe989946ec2671
@@ -433,6 +433,9 @@ apps/agentos/view/fleet/detail/SeatModelContainer.mjs
 
 apps/agentos/view/fleet/detail/SeatRuntimeContainer.mjs
     69c0a29d692e952cd70ffcde83191c21c81bff4e
+
+apps/agentos/view/fleet/detail/ThoughtStreamBodyContainer.mjs
+    dd4154d69698f389093890b20967879c97ecbcc4
 
 apps/agentos/view/fleet/detail/ThoughtStreamList.mjs
     d5d6baa7a98d3ee6e6f3adb5a2499a252a6766c7

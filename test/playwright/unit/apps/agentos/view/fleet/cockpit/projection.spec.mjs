@@ -110,12 +110,8 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 memoriesSnapshot       : null,
                 memoriesTarget         : null,
                 operatorIdentityPosture: null,
-                // the Thought stream read's owner state: a cold seat reads through the selection write
-                recentTurnsProfileId     : null,
-                recentTurnsReadGeneration: 0,
-                recentTurnsReadInFlight  : 0,
-                recentTurnsSnapshot      : null,
-                recentTurnsTarget        : null,
+                // the Thought stream's reader: a cold seat creates it through the selection write
+                recentTurnsReader      : null,
                 resolveFleetRosterStore: () => host.getStateProvider?.()?.getStore('fleetRoster') ?? null,
                 tasksSnapshot          : null,
                 wakeRoutesSnapshot     : null
@@ -124,7 +120,9 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             _wireSelection = (() => {
                 controllerStub.component      = host;
                 controllerStub.memoriesTarget = null;
-                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                controllerStub.applySelection  = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                // the selection write reads the seated resident's Thought stream through the real relay
+                controllerStub.loadRecentTurns = FleetCockpitController.prototype.loadRecentTurns.bind(controllerStub);
                 return true
             })(),
             values = {
@@ -568,12 +566,8 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
                 memoriesSnapshot       : null,
                 memoriesTarget         : null,
                 operatorIdentityPosture: null,
-                // the Thought stream read's owner state: a cold seat reads through the selection write
-                recentTurnsProfileId     : null,
-                recentTurnsReadGeneration: 0,
-                recentTurnsReadInFlight  : 0,
-                recentTurnsSnapshot      : null,
-                recentTurnsTarget        : null,
+                // the Thought stream's reader: a cold seat creates it through the selection write
+                recentTurnsReader      : null,
                 resolveFleetRosterStore: () => host.getStateProvider?.()?.getStore('fleetRoster') ?? null,
                 tasksSnapshot          : null,
                 wakeRoutesSnapshot     : null
@@ -582,7 +576,9 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
             _wireSelection = (() => {
                 controllerStub.component      = host;
                 controllerStub.memoriesTarget = null;
-                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                controllerStub.applySelection  = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                // the selection write reads the seated resident's Thought stream through the real relay
+                controllerStub.loadRecentTurns = FleetCockpitController.prototype.loadRecentTurns.bind(controllerStub);
                 return true
             })(),
             values = {

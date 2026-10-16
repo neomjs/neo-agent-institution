@@ -152,18 +152,18 @@ class TargetBinding extends Base {
      * answers for the seat shown, so one instance's turns never stand under another's name; the seat stays
      * held, the read that calls this asks for it anew. That read has already taken its generation, which
      * fences any earlier profile's read still in flight.
-     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
+     * @param {AgentOS.util.RecentTurnsRead} reader The cockpit's recent-turns reader.
      * @param {Object} options
      * @param {String|null} options.profileId The profile the bridge in hand is bound to.
      * @returns {Boolean} whether a retirement happened
      */
-    static retireRecentTurns(owner, {profileId}) {
-        if (!owner.recentTurnsSnapshot || owner.recentTurnsProfileId === profileId) {
+    static retireRecentTurns(reader, {profileId}) {
+        if (!reader.snapshot || reader.profileId === profileId) {
             return false
         }
 
-        owner.recentTurnsSnapshot  = null;
-        owner.recentTurnsProfileId = null;
+        reader.snapshot  = null;
+        reader.profileId = null;
 
         return true
     }

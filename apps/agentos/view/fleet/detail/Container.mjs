@@ -11,9 +11,8 @@ import SeatModelContainer                   from './SeatModelContainer.mjs';
 import SeatRuntimeContainer                 from './SeatRuntimeContainer.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
-import ThoughtStreamList                    from './ThoughtStreamList.mjs';
+import ThoughtStreamBodyContainer           from './ThoughtStreamBodyContainer.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
-import AgentRecentTurns                     from '../../../store/AgentRecentTurns.mjs';
 import Controller                           from './Controller.mjs';
 import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
 import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
@@ -31,21 +30,12 @@ import Telltale                             from '../../../util/Telltale.mjs';
  * may override once its feed stamps one; the values are tunable, not contractual. A pane whose body
  * is more than its text names its own `body` config: the repository pane's is its own container, and the
  * pull requests pane holds the sentence an answer holding nothing renders, its Store-backed list joining
- * on the first resident shown; the thought stream pane takes the same shape over the seat's recent turns,
- * its TTL twice the cadence that reads them (60 s), so the pill never reads stale between two reads that
- * landed.
+ * on the first resident shown; the thought stream pane's body is its own container too, its TTL twice the
+ * 60 s cadence that reads it, so the pill never reads stale between two reads that landed.
  * @type {Object[]}
  */
 const PANES = [
-    {key: 'thought-stream', title: 'Thought stream', freshnessTtl: 120_000, body: {
-        ntype: 'container',
-        items: [{
-            ntype    : 'component',
-            cls      : ['fm-detail-turns-none'],
-            hidden   : true,
-            reference: 'turns-none'
-        }]
-    }},
+    {key: 'thought-stream', title: 'Thought stream', freshnessTtl: 120_000, body: {module: ThoughtStreamBodyContainer}},
     {key: 'lane',           title: 'Current lane',   freshnessTtl: 300_000},
     {key: 'repo',           title: 'Repository',     freshnessTtl: 300_000, body: {module: RepositoryBodyContainer}},
     {key: 'prs',            title: 'Pull requests',  freshnessTtl: 300_000, body: {
@@ -73,28 +63,6 @@ const AWAITING = {
     lane            : 'awaiting the roster row\'s lane stamp — the latest lane claim per seat lands on the roster read',
     repo            : 'awaiting the roster read — the repository pane reads the roster row'
 };
-
-/**
- * The Thought stream pane's sentences without rows and its pill's own words: a wired answer holding
- * nothing, a plane whose sharing policy clamps peer turns, a seat the roster names no identity for, and a
- * read the bridge did not answer (the connection's story, which the spine banner tells).
- * @type {Object<String, String>}
- */
-const TURN_WORDS = Object.freeze({
-    clamped   : 'this plane shares no peer turns',
-    none      : 'no turns yet',
-    noIdentity: 'the roster row names no identity whose turns to read',
-    unanswered: 'recent-turns read unanswered'
-});
-
-/**
- * @summary The seat's mailbox identity, the key the cockpit's recent-turns read asks for — the roster
- * row's `githubUsername` in `@`-form, the same derivation as the cockpit's selection write.
- * @param {Object|null} record
- * @returns {String|null}
- * @private
- */
-const seatIdentity = record => typeof record?.githubUsername === 'string' && record.githubUsername ? `@${record.githubUsername}` : null;
 
 /**
  * @summary One pane's config: a header (title + referenced freshness chip) over a referenced body.
@@ -260,10 +228,9 @@ class AgentDetail extends Container {
         paneLedgers_: null,
         /**
          * The shown seat's recent turns as the cockpit's read answered them — one `fleetRecentTurns`
-         * envelope `{capability, coverage?, target, turns, memorySharing, …}`, pushed by the owner on
-         * every admission and seeded on rematerialization, or `null` while no read
-         * has landed. The pane renders only an answer for the seat it shows (the envelope's `target`), so
-         * a switch mid-read never lands another seat's turns.
+         * envelope, pushed by the owner on every admission and seeded on rematerialization, or `null`
+         * while no read has landed; the Thought stream pane's body renders it for the seat it shows
+         * ({@link AgentOS.view.fleet.detail.ThoughtStreamBodyContainer}).
          * @member {Object|null} recentTurns_=null
          * @reactive
          */
@@ -857,8 +824,7 @@ class AgentDetail extends Container {
      * roster's own words, and a mount no roster read has reached says so. The pull-request pane reads
      * the record's held open work: an answer observes at its own `observedAt` and stays stale while
      * the producer says so, however recent; no answer says so in the resolver's words. The
-     * thought-stream pane reads the cockpit's recent-turns answer for the seat shown
-     * ({@link #resolveThoughtStreamSource}).
+     * thought-stream pane's body resolves the cockpit's recent-turns answer for the seat shown.
      * @param {String} key Pane key.
      * @param {Object|null} explicitLedger The `paneLedgers` entry, if any.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
@@ -879,7 +845,7 @@ class AgentDetail extends Container {
         }
 
         if (key === 'thought-stream') {
-            return this.resolveThoughtStreamSource(record)
+            return ThoughtStreamBodyContainer.resolveSource(record, this.recentTurns)
         }
 
         if (key !== 'repo' && key !== 'lane') {
@@ -898,62 +864,6 @@ class AgentDetail extends Container {
         return Number.isFinite(this.rosterObservedAt)
             ? {descriptor: fact, ledger: {observedAt: new Date(this.rosterObservedAt).toISOString()}}
             : {descriptor: {state: 'unobserved', reason: 'no roster read has landed in this mount'}, ledger: null}
-    }
-
-    /**
-     * @summary The cockpit's recent-turns answer, if it is for the seat shown: the envelope's `target` is
-     * the seat it was asked for, so an answer that landed for another seat (a switch mid-read) counts as
-     * no answer here. Without a mailbox identity the roster row cannot be asked for at all.
-     * @param {Object} record The drilled-in FleetAgent record (never null here).
-     * @returns {Object|null}
-     * @protected
-     */
-    recentTurnsFor(record) {
-        const
-            answer   = this.recentTurns,
-            identity = seatIdentity(record);
-
-        return answer && identity && answer.target === identity ? answer : null
-    }
-
-    /**
-     * @summary What the Thought stream pill speaks for. No answer for the seat shown resolves to nothing:
-     * the honest unobserved with {@link AWAITING} on the title — the cockpit's own fallback for a bridge
-     * without the verb keeps that same pill (a gap named, not a failure). A read the bridge did not answer
-     * says so in the pane's words; the producer's own `unavailable` names its reason in words, the detail
-     * beside it. A wired answer observes at its `capturedAt`, aged against the pane's TTL like the sibling
-     * panes. A seat the roster names no identity for cannot be read, and the pill says that instead of
-     * waiting for a verb.
-     * @param {Object} record The drilled-in FleetAgent record (never null here).
-     * @returns {{descriptor: (Object|null), ledger: (Object|null)}}
-     * @protected
-     */
-    resolveThoughtStreamSource(record) {
-        if (!seatIdentity(record)) {
-            return {descriptor: {state: 'not observed', reason: TURN_WORDS.noIdentity}, ledger: null}
-        }
-
-        const answer = this.recentTurnsFor(record);
-
-        if (!answer || answer.coverage === 'not-wired') {
-            return {descriptor: null, ledger: null}
-        }
-
-        const {capability} = answer;
-
-        if (capability?.state === 'wired') {
-            return {descriptor: null, ledger: {observedAt: capability.capturedAt ?? null}}
-        }
-
-        if (answer.coverage === 'unanswered') {
-            return {descriptor: {state: 'not observed', reason: TURN_WORDS.unanswered}, ledger: null}
-        }
-
-        const
-            reason = typeof capability?.reason === 'string' && capability.reason ? capability.reason.replace(/-/g, ' ') : 'no reason given',
-            detail = typeof capability?.detail === 'string' && capability.detail ? ` · ${capability.detail}` : '';
-
-        return {descriptor: {state: capability?.state ?? 'unavailable', reason: `${reason}${detail}`}, ledger: null}
     }
 
     /**
@@ -1007,11 +917,8 @@ class AgentDetail extends Container {
      * a path is reported.
      * The pull requests pane loads the seat's held pull requests, worst first, into its list's Store,
      * or says it holds none; without an answer it renders nothing, since its pill says so. The
-     * list re-words its rows' ages at the pane's clock. The thought-stream pane loads the seat's
-     * newest turns into its list's Store the same way, or says a wired answer holds none — in the
-     * plane's words where its policy clamps peer turns; without an answer for the seat shown it renders
-     * nothing, since its pill names the gap, and a body line repeating it would tell the same fact
-     * twice per section.
+     * list re-words its rows' ages at the pane's clock. The thought-stream pane hands the record, the
+     * cockpit's recent-turns answer and the clock to its body, which renders the seat's turns the same way.
      * @param {String} key Pane key.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
      * @protected
@@ -1076,26 +983,7 @@ class AgentDetail extends Container {
         }
 
         if (key === 'thought-stream') {
-            const
-                answer = this.recentTurnsFor(record),
-                wired  = answer?.capability?.state === 'wired',
-                turns  = wired && Array.isArray(answer.turns) ? answer.turns : [],
-                holds  = turns.length > 0,
-                none   = this.getReference('turns-none'),
-                // built for the first resident shown, so an idle cockpit carries no list
-                list   = this.getReference('turn-list') ?? body.insert(0, {
-                    module   : ThoughtStreamList,
-                    hidden   : !holds,
-                    reference: 'turn-list',
-                    store    : {module: AgentRecentTurns}
-                });
-
-            list.store.data = turns;
-            list.now        = this.now ?? Date.now();
-            list.hidden     = !holds;
-
-            none.hidden = !wired || holds;
-            wired && !holds && (none.text = answer.memorySharing?.clamped ? TURN_WORDS.clamped : TURN_WORDS.none)
+            body.set({answer: this.recentTurns, now: this.now ?? Date.now(), record})
         }
     }
 }
