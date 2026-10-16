@@ -63,9 +63,9 @@ const PANES = [
 /**
  * What each pane waits for while no source has answered for it, on the freshness pill's title —
  * each names the producer that owns the pane's fact, so an operator reads a gap, never a bug: the
- * thought stream waits for a Fleet server whose bridge serves recent turns (the verb of
- * neomjs/neo-agent-brain#792; a bridge without it fronts a server behind that pin), the lane waits for
- * the roster row's lane stamp (the latest lane claim per seat, one derivation for the card and this pane).
+ * thought stream waits for a Fleet server whose bridge serves recent turns (a bridge without the verb
+ * fronts a server behind the Brain pin that added it), the lane waits for the roster row's lane stamp
+ * (the latest lane claim per seat, one derivation for the card and this pane).
  * @type {Object<String, String>}
  */
 const AWAITING = {
@@ -260,8 +260,8 @@ class AgentDetail extends Container {
         paneLedgers_: null,
         /**
          * The shown seat's recent turns as the cockpit's read answered them — one `fleetRecentTurns`
-         * envelope `{capability, coverage?, target, turns, memorySharing, …}` (neomjs/neo-agent-brain#792),
-         * pushed by the owner on every admission and seeded on rematerialization, or `null` while no read
+         * envelope `{capability, coverage?, target, turns, memorySharing, …}`, pushed by the owner on
+         * every admission and seeded on rematerialization, or `null` while no read
          * has landed. The pane renders only an answer for the seat it shows (the envelope's `target`), so
          * a switch mid-read never lands another seat's turns.
          * @member {Object|null} recentTurns_=null

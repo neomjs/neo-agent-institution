@@ -2001,7 +2001,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             seat    = '@neo-vega',
             minsAgo = minutes => new Date(NOW - minutes * 60_000).toISOString(),
             turn    = (id, minutes, summary, extra = {}) => ({id, sessionId: `session-${id}`, timestamp: minsAgo(minutes), summary, summaryFallback: false, projectionPending: false, ...extra}),
-            // the Brain's envelope (neomjs/neo-agent-brain#792), wired, for the seat asked
+            // the Brain's envelope, wired, for the seat asked
             answer  = (turns, {capturedAt = minsAgo(1), clamped = false, target = seat} = {}) => ({
                 capability   : {state: 'wired', capturedAt},
                 viewer       : '@operator',

@@ -110,7 +110,7 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 memoriesSnapshot       : null,
                 memoriesTarget         : null,
                 operatorIdentityPosture: null,
-                // the Thought stream read's owner state (#476): a cold seat reads through the selection write
+                // the Thought stream read's owner state: a cold seat reads through the selection write
                 recentTurnsProfileId     : null,
                 recentTurnsReadGeneration: 0,
                 recentTurnsReadInFlight  : 0,
@@ -568,7 +568,7 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
                 memoriesSnapshot       : null,
                 memoriesTarget         : null,
                 operatorIdentityPosture: null,
-                // the Thought stream read's owner state (#476): a cold seat reads through the selection write
+                // the Thought stream read's owner state: a cold seat reads through the selection write
                 recentTurnsProfileId     : null,
                 recentTurnsReadGeneration: 0,
                 recentTurnsReadInFlight  : 0,
@@ -762,7 +762,7 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
         // the live pane's record is the detailRecord hook's business on a real instance (the declaration
         // spec's parity arms read it there); the wrapper itself writes no record. The seated resident's
         // Thought stream read is the one write the selection makes here: this host carries no bridge, so
-        // the pane learns the honest not-wired answer for the seat it shows (#476)
+        // the pane learns the honest not-wired answer for the seat it shows
         expect(sets).toEqual([{recentTurns: expect.objectContaining({coverage: 'not-wired', target: '@neo-opus-vega', turns: []})}]);
 
         host.perspectiveStore.destroy()

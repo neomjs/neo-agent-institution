@@ -3,8 +3,7 @@ import TargetBinding from './TargetBinding.mjs';
 
 /**
  * @summary The Fleet cockpit's recent-turns read: the shown seat's newest public turn summaries — the Agent
- * Detail's Thought stream — from the fleet server's recency source through the `fleetRecentTurns` verb
- * (neomjs/neo-agent-brain#792).
+ * Detail's Thought stream — from the fleet server's recency source through the `fleetRecentTurns` verb.
  *
  * It keeps the open-work read's laws: in-flight accounting the liveness cadence reads, a generation fence so
  * the latest read wins, a typed unavailable envelope when the verb is absent or the read throws (never an

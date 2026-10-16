@@ -16,7 +16,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 import                     '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 
 /**
- * Covers the cockpit-owned recent-turns read (`loadRecentTurns`, #476): the open-work read's laws (a typed
+ * Covers the cockpit-owned recent-turns read (`loadRecentTurns`): the open-work read's laws (a typed
  * unavailable envelope, the generation fence, in-flight accounting released by each read's own settle,
  * target binding across profiles) plus the seat binding — the owner reads the seat the detail shows and
  * nothing without one, a seat switch mid-read drops the earlier seat's answer, a cleared selection drops the

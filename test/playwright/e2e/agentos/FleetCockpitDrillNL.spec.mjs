@@ -125,7 +125,7 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(pill('lane')).toHaveText('not wired — the roster row carried no lane claim fact');
 
         // the bridge in hand carries the recent-turns verb and no plane answers it: the pane says the
-        // read went unanswered, the open-work pane's words for the same fact (#476)
+        // read went unanswered, the open-work pane's words for the same fact
         await expect(pill('thought-stream')).toHaveText('not observed — recent-turns read unanswered');
         await expect(pill('thought-stream')).toHaveAttribute('title', 'not observed — recent-turns read unanswered');
         await expect(pill('prs')).toHaveText('not observed — open-work read unanswered');

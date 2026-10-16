@@ -108,7 +108,7 @@ apps/agentos/model/OpenPullRequest.mjs
     36f7ef5c9f2e57fd74d75f80203bd6e83b3eeff4
 
 apps/agentos/model/RecentTurn.mjs
-    7d7297f6879e4f622f30de6a97a2d719d2c6af4e
+    413963bf62fe76baa818be65d1c076c00619f0d6
 
 apps/agentos/model/SeatMove.mjs
     1166938a5c576a7d9d564ca0b4e67ab965701295
@@ -291,7 +291,7 @@ apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
 
 apps/agentos/util/RecentTurnsRead.mjs
-    c6924e1b13d901aad162bc9ed451254a63bb86a5
+    293b3e9f20c028c0d46ee85f930ade2ad921fb02
 
 apps/agentos/util/RosterRow.mjs
     6b240a50eccb4752ede857ebc2d03d3578decc3a
@@ -408,7 +408,7 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     d86a7108784ffdc481e58cbb7f4f406323274492
 
 apps/agentos/view/fleet/detail/Container.mjs
-    f6574689fcaf45722d21df17464339891a6543f3
+    7fd7cc033a4595deb6c79339d020f27486a77c8a
 
 apps/agentos/view/fleet/detail/Controller.mjs
     7255a3182110179151ad19efc5fe989946ec2671
