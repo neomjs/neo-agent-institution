@@ -11,6 +11,7 @@ import SeatModelContainer                   from './SeatModelContainer.mjs';
 import SeatRuntimeContainer                 from './SeatRuntimeContainer.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
+import ThoughtStreamBodyContainer           from './ThoughtStreamBodyContainer.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
 import Controller                           from './Controller.mjs';
 import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
@@ -29,11 +30,12 @@ import Telltale                             from '../../../util/Telltale.mjs';
  * may override once its feed stamps one; the values are tunable, not contractual. A pane whose body
  * is more than its text names its own `body` config: the repository pane's is its own container, and the
  * pull requests pane holds the sentence an answer holding nothing renders, its Store-backed list joining
- * on the first resident shown.
+ * on the first resident shown; the thought stream pane's body is its own container too, its TTL twice the
+ * 60 s cadence that reads it, so the pill never reads stale between two reads that landed.
  * @type {Object[]}
  */
 const PANES = [
-    {key: 'thought-stream', title: 'Thought stream', freshnessTtl: 60_000},
+    {key: 'thought-stream', title: 'Thought stream', freshnessTtl: 120_000, body: {module: ThoughtStreamBodyContainer}},
     {key: 'lane',           title: 'Current lane',   freshnessTtl: 300_000},
     {key: 'repo',           title: 'Repository',     freshnessTtl: 300_000, body: {module: RepositoryBodyContainer}},
     {key: 'prs',            title: 'Pull requests',  freshnessTtl: 300_000, body: {
@@ -51,13 +53,13 @@ const PANES = [
 /**
  * What each pane waits for while no source has answered for it, on the freshness pill's title —
  * each names the producer that owns the pane's fact, so an operator reads a gap, never a bug: the
- * thought stream waits for a read of a resident's turns that the plane's sharing policy admits (its
- * recency read answers the caller's own turns only), the lane waits for the roster row's lane
- * stamp (the latest lane claim per seat, one derivation for the card and this pane).
+ * thought stream waits for a Fleet server whose bridge serves recent turns (a bridge without the verb
+ * fronts a server behind the Brain pin that added it), the lane waits for the roster row's lane stamp
+ * (the latest lane claim per seat, one derivation for the card and this pane).
  * @type {Object<String, String>}
  */
 const AWAITING = {
-    'thought-stream': 'awaiting a policy-aware read of this resident\'s turns — the plane\'s recency read answers the caller\'s own turns only',
+    'thought-stream': 'awaiting a Fleet server that serves recent turns — the bridge in hand carries no fleetRecentTurns verb',
     lane            : 'awaiting the roster row\'s lane stamp — the latest lane claim per seat lands on the roster read',
     repo            : 'awaiting the roster read — the repository pane reads the roster row'
 };
@@ -224,6 +226,15 @@ class AgentDetail extends Container {
          * @reactive
          */
         paneLedgers_: null,
+        /**
+         * The shown seat's recent turns as the cockpit's read answered them — one `fleetRecentTurns`
+         * envelope, pushed by the owner on every admission and seeded on rematerialization, or `null`
+         * while no read has landed; the Thought stream pane's body renders it for the seat it shows
+         * ({@link AgentOS.view.fleet.detail.ThoughtStreamBodyContainer}).
+         * @member {Object|null} recentTurns_=null
+         * @reactive
+         */
+        recentTurns_: null,
         /**
          * The reader's clock (epoch ms) at the last roster admission — the repository pane's
          * observation instant, since that pane reads the roster row and nothing else. `null` = no
@@ -495,6 +506,17 @@ class AgentDetail extends Container {
      * @protected
      */
     afterSetPaneLedgers(value, oldValue) {
+        this.isConstructed && this.record && this.applyPaneFreshness()
+    }
+
+    /**
+     * @summary Triggered after the recent-turns answer changed — the Thought stream re-renders its
+     * rows and its pill from the new observation without a record re-seat.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetRecentTurns(value, oldValue) {
         this.isConstructed && this.record && this.applyPaneFreshness()
     }
 
@@ -802,8 +824,7 @@ class AgentDetail extends Container {
      * roster's own words, and a mount no roster read has reached says so. The pull-request pane reads
      * the record's held open work: an answer observes at its own `observedAt` and stays stale while
      * the producer says so, however recent; no answer says so in the resolver's words. The
-     * thought-stream pane has no producer on this plane yet ({@link AWAITING} names it), so it
-     * resolves to nothing and the pill states the honest unobserved.
+     * thought-stream pane's body resolves the cockpit's recent-turns answer for the seat shown.
      * @param {String} key Pane key.
      * @param {Object|null} explicitLedger The `paneLedgers` entry, if any.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
@@ -821,6 +842,10 @@ class AgentDetail extends Container {
             return openWorkHeld
                 ? {descriptor: null, ledger: {observedAt: openWorkHeld.observedAt, stale: openWorkHeld.stale}}
                 : {descriptor: {state: 'not observed', reason: OpenWorkSeat.PANE_WORDS.unanswered}, ledger: null}
+        }
+
+        if (key === 'thought-stream') {
+            return ThoughtStreamBodyContainer.resolveSource(record, this.recentTurns)
         }
 
         if (key !== 'repo' && key !== 'lane') {
@@ -892,9 +917,8 @@ class AgentDetail extends Container {
      * a path is reported.
      * The pull requests pane loads the seat's held pull requests, worst first, into its list's Store,
      * or says it holds none; without an answer it renders nothing, since its pill says so. The
-     * list re-words its rows' ages at the pane's clock. The thought-stream pane renders
-     * nothing until its producer lands: the pill names what it waits for, and a body line repeating
-     * it would tell the same fact twice per section.
+     * list re-words its rows' ages at the pane's clock. The thought-stream pane hands the record, the
+     * cockpit's recent-turns answer and the clock to its body, which renders the seat's turns the same way.
      * @param {String} key Pane key.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
      * @protected
@@ -958,7 +982,9 @@ class AgentDetail extends Container {
             return
         }
 
-        body.text = ''
+        if (key === 'thought-stream') {
+            body.set({answer: this.recentTurns, now: this.now ?? Date.now(), record})
+        }
     }
 }
 

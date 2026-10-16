@@ -313,8 +313,10 @@
     /* the pull requests pane: one list row per held pull request, its reference (an anchor to the
        forge, in the inspector's mono voice), its title when the producer carries one, and its line
        in the chip's words; all wrap at rail widths, so the default placement reads every row in
-       full. The rows inform, so the list's row skin (padding, hover, pointer, nowrap) stays off. */
-    .fm-detail-pr-list.neo-list {
+       full. The rows inform, so the list's row skin (padding, hover, pointer, nowrap) stays off.
+       The thought stream pane's list shares the skin: one row per recent turn, the same rules. */
+    .fm-detail-pr-list.neo-list,
+    .fm-detail-turn-list.neo-list {
         --list-container-list-color        : var(--fm-ink-dim);
         --list-item-background-color       : transparent;
         --list-item-background-color-active: transparent;
@@ -349,6 +351,22 @@
     }
 
     .fm-detail-pr-title {
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
+    }
+
+    /* the thought stream pane's row: the meta line (the turn's age, and the word for a weaker summary)
+       in the inspector's mono voice over the derived summary, which wraps whole */
+    .fm-detail-turn {
+        display: grid;
+        gap    : 1px;
+    }
+
+    .fm-detail-turn-meta {
+        font-family: var(--fm-font-mono);
+    }
+
+    .fm-detail-turn-summary {
         color        : var(--fm-ink);
         overflow-wrap: anywhere;
     }

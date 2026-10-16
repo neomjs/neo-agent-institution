@@ -110,6 +110,8 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 memoriesSnapshot       : null,
                 memoriesTarget         : null,
                 operatorIdentityPosture: null,
+                // the Thought stream's reader: a cold seat creates it through the selection write
+                recentTurnsReader      : null,
                 resolveFleetRosterStore: () => host.getStateProvider?.()?.getStore('fleetRoster') ?? null,
                 tasksSnapshot          : null,
                 wakeRoutesSnapshot     : null
@@ -118,7 +120,9 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             _wireSelection = (() => {
                 controllerStub.component      = host;
                 controllerStub.memoriesTarget = null;
-                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                controllerStub.applySelection  = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                // the selection write reads the seated resident's Thought stream through the real relay
+                controllerStub.loadRecentTurns = FleetCockpitController.prototype.loadRecentTurns.bind(controllerStub);
                 return true
             })(),
             values = {
@@ -562,6 +566,8 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
                 memoriesSnapshot       : null,
                 memoriesTarget         : null,
                 operatorIdentityPosture: null,
+                // the Thought stream's reader: a cold seat creates it through the selection write
+                recentTurnsReader      : null,
                 resolveFleetRosterStore: () => host.getStateProvider?.()?.getStore('fleetRoster') ?? null,
                 tasksSnapshot          : null,
                 wakeRoutesSnapshot     : null
@@ -570,7 +576,9 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
             _wireSelection = (() => {
                 controllerStub.component      = host;
                 controllerStub.memoriesTarget = null;
-                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                controllerStub.applySelection  = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                // the selection write reads the seated resident's Thought stream through the real relay
+                controllerStub.loadRecentTurns = FleetCockpitController.prototype.loadRecentTurns.bind(controllerStub);
                 return true
             })(),
             values = {
@@ -747,9 +755,11 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
             selectedAgentId      : 'vega',
             selectedAgentIdentity: '@neo-opus-vega'
         });
-        // the live pane is the detailRecord hook's business on a real instance (the declaration
-        // spec's parity arms read it there); the wrapper itself writes no pane
-        expect(sets).toEqual([]);
+        // the live pane's record is the detailRecord hook's business on a real instance (the declaration
+        // spec's parity arms read it there); the wrapper itself writes no record. The seated resident's
+        // Thought stream read is the one write the selection makes here: this host carries no bridge, so
+        // the pane learns the honest not-wired answer for the seat it shows
+        expect(sets).toEqual([{recentTurns: expect.objectContaining({coverage: 'not-wired', target: '@neo-opus-vega', turns: []})}]);
 
         host.perspectiveStore.destroy()
     });

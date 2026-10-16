@@ -3,6 +3,7 @@ import CockpitPerspectives         from '../../../util/CockpitPerspectives.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
 import OperatorInbox               from '../../../util/OperatorInbox.mjs';
+import RecentTurnsRead             from '../../../util/RecentTurnsRead.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
 import StageWindow                 from '../../../util/StageWindow.mjs';
 import TargetBinding               from '../../../util/TargetBinding.mjs';
@@ -19,7 +20,7 @@ import TargetBinding               from '../../../util/TargetBinding.mjs';
  *
  * State split (the operator's partial-provider ruling): truths MORE THAN ONE surface reads live
  * on {@link AgentOS.view.fleet.cockpit.StateProvider} and the surfaces bind. Per-pane snapshots
- * (operator inbox, memories + drill, wake routes, tasks) are CONTROLLER state below,
+ * (operator inbox, memories + drill, wake routes, tasks, the shown seat's recent turns) are CONTROLLER state below,
  * written to their one pane directly at WRITE time through the view's phase-blind accessors (a
  * pane torn into a vessel or parked in a returning window still receives the truth; a destroyed
  * one never swallows it).
@@ -168,6 +169,14 @@ class Controller extends FleetBatchController {
      * @protected
      */
     openWorkProfileId = null
+    /**
+     * The lazily created recent-turns reader (the Agent Detail's Thought stream), destroyed with this
+     * cockpit; it holds the read's fence, in-flight count, held answer, answering profile and seat
+     * ({@link AgentOS.util.RecentTurnsRead}).
+     * @member {AgentOS.util.RecentTurnsRead|null} recentTurnsReader=null
+     * @protected
+     */
+    recentTurnsReader = null
 
     /** @member {AgentOS.util.StageWindow|null} stageWindow=null Optional sibling launch owner. */
     stageWindow = null
@@ -488,7 +497,8 @@ class Controller extends FleetBatchController {
      *
      * A null identity keeps the pane's LAST target: the summary corpus outlives the seat, so a
      * resident without identity authority (or a cleared selection) never blanks a valid read —
-     * the provider pair still reports the honest null.
+     * the provider pair still reports the honest null. The detail's Thought stream follows the seat
+     * instead: one read per newly shown seat, none without one.
      * @param {Object|null} record The selected {@link AgentOS.model.FleetAgent} record, or null.
      */
     applySelection(record) {
@@ -507,6 +517,16 @@ class Controller extends FleetBatchController {
         if (identity && identity !== me.memoriesTarget) {
             me.memoriesTarget = identity;
             cockpit.getMemoriesPane()?.set({activeAgent: identity})
+        }
+
+        // the detail's Thought stream reads the seat it shows: a newly shown seat with a mailbox
+        // identity is read at once and the liveness cadence keeps it; a re-seat of the same seat reads
+        // nothing new; no seat, or one the roster names no identity for, drops the held stream so no
+        // other seat's turns wait under the next record
+        if (!identity) {
+            me.recentTurnsReader?.clear()
+        } else if (identity !== me.recentTurnsReader?.target) {
+            me.loadRecentTurns({agentIdentity: identity})
         }
     }
 
@@ -776,6 +796,37 @@ class Controller extends FleetBatchController {
     }
 
     /**
+     * @summary READ-OBSERVE: the shown seat's newest public turn summaries, the Agent Detail's Thought
+     * stream ({@link AgentOS.util.RecentTurnsRead#read}) — one read when a seat is first shown, one per
+     * liveness cadence pass while it stays shown, never per roster row.
+     * @param {Object} [params] `{agentIdentity}` retargets the read; none re-reads the seat shown.
+     * @returns {Promise<Object|null>} The envelope, or `null` when no seat is shown.
+     */
+    loadRecentTurns(params = {}) {
+        if (this.isDestroyed) return Promise.resolve(null);
+        this.recentTurnsReader ||= Neo.create(RecentTurnsRead, {owner: this});
+        return this.recentTurnsReader.read(params)
+    }
+
+    /**
+     * @summary Admit one recent-turns answer ({@link AgentOS.util.RecentTurnsRead#admit}).
+     * @param {Object|null} snapshot One `fleetRecentTurns` envelope or the unobserved state.
+     * @param {String|null} [profileId] The profile the answering bridge is bound to.
+     */
+    admitRecentTurns(snapshot, profileId = this.bridge?.profileId ?? null) {
+        (this.recentTurnsReader ||= Neo.create(RecentTurnsRead, {owner: this})).admit(snapshot, profileId)
+    }
+
+    /**
+     * @summary The reader's unsettled wires, the liveness cadence's in-flight count for this read.
+     * @returns {Number}
+     * @protected
+     */
+    get recentTurnsReadInFlight() {
+        return this.recentTurnsReader?.readInFlight ?? 0
+    }
+
+    /**
      * @summary A roster row as its record, carrying the seat's held open work, so a roster refresh never
      * drops the card's open-work chip or the detail's rows ({@link AgentOS.util.OpenWorkRead#seatOpenWork}).
      * @param {Object} row One roster DTO row.
@@ -907,7 +958,7 @@ class Controller extends FleetBatchController {
     }
 
     /**
-     * @summary Destroy the owned inbox reader before retiring the cockpit's liveness owner.
+     * @summary Destroy the owned inbox and recent-turns readers before retiring the cockpit's liveness owner.
      * @param {...*} args
      */
     destroy(...args) {
@@ -915,6 +966,8 @@ class Controller extends FleetBatchController {
         this.stageWindow = null;
         this.operatorInbox?.destroy();
         this.operatorInbox = null;
+        this.recentTurnsReader?.destroy();
+        this.recentTurnsReader = null;
         super.destroy(...args)
     }
 

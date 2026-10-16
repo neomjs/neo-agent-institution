@@ -845,6 +845,9 @@ class FleetCockpit extends VesselContainer {
                     // the roster admission instant the owner holds: a pane projected after the
                     // roster landed ages its roster-read panes from the real observation
                     rosterObservedAt: controller.rosterObservedAt,
+                    // the owner-held recent-turns answer: a pane projected after the read landed shows
+                    // the seat's stream at once instead of waiting for the next cadence pass
+                    recentTurns     : controller.recentTurnsReader?.snapshot ?? null,
                     shellTools      : [me.buildDetailWindowToggle()]
                 };
                 break;

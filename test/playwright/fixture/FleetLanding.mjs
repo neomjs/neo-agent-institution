@@ -7,7 +7,8 @@ import {isDescriptor} from '../../../node_modules/neo.mjs/src/core/ConfigSymbols
  * `Neo.worker.App.setConfigs` — no remote of the App worker lands rows otherwise. A landed roster,
  * activity, or tasks envelope is handed to the cockpit owner's own admission. Roster and activity
  * follow the liveness admission used by their reads; tasks follow `Controller.admitTasks`, which
- * invalidates an older in-flight read, and open work follows `Controller.admitOpenWork` the same way. Every set lands — the configs compare nothing — so a spec
+ * invalidates an older in-flight read, open work follows `Controller.admitOpenWork` the same way, and the shown
+ * seat's recent turns `Controller.admitRecentTurns`. Every set lands — the configs compare nothing — so a spec
  * re-lands the same facts at will. Loading the module again (a fresh `t`) finds the instance. A set
  * mailbox is served as the bridge's `fleetActivity`, so the cockpit's own reads page it. Landed
  * definitions replace the Viewport provider's `agentDefinitions` Store, the Accounts view's source. A
@@ -48,6 +49,11 @@ class FleetLanding extends Base {
          * @member {Object|null} openWork_=null
          */
         openWork_: {[isDescriptor]: true, value: null, isEqual: () => false},
+        /**
+         * One `fleetRecentTurns` envelope to land as the owner's answer for the shown seat, `{snapshot}`.
+         * @member {Object|null} recentTurns_=null
+         */
+        recentTurns_: {[isDescriptor]: true, value: null, isEqual: () => false},
         /**
          * A mailbox the cockpit reads, `{events, observers?}` newest first: set, it becomes the bridge's
          * `fleetActivity`. `observers` maps an observer scope to its population, which an observer read pages.
@@ -164,6 +170,13 @@ class FleetLanding extends Base {
      */
     afterSetOpenWork(value) {
         value && this.owner.admitOpenWork(value.snapshot)
+    }
+
+    /**
+     * @param {Object|null} value
+     */
+    afterSetRecentTurns(value) {
+        value && this.owner.admitRecentTurns(value.snapshot)
     }
 
     /**

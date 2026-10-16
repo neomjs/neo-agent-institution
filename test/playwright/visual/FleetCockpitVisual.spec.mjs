@@ -1,7 +1,7 @@
 import {test, expect}                                                                                                                  from '@playwright/test';
-import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
-import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks}                                                                  from '../fixture/fleetSample.mjs';
-import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}                                                                   from '../fixture/pinnedSetupHost.mjs';
+import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
+import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks}                                                                                        from '../fixture/fleetSample.mjs';
+import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}                                                                                         from '../fixture/pinnedSetupHost.mjs';
 
 /**
  * The FM cockpit's visual-regression baselines — the design gate's mechanical guard: pixel
@@ -2380,5 +2380,57 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await settle();
         await expect(button).toHaveScreenshot('fleet-button-stop-armed.png');
         await expect(summary).toHaveScreenshot('fleet-button-stop-plan.png')
+    });
+
+    test('the Thought stream pane lists the shown seat\'s newest turns with their ages and the words for a weaker summary, the pill aged from the read; both skins (#476)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            now     = Date.now(),
+            minsAgo = minutes => new Date(now - minutes * 60_000).toISOString(),
+            turn    = (id, minutes, summary, extra = {}) => ({id, sessionId: `session-${id}`, timestamp: minsAgo(minutes), summary, summaryFallback: false, projectionPending: false, ...extra}),
+            // the Brain's envelope for the seat the card seats: three turns, one cut from the raw turn, one not projected yet
+            answer  = {
+                capability   : {state: 'wired', capturedAt: minsAgo(1)},
+                viewer       : '@operator',
+                target       : '@neo-opus-vega',
+                page         : {limit: 20, before: null},
+                turns        : [
+                    turn('t3', 2,  'Approved neo-stage #102: the head\'s promotion carries the sheet by hash, no findings.'),
+                    turn('t2', 9,  'Routed the design seat\'s read into four leaves under #505, each with its steward and the rationale.', {summaryFallback: true}),
+                    turn('t1', 31, null, {projectionPending: true})
+                ],
+                count        : 3,
+                nextCursor   : null,
+                memorySharing: {policy: 'team', clamped: false}
+            },
+            card    = page.locator('.fm-agent-card', {hasText: 'Vega'}),
+            detail  = page.locator('.fm-agent-detail:visible').first(),
+            pane    = detail.locator('.fm-detail-pane-thought-stream'),
+            rows    = pane.locator('.fm-detail-turn'),
+            settle  = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await card.click();
+        await expect(detail).toBeVisible({timeout: 30000});
+        // no plane answers here: the pill reads the honest unobserved (the verb it awaits, or a read
+        // the bridge did not answer) until the test lands the answer
+        await expect(pane.locator('.fm-freshness')).toHaveText(/^not observed/, {timeout: 15000});
+
+        await landFleetRecentTurns(page, answer);
+        await expect(rows).toHaveCount(3);
+        await expect(rows.nth(1).locator('.fm-detail-turn-meta')).toHaveText('9m ago · cut from the raw turn');
+        await expect(pane.locator('.fm-freshness')).toHaveText('updated 1m ago');
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-thought-stream.png');
+
+        await switchToLightSkin(page);
+        await expect(rows).toHaveCount(3);
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-thought-stream-light.png')
     });
 });

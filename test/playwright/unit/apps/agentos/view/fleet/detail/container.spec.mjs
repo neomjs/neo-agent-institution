@@ -671,11 +671,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         const detail = createDetail({agentId: 'vega', laneLine: 'FM cockpit agent detail view', openLaneCount: 17, state: 'ok'});
 
         expect(body(detail, 'lane').text).toBe('FM cockpit agent detail view · 17 open lanes');
-        // a feed-gated pane never fabricates a stream — and never repeats the head's honest
-        // "not observed" as a body line either: the body stays EMPTY, the awaiting truth
-        // rides the freshness pill's title
-        expect(body(detail, 'thought-stream').text).toBe('');
-        expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting a policy-aware read');
+        // a pane without an answer never fabricates a stream — and never repeats the head's honest
+        // "not observed" as a body line either: the list and the no-rows sentence stay hidden, the
+        // awaiting truth rides the freshness pill's title
+        expect(detail.down({reference: 'turn-list'}).hidden).toBe(true);
+        expect(detail.down({reference: 'turns-none'}).hidden).toBe(true);
+        expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting a Fleet server that serves recent turns');
 
         // no lane reported → honest fallback, no fabricated count
         applySet(detail, {laneLine: null, openLaneCount: null});
@@ -1803,7 +1804,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         expect(chip(detail, 'thought-stream').text).toBe('not observed — source not wired');
         expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
-        expect(chip(detail, 'thought-stream').vdom.title).toContain('policy-aware read');
+        expect(chip(detail, 'thought-stream').vdom.title).toContain('serves recent turns');
 
         // the pull requests pane has its producer: without an answer it says so in the resolver's words
         expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
@@ -1993,5 +1994,157 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(detail, 'repo').cls).toContain('is-lost');
 
         detail.destroy()
+    });
+
+    test.describe('the Thought stream pane reads the seat\'s recent turns (#476)', () => {
+        const
+            seat    = '@neo-vega',
+            minsAgo = minutes => new Date(NOW - minutes * 60_000).toISOString(),
+            turn    = (id, minutes, summary, extra = {}) => ({id, sessionId: `session-${id}`, timestamp: minsAgo(minutes), summary, summaryFallback: false, projectionPending: false, ...extra}),
+            // the Brain's envelope, wired, for the seat asked
+            answer  = (turns, {capturedAt = minsAgo(1), clamped = false, target = seat} = {}) => ({
+                capability   : {state: 'wired', capturedAt},
+                viewer       : '@operator',
+                target,
+                page         : {limit: 20, before: null},
+                turns,
+                count        : turns.length,
+                nextCursor   : null,
+                memorySharing: {policy: clamped ? 'private' : 'team', clamped}
+            }),
+            // the cockpit's own fallback when the bridge lacks the verb or did not answer
+            fallback = (reason, coverage) => ({capability: {state: 'unavailable', reason, capturedAt: null}, coverage, viewer: null, target: seat, page: {limit: 20, before: null}, turns: [], count: 0, nextCursor: null, memorySharing: null}),
+            list     = detail => detail.down({reference: 'turn-list'}),
+            none     = detail => detail.down({reference: 'turns-none'}),
+            rowsOf   = detail => list(detail).vdom.cn;
+
+        test('AC-1: a wired answer renders the seat\'s turns newest first through the list\'s Store, each with its age and the word for a weaker summary; the pill reads the read\'s age', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: answer([
+                turn('t3', 2,  'Approved the Stage promotion PR.'),
+                turn('t2', 9,  'Routed the design read into four leaves.', {summaryFallback: true}),
+                turn('t1', 30, null, {projectionPending: true})
+            ])});
+
+            // the rows are the list Store's records in the plane's order: the Store sorts nothing
+            expect(list(detail).store.className).toBe('AgentOS.store.AgentRecentTurns');
+            expect(list(detail).store.items.map(record => record.id)).toEqual(['t3', 't2', 't1']);
+            expect(list(detail).hidden).toBe(false);
+            expect(none(detail).hidden).toBe(true);
+            rowsOf(detail).forEach(row => expect(row.cls).toContain('fm-detail-turn'));
+
+            expect(rowsOf(detail).map(row => row.cn.map(node => node.cls[0]))).toEqual(Array(3).fill(['fm-detail-turn-meta', 'fm-detail-turn-summary']));
+            expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['2m ago', '9m ago · cut from the raw turn', '30m ago · summary pending']);
+            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['Approved the Stage promotion PR.', 'Routed the design read into four leaves.', 'no summary served']);
+            // the instant itself rides the meta line's title
+            expect(rowsOf(detail)[0].cn[0].title).toBe(minsAgo(2));
+
+            // the pill is the read's own observation, aged like the sibling panes
+            expect(chip(detail, 'thought-stream').text).toBe('updated 1m ago');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-fresh');
+            expect(chip(detail, 'thought-stream').vdom.title).toBeNull();
+
+            detail.destroy()
+        });
+
+        test('an idle detail carries no list: it joins the pane for the first resident shown', () => {
+            const idle = Neo.create(AgentDetail, {appName});
+
+            expect(list(idle)).toBeFalsy();
+            idle.destroy();
+
+            const detail = createDetail({agentId: 'vega', state: 'ok'});
+
+            expect(list(detail).store.className).toBe('AgentOS.store.AgentRecentTurns');
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
+
+        test('AC-2: an empty stream, a clamped plane and the producer\'s unavailable each read as themselves, with no sample row in any state', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: answer([])});
+
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(false);
+            expect(none(detail).text).toBe('no turns yet');
+            expect(chip(detail, 'thought-stream').text).toBe('updated 1m ago');
+
+            // the plane's policy clamps peer turns: a wired empty page that says why
+            detail.recentTurns = answer([], {clamped: true});
+            expect(none(detail).text).toBe('this plane shares no peer turns');
+            expect(list(detail).store.getCount()).toBe(0);
+            expect(chip(detail, 'thought-stream').cls).toContain('is-fresh');
+
+            // the producer's own unavailable: its reason in words, its detail beside it, no sentence and no rows
+            detail.recentTurns = {...answer([]), capability: {state: 'unavailable', reason: 'recent-turns-read-failed', capturedAt: minsAgo(1), detail: 'The graph recency reader is unavailable.'}, memorySharing: null};
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden, 'an answer the producer did not give holds nothing to say').toBe(true);
+            expect(chip(detail, 'thought-stream').text).toBe('unavailable — recent turns read failed · The graph recency reader is unavailable.');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+            expect(chip(detail, 'thought-stream').vdom.title).toBe(chip(detail, 'thought-stream').text);
+
+            detail.destroy()
+        });
+
+        test('AC-3: an answer asked for another seat renders nothing for the seat shown; a re-seat onto that seat shows its own answer', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: answer([turn('a1', 1, 'Ada\'s turn.')], {target: '@neo-ada'})});
+
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(true);
+            expect(chip(detail, 'thought-stream').text).toBe('not observed — source not wired');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+
+            detail.record = makeRecord({agentId: 'ada', state: 'ok'});
+            expect(list(detail).hidden).toBe(false);
+            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['Ada\'s turn.']);
+            expect(chip(detail, 'thought-stream').text).toBe('updated 1m ago');
+
+            detail.destroy()
+        });
+
+        test('AC-4: the cockpit\'s fallback for a bridge without the verb keeps the unobserved pill and names the verb on its title; a read the bridge did not answer says so', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: fallback('fleet recent-turns verb not wired', 'not-wired')});
+
+            expect(chip(detail, 'thought-stream').text).toBe('not observed — source not wired');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+            expect(chip(detail, 'thought-stream').vdom.title).toBe('awaiting a Fleet server that serves recent turns — the bridge in hand carries no fleetRecentTurns verb');
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(true);
+
+            detail.recentTurns = fallback('fleet recent-turns read failed', 'unanswered');
+            expect(chip(detail, 'thought-stream').text).toBe('not observed — recent-turns read unanswered');
+            expect(chip(detail, 'thought-stream').vdom.title).toBe(chip(detail, 'thought-stream').text);
+            expect(list(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
+
+        test('the rows and the pill re-age with the pane\'s clock; a read older than the TTL reads stale and keeps its rows', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: answer([turn('t1', 2, 'A turn.')])});
+
+            expect(rowsOf(detail)[0].cn[0].text).toBe('2m ago');
+
+            detail.now = NOW + 60_000;
+            expect(rowsOf(detail)[0].cn[0].text).toBe('3m ago');
+            expect(chip(detail, 'thought-stream').text).toBe('updated 2m ago');
+
+            // past the pane's 120 s TTL: stale, the rows stay
+            detail.now = NOW + 180_000;
+            expect(chip(detail, 'thought-stream').text).toBe('stale · last seen 4m ago');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-stale');
+            expect(list(detail).hidden).toBe(false);
+
+            detail.destroy()
+        });
+
+        test('a seat the roster names no identity for cannot be read: the pill says so instead of waiting for a verb', () => {
+            const detail = createDetail({agentId: 'ghost', githubUsername: null, state: 'ok'}, {recentTurns: answer([turn('t1', 1, 'Nobody\'s turn.')], {target: '@ghost'})});
+
+            expect(chip(detail, 'thought-stream').text).toBe('not observed — the roster row names no identity whose turns to read');
+            expect(chip(detail, 'thought-stream').vdom.title).toBe(chip(detail, 'thought-stream').text);
+            expect(list(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
     });
 });
