@@ -581,6 +581,13 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         expect(selected).toHaveLength(1);
         expect(list.getItemRecordId(selected[0])).toBe(store.items[1].agentId);
 
+        store.remove(store.items[1]);
+        expect(model.getSelection()).toEqual([]);
+        expect(provider.getData('selectedAgentId')).toBeNull();
+        expect(provider.getData('selectedAgentIdentity')).toBeNull();
+        expect(fired).toHaveLength(7);
+        expect(fired[6]).toEqual({agentId: null, source: grid.id});
+
         grid.destroy()
     });
 

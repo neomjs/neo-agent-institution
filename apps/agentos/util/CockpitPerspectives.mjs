@@ -183,7 +183,7 @@ class CockpitPerspectives extends Base {
         const doc    = cockpit?.dockModel,
               detail = doc?.items?.detail;
 
-        if (!detail || cockpit._seatingInspector || typeof cockpit.applyDockZoneOperation !== 'function') {
+        if (!detail || typeof cockpit.applyDockZoneOperation !== 'function') {
             return
         }
 

@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    fe6ab42c75675a007bd9d7390fdc09afb4493f74
+    04ff2b09df237dd5032d74d31756e644dcee3435
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -222,7 +222,7 @@ apps/agentos/util/ClosedShape.mjs
     1cb201ec5bb7b858b41a68f6abfba58824fb6ccf
 
 apps/agentos/util/CockpitPerspectives.mjs
-    4e0075dd1413fadf41db1a4e1de01d60bc47defa
+    347adda6cd8b8b66fedfc676e6899a6ef068d579
 
 apps/agentos/util/ConfigIntentRoundTrip.mjs
     304f0ae0f77b480f206457cbca31765b7edec1b9
@@ -369,13 +369,13 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    10673fba30ebecd21feb3ed0af730d7980c90ce2
+    e79832d9a8f23be68cc778522c2ce913fa1f56f8
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     d9cd2d635593a12df350d75f79cfbd4cbdaa172f
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    d58867209f9d16133ffddfad5287a69e6598da75
+    6d358c7d06b2b3aecbe374f978661c448a79ee8b
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     49cee569caaf2192f62d91cbb7297a32c34c534f
@@ -561,7 +561,7 @@ apps/agentos/view/fleet/roster/Controller.mjs
     2e6c627c5ac60b5ee9b3a7852f47d746e7e323c6
 
 apps/agentos/view/fleet/roster/List.mjs
-    47fa2bf1689a7f41c0e8d14a90e832b250e58390
+    3fd36c285e5dc783f42226ccb50d551cd6849c4d
 
 apps/agentos/view/fleet/roster/SelectionModel.mjs
     655008601e97dde664080456695162a4b709153a
