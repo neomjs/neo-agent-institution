@@ -273,6 +273,40 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(host.gridReadInFlight).toBe(0)
         });
 
+        test('a joining shell window does not retire the primary roster recovery', async () => {
+            const {onStart} = await import('../../../../../../../../apps/agentos/app.mjs');
+            const {host, store} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            const previous = {app: Neo.app, url: Neo.config.url, boot: Neo.bootingWindowId, request: Neo.Main.fleetRequest};
+            let calls = 0;
+
+            try {
+                Neo.config.url = {href: 'app://neo/apps/agentos/index.html', search: ''};
+                Neo.bootingWindowId = 'startup-primary';
+                Neo.apps['startup-primary'] = {};
+                Neo.app = () => {};
+                Neo.Main.fleetRequest = () => ++calls === 1 ? late.promise : rosterReply('fresh-primary');
+                onStart();
+                const bridge = host.bridge;
+                await startInitialRead(host);
+                Neo.bootingWindowId = 'startup-popup';
+                Neo.apps['startup-popup'] = {};
+                onStart();
+                expect(host.bridge).toBe(bridge);
+                late.resolve(rosterReply('expired-primary'));
+                await expect.poll(() => store.get('fresh-primary')?.agentId).toBe('fresh-primary');
+                expect(calls).toBe(2);
+                expect(store.get('expired-primary')).toBeFalsy()
+            } finally {
+                delete Neo.apps['startup-primary'];
+                delete Neo.apps['startup-popup'];
+                Neo.app = previous.app;
+                Neo.config.url = previous.url;
+                Neo.bootingWindowId = previous.boot;
+                Neo.Main.fleetRequest = previous.request
+            }
+        });
+
         test('an already-ready initial shell read does not issue a recovery read', async () => {
             const {host, store} = makeRosterHost();
             let calls = 0;
