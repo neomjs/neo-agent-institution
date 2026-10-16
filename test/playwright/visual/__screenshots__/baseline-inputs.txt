@@ -291,7 +291,7 @@ apps/agentos/util/SeatDependencies.mjs
     45f6624f0a0e8340c362b72399dcf9badba1e396
 
 apps/agentos/util/SeatExitReason.mjs
-    a44dfd6de13a2bd12b4a3f281ebb3b02b7dbc0ba
+    a7dab0197169a09e8179bd570fe7751eb1d0c7cb
 
 apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627
@@ -552,7 +552,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     78976535f96d9eeb2f2776cf62184e51cc32b6e0
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    eb828230568d6153773c67c14a6b0b6f35e71cf4
+    22aa49d3b84f331b3ea345fdde517add3d96c694
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     6be0a97126831188336d056730b994353b18fc3a
