@@ -18,10 +18,10 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
 /**
- * The memories registers' row grammar, pinned at the cell layer (the merged #37/#38 sketch is
+ * The memories registers' row grammar, pinned at the cell layer (the merged design sketch is
  * the scored spec): the summary card's head/meta/attribution/body anatomy with the DERIVED
  * provenance chip and the native drill-open button, the band eyebrow as stamped-fact-only
- * rendering, the turn row's miniSummary-title law (Brain #210 fallback), T5 viewer-local ages
+ * rendering, the turn row's miniSummary-title law (bounded-response fallback), T5 viewer-local ages
  * with the exact ISO on `title`, and the pool-recycle contract (a new bag on the SAME instance
  * re-renders every channel). All layers escape text — hostile strings never become markup.
  */

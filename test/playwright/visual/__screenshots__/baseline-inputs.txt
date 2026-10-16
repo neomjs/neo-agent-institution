@@ -522,13 +522,13 @@ apps/agentos/view/fleet/memories/SummaryGrid.mjs
     7384c20004b379d02f13de01cc72291f5dc05514
 
 apps/agentos/view/fleet/memories/SummaryRowComponent.mjs
-    ec97d15f0f6be259812de086d4ceb087114b1a88
+    8767cbb04ee0980b03f94b74f340dd51f1b6fb33
 
 apps/agentos/view/fleet/memories/TurnGrid.mjs
     e09ad2ab79881a1e75284ba5c78e035cfbc5033f
 
 apps/agentos/view/fleet/memories/TurnRowComponent.mjs
-    5c6e0a16b13f332f946c1230679f2a2f4f424606
+    a7970529d018122b09c90c56fe15d7493ba1daf3
 
 apps/agentos/view/fleet/perspectives/Container.mjs
     f6548ca755ca9817cf13b8b7388cb62a0e8471e1
