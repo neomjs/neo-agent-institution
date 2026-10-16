@@ -1,0 +1,40 @@
+.fm-seat-runtime {
+    border-bottom: 1px solid var(--fm-line);
+    color        : var(--fm-ink);
+    flex         : none;
+    font         : var(--fm-text-body);
+    gap          : var(--fm-space-2);
+    min-width    : 0;
+    padding      : var(--fm-space-3);
+
+    .fm-runtime-heading {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+    }
+
+    .fm-runtime-actions {
+        gap: var(--fm-space-2);
+
+        .neo-button {
+            max-width: 100%;
+            min-width: 0;
+        }
+
+        .neo-button-text {
+            white-space: normal;
+        }
+    }
+
+    .fm-runtime-identities {
+        font         : var(--fm-text-detail);
+        gap          : var(--fm-space-2);
+        overflow-wrap: anywhere;
+    }
+
+    .fm-runtime-feedback {
+        color        : var(--fm-ink-dim);
+        overflow-wrap: anywhere;
+    }
+}

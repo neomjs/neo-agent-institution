@@ -28,7 +28,7 @@ import {
     stageOwners,
     themeBuildArgv
 } from '../../../../harness/pack.mjs';
-import {buildPackagedBrainEnv, resolveBrainMode, resolveLauncherRuntimeRoot} from '../../../../harness/brain.mjs';
+import {buildPackagedBrainEnv, resolveBrainMode, resolveLauncherRuntime} from '../../../../harness/brain.mjs';
 import path                                                                  from 'node:path';
 
 /**
@@ -149,7 +149,10 @@ test.describe('harness pack stage', () => {
             'fleetCapability.mjs',
             'main.mjs',
             'mainLog.mjs',
+            'packageSlots.mjs',
             'planeConfig.mjs',
+            'runtimeGeneration.mjs',
+            'runtimeMaintenance.mjs',
             'seatRootBroker.mjs',
             'seatRootMove.mjs',
             'seatRootRecord.mjs',
@@ -306,7 +309,8 @@ test.describe('harness pack stage', () => {
         writeFileSync(path.join(product, 'node_modules', 'neo.mjs', ENGINE_THEME_BUILD), 'export default {}', 'utf8');
         mkdirSync(path.join(brain, 'ai'), {recursive: true});
         mkdirSync(path.join(brain, 'src'), {recursive: true});
-        writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0'}), 'utf8');
+        writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0', exports: {'./runtime-generation': './ai/runtimeGeneration.mjs'}}), 'utf8');
+        writeFileSync(path.join(brain, 'ai/runtimeGeneration.mjs'), 'export const fixture = true;', 'utf8');
 
         return {brain, product, root}
     };
@@ -327,6 +331,10 @@ test.describe('harness pack stage', () => {
             // a root without its markers is named, never guessed around
             expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: root}, productRoot: product})).toThrow(/brain root .* carries no package\.json/);
             expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: root})).toThrow(/product root .* carries no apps\/agentos/);
+
+            await rm(path.join(brain, 'ai/runtimeGeneration.mjs'));
+            expect(() => resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product})).toThrow(/no runtime-generation verifier export/);
+            writeFileSync(path.join(brain, 'ai/runtimeGeneration.mjs'), 'export const fixture = true;', 'utf8');
 
             // the Engine owner is proven too: the theme builder the stage runs lives in the pinned
             // package, and a product root without an installed Engine fails before any mutation
@@ -396,7 +404,7 @@ test.describe('harness pack stage', () => {
                 'neo-agent-brain'              : 'github:neomjs/neo-agent-brain#dev',
                 'neo.mjs'                      : 'github:neomjs/neo#dev'
             }}), 'utf8');
-            writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0', dependencies: {'@chroma-core/default-embed': '^0.1.0'}}), 'utf8');
+            writeFileSync(path.join(brain, 'package.json'), JSON.stringify({name: 'neo-agent-brain', version: '0.0.0', exports: {'./runtime-generation': './ai/runtimeGeneration.mjs'}, dependencies: {'@chroma-core/default-embed': '^0.1.0'}}), 'utf8');
 
             return {brain, product, root}
         };
@@ -529,7 +537,7 @@ test.describe('harness pack stage', () => {
                 roots             = resolvePackRoots({env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product}),
                 {copied, scanned} = stageOwners({roots, stageDir});
 
-            expect(copied.brain.sort()).toEqual(['ai/x.mjs', 'src/evolution/rem.mjs']);
+            expect(copied.brain.sort()).toEqual(['ai/runtimeGeneration.mjs', 'ai/x.mjs', 'src/evolution/rem.mjs']);
             expect(copied.product.sort()).toEqual(['resources/images/logo/neo_logo_primary.svg', 'resources/theme-map.json', 'src/MicroLoader.mjs']);
             expect(scanned).toEqual({brain: ['brain-only-pkg'], product: ['product-only-pkg']});
             expect(buildOrganismManifest({brainPackageJson, productPackageJson, scanned, supplemental: NO_SUPPLEMENTAL}).dependencies)
@@ -990,13 +998,15 @@ test.describe('harness pack stage', () => {
     // The launcher-ordering half: a checkout with the Brain leg off must boot without a Brain root
     // and without loading a Brain contract; the root stays required while the leg is on, and a
     // relative value is an error in every shape.
-    test('resolveLauncherRuntimeRoot: packaged → the organism root; Brain on → the absolute checkout, required; Brain off → the supplied root or none, relative never', () => {
-        expect(resolveLauncherRuntimeRoot({brainMode: true, env: {}, packaged: true, packagedOrganismRoot: '/app/organism'})).toBe('/app/organism');
-        expect(resolveLauncherRuntimeRoot({brainMode: true, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false})).toBe('/abs/brain');
-        expect(() => resolveLauncherRuntimeRoot({brainMode: true, env: {}, packaged: false})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
-        expect(resolveLauncherRuntimeRoot({brainMode: false, env: {}, packaged: false})).toBeNull();
-        expect(resolveLauncherRuntimeRoot({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false})).toBe('/abs/brain');
-        expect(() => resolveLauncherRuntimeRoot({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: 'brain'}, packaged: false})).toThrow(/absolute/)
+    test('checkout runtime remains explicit, with a UI-only boot when no Brain root is supplied', async () => {
+        await expect(resolveLauncherRuntime({brainMode: true, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain'}, packaged: false}))
+            .resolves.toEqual({runtimeRoot: '/abs/brain', executable: 'node', generation: null, launchArgs: []});
+        await expect(resolveLauncherRuntime({brainMode: true, env: {}, packaged: false})).rejects.toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
+        await expect(resolveLauncherRuntime({brainMode: false, env: {}, packaged: false}))
+            .resolves.toEqual({runtimeRoot: null, executable: 'node', generation: null, launchArgs: []});
+        await expect(resolveLauncherRuntime({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: '/abs/brain', NEO_HARNESS_NODE_BIN: '/explicit/node'}, packaged: false}))
+            .resolves.toEqual({runtimeRoot: '/abs/brain', executable: '/explicit/node', generation: null, launchArgs: []});
+        await expect(resolveLauncherRuntime({brainMode: false, env: {NEO_AGENTOS_RUNTIME_ROOT: 'brain'}, packaged: false})).rejects.toThrow(/absolute/)
     });
 
     // The security stop-line: a checkout's gitignored config overlay (which CAN carry hand-edited

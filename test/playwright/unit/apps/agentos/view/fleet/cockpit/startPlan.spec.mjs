@@ -35,7 +35,7 @@ const wiredRuntime = (confidence = 'observed') => ({
 test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => {
 
     test('live state keeps Stop uncertainty distinct from a family that cannot Start', () => {
-        const record = {agentId: 'native-up', state: 'ok', sources: wiredRuntime(), launchable: false, pendingAction: 'stop'};
+        const record  = {agentId: 'native-up', state: 'ok', sources: wiredRuntime(), launchable: false, pendingAction: 'stop'};
         const pending = FleetStartPlan.renderFleetState([record]);
 
         expect(pending.text).toBe('0\u00a0started · 1\u00a0pending');
@@ -300,8 +300,8 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
 
     test('the fleet button reads the plan it would run: Start fleet · n while anything eligible is down, Stop fleet · n only when nothing is left to start, the plain label with its reason when no plan can be computed (#618 AC-1)', () => {
         const
-            up   = id => ({agentId: id, state: 'ok',  sources: wiredRuntime()}),
-            down = id => ({agentId: id, state: 'off', sources: wiredRuntime()}),
+            up    = id => ({agentId: id, state: 'ok',  sources: wiredRuntime()}),
+            down  = id => ({agentId: id, state: 'off', sources: wiredRuntime()}),
             eight = ['ada', 'grace', 'vega', 'sophie', 'emmy', 'euclid', 'clio', 'fable'];
 
         expect(FleetStartPlan.describeFleetButton([...eight.slice(0, 4).map(up), ...eight.slice(4).map(down)]))

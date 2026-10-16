@@ -1,14 +1,15 @@
-import {expect, test}                                        from '@playwright/test';
-import {execFileSync}                                        from 'node:child_process';
-import {EventEmitter, once}                                  from 'node:events';
-import {mkdtemp, rm, symlink}                                from 'node:fs/promises';
-import {readFileSync, writeFileSync, mkdirSync, existsSync}  from 'node:fs';
-import net                                                   from 'node:net';
-import {homedir, tmpdir}                                     from 'node:os';
-import path                                                  from 'node:path';
-import {fileURLToPath}                                       from 'node:url';
-import {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} from 'neo-agent-brain/fleet-contract';
+import {expect, test}                                                from '@playwright/test';
+import {execFileSync}                                                from 'node:child_process';
+import {EventEmitter, once}                                          from 'node:events';
+import {mkdtemp, rm, symlink}                                        from 'node:fs/promises';
+import {readFileSync, writeFileSync, mkdirSync, existsSync}          from 'node:fs';
+import net                                                           from 'node:net';
+import {homedir, tmpdir}                                             from 'node:os';
+import path                                                          from 'node:path';
+import {fileURLToPath}                                               from 'node:url';
+import {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES}         from 'neo-agent-brain/fleet-contract';
 import {launchedPlaneRecord, planeEnvFragment, probePlaneCredential} from '../../../../harness/planeConfig.mjs';
+import {resolvePlaneMemberEnv}                                       from '../../../../harness/fixturePlane.mjs';
 import {
     allocatePort,
     assertIsolatedProfile,
@@ -360,7 +361,7 @@ test.describe('harness brain lifecycle', () => {
 
         // The refusal line lands on the output streams after `exit`: it is quoted only once `close` says they drained.
         const refused = createFakeChild();
-        let last = null;
+        let   last    = null;
 
         refused.stdout.on('data', chunk => { last = String(chunk).trim() });
 
@@ -648,6 +649,25 @@ test.describe('harness brain lifecycle', () => {
         expect(results.find(result => result.name === 'tier-1').ok, 'the other bases stay placed').toBe(true)
     });
 
+    test('the fixture plane places imported server members outside the sealed runtime', async () => {
+        const
+            env = {
+                ...await resolvePlaneMemberEnv({planeRoot: workDir, repoRoot: resolveAgentOsRuntimeRoot(process.env)}),
+                UNIT_TEST_MODE: ''
+            },
+            checked = await runPlaneMemberCheck(env);
+
+        expect(checked.dataRoot).toBe(workDir);
+        expect(checked.results.filter(result => !result.ok)).toEqual([]);
+        expect(env.NEO_KB_LOG_PATH).toBe(path.join(workDir, 'logs'));
+        expect(env.NEO_NL_LOG_PATH).toBe(path.join(workDir, 'logs'));
+
+        const control = await runPlaneMemberCheck({...env, NEO_KB_LOG_PATH: undefined});
+
+        expect(control.results.find(result => result.name === 'knowledge-base'))
+            .toMatchObject({ok: false, error: expect.stringContaining('logPath')})
+    });
+
     test('the product\'s backups resolve beside its plane, never beneath it, in the Brain\'s own resolution', async () => {
         const
             dataRoot   = path.join(workDir, 'brain'),
@@ -920,12 +940,12 @@ test.describe('harness brain lifecycle', () => {
         writeFileSync(path.join(workDir, 'entry.mjs'), 'process.stdout.write(JSON.stringify(process.argv.slice(2))); setTimeout(() => {}, 5000)');
 
         const
-            child   = startBrainChild({entry: 'entry.mjs', ownershipTokenFn: () => 'marker-token', repoRoot: workDir}),
+            child   = startBrainChild({entry: 'entry.mjs', args: ['--neo-runtime-generation=/generation with spaces'], ownershipTokenFn: () => 'marker-token', repoRoot: workDir}),
             [argv]  = await once(child.stdout, 'data'),
             command = execFileSync('ps', ['-o', 'command=', '-p', String(child.pid)], {encoding: 'utf8'});
 
         try {
-            expect(JSON.parse(String(argv))).toEqual([]);
+            expect(JSON.parse(String(argv))).toEqual(['--neo-runtime-generation=/generation with spaces']);
             expect(command).toContain(`${path.join(workDir, 'entry.mjs')} --neo-harness-owner=marker-token`)
         } finally {
             await stopBrainChild(child, {graceMs: 1000})

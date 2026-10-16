@@ -16,7 +16,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                     '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
-import {wiredSources} from './cockpitFakes.mjs';
+import {wiredSources}              from './cockpitFakes.mjs';
 import FleetLifecycleIntentAdapter from '../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs';
 
 /**
@@ -49,7 +49,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
     test('a changed settled roster replaces the previous fleet result with eight current started seats', () => {
         const records = Array.from({length: 12}, (_, index) => ({
-            agentId: `seat-${index}`, sources: wiredSources(), state: index < 4 ? 'ok' : 'off',
+            agentId            : `seat-${index}`, sources: wiredSources(), state: index < 4 ? 'ok' : 'off',
             participationStatus: index < 8 ? 'active' : 'operator_benched',
             set(values) { Object.assign(this, values) }
         })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
@@ -67,8 +67,8 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
     });
 
     test('an unchanged roster keeps current counts and a retired target clears them', () => {
-        const record = {agentId: 'seat-a', sources: wiredSources(), state: 'ok'},
-              button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+        const record     = {agentId: 'seat-a', sources: wiredSources(), state: 'ok'},
+              button     = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
               controller = Object.create(FleetCockpitController.prototype);
 
         controller.getReference = name => ({'fleet-grid': {store: {items: [record]}}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
@@ -83,7 +83,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
     test('unbenching a stopped seat changes excluded from four to three and offers one fleet start', () => {
         const records = Array.from({length: 12}, (_, index) => ({
-            agentId: `seat-${index}`, sources: wiredSources(), state: index < 8 ? 'ok' : 'off',
+            agentId            : `seat-${index}`, sources: wiredSources(), state: index < 8 ? 'ok' : 'off',
             participationStatus: index < 8 ? 'active' : 'operator_benched',
             set(values) { Object.assign(this, values) }
         })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
@@ -100,7 +100,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
     test('fleet status and its button use full membership when the visible roster hides stopped and benched seats', () => {
         const records = Array.from({length: 12}, (_, index) => ({
-            agentId: `seat-${index}`, sources: wiredSources(), state: index < 8 ? 'ok' : 'off',
+            agentId            : `seat-${index}`, sources: wiredSources(), state: index < 8 ? 'ok' : 'off',
             participationStatus: index < 9 ? 'active' : 'operator_benched'
         })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
               controller = Object.create(FleetCockpitController.prototype),
@@ -174,8 +174,8 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
     test('onStopFleet is a two-press: the first press renders the plan and sends nothing; the second sends one stop intent per planned seat and the summary reads N stopped; a fleet start takes the first press back (#618 AC-3)', async () => {
         const
-            calls      = [],
-            records    = ['ada', 'euclid', 'vega'].map((agentId, index) => ({
+            calls   = [],
+            records = ['ada', 'euclid', 'vega'].map((agentId, index) => ({
                 agentId,
                 controlReason: null,
                 pendingAction: null,
@@ -629,7 +629,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
     test('a retired target\'s unresolved batch does not suppress the replacement roster or restore its historical line', async () => {
         const {calls, controller, release, store, waitFor} = waveFixture(),
-              slot = {vdom: {}, set(values) { Object.assign(this, values) }};
+              slot                                         = {vdom: {}, set(values) { Object.assign(this, values) }};
 
         controller.getReference = name => ({'fleet-grid': {store}, 'fleet-start-summary': slot})[name] ?? null;
 
@@ -718,7 +718,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
     test('an earlier wave\'s late answers land on the running line while the next wave is still held, not after it (#654, falsifier 3)', async () => {
         const
             {calls, controller, records, release, summaries, waitFor} = waveFixture(),
-            original = FleetLifecycleIntentAdapter.handleFleetLifecycleIntent;
+            original                                                  = FleetLifecycleIntentAdapter.handleFleetLifecycleIntent;
 
         // the first wave's intents time out at once on the adapter's bound; the third seat's never does
         FleetLifecycleIntentAdapter.handleFleetLifecycleIntent = function(intent, record, options) {
@@ -803,9 +803,9 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             unreachable = mkRecord({agentId: 'flaky',  state: 'off', sources: wiredSources(), participationStatus: 'temporarily_unreachable'}),
             unwired     = mkRecord({agentId: 'silent', state: 'off'}),   // no sources → runtime normalizes not-wired
             slot        = {
-                sets: [],
+                sets  : [],
                 titles: [],
-                vdom: {},
+                vdom  : {},
                 set(values) { this.sets.push(values); this.titles.push(this.vdom.title) },
                 update() {}
             };

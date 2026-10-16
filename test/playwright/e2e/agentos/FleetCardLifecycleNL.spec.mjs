@@ -10,7 +10,8 @@ import {
 
 const {NeuralLink_DataService} = await loadNeuralLinkModules();
 
-const TEST_AGENT_ID = 'nl-lifecycle-agent';
+const TEST_AGENT_ID  = 'nl-lifecycle-agent';
+const OLD_RUNTIME_ID = 'a'.repeat(64), NEXT_RUNTIME_ID = 'b'.repeat(64);
 
 const WIRED_SOURCES = {
     roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
@@ -50,15 +51,19 @@ function rosterRow(state, id = TEST_AGENT_ID, participationStatus = 'active') {
  * @param {Object} [options]
  * @param {Boolean} [options.rejectStart=false]
  * @param {Boolean} [options.cohort=false] Serve the header's twelve-seat participation witness.
+ * @param {Boolean} [options.runtimeChoice=false] Serve a running seat and a manually settled exact restart.
  * @returns {Promise<Object>} Bridge, recorded requests and a fixture-only unbench actuator.
  */
-async function startLifecycleFleetBridge({rejectStart = false, cohort = false} = {}) {
+async function startLifecycleFleetBridge({rejectStart = false, cohort = false, runtimeChoice = false} = {}) {
     const
         {startFleetBridgeServer} = await loadAgentOsModule('ai/services/fleet/fleetBridgeServer.mjs'),
         requests                 = [],
         ids                      = cohort ? [TEST_AGENT_ID, ...Array.from({length: 11}, (_, index) => `header-seat-${index + 1}`)] : [TEST_AGENT_ID],
         running                  = new Set(cohort ? ids.slice(0, 8) : []),
         benched                  = new Set(cohort ? ids.slice(8) : []);
+
+    let runtimeId = OLD_RUNTIME_ID, settleRestart;
+    if (runtimeChoice) running.add(TEST_AGENT_ID);
 
     const options = authenticatedFleetOptions({
         dispatch: async request => {
@@ -78,8 +83,16 @@ async function startLifecycleFleetBridge({rejectStart = false, cohort = false} =
                 return fleetE2ESuccess({id: request.params, state: 'stopped'})
             }
 
+            if (request.method === 'restartAgent' && runtimeChoice) {
+                return new Promise(resolve => settleRestart = result => resolve(fleetE2ESuccess(result)))
+            }
+
             if (request.method === 'fleetRoster') {
-                return fleetE2ESuccess({rows: ids.map(id => rosterRow(running.has(id) ? 'running' : 'stopped', id, benched.has(id) ? 'operator_benched' : 'active'))})
+                return fleetE2ESuccess({rows: ids.map(id => ({
+                    ...rosterRow(running.has(id) ? 'running' : 'stopped', id, benched.has(id) ? 'operator_benched' : 'active'),
+                    ...(runtimeChoice && {runtimeGeneration: {id: runtimeId, pin: 'held'},
+                        nextRuntimeGeneration: {id: NEXT_RUNTIME_ID}, installedGeneration: {state: 'observed', id: NEXT_RUNTIME_ID}})
+                }))})
             }
 
             if (request.method === 'fleetActivity') {
@@ -98,10 +111,12 @@ async function startLifecycleFleetBridge({rejectStart = false, cohort = false} =
 
     return {
         requests,
-        unbench    : () => { const id = ids[8]; benched.delete(id); return id },
-        bearerToken: options.bearerToken,
-        endpoint   : `http://127.0.0.1:${server.address().port}/fleet`,
-        close      : () => new Promise(resolve => server.close(resolve))
+        settleRestart : result => { const settle = settleRestart; settleRestart = null; settle(result) },
+        observeRuntime: id => { runtimeId = id },
+        unbench       : () => { const id = ids[8]; benched.delete(id); return id },
+        bearerToken   : options.bearerToken,
+        endpoint      : `http://127.0.0.1:${server.address().port}/fleet`,
+        close         : () => new Promise(resolve => server.close(resolve))
     }
 }
 
@@ -185,6 +200,52 @@ async function getRosterRecord(app, agentId = TEST_AGENT_ID) {
  */
 test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
     test.setTimeout(90000);
+
+    test('Detail exact restart crosses the wire once, exposes pending/refusal, and waits for the observed new pin', async ({page, neuralLink}, testInfo) => {
+        const fleet = await startLifecycleFleetBridge({runtimeChoice: true});
+        try {
+            const app = await bootWiredCockpit(page, neuralLink, fleet);
+            await page.locator('.fm-fleet-cards .fm-card-name').click();
+            const runtime  = page.locator('.fm-agent-detail .fm-seat-runtime');
+            const restart  = runtime.getByRole('button', {name: 'Restart on installed generation', exact: true});
+            const requests = () => fleet.requests.filter(request => request.method === 'restartAgent');
+            await expect(runtime).toBeVisible();
+            await expect(restart).toBeEnabled();
+            await testInfo.attach('runtime-choice-enabled', {body: await runtime.screenshot(), contentType: 'image/png'});
+            await restart.click();
+            await expect.poll(() => requests().length).toBe(1);
+            expect(requests()[0]).toEqual({method: 'restartAgent',
+                params: {agentId: TEST_AGENT_ID, expectedRuntimeGeneration: NEXT_RUNTIME_ID}, protocol: createFleetWireOffer()});
+            await expect(restart).toBeDisabled();
+            await expect(runtime.locator('.fm-runtime-feedback')).toHaveText('Lifecycle request in progress…');
+            expect((await getRosterRecord(app)).runtimeGeneration.id).toBe(OLD_RUNTIME_ID);
+            await testInfo.attach('runtime-choice-pending', {body: await runtime.screenshot(), contentType: 'image/png'});
+
+            fleet.settleRestart({status: 'rejected', reason: 'FleetManager.restartAgent: the runtime target changed or is not verified; review it before restarting.'});
+            await expect(runtime.locator('.fm-runtime-feedback')).toContainText('runtime target changed');
+            await expect(restart).toBeEnabled();
+            expect(requests()).toHaveLength(1);
+            expect((await getRosterRecord(app)).runtimeGeneration.id).toBe(OLD_RUNTIME_ID);
+            await testInfo.attach('runtime-choice-refused', {body: await runtime.screenshot(), contentType: 'image/png'});
+
+            await restart.click();
+            await expect.poll(() => requests().length).toBe(2);
+            expect(requests()[1].params).toEqual(requests()[0].params);
+            fleet.settleRestart({id: TEST_AGENT_ID, state: 'running'});
+            await expect(restart).toBeEnabled();
+            await expect.poll(async () => (await getRosterRecord(app)).pendingAction ?? null).toBeNull();
+            expect((await getRosterRecord(app)).runtimeGeneration.id).toBe(OLD_RUNTIME_ID);
+            await expect(runtime).not.toContainText('Running on the installed generation.');
+
+            fleet.observeRuntime(NEXT_RUNTIME_ID);
+            await reloadRoster(app);
+            await expect(runtime).toContainText('Running on the installed generation.');
+            await expect(restart).not.toBeVisible();
+            expect((await getRosterRecord(app)).runtimeGeneration.id).toBe(NEXT_RUNTIME_ID);
+            expect(requests()).toHaveLength(2);
+            await testInfo.attach('runtime-choice-observed', {body: await runtime.screenshot(), contentType: 'image/png'});
+        } finally { await fleet.close() }
+    });
 
     test('happy path: the toggle drives the FULL power cycle through the wire; Body state advances only via re-polled registry truth', async ({page, neuralLink}) => {
         const fleet = await startLifecycleFleetBridge();
@@ -301,8 +362,8 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
         const fleet = await startLifecycleFleetBridge({cohort: true});
 
         try {
-            const app = await bootWiredCockpit(page, neuralLink, fleet, 12),
-                  button = page.locator('.fm-cockpit-bar .fm-fleet-start'),
+            const app     = await bootWiredCockpit(page, neuralLink, fleet, 12),
+                  button  = page.locator('.fm-cockpit-bar .fm-fleet-start'),
                   summary = page.locator('.fm-fleet-start-summary');
 
             await expect(button).toHaveText('Stop fleet · 8');

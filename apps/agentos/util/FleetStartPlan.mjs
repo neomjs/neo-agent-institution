@@ -282,14 +282,14 @@ class FleetStartPlan extends Base {
 
         if (!rows.length) return null;
 
-        const start = FleetStartPlan.partitionFleetStart(rows),
-              stop = FleetStartPlan.partitionFleetStop(rows),
-              ready = new Set(start.eligible),
-              up = new Set(stop.eligible),
+        const start        = FleetStartPlan.partitionFleetStart(rows),
+              stop         = FleetStartPlan.partitionFleetStop(rows),
+              ready        = new Set(start.eligible),
+              up           = new Set(stop.eligible),
               startReasons = new Map(start.excluded.map(entry => [entry.record, entry.reason])),
-              stopReasons = new Map(stop.excluded.map(entry => [entry.record, entry.reason])),
-              summary = {started: up.size, pending: [], unknown: [], rejected: [], excluded: []},
-              detail = [];
+              stopReasons  = new Map(stop.excluded.map(entry => [entry.record, entry.reason])),
+              summary      = {started: up.size, pending: [], unknown: [], rejected: [], excluded: []},
+              detail       = [];
 
         rows.forEach(record => {
             const agentId = record.agentId ?? '(guest)';
@@ -305,9 +305,9 @@ class FleetStartPlan extends Base {
                 return
             }
 
-            const excluded = !record.agentId || (record.participationStatus != null && record.participationStatus !== 'active'),
+            const excluded   = !record.agentId || (record.participationStatus != null && record.participationStatus !== 'active'),
                   startEntry = {agentId, reason: startReasons.get(record)},
-                  stopEntry = {agentId, reason: stopReasons.get(record)};
+                  stopEntry  = {agentId, reason: stopReasons.get(record)};
 
             if (excluded) {
                 summary.excluded.push(startEntry)

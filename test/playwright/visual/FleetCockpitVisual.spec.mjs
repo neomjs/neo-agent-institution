@@ -1,7 +1,7 @@
-import {test, expect} from '@playwright/test';
+import {test, expect}                                                                                                                  from '@playwright/test';
 import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
-import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
-import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost} from '../fixture/pinnedSetupHost.mjs';
+import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks}                                                                  from '../fixture/fleetSample.mjs';
+import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}                                                                   from '../fixture/pinnedSetupHost.mjs';
 
 /**
  * The FM cockpit's visual-regression baselines — the design gate's mechanical guard: pixel
@@ -184,7 +184,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the lane claim reads on its card, while a wired empty lane says so', async ({page}) => {
         await bootSettledCockpit(page);
 
-        const laneLine = 'control-plane state synchronization for source-alpha continuation',
+        const laneLine      = 'control-plane state synchronization for source-alpha continuation',
               laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString();
 
         await landFleetRoster(page, sampleRoster.map((row, index) => index < 2 ? {
@@ -509,7 +509,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             sources = {...emmy.sources, runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
             land    = facts => landFleetRoster(page, [...sampleRoster, {
                 ...emmy,
-                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null,
+                agentId : 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null,
                 repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-gpt-sophie/neomjs/neo', sources, ...facts
             }]),
             card    = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
@@ -564,7 +564,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             ],
             land    = () => landFleetRoster(page, [...sampleRoster, {
                 ...emmy,
-                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null,
+                agentId : 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null,
                 repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-gpt-sophie/neomjs/neo', sources, state: 'off', dependencyOutcomes: live
             }]),
             card    = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
@@ -646,8 +646,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                             word  = rect(card.querySelector('.fm-card-state'));
 
                       return {
-                          lineHeight    : Math.round(line.height),
-                          members       : [...card.querySelectorAll('.fm-card-state-line > *')]
+                          lineHeight: Math.round(line.height),
+                          members   : [...card.querySelectorAll('.fm-card-state-line > *')]
                               .map(el => ({cls: el.className, box: rect(el)}))
                               .filter(({box}) => box.width > 0 && box.top - line.top < line.height)
                               .map(({cls, box}) => ({cls, pastLine: Math.round(box.right - line.right), underVerbs: Math.round(overlap(box, verbs))})),
@@ -665,9 +665,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 minIdentity   : idents.length ? Math.min(...idents) : 0,
                 head          : globalThis.__fmMeasureFleetHead(),
                 shell         : {
-                    labelInside  : !!label && label.left >= switcher.left && label.right <= switcher.right,
+                    labelInside   : !!label && label.left >= switcher.left && label.right <= switcher.right,
                     labelOverTheme: Math.round(overlap(label, rect(document.querySelector('.agent-theme-button')))),
-                    titleWidth   : title ? Math.round(title.width) : 0
+                    titleWidth    : title ? Math.round(title.width) : 0
                 },
                 cards
             }
@@ -705,8 +705,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         }
 
         const countSegments = await page.locator('.fm-fleet-start-summary').evaluate(element => {
-            const node = element.firstChild, text = node.textContent;
-            let offset = 0;
+            const node   = element.firstChild, text = node.textContent;
+            let   offset = 0;
 
             return text.split(' · ').map(segment => {
                 const range = document.createRange();
@@ -1009,8 +1009,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
             const measure = () => page.evaluate(() => {
                 const
-                    panel    = document.querySelector('.agent-panel-accounts'),
-                    bounds   = panel.getBoundingClientRect(),
+                    panel  = document.querySelector('.agent-panel-accounts'),
+                    bounds = panel.getBoundingClientRect(),
                     // the layout boxes this view owns; the engine's own clipping boxes (a button's
                     // ripple, a hidden field trigger) are deliberate and stay out of the census
                     boxes    = ['.fm-accounts-master', '.fm-accounts-list', '.fm-accounts-detail', '.fm-agent-config-card', '.fm-agent-repos-card', '.fm-add-agent-form']
@@ -1111,9 +1111,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         return {
             // the layout width — what the pane's own width-query context reads (a scaled ancestor
             // shrinks the painted rect, never this)
-            width  : pane.clientWidth,
-            noClip : pane.scrollWidth <= pane.clientWidth && rows.every(row => row.scrollWidth <= row.clientWidth),
-            spill  : [...pane.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > right + 0.5).length,
+            width : pane.clientWidth,
+            noClip: pane.scrollWidth <= pane.clientWidth && rows.every(row => row.scrollWidth <= row.clientWidth),
+            spill : [...pane.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > right + 0.5).length,
             // the receipt behind a red: which row overflows its own box, and by how much
             clipped: rows.filter(row => row.scrollWidth > row.clientWidth).map(row => `${row.className}: ${row.scrollWidth} > ${row.clientWidth}`),
             pane   : `${pane.scrollWidth} / ${pane.clientWidth}`
@@ -1506,11 +1506,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
     test('the Observatory\'s team lens and heat — two checked peers draw their union in hues of their own and the Team list and the rows carry them; the heat brightens what drew attention and greys what it cannot read; nothing moves; both skins', async ({page}) => {
         const
-            pane  = page.locator('.fm-observatory-pane'),
-            peer  = id => pane.locator('.fm-observatory-peer-list .neo-list-item').filter({hasText: id}),
-            heat  = pane.getByRole('button', {name: 'Attention'}),
+            pane   = page.locator('.fm-observatory-pane'),
+            peer   = id => pane.locator('.fm-observatory-peer-list .neo-list-item').filter({hasText: id}),
+            heat   = pane.getByRole('button', {name: 'Attention'}),
             lensed = / · lens · 5 nodes · 2 peers$/,
-            rest  = async () => {
+            rest   = async () => {
                 await page.waitForTimeout(300);
                 await page.mouse.move(0, 0);
                 await page.waitForTimeout(500)
@@ -1572,10 +1572,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
     test('the Observatory offers the team busiest first and every focus has a way back — the head reads in two rows, a click outlines nothing the keys would, Clear and Escape leave a selection and then the lens', async ({page}) => {
         const
-            pane      = page.locator('.fm-observatory-pane'),
-            peers     = pane.locator('.fm-observatory-peer-list .neo-list-item'),
-            node      = at => pane.locator('.fm-observatory-node-list .neo-list-item').nth(at),
-            head      = pane.locator('.fm-observatory-peers-head'),
+            pane  = page.locator('.fm-observatory-pane'),
+            peers = pane.locator('.fm-observatory-peer-list .neo-list-item'),
+            node  = at => pane.locator('.fm-observatory-node-list .neo-list-item').nth(at),
+            head  = pane.locator('.fm-observatory-peers-head'),
             // one section opens to the panel's height at a time; its head opens it
             teamHead  = pane.getByRole('button', {name: /^Team/}),
             nodesHead = pane.getByRole('button', {name: /^Nodes/}),

@@ -414,7 +414,7 @@ class Controller extends FleetBatchController {
      * @returns {{saved: Boolean, layoutId: String|null, name: String|null, errors: String[]}}
      */
     capturePerspective(name) {
-        let view    = this.component,
+        let view = this.component,
             verdict;
 
         // A capture that throws is still a verdict the drawer must show — a silent failure would

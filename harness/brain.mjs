@@ -26,14 +26,15 @@
 // the next canonical restart — see ProcessSupervisorService.reconcileSingletonPort), which is
 // exactly why parent-only teardown leaks: the group is the only boundary that owns the whole tree.
 
-import {execFile, execFileSync, spawn} from 'node:child_process';
-import {randomUUID}                    from 'node:crypto';
-import {once}                          from 'node:events';
-import fs                              from 'node:fs';
-import net                             from 'node:net';
-import path                            from 'node:path';
-import {pathToFileURL}                 from 'node:url';
-import {carriesSecret}                 from './mainLog.mjs';
+import {execFile, execFileSync, spawn}                                                                                              from 'node:child_process';
+import {randomUUID}                                                                                                                 from 'node:crypto';
+import {once}                                                                                                                       from 'node:events';
+import fs                                                                                                                           from 'node:fs';
+import net                                                                                                                          from 'node:net';
+import path                                                                                                                         from 'node:path';
+import {pathToFileURL}                                                                                                              from 'node:url';
+import {carriesSecret}                                                                                                              from './mainLog.mjs';
+import {acquireHostRuntimeGeneration, loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, materializeRuntimeGeneration} from './runtimeGeneration.mjs';
 
 export const ORCHESTRATOR_ENTRY = 'ai/daemons/orchestrator/daemon.mjs';
 export const FLEET_SERVER_ENTRY = 'ai/services/fleet/devFleetServer.mjs';
@@ -67,34 +68,52 @@ export function resolveAgentOsRuntimeRoot(env = process.env) {
 }
 
 /**
- * @summary The launcher's runtime-root rule per boot shape. Packaged: the assembled organism root,
- * always. Checkout with the Brain leg on: the explicit absolute Brain checkout, required (the
- * contract above). Checkout with the Brain leg off: that root when the operator supplies one (the
- * UI-only transport self-supplies from it), `null` when absent — the shell then boots as the UI
- * alone, spawns nothing and loads no Brain contract. A RELATIVE value stays an error in every shape:
- * never a cwd guess.
+ * @summary Selects one verified packaged runtime, or an explicitly configured checkout runtime.
+ * The caller selects its diagnostic or installed userData before this operation. Packaged
+ * selection never returns bundle paths; a failed materialisation propagates without fallback.
+ * A checkout with no Brain leg or explicit root loads no Brain contracts.
  * @param {Object} options
  * @param {Boolean} options.brainMode `resolveBrainMode`'s verdict.
  * @param {Object} [options.env=process.env]
  * @param {Boolean} options.packaged `app.isPackaged` at the call site.
  * @param {String|null} [options.packagedOrganismRoot=null]
- * @returns {String|null}
+ * @param {String} [options.bundlePath] Complete packaged execution closure.
+ * @param {String} [options.executable] Packaged executable to copy and verify.
+ * @param {String} [options.userData] Already-selected Electron profile root.
+ * @param {Function} [options.materialize=materializeRuntimeGeneration] Runtime publisher.
+ * @returns {Promise<{runtimeRoot: (String|null), executable: String, generation: (Object|null), launchArgs: String[], release: (Function|undefined)}>}
  */
-export function resolveLauncherRuntimeRoot({brainMode, env = process.env, packaged, packagedOrganismRoot = null}) {
+export async function resolveLauncherRuntime({
+    brainMode, env = process.env, packaged, packagedOrganismRoot = null,
+    bundlePath, executable, userData, materialize = materializeRuntimeGeneration
+}) {
     if (packaged) {
-        return packagedOrganismRoot
+        if (typeof userData !== 'string' || !path.isAbsolute(userData)) {
+            throw new TypeError('Packaged runtime selection requires the selected absolute userData root.')
+        }
+        const verifier   = await loadRuntimeGenerationVerifier({bundlePath, runtimeRoot: packagedOrganismRoot});
+        const references = await loadRuntimeGenerationReferences({bundlePath, runtimeRoot: packagedOrganismRoot});
+        const lease      = await acquireHostRuntimeGeneration({
+            bundlePath, runtimeRoot: packagedOrganismRoot, executable,
+            directory: path.join(userData, 'brain', 'runtime'),
+            verifier, references
+        }, {materialize});
+        const {generation} = lease;
+        return {runtimeRoot: generation.runtimeRoot, executable: generation.executable, generation,
+            launchArgs: verifier.runtimeGenerationArguments(generation), release: lease.release}
     }
 
-    if (brainMode || env.NEO_AGENTOS_RUNTIME_ROOT !== undefined) {
-        return resolveAgentOsRuntimeRoot(env)
+    return {
+        runtimeRoot: brainMode || env.NEO_AGENTOS_RUNTIME_ROOT !== undefined ? resolveAgentOsRuntimeRoot(env) : null,
+        executable : env.NEO_HARNESS_NODE_BIN || 'node',
+        generation : null,
+        launchArgs : []
     }
-
-    return null
 }
 
 /**
  * @summary Loads the product's installed public Fleet entry and the selected runtime's private
- * launcher primitives. Each root is explicit; the packaged organism supplies the same root twice.
+ * launcher primitives. Each root is explicit; packaged private contracts come from the verified generation.
  * The public entry never supplies credential classification or identity/probe authority.
  * @param {Object} options
  * @param {String} options.productRoot Absolute Institution checkout or packaged organism root.
@@ -872,13 +891,12 @@ function forwardLines(child, onLog) {
 }
 
 /**
- * @summary Spawns one supervised system-Node child DETACHED into its own process group — the
- * teardown boundary that owns every descendant. System Node is deliberate (the Arm-B core): the
- * repo's native modules are built for the system ABI, and `ELECTRON_RUN_AS_NODE` children would
- * carry Electron's ABI back into the same conflict.
+ * @summary Spawns one supervised child in its own process group. Checkout mode uses system Node;
+ * packaged mode selects the verified generation's executable and supplies its Node-mode environment.
  * @param {Object} options
  * @param {String}   options.repoRoot Repo root (cwd for the child).
  * @param {String}   options.entry Entry script, repo-relative.
+ * @param {String[]} [options.args=[]] Script arguments, preserved after the private ownership marker.
  * @param {Object}   [options.env] Env fragment merged over process.env. It can add or override an
  *     inherited variable, never remove one, so a fragment builder that must keep an inherited value away
  *     from the child has to decide it by what it exports, not by deleting.
@@ -890,6 +908,7 @@ function forwardLines(child, onLog) {
 export function startBrainChild({
     repoRoot,
     entry,
+    args = [],
     env = {},
     onLog,
     ownershipTokenFn = randomUUID,
@@ -919,8 +938,11 @@ export function startBrainChild({
     if (typeof ownershipToken !== 'string' || ownershipToken.length === 0 || /\s/.test(ownershipToken)) {
         throw new TypeError('ownershipTokenFn must return a non-empty token without whitespace')
     }
+    if (!Array.isArray(args) || args.some(arg => typeof arg !== 'string' || arg.startsWith('--neo-harness-owner='))) {
+        throw new TypeError('args must be script strings without a second ownership marker')
+    }
 
-    const child = spawnFn(nodeBin(), ['--import', OWNER_MARKER_STRIP, absoluteEntry, `--neo-harness-owner=${ownershipToken}`], {
+    const child = spawnFn(nodeBin(), ['--import', OWNER_MARKER_STRIP, absoluteEntry, `--neo-harness-owner=${ownershipToken}`, ...args], {
         cwd     : absoluteRepoRoot,
         detached: true,
         env     : {...process.env, ...env, PATH: `${binPaths.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ''}`},

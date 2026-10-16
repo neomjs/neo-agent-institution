@@ -20,8 +20,11 @@ files:
     - fixturePlane.mjs
     - fleetCapability.mjs
     - mainLog.mjs
+    - packageSlots.mjs
     - planeConfig.mjs
     - preload.cjs
+    - runtimeGeneration.mjs
+    - runtimeMaintenance.mjs
     - seatRootBroker.mjs
     - seatRootMove.mjs
     - seatRootRecord.mjs

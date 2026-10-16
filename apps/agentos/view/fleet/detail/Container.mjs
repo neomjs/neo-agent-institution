@@ -8,6 +8,7 @@ import ParticipationContainer               from './ParticipationContainer.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
 import RepositoryBodyContainer              from './RepositoryBodyContainer.mjs';
 import SeatModelContainer                   from './SeatModelContainer.mjs';
+import SeatRuntimeContainer                 from './SeatRuntimeContainer.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
@@ -372,7 +373,7 @@ class AgentDetail extends Container {
                 header   : {text: 'Status'},
                 reference: 'detail-panes',
                 layout   : {ntype: 'vbox', align: 'stretch'},
-                items    : PANES.map(paneConfig)
+                items    : [{module: SeatRuntimeContainer, reference: 'seat-runtime', flex: 'none'}, ...PANES.map(paneConfig)]
             }, {
                 // object permanence (the S5 fork-1 ruling): per-agent CONFIGURATION belongs to the
                 // agent object, so it rides the detail as a tab. The card fires `configIntent`; THIS view owns the bridge
@@ -622,6 +623,7 @@ class AgentDetail extends Container {
         // the configuration tab joins on the Fleet Registry key; a roster resident with no stored
         // definition renders the card's honest no-definition line, never a fabricated config
         me.applyConfigRecord();
+        me.getReference('seat-runtime').updateRecord(record);
 
         if (!record) {
             return

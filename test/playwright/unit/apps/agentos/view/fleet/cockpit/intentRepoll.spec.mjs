@@ -10,9 +10,9 @@ setup({
     }
 });
 
-import {test, expect}                                                         from '@playwright/test';
-import Neo                                                                    from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core                                                              from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import {test, expect} from '@playwright/test';
+import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                             '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
@@ -335,9 +335,9 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
                   livenessReadTimeout   : 4000
               },
               controller = makeControllerFake(FleetCockpitController, {
-                  component              : view,
-                  getReference           : reference => reference === 'fleet-grid' ? {adapterState: 'cold', store} : null,
-                  lastLiveRows           : null,
+                  component   : view,
+                  getReference: reference => reference === 'fleet-grid' ? {adapterState: 'cold', store} : null,
+                  lastLiveRows: null,
                   // the provider-owned roster authority — the same REAL store the grid binds
                   resolveFleetRosterStore: () => store
               });
