@@ -42,7 +42,9 @@ export function resolveFleetTransportMode({href}) {
     return new URL(href).protocol === 'app:' ? 'shell' : 'browser'
 }
 
-let browserFleetHealPromise = null;
+let browserFleetHealPromise = null,
+    shellFleetBridge       = null,
+    shellBootWindowId      = null;
 
 /**
  * @summary Runs one bounded browser-handshake heal against the bridge that owned the disconnected
@@ -91,6 +93,7 @@ export async function healBrowserFleetSession({
     }
 }
 
+/** @summary Starts a window while preserving the current entry-owned shell bridge across joins. */
 export const onStart = () => {
     const
         fallbackWindowId = Neo.bootingWindowId,
@@ -99,21 +102,26 @@ export const onStart = () => {
     let browserHeal = null;
 
     if (resolveFleetTransportMode(Neo.config.url) === 'shell') {
-        const route = () => resolveFleetWindowId({fallbackWindowId});
+        shellBootWindowId = fallbackWindowId;
+        const route = () => resolveFleetWindowId({fallbackWindowId: shellBootWindowId});
 
         // Packaged custody is the electron-main custodian shape: endpoint, credential, and profile
         // identity all live with main; the worker receives only the send capability, so there is
         // no profileId to stamp and nothing to retire on this side of the boundary.
-        installFleetBridge({
-            credentialIngress: 'shell',
-            send             : request => {
-                const windowId = route();
+        // Joining windows share this custodian. Keep its bridge identity while it is current;
+        // the send closure resolves live window membership on every call.
+        if (!shellFleetBridge || globalThis.AgentOS?.fleet?.registryBridge !== shellFleetBridge) {
+            shellFleetBridge = installFleetBridge({
+                credentialIngress: 'shell',
+                send             : request => {
+                    const windowId = route();
 
-                return windowId
-                    ? Neo.Main.fleetRequest({request, windowId})
-                    : Promise.reject(new Error(FLEET_LOCAL_TRANSPORT_ERRORS.noLiveWindow))
-            }
-        })
+                    return windowId
+                        ? Neo.Main.fleetRequest({request, windowId})
+                        : Promise.reject(new Error(FLEET_LOCAL_TRANSPORT_ERRORS.noLiveWindow))
+                }
+            })
+        }
     } else {
         // Direct-browser dev mode renders FIRST with whatever custody truth exists now: launcher
         // slots establish synchronously; absence publishes/preserves a fail-closed bridge. The top

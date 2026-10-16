@@ -370,12 +370,17 @@ class LivenessController extends ViewerWakeController {
 
         TargetBinding.retireRoster(me, {store, grid, profileId}) && me.onRosterRetired();
 
+        const initialShellRead = generation === 1 && !me.rosterWired && bridge.credentialIngress === 'shell',
+              livenessGeneration = me.livenessGeneration + (me.livenessTimerId === null ? 1 : 0);
+        let read;
+
         try {
             me.publishConnection('grid', {pending: true});
             me.gridReadInFlight++;
+            read = Promise.resolve().then(() => bridge.fleetRoster());
 
             const {capabilities, rows} = await me.boundedRead(
-                Promise.resolve().then(() => bridge.fleetRoster()),
+                read,
                 () => { me.gridReadInFlight-- }
             ) ?? {};
 
@@ -397,9 +402,33 @@ class LivenessController extends ViewerWakeController {
         } catch (error) {
             if (generation === me.gridReadGeneration && !me.isDestroyed) {
                 me.degradeWiredSurface('grid', error, grid);
+                if (initialShellRead && error?.fleetConnectionState === 'timeout') {
+                    me.recoverInitialRoster(read, {bridge, generation, livenessGeneration, profileId})
+                }
                 PlaneCredentialCheck.ask(me, error?.fleetConnectionState)
             }
         }
+    }
+
+    /**
+     * @summary A valid late initial shell answer wakes one fresh read; its expired rows stay discarded.
+     * The next read consumes the initial generation, so a second timeout cannot loop. The captured
+     * lifetime includes the first start, which follows the construction-time roster request.
+     * @param {Promise} read The original wire read, still owning its in-flight slot until settlement.
+     * @param {Object} authority Captured bridge, read generation, expected lifetime and profile.
+     * @protected
+     */
+    recoverInitialRoster(read, {bridge, generation, livenessGeneration, profileId}) {
+        read.then(answer => {
+            const me = this;
+
+            if (!Array.isArray(answer?.rows) || me.isDestroyed || me.rosterWired || me.livenessHidden ||
+                generation !== me.gridReadGeneration || me.bridge !== bridge ||
+                (bridge.profileId ?? null) !== profileId || me.livenessTimerId === null ||
+                me.livenessGeneration !== livenessGeneration || me.gridReadInFlight >= me.component.maxReadsInFlight) return;
+
+            return me.loadRoster()
+        }, () => {})
     }
 
     /**

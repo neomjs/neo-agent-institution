@@ -78,6 +78,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             gridReadGeneration     : 0,
             gridReadInFlight       : 0,
             isDestroyed            : false,
+            livenessGeneration     : 0,
             livenessTimerId        : null,
             streamReadGeneration   : 0,
             streamReadInFlight     : 0,
@@ -104,14 +105,16 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
     };
 
     test.describe('roster connection observations through the real bridge and loader', () => {
-        let previousFleet, stores;
+        let previousFleet, stores, hosts;
 
         test.beforeEach(() => {
             previousFleet = globalThis.AgentOS?.fleet;
-            stores = []
+            stores = [];
+            hosts = []
         });
 
         test.afterEach(() => {
+            hosts.forEach(host => host.stopLiveness());
             stores.forEach(store => store.destroy());
             if (previousFleet === undefined) {
                 delete globalThis.AgentOS.fleet
@@ -151,6 +154,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             });
             delete host.loadRoster;
             stores.push(store);
+            hosts.push(host);
 
             return {grid, host, provider, store}
         };
@@ -237,6 +241,164 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(provider.data.gridConnection.state).toBe('timeout');
             expect(store.get('resident')).toBeTruthy();
             expect(store.get('late')).toBeFalsy()
+        });
+
+        /** @summary Preserve mount ordering while keeping the ordinary cadence out of these recovery controls. */
+        const startInitialRead = host => {
+            Object.assign(host.component, {
+                livenessCadence: LivenessCadence.DEFAULT_INTERVALS,
+                livenessPollInterval: 60000
+            });
+            const read = host.loadRoster();
+            host.startLiveness();
+            return read
+        };
+
+        test('a late initial shell success wakes one fresh read and discards the expired rows', async () => {
+            const {host, provider, store} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            let calls = 0;
+            installWire(() => ++calls === 1 ? late.promise : rosterReply('fresh'));
+
+            await startInitialRead(host);
+            expect(provider.data.gridConnection.state).toBe('timeout');
+            expect(host.gridReadInFlight).toBe(1);
+            expect(host.livenessGeneration).toBe(1);
+            late.resolve(rosterReply('discarded'));
+            await expect.poll(() => store.get('fresh')?.agentId).toBe('fresh');
+
+            expect(calls).toBe(2);
+            expect(store.get('discarded')).toBeFalsy();
+            expect(provider.data.gridAdapterState).toBe('live');
+            expect(host.gridReadInFlight).toBe(0)
+        });
+
+        test('a joining shell window does not retire the primary roster recovery', async () => {
+            const {onStart} = await import('../../../../../../../../apps/agentos/app.mjs');
+            const {host, store} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            const previous = {app: Neo.app, url: Neo.config.url, boot: Neo.bootingWindowId, request: Neo.Main.fleetRequest};
+            let calls = 0;
+
+            try {
+                Neo.config.url = {href: 'app://neo/apps/agentos/index.html', search: ''};
+                Neo.bootingWindowId = 'startup-primary';
+                Neo.apps['startup-primary'] = {};
+                Neo.app = () => {};
+                Neo.Main.fleetRequest = () => ++calls === 1 ? late.promise : rosterReply('fresh-primary');
+                onStart();
+                const bridge = host.bridge;
+                await startInitialRead(host);
+                Neo.bootingWindowId = 'startup-popup';
+                Neo.apps['startup-popup'] = {};
+                onStart();
+                expect(host.bridge).toBe(bridge);
+                late.resolve(rosterReply('expired-primary'));
+                await expect.poll(() => store.get('fresh-primary')?.agentId).toBe('fresh-primary');
+                expect(calls).toBe(2);
+                expect(store.get('expired-primary')).toBeFalsy()
+            } finally {
+                delete Neo.apps['startup-primary'];
+                delete Neo.apps['startup-popup'];
+                Neo.app = previous.app;
+                Neo.config.url = previous.url;
+                Neo.bootingWindowId = previous.boot;
+                Neo.Main.fleetRequest = previous.request
+            }
+        });
+
+        test('an already-ready initial shell read does not issue a recovery read', async () => {
+            const {host, store} = makeRosterHost();
+            let calls = 0;
+            installWire(() => { calls++; return rosterReply('ready') });
+            await startInitialRead(host);
+            expect(store.get('ready')).toBeTruthy();
+            expect(calls).toBe(1)
+        });
+
+        for (const outcome of ['rejected', 'malformed']) {
+            test(`a late ${outcome} initial shell answer cannot trigger recovery`, async () => {
+                const {host, provider} = makeRosterHost({timeout: 20});
+                const late = Promise.withResolvers();
+                let calls = 0;
+                installWire(() => { calls++; return late.promise });
+                await startInitialRead(host);
+                outcome === 'rejected' ? late.reject(new Error('unavailable'))
+                    : late.resolve(createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {rows: null}}));
+                await expect.poll(() => host.gridReadInFlight).toBe(0);
+                expect(calls).toBe(1);
+                expect(provider.data.gridAdapterState).toBe('cold')
+            });
+        }
+
+        for (const change of ['newer-read', 'bridge', 'admitted', 'stop', 'restart', 'destroy', 'hidden', 'cap', 'not-started']) {
+            test(`a ${change} fences a timed-out initial shell recovery`, async () => {
+                const {host, provider, store} = makeRosterHost({timeout: 20});
+                const late = Promise.withResolvers();
+                let calls = 0;
+                installWire(() => ++calls === 1 ? late.promise : rosterReply('newer'));
+                await (change === 'not-started' ? host.loadRoster() : startInitialRead(host));
+
+                if (change === 'newer-read') await host.loadRoster();
+                if (change === 'bridge') installWire(() => { calls++; return rosterReply('replacement') });
+                if (change === 'admitted') host.admitRoster({rows: [{agentId: 'other', displayName: 'Other'}]});
+                if (change === 'stop' || change === 'restart') host.stopLiveness();
+                if (change === 'restart') host.startLiveness();
+                if (change === 'destroy') host.isDestroyed = true;
+                if (change === 'hidden') host.livenessHidden = true;
+                if (change === 'cap') host.component.maxReadsInFlight = 0;
+
+                late.resolve(rosterReply('discarded'));
+                await expect.poll(() => host.gridReadInFlight).toBe(0);
+                expect(calls).toBe(change === 'newer-read' ? 2 : 1);
+                expect(store.get('discarded')).toBeFalsy();
+                expect(provider.data.gridAdapterState).toBe(['newer-read', 'admitted'].includes(change) ? 'live' : 'cold')
+            });
+        }
+
+        test('a late initial browser read retains the ordinary cadence fallback', async () => {
+            const {host, provider} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            let calls = 0;
+            globalThis.AgentOS.fleet = {registryBridge: {
+                credentialIngress: 'worker', profileId: null,
+                fleetRoster: () => { calls++; return late.promise }
+            }};
+            await startInitialRead(host);
+            late.resolve({rows: [{id: 'discarded'}]});
+            await expect.poll(() => host.gridReadInFlight).toBe(0);
+            expect(calls).toBe(1);
+            expect(provider.data.gridAdapterState).toBe('cold')
+        });
+
+        test('a second timeout cannot turn initial shell recovery into a retry loop', async () => {
+            const {host, provider, store} = makeRosterHost({timeout: 20});
+            const first = Promise.withResolvers(), second = Promise.withResolvers();
+            let calls = 0;
+            installWire(() => ++calls === 1 ? first.promise : second.promise);
+            await startInitialRead(host);
+            first.resolve(rosterReply('expired-first'));
+            await expect.poll(() => calls).toBe(2);
+            await expect.poll(() => provider.data.gridConnection.state).toBe('timeout');
+            second.resolve(rosterReply('expired-second'));
+            await expect.poll(() => host.gridReadInFlight).toBe(0);
+            expect(calls).toBe(2);
+            expect(provider.data.gridAdapterState).toBe('cold');
+            expect(store.get('expired-first')).toBeFalsy();
+            expect(store.get('expired-second')).toBeFalsy()
+        });
+
+        test('a failed recovery read returns to the ordinary cadence without another retry', async () => {
+            const {host, provider} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            let calls = 0;
+            installWire(() => ++calls === 1 ? late.promise : Promise.reject(new Error('unavailable')));
+            await startInitialRead(host);
+            late.resolve(rosterReply('discarded'));
+            await expect.poll(() => calls).toBe(2);
+            await expect.poll(() => host.gridReadInFlight).toBe(0);
+            expect(provider.data.gridAdapterState).toBe('cold');
+            expect(calls).toBe(2)
         });
 
         for (const newerState of ['connecting', 'refused']) {
