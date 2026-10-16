@@ -528,8 +528,16 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(stream.getReference('header').cls).toContain('is-partial');
         expect(stream.getReference('header').cls).not.toContain('is-live');
         expect(stream.getReference('state').text).toBe('partial — some sources unavailable');
-        expect(stream.getReference('state').vdom.title).toBe('rechecks every 60 s · Recheck now is in the banner · no direct producer repair here');
+        expect(stream.getReference('state').vdom.title).toBeNull();
         expect(list.items.filter(Boolean)).toHaveLength(mounted);
+
+        stream.guidance = {
+            head   : 'partial — PR lanes unavailable',
+            recheck: 'rechecks every 30 s',
+            summary: 'PR lanes unavailable · mailbox available'
+        };
+        expect(stream.getReference('state').text).toBe('partial — PR lanes unavailable');
+        expect(stream.getReference('state').vdom.title).toBe('rechecks every 30 s · Recheck now is in the banner · no direct producer repair here');
 
         stream.guidance = {
             head     : 'partial — PR lanes unavailable',

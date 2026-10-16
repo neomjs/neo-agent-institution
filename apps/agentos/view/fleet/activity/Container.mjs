@@ -721,8 +721,13 @@ class ActivityStream extends Container {
             retained
         });
 
+        const
+            headTitle    = typeof me.guidance?.headTitle === 'string' && me.guidance.headTitle.trim(),
+            recheck      = typeof me.guidance?.recheck === 'string' && me.guidance.recheck.trim(),
+            partialTitle = headTitle || (recheck ? `${recheck} · Recheck now is in the banner · no direct producer repair here` : null);
+
         stateCell.vdom.title = me.adapterState === 'partial'
-            ? ((typeof me.guidance?.headTitle === 'string' && me.guidance.headTitle.trim()) || 'rechecks every 60 s · Recheck now is in the banner · no direct producer repair here')
+            ? partialTitle
             : (quiet?.title ?? null);
         stateCell.text       = stateText
     }

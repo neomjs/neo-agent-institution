@@ -5,6 +5,7 @@ setup({appConfig: {name: 'FleetSpineBannerTest'}});
 import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import FleetAdmission from '../../../../../../../../apps/agentos/util/FleetAdmission.mjs';
 import PlaneVerdict   from '../../../../../../../../apps/agentos/util/PlaneVerdict.mjs';
 import SpineBanner    from '../../../../../../../../apps/agentos/util/SpineBanner.mjs';
 
@@ -61,6 +62,90 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         expect(guided.title).not.toContain('complete');
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'cold'}, stream: {state: 'partial'}}).kind).toBe('cold');
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'stale'}, stream: {state: 'partial'}}).text).toBe('fleet degraded');
+    });
+
+    test('FleetAdmission.deriveActivityGuidance covers reserved keys, 32-char unknown labels, malformed slots, producer.coverage, sanitized reasons, and intervalMs cadence', () => {
+        // (a) reserved keys (__proto__, constructor) in slots -> generic summary and head
+        const protoSlots = Object.defineProperty({}, '__proto__', {
+            configurable: true, enumerable: true, value: {state: 'degraded'}, writable: true
+        });
+        for (const slots of [protoSlots, {constructor: {state: 'degraded'}}, {prototype: {state: 'wired'}}]) {
+            const res = FleetAdmission.deriveActivityGuidance({partial: true, capability: {slots}});
+            expect(res.head).toBe('partial — some sources unavailable');
+            expect(res.summary).toBe('some sources unavailable');
+            expect(res.remaining).toBeNull();
+        }
+        expect(FleetAdmission.formatActivitySlotLabel('__proto__')).toBe('');
+        expect(FleetAdmission.formatActivitySlotLabel('constructor')).toBe('');
+
+        // (b) unknown slot key -> its key bounded to 32 characters as the label
+        const longKey = 'custom-telemetry-source-name-exceeding-thirty-two-chars',
+              bounded = longKey.slice(0, 32),
+              unknown = FleetAdmission.deriveActivityGuidance({
+                  partial   : true,
+                  capability: {slots: {[longKey]: {state: 'unavailable'}, a2a: {state: 'wired'}}}
+              });
+        expect(FleetAdmission.formatActivitySlotLabel(longKey)).toBe(bounded);
+        expect(bounded).toHaveLength(32);
+        expect(unknown.head).toBe(`partial — ${bounded} unavailable`);
+        expect(unknown.summary).toBe(`${bounded} unavailable · mailbox available`);
+
+        // (c) malformed slots (an array, an empty object, a slot with an unknown state) -> generic
+        for (const slots of [[{state: 'degraded'}], {}, {a2a: {state: 'mystery'}}, {a2a: null}]) {
+            const res = FleetAdmission.deriveActivityGuidance({partial: true, capability: {slots}});
+            expect(res.head).toBe('partial — some sources unavailable');
+            expect(res.summary).toBe('some sources unavailable');
+            expect(res.remaining).toBeNull();
+        }
+
+        // (d) degraded slot with producer.coverage: 'partial' -> partial; same slot with no coverage and no events -> unavailable
+        expect(FleetAdmission.slotSuppliedEvents('pr-lane', {state: 'degraded', producer: {coverage: 'partial'}}, [])).toBe(true);
+        expect(FleetAdmission.slotSuppliedEvents('pr-lane', {state: 'degraded'}, [])).toBe(false);
+
+        const withCoverage = FleetAdmission.deriveActivityGuidance({
+            partial   : true,
+            capability: {slots: {'pr-lane': {state: 'degraded', producer: {coverage: 'partial'}}, a2a: {state: 'wired'}}},
+            events    : []
+        });
+        expect(withCoverage.head).toBe('partial — PR lanes partial');
+        expect(withCoverage.summary).toBe('PR lanes partial · mailbox available');
+
+        const withoutCoverage = FleetAdmission.deriveActivityGuidance({
+            partial   : true,
+            capability: {slots: {'pr-lane': {state: 'degraded'}, a2a: {state: 'wired'}}},
+            events    : []
+        });
+        expect(withoutCoverage.head).toBe('partial — PR lanes unavailable');
+        expect(withoutCoverage.summary).toBe('PR lanes unavailable · mailbox available');
+
+        // (e) composite reason preferred over per-slot reasons, both through the sanitizer
+        const sanitize = value => typeof value === 'string'
+            ? value.replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim().slice(0, 240) || null
+            : null;
+        const compositePreferred = FleetAdmission.deriveActivityGuidance({
+            partial       : true,
+            reason        : 'composite\u0007\n\ttimeout',
+            capability    : {slots: {'pr-lane': {state: 'degraded', reason: 'slot-reason'}}},
+            sanitizeReason: sanitize
+        });
+        expect(compositePreferred.reason).toBe('composite timeout');
+
+        const slotFallback = FleetAdmission.deriveActivityGuidance({
+            partial       : true,
+            reason        : '   ',
+            capability    : {slots: {'pr-lane': {state: 'degraded', reason: 'neo:\u0000\r\nENOENT'}, a2a: {state: 'wired'}}},
+            sanitizeReason: sanitize
+        });
+        expect(slotFallback.reason).toBe('pr-lane: neo: ENOENT');
+
+        // (f) intervalMs -> "rechecks every N s"
+        const customCadence = FleetAdmission.deriveActivityGuidance({
+            partial   : true,
+            intervalMs: 30000,
+            capability: {slots: {'pr-lane': {state: 'unavailable'}, a2a: {state: 'wired'}}}
+        });
+        expect(customCadence.recheck).toBe('rechecks every 30 s');
+        expect(customCadence.headTitle).toBe('rechecks every 30 s · Recheck now is in the banner · no direct producer repair here');
     });
 
     const HIDDEN_LIVE = {action: null, hidden: true, kind: 'live', lead: '', text: '', title: '', ariaLabel: ''};

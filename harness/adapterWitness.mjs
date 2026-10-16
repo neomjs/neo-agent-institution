@@ -48,6 +48,8 @@ export const ROSTER_STATE_LABELS = Object.freeze({
     live: '', cold: 'not answered yet', stale: 'stale — reconnecting', degraded: ''
 });
 
+export const PARTIAL_STREAM_LABEL_RE = /^partial — (?:some sources unavailable|[^\s·][^·]* (?:partial|unavailable)(?: · [^\s·][^·]* (?:partial|unavailable))*)$/;
+
 /**
  * The label each stream state renders, mirrored from `ActivityStream`.
  * @type {Object}
@@ -62,14 +64,7 @@ export const STREAM_STATE_LABELS = Object.freeze({
         'partial — PR lanes partial',
         'partial — mailbox unavailable',
         'partial — mailbox partial',
-        'partial — mailbox unavailable · PR lanes unavailable',
-        'partial — mailbox partial · PR lanes unavailable',
-        'partial — mailbox unavailable · PR lanes partial',
-        'partial — mailbox partial · PR lanes partial',
-        'partial — PR lanes unavailable · mailbox unavailable',
-        'partial — PR lanes partial · mailbox unavailable',
-        'partial — PR lanes unavailable · mailbox partial',
-        'partial — PR lanes partial · mailbox partial'
+        'partial — mailbox partial · PR lanes unavailable'
     ])
 });
 
@@ -129,7 +124,10 @@ export function isAdapterRenderCoherent(state, label, expectedLabels) {
 
     const expected = expectedLabels[state];
 
-    if (Array.isArray(expected)) return expected.includes(label);
+    if (Array.isArray(expected)) {
+        return expected.includes(label)
+            || (state === 'partial' && typeof label === 'string' && PARTIAL_STREAM_LABEL_RE.test(label));
+    }
 
     // An empty canonical label may render as an empty node or none at all; both are honest.
     return expected === '' ? (label === '' || label === null) : label === expected;

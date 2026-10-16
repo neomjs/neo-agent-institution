@@ -77,6 +77,9 @@ class FleetAdmission extends Base {
 
     /**
      * @summary True when a degraded slot still contributed admitted events or reported partial observation.
+     * Prefers `slot.confidence === 'observed'` and `slot.producer.coverage === 'partial'`; inspecting
+     * `events[].source` is the fallback for producers (such as the A2A mailbox adapter) that do not yet
+     * stamp `producer.coverage`.
      * @param {String} slotKey
      * @param {Object} slot
      * @param {Object[]} events

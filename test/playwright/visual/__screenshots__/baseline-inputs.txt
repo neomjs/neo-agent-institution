@@ -15,7 +15,7 @@ apps/agentos/VisualSystem.md
     5ab4fe754bd834a946a9da3bc8f96d28efa9ea96
 
 apps/agentos/app.mjs
-    15ee159880412eba52bd3577a9b09e0e01b55fa8
+    de135da55e55406602ea090317f40c486dd25ea0
 
 apps/agentos/canvas/Home.mjs
     392fe0571a68fbf6ae269cf6eb648ad607f768f2
@@ -228,7 +228,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    a000e93773db555b7d2aeaf908d2226f1c557871
+    43aa64420726bd7f47b94d9e4cee081c8d245e93
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     19503b10d4a57dc614c777c226368fab8e031e2a
@@ -348,7 +348,7 @@ apps/agentos/view/fleet/activity/ActorChipComponent.mjs
     1c56919c8f0feb284f2711d598592f3df910377f
 
 apps/agentos/view/fleet/activity/Container.mjs
-    5efa3ddb00212ef8a836a6c7faa15792f807a480
+    4ca11c4554a17b5b3f00aaa116e03d466633bfdc
 
 apps/agentos/view/fleet/activity/EventChipComponent.mjs
     c36dac634fbb1cccaae121e947b5a41aae2149a7
@@ -372,7 +372,7 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     49cee569caaf2192f62d91cbb7297a32c34c534f
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    e0a814ac1c449553aafecaca726ac260c12506c5
+    73eb0bfbf62f6919d3f737cb42e56ee34c930c74
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     c8cb352785ae483806eb80b25adbf88e03a5f7ce
