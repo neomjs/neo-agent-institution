@@ -96,6 +96,8 @@ test.describe('isAdapterRenderCoherent — agreement, not a pinned state', () =>
 test.describe('computeFirstPaintVerdict — the final verdict, mutation-discriminated', () => {
     test('partial and unavailable activity are honest paints, without accepting a false live label', () => {
         expect(verdict({streamState: 'partial', activityLabel: 'partial — some sources unavailable'}).adaptersCoherent).toBe(true);
+        expect(verdict({streamState: 'partial', activityLabel: 'partial — mailbox partial · PR lanes unavailable · audit-log unavailable'}).adaptersCoherent).toBe(true);
+        expect(verdict({streamState: 'partial', activityLabel: 'partial — ● streaming'}).adaptersCoherent).toBe(false);
         expect(verdict({streamState: 'partial', activityLabel: '● streaming'}).adaptersCoherent).toBe(false);
         expect(verdict({streamState: 'stale', activityLabel: 'unavailable'}).adaptersCoherent).toBe(true);
         expect(verdict({streamState: 'live', activityLabel: 'unavailable'}).adaptersCoherent).toBe(false);

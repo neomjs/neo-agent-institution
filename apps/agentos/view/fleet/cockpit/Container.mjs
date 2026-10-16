@@ -144,6 +144,7 @@ class FleetCockpit extends VesselContainer {
                 bind     : {
                     adapterState    : data => data.streamAdapterState,
                     counts          : data => data.activityCounts,
+                    guidance        : data => data.activityGuidance,
                     historyExhausted: data => data.streamHistoryExhausted,
                     mode            : data => data.activityMode,
                     observation     : data => data.activityObservation,

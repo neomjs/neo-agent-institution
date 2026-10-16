@@ -521,18 +521,37 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         expect(list.items.filter(Boolean)).toHaveLength(mounted)
     });
 
-    test('partial data stays visible without streaming or empty claims; failed empty is unavailable', async () => {
+    test('partial data stays visible without streaming or empty claims, renders slot-specific guidance when supplied, and failed empty is unavailable', async () => {
         const {list} = await createStream({count: 20});
         const mounted = list.items.filter(Boolean).length;
         stream.adapterState = 'partial';
         expect(stream.getReference('header').cls).toContain('is-partial');
         expect(stream.getReference('header').cls).not.toContain('is-live');
         expect(stream.getReference('state').text).toBe('partial — some sources unavailable');
+        expect(stream.getReference('state').vdom.title).toBeNull();
         expect(list.items.filter(Boolean)).toHaveLength(mounted);
 
+        stream.guidance = {
+            head   : 'partial — PR lanes unavailable',
+            recheck: 'rechecks every 30 s',
+            summary: 'PR lanes unavailable · mailbox available'
+        };
+        expect(stream.getReference('state').text).toBe('partial — PR lanes unavailable');
+        expect(stream.getReference('state').vdom.title).toBe('rechecks every 30 s · Recheck now is in the banner · no direct producer repair here');
+
+        stream.guidance = {
+            head     : 'partial — PR lanes unavailable',
+            headTitle: 'rechecks every 60 s · Recheck now is in the banner · no direct producer repair here',
+            summary  : 'PR lanes unavailable · mailbox available'
+        };
+        expect(stream.getReference('state').text).toBe('partial — PR lanes unavailable');
+        expect(stream.getReference('state').vdom.title).toBe('rechecks every 60 s · Recheck now is in the banner · no direct producer repair here');
+
         store.clear();
+        stream.guidance     = null;
         stream.adapterState = 'stale';
         expect(stream.getReference('state').text).toBe('unavailable');
+        expect(stream.getReference('state').vdom.title).toBeNull();
         expect(stream.getReference('empty-note').text).toBe('Activity unavailable');
         stream.adapterState = 'live';
         expect(stream.getReference('empty-note').text).toBe('no activity yet');

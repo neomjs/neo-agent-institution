@@ -189,8 +189,11 @@ test.describe('AgentOS fleet cockpit — the liveness owner journey (live → tr
             await expect.poll(async () => (await readState()).streamAdapterState).toBe('partial');
             expect((await readState()).streamDegradedReason).toContain('pr-lane');
             await expect(page.locator('.fm-activity-row').filter({hasText: 'current partial-plane message'})).toHaveCount(1);
-            await expect(page.locator('.fm-stream-state')).toHaveText('partial — some sources unavailable');
+            await expect(page.locator('.fm-stream-state')).toHaveText('partial — PR lanes unavailable');
+            await expect(page.locator('.fm-stream-state')).toHaveAttribute('title', 'rechecks every 60 s · Recheck now is in the banner · no direct producer repair here');
             await expect(page.locator('.fm-spine-banner-degraded')).toHaveText('feed partial');
+            await expect(page.locator('.fm-spine-banner-lead')).toHaveText('Activity feed partial — PR lanes unavailable · mailbox available');
+            await expect(page.locator('.fm-reconnect-button')).toHaveText('Recheck');
             const findActivityStore = async () => (await app.listStores()).stores
                 .find(store => store.model === 'AgentOS.model.FleetActivityEvent');
             const storeId = (await findActivityStore()).id;

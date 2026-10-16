@@ -97,14 +97,15 @@ class ControlToolbar extends Toolbar {
             }]
         }, {
             // the banner's action: Reconnect re-drives every liveness seam through the existing
-            // bridge; beside a running plane it becomes Connect and opens the plane card. Its
-            // visibility and its words are the banner verdict, bound from the same formula. First
-            // of the ACTION group — contextual: it exists only while the fleet pill shows.
+            // bridge; beside a partial feed it becomes Recheck; beside a running plane it becomes
+            // Connect and opens the plane card. Its visibility and its words are the banner verdict,
+            // bound from the same formula. First of the ACTION group — contextual: it exists only
+            // while the fleet pill shows.
             module   : Button,
             bind     : {
                 hidden : data => data.spineBanner.hidden,
                 iconCls: data => data.spineBanner.action === 'connect-plane' ? 'fa-solid fa-plug' : 'fa-solid fa-rotate',
-                text   : data => data.spineBanner.action === 'connect-plane' ? 'Connect' : 'Reconnect'
+                text   : data => data.spineBanner.action === 'connect-plane' ? 'Connect' : data.spineBanner.action === 'recheck' ? 'Recheck' : 'Reconnect'
             },
             cls      : ['fm-reconnect-button'],
             handler  : 'onSpineAction',

@@ -51,7 +51,7 @@ with one of its sources down while the others answer.
 | stale | Pill `fleet degraded`, sentence `Fleet feed degraded — showing last-known data · <reason>`; with a connection observation on the deciding surface: `fleet <connection word>` · `Roster <sentence> — showing last-known data`. **No next step**: "showing last-known data" states what is shown, not what to do. |
 | degraded (daemon fault) | Pill `agent os degraded` or `agent os stopped`, sentence `Agent OS <degraded/stopped> — showing the cockpit over a partial organism · <reason>`, fallback `· check the tray state and the daemon log` (`DAEMON_FAULT_STATES`). The fallback names where to look; a retained reason replaces it and then **no next step is named**. |
 | unreachable | Through the connection observation: `fleet unreachable` · `Roster connection unavailable — no fleet data yet` (cold grid) or `— showing last-known data` (stale grid); **no next step**. Through the plane probe: `plane unreachable` · `No plane answered at that address. Bring that plane back, or connect to another.` with `connect-plane` — complete. |
-| one source failing | Pill `feed partial`, sentence `Activity feed partial — some sources unavailable · <reason>`. A cold stream over a live grid: `feed pending` · `Activity feed pending — roster is live · <reason>`. **No next step.** |
+| one source failing | Pill `feed partial`, sentence `Activity feed partial — <missing> · <remaining> · <reason>` (fallback `Activity feed partial — some sources unavailable · <reason>`) with action `recheck` (`Recheck` button in `ControlToolbar`, re-reading the feed now via `reconnectFleet` without claiming to repair the producer) (`FleetAdmission.deriveActivityGuidance`). A cold stream over a live grid: `feed pending` · `Activity feed pending — roster is live · <reason>`. |
 
 *Added 2026-10-04 (#533), after this read:* every non-live verdict also shows its **lead** beside the pill, on one line that ellipsizes. The lead is the sentence before its ` · <reason>`; for the plain-browser silence it is `Fleet server offline`, and for a plane refusal the whole sentence. The sentences above are unchanged and stay on the title (`SpineBanner` — the verdict's `lead`).
 
@@ -69,7 +69,7 @@ arm at `e1a9dbe`.
 | stale | `<label> — degraded` (`limited`): the stale feed's degraded banner. Word only. |
 | degraded | `<label> — degraded` (`limited`). Word only. |
 | switching | `<label> — switching` (`starting`). |
-| one source failing | `<label> — degraded` (`limited`): the partial feed's degraded banner. Word only. |
+| one source failing | `<label> — degraded: <summary>` (`limited`, e.g. `<label> — degraded: PR lanes unavailable · mailbox available`) on both the switcher trigger (`title` and `aria-label`) and the bound row's `title` in `MenuList` (#706). |
 
 ### Home's live field — `apps/agentos/view/home/Container.mjs` (`teamLine`, `updateField`)
 
@@ -116,7 +116,7 @@ admission guidance may replace only the ordinary folder fallback. The audit is g
 with each server's newest outcome superseding its earlier attempts. #477/#12 retain the installed
 card/recovery witness; source fixtures are not installed acceptance.
 
-### Activity feed — `apps/agentos/view/fleet/activity/Container.mjs` (`updateHead`, `empty-note`, `describeActivityCounts`)
+### Activity feed — `apps/agentos/view/fleet/activity/Container.mjs` (`updateHeader`, `empty-note`, `describeActivityCounts`)
 
 | State | Rendered |
 |---|---|
@@ -125,7 +125,7 @@ card/recovery witness; source fixtures are not installed acceptance.
 | stale | Head `stale — reconnecting` when rows are retained, else `unavailable` with the note `Activity unavailable`. **No reason, no next step.** |
 | degraded | `cannot enter` as its own word — a daemon fault reaches the banner, not the feed. |
 | unreachable | As cold or stale by adapter state. |
-| one source failing | Head `partial — some sources unavailable`; the sources line carries the per-source counts (the reason by enumeration); rows from the answering sources stay (#263). **Next step: none.** |
+| one source failing | Head `partial — <missing>` (e.g. `partial — PR lanes unavailable`, fallback `partial — some sources unavailable`) with `title` `rechecks every 60 s · Recheck now is in the banner · no direct producer repair here`; the sources line carries the per-source counts; rows from the answering sources stay (#263, #706). |
 
 ### Mailbox — `apps/agentos/view/fleet/mailbox/Container.mjs` (`honestState`, the honest-state line)
 

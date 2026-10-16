@@ -313,8 +313,10 @@ class SpineBanner extends Base {
         }
 
         if (stream?.state === 'partial') {
-            const reason = reasonFor([stream], 'partial');
-            return verdict('degraded', 'feed partial', 'Activity feed partial — some sources unavailable', reason)
+            const summary = (typeof stream.guidance?.summary === 'string' && stream.guidance.summary.trim()) || 'some sources unavailable',
+                  reason  = reasonFor([stream], 'partial') || (typeof stream.guidance?.reason === 'string' && stream.guidance.reason.trim()) || null;
+
+            return verdict('degraded', 'feed partial', `Activity feed partial — ${summary}`, reason, 'recheck')
         }
 
         // The stream's own verdict: reachable here only with a LIVE grid (cold/stale grids returned

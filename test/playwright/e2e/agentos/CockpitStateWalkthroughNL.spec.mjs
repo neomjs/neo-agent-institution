@@ -58,16 +58,16 @@ const
         },
         'one-source-failing': {
             // the PR/lane reader's own failure, whose text carries this checkout's path
-            banner  : {kind: 'degraded', pill: 'feed partial', sentence: reason('Activity feed partial — some sources unavailable', 'pr-lane: neo: ENOENT: [^·]+')},
+            banner  : {kind: 'degraded', pill: 'feed partial', sentence: reason('Activity feed partial — PR lanes unavailable · mailbox available', 'pr-lane: neo: ENOENT: [^·]+')},
             roster  : empty,
-            activity: {head: 'partial — some sources unavailable', sources: rows, note: null},
-            switcher: expect.stringMatching(/ — degraded$/)
+            activity: {head: 'partial — PR lanes unavailable', sources: rows, note: null},
+            switcher: expect.stringMatching(/ — degraded: PR lanes unavailable · mailbox available$/)
         },
         degraded: {
             banner  : {kind: 'degraded', pill: 'agent os degraded', sentence: 'Agent OS degraded — showing the cockpit over a partial organism · the wake daemon stopped answering'},
             roster  : empty,
-            activity: {head: 'partial — some sources unavailable', sources: rows, note: null},
-            switcher: expect.stringMatching(/ — degraded$/)
+            activity: {head: 'partial — PR lanes unavailable', sources: rows, note: null},
+            switcher: expect.stringMatching(/ — degraded: PR lanes unavailable · mailbox available$/)
         }
     };
 

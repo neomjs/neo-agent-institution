@@ -142,14 +142,16 @@ class InstanceMenuList extends MenuList {
     createItemContent(record) {
         let switcher = this.parentComponent,
             bound    = record.profileId === switcher?.boundProfileId,
-            rowState = bound ? switcher.instanceState : 'off';
+            rowState = bound ? switcher.instanceState : 'off',
+            summary  = bound && rowState === 'limited' && typeof switcher?.activityGuidance?.summary === 'string' && switcher.activityGuidance.summary.trim(),
+            title    = summary ? `${displayInstanceLabel(record)} — degraded: ${summary}` : record.canonicalEndpoint;
 
         return {
             cls              : ['fm-instance-row', ...(bound ? ['is-bound'] : [])],
             role             : 'menuitemradio',
             'aria-checked'   : String(bound),
             'data-profile-id': record.profileId,
-            title            : record.canonicalEndpoint,
+            title,
             cn               : [
                 {tag: 'span', cls: ['fm-state-dot', stateClass(rowState)], 'aria-hidden': 'true'},
                 {tag: 'span', cls: ['fm-instance-row-name'],      text: displayInstanceLabel(record)},

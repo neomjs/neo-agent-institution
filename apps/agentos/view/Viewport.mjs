@@ -95,6 +95,7 @@ class Viewport extends BaseViewport {
                 // HERE so Home reads them too: the adapter state (`'cold'` until a source answers,
                 // then `'live'` or `'stale'`), the read's own observation, and its retained degrade
                 // reason, per surface, since one shared field cannot know whose cause it holds
+                activityGuidance  : {head: null, headTitle: null, missing: null, reason: null, recheck: null, remaining: null, repair: null, summary: null},
                 gridAdapterState  : 'cold',
                 gridConnection    : {state: null, reason: null},
                 gridDegradedReason: null,
@@ -172,11 +173,12 @@ class Viewport extends BaseViewport {
                 module   : InstanceSwitcher,
                 reference: 'instance-switcher',
                 bind     : {
-                    boundProfileId: data => data.boundProfileId,
-                    instanceState : data => data.instanceState,
-                    instanceStore : 'stores.fleetInstances',
-                    shellCustody  : data => data.shellCustody,
-                    shellPlaneBase: data => data.shellPlaneBase
+                    activityGuidance: data => data.activityGuidance,
+                    boundProfileId  : data => data.boundProfileId,
+                    instanceState   : data => data.instanceState,
+                    instanceStore   : 'stores.fleetInstances',
+                    shellCustody    : data => data.shellCustody,
+                    shellPlaneBase  : data => data.shellPlaneBase
                 },
                 listeners: {
                     attachplane    : 'onAttachPlane',

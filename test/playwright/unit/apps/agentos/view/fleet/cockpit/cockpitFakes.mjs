@@ -45,6 +45,7 @@ export const makeActivityStoreHarness = () => {
  */
 export const makeProviderFake = (data = {}) => ({
     data: {
+        activityGuidance    : {head: null, headTitle: null, missing: null, reason: null, recheck: null, remaining: null, repair: null, summary: null},
         daemonDegradedReason: null, daemonState: null,
         gridAdapterState: 'cold', gridDegradedReason: null, shellTransport: null,
         streamAdapterState: 'cold', streamDegradedReason: null, ...data
