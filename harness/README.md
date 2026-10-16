@@ -168,6 +168,65 @@ a later MCP-child reconnect without restarting them, an operator-paced explicit 
 eligible retirement and unknown-liveness retention. Source checks and package smoke do not replace
 those witnesses or authorize an uncoordinated update.
 
+### Retained admission issuer lock
+
+`FILE_LEASE_HELD` during Fleet boot means normal acquisition found a held issuer lease or could
+not verify that it was available. Use the exact `issuer.lock` path in the refusal: the registry's
+`admissionDirectory()` selects its custody directory. A similarly named path in another profile
+or plane is not the same owner.
+
+Before recovery, take the coordinated checkpoint and retain the refusal, selected profile and
+package identity. Inspect the recorded holder on the **same host and PID namespace**. `startedAt`
+and `lastPulse` record acquisition and pulse times, not OS process birth. Age is not proof of death;
+birth-after-acquisition is not cleanup authority either, because acquisition-clock discontinuity
+can produce that ordering for a genuine live owner.
+
+Set `ISSUER_PID` to the positive PID from the refusal. This read-only probe sends no terminating
+signal and distinguishes definite absence from permission or other errors:
+
+```bash
+node -e 'const pid = Number(process.argv[1]); if (!Number.isSafeInteger(pid) || pid <= 0) throw Error("positive PID required"); try { process.kill(pid, 0); console.log("present: retain the lock"); } catch (error) { console.log(error.code === "ESRCH" ? "absent: normal acquisition may retry" : `${error.code}: unknown; retain the lock`); }' "$ISSUER_PID"
+```
+
+This is a point-in-time observation, not permission to unlink a file. Normal acquisition rechecks
+the holder under its lifecycle guard.
+
+| Holder evidence | Supported next step |
+| --- | --- |
+| A legitimate issuer is still alive | Let that owner complete its coordinated shutdown and release. Do not start a competing owner. |
+| The recorded PID is definitely absent (`ESRCH`) | Retry the intended Fleet boot through normal acquisition. It performs guarded stale reclaim; manual lock deletion is unnecessary. |
+| The PID is alive but may have been reused after a crash | Retain the refusal. The PID-only lease cannot distinguish a live stranger from the original holder. Collect owner/process evidence for maintainer diagnosis; do not stop an unrelated process. |
+| The holder record is unreadable/corrupt, the probe is denied, or custody is uncertain | Retain the refusal and resolve the named evidence/custody failure. Age and a generic failed probe do not establish absence. |
+
+Keep `issuer.json` and `fence.json` intact. Reclaiming a dead `issuer.lock` does not manufacture a
+clean handoff: a successor reports an active record with matching issuer/fence identity and epoch
+as `unclean-issuer-exit`; mismatched valid records remain `handoff-replayed`. Neither authorizes
+recovery. Existing MCP children may still work while admission for new children is stale. When
+original admission cannot be recovered, an explicit managed Start/Restart creates new admission
+after the Fleet owner is available; restarting a seat cannot bypass a blocked issuer lock.
+
+After recovery, verify the owner started and inspect each affected seat's launch-admission state.
+A successful boot alone does not prove later-child continuity; retain the installed witness on
+[#12](https://github.com/neomjs/neo-agent-institution/issues/12).
+
+The [isolated walkthrough](https://github.com/neomjs/neo-agent-institution/issues/704#issuecomment-6205116138)
+checks active-holder retention, guarded reclaim after an exited helper, simulated PID reuse and
+an unverifiable holder. Actual OS PID reuse was not observed in the originating review. Brain's
+[`holdFileLease`](https://github.com/neomjs/neo-agent-brain/blob/dev/ai/daemons/shared/fileLease.mjs)
+and [`launchAdmissionJournal`](https://github.com/neomjs/neo-agent-brain/blob/dev/ai/services/fleet/launchAdmissionJournal.mjs)
+own the fail-closed behavior; this guide adds no manual-unlock command.
+
+### Packaged executable and legacy transition
+
+In packaged mode, Brain JavaScript children, including the config resolver, use the verified
+generation's executable. The shell replaces `NEO_HARNESS_NODE_BIN` with that binding; a supplied
+override does not select a different packaged executable.
+
+`--legacy-migration` is explicit intent for the discontinuous checkpoint → Stop all seats → install
+→ Start transition when the source or destination is a recognized legacy package. The flag does
+not stop seats itself and does not bypass custody or bundle-use refusals. Use the coordinated
+migration window for that transition; it does not establish generation-to-generation continuity.
+
 ## Run
 
 ```bash
