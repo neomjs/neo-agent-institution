@@ -291,7 +291,7 @@ apps/agentos/util/SeatDependencies.mjs
     45f6624f0a0e8340c362b72399dcf9badba1e396
 
 apps/agentos/util/SeatExitReason.mjs
-    8db6e5e95efcc383cff059c40c93d3c573f18bd5
+    a44dfd6de13a2bd12b4a3f281ebb3b02b7dbc0ba
 
 apps/agentos/util/SeatGitIdentity.mjs
     ededf7cb62f12a7f26dfd6ebb66360a2563cd627

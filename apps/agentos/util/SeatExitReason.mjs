@@ -8,7 +8,7 @@ const VALID_STATES = new Set(['harness-update', 'unknown']);
  * worded once for the roster card and for Agent Detail. The fact is the roster row's `exitReason`:
  * `{state: 'harness-update'|'unknown', exitedAt, logPath?, matchedLine?, reason?}`.
  *
- * Arbitrary child `stderr` is never status authority (ADR 0038 §2.5.2); the harness's own update
+ * Arbitrary child `stderr` is never status authority; the harness's own update
  * marker in `~/Library/Logs/Claude/main.log` within the 60 s before the observed exit is the single
  * named match (`harness-update`), with `unknown` as the default. Intentional Stops and running seats
  * report `null` and say nothing here.
