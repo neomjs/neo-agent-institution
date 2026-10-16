@@ -133,9 +133,11 @@ class MemoriesPane extends Container {
                 cls  : ['fm-pane-title'],
                 text : 'What they remember'
             }, {
-                ntype: 'component',
-                cls  : ['fm-pane-meta'],
-                text : 'session summaries · query-time · not authority'
+                ntype    : 'component',
+                cls      : ['fm-pane-meta'],
+                reference: 'memories-provenance',
+                text     : 'Summaries are made at read time from the agent\'s own records; they are not the record.',
+                vdom     : {title: 'query-time · not authority'}
             }, {
                 ntype    : 'container',
                 cls      : ['fm-pane-actions'],
@@ -168,12 +170,13 @@ class MemoriesPane extends Container {
         }, {
             // the drill chrome: back (an INTENT, like the open) · session identity · the AUTHORED
             // provenance chip — these rows are the agent's own prompt/response trail, visually
-            // distinct from the DERIVED summaries one register up
+            // distinct from the DERIVED summaries one register up — and one muted legend line
+            // under the title so the provenance vocabulary carries its key within one glance
             ntype    : 'container',
             cls      : ['fm-memories-drill-head'],
             flex     : 'none',
             hidden   : true,
-            layout   : {ntype: 'hbox', align: 'center'},
+            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             reference: 'memories-drill-head',
             items    : [{
                 module : Button,
@@ -190,7 +193,14 @@ class MemoriesPane extends Container {
             }, {
                 ntype: 'component',
                 cls  : ['fm-memories-provenance', 'is-authored'],
-                text : 'authored records'
+                text : 'authored records',
+                vdom : {title: 'the agent\'s own prompt · thought · response'}
+            }, {
+                ntype    : 'component',
+                cls      : ['fm-memories-drill-legend'],
+                flex     : '1 0 100%',
+                reference: 'memories-drill-legend',
+                text     : 'authored records: the agent\'s own prompt · thought · response. derived: a summary made from them.'
             }]
         }, {
             // the list beside its reading surface: the rail/reading split is the engine's Splitter
@@ -578,6 +588,9 @@ class MemoriesPane extends Container {
             append   = wired && adopted.page?.offset > 0 && adopted.sessionId === me.renderedDrillSession;
 
         if (wired) {
+            // the cells fall back to the drill's target when the wire carries no per-turn
+            // identity field — set BEFORE the bags seat, like the summary twin
+            turnGrid.target         = me.activeAgent ?? me.snapshot?.target ?? null;
             me.renderedDrillSession = adopted.sessionId;
 
             const incoming = adopted.turns.filter(turn => turn?.id).map(turn => ({...turn}));

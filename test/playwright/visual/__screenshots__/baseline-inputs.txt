@@ -507,13 +507,13 @@ apps/agentos/view/fleet/mailbox/RowModel.mjs
     72154b75cbff2787ec289fc85fd61ac3e0182c9c
 
 apps/agentos/view/fleet/memories/Container.mjs
-    6d4f5a18f632a08f33405b767001b53ea28d8cc1
+    8aa20a8cc0bfe46c649ec31b6861a2dd5f3fd82a
 
 apps/agentos/view/fleet/memories/ReaderComponent.mjs
-    11921623b9b92cef1fcc37975f13fd5464b8989a
+    312f3814432e1e2f3baa16819bd2b82893522895
 
 apps/agentos/view/fleet/memories/ReadingController.mjs
-    909e3bd97e5149c2f74c0a7c5b0011d99e364713
+    195fd07c2afc65b7938f600e42b43cbe40baea73
 
 apps/agentos/view/fleet/memories/RowsGrid.mjs
     aa839765054f09ccf4a2113c44abb6a4360b8ebc
@@ -522,13 +522,13 @@ apps/agentos/view/fleet/memories/SummaryGrid.mjs
     7384c20004b379d02f13de01cc72291f5dc05514
 
 apps/agentos/view/fleet/memories/SummaryRowComponent.mjs
-    ca4691352db2beb434bda31250fa556a253d963a
+    8767cbb04ee0980b03f94b74f340dd51f1b6fb33
 
 apps/agentos/view/fleet/memories/TurnGrid.mjs
-    e14ce53c9225869656364d52e18e8b986831fd74
+    22cce9f820e2c46da9f3ddc4eb046d6d3733cf0c
 
 apps/agentos/view/fleet/memories/TurnRowComponent.mjs
-    d10a747496bd011bb8acb9e64024969cff8e86a6
+    a7970529d018122b09c90c56fe15d7493ba1daf3
 
 apps/agentos/view/fleet/perspectives/Container.mjs
     f6548ca755ca9817cf13b8b7388cb62a0e8471e1
@@ -714,7 +714,7 @@ resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
     9f6319dfbd483b6b548a1fdfd985d6af2714e1f8
 
 resources/scss/src/apps/agentos/fleet/memories/Container.scss
-    4e2008afdc07736bd3a23c9d7ff60a120a36f764
+    a041b5b3d383e0e70ca9a65784add71e9107f91b
 
 resources/scss/src/apps/agentos/fleet/memories/ReaderComponent.scss
     3049137e41605023cbfe0ed9d15f9a12cfe9e41e
@@ -1077,7 +1077,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox.
     e8967f558b58fb9ee5c8110211e4de4ed48d092c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-memories.png
-    2cd86cbf807da9d16de7d376b029da45ab7ed8f0
+    e63c39186043ccd4c9ee811b9b85de78dd86aab9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-perspectives.png
     7c4af72c9580fd590c0ee943d150409bf65a29ef

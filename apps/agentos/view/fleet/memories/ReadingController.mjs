@@ -150,6 +150,7 @@ class ReadingController extends ComponentController {
                 backText : drill ? 'Turns' : 'Summaries',
                 kind     : drill ? 'turn' : 'summary',
                 record   : !showAll && record ? grid.recordBag(record) : null,
+                target   : component.activeAgent ?? component.snapshot?.target ?? null,
                 emptyText: drill ? 'Select a turn to read it in full.' : 'Select a session summary to read it in full.'
             }
         })

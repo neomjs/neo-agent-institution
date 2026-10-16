@@ -37,7 +37,15 @@ class TurnGrid extends RowsGrid {
          * @member {Number} rowHeight=104
          * @reactive
          */
-        rowHeight: 104
+        rowHeight: 104,
+        /**
+         * The drill's target identity — handed to every cell bag so a turn record whose wire row
+         * carried no identity field still renders its authoring identity. The drill's target
+         * stands in for an absent field; it is not a per-turn fact. Written by the pane per
+         * adopted drill envelope.
+         * @member {String|null} target=null
+         */
+        target: null
     }
 
     /**
@@ -57,7 +65,9 @@ class TurnGrid extends RowsGrid {
      * {@link AgentOS.view.fleet.memories.TurnRowComponent}).
      */
     onConstructed() {
-        this.columns = [{
+        const me = this;
+
+        me.columns = [{
             dataField: 'response',
             flex     : 1,
             component: ({record}) => ({
@@ -68,6 +78,7 @@ class TurnGrid extends RowsGrid {
                     miniSummary    : record.miniSummary,
                     prompt         : record.prompt,
                     response       : record.response,
+                    target         : me.target,
                     timestamp      : record.timestamp
                 }
             })

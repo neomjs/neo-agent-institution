@@ -89,11 +89,21 @@
         gap: var(--fm-space-2);
     }
 
-    /* the drill-in view: head (back · session title · provenance) over the turn rows */
+    /* the drill-in view: head (back · session title · provenance, and the muted legend line
+       beneath) over the turn rows */
     .fm-memories-drill-head {
-        gap          : var(--fm-space-2);
+        gap          : var(--fm-space-1) var(--fm-space-2);
         padding      : var(--fm-space-2) 0;   /* breathing room above — the head sat flush on the meta line (design pass) */
         border-bottom: 1px solid var(--fm-line-soft);
+    }
+
+    .fm-memories-drill-legend {
+        flex         : 1 0 100%;
+        color        : var(--fm-ink-dim);
+        font         : var(--fm-text-micro);
+        overflow     : hidden;
+        white-space  : nowrap;
+        text-overflow: ellipsis;
     }
 
     .fm-memories-drill-title {
@@ -343,6 +353,12 @@
     .fm-memories-pane .fm-memories-list {
         flex : 1 1 0% !important;   /* beats the wrapperStyle the wide regime writes */
         width: auto !important;
+    }
+
+    .fm-memories-pane .fm-memories-drill-legend {
+        overflow     : visible;
+        white-space  : normal;
+        text-overflow: clip;
     }
 
     .fm-memories-pane.is-reading .fm-memories-list,
