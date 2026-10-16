@@ -222,7 +222,7 @@ class Controller extends ComponentController {
      * the cockpit-provider truth pair (`selectedAgentId` for record-keyed consumers,
      * `selectedAgentIdentity` — the canonical `@github` mailbox identity — for identity-keyed
      * consumers like the memories read), and fire the roster's `agentSelect` intent for the
-     * cockpit's detail path. An empty selection clears the provider pair and fires nothing.
+     * cockpit's detail path. An empty selection clears the provider pair and fires `{agentId: null}`.
      * @param {Object} data The list `select` event `{records, selection}`.
      */
     onRosterSelect(data) {
@@ -235,6 +235,7 @@ class Controller extends ComponentController {
 
         if (!record) {
             provider?.setData({selectedAgentId: null, selectedAgentIdentity: null});
+            me.component.fire('agentSelect', {agentId: null});
             return
         }
 

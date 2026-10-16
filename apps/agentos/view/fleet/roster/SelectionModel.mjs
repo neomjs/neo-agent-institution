@@ -72,6 +72,55 @@ class SelectionModel extends ListModel {
     }
 
     /**
+     * @summary Escape clears the active roster selection so the selection-driven detail pane
+     * returns to auto-hidden when unpinned. A key event inside a card's lifecycle control cluster
+     * leaves the selection untouched.
+     * @param {Object} data The key event; `data.path` is the DOM path, innermost first.
+     */
+    onKeyDownEscape(data) {
+        if ((data?.path || []).some(node => node.cls?.includes('fm-card-control-verbs'))) {
+            return
+        }
+
+        this.hasSelection() && this.deselectAll()
+    }
+
+    /**
+     * @summary Deselects an item and, when an active selection is cleared non-silently, emits the
+     * view's empty `select` envelope (`{records: [], selection}`) so the roster controller and
+     * cockpit reconcile the cleared selection through the same seam as `select`.
+     * @param {Object|Number|String} item
+     * @param {Boolean} [silent]
+     * @param {Object[]|String[]} [itemCollection=this.items]
+     * @param {String} [selectedCls]
+     */
+    deselect(item, silent, itemCollection=this.items, selectedCls) {
+        const had = itemCollection === this.items && this.isSelected(this.getSelectionItemId(item));
+
+        super.deselect(item, silent, itemCollection, selectedCls);
+
+        if (!silent && had && !this.hasSelection()) {
+            this.view.fire('select', {records: [], selection: this.items})
+        }
+    }
+
+    /**
+     * @summary Clears all selected items and, when non-silent and previously non-empty, emits the
+     * view's empty `select` envelope (`{records: [], selection}`).
+     * @param {Boolean} [silent]
+     * @param {Object[]|String[]} [itemCollection=this.items]
+     */
+    deselectAll(silent, itemCollection=this.items) {
+        const had = itemCollection === this.items && itemCollection.length > 0;
+
+        super.deselectAll(silent, itemCollection);
+
+        if (!silent && had && !this.hasSelection()) {
+            this.view.fire('select', {records: [], selection: this.items})
+        }
+    }
+
+    /**
      * @summary ArrowDown moves item focus one visual ROW down (+columns in the row-major flat
      * order) — the grid's vertical axis, complementing the Navigator's horizontal pair.
      * @param {Object} data The key event.

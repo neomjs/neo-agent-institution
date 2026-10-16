@@ -171,6 +171,68 @@ class CockpitPerspectives extends Base {
     }
 
     /**
+     * @summary The ONE dock-write site for the selection-driven inspector (`detail.autoHidden`),
+     * paired with `Controller#applySelection`: reveals `detail` when an agent is selected and
+     * restores `autoHidden: true` when the selection clears unless the operator pinned the item
+     * through the dock's pin verb (`detail.pinned === true` in the dock document). Center-docked
+     * arrangements (`Review`) and closed items are untouched.
+     * @param {Neo.dashboard.dock.Workspace} cockpit
+     * @param {Boolean} selected Whether a resident is currently selected.
+     */
+    static syncDetailAutoHidden(cockpit, selected) {
+        const doc    = cockpit?.dockModel,
+              detail = doc?.items?.detail;
+
+        if (!detail || cockpit._seatingInspector || typeof cockpit.applyDockZoneOperation !== 'function') {
+            return
+        }
+
+        if (doc.nodes) {
+            const tabsId = WorkspaceDocument.findContainingTabsId(doc, 'detail');
+
+            if (!tabsId || !this.isEdgeMember(doc, tabsId)) {
+                return
+            }
+        }
+
+        const autoHidden = !selected;
+
+        if (detail.autoHidden === autoHidden || (autoHidden && detail.pinned === true)) {
+            return
+        }
+
+        const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden});
+
+        result && !result.errors?.length && cockpit.onDockZoneDocumentChange?.(result.document)
+    }
+
+    /**
+     * @summary Reconciles `detail`'s pin and `autoHidden` state across a perspective restore,
+     * capture, or reload: a pinned inspector (`pinned === true`) stays open (`pinned: true,
+     * autoHidden: false`), while an unpinned edge inspector returns to the rail (`autoHidden: true`).
+     * @param {Object} document A `neo.dock.zone.v1` document.
+     * @param {Boolean} [pinned=document?.items?.detail?.pinned===true] Whether `detail` is pinned.
+     * @returns {Object}
+     */
+    static reconcileDetailPin(document, pinned = document?.items?.detail?.pinned === true) {
+        if (!document?.items?.detail || !document?.nodes) {
+            return document
+        }
+
+        if (pinned) {
+            return document.items.detail.pinned === true && document.items.detail.autoHidden === false
+                ? document
+                : Operations.setItemPinned(document, {itemId: 'detail', pinned: true}).document
+        }
+
+        const tabsId = WorkspaceDocument.findContainingTabsId(document, 'detail');
+
+        return tabsId && this.isEdgeMember(document, tabsId) && document.items.detail.autoHidden === false
+            ? Operations.setItemAutoHidden(document, {itemId: 'detail', autoHidden: true}).document
+            : document
+    }
+
+    /**
      * @summary Wrap the live dock document as a saved layout under an operator-given name — the
      * capture half of the perspectives drawer. The id is `capture-` plus the folded name (lowercase
      * letters, digits and single hyphens; a name of nothing but punctuation folds to `layout`) —
@@ -195,9 +257,10 @@ class CockpitPerspectives extends Base {
             return {layout: null, errors: [`"${perspectiveName}" is a declared perspective — a capture needs its own name`]}
         }
 
-        const layoutId = `capture-${perspectiveName.toLowerCase().replace(idFold, '-').replace(edgeHyphens, '') || 'layout'}`;
+        const layoutId   = `capture-${perspectiveName.toLowerCase().replace(idFold, '-').replace(edgeHyphens, '') || 'layout'}`,
+              normalized = this.reconcileDetailPin(document, document?.items?.detail?.pinned === true);
 
-        return Persistence.createSavedLayout(document, {
+        return Persistence.createSavedLayout(normalized, {
             layoutId,
             perspectiveName,
             title   : perspectiveName,

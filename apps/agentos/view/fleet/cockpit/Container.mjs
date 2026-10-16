@@ -431,6 +431,21 @@ class FleetCockpit extends VesselContainer {
 
         let me = this;
 
+        me.dockModel = CockpitPerspectives.reconcileDetailPin(
+            me.dockModel,
+            me.dockModel?.items?.detail?.pinned === true || Boolean(me.detailRecord)
+        );
+
+        if (me.perspectiveSelection) {
+            const readBaseline = me.perspectiveSelection.document.bind(me.perspectiveSelection);
+
+            me.perspectiveSelection.document = name => {
+                const doc = readBaseline(name);
+
+                return doc ? CockpitPerspectives.reconcileDetailPin(doc, me.dockModel?.items?.detail?.pinned === true) : null
+            }
+        }
+
         me.getDockHost().insert(me.dockShellIndex, me.projectDockModel());
         me.perspectiveStore = Neo.create(PerspectiveLibrary, {collection: CockpitPerspectives.emptyCollection()});
         me.publishPerspectives()
@@ -524,6 +539,14 @@ class FleetCockpit extends VesselContainer {
 
                 document.items.fleet.closable = me.panes.fleet.closable
             }
+
+            if (me.dockModel?.items?.detail?.pinned === true ||
+                me.perspectiveStore?.getPerspective(name)?.metadata?.source === 'fm-cockpit-capture') {
+                document = CockpitPerspectives.reconcileDetailPin(
+                    document,
+                    me.dockModel?.items?.detail?.pinned === true || document.items?.detail?.pinned === true
+                )
+            }
         }
 
         me.presetError = null;
@@ -584,8 +607,14 @@ class FleetCockpit extends VesselContainer {
         let me = this, controller;
 
         if (document && CockpitPerspectives.revealsInspector(document) && !me.detailRecord) {
-            controller = me.getController();
-            controller.applySelection(controller.resolveFleetRosterStore()?.first() ?? null)
+            controller          = me.getController();
+            me._seatingInspector = true;
+
+            try {
+                controller.applySelection(controller.resolveFleetRosterStore()?.first() ?? null)
+            } finally {
+                me._seatingInspector = false
+            }
         }
     }
 
