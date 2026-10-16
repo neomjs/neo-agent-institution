@@ -11,7 +11,7 @@ import BaseRowModel from '../../../../../node_modules/neo.mjs/src/selection/grid
  * events. Without `silent = true`, the clicked row dispatches its own standalone `row.update()`
  * flight BEFORE the pane enters `silentVdomUpdate = true`, causing `VDomUpdate` to defer the pane
  * batch behind the in-flight descendant so the selection paint and rail re-norm land on separate
- * frames (#715).
+ * frames.
  *
  * @class AgentOS.view.fleet.memories.RowModel
  * @extends Neo.selection.grid.RowModel

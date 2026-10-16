@@ -187,7 +187,7 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
 
         // Fallback when a descendant is already in flight (e.g. list from syncZones' hidden toggles):
         // syncReader must not leave pane.needsVdomUpdate stuck true, or subsequent list updates get
-        // swallowed by mergeIntoParentUpdate() into the depth-1 pane (#715 RA-3).
+        // swallowed by mergeIntoParentUpdate() into the depth-1 pane.
         pane.needsVdomUpdate = false;
         Neo.manager.VDomUpdate.registerInFlightUpdate(list.id, -1);
         try {
