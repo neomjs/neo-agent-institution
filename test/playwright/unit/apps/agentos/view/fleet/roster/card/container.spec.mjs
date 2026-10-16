@@ -1908,6 +1908,10 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
                 logPath : '/Users/ada/Library/Logs/Claude/main.log',
                 reason  : 'ENOENT: no such file or directory'
             },
+            unknownNoLog = {
+                state: 'unknown',
+                exitedAt
+            },
             card      = createCard({agentId: 'ada', displayName: 'Ada', state: 'off', exitReason: harnessUpdate}),
             cardState = () => card.down({reference: 'card-state'}),
             status    = () => card.down({reference: 'control-status'});
@@ -1937,6 +1941,12 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         // AC-2: unknown when the harness log could not be read
         applySet(card, {exitReason: unknownUnreadable});
         expect(status().text).toContain('without a Stop from FM, and its harness log could not be read: ENOENT: no such file or directory.');
+
+        // AC-2: unknown when no harness log path exists (non-Claude-Desktop harnesses)
+        applySet(card, {exitReason: unknownNoLog});
+        expect(status().text).toContain('08:00:00Z without a Stop from FM; Fleet Manager reads no harness log for this seat\'s harness yet. Start the seat. If it exits again, read its harness log before a third Start.');
+        expect(status().text).not.toContain('its harness log names no reason');
+        expect(status().vdom.title).not.toContain('/Users/');
 
         // AC-3: an intentional Stop (exitReason: null) keeps "Fleet stopped its process" and hides the status row
         applySet(card, {exitReason: null});

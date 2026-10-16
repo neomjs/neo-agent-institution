@@ -126,6 +126,10 @@ test('a stopped seat with exitReason shows the full Detail wording + matched log
             logPath : '/Users/ada/Library/Logs/Claude/main.log',
             reason  : 'EACCES: permission denied'
         },
+        unknownNoLog = {
+            state: 'unknown',
+            exitedAt
+        },
         record   = createRecord({state: 'off', exitReason: harnessUpdate}),
         feedback = () => group.getReference('runtime-control-feedback');
 
@@ -151,6 +155,15 @@ test('a stopped seat with exitReason shows the full Detail wording + matched log
     expect(feedback().text).toContain('stopped · reason unknown — The seat\'s process exited at ');
     expect(feedback().text).toContain('its harness log could not be read: EACCES: permission denied.');
     expect(feedback().text).toContain('/Users/ada/Library/Logs/Claude/main.log');
+    expect(sessionRow().text).toBe('stopped · reason unknown');
+
+    // unknown exitReason with no logPath (non-Claude-Desktop harnesses)
+    record.set({exitReason: unknownNoLog});
+    group.updateRecord(record);
+    detail.applyRecord();
+    expect(feedback().text).toContain('08:00:00Z without a Stop from FM; Fleet Manager reads no harness log for this seat\'s harness yet. Start the seat. If it exits again, read its harness log before a third Start.');
+    expect(feedback().text).not.toContain('its harness log names no reason');
+    expect(feedback().text).not.toContain('/Users/');
     expect(sessionRow().text).toBe('stopped · reason unknown');
 
     // intentional Stop (exitReason: null) clears the feedback and restores "offline · stopped" / "Fleet stopped its process"

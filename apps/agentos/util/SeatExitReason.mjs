@@ -5,13 +5,13 @@ const VALID_STATES = new Set(['harness-update', 'unknown']);
 
 /**
  * @summary Why a supervised Fleet seat exited without a `stop(id)` request from Fleet Manager,
- * worded once for the roster card and for Agent Detail. The fact is the roster row's `exitReason`:
+ * worded once for the roster card and for Agent Detail. The fact is the roster row's `exitReason`
+ * produced by `neo-agent-brain`'s `readSeatExitReason`:
  * `{state: 'harness-update'|'unknown', exitedAt, logPath?, matchedLine?, reason?}`.
  *
- * Arbitrary child `stderr` is never status authority; the harness's own update
- * marker in `~/Library/Logs/Claude/main.log` within the 60 s before the observed exit is the single
- * named match (`harness-update`), with `unknown` as the default. Intentional Stops and running seats
- * report `null` and say nothing here.
+ * The three consumer surfaces (`AgentCard`, `SeatRuntimeContainer`, and `AgentDetail`'s `session`
+ * ledger row) inherit one gate from `RosterRow.mapRosterRow`'s wired-runtime resolver; intentional
+ * Stops and running seats report `null` and say nothing here.
  *
  * @class AgentOS.util.SeatExitReason
  * @extends Neo.core.Base
@@ -43,7 +43,7 @@ class SeatExitReason extends Base {
 
         const
             {state}     = exitReason,
-            utcTime     = `${stamp.title.slice(11, 19)}Z`,
+            utcTime     = `${new Date(exitReason.exitedAt).toISOString().slice(11, 19)}Z`,
             timeText    = `${stamp.text} · ${utcTime}`,
             logPath     = typeof exitReason.logPath === 'string' && exitReason.logPath.trim() ? exitReason.logPath.trim() : null,
             matchedLine = typeof exitReason.matchedLine === 'string' && exitReason.matchedLine.trim() ? exitReason.matchedLine.trim() : null,
@@ -65,7 +65,9 @@ class SeatExitReason extends Base {
             head   = 'stopped · reason unknown',
             line   = reason
                 ? `The seat's process exited at ${timeText} without a Stop from FM, and its harness log could not be read: ${reason}.`
-                : `The seat's process exited at ${timeText} without a Stop from FM, and its harness log names no reason.`,
+                : logPath
+                    ? `The seat's process exited at ${timeText} without a Stop from FM, and its harness log names no reason.`
+                    : `The seat's process exited at ${timeText} without a Stop from FM; Fleet Manager reads no harness log for this seat's harness yet.`,
             next   = 'Start the seat. If it exits again, read its harness log before a third Start.',
             detail = logPath,
             text   = `${head} — ${line} ${next}`,

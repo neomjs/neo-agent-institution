@@ -509,8 +509,8 @@ class AgentCard extends Container {
     }
 
     /**
-     * @summary Renders the claim as inert text, eliding the subject before appending its age so the
-     * distinguishing tail remains visible.
+     * @summary Renders the claim as inert text (no disclosure affordance on a non-interactive node),
+     * eliding the subject before appending its age so the distinguishing tail remains visible.
      * @param {Object} record
      * @param {Object} laneSource Normalized `sources.lane` fact.
      * @returns {Boolean} true when this wired subject has a parseable claim instant.
