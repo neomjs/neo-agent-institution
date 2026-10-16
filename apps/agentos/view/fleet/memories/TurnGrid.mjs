@@ -40,7 +40,8 @@ class TurnGrid extends RowsGrid {
         rowHeight: 104,
         /**
          * The drill's target identity — handed to every cell bag so a turn record whose wire row
-         * carried no identity field still renders its authoring identity. Written by the pane per
+         * carried no identity field still renders its authoring identity. The drill's target
+         * stands in for an absent field; it is not a per-turn fact. Written by the pane per
          * adopted drill envelope.
          * @member {String|null} target=null
          */

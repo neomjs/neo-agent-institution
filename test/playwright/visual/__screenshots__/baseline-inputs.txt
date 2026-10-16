@@ -507,7 +507,7 @@ apps/agentos/view/fleet/mailbox/RowModel.mjs
     72154b75cbff2787ec289fc85fd61ac3e0182c9c
 
 apps/agentos/view/fleet/memories/Container.mjs
-    a8cb144a31b6c50adfa8a1fb1bb76fc2b0d31d1d
+    8aa20a8cc0bfe46c649ec31b6861a2dd5f3fd82a
 
 apps/agentos/view/fleet/memories/ReaderComponent.mjs
     312f3814432e1e2f3baa16819bd2b82893522895
@@ -525,7 +525,7 @@ apps/agentos/view/fleet/memories/SummaryRowComponent.mjs
     8767cbb04ee0980b03f94b74f340dd51f1b6fb33
 
 apps/agentos/view/fleet/memories/TurnGrid.mjs
-    e09ad2ab79881a1e75284ba5c78e035cfbc5033f
+    22cce9f820e2c46da9f3ddc4eb046d6d3733cf0c
 
 apps/agentos/view/fleet/memories/TurnRowComponent.mjs
     a7970529d018122b09c90c56fe15d7493ba1daf3
@@ -714,7 +714,7 @@ resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
     9f6319dfbd483b6b548a1fdfd985d6af2714e1f8
 
 resources/scss/src/apps/agentos/fleet/memories/Container.scss
-    e3d2acb7e4c493982691b28ff38a6b76c253964c
+    a041b5b3d383e0e70ca9a65784add71e9107f91b
 
 resources/scss/src/apps/agentos/fleet/memories/ReaderComponent.scss
     3049137e41605023cbfe0ed9d15f9a12cfe9e41e

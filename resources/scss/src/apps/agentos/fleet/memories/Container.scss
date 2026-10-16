@@ -355,6 +355,12 @@
         width: auto !important;
     }
 
+    .fm-memories-pane .fm-memories-drill-legend {
+        overflow     : visible;
+        white-space  : normal;
+        text-overflow: clip;
+    }
+
     .fm-memories-pane.is-reading .fm-memories-list,
     .fm-memories-pane:not(.is-reading) .fm-memories-reader,
     .fm-memories-pane .fm-memories-splitter {

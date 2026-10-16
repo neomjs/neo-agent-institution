@@ -137,7 +137,6 @@ class MemoriesPane extends Container {
                 cls      : ['fm-pane-meta'],
                 reference: 'memories-provenance',
                 text     : 'Summaries are made at read time from the agent\'s own records; they are not the record.',
-                title    : 'query-time · not authority',
                 vdom     : {title: 'query-time · not authority'}
             }, {
                 ntype    : 'container',
@@ -195,7 +194,6 @@ class MemoriesPane extends Container {
                 ntype: 'component',
                 cls  : ['fm-memories-provenance', 'is-authored'],
                 text : 'authored records',
-                title: 'the agent\'s own prompt · thought · response',
                 vdom : {title: 'the agent\'s own prompt · thought · response'}
             }, {
                 ntype    : 'component',

@@ -602,7 +602,27 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await expect(pane.locator('.fm-memories-list'), 'narrow and reading: the rail yields').toBeHidden();
             await reader.locator('.fm-memories-read-back').click();
             await expect(pane.locator('.fm-memories-list'), 'the breadcrumb returns to the list').toBeVisible();
-            await expect(reader, 'an idle reader yields its room').toBeHidden()
+            await expect(reader, 'an idle reader yields its room').toBeHidden();
+
+            await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-open').click();
+            await expect(pane.locator('.fm-memories-turn-cell')).toHaveCount(2, {timeout: 10000});
+
+            const legend = pane.locator('.fm-memories-drill-legend');
+            await expect(legend).toBeVisible();
+            expect(await legend.evaluate(el => {
+                const style = getComputedStyle(el);
+                return {
+                    whiteSpace: style.whiteSpace,
+                    truncated : el.scrollWidth > el.clientWidth
+                }
+            }), 'narrow regime: the drill legend wraps with no ellipsis truncation').toEqual({
+                whiteSpace: 'normal',
+                truncated : false
+            });
+
+            await page.mouse.move(8, 8);
+            await page.evaluate(() => document.fonts.ready);
+            await expect(pane).toHaveScreenshot('memories-turns-narrow-dark.png')
         } finally {
             await fleet.close()
         }
