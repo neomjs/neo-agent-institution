@@ -5,19 +5,11 @@
    ledger and the preset choices are folds. The served path (no vessel) shows the CLI's command in
    the mono detail role over a field for its JSON. Column widths never come from a stylesheet `flex`
    on a layout child: the engine writes `flex` inline on every one of them. */
+@use '../shared/scroll-fade' as *;
+
 .fm-setup-create {
-    /* the bounded door scrolls: a fade at its foot says the rows continue */
-    &::after {
-        content       : '';
-        display       : block;
-        position      : sticky;
-        bottom        : 0;
-        flex          : none;
-        height        : 28px;
-        margin-top    : -28px;
-        background    : linear-gradient(to bottom, transparent, var(--fm-panel));
-        pointer-events: none;
-    }
+    /* the bounded door scrolls: a fade at its foot says the rows continue — only while they do */
+    @include scroll-fade;
 
     .fm-setup-asks {
         gap    : var(--fm-space-4);
