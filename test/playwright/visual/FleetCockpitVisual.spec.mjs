@@ -1880,11 +1880,33 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(geometry.whole, 'no block is clipped').toBe(true);
         geometry.lefts.forEach((lefts, index) => expect(new Set(lefts).size, `block ${index} has one left edge: ${lefts.join(', ')}`).toBe(1));
 
+        // the foot fade follows the door's scroll state, not the door's existence: it paints only while
+        // the door can still scroll down. The front alone fits the door, so nothing fades here
+        const fade = () => page.evaluate(() => {
+            const door = document.querySelector('.fm-setup-create');
+
+            return {
+                overflows: door.scrollHeight > door.clientHeight,
+                atEnd    : Math.ceil(door.scrollTop + door.clientHeight) >= door.scrollHeight,
+                opacity  : getComputedStyle(door, '::after').opacity
+            }
+        });
+
+        expect(await fade(), 'a door that holds everything shows no fade').toEqual({overflows: false, atEnd: true, opacity: '0'});
+
         await expect(card).toHaveScreenshot('setup-card-create.png');
 
         // Details: the recipe's rows, every status in two channels — the word carries it beside the glyph
         await card.locator('.fm-setup-details-toggle').click();
         await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(expected.length);
+
+        // the open ledger overflows the door: the fade paints at the top and leaves at the end
+        expect(await fade(), 'the overflowing door fades at its foot').toEqual({overflows: true, atEnd: false, opacity: '1'});
+        await page.evaluate(() => { const door = document.querySelector('.fm-setup-create'); door.scrollTop = door.scrollHeight });
+        await page.waitForTimeout(150);
+        expect(await fade(), 'scrolled to its end, the door shows no fade').toEqual({overflows: true, atEnd: true, opacity: '0'});
+        await page.evaluate(() => { document.querySelector('.fm-setup-create').scrollTop = 0 });
+        await page.waitForTimeout(150);
 
         const paint = await page.evaluate(() => {
             const
@@ -1906,6 +1928,18 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.mouse.move(0, 0);
         await page.waitForTimeout(300);
         await expect(card).toHaveScreenshot('setup-card-create-details.png');
+
+        // the ledger ending inside the door: a tall window takes the overflow away, and the fade
+        // with it — the last row's second line reads at full ink, nothing dims it
+        const lastRow = card.locator('.fm-setup-steps .neo-list-item').last();
+
+        await page.setViewportSize({width: 1280, height: 1800});
+        await page.waitForTimeout(300);
+        expect(await fade(), 'the ledger ends inside the door: no fade').toEqual({overflows: false, atEnd: true, opacity: '0'});
+        await expect(lastRow).toHaveScreenshot('setup-row-last-unfaded.png');
+        await page.setViewportSize({width: 1280, height: 800});
+        await page.waitForTimeout(300);
+
         await card.locator('.fm-setup-details-toggle').click();
         await expect(card.locator('.fm-setup-steps')).toHaveCount(0);
 
@@ -1920,7 +1954,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await switchToLightSkin(page);
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
-        await expect(card).toHaveScreenshot('setup-card-create-light.png')
+        await expect(card).toHaveScreenshot('setup-card-create-light.png');
+
+        // the unfaded last row in the light skin
+        await page.setViewportSize({width: 1280, height: 1800});
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(expected.length);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(300);
+        expect(await fade(), 'the ledger ends inside the door, light skin: no fade').toEqual({overflows: false, atEnd: true, opacity: '0'});
+        await expect(lastRow).toHaveScreenshot('setup-row-last-unfaded-light.png')
     });
 
     test('the witness row with two exits — re-check is the chip and write again a text link beside it; the first press of write again adds its line under the reason; both skins', async ({page}) => {
