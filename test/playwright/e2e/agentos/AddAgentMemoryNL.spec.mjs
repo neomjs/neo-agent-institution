@@ -265,7 +265,7 @@ test.describe('AgentOS Add agent — existing memory (#521)', () => {
         }
     });
 
-    test('one candidate is preselected, its folder under Details (AC-2)', async ({page, neuralLink}) => {
+    test('one candidate is preselected, its folder under Details, and the preselection follows the typed username (AC-2, #724 AC-4)', async ({page, neuralLink}) => {
         const fleet = await startMemoryFleetBridge(MEMORY_ANSWERS.candidates([CANDIDATES[0]]));
 
         try {
@@ -283,6 +283,10 @@ test.describe('AgentOS Add agent — existing memory (#521)', () => {
             await expect(details.locator('.fm-add-memory-source')).toHaveText(CANDIDATES[0].source);
 
             await fill(form);
+            await expect(frame.locator('.neo-list-item.neo-selected .fm-memory-candidate-name')).toHaveText('Start with empty memory');
+            await form.locator('input[name="githubUsername"]').fill('Mnemosyne');
+            await expect(frame.locator('.neo-list-item.neo-selected .fm-memory-candidate-name')).toHaveText('Mnemosyne');
+
             await form.locator('.fm-add-submit').click();
             await expect(form.locator('.fm-add-status.is-readback-confirmed')).toBeVisible({timeout: 15000});
 

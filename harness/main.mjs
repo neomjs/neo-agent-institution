@@ -465,7 +465,7 @@ function isTrustedIpcSender(event) {
 const promptFleetCredential = createCredentialPrompt({
     BrowserWindow,
     Menu,
-    getPlane   : () => launchedPlane?.baseUrl || process.env.NEO_FLEET_PLANE_BASE_URL || null,
+    getPlane   : () => launchedPlane?.baseUrl ?? null,
     preloadPath: path.join(harnessDir, 'credentialPrompt.preload.cjs')
 });
 

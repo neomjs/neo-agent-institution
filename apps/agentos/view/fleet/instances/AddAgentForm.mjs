@@ -810,7 +810,7 @@ class AddAgentForm extends FormContainer {
      */
     onMemoryCandidateClick({record}) {
         this.memoryChoicePicked = true;
-        this.memoryChoice       = this.memoryChoice === record.source ? null : record.source
+        this.memoryChoice       = record.source
     }
 
     /**
@@ -818,8 +818,7 @@ class AddAgentForm extends FormContainer {
      * @param {Object} data
      */
     onUsernameChange({value}) {
-        if (!this.memoryChoicePicked && this.memoryDiscovery.state === 'candidates' &&
-            (this.memoryDiscovery.candidates.length > 1 || AddAgentFlow.candidateMatchesUsername(this.memoryDiscovery.candidates[0], value))) {
+        if (!this.memoryChoicePicked && this.memoryDiscovery.state === 'candidates') {
             this.memoryChoice = AddAgentFlow.preselectedMemory(this.memoryDiscovery, value)
         }
     }

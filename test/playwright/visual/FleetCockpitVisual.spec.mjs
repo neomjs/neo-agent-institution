@@ -2481,25 +2481,41 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(firstRow).toHaveClass(/\bneo-selected\b/);
         await firstRow.focus();
 
-        const geometry = await form.evaluate(card => {
-            const
-                list = card.querySelector('.fm-memory-candidates'),
-                row  = list.querySelector('.neo-list-item.neo-selected'),
-                rect = card.getBoundingClientRect();
+        const
+            fadeOpacity = () => form.evaluate(card => getComputedStyle(card.querySelector('.fm-memory-candidates'), '::after').opacity),
+            geometry    = await form.evaluate(card => {
+                const
+                    list = card.querySelector('.fm-memory-candidates'),
+                    row  = list.querySelector('.neo-list-item.neo-selected'),
+                    rect = card.getBoundingClientRect();
 
-            return {
-                cardBottom  : Math.round(rect.bottom),
-                clientHeight: list.clientHeight,
-                outlineStyle: getComputedStyle(row).outlineStyle,
-                scrollHeight: list.scrollHeight,
-                viewportH   : window.innerHeight
-            }
-        });
+                return {
+                    cardBottom  : Math.round(rect.bottom),
+                    clientHeight: list.clientHeight,
+                    outlineStyle: getComputedStyle(row).outlineStyle,
+                    scrollHeight: list.scrollHeight,
+                    viewportH   : window.innerHeight
+                }
+            });
 
         expect(geometry.scrollHeight, '11 candidates + empty row scroll inside the list').toBeGreaterThan(geometry.clientHeight);
         expect(geometry.clientHeight, 'the list is capped so the rest of the card stays in view').toBeLessThanOrEqual(204);
         expect(geometry.cardBottom, 'the whole Add agent card fits at 1280x800 without outer scroll').toBeLessThanOrEqual(geometry.viewportH);
         expect(geometry.outlineStyle, 'a selected row carries its fill and border, never an orange focus outline').toBe('none');
+        expect(await fadeOpacity(), 'the foot fade shows while rows continue below').toBe('1');
+
+        await form.evaluate(card => {
+            const list = card.querySelector('.fm-memory-candidates');
+            list.scrollTop = list.scrollHeight
+        });
+        await page.waitForTimeout(150);
+        expect(await fadeOpacity(), 'the foot fade disappears at the bottom so the last row is never veiled').toBe('0');
+
+        await form.evaluate(card => {
+            card.querySelector('.fm-memory-candidates').scrollTop = 0
+        });
+        await page.waitForTimeout(150);
+        await firstRow.focus();
 
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);

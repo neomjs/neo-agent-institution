@@ -363,8 +363,15 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(AddAgentFlow.memoryImportFor({discovery: {state: 'offline', reason: 'Could not reach the fleet.'}, choice: 'none'}))
             .toEqual({valid: false, reason: 'Could not reach the fleet.'});
 
-        // one candidate (or a single username match) is preselected; several with no single match preselect the empty row
+        // one candidate (or a single declared-identity match) is preselected; a folder path never matches a username
+        expect(AddAgentFlow.singleCandidate({state: 'candidates', candidates: [CANDIDATES[0]]})).toBe(CANDIDATES[0].source);
+        expect(AddAgentFlow.singleCandidate(candidates)).toBeNull();
+        expect(AddAgentFlow.candidateMatchesUsername({source: '/Users/operator/.claude/projects/-Users-operator-agents-neo-fable-neomjs-neo/memory', name: 'neomjs-neo'}, 'neo-fable')).toBe(false);
+        expect(AddAgentFlow.candidateMatchesUsername({source: '/Users/neo-fable/.claude/projects/-work/memory', name: 'work'}, 'neo-fable')).toBe(false);
+        expect(AddAgentFlow.candidateMatchesUsername({agent: '@neo-fable', source: '/work/memory', name: 'Mnemosyne'}, 'neo-fable')).toBe(true);
         expect(AddAgentFlow.preselectedMemory({state: 'candidates', candidates: [CANDIDATES[0]]})).toBe(CANDIDATES[0].source);
+        expect(AddAgentFlow.preselectedMemory({state: 'candidates', candidates: [CANDIDATES[0]]}, 'neo-gemini-maryam')).toBe('none');
+        expect(AddAgentFlow.preselectedMemory({state: 'candidates', candidates: [CANDIDATES[0]]}, '@Mnemosyne')).toBe(CANDIDATES[0].source);
         expect(AddAgentFlow.preselectedMemory(candidates)).toBe('none');
         expect(AddAgentFlow.preselectedMemory(candidates, 'neo-gemini-maryam')).toBe('none');
         expect(AddAgentFlow.preselectedMemory(candidates, 'Mnemosyne')).toBe(CANDIDATES[0].source);
@@ -817,10 +824,23 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.getReference('memory-details').vdom.cn[1].text).toBe(CANDIDATES[0].source);
         expect(form.getReference('memory-actions').hidden).toBe(true);
 
+        // typing a non-matching handle falls back from the single candidate to the empty row; typing its handle restores it
+        (await form.getField('githubUsername')).value = 'neo-gemini-maryam';
+        expect(form.memoryChoice).toBe('none');
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true, false]);
+        expect(form.getReference('memory-note').hidden).toBe(true);
+        expect(form.getReference('memory-details').hidden).toBe(true);
+
+        (await form.getField('githubUsername')).value = 'Mnemosyne';
+        expect(form.memoryChoice).toBe(CANDIDATES[0].source);
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, true]);
+        expect(form.getReference('memory-note').hidden).toBe(false);
+        expect(form.getReference('memory-details').hidden).toBe(false);
+
         form.destroy()
     });
 
-    test('several candidates preselect the empty row first; deselecting requires a choice, the chosen source reaches defineAgent, and the copy note shows only for a candidate (#521 AC-2, AC-3, #724)', async () => {
+    test('several candidates preselect the empty row first; the chosen source reaches defineAgent, and the copy note shows only for a candidate (#521 AC-2, AC-3, #724)', async () => {
         const
             calls = [],
             form  = Neo.create(AddAgentForm, {
@@ -848,17 +868,6 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.getReference('memory-details').hidden).toBe(true);
         expect(list.createItemContent(list.store.getAt(0))[0].text).toBe('Start with empty memory');
         expect(list.createItemContent(list.store.getAt(2))[0].text).toBe('An unnamed agent');
-
-        // deselecting the preselected empty row leaves no choice and triggers the validation sentence
-        form.onMemoryCandidateClick({record: list.store.get('none')});
-        expect(form.memoryChoice).toBeNull();
-        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, false, false]);
-
-        await fill();
-        await form.onSubmitClick();
-
-        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Choose the agent whose memory this seat continues, or Start with empty memory.'});
-        expect(calls).toHaveLength(0);
 
         // choosing a candidate shows the copy note and Details
         form.onMemoryCandidateClick({record: list.store.getAt(2)});

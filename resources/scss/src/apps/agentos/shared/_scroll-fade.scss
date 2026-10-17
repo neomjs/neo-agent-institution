@@ -1,0 +1,29 @@
+/* The foot fade of a bounded scroll surface: a sticky gradient over its last pixels that says the rows
+   continue — only while they do. The surface becomes a scroll-state container, so its own `::after`
+   paints while the surface can still scroll down and leaves at its end; a surface that holds everything
+   shows none, and nothing under it is ever veiled. Include on the element that scrolls (`overflow-y:
+   auto`); `$panel` names the colour the fade resolves into, the surface's own background. One idiom for
+   every faded foot — the setup card's Create door, the memory candidate lists — so a reader learns the
+   signal once. */
+@mixin scroll-fade($panel: var(--fm-panel), $height: 28px) {
+    container-type: scroll-state;
+
+    &::after {
+        content       : '';
+        display       : block;
+        position      : sticky;
+        bottom        : 0;
+        flex          : none;
+        height        : $height;
+        margin-top    : -$height;
+        background    : linear-gradient(to bottom, transparent, $panel);
+        pointer-events: none;
+        opacity       : 0;
+    }
+
+    @container scroll-state(scrollable: bottom) {
+        &::after {
+            opacity: 1;
+        }
+    }
+}

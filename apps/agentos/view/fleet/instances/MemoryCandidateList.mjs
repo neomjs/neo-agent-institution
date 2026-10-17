@@ -30,12 +30,6 @@ class MemoryCandidateList extends BaseList {
          */
         baseCls: ['fm-memory-candidates', 'neo-list'],
         /**
-         * @member {Object} selectionModel
-         */
-        selectionModel: {
-            onListClick() {}
-        },
-        /**
          * @member {Neo.data.Store} store=MemoryCandidateStore
          * @reactive
          */
