@@ -1,3 +1,4 @@
+import {readFileSync, rmSync, writeFileSync}             from 'node:fs';
 import path                                              from 'node:path';
 import {expect, readSetupRun, test}                       from '../../fixtures.mjs';
 import {MACHINES, installPinnedSetupShell, pinnedSetupHost} from '../../fixture/pinnedSetupHost.mjs';
@@ -249,5 +250,89 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
 
         expect(verifyRequests, 'run, the re-check, and the two consented new attempts').toEqual([{effectId: 'verify'}, {effectId: 'verify'}, {effectId: 'verify', newAttempt: true}, {effectId: 'verify', newAttempt: true}]);
         expect(run.world.rows, 'one witness row on the plane').toHaveLength(1)
+    });
+
+    test('a host-file effect that cannot settle has a way out through the card: re-check keeps the row reconcile-required, the card then offers a fresh run beside it, said once in the row before it is sent; the broker binds a new run, the retired record stays on disk as it was, and the run reaches done', async ({page}) => {
+        await page.goto('/apps/agentos/index.html');
+
+        const
+            card     = page.locator('.agent-plane-setup'),
+            rows     = card.locator('.fm-setup-steps .neo-list-item'),
+            row      = id => rows.filter({has: page.locator(`.fm-setup-step-id:text-is("${id}")`)}),
+            chip     = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
+            progress = page.locator('.agent-setup-progress');
+
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/, {timeout: 60000});
+        await card.locator('.fm-setup-credential-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-use-button').click();
+        await card.locator('.fm-setup-key-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-answered/);
+        await card.locator('.fm-setup-details-toggle').click();
+        await chip('write-secrets', 'run').click();
+        await expect(row('write-secrets')).toHaveClass(/is-ok/);
+
+        // the acknowledgement is lost after the handler ran — the record on disk holds a pending receipt, as the
+        // broker leaves it — and the host no longer shows the secret files: no fresh observation can settle it
+        const
+            {runId, recordPath} = await readSetupRun(page).then(async current => ({runId: current.runId, recordPath: path.join(run.setupRoot, `${current.runId}.json`)})),
+            record              = JSON.parse(readFileSync(recordPath, 'utf8'));
+
+        record.receipts = record.receipts.map(receipt => receipt.effectId === 'write-secrets' ? {...receipt, outcome: 'pending'} : receipt);
+        writeFileSync(recordPath, JSON.stringify(record));
+        rmSync(path.join(run.stateRoot, 'secrets'), {recursive: true, force: true});
+
+        // a re-read finds the row reconcile-required with re-check alone; the rows behind it wait for it
+        await chip('placement', 're-read').click();
+        await expect(row('write-secrets')).toHaveClass(/is-reconcile-required/);
+        await expect(row('write-secrets').locator('.fm-setup-step-action')).toHaveText(['re-check']);
+        await expect(row('write-env').locator('.fm-setup-step-wait')).toHaveText('waits for write-secrets');
+        await expect(progress).toHaveText(`5 of ${TOTAL} observed ok · write-secrets needs attention`);
+
+        const retired = readFileSync(recordPath, 'utf8');
+
+        // the operator's re-check here does not settle it: the card offers its own exit beside the row's, quiet
+        await chip('write-secrets', 're-check').click();
+        await expect(row('write-secrets').locator('.fm-setup-step-action')).toHaveText(['re-check', 'start a fresh run']);
+        await expect(chip('write-secrets', 'start a fresh run')).toHaveClass(/is-quiet/);
+        await expect(row('verify').locator('.fm-setup-step-action'), 'the witness row keeps the Brain\'s exits only').toHaveCount(0);
+
+        // the first press says what a fresh run leaves behind; nothing is sent
+        await chip('write-secrets', 'start a fresh run').click();
+        await expect(row('write-secrets').locator('.fm-setup-step-confirm')).toContainText('nothing is deleted');
+        expect((await page.evaluate(() => window.__neoShellCalls)).filter(([name, request]) => name === 'setupEvaluate' && request?.fresh), 'not sent yet').toEqual([]);
+
+        // the second press is the consent: a new run, every step asked again, the lede naming both runs
+        await chip('write-secrets', 'start a fresh run').click();
+        await expect(card.locator('.agent-plane-setup-lede')).toContainText(`the run ${runId} stays on disk as history`);
+        await expect(row('write-secrets')).toHaveClass(/is-pending/);
+        await expect(row('preset')).toHaveClass(/is-pending/);
+        await expect(row('write-secrets').locator('.fm-setup-step-wait'), 'the fresh run asks its questions first').toContainText('waits for');
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/);
+
+        const fresh = await readSetupRun(page);
+
+        expect(fresh.runId).not.toBe(runId);
+        expect(readFileSync(recordPath, 'utf8'), 'the retired record is not rewritten').toBe(retired);
+        // the addon forwards the flag as given beside the target the card never names
+        expect((await page.evaluate(() => window.__neoShellCalls)).filter(([name, request]) => name === 'setupEvaluate' && request?.fresh)).toEqual([['setupEvaluate', {target: null, fresh: true}]]);
+
+        // the fresh run goes to done through the same card: the three blocks in order, then the rows
+        await card.locator('.fm-setup-credential-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-use-button').click();
+        await card.locator('.fm-setup-key-button').click();
+        await expect(card.locator('.fm-setup-ask-start')).toHaveClass(/is-open/);
+
+        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+            await chip(id, 'run').click();
+            await expect(row(id), `${id} re-reads ok`).toHaveClass(/is-ok/)
+        }
+
+        run.world.recallLands = true;
+        await chip('verify', 'run').click();
+        await expect(card).toBeHidden();
+        await expect(progress).toHaveText(`${TOTAL} of ${TOTAL} observed ok · complete`);
+        expect(readFileSync(recordPath, 'utf8'), 'and the retired record is still history').toBe(retired)
     })
 });

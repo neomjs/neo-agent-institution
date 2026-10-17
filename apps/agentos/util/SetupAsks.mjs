@@ -33,13 +33,14 @@ class SetupAsks extends Base {
      * @static
      */
     static START_VERBS = Object.freeze({
-        run            : 'Run next step',
-        're-check'     : 'Check again',
-        'write again'  : 'Write again',
-        retry          : 'Try again',
-        're-read'      : 'Read again',
-        'which plane?' : 'Which plane?',
-        'open memories': 'Open memories'
+        run                : 'Run next step',
+        're-check'         : 'Check again',
+        'write again'      : 'Write again',
+        'start a fresh run': 'Start a fresh run',
+        retry              : 'Try again',
+        're-read'          : 'Read again',
+        'which plane?'     : 'Which plane?',
+        'open memories'    : 'Open memories'
     })
 
     /**

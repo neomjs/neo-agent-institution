@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    fe6ab42c75675a007bd9d7390fdc09afb4493f74
+    04ff2b09df237dd5032d74d31756e644dcee3435
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -315,7 +315,7 @@ apps/agentos/util/SeatSessionFolder.mjs
     5c407e6a03f2b440af221d6a6e314aa7f89f6f53
 
 apps/agentos/util/SetupAsks.mjs
-    581e8ff3e8eb665bf5b6d605c1defaaac025ad37
+    5631188ae6808c721ebb030ad191ea3bc70b797b
 
 apps/agentos/util/SourceHealth.mjs
     66fa93af6c0010f99d2a8079eb8046083db61bde
@@ -606,13 +606,16 @@ apps/agentos/view/setup/ConnectContainer.mjs
     d942330ea4f2fe19c9e94091c641be38f6acebe7
 
 apps/agentos/view/setup/CreateContainer.mjs
-    a0d12b6cf9071f963aac90eaf05b87a22fc9ced4
+    51045f984673e23b637ff70696bc9a5c7b9f125b
 
 apps/agentos/view/setup/Panel.mjs
     b05bdade7c7ba7f5b1378ab83cc6cbfd0ccf1916
 
+apps/agentos/view/setup/PresetCards.mjs
+    aa9c47927d0722012fff7512afef69cabf0e5e5b
+
 apps/agentos/view/setup/StepList.mjs
-    435aa33e793097af5d7c7bfc5a34eba1d25b59c6
+    06aab53978113d2a47b6998249f2923a7036c36e
 
 apps/agentos/view/system/Container.mjs
     1b9e9cd89c265fa4aa0690d3e37a515a1b1aeb68
@@ -774,7 +777,7 @@ resources/scss/src/apps/agentos/home/Container.scss
     4f017430805847298af682224a569cca5c5cb879
 
 resources/scss/src/apps/agentos/setup/CreateContainer.scss
-    2ce7ed5b1f6567a89c2b629ffdbf4e92e108f947
+    ecbfb04e8011a976fa766661348159cdf7ccb003
 
 resources/scss/src/apps/agentos/setup/Panel.scss
     4a972881273aff33833156e1028afd16f92b8d12
@@ -843,7 +846,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    f4c73a2d429f23416c86c56ee902a8cf6831c32d
+    1f9fa041f07e75267f52d6d23feabfdc0591ce4d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -1180,6 +1183,15 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-cr
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create.png
     2dd6e08c3207ea214e6ad375704909692c29f9f6
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-fresh-run-confirming.png
+    68c10906dba5b41b256887b796b653e7429c1db9
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-fresh-run-light.png
+    4f9674f64abe6d66150dbeb996ae2e090ac9e5af
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-fresh-run.png
+    16837493e695bfc307e6548cda0f6b302405a866
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-confirming.png
     33574900652f9869efc2a88e793cff6751126097

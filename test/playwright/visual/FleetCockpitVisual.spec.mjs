@@ -1,4 +1,6 @@
 import {test, expect}                                                                                                                  from '@playwright/test';
+import {readFileSync, rmSync, writeFileSync}                                                                                           from 'node:fs';
+import path                                                                                                                            from 'node:path';
 import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
 import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks}                                                                                        from '../fixture/fleetSample.mjs';
 import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}                                                                                         from '../fixture/pinnedSetupHost.mjs';
@@ -2011,6 +2013,97 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await switchToLightSkin(page);
         await inReadingArea();
         await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-light.png')
+    });
+
+    test('a stuck effect row with the card\'s exit — re-check is the chip and start a fresh run a text link beside it, on the row re-checked here alone; the first press of the fresh run adds its line under the reason; both skins', async ({page}) => {
+        // the same seam with the real broker behind it: write-secrets ran and was acknowledged, then its
+        // receipt reads pending on disk, as an interrupted acknowledgement leaves it, and the host no longer
+        // shows the files — the Brain's own re-check keeps the row reconcile-required, so the card offers its exit
+        const run = await pinnedSetupHost({machine: MACHINES.laptop});
+
+        await installPinnedSetupShell(page, run);
+        await bootSettledCockpit(page);
+
+        const
+            card   = page.locator('.agent-plane-setup'),
+            rows   = card.locator('.fm-setup-steps .neo-list-item'),
+            row    = id => rows.filter({has: page.locator(`.fm-setup-step-id:text-is("${id}")`)}),
+            chip   = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
+            settle = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
+
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/, {timeout: 15000});
+        await card.locator('.fm-setup-credential-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-use-button').click();
+        await card.locator('.fm-setup-key-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-answered/);
+        await card.locator('.fm-setup-details-toggle').click();
+        await chip('write-secrets', 'run').click();
+        await expect(row('write-secrets')).toHaveClass(/is-ok/);
+
+        const
+            {recordPath} = (await run.broker.evaluate(TRUSTED, {})).evaluation,
+            record       = JSON.parse(readFileSync(recordPath, 'utf8'));
+
+        record.receipts = record.receipts.map(receipt => receipt.effectId === 'write-secrets' ? {...receipt, outcome: 'pending'} : receipt);
+        writeFileSync(recordPath, JSON.stringify(record));
+        rmSync(path.join(run.stateRoot, 'secrets'), {recursive: true, force: true});
+
+        await chip('placement', 're-read').click();
+        await expect(row('write-secrets').locator('.fm-setup-step-action')).toHaveText(['re-check']);
+        await chip('write-secrets', 're-check').click();
+        await expect(row('write-secrets').locator('.fm-setup-step-action')).toHaveText(['re-check', 'start a fresh run']);
+        await expect(row('write-env').locator('.fm-setup-step-action'), 'the exit is the re-checked row\'s alone').toHaveCount(0);
+        await page.evaluate(() => document.fonts.ready);
+
+        // the hierarchy holds for the card's exit as for the Brain's: the first chip filled and bordered, the link neither
+        const paint = await page.evaluate(() => [...document.querySelectorAll('.fm-setup-steps .is-reconcile-required .fm-setup-step-action')].map(el => {
+            const cs = getComputedStyle(el);
+
+            return {filled: cs.backgroundColor !== 'rgba(0, 0, 0, 0)', bordered: cs.borderTopColor !== 'rgba(0, 0, 0, 0)', underlined: cs.textDecorationLine === 'underline'}
+        }));
+
+        expect(paint).toEqual([{filled: true, bordered: true, underlined: false}, {filled: false, bordered: false, underlined: true}]);
+
+        // the row in the door's unobscured reading area before each capture, its box clipping nothing
+        const inReadingArea = async () => {
+            await row('write-secrets').evaluate(el => el.scrollIntoView({block: 'center'}));
+            await settle();
+
+            const fit = await row('write-secrets').evaluate(el => {
+                const
+                    door   = el.closest('.fm-setup-door'),
+                    fade   = parseFloat(getComputedStyle(door, '::after').height) || 0,
+                    rowBox = el.getBoundingClientRect();
+
+                return {
+                    clipped  : el.scrollHeight - el.clientHeight,
+                    overhang : el.querySelector('.fm-setup-step-reason').getBoundingClientRect().bottom - rowBox.bottom,
+                    clearance: door.getBoundingClientRect().bottom - fade - rowBox.bottom
+                }
+            });
+
+            expect(fit.clipped, 'the row clips nothing').toBe(0);
+            expect(fit.overhang, 'the reason ends inside the row').toBeLessThanOrEqual(0);
+            expect(fit.clearance, 'the row ends above the door\'s fade').toBeGreaterThanOrEqual(0)
+        };
+
+        await inReadingArea();
+        await expect(row('write-secrets')).toHaveScreenshot('setup-row-fresh-run.png');
+
+        await chip('write-secrets', 'start a fresh run').click();
+        await expect(row('write-secrets').locator('.fm-setup-step-confirm')).toContainText('nothing is deleted');
+        await inReadingArea();
+        await expect(row('write-secrets')).toHaveScreenshot('setup-row-fresh-run-confirming.png');
+
+        // another row's click takes the first press back; nothing was sent
+        await chip('placement', 're-read').click();
+        await expect(row('write-secrets').locator('.fm-setup-step-confirm')).toHaveCount(0);
+        expect((await page.evaluate(() => window.__neoShellCalls)).filter(([name, request]) => name === 'setupEvaluate' && request?.fresh)).toEqual([]);
+
+        await switchToLightSkin(page);
+        await inReadingArea();
+        await expect(row('write-secrets')).toHaveScreenshot('setup-row-fresh-run-light.png')
     });
 
     test('the keeper nav is an icon rail — each tab keeps its label as its accessible name and speaks it as a tooltip to its right, clear of the rail', async ({page}) => {

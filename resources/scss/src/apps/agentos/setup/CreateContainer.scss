@@ -180,6 +180,17 @@
         color        : var(--fm-ink);
     }
 
+    /* the card-level exit once a read refused and no live row is left: the consent line, then its one button */
+    .fm-setup-fresh {
+        gap    : var(--fm-space-2);
+        padding: var(--fm-space-2) var(--fm-space-3) 0;
+    }
+
+    .fm-setup-fresh-line {
+        font : var(--fm-text-body);
+        color: var(--fm-ink-dim);
+    }
+
     .fm-setup-served {
         gap    : var(--fm-space-2);
         padding: var(--fm-space-2) var(--fm-space-3) 0;

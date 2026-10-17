@@ -19,6 +19,33 @@ export const STATUS_MARKS = Object.freeze({
 export const EXIT_VERBS = Object.freeze({run: 'run', resume: 're-check', 'new-attempt': 'write again'});
 
 /**
+ * @summary The card's own exit for an effect row that stayed `reconcile-required` through a re-check in
+ * this card: a fresh run for the same target. Never the recipe's data — the operator's re-check here is
+ * what names it — and never on the witness row, whose exits are the Brain's.
+ * @type {String}
+ */
+export const FRESH_RUN = 'start a fresh run';
+
+/**
+ * @summary The line a row says under its reason after the first press of an action that costs something,
+ * by that action; the second press sends it.
+ * @type {Object}
+ */
+export const CONFIRM_LINES = Object.freeze({
+    'write again': 'a second row on the plane is possible · press write again to write it',
+    [FRESH_RUN]  : 'a fresh run leaves this run\'s record on disk as history, nothing is deleted · a step whose result the host shows reads ok, the others ask again · press start a fresh run to start it'
+});
+
+/**
+ * @summary The same lines for the door's Start block, naming the block's button instead of the chip.
+ * @type {Object}
+ */
+export const BLOCK_CONFIRM_LINES = Object.freeze({
+    'write again': 'a second row on the plane is possible · press Write again to write it',
+    [FRESH_RUN]  : 'a fresh run leaves this run\'s record on disk as history, nothing is deleted · press Start a fresh run to start it'
+});
+
+/**
  * @summary The row's actions, from the step's data alone: none while it waits for another step, the
  * exits it names in the recipe's order, otherwise the one its kind and status decide. An empty list
  * means no chip (the exception-only rule).
@@ -87,6 +114,20 @@ class StepList extends BaseList {
          */
         confirmingId_: null,
         /**
+         * The action pressed once on `confirmingId`'s row — `write again` or the card's fresh run — whose
+         * line from {@link CONFIRM_LINES} the row then says. Set before `confirmingId`, whose change draws
+         * the rows once; cleared with it.
+         * @member {String|null} confirmingAction=null
+         */
+        confirmingAction: null,
+        /**
+         * The effect rows the door re-checked in this card that are still `reconcile-required`: each draws
+         * the card's fresh-run exit as its quiet second chip. The door owns the set and sets it before it
+         * projects the rows, so the projection's one redraw reads it.
+         * @member {String[]|null} freshRunIds=null
+         */
+        freshRunIds: null,
+        /**
          * Step rows are a glance surface with one action each, not a selection surface.
          * @member {Boolean} disableSelection=true
          * @reactive
@@ -120,15 +161,18 @@ class StepList extends BaseList {
 
     /**
      * @summary The five cells of a row. The action cell holds its chips (a second one is the quieter),
-     * the step it waits for, or an invisible chip, so the column keeps its rhythm. The row pressed
-     * once for a costly write adds a sixth: the line that says so.
+     * the step it waits for, or an invisible chip, so the column keeps its rhythm. The card's fresh-run
+     * exit follows the row's own actions on a row the door named. The row pressed once for an action
+     * that costs something adds a sixth cell: the line that says so.
      * @param {Object} record
      * @returns {Object[]}
      */
     createItemContent(record) {
         const
+            me      = this,
             mark    = STATUS_MARKS[record.status] ?? STATUS_MARKS.unknown,
-            actions = actionsFor(record),
+            fresh   = record.status === 'reconcile-required' && Boolean(me.freshRunIds?.includes(record.id)),
+            actions = [...actionsFor(record), ...(fresh ? [FRESH_RUN] : [])],
             chips   = record.waitsFor
                 ? [{cls: ['fm-setup-step-wait'], text: `waits for ${record.waitsFor}`}]
                 : actions.length > 0
@@ -141,7 +185,7 @@ class StepList extends BaseList {
             {cls: ['fm-setup-step-id'],      text: record.id, title: record.summary ?? null},
             {cls: ['fm-setup-step-reason'],  text: record.reason ?? ''},
             {cls: ['fm-setup-step-actions'], cn: chips},
-            ...(this.confirmingId === record.id ? [{cls: ['fm-setup-step-confirm'], role: 'status', text: 'a second row on the plane is possible · press write again to write it'}] : [])
+            ...(me.confirmingId === record.id ? [{cls: ['fm-setup-step-confirm'], role: 'status', text: CONFIRM_LINES[me.confirmingAction] ?? CONFIRM_LINES['write again']}] : [])
         ]
     }
 
