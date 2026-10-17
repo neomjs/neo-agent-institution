@@ -2106,6 +2106,54 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(row('write-secrets')).toHaveScreenshot('setup-row-fresh-run-light.png')
     });
 
+    test('the card-level fresh run — a read that refused leaves no live row, the reason on the status line and the exit under it: its consent line, then its one button; both skins', async ({page}) => {
+        // the real broker behind the seam: the run's record on disk is damaged after the cold read, so the next
+        // read refuses in the broker's words and the held rows turn unknown
+        const run = await pinnedSetupHost({machine: MACHINES.laptop});
+
+        await installPinnedSetupShell(page, run);
+        await bootSettledCockpit(page);
+
+        const
+            card   = page.locator('.agent-plane-setup'),
+            rows   = card.locator('.fm-setup-steps .neo-list-item'),
+            row    = id => rows.filter({has: page.locator(`.fm-setup-step-id:text-is("${id}")`)}),
+            chip   = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
+            block  = card.locator('.fm-setup-fresh'),
+            settle = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
+
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/, {timeout: 15000});
+        await expect(block, 'folded while the rows are live').toBeHidden();
+
+        const {recordPath} = (await run.broker.evaluate(TRUSTED, {})).evaluation;
+
+        writeFileSync(recordPath, '{not json');
+        await card.locator('.fm-setup-details-toggle').click();
+        await chip('placement', 're-read').click();
+
+        await expect(card.locator('.agent-plane-setup-status')).toContainText('the run\'s record could not be read');
+        await expect(row('placement')).toHaveClass(/is-unknown/);
+        await expect(block).toBeVisible();
+        await expect(block.locator('.fm-setup-fresh-line')).toContainText('nothing is deleted');
+        await expect(block.locator('.neo-button')).toHaveText('Start a fresh run');
+        await page.evaluate(() => document.fonts.ready);
+
+        await block.evaluate(el => el.scrollIntoView({block: 'center'}));
+        await settle();
+        await expect(block).toHaveScreenshot('setup-card-fresh-run-offer.png');
+
+        await switchToLightSkin(page);
+        await block.evaluate(el => el.scrollIntoView({block: 'center'}));
+        await settle();
+        await expect(block).toHaveScreenshot('setup-card-fresh-run-offer-light.png');
+
+        // the one press binds a fresh run on the same host: live rows again, the block folds, the lede names both runs
+        await block.locator('.neo-button').click();
+        await expect(block).toBeHidden();
+        await expect(card.locator('.agent-plane-setup-lede')).toContainText('stays on disk as history');
+        await expect(row('placement')).toHaveClass(/is-ok/)
+    });
+
     test('the keeper nav is an icon rail — each tab keeps its label as its accessible name and speaks it as a tooltip to its right, clear of the rail', async ({page}) => {
         await bootSettledCockpit(page);
 

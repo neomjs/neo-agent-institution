@@ -2,7 +2,7 @@ import Button         from '../../../../node_modules/neo.mjs/src/button/Base.mjs
 import Container      from '../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import {isDescriptor} from '../../../../node_modules/neo.mjs/src/core/ConfigSymbols.mjs';
 import SetupSteps     from '../../store/SetupSteps.mjs';
-import PresetCards    from './PresetCards.mjs';
+import PresetCardsContainer from './PresetCardsContainer.mjs';
 import StepList       from './StepList.mjs';
 import {BLOCK_CONFIRM_LINES, FRESH_RUN, actionsFor} from './StepList.mjs';
 import TextArea       from '../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
@@ -201,7 +201,7 @@ class CreateContainer extends Container {
                     ]),
                     {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-key-line'], flex: 'none', hidden: true, reference: 'provider-key-line', text: ''},
                     {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-budget'], flex: 'none', reference: 'budget-line', text: 'not probed yet'},
-                    {module: PresetCards, reference: 'presets'}
+                    {module: PresetCardsContainer, reference: 'presets'}
                 ]),
                 askBlock('start', 'Start', [
                     {ntype: 'component', cls: ['fm-setup-ask-line'], flex: 'none', reference: 'start-line', text: ''},

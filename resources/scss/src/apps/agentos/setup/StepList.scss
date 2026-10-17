@@ -76,7 +76,9 @@
         align-items: baseline;
     }
 
-    .fm-setup-step-wait {
+    .fm-setup-step-wait,
+    /* the fact before a re-checked row's controls: what the operator already did here, and that nothing settled */
+    .fm-setup-step-fact {
         font       : var(--fm-text-micro);
         white-space: nowrap;
     }

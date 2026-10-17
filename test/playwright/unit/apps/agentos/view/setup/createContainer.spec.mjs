@@ -598,7 +598,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
             list              = door.getReference('step-list'),
             evaluates         = () => calls.filter(([name]) => name === 'setupEvaluate').map(([, request]) => request),
             cells             = id => list.createItemContent(door.store.get(id)),
-            chips             = id => cells(id)[4].cn.map(chip => [chip.text, chip.cls.includes('is-quiet')]);
+            chips             = id => cells(id)[4].cn.map(chip => [chip.text, chip.cls.includes('fm-setup-step-fact') ? 'fact' : chip.cls.includes('is-quiet')]);
 
         await settle();
 
@@ -608,12 +608,12 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(list.freshRunIds).toBe(null);
         expect(door.getReference('start-button').text).toBe('Check again');
 
-        // a re-check is a fresh evaluation, never an effect; the row stays reconcile-required, so the card's
-        // exit joins it, quiet — on that row alone
+        // a re-check is a fresh evaluation, never an effect; the row stays reconcile-required, so it says the
+        // fact first and the card's exit joins its controls, quiet — on that row alone
         await door.onStepClick({record: door.store.get('write-secrets')});
         expect(evaluates().at(-1)).toEqual({windowId: 7});
         expect(calls.filter(([name]) => name === 'setupEffect')).toEqual([]);
-        expect(chips('write-secrets')).toEqual([['re-check', false], [FRESH_RUN, true]]);
+        expect(chips('write-secrets')).toEqual([['re-checked · unsettled', 'fact'], ['re-check', false], [FRESH_RUN, true]]);
         expect(list.freshRunIds).toEqual(['write-secrets']);
         expect(door.getReference('start-button').text, 'the block keeps the row\'s first exit').toBe('Check again');
 

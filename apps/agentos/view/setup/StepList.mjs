@@ -161,9 +161,10 @@ class StepList extends BaseList {
 
     /**
      * @summary The five cells of a row. The action cell holds its chips (a second one is the quieter),
-     * the step it waits for, or an invisible chip, so the column keeps its rhythm. The card's fresh-run
-     * exit follows the row's own actions on a row the door named. The row pressed once for an action
-     * that costs something adds a sixth cell: the line that says so.
+     * the step it waits for, or an invisible chip, so the column keeps its rhythm. On a row the door
+     * named, the fact that it was re-checked here and stayed unsettled comes first, then the row's own
+     * actions, then the card's fresh-run exit. The row pressed once for an action that costs something
+     * adds a sixth cell: the line that says so.
      * @param {Object} record
      * @returns {Object[]}
      */
@@ -176,7 +177,12 @@ class StepList extends BaseList {
             chips   = record.waitsFor
                 ? [{cls: ['fm-setup-step-wait'], text: `waits for ${record.waitsFor}`}]
                 : actions.length > 0
-                    ? actions.map((action, index) => ({cls: ['fm-setup-step-action', ...(index > 0 ? ['is-quiet'] : [])], text: action, 'data-action': action}))
+                    ? [
+                        // the fact before the controls: the operator re-checked this row here and nothing settled;
+                        // the verb stays on the chip that performs it
+                        ...(fresh ? [{cls: ['fm-setup-step-fact'], text: 're-checked · unsettled'}] : []),
+                        ...actions.map((action, index) => ({cls: ['fm-setup-step-action', ...(index > 0 ? ['is-quiet'] : [])], text: action, 'data-action': action}))
+                    ]
                     : [{cls: ['fm-setup-step-action', 'is-none'], text: '—'}];
 
         return [

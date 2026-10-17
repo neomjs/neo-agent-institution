@@ -9,16 +9,16 @@ const GiB = 1073741824;
  * the plane's own footprint, its verdict from the placement step with the recipe's reason — the chosen one
  * marked, a refused one visible but disabled with its shortfall. A projection of the table and the
  * placement, drawn again per evaluation; the choose button's request is the door's own (`up.onPresetClick`).
- * @class AgentOS.view.setup.PresetCards
+ * @class AgentOS.view.setup.PresetCardsContainer
  * @extends Neo.container.Base
  */
-class PresetCards extends Container {
+class PresetCardsContainer extends Container {
     static config = {
         /**
-         * @member {String} className='AgentOS.view.setup.PresetCards'
+         * @member {String} className='AgentOS.view.setup.PresetCardsContainer'
          * @protected
          */
-        className: 'AgentOS.view.setup.PresetCards',
+        className: 'AgentOS.view.setup.PresetCardsContainer',
         /**
          * @member {String} ntype='fm-setup-preset-cards'
          * @protected
@@ -93,4 +93,4 @@ class PresetCards extends Container {
     }
 }
 
-export default Neo.setupClass(PresetCards);
+export default Neo.setupClass(PresetCardsContainer);
