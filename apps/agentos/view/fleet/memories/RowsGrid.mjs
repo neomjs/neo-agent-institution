@@ -1,5 +1,5 @@
 import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Container.mjs';
-import RowModel      from '../../../../../node_modules/neo.mjs/src/selection/grid/RowModel.mjs';
+import RowModel      from './RowModel.mjs';
 
 /**
  * The memories pane's shared grid base — the view-layer conformance's law 0 ("mailbox surfaces,
@@ -94,6 +94,7 @@ class RowsGrid extends GridContainer {
     }
 
     /**
+     * @summary Batch the rail class, row height, and row lattice into one grid update.
      * @param {Boolean} value
      * @param {Boolean} oldValue
      */
@@ -101,16 +102,38 @@ class RowsGrid extends GridContainer {
         const me = this;
 
         if (oldValue !== undefined) {
+            const {body} = me;
+
+            me.silentVdomUpdate = true;
+            me.updateDepth      = -1;
+
+            if (body) {
+                body.silentVdomUpdate   = true;
+                body.skipCreateViewData = true
+            }
+
             me.toggleCls('is-rail', value);
-            me.rowHeight = value ? me.railRowHeight : me.cardRowHeight
+            me.rowHeight = value ? me.railRowHeight : me.cardRowHeight;
+
+            if (body) {
+                body.availableHeight > 0 && body.updateAvailableRows();
+                body.skipCreateViewData = false;
+                body.items.length > 0 && body.createViewData(true, true);
+                body.silentVdomUpdate = false
+            }
+
+            me.silentVdomUpdate = false;
+            me.update()
         }
     }
 
     /**
      * @summary Clear the row selection without relaying it: the pane decides what the reader shows.
+     * Safe to pass `silent = true` because every caller's next step re-renders the rows
+     * (`applyBags([])` on target/drill switch, or `syncReader`'s rail switch after Escape).
      */
     clearSelection() {
-        this.view.selectionModel?.deselectAllRows()
+        this.view.selectionModel?.deselectAllRows(true)
     }
 
     /**

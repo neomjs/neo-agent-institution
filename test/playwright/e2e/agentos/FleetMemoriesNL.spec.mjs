@@ -164,6 +164,32 @@ async function startMemoriesFleet() {
 }
 
 /**
+ * @summary Sample a cell's bounding rect at 50-ms intervals across `trigger()` and assert that its
+ * width and height transition to the rail geometry in the exact same sample.
+ * @param {Object} app
+ * @param {import('@playwright/test').Locator} cellLocator
+ * @param {Function} trigger
+ */
+async function assertSingleSampleRailTransition(app, cellLocator, trigger) {
+    const
+        cellId        = await cellLocator.getAttribute('id'),
+        motionPromise = app.observeMotion({nodeIds: [cellId], durationMs: 450, intervalMs: 50});
+
+    await new Promise(resolve => setTimeout(resolve, 75));
+    await trigger();
+
+    const
+        motion             = await motionPromise,
+        rects              = motion.samples.map(sample => sample.rects[0]),
+        initial            = rects[0],
+        widthChangedIndex  = rects.findIndex(rect => rect.width  !== initial.width),
+        heightChangedIndex = rects.findIndex(rect => rect.height !== initial.height);
+
+    expect(widthChangedIndex,  `${cellId}: width changed during observation`).toBeGreaterThan(0);
+    expect(heightChangedIndex, `${cellId}: height changed in the same sample as width`).toBe(widthChangedIndex)
+}
+
+/**
  * @summary Native Fleet memories journey over session summaries: activating the resident
  * south-strip tab shows the pane; choosing an agent is the roster's selection (the pane carries
  * no chooser of its own — the one-picker IA); the App Worker crosses the authenticated allowlisted
@@ -281,7 +307,11 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             expect(await cellChrome()).toEqual({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px', selected: false});
             expect(await pane.locator('.fm-memories-summary-grid').evaluate(grid => getComputedStyle(grid).borderTopWidth), 'the register carries no container frame').toBe('0px');
-            await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-title').click();
+            await assertSingleSampleRailTransition(
+                app,
+                pane.locator('.fm-memories-summary-grid .neo-grid-cell').first(),
+                () => pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-title').click()
+            );
             await expect(pane.locator('.fm-memories-card').nth(1)).not.toContainText('with @');
             await expect(pane.locator('.fm-memories-summary-grid .neo-grid-row', {hasText: 'Wake transport and integrity contracts'}), 'a card click marks its row').toHaveClass(/\bneo-selected\b/);
             expect(await cellChrome(), 'and no cell paints a band').toMatchObject({background: 'rgba(0, 0, 0, 0)', border: '0px 0px 0px 0px', padding: '0px 0px 0px 0px'});
@@ -463,7 +493,11 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             // a click selects the turn into the reader: its row is marked, the card carries the
             // mark, no cell paints a band — and the reader holds the whole record, a missing thought named
-            await pane.locator('.fm-memories-turn').nth(1).click();
+            await assertSingleSampleRailTransition(
+                app,
+                pane.locator('.fm-memories-turn-grid .neo-grid-cell').nth(1),
+                () => pane.locator('.fm-memories-turn').nth(1).click()
+            );
 
             const reader = pane.locator('.fm-memories-reader');
 
@@ -621,6 +655,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             });
 
             await page.mouse.move(8, 8);
+            await expect(page.locator('.neo-dashboard-dock-animating, .neo-dock-flip-fixed-stage')).toHaveCount(0);
             await page.evaluate(() => document.fonts.ready);
             await expect(pane).toHaveScreenshot('memories-turns-narrow-dark.png')
         } finally {

@@ -124,10 +124,21 @@ class ReadingController extends ComponentController {
             record        = rows && me[idKey] !== null ? grid.store.get(me[idKey]) : null,
             showAll       = rows && component.showAll,
             reading       = showAll || Boolean(record),
-            reader        = component.getReference('memories-reader');
+            reader        = component.getReference('memories-reader'),
+            // When the pane or a descendant (e.g. memories-list from syncZones' hidden toggles) is
+            // already in flight, setting component.needsVdomUpdate = true and yielding at
+            // isChildUpdating() leaves needsVdomUpdate stuck on the deferred pane, causing
+            // subsequent child updates (such as list mounting turnGrid) to mergeIntoParentUpdate()
+            // into the deferred depth-1 pane instead of running their own full-tree mount.
+            batching      = !component.isVdomUpdating && !Neo.manager.VDomUpdate.hasInFlightDescendants(component.id);
 
         if (me[idKey] !== null && !record) {
             me[idKey] = null
+        }
+
+        if (batching) {
+            component.silentVdomUpdate = true;
+            component.needsVdomUpdate  = true
         }
 
         reader.hidden = !rows;
@@ -153,7 +164,12 @@ class ReadingController extends ComponentController {
                 target   : component.activeAgent ?? component.snapshot?.target ?? null,
                 emptyText: drill ? 'Select a turn to read it in full.' : 'Select a session summary to read it in full.'
             }
-        })
+        });
+
+        if (batching) {
+            component.silentVdomUpdate = false;
+            component.update()
+        }
     }
 
     /**

@@ -131,6 +131,76 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
         expect(pane.getReference('memories-splitter').hidden).toBe(true)
     });
 
+    test('the reading switch issues one batched update transaction for the register and its wrapper (#715)', () => {
+        const
+            {pane, summaryGrid, turnGrid} = readyPane(),
+            body                          = pane.getReference('memories-body'),
+            list                          = pane.getReference('memories-list'),
+            willMerge                     = comp => {
+                for (let p = Neo.getComponent(comp.parentId), d = 1; p; p = Neo.getComponent(p.parentId), d++) {
+                    if (p.needsVdomUpdate && comp.canMergeUpdate(p.updateDepth, d)) return true
+                }
+                return false
+            },
+            countTransactions             = (targets, fn) => {
+                let count = 0;
+                const originals = targets.map(target => {
+                    const original = target.update;
+                    target.update = function(...args) {
+                        if (!this.silentVdomUpdate && !willMerge(this)) {
+                            count++
+                        }
+                        return original.apply(this, args)
+                    };
+                    return [target, original]
+                });
+
+                try {
+                    fn()
+                } finally {
+                    originals.forEach(([target, original]) => target.update = original)
+                }
+
+                return count
+            };
+
+        const summaryTargets = [pane, body, list, summaryGrid, summaryGrid.body];
+
+        expect(countTransactions(summaryTargets, () => click(summaryGrid, 0))).toBe(1);
+        expect(list.wrapperStyle).toMatchObject({flex: 'none', width: '340px'});
+        expect(summaryGrid.cls).toContain('is-rail');
+        expect(summaryGrid.rowHeight).toBe(84);
+
+        expect(countTransactions(summaryTargets, () => click(summaryGrid, 0))).toBe(1);
+        expect(list.wrapperStyle).toMatchObject({flex: '2 1 0%'});
+        expect(summaryGrid.cls).not.toContain('is-rail');
+        expect(summaryGrid.rowHeight).toBe(132);
+
+        pane.openSession({sessionId: 's1-session', title: 'Title s1'});
+        pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's1-session', page: {offset: 0}, turns: [TURN], total: 1};
+
+        const turnTargets = [pane, body, list, turnGrid, turnGrid.body];
+
+        expect(countTransactions(turnTargets, () => click(turnGrid, 0))).toBe(1);
+        expect(turnGrid.cls).toContain('is-rail');
+        expect(turnGrid.rowHeight).toBe(64);
+
+        // Fallback when a descendant is already in flight (e.g. list from syncZones' hidden toggles):
+        // syncReader must not leave pane.needsVdomUpdate stuck true, or subsequent list updates get
+        // swallowed by mergeIntoParentUpdate() into the depth-1 pane.
+        pane.needsVdomUpdate = false;
+        Neo.manager.VDomUpdate.registerInFlightUpdate(list.id, -1);
+        try {
+            pane.controller.syncReader(true);
+            expect(pane.needsVdomUpdate).toBe(false);
+            expect(willMerge(list)).toBe(false)
+        } finally {
+            Neo.manager.VDomUpdate.unregisterInFlightUpdate(list.id)
+        }
+
+        pane.destroy()
+    });
+
     test('a selected turn reads as prompt, thought and response, whole, with a copy action each, and its meta carries the authoring identity from the record or the drill target', () => {
         const {pane, reader, summaryGrid, turnGrid} = readyPane(),
               turnWithoutIdentity                   = {...TURN, id: 't2', agentIdentity: undefined},

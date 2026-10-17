@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    04ff2b09df237dd5032d74d31756e644dcee3435
+    fe6ab42c75675a007bd9d7390fdc09afb4493f74
 
 apps/agentos/CARD-CONTRACT.md
     2af7b8f6b6cc3683e7f7b50e15816b5b9b9bfc4d
@@ -528,10 +528,13 @@ apps/agentos/view/fleet/memories/ReaderComponent.mjs
     312f3814432e1e2f3baa16819bd2b82893522895
 
 apps/agentos/view/fleet/memories/ReadingController.mjs
-    195fd07c2afc65b7938f600e42b43cbe40baea73
+    2c7b7d5b00e24fac96fa9c74f32e6f9b6e3a2ed0
+
+apps/agentos/view/fleet/memories/RowModel.mjs
+    348b9acbb4519441a3eb110f1750891c9def5b20
 
 apps/agentos/view/fleet/memories/RowsGrid.mjs
-    aa839765054f09ccf4a2113c44abb6a4360b8ebc
+    73b4e53d140d491acfb71170c4739b6c5974e17e
 
 apps/agentos/view/fleet/memories/SummaryGrid.mjs
     7384c20004b379d02f13de01cc72291f5dc05514
@@ -729,7 +732,7 @@ resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
     9f6319dfbd483b6b548a1fdfd985d6af2714e1f8
 
 resources/scss/src/apps/agentos/fleet/memories/Container.scss
-    a041b5b3d383e0e70ca9a65784add71e9107f91b
+    10af8bce87524fc8b3f4e1e69517d901a6002427
 
 resources/scss/src/apps/agentos/fleet/memories/ReaderComponent.scss
     3049137e41605023cbfe0ed9d15f9a12cfe9e41e
