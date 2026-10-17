@@ -2574,4 +2574,45 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await settle();
         await expect(pane).toHaveScreenshot('detail-thought-stream-light.png')
     });
+
+    test('the card and the Start fleet plan name a seat\'s unresolved helper cleanup; both skins (#725 AC-3)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            emmy          = sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+            sources       = {...emmy.sources, runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            failureReason = 'Codex Desktop helper cleanup failed: ambiguous profile-owned process identity (pid 4242); refusing cleanup.',
+            controlReason = {action: 'stop', kind: 'cleanup', reason: failureReason},
+            land          = () => landFleetRoster(page, [...sampleRoster, {
+                ...emmy,
+                agentId          : 'neo-gpt-sophie',
+                githubUsername   : 'neo-gpt-sophie',
+                displayName      : 'Sophie',
+                avatarUrl        : null,
+                engineTag        : null,
+                cleanupUnresolved: true,
+                controlReason,
+                sources,
+                state            : 'off'
+            }]),
+            card   = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
+            settle = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await land();
+        await expect(card.locator('.fm-card-state')).toHaveText('offline');
+        await expect(card.getByRole('button', {name: 'Start Sophie'})).toBeEnabled();
+        await expect(card.locator('.fm-card-control-status')).toHaveText(`⚠ cleanup: ${failureReason} — Start re-checks it`);
+        await settle();
+        await expect(card).toHaveScreenshot('fleet-card-cleanup-unresolved.png');
+
+        await switchToLightSkin(page);
+        await settle();
+        await expect(card).toHaveScreenshot('fleet-card-cleanup-unresolved-light.png')
+    });
 });
+

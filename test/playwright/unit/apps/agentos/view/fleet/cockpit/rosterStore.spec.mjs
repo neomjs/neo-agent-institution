@@ -314,6 +314,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             participationSince : null,
             participationRead  : null,
             launchRefusal      : null,
+            cleanupUnresolved  : false,
             // the presence axis rides the same passthrough contract as wake/throttle below
             presence: null,
             // no start has reported its other repositories' outcome, its checkouts' dependencies, the
@@ -567,6 +568,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             laneLine             : null,
             laneClaimedAt        : null,
             launchRefusal        : null,
+            cleanupUnresolved    : false,
             participationRead    : null,
             participationReason  : null,
             participationSince   : null,

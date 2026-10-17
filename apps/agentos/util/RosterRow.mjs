@@ -28,7 +28,13 @@ class RosterRow extends Base {
      * @returns {Object} FleetAgent record field values.
      */
     static mapRosterRow(row) {
-        const sessionHealth = SourceHealth.mapFleetSessionHealth(row.lifecycle, row.sources);
+        const
+            cleanupUnresolved = Boolean(row.cleanupUnresolved || row.lifecycle?.cleanupUnresolved),
+            failureReason     = row.failureReason ?? row.lifecycle?.failureReason ?? null,
+            lifecycle         = row.lifecycle && typeof row.lifecycle === 'object' && !Array.isArray(row.lifecycle) && (cleanupUnresolved || failureReason !== null)
+                ? {...row.lifecycle, cleanupUnresolved, failureReason}
+                : row.lifecycle,
+            sessionHealth     = SourceHealth.mapFleetSessionHealth(lifecycle, row.sources);
 
         return {
             agentId    : row.id,
@@ -81,6 +87,8 @@ class RosterRow extends Base {
             participationSince : row.participationSince ?? null,
             participationRead  : row.participationRead ?? null,
             launchRefusal      : row.launchRefusal ?? null,
+            cleanupUnresolved,
+            ...(sessionHealth.controlReason ? {controlReason: sessionHealth.controlReason} : {}),
             sources            : sessionHealth.sources,
             state              : sessionHealth.state,
             presence           : row.presence ?? null,

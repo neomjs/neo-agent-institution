@@ -387,4 +387,49 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(done.pending).toEqual([]);
         expect(FleetStartPlan.renderFleetStartSummary(done).text).toBe('3\u00a0started · 1\u00a0UNKNOWN · 1\u00a0excluded')
     });
+
+    test('partitionFleetStart includes a cleanupUnresolved seat with the "re-checks helper cleanup" reason and Start fleet · n counts it (#725 AC-2)', () => {
+        const
+            cleanupSeat = {
+                agentId          : 'ada',
+                cleanupUnresolved: true,
+                controlReason    : {action: 'stop', kind: 'cleanup', reason: '1 helper(s) still alive: pid 4242'},
+                sources          : wiredRuntime(),
+                state            : 'off'
+            },
+            stoppedSeat = {
+                agentId: 'vega',
+                sources: wiredRuntime(),
+                state  : 'off'
+            },
+            runningSeat = {
+                agentId: 'euclid',
+                sources: wiredRuntime(),
+                state  : 'ok'
+            },
+            records   = [cleanupSeat, stoppedSeat, runningSeat],
+            partition = FleetStartPlan.partitionFleetStart(records);
+
+        expect(partition.eligible.map(r => r.agentId)).toEqual(['ada', 'vega']);
+        expect(partition.plan).toEqual([
+            {agentId: 'ada',  reason: 're-checks helper cleanup', record: cleanupSeat},
+            {agentId: 'vega', reason: 'ready to start',           record: stoppedSeat}
+        ]);
+
+        expect(FleetStartPlan.describeFleetButton(records)).toEqual({
+            action: 'start',
+            count : 2,
+            text  : 'Start fleet · 2',
+            title : null
+        });
+
+        const stateLine = FleetStartPlan.renderFleetState(records);
+
+        expect(stateLine.text).toBe('1\u00a0started');
+        expect(stateLine.detail.split('\n')).toEqual([
+            'ada: re-checks helper cleanup',
+            'vega: ready to start'
+        ])
+    });
 });
+
