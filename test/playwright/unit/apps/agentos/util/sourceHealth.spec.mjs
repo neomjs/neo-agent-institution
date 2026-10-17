@@ -76,3 +76,46 @@ test.describe('AgentOS.util.SourceHealth.normalizeFleetSources lane axis', () =>
         });
     });
 });
+
+test.describe('AgentOS.util.SourceHealth.mapFleetSessionHealth (#725)', () => {
+    const
+        wired        = {runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed', reason: null}},
+        normalized   = SourceHealth.normalizeFleetSources(wired),
+        failureReason = '1 helper(s) still alive: pid 4242';
+
+    test('maps {state: "failed", cleanupUnresolved: true, failureReason} to off + the cleanup control reason; {state: "stopping"} unchanged (#725 AC-1)', () => {
+        expect(SourceHealth.mapFleetSessionHealth({
+            source           : 'fleet:runtimeStatus',
+            state            : 'failed',
+            confidence       : 'observed',
+            cleanupUnresolved: true,
+            failureReason
+        }, wired)).toEqual({
+            controlReason: {kind: 'cleanup', reason: failureReason},
+            sources      : normalized,
+            state        : 'off'
+        });
+
+        expect(SourceHealth.mapFleetSessionHealth({
+            state            : 'failed',
+            cleanupUnresolved: true,
+            failureReason
+        }, wired)).toEqual({
+            controlReason: {kind: 'cleanup', reason: failureReason},
+            sources      : normalized,
+            state        : 'off'
+        });
+
+        // {state: 'stopping'} unchanged (downgrades runtime without a cleanup controlReason)
+        const stopping = SourceHealth.mapFleetSessionHealth({
+            source    : 'fleet:runtimeStatus',
+            state     : 'stopping',
+            confidence: 'observed'
+        }, wired);
+
+        expect(stopping.controlReason).toBeUndefined();
+        expect(stopping.state).toBe('off');
+        expect(stopping.sources.runtime.state).toBe('invalid')
+    });
+});
+

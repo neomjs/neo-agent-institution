@@ -74,15 +74,17 @@ class FleetStartPlan extends Base {
     static partitionFleetStart(records) {
         const
             eligible = [],
-            excluded = [];
+            excluded = [],
+            plan     = [];
 
         (records ?? []).forEach(record => {
             if (!record) return;
 
             const
-                agentId = record.agentId ?? null,
-                runtime = SourceHealth.normalizeFleetSources(record.sources).runtime,
-                exclude = reason => excluded.push({agentId, reason, record});
+                agentId           = record.agentId ?? null,
+                cleanupUnresolved = record.cleanupUnresolved === true || record.controlReason?.kind === 'cleanup',
+                runtime           = SourceHealth.normalizeFleetSources(record.sources).runtime,
+                exclude           = reason => excluded.push({agentId, reason, record});
 
             if (!agentId) {
                 exclude('guest — no fleet definition to start')
@@ -98,14 +100,19 @@ class FleetStartPlan extends Base {
                 exclude(`runtime source '${runtime.state}' — no usable lifecycle evidence to start against`)
             } else if (record.controlReason?.kind === 'timeout') {
                 exclude(`'${record.controlReason.action ?? 'lifecycle'}' outcome unknown after timeout — retry only through an explicit card control`)
-            } else if ((record.state ?? 'off') !== 'off') {
+            } else if ((record.state ?? 'off') !== 'off' && !(record.state === 'failed' && cleanupUnresolved)) {
                 exclude(`already up — session state '${record.state}'`)
             } else {
-                eligible.push(record)
+                eligible.push(record);
+                plan.push({
+                    agentId,
+                    reason: cleanupUnresolved ? 're-checks helper cleanup' : 'ready to start',
+                    record
+                })
             }
         });
 
-        return {eligible, excluded}
+        return {eligible, excluded, plan}
     }
 
     /**
@@ -218,7 +225,7 @@ class FleetStartPlan extends Base {
                 exclude(`runtime source '${runtime.state}' — no usable lifecycle evidence to stop against`)
             } else if (record.controlReason?.kind === 'timeout') {
                 exclude(`'${record.controlReason.action ?? 'lifecycle'}' outcome unknown after timeout — retry only through an explicit card control`)
-            } else if ((record.state ?? 'off') === 'off') {
+            } else if ((record.state ?? 'off') === 'off' || (record.state === 'failed' && (record.cleanupUnresolved === true || record.controlReason?.kind === 'cleanup'))) {
                 exclude('already down — session state \'off\'')
             } else {
                 eligible.push(record)
@@ -286,6 +293,7 @@ class FleetStartPlan extends Base {
               stop         = FleetStartPlan.partitionFleetStop(rows),
               ready        = new Set(start.eligible),
               up           = new Set(stop.eligible),
+              planReasons  = new Map(start.plan.map(entry => [entry.record, entry.reason])),
               startReasons = new Map(start.excluded.map(entry => [entry.record, entry.reason])),
               stopReasons  = new Map(stop.excluded.map(entry => [entry.record, entry.reason])),
               summary      = {started: up.size, pending: [], unknown: [], rejected: [], excluded: []},
@@ -294,14 +302,14 @@ class FleetStartPlan extends Base {
         rows.forEach(record => {
             const agentId = record.agentId ?? '(guest)';
 
-            if (record.controlReason?.kind !== 'timeout' && record.controlReason?.reason) {
+            if (record.controlReason?.kind !== 'timeout' && record.controlReason?.kind !== 'cleanup' && record.controlReason?.reason) {
                 detail.push(`${agentId}: ${record.controlReason.reason}`)
             }
 
             if (up.has(record)) return;
 
             if (ready.has(record)) {
-                detail.push(`${agentId}: ready to start`);
+                detail.push(`${agentId}: ${planReasons.get(record) ?? 'ready to start'}`);
                 return
             }
 

@@ -955,7 +955,9 @@ class AgentCard extends Container {
                                     ? exitLine?.text ?? admissionLine?.text ?? sessionLine?.text ?? skillsLine?.text ?? ''
                                     : controlReason.kind === 'timeout'
                                         ? `${controlReason.action}… no answer yet`
-                                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
+                                        : controlReason.kind === 'cleanup'
+                                            ? `⚠ cleanup: ${controlReason.reason} — Start re-checks it`
+                                            : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
             timeoutTitle      = !wrongFolder && !pendingAction && !preparation && !modelRefusal && controlReason?.kind === 'timeout'
                 ? `${controlStatusText}. The outcome is unknown until the Fleet answers.` : null,
             // the last start's commit identity, when it needs repair, rides beside a refusal as its own
@@ -979,7 +981,7 @@ class AgentCard extends Container {
                 ? preparation.title
                 : modelRefusal
                     ? modelRefusal.title + identityNote
-                    : exitLine?.title ?? admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
+                    : (!controlReason ? exitLine?.title : null) ?? admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
 
         me.update()
     }

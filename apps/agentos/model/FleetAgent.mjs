@@ -46,10 +46,17 @@ class FleetAgent extends Model {
             name: 'githubUsername'
         }, {
             // {action, kind, reason} of the last reject / unauthorized / timeout, written by the
-            // C2 adapter; null when no terminal reason is showing
+            // C2 adapter, or {kind: 'cleanup', reason} mapped from an unresolved helper cleanup (#725);
+            // null when no terminal reason is showing
             name        : 'controlReason',
             type        : 'Object',
             defaultValue: null
+        }, {
+            // true when stop() cleared the supervised process and lease, ran helper cleanup, and
+            // one or more seat-owned helpers did not exit (#725); Start re-checks helper cleanup
+            name        : 'cleanupUnresolved',
+            type        : 'Boolean',
+            defaultValue: false
         }, {
             // the launch seam's per-family auth mode ('marker' | 'in-app'), stamped Brain-side on
             // the roster row; null = not read back / unlaunchable — tri-state, never guessed

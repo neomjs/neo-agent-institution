@@ -1961,6 +1961,49 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(status().hidden).toBe(true);
 
         card.destroy()
+    });
+
+    test('unresolved helper cleanup renders Start as the primary verb and names the cleanup reason + Start re-checks it, while stopping keeps Stop (#725)', async () => {
+        const
+            {default: RosterRow} = await import('../../../../../../../../../apps/agentos/util/RosterRow.mjs'),
+            failureReason        = '1 helper(s) still alive: pid 4242',
+            mapped               = RosterRow.mapRosterRow({
+                id               : 'ada',
+                displayName      : 'Ada',
+                cleanupUnresolved: true,
+                failureReason,
+                lifecycle        : {source: 'fleet:runtimeStatus', state: 'failed', confidence: 'observed'},
+                sources          : observedSources
+            }),
+            card      = createCard(mapped),
+            cardState = () => card.down({reference: 'card-state'}),
+            toggle    = () => card.down({reference: 'control-toggle'}),
+            restart   = () => card.down({reference: 'control-restart'}),
+            status    = () => card.down({reference: 'control-status'});
+
+        expect(mapped.state).toBe('off');
+        expect(mapped.cleanupUnresolved).toBe(true);
+        expect(mapped.controlReason).toEqual({kind: 'cleanup', reason: failureReason});
+
+        expect(cardState().text).toBe('offline');
+        expect(toggle().disabled).toBe(false);
+        expect(toggle().iconCls).toBe('fa-solid fa-play');
+        expect(toggle().vdom['aria-label']).toBe('Start Ada');
+        expect(restart().hidden).toBe(true);
+
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe(`⚠ cleanup: ${failureReason} — Start re-checks it`);
+        expect(status().vdom.title).toBe(`⚠ cleanup: ${failureReason} — Start re-checks it`);
+        expect(card.cls).toContain('fm-control-live');
+
+        // A seat in stopping keeps Stop as the primary verb
+        applySet(card, {cleanupUnresolved: false, controlReason: null, pendingAction: 'stop', state: 'ok'});
+        expect(cardState().text).toBe('stopping');
+        expect(toggle().iconCls).toBe('fa-solid fa-stop');
+
+        card.destroy()
     })
 });
+
+
 

@@ -256,11 +256,20 @@ class SourceHealth extends Base {
         }
 
         const
-            lifecycleSource = Object.hasOwn(lifecycle, 'source') && typeof lifecycle.source === 'string'
+            cleanupUnresolved = lifecycle.cleanupUnresolved === true,
+            hasSource         = Object.hasOwn(lifecycle, 'source'),
+            hasConfidence     = Object.hasOwn(lifecycle, 'confidence'),
+            lifecycleSource   = hasSource && typeof lifecycle.source === 'string'
                 ? lifecycle.source.trim()
-                : null,
+                : cleanupUnresolved && !hasSource
+                    ? runtime.source
+                    : null,
             state               = Object.hasOwn(lifecycle, 'state') ? lifecycle.state : null,
-            lifecycleConfidence = Object.hasOwn(lifecycle, 'confidence') ? lifecycle.confidence : null;
+            lifecycleConfidence = hasConfidence
+                ? lifecycle.confidence
+                : cleanupUnresolved
+                    ? runtime.confidence
+                    : null;
 
         if (!lifecycleSource || lifecycleSource !== runtime.source || lifecycleConfidence !== runtime.confidence) {
             return downgradeRuntime()
@@ -272,6 +281,18 @@ class SourceHealth extends Base {
 
         if (state === 'stopped') {
             return {sources: normalizedSources, state: 'off'}
+        }
+
+        if (state === 'failed' && cleanupUnresolved) {
+            const reason = typeof lifecycle.failureReason === 'string' && lifecycle.failureReason.trim()
+                ? lifecycle.failureReason.trim()
+                : runtime.reason ?? 'helper cleanup unresolved';
+
+            return {
+                controlReason: {kind: 'cleanup', reason},
+                sources      : normalizedSources,
+                state        : 'off'
+            }
         }
 
         if (!CARD_STATES.includes(state)) {

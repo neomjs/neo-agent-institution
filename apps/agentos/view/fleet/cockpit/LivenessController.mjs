@@ -661,7 +661,21 @@ class LivenessController extends ViewerWakeController {
             rows.forEach(row => {
                 const record = store.get(row.agentId) ?? store.allItems?.get(row.agentId);
 
-                record ? record.set(row) : joiners.push(row)
+                if (record) {
+                    const next = {...row};
+
+                    if (!next.cleanupUnresolved && record.cleanupUnresolved) {
+                        next.cleanupUnresolved = false
+                    }
+
+                    if (!next.controlReason && record.controlReason?.kind === 'cleanup') {
+                        next.controlReason = null
+                    }
+
+                    record.set(next)
+                } else {
+                    joiners.push(row)
+                }
             });
 
             joiners.length  > 0 && store.add(joiners);
