@@ -2,14 +2,13 @@ import Button         from '../../../../node_modules/neo.mjs/src/button/Base.mjs
 import Container      from '../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import {isDescriptor} from '../../../../node_modules/neo.mjs/src/core/ConfigSymbols.mjs';
 import SetupSteps     from '../../store/SetupSteps.mjs';
+import PresetCardsContainer from './PresetCardsContainer.mjs';
 import StepList       from './StepList.mjs';
-import {actionsFor}   from './StepList.mjs';
+import {BLOCK_CONFIRM_LINES, FRESH_RUN, actionsFor} from './StepList.mjs';
 import TextArea       from '../../../../node_modules/neo.mjs/src/form/field/TextArea.mjs';
 import SetupAsks      from '../../util/SetupAsks.mjs';
 
-const
-    GiB       = 1073741824,
-    COLD_LEDE = 'Three questions, then one action at a time. Nothing is written until you say so, and every step says what it observed.';
+const COLD_LEDE = 'Three questions, then one action at a time. Nothing is written until you say so, and every step says what it observed.';
 
 /**
  * @summary One question block: the title, then the block's own lines and controls, every one sized
@@ -202,7 +201,7 @@ class CreateContainer extends Container {
                     ]),
                     {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-key-line'], flex: 'none', hidden: true, reference: 'provider-key-line', text: ''},
                     {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-budget'], flex: 'none', reference: 'budget-line', text: 'not probed yet'},
-                    {ntype: 'container', cls: ['fm-setup-presets'], flex: 'none', hidden: true, layout: {ntype: 'base'}, reference: 'presets', items: []}
+                    {module: PresetCardsContainer, reference: 'presets'}
                 ]),
                 askBlock('start', 'Start', [
                     {ntype: 'component', cls: ['fm-setup-ask-line'], flex: 'none', reference: 'start-line', text: ''},
@@ -233,6 +232,28 @@ class CreateContainer extends Container {
             role     : 'status',
             text     : ''
         }, {
+            // the card-level exit once a read refused and no live row is left: the consent line, one button
+            ntype    : 'container',
+            cls      : ['fm-setup-fresh'],
+            flex     : 'none',
+            hidden   : true,
+            layout   : {ntype: 'vbox'},
+            reference: 'fresh-run',
+            items    : [{
+                ntype    : 'component',
+                cls      : ['fm-setup-fresh-line'],
+                flex     : 'none',
+                reference: 'fresh-run-line',
+                text     : 'A fresh run starts a new record for the same target and leaves this one on disk as history; nothing is deleted. A step whose result the host shows reads ok, the others ask again.'
+            }, {
+                module   : Button,
+                cls      : ['agent-plane-setup-connect', 'fm-setup-fresh-button'],
+                flex     : 'none',
+                handler  : 'up.onFreshRunClick',
+                reference: 'fresh-run-button',
+                text     : 'Start a fresh run'
+            }]
+        }, {
             ntype    : 'component',
             cls      : ['fm-setup-quiet'],
             flex     : 'none',
@@ -241,6 +262,19 @@ class CreateContainer extends Container {
             text     : ''
         }]
     }
+
+    /**
+     * The effect rows the operator re-checked in this card since the run was bound: one still
+     * `reconcile-required` after that earns the card's fresh-run exit. Card-local by design — the record
+     * stamps no re-check for a host-file effect — and dropped when another run binds.
+     * @member {Set<String>} rechecked=new Set()
+     */
+    rechecked = new Set()
+    /**
+     * The fresh run this card started, `{runId, retiredRunId}`, while its evaluation is the held one.
+     * @member {Object|null} freshRun=null
+     */
+    freshRun = null
 
     /**
      * @summary The door owns its projection store, seats it on the list once the items exist, and
@@ -384,12 +418,19 @@ class CreateContainer extends Container {
         if (reply?.ok && reply.evaluation) {
             me.evaluation = reply.evaluation;
             me.getReference('status-line').text = '';
+            me.getReference('fresh-run').hidden = true;
             return
         }
 
         const reason = `${failureLead}: ${reply?.reason ?? 'no answer'}`;
 
         me.getReference('status-line').text = reason;
+
+        // a read that did not answer leaves no live row (none, or the held ones turned unknown below):
+        // the card's own exit is a fresh run for the target, offered with its consent line
+        if (observation && me.shellAvailable) {
+            me.getReference('fresh-run').hidden = false
+        }
 
         if (observation && me.evaluation) {
             // the held observation is not current any more: every row says so, in the read's words
@@ -410,13 +451,25 @@ class CreateContainer extends Container {
      * @protected
      */
     afterSetEvaluation(value, oldValue) {
-        const me = this;
+        const
+            me   = this,
+            list = me.getReference('step-list');
 
         if (!me.store) return;
 
         // a fresh evaluation ends a pending confirmation; silent, the projection draws the rows once
-        me.getReference('step-list')._confirmingId = null;
+        list._confirmingId    = null;
+        list.confirmingAction = null;
         me.reopened = null;
+
+        // another run bound: the re-checks were the old run's, and the fresh-run lede is this run's only
+        if (value?.runId !== oldValue?.runId) {
+            me.rechecked.clear();
+            me.freshRun = me.freshRun?.runId === value?.runId ? me.freshRun : null
+        }
+
+        // before the projection, so its one redraw draws the card's exit where it belongs
+        list.freshRunIds = me.freshRunExits(value);
         me.store.projectEvaluation(value);
         me.applyAsks();
         me.applyLede();
@@ -503,10 +556,11 @@ class CreateContainer extends Container {
             keyNeeded   = Boolean(key) && key.status !== 'ok' && !key.waitsFor,
             recommended = placement?.recommended?.[0] ?? null,
             progress    = store.describeProgress(),
-            confirming  = me.getReference('step-list').confirmingId,
-            // a pending write-again confirmation is the row's one open question: the block's action is
-            // its second press, never the row's first exit beside it
-            action      = startRow ? (confirming === startRow.id ? 'write again' : actionsFor(startRow)[0] ?? null) : null;
+            list        = me.getReference('step-list'),
+            confirming  = list.confirmingId,
+            // a pending confirmation is the row's one open question: the block's action is its second
+            // press — write again, or the card's fresh run — never the row's first exit beside it
+            action      = startRow ? (confirming === startRow.id ? list.confirmingAction : actionsFor(startRow)[0] ?? null) : null;
 
         me.applyAskState('token', token);
         me.applyAskState('where', where);
@@ -533,7 +587,7 @@ class CreateContainer extends Container {
         me.getReference('other-choices-toggle').text = me.otherChoicesOpen ? 'Fewer choices' : 'Other choices';
         me.getReference('presets').hidden = !me.otherChoicesOpen;
         me.getReference('where-change').hidden = where !== 'answered';
-        me.applyPresetCards();
+        me.getReference('presets').project({placement, chosen, presets});
 
         // start: the row that is not ok and waits for nothing, its action in the operator's words
         me.startRow    = startRow;
@@ -548,7 +602,7 @@ class CreateContainer extends Container {
                     : 'Two answers, then one action at a time.';
         me.getReference('start-help').text = startRow
             ? confirming === startRow.id
-                ? 'a second row on the plane is possible · press Write again to write it'
+                ? BLOCK_CONFIRM_LINES[list.confirmingAction] ?? BLOCK_CONFIRM_LINES['write again']
                 : `${startRow.status} · ${startRow.reason ?? ''}`
             : '';
         me.getReference('start-button').set({hidden: !action, text: SetupAsks.START_VERBS[action] ?? action ?? 'Run next step'})
@@ -570,56 +624,6 @@ class CreateContainer extends Container {
     }
 
     /**
-     * @summary One card per preset under Other choices: its facts from the table, its verdict from
-     * the placement step, the chosen one marked, a refused one visible but disabled with the shortfall.
-     * @protected
-     */
-    applyPresetCards() {
-        const
-            me        = this,
-            container = me.getReference('presets'),
-            placement = me.store?.get('placement')?.placement ?? null,
-            chosen    = me.store?.get('preset')?.answer ?? null,
-            presets   = me.presets ?? [];
-
-        if (!container) return;
-
-        container.removeAll();
-
-        if (presets.length === 0) {
-            container.add({ntype: 'component', cls: ['fm-setup-ask-help'], text: 'the preset table has not answered'});
-            return
-        }
-
-        container.add(presets.map(preset => {
-            const
-                {margins, reason, verdict} = SetupAsks.presetVerdict(placement, preset.id),
-                refused                    = verdict === 'refused',
-                workload                   = preset.workload ?? {},
-                facts                      = `chat ${preset.chatModel} · embed ${preset.embedder} · ${preset.vectorDimension} dims`,
-                // the decision numbers: the plane's own footprint, the models, the floor's date
-                footprint                  = preset.inference === 'local'
-                    ? `models ${SetupAsks.gibText(workload.modelsBytes)} · ${preset.qualityFloor?.measuredAt ? `floor recorded ${preset.qualityFloor.measuredAt}` : 'no recorded floor'}`
-                    : `plane ${Number.isFinite(workload.planeIdleBytes) ? (workload.planeIdleBytes / GiB).toFixed(1) : '?'}–${SetupAsks.gibText(workload.planePeakBytes)} · no local models · needs a provider key`,
-                margin                     = Number.isFinite(margins?.host) && margins.host >= 0 ? ` · ${SetupAsks.gibText(margins.host)} host margin` : '';
-
-            return {
-                ntype    : 'container',
-                cls      : ['fm-setup-preset', `is-${verdict}`, ...(chosen === preset.id ? ['is-chosen'] : []), ...(refused ? ['is-refused'] : [])],
-                layout   : {ntype: 'vbox'},
-                presetId : preset.id,
-                items    : [
-                    {ntype: 'component', cls: ['fm-setup-preset-name'],    text: preset.label ?? preset.id},
-                    {ntype: 'component', cls: ['fm-setup-preset-fact'],    text: facts},
-                    {ntype: 'component', cls: ['fm-setup-preset-fact'],    text: footprint},
-                    {ntype: 'component', cls: ['fm-setup-preset-verdict'], text: `${verdict} — ${reason}${margin}`},
-                    {module: Button, cls: ['fm-setup-preset-choose'], disabled: refused || chosen === preset.id, handler: 'up.onPresetClick', presetId: preset.id, text: chosen === preset.id ? 'chosen' : 'choose'}
-                ]
-            }
-        }))
-    }
-
-    /**
      * @summary The lede names a resumed run and its binding; a cold run keeps the door's own words.
      * @protected
      */
@@ -628,7 +632,9 @@ class CreateContainer extends Container {
             me         = this,
             evaluation = me.evaluation;
 
-        if (evaluation?.binding && evaluation.binding !== 'bound' && evaluation.binding !== 'no-record') {
+        if (evaluation?.runId && me.freshRun?.runId === evaluation.runId) {
+            me.getReference('lede').text = `Fresh run ${evaluation.runId}${me.freshRun.retiredRunId ? ` — the run ${me.freshRun.retiredRunId} stays on disk as history` : ''}. Nothing was deleted; a step whose result the host shows reads ok, the others ask again.`
+        } else if (evaluation?.binding && evaluation.binding !== 'bound' && evaluation.binding !== 'no-record') {
             me.getReference('lede').text = `Resumed from the run record (${evaluation.runId ?? 'unknown run'}): ${evaluation.bindingReason ?? evaluation.binding}. Prior consents and receipts are history now; every step reads fresh.`
         } else if (evaluation?.runId && evaluation.steps?.some(step => step.kind === 'effect' && step.receipt)) {
             me.getReference('lede').text = `Resumed from the run record (${evaluation.runId}, bound to ${evaluation.target?.planeId ?? 'this plane'} at ${evaluation.target?.dataRoot ?? 'its data root'}). An interrupted effect is never run again; a fresh observation that matches the plane settles it.`
@@ -695,10 +701,30 @@ class CreateContainer extends Container {
     }
 
     /**
+     * @summary The rows that draw the card's fresh-run exit: the effect rows re-checked here that this
+     * evaluation still reads `reconcile-required`. The witness row keeps the Brain's exits.
+     * @param {Object|null} evaluation
+     * @returns {String[]|null}
+     * @protected
+     */
+    freshRunExits(evaluation) {
+        const ids = [...this.rechecked].filter(id => {
+            const step = evaluation?.steps?.find(step => step?.id === id);
+
+            return step?.kind === 'effect' && step.status === 'reconcile-required' && !Array.isArray(step.exits)
+        });
+
+        return ids.length > 0 ? ids : null
+    }
+
+    /**
      * @summary A row's action is a request to main; the reply is a fresh evaluation. The witness row's
      * exits are requests to its effect: `re-check` resumes it and writes nothing, `write again` is the
-     * new attempt. A new attempt that can leave a second row on the plane is said in the row first,
-     * and its second press sends it. The Start block sends the same requests for its row.
+     * new attempt. A host-file effect's `re-check` is a fresh evaluation, remembered by this card: a row
+     * still `reconcile-required` after it offers the card's own exit, a fresh run for the target. An
+     * action that costs something — a new attempt that can leave a second row on the plane, a fresh
+     * run — is said in the row first, and its second press sends it. The Start block sends the same
+     * requests for its row.
      * @param {Object} data
      * @param {String|null} [data.action] The clicked chip's action; without one the row's first action
      * @param {Object} data.record The clicked step record
@@ -706,18 +732,22 @@ class CreateContainer extends Container {
      */
     async onStepClick({action, record}) {
         const
-            me   = this,
-            list = me.getReference('step-list');
+            me      = this,
+            list    = me.getReference('step-list'),
+            pending = list.confirmingId === record.id && list.confirmingAction;
 
         action ??= actionsFor(record)[0];
 
-        if (action === 'write again' && record.duplicatePossible && list.confirmingId !== record.id) {
-            list.confirmingId = record.id;
+        // the action first, the id second: the id's change is the one redraw, and it reads the action
+        if ((action === 'write again' && record.duplicatePossible || action === FRESH_RUN) && pending !== action) {
+            list.confirmingAction = action;
+            list.confirmingId     = record.id;
             me.applyAsks();
             return
         }
 
-        list.confirmingId = null;
+        list.confirmingAction = null;
+        list.confirmingId     = null;
         me.applyAsks();
 
         switch (action) {
@@ -727,8 +757,13 @@ class CreateContainer extends Container {
                 return me.runEffect(record.effectId);
             case 'write again':
                 return me.runEffect(record.effectId, true);
+            case FRESH_RUN:
+                return me.startFreshRun();
             case 're-check':
-                return record.exits ? me.runEffect(record.effectId) : me.reevaluate('The recipe could not be re-evaluated');
+                if (record.exits) return me.runEffect(record.effectId);
+
+                record.kind === 'effect' && me.rechecked.add(record.id);
+                return me.reevaluate('The recipe could not be re-evaluated');
             case 're-read':
             case 'retry':
                 return me.reevaluate('The recipe could not be re-evaluated');
@@ -783,6 +818,37 @@ class CreateContainer extends Container {
         // a refusal from the orchestration (the preset's env set, the credential composition)
         // is the shell's own word on this effect, never a manual action
         me.admitReply(reply, `${effectId} could not run`, {ticket})
+    }
+
+    /**
+     * @summary The card's exit from a run that cannot settle: one consented request for a fresh run on
+     * the same target. The broker binds a new record and names the run it retires; the reply is the
+     * fresh run's evaluation and replaces the rows, and the lede names both runs. A refusal lands on the
+     * status line and changes no row.
+     * @returns {Promise<void>}
+     */
+    async startFreshRun() {
+        const
+            me     = this,
+            ticket = me.takeTicket(),
+            reply  = await me.callShell('setupEvaluate', {fresh: true});
+
+        if (me.isDestroyed) return;
+
+        if (reply?.ok && reply.evaluation) {
+            me.freshRun = {runId: reply.evaluation.runId ?? null, retiredRunId: reply.retiredRunId ?? null}
+        }
+
+        me.admitReply(reply, 'A fresh run could not start', {ticket})
+    }
+
+    /**
+     * @summary The card-level fresh run, offered once a read refused and no live row is left: the line
+     * beside the button is the consent, one press sends it.
+     * @returns {Promise<void>}
+     */
+    onFreshRunClick() {
+        return this.startFreshRun()
     }
 
     /**

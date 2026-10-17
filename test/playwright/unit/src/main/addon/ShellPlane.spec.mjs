@@ -57,6 +57,7 @@ test.describe('Neo.main.addon.ShellPlane — the cockpit\'s reach into the shell
         await setupEffect({effectId: 'verify', newAttempt: 'yes', windowId: 7});
         await setupEvaluate({target: {planeId: 'p'}, windowId: 7});
         await setupEvaluate({windowId: 7});
+        await setupEvaluate({target: {planeId: 'p'}, fresh: true, windowId: 7});
         await setupPresets({windowId: 7});
         await setupProbe({windowId: 7});
 
@@ -68,6 +69,7 @@ test.describe('Neo.main.addon.ShellPlane — the cockpit\'s reach into the shell
             ['setupEffect',     {effectId: 'verify'}],
             ['setupEvaluate',   {target: {planeId: 'p'}}],
             ['setupEvaluate',   {target: null}],
+            ['setupEvaluate',   {target: {planeId: 'p'}, fresh: true}],
             ['setupPresets',    {}],
             ['setupProbe',      {}]
         ])

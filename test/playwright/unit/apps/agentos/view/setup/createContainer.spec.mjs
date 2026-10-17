@@ -6,6 +6,7 @@ setup({
 });
 
 import {test, expect}  from '@playwright/test';
+import {readFileSync, rmSync, writeFileSync} from 'node:fs';
 import path            from 'node:path';
 import {pathToFileURL} from 'node:url';
 import Neo             from '../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
@@ -16,8 +17,40 @@ import StateProvider   from '../../../../../../../node_modules/neo.mjs/src/state
 import CreateContainer from '../../../../../../../apps/agentos/view/setup/CreateContainer.mjs';
 import SetupAsks       from '../../../../../../../apps/agentos/util/SetupAsks.mjs';
 import SetupSteps      from '../../../../../../../apps/agentos/store/SetupSteps.mjs';
-import {EXIT_VERBS, actionsFor} from '../../../../../../../apps/agentos/view/setup/StepList.mjs';
+import {EXIT_VERBS, FRESH_RUN, actionsFor} from '../../../../../../../apps/agentos/view/setup/StepList.mjs';
 import {BRAIN_ROOT, MACHINES, TRUSTED, pinnedSetupHost} from '../../../../../fixture/pinnedSetupHost.mjs';
+
+/**
+ * A run on the pinned host that cannot settle: `write-secrets` ran and was acknowledged, then its receipt
+ * is set back to `pending` on disk, as an interrupted acknowledgement leaves it, and the host no longer
+ * shows the secret files — so no fresh observation matches, and the Brain's own re-check keeps the row
+ * `reconcile-required`. Returns the stuck evaluation, the broker's halt for the effect behind it, and the
+ * record as the settle pass left it on disk.
+ * @returns {Promise<{run: Object, evaluation: Object, halt: Object, recordPath: String, record: String}>}
+ */
+async function stuckHost() {
+    const
+        run   = await pinnedSetupHost(),
+        first = await run.broker.evaluate(TRUSTED, {});
+
+    await run.broker.answer(TRUSTED, {stepId: 'preset', answer: 'local-small'});
+    await run.broker.credential(TRUSTED, {stepId: 'plane-credential'});
+    await run.broker.effect(TRUSTED, {effectId: 'write-secrets'});
+
+    const
+        recordPath = first.evaluation.recordPath,
+        record     = JSON.parse(readFileSync(recordPath, 'utf8'));
+
+    record.receipts = record.receipts.map(receipt => receipt.effectId === 'write-secrets' ? {...receipt, outcome: 'pending'} : receipt);
+    writeFileSync(recordPath, JSON.stringify(record));
+    rmSync(path.join(run.stateRoot, 'secrets'), {recursive: true, force: true});
+
+    const
+        {evaluation} = await run.broker.evaluate(TRUSTED, {}),
+        halt         = await run.broker.effect(TRUSTED, {effectId: 'write-env'});
+
+    return {run, evaluation, halt, recordPath, record: readFileSync(recordPath, 'utf8')}
+}
 
 /**
  * The pinned recipe's own evaluation in each state of the witness row, on a scripted host: reached
@@ -251,7 +284,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(SetupAsks.recommendationText({recommended: [], possible: [], refused: [{id: 'local-full', reason: 'short'}]}, PRESETS)).toBe('Nothing fits this machine yet — each choice says why under Other choices.');
         expect(SetupAsks.recommendationText(null, PRESETS)).toBe('Measuring this machine…');
         // the verb map covers every chip verb a row can offer
-        expect(Object.keys(SetupAsks.START_VERBS).sort()).toEqual(['open memories', 're-check', 're-read', 'retry', 'run', 'which plane?', 'write again'].sort())
+        expect(Object.keys(SetupAsks.START_VERBS).sort()).toEqual(['open memories', 're-check', 're-read', 'retry', 'run', 'which plane?', 'write again', FRESH_RUN].sort())
     });
 
     test('start: with both answers in, the Start block owns the first row that is not ok and waits for nothing; its button sends that row\'s own request; a costly write is said in the block first', async () => {
@@ -540,6 +573,154 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         evaluation = structuredClone(WITNESS.waiting);
         await door.reevaluate('unused');
         expect(cells()[4].cn).toEqual([{cls: ['fm-setup-step-wait'], text: 'waits for write-secrets'}]);
+
+        host.destroy()
+    });
+
+    test('the fresh-run exit: a host-file effect row still reconcile-required after a re-check in this card offers start a fresh run as its quiet second chip; the first press says what it costs in the row and in the Start block, the second sends fresh: true; the reply replaces the rows under a new run and the lede names the retired one', async () => {
+        const
+            {evaluation: stuck, run: stuckRun} = await stuckHost(),
+            retiredRunId                       = stuck.runId;
+
+        let evaluation = stuck;
+
+        const calls = stubShell({
+            // a fresh run is the broker's own answer on the pinned host; every other read is the held run's
+            setupEvaluate: async request => request.fresh === true
+                ? (evaluation = (await stuckRun.broker.evaluate(TRUSTED, {fresh: true})).evaluation, {ok: true, evaluation: structuredClone(evaluation), retiredRunId})
+                : {ok: true, evaluation: structuredClone(evaluation)},
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS}
+        });
+
+        const
+            {host, door, run} = createDoor(),
+            list              = door.getReference('step-list'),
+            evaluates         = () => calls.filter(([name]) => name === 'setupEvaluate').map(([, request]) => request),
+            cells             = id => list.createItemContent(door.store.get(id)),
+            chips             = id => cells(id)[4].cn.map(chip => [chip.text, chip.cls.includes('fm-setup-step-fact') ? 'fact' : chip.cls.includes('is-quiet')]);
+
+        await settle();
+
+        // the stuck row offers re-check alone until the operator re-checked it here; the Start block owns it
+        expect(door.store.get('write-secrets')).toMatchObject({status: 'reconcile-required', receipt: 'reconcile-required'});
+        expect(chips('write-secrets')).toEqual([['re-check', false]]);
+        expect(list.freshRunIds).toBe(null);
+        expect(door.getReference('start-button').text).toBe('Check again');
+
+        // a re-check is a fresh evaluation, never an effect; the row stays reconcile-required, so it says the
+        // fact first and the card's exit joins its controls, quiet — on that row alone
+        await door.onStepClick({record: door.store.get('write-secrets')});
+        expect(evaluates().at(-1)).toEqual({windowId: 7});
+        expect(calls.filter(([name]) => name === 'setupEffect')).toEqual([]);
+        expect(chips('write-secrets')).toEqual([['re-checked · unsettled', 'fact'], ['re-check', false], [FRESH_RUN, true]]);
+        expect(list.freshRunIds).toEqual(['write-secrets']);
+        expect(door.getReference('start-button').text, 'the block keeps the row\'s first exit').toBe('Check again');
+
+        // the first press says the cost in the row and in the block, and sends nothing
+        await door.onStepClick({action: FRESH_RUN, record: door.store.get('write-secrets')});
+        expect(evaluates().length).toBe(2);
+        expect(list.confirmingId).toBe('write-secrets');
+        expect(list.confirmingAction).toBe(FRESH_RUN);
+        expect(cells('write-secrets')[5]).toMatchObject({cls: ['fm-setup-step-confirm'], text: expect.stringContaining('nothing is deleted')});
+        expect(door.getReference('start-help').text).toBe('a fresh run leaves this run\'s record on disk as history, nothing is deleted · press Start a fresh run to start it');
+        expect(door.getReference('start-button').text).toBe('Start a fresh run');
+        expect(door.startAction).toBe(FRESH_RUN);
+
+        // another row's click takes the first press back; a second first press says it again
+        await door.onStepClick({record: door.store.get('placement')});
+        expect(list.confirmingId).toBe(null);
+        expect(door.getReference('start-button').text).toBe('Check again');
+        await door.onStepClick({action: FRESH_RUN, record: door.store.get('write-secrets')});
+
+        // the second press, from the block, is the consent: the broker binds a new run and names the retired one
+        await door.onStartClick();
+        expect(evaluates().at(-1)).toEqual({fresh: true, windowId: 7});
+        expect(evaluation.runId).not.toBe(retiredRunId);
+        expect(run().runId).toBe(evaluation.runId);
+        expect(door.store.get('write-secrets').status, 'the fresh run asks again').toBe('pending');
+        expect(door.store.get('preset').status).toBe('pending');
+        expect(door.getReference('lede').text).toBe(`Fresh run ${evaluation.runId} — the run ${retiredRunId} stays on disk as history. Nothing was deleted; a step whose result the host shows reads ok, the others ask again.`);
+        expect(list.confirmingId).toBe(null);
+        expect(list.freshRunIds, 'the old run\'s re-checks do not carry over').toBe(null);
+        expect(door.getReference('fresh-run').hidden, 'the card-level exit stays folded while rows are live').toBe(true);
+        expect(door.getReference('status-line').text).toBe('');
+
+        // the lede is the fresh run's while its evaluation is held; a re-read of the same run keeps it
+        await door.reevaluate('unused');
+        expect(door.getReference('lede').text).toContain(`Fresh run ${evaluation.runId}`);
+
+        host.destroy()
+    });
+
+    test('the card-level fresh run: a read that is refused leaves no live row and offers the exit with its consent line; one press sends fresh: true; a refused fresh run lands on the status line and the offer stays', async () => {
+        let readable = false, freshOk = false;
+
+        const calls = stubShell({
+            setupEvaluate: request => request.fresh === true
+                ? (freshOk ? {ok: true, evaluation: coldEvaluation(), retiredRunId: 'run-damaged'} : {ok: false, reason: 'the recipe could not be evaluated: EIO'})
+                : (readable ? {ok: true, evaluation: coldEvaluation()} : {ok: false, reason: 'the recipe could not be evaluated: the run\'s record could not be read (malformed: Unexpected token)'}),
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS}
+        });
+
+        const
+            {host, door, run} = createDoor(),
+            evaluates         = () => calls.filter(([name]) => name === 'setupEvaluate').map(([, request]) => request);
+
+        await settle();
+
+        expect(door.store.getCount(), 'no live row').toBe(0);
+        expect(door.getReference('status-line').text).toBe('The recipe could not be evaluated: the recipe could not be evaluated: the run\'s record could not be read (malformed: Unexpected token)');
+        expect(door.getReference('fresh-run').hidden).toBe(false);
+        expect(door.getReference('fresh-run-line').text).toContain('nothing is deleted');
+        expect(door.getReference('fresh-run-button').text).toBe('Start a fresh run');
+
+        // one press sends the request; a refusal is the shell's word on the status line, the offer stays
+        await door.onFreshRunClick();
+        expect(evaluates().at(-1)).toEqual({fresh: true, windowId: 7});
+        expect(door.getReference('status-line').text).toBe('A fresh run could not start: the recipe could not be evaluated: EIO');
+        expect(door.getReference('fresh-run').hidden).toBe(false);
+        expect(door.freshRun).toBe(null);
+
+        freshOk = true;
+        await door.onFreshRunClick();
+        expect(door.store.getCount()).toBe(COLD.steps.length);
+        expect(door.getReference('fresh-run').hidden).toBe(true);
+        expect(door.getReference('status-line').text).toBe('');
+        expect(door.getReference('lede').text).toContain(`Fresh run ${COLD.runId} — the run run-damaged stays on disk as history`);
+        expect(run().runId).toBe(COLD.runId);
+
+        // the held rows turned unknown by a later refused read: the offer returns beside them
+        readable = false;
+        await door.reevaluate('The recipe could not be re-evaluated');
+        expect(door.store.items.every(step => step.status === 'unknown')).toBe(true);
+        expect(door.getReference('fresh-run').hidden).toBe(false);
+
+        host.destroy()
+    });
+
+    test('a halt behind an unsettled row reaches the status line in the orchestration\'s own words, counted as no manual action, and the last observation stands', async () => {
+        const {evaluation, halt} = await stuckHost();
+
+        expect(halt.ok).toBe(false);
+        expect(halt.reason).toMatch(/^'write-env' waits for 'write-secrets': it is reconcile-required \(/);
+
+        stubShell({setupEvaluate: {ok: true, evaluation}, setupProbe: {ok: true, probe: PROBE}, setupPresets: {ok: true, presets: PRESETS}, setupEffect: halt});
+
+        const {host, door, progress} = createDoor();
+
+        await settle();
+
+        // the row behind the stuck one waits as data and offers no chip; the halt the shell would answer a
+        // request with is the status line verbatim
+        expect(door.store.get('write-env').waitsFor).toBe('write-secrets');
+        expect(actionsFor(door.store.get('write-env'))).toEqual([]);
+        await door.runEffect('write-env');
+        expect(door.getReference('status-line').text).toBe(`write-env could not run: ${halt.reason}`);
+        expect(door.manualActions).toBe(0);
+        expect(door.store.get('write-secrets').status).toBe('reconcile-required');
+        expect(progress()).toMatchObject({blocking: 'write-secrets', next: 'write-secrets'});
 
         host.destroy()
     });
