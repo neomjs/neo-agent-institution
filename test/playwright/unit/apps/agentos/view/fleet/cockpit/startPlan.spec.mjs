@@ -393,15 +393,9 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
             cleanupSeat = {
                 agentId          : 'ada',
                 cleanupUnresolved: true,
-                controlReason    : {kind: 'cleanup', reason: '1 helper(s) still alive: pid 4242'},
+                controlReason    : {action: 'stop', kind: 'cleanup', reason: '1 helper(s) still alive: pid 4242'},
                 sources          : wiredRuntime(),
                 state            : 'off'
-            },
-            rawFailedCleanupSeat = {
-                agentId          : 'grace',
-                cleanupUnresolved: true,
-                sources          : wiredRuntime(),
-                state            : 'failed'
             },
             stoppedSeat = {
                 agentId: 'vega',
@@ -413,20 +407,19 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
                 sources: wiredRuntime(),
                 state  : 'ok'
             },
-            records   = [cleanupSeat, rawFailedCleanupSeat, stoppedSeat, runningSeat],
+            records   = [cleanupSeat, stoppedSeat, runningSeat],
             partition = FleetStartPlan.partitionFleetStart(records);
 
-        expect(partition.eligible.map(r => r.agentId)).toEqual(['ada', 'grace', 'vega']);
+        expect(partition.eligible.map(r => r.agentId)).toEqual(['ada', 'vega']);
         expect(partition.plan).toEqual([
-            {agentId: 'ada',   reason: 're-checks helper cleanup', record: cleanupSeat},
-            {agentId: 'grace', reason: 're-checks helper cleanup', record: rawFailedCleanupSeat},
-            {agentId: 'vega',  reason: 'ready to start',           record: stoppedSeat}
+            {agentId: 'ada',  reason: 're-checks helper cleanup', record: cleanupSeat},
+            {agentId: 'vega', reason: 'ready to start',           record: stoppedSeat}
         ]);
 
         expect(FleetStartPlan.describeFleetButton(records)).toEqual({
             action: 'start',
-            count : 3,
-            text  : 'Start fleet · 3',
+            count : 2,
+            text  : 'Start fleet · 2',
             title : null
         });
 
@@ -435,7 +428,6 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(stateLine.text).toBe('1\u00a0started');
         expect(stateLine.detail.split('\n')).toEqual([
             'ada: re-checks helper cleanup',
-            'grace: re-checks helper cleanup',
             'vega: ready to start'
         ])
     });

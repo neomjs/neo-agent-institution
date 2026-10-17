@@ -1983,7 +1983,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
 
         expect(mapped.state).toBe('off');
         expect(mapped.cleanupUnresolved).toBe(true);
-        expect(mapped.controlReason).toEqual({kind: 'cleanup', reason: failureReason});
+        expect(mapped.controlReason).toEqual({action: 'stop', kind: 'cleanup', reason: failureReason});
 
         expect(cardState().text).toBe('offline');
         expect(toggle().disabled).toBe(false);

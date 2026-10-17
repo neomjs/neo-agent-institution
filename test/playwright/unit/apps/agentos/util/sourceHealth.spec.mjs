@@ -91,17 +91,7 @@ test.describe('AgentOS.util.SourceHealth.mapFleetSessionHealth (#725)', () => {
             cleanupUnresolved: true,
             failureReason
         }, wired)).toEqual({
-            controlReason: {kind: 'cleanup', reason: failureReason},
-            sources      : normalized,
-            state        : 'off'
-        });
-
-        expect(SourceHealth.mapFleetSessionHealth({
-            state            : 'failed',
-            cleanupUnresolved: true,
-            failureReason
-        }, wired)).toEqual({
-            controlReason: {kind: 'cleanup', reason: failureReason},
+            controlReason: {action: 'stop', kind: 'cleanup', reason: failureReason},
             sources      : normalized,
             state        : 'off'
         });

@@ -100,7 +100,7 @@ class FleetStartPlan extends Base {
                 exclude(`runtime source '${runtime.state}' — no usable lifecycle evidence to start against`)
             } else if (record.controlReason?.kind === 'timeout') {
                 exclude(`'${record.controlReason.action ?? 'lifecycle'}' outcome unknown after timeout — retry only through an explicit card control`)
-            } else if ((record.state ?? 'off') !== 'off' && !(record.state === 'failed' && cleanupUnresolved)) {
+            } else if ((record.state ?? 'off') !== 'off') {
                 exclude(`already up — session state '${record.state}'`)
             } else {
                 eligible.push(record);
@@ -225,7 +225,7 @@ class FleetStartPlan extends Base {
                 exclude(`runtime source '${runtime.state}' — no usable lifecycle evidence to stop against`)
             } else if (record.controlReason?.kind === 'timeout') {
                 exclude(`'${record.controlReason.action ?? 'lifecycle'}' outcome unknown after timeout — retry only through an explicit card control`)
-            } else if ((record.state ?? 'off') === 'off' || (record.state === 'failed' && (record.cleanupUnresolved === true || record.controlReason?.kind === 'cleanup'))) {
+            } else if ((record.state ?? 'off') === 'off') {
                 exclude('already down — session state \'off\'')
             } else {
                 eligible.push(record)

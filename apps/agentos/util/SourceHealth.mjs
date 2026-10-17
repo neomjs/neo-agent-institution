@@ -256,20 +256,11 @@ class SourceHealth extends Base {
         }
 
         const
-            cleanupUnresolved = lifecycle.cleanupUnresolved === true,
-            hasSource         = Object.hasOwn(lifecycle, 'source'),
-            hasConfidence     = Object.hasOwn(lifecycle, 'confidence'),
-            lifecycleSource   = hasSource && typeof lifecycle.source === 'string'
+            lifecycleSource     = Object.hasOwn(lifecycle, 'source') && typeof lifecycle.source === 'string'
                 ? lifecycle.source.trim()
-                : cleanupUnresolved && !hasSource
-                    ? runtime.source
-                    : null,
+                : null,
             state               = Object.hasOwn(lifecycle, 'state') ? lifecycle.state : null,
-            lifecycleConfidence = hasConfidence
-                ? lifecycle.confidence
-                : cleanupUnresolved
-                    ? runtime.confidence
-                    : null;
+            lifecycleConfidence = Object.hasOwn(lifecycle, 'confidence') ? lifecycle.confidence : null;
 
         if (!lifecycleSource || lifecycleSource !== runtime.source || lifecycleConfidence !== runtime.confidence) {
             return downgradeRuntime()
@@ -283,13 +274,13 @@ class SourceHealth extends Base {
             return {sources: normalizedSources, state: 'off'}
         }
 
-        if (state === 'failed' && cleanupUnresolved) {
+        if (state === 'failed' && lifecycle.cleanupUnresolved === true) {
             const reason = typeof lifecycle.failureReason === 'string' && lifecycle.failureReason.trim()
                 ? lifecycle.failureReason.trim()
                 : runtime.reason ?? 'helper cleanup unresolved';
 
             return {
-                controlReason: {kind: 'cleanup', reason},
+                controlReason: {action: 'stop', kind: 'cleanup', reason},
                 sources      : normalizedSources,
                 state        : 'off'
             }

@@ -6,7 +6,7 @@ engine
     fe6ab42c75675a007bd9d7390fdc09afb4493f74
 
 apps/agentos/CARD-CONTRACT.md
-    816d9bc873899cbd8591aa632bd8ff171f7290cc
+    8557e8e96e524eee681c5d94624dc72a309adcc0
 
 apps/agentos/TOKENS.md
     c15a2088996b9fdb06913968c49161f6cc36bf59
@@ -75,7 +75,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    996e6b95348d156ebeedffcbb0cead427a1d9af2
+    6d55714a7a47795c258c72fc1d8d3842b66d9e13
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -240,7 +240,7 @@ apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     19503b10d4a57dc614c777c226368fab8e031e2a
 
 apps/agentos/util/FleetStartPlan.mjs
-    73a2a214df00a46ec10310c867222b0c37f6e9fe
+    260b75364e5e8d335ac21017706d30aa4ac7c3f7
 
 apps/agentos/util/FloatingMenuTheme.mjs
     84b03b77166b024f051b7aeb611873323c0e5cfb
@@ -294,7 +294,7 @@ apps/agentos/util/RecentTurnsRead.mjs
     7b85fc2aa5be9a86ca898dda6dbc5ed8b18de2c4
 
 apps/agentos/util/RosterRow.mjs
-    6e8c60e0e8bf1ae2907e4b621fb1d15ccab8ec8d
+    452a7aacf597570c10aa502c9f6af321526657b7
 
 apps/agentos/util/SeatDependencies.mjs
     45f6624f0a0e8340c362b72399dcf9badba1e396
@@ -318,7 +318,7 @@ apps/agentos/util/SetupAsks.mjs
     5631188ae6808c721ebb030ad191ea3bc70b797b
 
 apps/agentos/util/SourceHealth.mjs
-    8b7f08220d20e381119dea3946195b25e23b9095
+    bfc624a86fdd0a70313358d6a850be6e015911dd
 
 apps/agentos/util/SpineBanner.mjs
     fb169fff3d55ac1be8236bcd9e140d21580c7a9a
@@ -381,7 +381,7 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     49cee569caaf2192f62d91cbb7297a32c34c534f
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    7d1ef8dfcb3c6992dc65ff1c84da42e4cef89a8b
+    8760f7600793ac61cf185bd7b3a2fc3ceedcfa1f
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     c8cb352785ae483806eb80b25adbf88e03a5f7ce
@@ -846,7 +846,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    9bf463ecf15e6b62cc2c0d65a410ce417ce348d5
+    bd27982f32bbd8b1cb4a32c89b1e1fb6e6c1ca37
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -951,10 +951,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-
     72bae4a185cd35ba771176de2a0d4c63ec4d89e1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-cleanup-unresolved-light.png
-    cc4d7ed5c410dbdef0bc336c27b4acfdd776a0b3
+    b931216297d376d4519c274abace826aa9a24b9c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-cleanup-unresolved.png
-    7e61f79be5444433117ec6bdc60a428190be287e
+    aab2f5f4219c81acc1a09d8edc46e6c5393c9c79
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-lane-claim.png
     a6856140788ddc1c7d3d9ba667196f4a2ba065ef

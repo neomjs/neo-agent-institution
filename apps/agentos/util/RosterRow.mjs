@@ -87,7 +87,7 @@ class RosterRow extends Base {
             participationSince : row.participationSince ?? null,
             participationRead  : row.participationRead ?? null,
             launchRefusal      : row.launchRefusal ?? null,
-            ...(cleanupUnresolved ? {cleanupUnresolved: true} : {}),
+            cleanupUnresolved,
             ...(sessionHealth.controlReason ? {controlReason: sessionHealth.controlReason} : {}),
             sources            : sessionHealth.sources,
             state              : sessionHealth.state,

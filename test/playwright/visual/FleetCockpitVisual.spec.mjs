@@ -2582,8 +2582,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         const
             emmy          = sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
             sources       = {...emmy.sources, runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
-            failureReason = '1 helper(s) still alive: pid 4242',
-            controlReason = {kind: 'cleanup', reason: failureReason},
+            failureReason = 'Codex Desktop helper cleanup failed: ambiguous profile-owned process identity (pid 4242); refusing cleanup.',
+            controlReason = {action: 'stop', kind: 'cleanup', reason: failureReason},
             land          = () => landFleetRoster(page, [...sampleRoster, {
                 ...emmy,
                 agentId          : 'neo-gpt-sophie',

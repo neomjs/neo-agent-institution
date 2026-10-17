@@ -664,10 +664,6 @@ class LivenessController extends ViewerWakeController {
                 if (record) {
                     const next = {...row};
 
-                    if (!next.cleanupUnresolved && record.cleanupUnresolved) {
-                        next.cleanupUnresolved = false
-                    }
-
                     if (!next.controlReason && record.controlReason?.kind === 'cleanup') {
                         next.controlReason = null
                     }
