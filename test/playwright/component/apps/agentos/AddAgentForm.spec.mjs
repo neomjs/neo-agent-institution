@@ -91,7 +91,7 @@ test.describe('AgentOS.view.fleet.AddAgentForm — mounted credential boundary (
         await page.evaluate(() => console.log('console-capture-control-alive'));
         await expect.poll(() => consoleLines.join('\n')).toContain('console-capture-control-alive');
 
-        // #724 AC-3, AC-4: the submit button carries no lock glyph, and the preselection rule
+        // the submit button carries no lock glyph, and the preselection rule
         // preselects Start with empty memory first when >= 2 candidates exist with no single username match
         await expect(submit.locator('.fa-lock')).toHaveCount(0);
 
