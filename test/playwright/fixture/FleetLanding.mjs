@@ -64,7 +64,12 @@ class FleetLanding extends Base {
          * Agent definitions to land, `{rows}` shaped like the registry's public definitions.
          * @member {Object|null} definitions_=null
          */
-        definitions_: {[isDescriptor]: true, value: null, isEqual: () => false}
+        definitions_: {[isDescriptor]: true, value: null, isEqual: () => false},
+        /**
+         * One `/fleet/probe` plane-admission envelope to land as the owner's answer, `{snapshot}`.
+         * @member {Object|null} planeAdmission_=null
+         */
+        planeAdmission_: {[isDescriptor]: true, value: null, isEqual: () => false}
     }
 
     /**
@@ -170,6 +175,13 @@ class FleetLanding extends Base {
      */
     afterSetOpenWork(value) {
         value && this.owner.admitOpenWork(value.snapshot)
+    }
+
+    /**
+     * @param {Object|null} value
+     */
+    afterSetPlaneAdmission(value) {
+        value && this.owner.applyPlaneAdmission(value.snapshot)
     }
 
     /**

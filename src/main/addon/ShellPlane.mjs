@@ -42,6 +42,7 @@ class ShellPlane extends Base {
             app: [
                 'attachPlane',
                 'planeStatus',
+                'probePlane',
                 'seatRootConsent',
                 'seatRootPlan',
                 'seatRootStatus',
@@ -77,6 +78,16 @@ class ShellPlane extends Base {
         return globalThis.neoShell?.planeStatus
             ? {available: true, ...await globalThis.neoShell.planeStatus()}
             : {available: false}
+    }
+
+    /**
+     * @summary Reads `/fleet/probe` through the shell's Fleet capability (no arguments cross).
+     * @returns {Promise<Object>}
+     */
+    probePlane() {
+        return globalThis.neoShell?.probePlane
+            ? globalThis.neoShell.probePlane()
+            : Promise.resolve({ok: false, reason: 'no-shell'})
     }
 
     /**

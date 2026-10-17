@@ -1,5 +1,6 @@
 import Base               from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import GraphSceneEnvelope from './GraphSceneEnvelope.mjs';
+import PlaneAdmission     from './PlaneAdmission.mjs';
 
 /**
  * @module apps/agentos/util/TargetBinding
@@ -48,6 +49,7 @@ class TargetBinding extends Base {
 
         store.clear();
 
+        PlaneAdmission.retire(owner, {profileId});
         owner.publishConnection('grid', {data: {gridAdapterState: 'cold', gridDegradedReason: null, presenceCapability: null}});
         grid && (grid.adapterState = 'cold');
 

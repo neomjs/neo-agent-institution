@@ -50,6 +50,18 @@
         white-space  : nowrap;
     }
 
+    .fm-fleet-plane-admission {
+        border       : 1px solid var(--fm-state-limited);
+        border-radius: 9px;
+        color        : var(--fm-ink-dim);
+        padding      : 1px var(--fm-space-2);
+        white-space  : nowrap;
+
+        &.is-unknown {
+            border-color: var(--fm-line-soft);
+        }
+    }
+
     /* the sort/filter cluster: the shell's ghost verbs (Viewport.scss); the pressed state carries
        the choice. Wrap-capable: at vessel widths the cluster exceeds the zone and hard-clipped at
        both edges — wrapping engages only when space runs out, so the wide single-line form is

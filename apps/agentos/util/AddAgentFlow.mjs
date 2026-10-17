@@ -1,4 +1,5 @@
-import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import Base           from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import PlaneAdmission from './PlaneAdmission.mjs';
 
 /**
  * @summary The add-agent flow logic — the pure, mount-independent half of the S5 define-agent
@@ -385,9 +386,21 @@ class AddAgentFlow extends Base {
      * @param {Object}        config.payload          `{credential, forge, forgeHost, githubUsername, harnessType, memoryImport, repoSlug}`.
      * @returns {Promise<Object>} One terminal outcome — this function never throws.
      */
-    static async submitDefineAgent({bridgeResolver=null, payload}) {
+    static async submitDefineAgent({admission=null, bridgeResolver=null, payload}) {
         const
-            bridge     = AddAgentFlow.resolveRegistryBridge(bridgeResolver),
+            bridge        = AddAgentFlow.resolveRegistryBridge(bridgeResolver),
+            resolvedProbe = admission ?? (PlaneAdmission.hasProbe(bridge) ? await PlaneAdmission.read({bridge}) : null);
+
+        if (resolvedProbe?.state === 'unresolved') {
+            return {
+                admission: resolvedProbe,
+                commands : resolvedProbe.commands,
+                reason   : resolvedProbe.status,
+                state    : 'rejected'
+            }
+        }
+
+        const
             shellOwned = AddAgentFlow.isShellCredentialIngress(bridge),
             request    = AddAgentFlow.createDefineAgentIntent(payload, bridge),
             repo       = AddAgentFlow.repoOf(payload?.repoSlug, request.forge),

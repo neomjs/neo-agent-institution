@@ -171,6 +171,16 @@ export async function landFleetRecentTurns(page, snapshot) {
 }
 
 /**
+ * @summary Lands one `/fleet/probe` plane-admission answer in the mounted cockpit through `applyPlaneAdmission`.
+ * @param {Object} page The Playwright page.
+ * @param {Object|null} snapshot The `/fleet/probe` envelope or normalized plane-admission state.
+ * @returns {Promise<void>}
+ */
+export async function landPlaneAdmission(page, snapshot) {
+    await landFleet(page, {planeAdmission: {snapshot}})
+}
+
+/**
  * @summary Lands the tests' sample fleet (`test/playwright/fixture/fleetSample.mjs`): eleven roster
  * cards and six activity events, as live answers. A spec that reads cards or events calls this after
  * the cockpit is visible; it resolves once the first card renders.

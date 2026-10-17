@@ -11,9 +11,12 @@ import Neo            from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import Instance       from '../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import AddAgentForm   from '../../../../../apps/agentos/view/fleet/instances/AddAgentForm.mjs';
+import FleetGrid      from '../../../../../apps/agentos/view/fleet/roster/Container.mjs';
 import FleetInstances from '../../../../../apps/agentos/store/FleetInstances.mjs';
 
-import AddAgentFlow from '../../../../../apps/agentos/util/AddAgentFlow.mjs';
+import AddAgentFlow         from '../../../../../apps/agentos/util/AddAgentFlow.mjs';
+import PlaneAdmission       from '../../../../../apps/agentos/util/PlaneAdmission.mjs';
+import {installFleetBridge} from '../../../../../apps/agentos/fleet/installFleetBridge.mjs';
 
 const CREDENTIAL = 'github_pat_11TESTSECRET_shouldNeverEscape';
 
@@ -1192,5 +1195,194 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — the added seat\'s c
         expect(row.identity.state).toBe('derived');
 
         form.destroy()
+    });
+});
+
+test.describe('AgentOS.view.fleet.instances.AddAgentForm — plane admission read (#726)', () => {
+    const
+        UNINITIALIZED_REASON = 'forge connection registry is not initialized (expected at /data/fleet/forge-connections.json)',
+        UNRESOLVED_PROBE     = () => ({
+            identity: {
+                authProvider   : 'github',
+                ownerPrincipal : null,
+                ownerResolution: {
+                    state : 'uninitialized',
+                    reason: UNINITIALIZED_REASON
+                }
+            },
+            pid      : 4210,
+            startedAt: '2026-10-17T18:00:00.000Z'
+        }),
+        ADMITTED_PROBE = () => ({
+            identity: {
+                authProvider   : 'github',
+                ownerPrincipal : {id: 'github:1', login: 'tobiu', provider: 'github'},
+                ownerResolution: null
+            },
+            pid      : 4210,
+            startedAt: '2026-10-17T18:00:00.000Z'
+        });
+
+    test('AC-1: with ownerResolution uninitialized, submit opens no token sheet and the status line carries the reason and the two commands; with ownerPrincipal, today\'s flow is unchanged', async () => {
+        let probeAnswer     = UNRESOLVED_PROBE(),
+            tokenSheetCalls = 0;
+
+        const
+            defined = [],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    credentialIngress: 'shell',
+                    defineAgent      : async payload => {
+                        tokenSheetCalls++;
+                        defined.push(payload);
+                        return cleanReadback()
+                    },
+                    fleetMemoryCandidates: NO_MEMORY,
+                    probePlane           : async () => probeAnswer
+                })
+            });
+
+        await form.readMemory();
+        (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+        form.harnessType                              = 'opencode';
+
+        await form.onSubmitClick();
+
+        expect(tokenSheetCalls).toBe(0);
+        expect(defined).toEqual([]);
+        expect(form.flowStatus.state).toBe('rejected');
+        expect(form.getReference('flow-status').text).toBe(
+            `This plane cannot own seats yet — ${UNINITIALIZED_REASON}. On the plane host: init, then register (the setup step 'register-forge'); then Add again.`
+        );
+
+        const
+            commands = form.getReference('plane-commands'),
+            line     = form.getReference('plane-admission-line');
+
+        expect(commands.hidden).toBe(false);
+        expect(commands.vdom.cn[0].text).toBe('Show the commands');
+        expect(commands.vdom.cn[1].cn[0].text).toBe(
+            'docker compose --env-file .env -f deploy/cloud/docker-compose.yml -f deploy/cloud/docker-compose.local-agent-os.yml --profile fleet exec fleet-server node ai/scripts/fleet/forgeConnections.mjs init --apply'
+        );
+        expect(commands.vdom.cn[2].cn[0].text).toBe(
+            'docker compose --env-file .env -f deploy/cloud/docker-compose.yml -f deploy/cloud/docker-compose.local-agent-os.yml --profile fleet exec fleet-server node ai/scripts/fleet/forgeConnections.mjs register --provider github --endpoint https://api.github.com --apply'
+        );
+        expect(line.hidden).toBe(false);
+        expect(line.text).toBe('cannot own seats yet · register-forge');
+
+        // once register-forge completes on the plane host and /fleet/probe answers ownerPrincipal, today's flow proceeds unchanged
+        probeAnswer = ADMITTED_PROBE();
+        await form.onSubmitClick();
+
+        expect(tokenSheetCalls).toBe(1);
+        expect(defined).toHaveLength(1);
+        expect(form.flowStatus.state).toBe('readback-confirmed');
+        expect(commands.hidden).toBe(true);
+        expect(line.hidden).toBe(true);
+        expect(line.text).toBe('');
+
+        form.destroy()
+    });
+
+    test('AC-2: the plane-state line renders cannot own seats yet · register-forge while unresolved and nothing when admitted', () => {
+        const
+            grid = Neo.create(FleetGrid, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                planeAdmission: UNRESOLVED_PROBE()
+            }),
+            chip = grid.getReference('fleet-plane-admission');
+
+        expect(chip.hidden).toBe(false);
+        expect(chip.text).toBe('cannot own seats yet · register-forge');
+
+        grid.planeAdmission = ADMITTED_PROBE();
+
+        expect(chip.hidden).toBe(true);
+        expect(chip.text).toBe('');
+
+        grid.destroy()
+    });
+
+    test('AC-3: a probe that cannot be read keeps today\'s submit path and says plane admission unknown on the line', async () => {
+        const
+            defined = [],
+            form    = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    credentialIngress: 'shell',
+                    defineAgent      : async payload => {
+                        defined.push(payload);
+                        return cleanReadback()
+                    },
+                    fleetMemoryCandidates: NO_MEMORY,
+                    probePlane           : async () => {
+                        throw new Error('connect ECONNREFUSED 127.0.0.1:3102')
+                    }
+                })
+            }),
+            grid = Neo.create(FleetGrid, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                planeAdmission: PlaneAdmission.inspect(null)
+            });
+
+        await form.readMemory();
+        (await form.getField('githubUsername')).value = 'neo-kimi-phoebe';
+        form.harnessType                              = 'opencode';
+
+        await form.onSubmitClick();
+
+        expect(defined).toHaveLength(1);
+        expect(form.flowStatus.state).toBe('readback-confirmed');
+        expect(form.getReference('plane-commands').hidden).toBe(true);
+        expect(form.getReference('plane-admission-line').hidden).toBe(false);
+        expect(form.getReference('plane-admission-line').text).toBe('plane admission unknown');
+        expect(grid.getReference('fleet-plane-admission').hidden).toBe(false);
+        expect(grid.getReference('fleet-plane-admission').text).toBe('plane admission unknown');
+
+        form.destroy();
+        grid.destroy()
+    });
+
+    test('the packaged shell bridge wires the injected probePlane (bearer stays in main) and commandsFor never invents a non-GitHub endpoint', async () => {
+        const
+            target     = {},
+            probeCalls = [],
+            sendCalls  = [],
+            bridge     = installFleetBridge({
+                credentialIngress: 'shell',
+                probePlane       : async () => {
+                    probeCalls.push('probe');
+                    return {ok: true, result: UNRESOLVED_PROBE()}
+                },
+                send: async request => {
+                    sendCalls.push(request);
+                    return {ok: true, result: []}
+                },
+                target
+            });
+
+        expect(PlaneAdmission.hasProbe(bridge)).toBe(true);
+        expect(bridge).not.toHaveProperty('bearerToken');
+        expect(target.AgentOS.fleet).not.toHaveProperty('bearerToken');
+
+        const snapshot = await PlaneAdmission.read({bridge});
+
+        expect(probeCalls).toEqual(['probe']);
+        expect(sendCalls).toEqual([]);
+        expect(snapshot.state).toBe('unresolved');
+        expect(snapshot.line).toBe('cannot own seats yet · register-forge');
+
+        expect(PlaneAdmission.commandsFor({
+            identity: {authProvider: 'gitlab', providerBaseUrl: 'https://gitlab.example.com/api/v4'}
+        })[1]).toBe(
+            'docker compose --env-file .env -f deploy/cloud/docker-compose.yml -f deploy/cloud/docker-compose.local-agent-os.yml --profile fleet exec fleet-server node ai/scripts/fleet/forgeConnections.mjs register --provider gitlab --endpoint https://gitlab.example.com/api/v4 --apply'
+        );
+
+        expect(PlaneAdmission.commandsFor({
+            identity: {authProvider: 'gitlab'}
+        })[1]).toBe(
+            "docker compose --env-file .env -f deploy/cloud/docker-compose.yml -f deploy/cloud/docker-compose.local-agent-os.yml --profile fleet exec fleet-server node ai/scripts/fleet/forgeConnections.mjs register --provider gitlab --endpoint <the forge's API base> --apply # see ai/scripts/lifecycle/local-agent-os/README.md"
+        )
     });
 });

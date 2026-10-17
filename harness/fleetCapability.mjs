@@ -117,10 +117,13 @@ export function createAbsentFleetCapability({isTrustedSender, reason}) {
         throw new TypeError('createAbsentFleetCapability requires isTrustedSender and the reason that names the shell shape')
     }
 
+    const refuse = async event => {
+        throw new Error(isTrustedSender(event) ? reason : 'fleet: untrusted shell sender')
+    };
+
     return {
-        async request(event) {
-            throw new Error(isTrustedSender(event) ? reason : 'fleet: untrusted shell sender')
-        }
+        probe  : refuse,
+        request: refuse
     }
 }
 
@@ -258,6 +261,56 @@ export function createFleetCapability({
     };
 
     return {
+        async probe(event) {
+            if (!isTrustedSender(event)) return reject('fleet: untrusted shell sender');
+
+            let boot, envelope;
+
+            try {
+                boot = await getBrain()
+            } catch {
+                return reject('fleet: Brain readiness failed')
+            }
+
+            if (boot?.up !== true || !Number.isInteger(boot.fleetPort) || boot.fleetPort < 1 || boot.fleetPort > 65535) {
+                return reject('fleet: Brain is not ready')
+            }
+
+            try {
+                const response = await fetchImpl(`http://127.0.0.1:${boot.fleetPort}/fleet/probe`, {
+                    headers: {
+                        Authorization: `Bearer ${bearerToken}`
+                    },
+                    method: 'GET'
+                });
+
+                envelope = await response.json()
+            } catch {
+                return reject('fleet: request transport failed')
+            }
+
+            const protectedValues = [...new Set([bearerToken, bearerToken.trim()].filter(Boolean))];
+
+            let containsSecret;
+
+            try {
+                JSON.stringify(envelope);
+                containsSecret = containsSensitiveValue(envelope, protectedValues)
+            } catch {
+                return reject('fleet: invalid response')
+            }
+
+            if (containsSecret) {
+                return reject('fleet: secret-bearing response rejected')
+            }
+
+            if (!isRecord(envelope) || envelope.ok !== true || !isRecord(envelope.result)) {
+                return reject('fleet: malformed probe response')
+            }
+
+            return {ok: true, result: envelope.result}
+        },
+
         async request(event, request) {
             if (!isTrustedSender(event)) return reject('fleet: untrusted shell sender');
 

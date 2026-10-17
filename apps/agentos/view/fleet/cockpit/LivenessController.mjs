@@ -5,6 +5,7 @@ import DeploymentStateRead         from '../../../util/DeploymentStateRead.mjs';
 import FleetAdmission              from '../../../util/FleetAdmission.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
 import LivenessCadence             from '../../../util/LivenessCadence.mjs';
+import PlaneAdmission              from '../../../util/PlaneAdmission.mjs';
 import PlaneCredentialCheck        from '../../../util/PlaneCredentialCheck.mjs';
 import RosterRow                   from '../../../util/RosterRow.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
@@ -766,8 +767,25 @@ class LivenessController extends ViewerWakeController {
         // boot-time fault invisible — the plane picture has no other first read either
         me.loadBrainHealth();
         me.loadDeploymentState();
+        me.loadPlaneAdmission();
 
         me.followCustodyHeal()
+    }
+
+    /**
+     * @summary Pull the plane's owner-principal admission from `/fleet/probe`.
+     * @returns {Promise<void>}
+     */
+    loadPlaneAdmission() {
+        return PlaneAdmission.load(this)
+    }
+
+    /**
+     * @summary Apply a plane-admission snapshot to the cockpit state provider.
+     * @param {Object|null} snapshot
+     */
+    applyPlaneAdmission(snapshot) {
+        PlaneAdmission.apply(this, snapshot)
     }
 
     /**
@@ -793,6 +811,7 @@ class LivenessController extends ViewerWakeController {
 
         me.livenessSchedule = dueAt;
         launch.forEach(key => me[LivenessCadence.READS[key].load]());
+        launch.includes('roster') && me.loadPlaneAdmission();
 
         // the system lane's cadence is also the System view's only clock: a pass that launches no
         // deployment read still publishes its instant, so a retained picture's age keeps moving
@@ -878,6 +897,7 @@ class LivenessController extends ViewerWakeController {
 
         me.loadActivity();
         me.loadRoster();
+        me.loadPlaneAdmission();
         me.loadBrainHealth();
         me.loadDeploymentState();
         me.loadGoldenPath();

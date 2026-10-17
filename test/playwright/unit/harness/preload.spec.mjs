@@ -135,7 +135,7 @@ test.describe('Electron harness preload capability', () => {
         const
             {exposed, invokes} = await loadPreload(),
             request            = {method: 'listAgents', params: {}},
-            expectedShellKeys  = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane'],
+            expectedShellKeys  = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane'],
             mainSource         = await readFile(mainPath, 'utf8'),
             smokeKeys          = mainSource.match(/expectedShellKeys\s*=\s*\[([^\]]+)\]/);
 
@@ -159,6 +159,7 @@ test.describe('Electron harness preload capability', () => {
         // The plane broker: status and verify carry no payload, and attach forwards only the plane
         // base — main prompts for the credential or probes the stored one, so no argument could carry it.
         await exposed.value.planeStatus();
+        await exposed.value.probePlane();
         await exposed.value.attachPlane({planeBase: 'http://127.0.0.1:3102'});
         await exposed.value.verifyPlane();
         await exposed.value.seatRootStatus();
@@ -178,6 +179,7 @@ test.describe('Electron harness preload capability', () => {
             ['fleet-request', request],
             ['brain-health'],
             ['shell-plane-status'],
+            ['shell-plane-probe'],
             ['shell-plane-attach', {planeBase: 'http://127.0.0.1:3102'}],
             ['shell-plane-verify'],
             ['shell-seat-root-status'],
