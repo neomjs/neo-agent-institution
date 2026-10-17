@@ -247,26 +247,20 @@ class Controller extends FleetBatchController {
     }
 
     /**
-     * @summary Drill into a resident: resolve the record from the provider-owned store, seat it
-     * through the view's ONE selection-write site, and reveal the auto-hidden detail pane.
+     * @summary Drill into a resident (or clear when `agentId` is null): resolve the record from the
+     * provider-owned store and seat it through the view's ONE selection-write site.
      * @param {Object} data The `agentSelect` payload `{agentId}`.
      */
     onAgentSelect(data) {
         const
-            cockpit = this.component,
-            record  = this.resolveFleetRosterStore()?.get(data.agentId);
+            agentId = data?.agentId ?? null,
+            record  = agentId ? this.resolveFleetRosterStore()?.get(agentId) : null;
 
-        if (!record) {
+        if (agentId && !record) {
             return
         }
 
-        this.applySelection(record);
-
-        if (cockpit.dockModel?.items?.detail?.autoHidden) {
-            const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden: false});
-
-            result && !result.errors?.length && cockpit.onDockZoneDocumentChange(result.document)
-        }
+        this.applySelection(record)
     }
 
     /**
@@ -490,18 +484,21 @@ class Controller extends FleetBatchController {
      * @summary The ONE selection-write site: seat a resident record (or null) as the cockpit's
      * selection truth everywhere it lives — the view-owned {@link AgentOS.view.fleet.cockpit.Container#detailRecord}
      * reactive config (its afterSet hook pushes the live pane; dock rematerialization reads it),
-     * the provider pair (`selectedAgentId` / `selectedAgentIdentity`), and the memories
+     * the provider pair (`selectedAgentId` / `selectedAgentIdentity`), the memories
      * write-through (the one-picker contract: a selected resident with a verifiable mailbox
      * identity re-targets the pane through the view's phase-blind accessor, so a vesseled pane
-     * re-targets exactly like a docked one).
+     * re-targets exactly like a docked one), and the paired dock reveal/hide
+     * ({@link AgentOS.util.CockpitPerspectives#syncDetailAutoHidden}).
      *
      * A null identity keeps the pane's LAST target: the summary corpus outlives the seat, so a
      * resident without identity authority (or a cleared selection) never blanks a valid read —
      * the provider pair still reports the honest null. The detail's Thought stream follows the seat
      * instead: one read per newly shown seat, none without one.
      * @param {Object|null} record The selected {@link AgentOS.model.FleetAgent} record, or null.
+     * @param {Object} [options={}]
+     * @param {Boolean} [options.syncDock=true] False when seating during a perspective transition whose own document owns the placement.
      */
-    applySelection(record) {
+    applySelection(record, {syncDock = true} = {}) {
         const
             me       = this,
             cockpit  = me.component,
@@ -528,6 +525,8 @@ class Controller extends FleetBatchController {
         } else if (identity !== me.recentTurnsReader?.target) {
             me.loadRecentTurns({agentIdentity: identity})
         }
+
+        syncDock && CockpitPerspectives.syncDetailAutoHidden(cockpit, Boolean(record))
     }
 
     /* ── the fleet batches live on FleetBatchController; the roster truth they read stays here ── */

@@ -557,12 +557,21 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         expect(provider.getData('selectedAgentId')).toBe(other.agentId);
         expect(fired).toHaveLength(2);
 
-        // an explicit empty event clears the cross-pane truth and fires no detail intent
-        model.deselectAll(true);
-        controller.onRosterSelect({records: [], selection: []});
+        // an explicit empty event or Escape clears the cross-pane truth and fires the clearing detail intent
+        model.deselectAll();
         expect(provider.getData('selectedAgentId')).toBeNull();
         expect(provider.getData('selectedAgentIdentity')).toBeNull();
-        expect(fired).toHaveLength(2);
+        expect(fired).toHaveLength(3);
+        expect(fired[2]).toEqual({agentId: null, source: grid.id});
+
+        model.select(list.getItemId(target.agentId));
+        expect(fired).toHaveLength(4);
+        model.onKeyDownEscape({});
+        expect(model.getSelection()).toEqual([]);
+        expect(provider.getData('selectedAgentId')).toBeNull();
+        expect(provider.getData('selectedAgentIdentity')).toBeNull();
+        expect(fired).toHaveLength(5);
+        expect(fired[4]).toEqual({agentId: null, source: grid.id});
 
         // Enter selects the Navigator-focused row (focusIndex is the base list's navigate state)
         list._focusIndex = 1;
@@ -571,6 +580,13 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         const selected = model.getSelection();
         expect(selected).toHaveLength(1);
         expect(list.getItemRecordId(selected[0])).toBe(store.items[1].agentId);
+
+        store.remove(store.items[1]);
+        expect(model.getSelection()).toEqual([]);
+        expect(provider.getData('selectedAgentId')).toBeNull();
+        expect(provider.getData('selectedAgentIdentity')).toBeNull();
+        expect(fired).toHaveLength(7);
+        expect(fired[6]).toEqual({agentId: null, source: grid.id});
 
         grid.destroy()
     });

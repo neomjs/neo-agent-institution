@@ -199,5 +199,64 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(pill('lane')).toHaveClass(/\bis-fresh\b/);
         await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(laneLine);
         await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(/claimed \d+m ago/)
+    });
+
+    test('at 1400 px the center drops (1332 -> 988 px) only while an agent is selected or detail is pinned; Escape or deselect restores 1332 px and the pre-selection dock document (#712 AC-3)', async ({page, neuralLink}) => {
+        await page.setViewportSize({width: 1400, height: 900});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetRoster(page, sampleRoster.slice(0, 2).map(row => ({...row, avatarUrl: null})));
+
+        const app           = await neuralLink.connectToApp('AgentOS'),
+              [cockpit]     = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+              [list]        = await app.queryComponent({className: 'AgentOS.view.fleet.roster.List'}, ['selectionModel.id']),
+              card          = name => page.locator('.fm-agent-card', {has: page.locator('.fm-card-name', {hasText: new RegExp(`^${name}$`)})}),
+              detail        = page.locator('.fm-agent-detail'),
+              readDockModel = async () => (await app.getComponent(cockpit.properties.id, ['dockModel'])).dockModel,
+              centerWidth   = () => page.locator('.fm-fleet-cockpit .neo-dashboard-dock-edge-row > :first-child').first()
+                  .evaluate(el => Math.round(el.getBoundingClientRect().width)),
+              dockBefore    = await readDockModel();
+
+        expect(dockBefore.items.detail.autoHidden).toBe(true);
+        await expect.poll(centerWidth).toBe(1332);
+
+        // 1. select reveals detail and drops center width 1332 -> 988 px
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name')).toHaveText('Ada');
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(988);
+        expect((await readDockModel()).items.detail.autoHidden).toBe(false);
+
+        // 2. Escape clears selection, returns center to 1332 px, and restores the pre-selection dock document
+        await page.locator('.fm-fleet-cards').press('Escape');
+        await expect(detail).toBeHidden();
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(1332);
+        expect(await readDockModel()).toEqual(dockBefore);
+
+        // 3. select again -> 988 px, then deselect -> 1332 px and pre-selection dock document
+        await card('Grace').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name')).toHaveText('Grace');
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(988);
+
+        await app.callMethod(list.properties['selectionModel.id'], 'deselectAll', []);
+        await expect(detail).toBeHidden();
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(1332);
+        expect(await readDockModel()).toEqual(dockBefore);
+
+        // 4. when detail is pinned, center stays at 988 px even after Escape clears the selection
+        await page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Agent detail'}).first().click();
+        await page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first().click();
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(988);
+
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name')).toHaveText('Ada');
+        await page.locator('.fm-fleet-cards').press('Escape');
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(988);
+        expect((await readDockModel()).items.detail).toMatchObject({autoHidden: false, pinned: true})
     })
 });

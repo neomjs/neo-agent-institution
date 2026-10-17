@@ -222,7 +222,7 @@ apps/agentos/util/ClosedShape.mjs
     1cb201ec5bb7b858b41a68f6abfba58824fb6ccf
 
 apps/agentos/util/CockpitPerspectives.mjs
-    f892864ca8a1ec0d92fb7e3fa45fa8f68c5c770f
+    347adda6cd8b8b66fedfc676e6899a6ef068d579
 
 apps/agentos/util/ConfigIntentRoundTrip.mjs
     304f0ae0f77b480f206457cbca31765b7edec1b9
@@ -369,13 +369,13 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    d967c1873a913f1a2ad60f7d599a388bd92a3d92
+    e79832d9a8f23be68cc778522c2ce913fa1f56f8
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     d9cd2d635593a12df350d75f79cfbd4cbdaa172f
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    c016a8c7eea1bc9ff013b2a30871c8f3d36a5fc0
+    6d358c7d06b2b3aecbe374f978661c448a79ee8b
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     49cee569caaf2192f62d91cbb7297a32c34c534f
@@ -561,13 +561,13 @@ apps/agentos/view/fleet/roster/Container.mjs
     1aff7858d78c65cebb86d2dd06e92f15a91d190d
 
 apps/agentos/view/fleet/roster/Controller.mjs
-    21d320127b1d19797a28c81d0610fd638a594ff8
+    2e6c627c5ac60b5ee9b3a7852f47d746e7e323c6
 
 apps/agentos/view/fleet/roster/List.mjs
-    47fa2bf1689a7f41c0e8d14a90e832b250e58390
+    3fd36c285e5dc783f42226ccb50d551cd6849c4d
 
 apps/agentos/view/fleet/roster/SelectionModel.mjs
-    78976535f96d9eeb2f2776cf62184e51cc32b6e0
+    655008601e97dde664080456695162a4b709153a
 
 apps/agentos/view/fleet/roster/card/Container.mjs
     22aa49d3b84f331b3ea345fdde517add3d96c694
