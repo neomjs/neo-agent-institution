@@ -1441,6 +1441,7 @@ app.whenReady().then(async () => {
     }
 
     ipcMain.handle('fleet-request', fleetCapability.request);
+    ipcMain.handle('shell-plane-probe', fleetCapability.probe);
 
     // Whole-Brain health crosses ONLY from the lifecycle owner — never composed from per-agent
     // fleet rows. Untrusted senders reject (transport truth, never daemon truth).
@@ -1700,7 +1701,7 @@ app.whenReady().then(async () => {
 
             const
                 expectedShellKeys = [
-                    'attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus',
+                    'attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane',
                     'seatRootConsent', 'seatRootPlan', 'seatRootStatus',
                     'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe',
                     'shellVersion', 'verifyPlane'

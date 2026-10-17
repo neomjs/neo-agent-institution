@@ -68,6 +68,8 @@ export const FLEET_LOCAL_TRANSPORT_ERRORS = Object.freeze({
  * @param {Function} [opts.send=null]                      Packaged-shell intent transport; receives
  *     only `{method, params}` and is mutually exclusive with `url` / `bearerToken` /
  *     `mcAuthorization`.
+ * @param {Function} [opts.probePlane=null]                Packaged-shell `/fleet/probe` transport;
+ *     mutually exclusive with `url` / `bearerToken` / `mcAuthorization`.
  * @param {'worker'|'shell'} [opts.credentialIngress='worker'] Public credential-custody fact.
  * @param {String}   [opts.profileId=null]                 The connection-profile identity this bridge
  *     serves (`./connectionProfiles.mjs` derivation) — a renderable capability fact like
@@ -85,6 +87,7 @@ export function installFleetBridge({
     bearerToken = null,
     fetchImpl = globalThis.fetch,
     mcAuthorization = null,
+    probePlane = null,
     send = null,
     credentialIngress = 'worker',
     profileId = null,
@@ -113,6 +116,10 @@ export function installFleetBridge({
         if (mcAuthorization === bearerToken) {
             throw new TypeError('installFleetBridge: mcAuthorization must be a DISTINCT mint — a byte-identical class-1/class-3 pair is refused, never aliased')
         }
+    }
+
+    if (probePlane !== null && typeof probePlane !== 'function') {
+        throw new TypeError('installFleetBridge: probePlane must be a function')
     }
 
     if (send !== null) {
@@ -260,20 +267,30 @@ export function installFleetBridge({
         value       : profileId
     });
 
-    if (typeof shellTransport?.probePlane === 'function') {
+    if (shellTransport && typeof probePlane === 'function') {
         Object.defineProperty(registryBridge, 'probePlane', {
             configurable: true,
-            value       : () => shellTransport.probePlane()
+            value       : async () => {
+                const reply = await probePlane();
+
+                if (!reply || reply.ok === false) {
+                    throw new Error(reply?.error || reply?.reason || 'fleet: probe failed')
+                }
+
+                return reply.result ?? reply
+            }
         })
     } else if (!shellTransport && bearerToken !== null) {
         Object.defineProperty(registryBridge, 'probePlane', {
             configurable: true,
             value       : async () => {
-                const response = await target.fetch(new URL('/fleet/probe', fleetUrl.origin).href, {
-                    headers: {Authorization: `Bearer ${bearerToken}`}
-                });
+                const
+                    fetchFn  = fetchImpl !== globalThis.fetch ? fetchImpl : (target.fetch ?? fetchImpl),
+                    response = await fetchFn(new URL('/fleet/probe', fleetUrl.origin).href, {
+                        headers: {Authorization: `Bearer ${bearerToken}`}
+                    });
 
-                if (!response.ok) {
+                if (response?.ok === false) {
                     throw new Error('fleet: probe failed')
                 }
 

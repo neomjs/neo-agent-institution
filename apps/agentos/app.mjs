@@ -113,7 +113,14 @@ export const onStart = () => {
         if (!shellFleetBridge || globalThis.AgentOS?.fleet?.registryBridge !== shellFleetBridge) {
             shellFleetBridge = installFleetBridge({
                 credentialIngress: 'shell',
-                send             : request => {
+                probePlane       : () => {
+                    const windowId = route();
+
+                    return windowId && Neo.main?.addon?.ShellPlane?.probePlane
+                        ? Neo.main.addon.ShellPlane.probePlane({windowId})
+                        : Promise.reject(new Error(FLEET_LOCAL_TRANSPORT_ERRORS.noLiveWindow))
+                },
+                send: request => {
                     const windowId = route();
 
                     return windowId

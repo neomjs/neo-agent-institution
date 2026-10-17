@@ -15,7 +15,7 @@ apps/agentos/VisualSystem.md
     5ab4fe754bd834a946a9da3bc8f96d28efa9ea96
 
 apps/agentos/app.mjs
-    de135da55e55406602ea090317f40c486dd25ea0
+    07a917115653eef5dfee4d8890e28e5b1b7471f5
 
 apps/agentos/canvas/Home.mjs
     392fe0571a68fbf6ae269cf6eb648ad607f768f2
@@ -51,7 +51,7 @@ apps/agentos/fleet/fleetWakeStreamConsumer.mjs
     84573b5a021ddbc1f9d22a4bfde258077660c27e
 
 apps/agentos/fleet/installFleetBridge.mjs
-    3803b5fc59de96902d740e61a097d7344f865613
+    5bb5e39478f0daa441aeb21494260fedc586dbd6
 
 apps/agentos/fleet/instanceRosterStorage.mjs
     2e3defe9390396da338044724a6efcf6a0bfe53e
@@ -285,7 +285,7 @@ apps/agentos/util/Participation.mjs
     797b9190ad13733d77313600d936b586d1c3ced7
 
 apps/agentos/util/PlaneAdmission.mjs
-    1d0a56cee571291d3809bf66b052e7d17a92a83d
+    4318f59edb22a150901ddcef670b11278c9a9806
 
 apps/agentos/util/PlaneCredentialCheck.mjs
     e90a4505028072781fd15134801cc3c9cb0a37b5
@@ -483,7 +483,7 @@ apps/agentos/view/fleet/health/SwatchComponent.mjs
     a2d3e1d8509ca2e06f4f024959aae9005a73dd13
 
 apps/agentos/view/fleet/instances/AddAgentForm.mjs
-    7163c24d51b4afdd3585887070726715ce0c6486
+    e7ce548956c99d9dff306011b976f750254f3f86
 
 apps/agentos/view/fleet/instances/ManagerContainer.mjs
     9745356c4b780d28274e2eebc124e58c96a3776f

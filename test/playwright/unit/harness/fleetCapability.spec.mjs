@@ -50,6 +50,8 @@ test.describe('harness Fleet capability', () => {
 
         await expect(capability.request({trusted: true}, request)).rejects.toThrow(reason);
         await expect(capability.request({trusted: false}, request)).rejects.toThrow('fleet: untrusted shell sender');
+        await expect(capability.probe({trusted: true})).rejects.toThrow(reason);
+        await expect(capability.probe({trusted: false})).rejects.toThrow('fleet: untrusted shell sender');
 
         expect(() => createAbsentFleetCapability({isTrustedSender: null, reason})).toThrow(TypeError);
         expect(() => createAbsentFleetCapability({isTrustedSender: () => true, reason: ''})).toThrow(TypeError)
@@ -572,5 +574,66 @@ test.describe('harness Fleet capability', () => {
             expect(result).toMatchObject({ok: false, state: FLEET_WIRE_RESPONSE_STATES.refused});
             expect(result.error).toMatch(/malformed|unoffered/)
         }
+    });
+
+    test('probe checks sender trust, attaches the main-owned bearer to GET /fleet/probe, and censuses reflected secrets', async () => {
+        const
+            calls      = [],
+            capability = createCapability({
+                fetchImpl: async (url, init) => {
+                    calls.push({init, url});
+                    return {
+                        json: async () => ({
+                            ok    : true,
+                            result: {
+                                identity: {authProvider: 'github', ownerPrincipal: {id: 'github:1', login: 'tobiu'}},
+                                pid     : 4210
+                            }
+                        })
+                    }
+                },
+                getBrain       : async () => ({fleetPort: 9191, up: true}),
+                isTrustedSender: event => event?.trusted === true
+            });
+
+        await expect(capability.probe({trusted: false})).resolves.toMatchObject({
+            error: 'fleet: untrusted shell sender',
+            ok   : false,
+            state: FLEET_WIRE_RESPONSE_STATES.refused
+        });
+        expect(calls).toHaveLength(0);
+
+        const okReply = await capability.probe({trusted: true});
+
+        expect(okReply).toEqual({
+            ok    : true,
+            result: {
+                identity: {authProvider: 'github', ownerPrincipal: {id: 'github:1', login: 'tobiu'}},
+                pid     : 4210
+            }
+        });
+        expect(calls).toEqual([{
+            init: {headers: {Authorization: `Bearer ${bearerToken}`}, method: 'GET'},
+            url : 'http://127.0.0.1:9191/fleet/probe'
+        }]);
+
+        const leaky = createCapability({
+            fetchImpl: async () => ({
+                json: async () => ({
+                    ok    : true,
+                    result: {identity: {reason: `leaked ${bearerToken}`}}
+                })
+            }),
+            getBrain       : async () => ({fleetPort: 9191, up: true}),
+            isTrustedSender: () => true
+        });
+        const refused = await leaky.probe({trusted: true});
+
+        expect(refused).toMatchObject({
+            error: 'fleet: secret-bearing response rejected',
+            ok   : false,
+            state: FLEET_WIRE_RESPONSE_STATES.refused
+        });
+        expect(JSON.stringify(refused)).not.toContain(bearerToken)
     })
 });

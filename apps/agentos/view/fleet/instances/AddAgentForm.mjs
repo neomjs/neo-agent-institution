@@ -50,8 +50,9 @@ const FORGE_LABELS = Object.freeze({github: 'GitHub', gitlab: 'GitLab'});
  * reason (CARD-CONTRACT controls rule: never hidden), state `gated`.
  *
  * **The added seat's commit identity.** After the define stands, the form reads it
- * ({@link AgentOS.util.SeatGitIdentity}) and mounts the shared identity row only when the derivation
- * fails. A declaration goes through `configureAgent`, and the updated definition fires
+ * ({@link AgentOS.util.SeatGitIdentity}, where `readForForm` and `declareForForm` live beside the
+ * form's other flow helpers) and mounts the shared identity row only when the derivation fails. A
+ * declaration goes through `configureAgent`, and the updated definition fires
  * `agentDefinitionAccepted` again, so the owner's roster holds it.
  */
 class AddAgentForm extends FormContainer {

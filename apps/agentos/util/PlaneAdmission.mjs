@@ -58,26 +58,23 @@ class PlaneAdmission extends Base {
      * @returns {String[]}
      */
     static commandsFor(probe=null) {
-        const body     = probe?.result ?? probe ?? null;
-        const identity = body?.identity ?? body ?? null;
-        const project  = typeof body?.composeProject === 'string' && body.composeProject.trim()
-            ? `-p ${body.composeProject.trim()} `
-            : '';
-        const service  = typeof body?.composeService === 'string' && body.composeService.trim()
-            ? body.composeService.trim()
-            : 'fleet-server';
-        const provider = typeof identity?.authProvider === 'string' && identity.authProvider.trim()
-            ? identity.authProvider.trim()
-            : 'github';
-        const endpoint = typeof identity?.providerBaseUrl === 'string' && identity.providerBaseUrl.trim()
-            ? identity.providerBaseUrl.trim()
-            : (provider === 'gitlab' ? 'https://gitlab.com' : 'https://api.github.com');
-        const prefix   = `docker compose ${project}--env-file .env -f deploy/cloud/docker-compose.yml -f deploy/cloud/docker-compose.local-agent-os.yml --profile fleet exec ${service} node ai/scripts/fleet/forgeConnections.mjs`;
+        const
+            body     = probe?.result ?? probe ?? null,
+            identity = body?.identity ?? body ?? null,
+            provider = typeof identity?.authProvider === 'string' && identity.authProvider.trim()
+                ? identity.authProvider.trim()
+                : 'github',
+            baseUrl  = typeof identity?.providerBaseUrl === 'string' && identity.providerBaseUrl.trim()
+                ? identity.providerBaseUrl.trim()
+                : null,
+            endpoint = baseUrl ?? (provider === 'github' ? 'https://api.github.com' : "<the forge's API base>"),
+            suffix   = baseUrl || provider === 'github' ? '' : ' # see ai/scripts/lifecycle/local-agent-os/README.md',
+            prefix   = 'docker compose --env-file .env -f deploy/cloud/docker-compose.yml -f deploy/cloud/docker-compose.local-agent-os.yml --profile fleet exec fleet-server node ai/scripts/fleet/forgeConnections.mjs';
 
         return [
             `${prefix} init --apply`,
-            `${prefix} register --provider ${provider} --endpoint ${endpoint} --apply`
-        ];
+            `${prefix} register --provider ${provider} --endpoint ${endpoint} --apply${suffix}`
+        ]
     }
 
     /**
@@ -99,70 +96,44 @@ class PlaneAdmission extends Base {
      */
     static inspect(answer) {
         if (answer && (answer.state === 'admitted' || answer.state === 'unresolved' || answer.state === 'unknown')) {
-            if (answer.state === 'admitted') {
-                return {
-                    commands       : null,
-                    fleetDataDir   : answer.fleetDataDir ?? null,
-                    line           : '',
-                    pid            : answer.pid ?? null,
-                    reason         : null,
-                    resolutionState: null,
-                    startedAt      : answer.startedAt ?? null,
-                    state          : 'admitted',
-                    status         : null
-                };
-            }
-
             if (answer.state === 'unresolved') {
                 const reason = (typeof answer.reason === 'string' && answer.reason.trim())
                     || 'forge owner resolution is not ready';
 
                 return {
-                    commands       : Array.isArray(answer.commands) && answer.commands.length === 2
+                    ...EMPTY_ADMISSION,
+                    ...answer,
+                    commands: Array.isArray(answer.commands) && answer.commands.length === 2
                         ? answer.commands
                         : PlaneAdmission.commandsFor(answer),
-                    fleetDataDir   : answer.fleetDataDir ?? null,
-                    line           : UNRESOLVED_LINE,
-                    pid            : answer.pid ?? null,
+                    line  : UNRESOLVED_LINE,
                     reason,
-                    resolutionState: answer.resolutionState ?? null,
-                    startedAt      : answer.startedAt ?? null,
-                    state          : 'unresolved',
-                    status         : answer.status || PlaneAdmission.statusReasonFor(reason)
-                };
+                    status: answer.status || PlaneAdmission.statusReasonFor(reason)
+                }
             }
 
             return {
-                commands       : null,
-                fleetDataDir   : null,
-                line           : UNKNOWN_LINE,
-                pid            : null,
-                reason         : null,
-                resolutionState: null,
-                startedAt      : null,
-                state          : 'unknown',
-                status         : null
-            };
+                ...EMPTY_ADMISSION,
+                ...answer,
+                commands: null,
+                line    : answer.state === 'admitted' ? '' : UNKNOWN_LINE,
+                reason  : null,
+                status  : null
+            }
         }
 
-        const body         = answer?.ok === false ? null : (answer?.result ?? answer ?? null);
-        const identity     = body?.identity ?? (body?.ownerPrincipal || body?.ownerResolution ? body : null);
-        const pid          = body?.pid ?? null;
-        const startedAt    = body?.startedAt ?? null;
-        const fleetDataDir = body?.fleetDataDir ?? null;
+        const
+            body     = answer?.ok === false ? null : (answer?.result ?? answer ?? null),
+            identity = body?.identity ?? (body?.ownerPrincipal || body?.ownerResolution ? body : null),
+            shared   = {
+                ...EMPTY_ADMISSION,
+                fleetDataDir: body?.fleetDataDir ?? null,
+                pid         : body?.pid          ?? null,
+                startedAt   : body?.startedAt    ?? null
+            };
 
         if (identity?.ownerPrincipal && typeof identity.ownerPrincipal === 'object') {
-            return {
-                commands       : null,
-                fleetDataDir,
-                line           : '',
-                pid,
-                reason         : null,
-                resolutionState: null,
-                startedAt,
-                state          : 'admitted',
-                status         : null
-            };
+            return {...shared, state: 'admitted'}
         }
 
         if (identity?.ownerResolution && typeof identity.ownerResolution === 'object') {
@@ -171,29 +142,17 @@ class PlaneAdmission extends Base {
                 || 'forge owner resolution is not ready';
 
             return {
+                ...shared,
                 commands       : PlaneAdmission.commandsFor(body),
-                fleetDataDir,
                 line           : UNRESOLVED_LINE,
-                pid,
                 reason,
                 resolutionState: identity.ownerResolution.state ?? null,
-                startedAt,
                 state          : 'unresolved',
                 status         : PlaneAdmission.statusReasonFor(reason)
-            };
+            }
         }
 
-        return {
-            commands       : null,
-            fleetDataDir   : null,
-            line           : UNKNOWN_LINE,
-            pid            : null,
-            reason         : null,
-            resolutionState: null,
-            startedAt      : null,
-            state          : 'unknown',
-            status         : null
-        };
+        return {...EMPTY_ADMISSION, line: UNKNOWN_LINE, state: 'unknown'}
     }
 
     /**
@@ -306,27 +265,10 @@ class PlaneAdmission extends Base {
             return;
         }
 
-        const inspected = snapshot === null ? null : PlaneAdmission.inspect(snapshot);
-
-        owner.planeAdmissionProfileId   = profileId;
-        owner.planeAdmissionInstanceKey = inspected?.pid || inspected?.startedAt
-            ? `${inspected.pid ?? ''}:${inspected.startedAt ?? ''}`
-            : null;
+        owner.planeAdmissionProfileId = profileId;
 
         component.getStateProvider()?.setData({
-            planeAdmission: inspected
-                ? {
-                    commands       : inspected.commands,
-                    fleetDataDir   : inspected.fleetDataDir,
-                    line           : inspected.line,
-                    pid            : inspected.pid,
-                    reason         : inspected.reason,
-                    resolutionState: inspected.resolutionState ?? null,
-                    startedAt      : inspected.startedAt,
-                    state          : inspected.state,
-                    status         : inspected.status
-                }
-                : PlaneAdmission.emptyState()
+            planeAdmission: snapshot === null ? PlaneAdmission.emptyState() : {...EMPTY_ADMISSION, ...PlaneAdmission.inspect(snapshot)}
         });
     }
 

@@ -14,8 +14,9 @@ import AddAgentForm   from '../../../../../apps/agentos/view/fleet/instances/Add
 import FleetGrid      from '../../../../../apps/agentos/view/fleet/roster/Container.mjs';
 import FleetInstances from '../../../../../apps/agentos/store/FleetInstances.mjs';
 
-import AddAgentFlow   from '../../../../../apps/agentos/util/AddAgentFlow.mjs';
-import PlaneAdmission from '../../../../../apps/agentos/util/PlaneAdmission.mjs';
+import AddAgentFlow         from '../../../../../apps/agentos/util/AddAgentFlow.mjs';
+import PlaneAdmission       from '../../../../../apps/agentos/util/PlaneAdmission.mjs';
+import {installFleetBridge} from '../../../../../apps/agentos/fleet/installFleetBridge.mjs';
 
 const CREDENTIAL = 'github_pat_11TESTSECRET_shouldNeverEscape';
 
@@ -1341,5 +1342,47 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — plane admission rea
 
         form.destroy();
         grid.destroy()
+    });
+
+    test('the packaged shell bridge wires the injected probePlane (bearer stays in main) and commandsFor never invents a non-GitHub endpoint', async () => {
+        const
+            target     = {},
+            probeCalls = [],
+            sendCalls  = [],
+            bridge     = installFleetBridge({
+                credentialIngress: 'shell',
+                probePlane       : async () => {
+                    probeCalls.push('probe');
+                    return {ok: true, result: UNRESOLVED_PROBE()}
+                },
+                send: async request => {
+                    sendCalls.push(request);
+                    return {ok: true, result: []}
+                },
+                target
+            });
+
+        expect(PlaneAdmission.hasProbe(bridge)).toBe(true);
+        expect(bridge).not.toHaveProperty('bearerToken');
+        expect(target.AgentOS.fleet).not.toHaveProperty('bearerToken');
+
+        const snapshot = await PlaneAdmission.read({bridge});
+
+        expect(probeCalls).toEqual(['probe']);
+        expect(sendCalls).toEqual([]);
+        expect(snapshot.state).toBe('unresolved');
+        expect(snapshot.line).toBe('cannot own seats yet · register-forge');
+
+        expect(PlaneAdmission.commandsFor({
+            identity: {authProvider: 'gitlab', providerBaseUrl: 'https://gitlab.example.com/api/v4'}
+        })[1]).toBe(
+            'docker compose --env-file .env -f deploy/cloud/docker-compose.yml -f deploy/cloud/docker-compose.local-agent-os.yml --profile fleet exec fleet-server node ai/scripts/fleet/forgeConnections.mjs register --provider gitlab --endpoint https://gitlab.example.com/api/v4 --apply'
+        );
+
+        expect(PlaneAdmission.commandsFor({
+            identity: {authProvider: 'gitlab'}
+        })[1]).toBe(
+            "docker compose --env-file .env -f deploy/cloud/docker-compose.yml -f deploy/cloud/docker-compose.local-agent-os.yml --profile fleet exec fleet-server node ai/scripts/fleet/forgeConnections.mjs register --provider gitlab --endpoint <the forge's API base> --apply # see ai/scripts/lifecycle/local-agent-os/README.md"
+        )
     });
 });

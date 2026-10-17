@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('neoShell', {
     brainHealth : () => ipcRenderer.invoke('brain-health'),
     fleetRequest: request => ipcRenderer.invoke('fleet-request', request),
     planeStatus : () => ipcRenderer.invoke('shell-plane-status'),
+    probePlane  : () => ipcRenderer.invoke('shell-plane-probe'),
     // Installation placement (ADR 0034 item 11), independent of the Fleet child's availability.
     seatRootStatus : () => ipcRenderer.invoke('shell-seat-root-status'),
     seatRootPlan   : () => ipcRenderer.invoke('shell-seat-root-plan'),
