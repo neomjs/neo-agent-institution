@@ -100,7 +100,7 @@ test.describe('AgentOS.view.fleet.detail.SeatMemoryContainer (#572)', () => {
         row.discovery = candidates;
         expect(hidden(row, 'memory-offer')).toBe(false);
         expect(text(row, 'memory-lead')).toBe('Continue one of these agents\' memory?');
-        expect(offered(row)).toEqual([source, candidates.candidates[1].source, 'none']);
+        expect(offered(row)).toEqual(['none', source, candidates.candidates[1].source]);
         expect(hidden(row, 'memory-note')).toBe(false);
         expect(hidden(row, 'memory-retry')).toBe(true);
         // several candidates wait for the operator: a wrong memory is an identity error, never guessed

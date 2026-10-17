@@ -174,7 +174,9 @@ class SeatMemoryContainer extends Container {
 
             me.choice = null;
             me.getReference('memory-list').store.data = rows;
-            me.choice = rows.some(row => row.source === consent) ? consent : AddAgentFlow.preselectedMemory(value);
+            me.choice = rows.some(row => row.source === consent)
+                ? consent
+                : (value?.state === 'candidates' && value.candidates.length === 1 ? value.candidates[0].source : null);
             me.sync()
         }
     }

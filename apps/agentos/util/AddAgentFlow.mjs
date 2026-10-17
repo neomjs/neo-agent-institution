@@ -294,12 +294,38 @@ class AddAgentFlow extends Base {
 
         switch (discovery?.state) {
             case 'candidates':
-                return [...discovery.candidates, empty];
+                return [empty, ...discovery.candidates];
             case 'unavailable':
                 return [empty];
             default:
                 return []
         }
+    }
+
+    /**
+     * @summary Whether a memory candidate belongs to the typed username.
+     * @param {Object}      candidate
+     * @param {String|null} username
+     * @returns {Boolean}
+     */
+    static candidateMatchesUsername(candidate, username) {
+        const handle = typeof username === 'string' ? username.trim().toLowerCase() : '';
+
+        if (!handle || !candidate) return false;
+
+        for (const field of [candidate.agent, candidate.id, candidate.githubUsername, candidate.name]) {
+            if (typeof field === 'string' && field.trim().toLowerCase() === handle) {
+                return true
+            }
+        }
+
+        const
+            escaped = handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+            source  = typeof candidate.source === 'string' ? candidate.source.toLowerCase() : '',
+            name    = typeof candidate.name === 'string' ? candidate.name.toLowerCase() : '';
+
+        return new RegExp(`(?:^|[\\\\/]|agents-)${escaped}(?:$|[\\\\/]|-neomjs)`).test(source) ||
+            new RegExp(`(?:^|agents-)${escaped}(?:$|-neomjs)`).test(name)
     }
 
     /**
@@ -360,13 +386,28 @@ class AddAgentFlow extends Base {
     }
 
     /**
-     * @summary The choice a fresh discovery answer starts from: its one candidate, or none. Several
-     * candidates wait for the operator, because a wrong memory is an identity error and is never guessed.
-     * @param {Object} discovery The {@link readMemoryCandidates} outcome.
-     * @returns {String|null} The preselected candidate's `source`, or null.
+     * @summary The choice a fresh discovery answer starts from: a single matching candidate, else empty memory.
+     * @param {Object}      discovery The {@link readMemoryCandidates} outcome.
+     * @param {String|null} [username=null]
+     * @returns {String|null} The preselected row's `source`, or null.
      */
-    static preselectedMemory(discovery) {
-        return discovery?.state === 'candidates' && discovery.candidates.length === 1 ? discovery.candidates[0].source : null
+    static preselectedMemory(discovery, username=null) {
+        if (discovery?.state !== 'candidates') return null;
+
+        const
+            {candidates} = discovery,
+            trimmed      = typeof username === 'string' ? username.trim() : '',
+            matches      = trimmed ? candidates.filter(candidate => AddAgentFlow.candidateMatchesUsername(candidate, trimmed)) : [];
+
+        if (matches.length === 1) {
+            return matches[0].source
+        }
+
+        if (!trimmed && candidates.length === 1) {
+            return candidates[0].source
+        }
+
+        return MEMORY_IMPORT_NONE
     }
 
     /**

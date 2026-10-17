@@ -88,20 +88,85 @@ export function acceptSubmittedCredential(value) {
     return credential && credential.length <= MAX_CREDENTIAL_LENGTH ? credential : null
 }
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"]/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[char])
+}
+
+function formatPlaneTarget(plane) {
+    const raw = typeof plane === 'string' ? plane.trim() : '';
+
+    if (!raw) return 'the connected Agent OS';
+
+    try {
+        return `Agent OS (${new URL(raw).host || raw})`
+    } catch {
+        return `Agent OS (${raw})`
+    }
+}
+
+/**
+ * @summary Resolves the heading, field label, hint and submit verb for a credential prompt request.
+ * @param {Object} [options={}]
+ * @param {Object|null} [options.intent=null]
+ * @param {String} [options.method='plane-attach']
+ * @param {String|null} [options.plane=null]
+ * @returns {{heading: String, hint: String, label: String, submit: String, title: String}}
+ */
+export function describeCredentialPrompt({intent = null, method = 'plane-attach', plane = null} = {}) {
+    const
+        submit = SUBMIT_TEXT[method] || SUBMIT_TEXT['plane-attach'],
+        agent  = typeof intent?.githubUsername === 'string' ? intent.githubUsername.trim() : '',
+        forge  = intent?.forge === 'gitlab' ? 'GitLab' : (agent || intent?.forge === 'github' ? 'GitHub' : null);
+
+    if (method === 'defineAgent' && (agent || forge || plane)) {
+        const
+            forgeName = forge || 'GitHub',
+            label     = `${forgeName} PAT`,
+            heading   = agent ? `Enter ${agent}'s ${label}` : `Enter your ${label}`,
+            subject   = agent ? `${agent}'s ${forgeName} token` : 'this agent\'s account token',
+            target    = formatPlaneTarget(plane);
+
+        return {
+            heading,
+            hint : `Use ${subject} for repository access and ${target}. Enter it once; Fleet reuses it at Start.`,
+            label,
+            submit,
+            title: heading
+        }
+    }
+
+    return {
+        heading: `Enter your ${CREDENTIAL_LABEL}`,
+        hint   : HINT_TEXT[method] || HINT_TEXT.default,
+        label  : CREDENTIAL_LABEL,
+        submit,
+        title  : `Enter ${CREDENTIAL_LABEL}`
+    }
+}
+
 /**
  * @summary The page the window loads: a heading, the password field with a Paste button, and the
  * Cancel and submit buttons.
  * @param {Object} options
  * @param {String} options.label What the field asks for, e.g. {@link CREDENTIAL_LABEL}.
  * @param {String} options.submit The submit button's text.
+ * @param {String} [options.heading] The heading text.
  * @param {String} [options.hint] The line under the heading; defaults to the plane's own sign-in.
+ * @param {String} [options.title] The document title.
  * @returns {String}
  */
-export function renderCredentialPromptDocument({label, submit, hint = HINT_TEXT.default}) {
+export function renderCredentialPromptDocument({label, submit, heading = `Enter your ${label}`, hint = HINT_TEXT.default, title = `Enter ${label}`}) {
+    const
+        safeHeading = escapeHtml(heading),
+        safeHint    = escapeHtml(hint),
+        safeLabel   = escapeHtml(label),
+        safeSubmit  = escapeHtml(submit),
+        safeTitle   = escapeHtml(title);
+
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-<title>Enter ${label}</title><style>
+<title>${safeTitle}</title><style>
 *{box-sizing:border-box}
 body{background:#151922;color:#edf2ff;font:14px/1.5 system-ui,sans-serif;margin:0;padding:28px 32px}
 h1{font-size:18px;font-weight:600;margin:0 0 6px}
@@ -119,11 +184,11 @@ footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
 .primary:hover:not(:disabled){background:#3d6af0}
 </style></head><body>
 <form>
-<h1>Enter your ${label}</h1>
-<p>${hint}</p>
-<label for="credential">${label}</label>
+<h1>${safeHeading}</h1>
+<p>${safeHint}</p>
+<label for="credential">${safeLabel}</label>
 <div class="field"><input id="credential" type="password" autocomplete="off" spellcheck="false" maxlength="${MAX_CREDENTIAL_LENGTH}" placeholder="Paste with ⌘V, or type" autofocus><button type="button" data-action="paste">Paste</button></div>
-<footer><button type="button" data-action="cancel">Cancel</button><button type="submit" class="primary" disabled>${submit}</button></footer>
+<footer><button type="button" data-action="cancel">Cancel</button><button type="submit" class="primary" disabled>${safeSubmit}</button></footer>
 </form>
 </body></html>`
 }
@@ -133,17 +198,14 @@ footer{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
  * @param {Object} options
  * @param {Function} options.BrowserWindow Electron `BrowserWindow`.
  * @param {Object} options.Menu Electron `Menu`, for the field's right-click menu.
+ * @param {Function} [options.getPlane] Optional resolver returning the bound Agent OS plane URL/label.
  * @param {String} options.preloadPath Absolute path of `credentialPrompt.preload.cjs`.
- * @returns {Function} `({event, method}) => Promise<String|null>`: the credential, or `null` when canceled.
+ * @returns {Function} `({event, intent, method, plane}) => Promise<String|null>`: the credential, or `null` when canceled.
  */
-export function createCredentialPrompt({BrowserWindow, Menu, preloadPath}) {
-    return function promptCredential({event, method}) {
+export function createCredentialPrompt({BrowserWindow, Menu, getPlane = null, preloadPath}) {
+    return function promptCredential({event, intent = null, method, plane = null}) {
         const
-            text   = {
-                label : CREDENTIAL_LABEL,
-                submit: SUBMIT_TEXT[method] || SUBMIT_TEXT['plane-attach'],
-                hint  : HINT_TEXT[method] || HINT_TEXT.default
-            },
+            text   = describeCredentialPrompt({intent, method, plane: plane ?? getPlane?.() ?? null}),
             parent = BrowserWindow.fromWebContents(event.sender),
             win    = new BrowserWindow({
                 backgroundColor: '#151922',
@@ -155,7 +217,7 @@ export function createCredentialPrompt({BrowserWindow, Menu, preloadPath}) {
                 parent         : parent?.isDestroyed() ? undefined : parent,
                 resizable      : false,
                 show           : false,
-                title          : `Enter ${text.label}`,
+                title          : text.title,
                 // the size is the page's, with or without a title bar (modal on macOS is a sheet)
                 useContentSize : true,
                 width          : PROMPT_SIZE.width,

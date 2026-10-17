@@ -222,6 +222,7 @@ class AddAgentForm extends FormContainer {
             flex           : 'none',
             labelPosition  : 'inline',
             labelText      : 'Username',
+            listeners      : {change: 'up.onUsernameChange'},
             name           : 'githubUsername',
             placeholderText: 'neo-kimi-phoebe',
             reference      : 'field-username',
@@ -350,7 +351,6 @@ class AddAgentForm extends FormContainer {
                 module   : Button,
                 cls      : ['fm-add-submit'],
                 handler  : 'up.onSubmitClick',
-                iconCls  : 'fa fa-lock',
                 reference: 'submit-button',
                 text     : 'Add agent'
             }]
@@ -750,7 +750,6 @@ class AddAgentForm extends FormContainer {
             me          = this,
             discovery   = me.memoryDiscovery,
             rows        = AddAgentFlow.memoryChoices(discovery),
-            candidates  = discovery.state === 'candidates' ? discovery.candidates : [],
             frame       = me.getReference('memory-frame'),
             unavailable = discovery.state === 'unavailable',
             // built for the first answer with rows, so a form with no memory to offer carries no list
@@ -761,16 +760,15 @@ class AddAgentForm extends FormContainer {
                 reference: 'memory-list'
             }) : null);
 
-        me.memoryChoice = null;
+        me.memoryChoicePicked = false;
+        me.memoryChoice       = null;
         list && (list.store.data = rows);
-        me.memoryChoice = AddAgentFlow.preselectedMemory(discovery);
+        me.memoryChoice = AddAgentFlow.preselectedMemory(discovery, me.getReference('field-username')?.value);
 
         frame.hidden = rows.length === 0;
         frame[unavailable ? 'addCls' : 'removeCls']('is-unavailable');
 
-        me.getReference('memory-lead').text = AddAgentFlow.memoryLead(discovery);
-
-        me.getReference('memory-note').hidden    = candidates.length === 0;
+        me.getReference('memory-lead').text      = AddAgentFlow.memoryLead(discovery);
         me.getReference('memory-actions').hidden = !unavailable;
 
         me.syncMemoryDetails()
@@ -783,9 +781,9 @@ class AddAgentForm extends FormContainer {
         const
             me     = this,
             list   = me.getReference('memory-list'),
-            record = me.memoryChoice ? list.store.get(me.memoryChoice) : null;
+            record = me.memoryChoice ? list?.store.get(me.memoryChoice) : null;
 
-        record ? list.selectItem(record) : list.selectionModel.deselectAll();
+        record ? list.selectItem(record) : list?.selectionModel.deselectAll();
         me.syncMemoryDetails()
     }
 
@@ -799,8 +797,9 @@ class AddAgentForm extends FormContainer {
             details = me.getReference('memory-details'),
             text    = AddAgentFlow.memoryDetail({discovery: me.memoryDiscovery, choice: me.memoryChoice});
 
-        details.vdom.cn[1].text = text ?? '';
-        details.hidden          = !text;
+        me.getReference('memory-note').hidden = !(me.memoryDiscovery.state === 'candidates' && me.memoryChoice && me.memoryChoice !== AddAgentFlow.MEMORY_IMPORT_NONE);
+        details.vdom.cn[1].text               = text ?? '';
+        details.hidden                        = !text;
         details.update()
     }
 
@@ -810,7 +809,19 @@ class AddAgentForm extends FormContainer {
      * @param {Object} data.record
      */
     onMemoryCandidateClick({record}) {
-        this.memoryChoice = record.source
+        this.memoryChoicePicked = true;
+        this.memoryChoice       = this.memoryChoice === record.source ? null : record.source
+    }
+
+    /**
+     * @summary Re-evaluate the default memory choice from the typed username until the operator clicks a row.
+     * @param {Object} data
+     */
+    onUsernameChange({value}) {
+        if (!this.memoryChoicePicked && this.memoryDiscovery.state === 'candidates' &&
+            (this.memoryDiscovery.candidates.length > 1 || AddAgentFlow.candidateMatchesUsername(this.memoryDiscovery.candidates[0], value))) {
+            this.memoryChoice = AddAgentFlow.preselectedMemory(this.memoryDiscovery, value)
+        }
     }
 
     /**

@@ -222,21 +222,20 @@ test.describe('AgentOS Add agent — existing memory (#521)', () => {
                 details = frame.locator('.fm-add-memory-details');
 
             await expect(frame.locator('.fm-add-memory-lead')).toHaveText('Continue one of these agents\' memory?');
-            // the two agents, then the empty row closing the same group
+            // the empty row first and preselected, followed by the two agents
             await expect(rows).toHaveCount(3);
-            await expect(rows.nth(2)).toHaveText('Start with empty memory');
-            await expect(rows.nth(0).locator('.fm-memory-candidate-name')).toHaveText('Mnemosyne');
-            await expect(rows.nth(0).locator('.fm-memory-candidate-meta')).toContainText('12 notes · last changed');
-            await expect(frame.locator('.fm-add-memory-note')).toHaveText('Its notes are copied, never moved; the original stays where it is.');
-
-            // a wrong memory is an identity error: nothing is preselected, and no path rides a row
-            await expect(frame.locator('.neo-list-item.neo-selected')).toHaveCount(0);
+            await expect(rows.nth(0)).toHaveText('Start with empty memory');
+            await expect(rows.nth(0)).toHaveClass(/\bneo-selected\b/);
+            await expect(rows.nth(1).locator('.fm-memory-candidate-name')).toHaveText('Mnemosyne');
+            await expect(rows.nth(1).locator('.fm-memory-candidate-meta')).toContainText('12 notes · last changed');
+            await expect(frame.locator('.fm-add-memory-note')).toBeHidden();
             await expect(details).toBeHidden();
             await expect(rows).not.toContainText([CANDIDATES[0].source]);
             await test.info().attach('two candidates', {body: await form.screenshot(), contentType: 'image/png'});
 
-            await rows.nth(1).click();
-            await expect(rows.nth(1)).toHaveClass(/\bneo-selected\b/);
+            await rows.nth(2).click();
+            await expect(rows.nth(2)).toHaveClass(/\bneo-selected\b/);
+            await expect(frame.locator('.fm-add-memory-note')).toHaveText('Its notes are copied, never moved; the original stays where it is.');
 
             await details.locator('summary').click();
             await expect(details.locator('.fm-add-memory-source')).toHaveText(CANDIDATES[1].source);
